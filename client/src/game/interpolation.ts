@@ -1,16 +1,25 @@
 /**
  * Remote players: snapshot buffer + entity interpolation.
  *
- * Remote entities are rendered INTERP_DELAY_MS in the past so there are always
- * two snapshots to interpolate between. No extrapolation: on a late packet the
- * last known state is held, which reads as a brief pause instead of a rubber
- * band. Zombies will use this exact same buffer.
+ * Remotes render `delayMs` in the past so two snapshots exist to lerp between.
+ * Delay adapts to snapshot arrival jitter (and a light RTT floor): LAN sits
+ * near ~50–66 ms, choppy nets climb toward MAX_DELAY_MS.
+ *
+ * Past the newest frame we briefly extrapolate with velocity instead of
+ * freezing — late packets read as continued motion, then catch up on the
+ * next snapshot. Cap keeps rubber-banding bounded. Zombies reuse this buffer.
  */
 
 import type { PlayerState, SnapshotMessage } from '../net/protocol';
 
-export const INTERP_DELAY_MS = 100;
+/** Fallback before enough arrival samples exist. */
+export const INTERP_DELAY_MS = 66;
+const MIN_DELAY_MS = 50;
+const MAX_DELAY_MS = 150;
+/** How far past the newest snapshot we coast on velocity. */
+const MAX_EXTRAP_MS = 100;
 const BUFFER_KEEP_MS = 1500;
+const INTERVAL_SAMPLES = 30;
 
 interface Frame {
   tick: number;
@@ -27,10 +36,29 @@ function lerp(a: number, b: number, t: number): number {
   return a + (b - a) * t;
 }
 
+function clamp(v: number, lo: number, hi: number): number {
+  return Math.min(hi, Math.max(lo, v));
+}
+
 export class SnapshotBuffer {
   private frames: Frame[] = [];
+  private lastPushTime = 0;
+  private intervals: number[] = [];
+  /** Current adaptive render delay (ms behind `now`). */
+  delayMs = INTERP_DELAY_MS;
 
   push(snapshot: SnapshotMessage, now: number): void {
+    if (this.lastPushTime > 0) {
+      const gap = now - this.lastPushTime;
+      // Ignore reconnect / tab-sleep outliers (>0.5s).
+      if (gap > 0 && gap < 500) {
+        this.intervals.push(gap);
+        if (this.intervals.length > INTERVAL_SAMPLES) this.intervals.shift();
+        this.recomputeDelay();
+      }
+    }
+    this.lastPushTime = now;
+
     const players = new Map<string, PlayerState>();
     for (const p of snapshot.players) players.set(p.id, p);
     this.frames.push({ tick: snapshot.tick, time: now, players });
@@ -45,10 +73,15 @@ export class SnapshotBuffer {
     return this.frames[this.frames.length - 1];
   }
 
-  /** Interpolated state of every player at `now - INTERP_DELAY_MS`. */
-  sample(now: number, excludeId?: string): RenderedPlayer[] {
+  /**
+   * Interpolated (or briefly extrapolated) state at `now - delayMs`.
+   * `rttMs` raises the delay floor slightly on high-latency links.
+   */
+  sample(now: number, excludeId?: string, rttMs = 0): RenderedPlayer[] {
     if (this.frames.length === 0) return [];
-    const renderTime = now - INTERP_DELAY_MS;
+
+    const delay = this.effectiveDelay(rttMs);
+    const renderTime = now - delay;
 
     let older: Frame | undefined;
     let newer: Frame | undefined;
@@ -64,34 +97,90 @@ export class SnapshotBuffer {
       newer = this.frames[1];
     }
 
+    const newest = this.frames[this.frames.length - 1];
+
+    // Past newest snapshot: coast on velocity instead of freezing.
+    if (renderTime > newest.time) {
+      const extrapMs = Math.min(renderTime - newest.time, MAX_EXTRAP_MS);
+      return this.extrapolateFrame(newest, extrapMs / 1000, excludeId);
+    }
+
     const span = newer ? newer.time - older.time : 0;
-    const t = span > 0 ? Math.min(1, Math.max(0, (renderTime - older.time) / span)) : 1;
+    const t = span > 0 ? clamp((renderTime - older.time) / span, 0, 1) : 1;
 
     const out: RenderedPlayer[] = [];
     const source = newer ?? older;
     for (const [id, target] of source.players) {
       if (id === excludeId) continue;
       const from = older.players.get(id) ?? target;
-      const speed = Math.hypot(target.vx, target.vy);
-      let ax = lerp(from.ax, target.ax, t);
-      let ay = lerp(from.ay, target.ay, t);
-      const len = Math.hypot(ax, ay);
-      if (len > 1e-4) {
-        ax /= len;
-        ay /= len;
-      } else {
-        ax = target.ax;
-        ay = target.ay;
-      }
+      out.push(this.lerpPlayer(from, target, t));
+    }
+    return out;
+  }
+
+  /** Delay actually used for rendering (jitter adaptive + RTT floor). */
+  effectiveDelay(rttMs = 0): number {
+    // One-way estimate nudges the floor; snapshots already include transit,
+    // so only a fraction is applied — stops high-RTT links from dipping too
+    // low when arrival looks steady.
+    const rttFloor = clamp(rttMs * 0.15, 0, 40);
+    return clamp(Math.max(this.delayMs, MIN_DELAY_MS + rttFloor), MIN_DELAY_MS, MAX_DELAY_MS);
+  }
+
+  private recomputeDelay(): void {
+    const n = this.intervals.length;
+    if (n < 3) {
+      this.delayMs = INTERP_DELAY_MS;
+      return;
+    }
+    let sum = 0;
+    for (const v of this.intervals) sum += v;
+    const avg = sum / n;
+    let absDev = 0;
+    for (const v of this.intervals) absDev += Math.abs(v - avg);
+    const jitter = absDev / n;
+    // Two intervals of buffer + jitter padding.
+    this.delayMs = clamp(avg * 2 + jitter * 2, MIN_DELAY_MS, MAX_DELAY_MS);
+  }
+
+  private extrapolateFrame(
+    frame: Frame,
+    dtSec: number,
+    excludeId?: string,
+  ): RenderedPlayer[] {
+    const out: RenderedPlayer[] = [];
+    for (const [id, p] of frame.players) {
+      if (id === excludeId) continue;
+      const speed = Math.hypot(p.vx, p.vy);
       out.push({
-        ...target,
-        x: lerp(from.x, target.x, t),
-        y: lerp(from.y, target.y, t),
-        ax,
-        ay,
+        ...p,
+        x: p.x + p.vx * dtSec,
+        y: p.y + p.vy * dtSec,
         moving: speed > 1,
       });
     }
     return out;
+  }
+
+  private lerpPlayer(from: PlayerState, target: PlayerState, t: number): RenderedPlayer {
+    const speed = Math.hypot(target.vx, target.vy);
+    let ax = lerp(from.ax, target.ax, t);
+    let ay = lerp(from.ay, target.ay, t);
+    const len = Math.hypot(ax, ay);
+    if (len > 1e-4) {
+      ax /= len;
+      ay /= len;
+    } else {
+      ax = target.ax;
+      ay = target.ay;
+    }
+    return {
+      ...target,
+      x: lerp(from.x, target.x, t),
+      y: lerp(from.y, target.y, t),
+      ax,
+      ay,
+      moving: speed > 1,
+    };
   }
 }

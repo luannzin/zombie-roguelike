@@ -251,7 +251,7 @@ export class Game {
     const ox = this.smoothX + this.aimX * config.muzzleOffset;
     const oy = this.smoothY + this.aimY * config.muzzleOffset;
     const targets: RayTarget[] = this.snapshots
-      .sample(performance.now(), this.localId)
+      .sample(performance.now(), this.localId, this.connection.rtt)
       .map((p) => ({
         id: p.id,
         x: p.x,
@@ -288,7 +288,7 @@ export class Game {
     const drawables: DrawablePlayer[] = [];
     const now = performance.now();
 
-    for (const remote of this.snapshots.sample(now, this.localId)) {
+    for (const remote of this.snapshots.sample(now, this.localId, this.connection.rtt)) {
       drawables.push({
         id: remote.id,
         name: remote.name,
@@ -360,6 +360,7 @@ export class Game {
     const count = latest ? latest.players.size : 0;
     this.hud.net.textContent =
       `players ${count} · rtt ${this.connection.rtt}ms · ` +
+      `interp ${Math.round(this.snapshots.effectiveDelay(this.connection.rtt))}ms · ` +
       `pending ${this.local ? this.local.pending.length : 0} · ` +
       `${Math.round(this.fps)} fps`;
   }

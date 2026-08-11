@@ -29,6 +29,14 @@ import { LocalPlayer } from './prediction';
 import { TileMap } from './world';
 
 const MAX_TICKS_PER_FRAME = 5;
+/** Camera punch on local fire (miss or hit). */
+const FIRE_TRAUMA = 0.16;
+/** Extra camera punch when local shot lands on a target. */
+const HIT_TRAUMA = 0.12;
+/** Camera punch when local player loses HP. */
+const HURT_TRAUMA = 0.55;
+/** Seconds of white flash remaining after a hit. */
+const HIT_FLASH_LIFE = 0.18;
 
 export interface Hud {
   status: HTMLElement;
@@ -64,12 +72,15 @@ export class Game {
   private hudTimer = 0;
   private aimX = 1;
   private aimY = 0;
-  private lastPacket: InputPacket | null = null;
   /** local player position interpolated between fixed ticks (see prediction.ts) */
   private smoothX = 0;
   private smoothY = 0;
   private resizeDirty = true;
   private fps = 0;
+  /** Remaining hit-flash time per player id. */
+  private hitFlashes = new Map<string, number>();
+  /** Last known HP per player — used to detect damage for flash/trauma. */
+  private lastHp = new Map<string, number>();
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
@@ -120,9 +131,11 @@ export class Game {
     this.localMeta = msg.player;
     this.local = new LocalPlayer(msg.player);
     this.animTimes.clear();
+    this.hitFlashes.clear();
+    this.lastHp.clear();
+    this.lastHp.set(msg.player.id, msg.player.hp);
     this.localFireCooldown = 0;
     this.accumulator = 0;
-    this.lastPacket = null;
     this.smoothX = msg.player.x;
     this.smoothY = msg.player.y;
 
@@ -144,12 +157,14 @@ export class Game {
         this.localMeta = state;
         this.local.reconcile(state, msg.ack, this.world, this.config);
       }
+      this.noteDamage(state);
     }
 
     // Own shots were already drawn locally at fire time.
     for (const shot of msg.shots) {
       if (shot.by === this.localId) continue;
       const shooter = msg.players.find((p) => p.id === shot.by);
+      const hit = shot.hit !== null;
       this.effects.spawnShot(
         shot.x,
         shot.y,
@@ -157,9 +172,24 @@ export class Game {
         shot.dy,
         shot.dist,
         shooter?.color ?? '#ffd166',
-        shot.hit !== null,
+        hit,
+        hit ? this.config.shotDamage : undefined,
       );
+      if (shot.hit) this.pulseHitFlash(shot.hit);
     }
+  }
+
+  /** Detect HP drops → flash victim; hurt trauma only for local. */
+  private noteDamage(state: PlayerState): void {
+    const prev = this.lastHp.get(state.id);
+    this.lastHp.set(state.id, state.hp);
+    if (prev === undefined || state.hp >= prev) return;
+    this.pulseHitFlash(state.id);
+    if (state.id === this.localId) this.camera.addTrauma(HURT_TRAUMA);
+  }
+
+  private pulseHitFlash(playerId: string): void {
+    this.hitFlashes.set(playerId, HIT_FLASH_LIFE);
   }
 
   // --- loop ----------------------------------------------------------------
@@ -190,8 +220,18 @@ export class Game {
       if (ticks === MAX_TICKS_PER_FRAME) this.accumulator = 0;
 
       this.local.decayError(dt);
+      // Live movement/aim for the render remainder so a mid-tick keypress
+      // starts motion this frame — not after the next 30 Hz sample. Tick
+      // still samples + sends at 30 Hz; this scratch never commits.
+      const liveInput: InputPacket = {
+        type: 'input',
+        sequence: 0,
+        movement: { ...this.input.movement },
+        aim: { x: this.aimX, y: this.aimY },
+        shoot: this.input.shooting,
+      };
       const smooth = this.local.subTickPosition(
-        this.lastPacket,
+        liveInput,
         this.world,
         this.config,
         this.accumulator,
@@ -202,6 +242,7 @@ export class Game {
     }
 
     this.effects.update(dt);
+    this.decayHitFlashes(dt);
     this.render(dt);
     this.updateHud(dt);
 
@@ -224,7 +265,6 @@ export class Game {
 
     local.predict(packet, world, config);
     this.connection.send(packet);
-    this.lastPacket = packet;
 
     if (this.localFireCooldown > 0) {
       this.localFireCooldown = Math.max(0, this.localFireCooldown - dt);
@@ -277,6 +317,7 @@ export class Game {
       targets,
       this.localId,
     );
+    const hit = result.target !== null;
     this.effects.spawnShot(
       ox,
       oy,
@@ -284,8 +325,11 @@ export class Game {
       this.aimY,
       result.distance,
       this.localMeta?.color ?? '#ffd166',
-      result.target !== null,
+      hit,
+      hit ? config.shotDamage : undefined,
     );
+    this.camera.addTrauma(FIRE_TRAUMA + (hit ? HIT_TRAUMA : 0));
+    if (result.target) this.pulseHitFlash(result.target.id);
   }
 
   // --- rendering -----------------------------------------------------------
@@ -310,6 +354,7 @@ export class Game {
         moving: remote.moving,
         animTime: this.advanceAnim(remote.id, remote.moving, dt),
         isLocal: false,
+        hitFlash: this.hitFlashAmount(remote.id),
       });
     }
 
@@ -329,6 +374,7 @@ export class Game {
         moving,
         animTime: this.advanceAnim(this.localId, moving, dt),
         isLocal: true,
+        hitFlash: this.hitFlashAmount(this.localId),
       });
     }
 
@@ -347,6 +393,20 @@ export class Game {
     const next = moving ? current + dt : 0;
     this.animTimes.set(id, next);
     return next;
+  }
+
+  private decayHitFlashes(dt: number): void {
+    for (const [id, remaining] of this.hitFlashes) {
+      const next = remaining - dt;
+      if (next <= 0) this.hitFlashes.delete(id);
+      else this.hitFlashes.set(id, next);
+    }
+  }
+
+  private hitFlashAmount(id: string): number {
+    const remaining = this.hitFlashes.get(id);
+    if (!remaining) return 0;
+    return Math.min(1, remaining / HIT_FLASH_LIFE);
   }
 
   // --- hud -----------------------------------------------------------------

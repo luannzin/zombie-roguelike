@@ -112,7 +112,9 @@ export class LocalPlayer {
    * refreshes. This advances a scratch copy of the state by the leftover
    * accumulator time using the same collision-aware `applyInput`, so the
    * sprite moves every frame and lands exactly where the next tick commits it.
-   * Nothing here is stored — reconciliation is unaffected.
+   * Caller should pass **live** input (current keys/aim), not the last sent
+   * packet, so mid-tick presses start motion this frame. Nothing here is
+   * stored — reconciliation is unaffected.
    */
   subTickPosition(
     input: InputPacket | null,

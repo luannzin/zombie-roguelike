@@ -79,7 +79,9 @@ Rendering runs on `requestAnimationFrame` (60 fps+); the simulation runs at
 * **local player** — `LocalPlayer.subTickPosition` advances a scratch copy of
   the state by the leftover accumulator time through the same collision-aware
   `applyInput`, so the sprite moves on every frame and lands exactly where the
-  next tick commits it. Nothing is stored, so reconciliation is unaffected.
+  next tick commits it. The scratch uses **live** movement/aim (not the last
+  sent packet) so a mid-tick keypress starts motion this frame; nothing is
+  stored, so reconciliation is unaffected.
 * **remote players** — interpolation is already continuous in time, so they are
   smooth at any refresh rate.
 * **aim** — recomputed per frame, not per tick, so the crosshair never feels

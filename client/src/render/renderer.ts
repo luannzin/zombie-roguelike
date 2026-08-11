@@ -33,6 +33,8 @@ export interface DrawablePlayer {
   moving: boolean;
   animTime: number;
   isLocal: boolean;
+  /** 0..1 white flash intensity after taking a hit. */
+  hitFlash: number;
 }
 
 export interface RenderState {
@@ -91,8 +93,8 @@ export class Renderer {
     ctx.fillStyle = '#0a0a10';
     ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
-    const offsetX = Math.round(-camera.x * camera.zoom);
-    const offsetY = Math.round(-camera.y * camera.zoom);
+    const offsetX = Math.round(-camera.renderX * camera.zoom);
+    const offsetY = Math.round(-camera.renderY * camera.zoom);
 
     // world-space pass: map
     ctx.setTransform(camera.zoom, 0, 0, camera.zoom, offsetX, offsetY);
@@ -119,8 +121,8 @@ export class Renderer {
     if (this.mapCanvasFor !== world) this.buildMapCache(world);
 
     if (this.mapCanvas) {
-      const sx = Math.max(0, Math.floor(camera.x));
-      const sy = Math.max(0, Math.floor(camera.y));
+      const sx = Math.max(0, Math.floor(camera.renderX));
+      const sy = Math.max(0, Math.floor(camera.renderY));
       const sw = Math.min(world.pixelWidth - sx, Math.ceil(camera.viewWidth) + 2);
       const sh = Math.min(world.pixelHeight - sy, Math.ceil(camera.viewHeight) + 2);
       if (sw > 0 && sh > 0) {
@@ -130,10 +132,10 @@ export class Renderer {
     }
 
     const ts = world.tileSize;
-    const x0 = Math.max(0, Math.floor(camera.x / ts));
-    const y0 = Math.max(0, Math.floor(camera.y / ts));
-    const x1 = Math.min(world.width - 1, Math.ceil((camera.x + camera.viewWidth) / ts));
-    const y1 = Math.min(world.height - 1, Math.ceil((camera.y + camera.viewHeight) / ts));
+    const x0 = Math.max(0, Math.floor(camera.renderX / ts));
+    const y0 = Math.max(0, Math.floor(camera.renderY / ts));
+    const x1 = Math.min(world.width - 1, Math.ceil((camera.renderX + camera.viewWidth) / ts));
+    const y1 = Math.min(world.height - 1, Math.ceil((camera.renderY + camera.viewHeight) / ts));
     this.paintTiles(this.ctx, world, x0, y0, x1, y1);
   }
 
@@ -232,6 +234,14 @@ export class Renderer {
     const dy = Math.round(spriteTop * zoom + offsetY);
     ctx.drawImage(image, col * w, row * h, w, h, dx, dy, w * zoom, h * zoom);
 
+    if (player.hitFlash > 0) {
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = Math.min(1, player.hitFlash * 0.95);
+      ctx.drawImage(image, col * w, row * h, w, h, dx, dy, w * zoom, h * zoom);
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.globalAlpha = 1;
+    }
+
     const cx = player.x * zoom + offsetX;
     const cy = player.y * zoom + offsetY;
 
@@ -299,12 +309,12 @@ export class Renderer {
       ctx.fill();
     }
 
-    for (const impact of effects.impacts) {
-      const fade = 1 - impact.age / impact.life;
+    for (const p of effects.particles) {
+      const fade = 1 - p.age / p.life;
       ctx.globalAlpha = fade;
-      ctx.fillStyle = impact.hit ? '#ff5a5a' : '#cfcfe0';
-      const size = ts * (impact.hit ? 0.19 : 0.125);
-      ctx.fillRect(impact.x - size / 2, impact.y - size / 2, size, size);
+      ctx.fillStyle = p.color;
+      const s = p.size * (0.55 + 0.45 * fade);
+      ctx.fillRect(p.x - s / 2, p.y - s / 2, s, s);
     }
 
     ctx.globalAlpha = 1;
@@ -329,5 +339,28 @@ export class Renderer {
       ctx.fillStyle = player.color;
       ctx.fillText(player.name, sx, sy);
     }
+
+    this.drawDamageFloats(state, offsetX, offsetY);
+  }
+
+  private drawDamageFloats(state: RenderState, offsetX: number, offsetY: number): void {
+    const { ctx } = this;
+    const zoom = state.camera.zoom;
+    ctx.font = `bold ${Math.max(11, Math.round(10 * zoom * 0.45))}px ui-monospace, Menlo, Consolas, monospace`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    for (const d of state.effects.damageFloats) {
+      const t = d.age / d.life;
+      const fade = 1 - t;
+      const sx = Math.round(d.x * zoom + offsetX);
+      const sy = Math.round(d.y * zoom + offsetY);
+      ctx.globalAlpha = fade;
+      ctx.fillStyle = 'rgba(0,0,0,0.7)';
+      ctx.fillText(String(d.value), sx + 1, sy + 1);
+      ctx.fillStyle = '#ffe8e8';
+      ctx.fillText(String(d.value), sx, sy);
+    }
+    ctx.globalAlpha = 1;
   }
 }

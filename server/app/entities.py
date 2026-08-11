@@ -82,12 +82,16 @@ class Player:
     respawn_timer: float = 0.0
 
     def to_payload(self) -> dict:
+        # Positions need ≥4 decimals: wall snaps use EPS=1e-4, and round(_, 2)
+        # pushes right/down snaps onto the tile boundary so box_blocked flips
+        # true. Client reconcile then blocks the other axis (strafe "lag"
+        # while sliding down a wall; up/left were fine because +EPS rounds away).
         return {
             "id": self.id,
             "name": self.name,
             "color": self.color,
-            "x": round(self.x, 2),
-            "y": round(self.y, 2),
+            "x": round(self.x, 4),
+            "y": round(self.y, 4),
             "vx": round(self.vx, 2),
             "vy": round(self.vy, 2),
             "ax": round(self.aim_x, 3),

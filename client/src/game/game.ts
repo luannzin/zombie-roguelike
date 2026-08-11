@@ -17,6 +17,7 @@ import type {
   WelcomeMessage,
 } from '../net/protocol';
 import { Camera } from '../render/camera';
+import { Minimap } from '../render/minimap';
 import { Renderer, type DrawablePlayer } from '../render/renderer';
 import { loadCharacterSheet, type SpriteSheet } from '../render/sprites';
 import { hitscan, type RayTarget } from './combat';
@@ -32,6 +33,7 @@ export interface Hud {
   status: HTMLElement;
   you: HTMLElement;
   net: HTMLElement;
+  minimap: HTMLCanvasElement;
 }
 
 export class Game {
@@ -40,6 +42,7 @@ export class Game {
   private readonly camera = new Camera();
   private readonly effects = new Effects();
   private readonly snapshots = new SnapshotBuffer();
+  private readonly minimap: Minimap;
   private renderer: Renderer | null = null;
   private sheet: SpriteSheet | null = null;
 
@@ -68,6 +71,7 @@ export class Game {
     private readonly hud: Hud,
   ) {
     this.input = new InputController(canvas);
+    this.minimap = new Minimap(hud.minimap);
   }
 
   async start(): Promise<void> {
@@ -94,6 +98,7 @@ export class Game {
       this.hud.status.textContent = 'disconnected — retrying…';
       this.local = null;
       this.world = null;
+      this.minimap.setWorld(null);
     }
   }
 
@@ -117,6 +122,7 @@ export class Game {
 
     this.camera.resize(this.canvas.width, this.canvas.height);
     this.camera.snapTo(msg.player.x, msg.player.y, this.world);
+    this.minimap.setWorld(this.world);
 
     this.hud.status.textContent = 'in arena';
   }
@@ -326,6 +332,7 @@ export class Game {
       players: drawables,
       effects: this.effects,
     });
+    this.minimap.draw(drawables, this.localId);
   }
 
   private advanceAnim(id: string, moving: boolean, dt: number): number {

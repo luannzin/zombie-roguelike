@@ -37,6 +37,19 @@ body {
   color: #f2a541;
 }
 
+#minimap {
+  position: fixed;
+  top: 10px;
+  right: 12px;
+  border: 1px solid #565673;
+  background: #0a0a10;
+  box-shadow: 0 0 0 1px #1b1b24;
+  image-rendering: pixelated;
+  pointer-events: none;
+  user-select: none;
+  visibility: hidden;
+}
+
 #hint {
   position: fixed;
   bottom: 10px;

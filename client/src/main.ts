@@ -6,6 +6,7 @@ const hud = {
   status: document.getElementById('hud-status')!,
   you: document.getElementById('hud-you')!,
   net: document.getElementById('hud-net')!,
+  minimap: document.getElementById('minimap') as HTMLCanvasElement,
 };
 
 const game = new Game(canvas, hud);

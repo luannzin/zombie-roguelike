@@ -3,6 +3,9 @@
  * drop or replay at will.
  */
 
+import { expDamp, normalize } from '../lib/math';
+import { palette } from '../theme/palette';
+
 export interface Tracer {
   x: number;
   y: number;
@@ -44,9 +47,15 @@ export interface DamageFloat {
   life: number;
 }
 
-const HIT_COLORS = ['#ff5a5a', '#ff8a70', '#ffe0e0', '#ffffff'];
-const MISS_COLORS = ['#cfcfe0', '#9a9ab0', '#6e6e82'];
-const DUST_COLORS = ['#6a6558', '#5a564c', '#7a7466', '#4a4840', '#8a8274'];
+/** Air drag rate for impact debris vs. the heavier, slower footstep dust. */
+const PARTICLE_DRAG = 6;
+const DUST_DRAG = 4.5;
+/** Damage numbers drift upward at this many world px per second. */
+const FLOAT_RISE = 18;
+
+function pick(colors: readonly string[]): string {
+  return colors[(Math.random() * colors.length) | 0];
+}
 
 export class Effects {
   tracers: Tracer[] = [];
@@ -79,8 +88,9 @@ export class Effects {
   }
 
   spawnImpact(x: number, y: number, dx: number, dy: number, hit: boolean): void {
+    const fx = palette().effects;
     const count = hit ? 10 : 5;
-    const colors = hit ? HIT_COLORS : MISS_COLORS;
+    const colors = hit ? fx.hitParticles : fx.missParticles;
     const speedBase = hit ? 55 : 28;
     const lifeBase = hit ? 0.28 : 0.18;
 
@@ -98,7 +108,7 @@ export class Effects {
         vx: bx * speed,
         vy: by * speed,
         size: hit ? 1.2 + Math.random() * 1.6 : 0.8 + Math.random() * 1.1,
-        color: colors[(Math.random() * colors.length) | 0],
+        color: pick(colors),
         age: 0,
         life: lifeBase * (0.7 + Math.random() * 0.5),
       });
@@ -111,7 +121,7 @@ export class Effects {
       vx: 0,
       vy: 0,
       size: hit ? 2.4 : 1.6,
-      color: hit ? '#ffffff' : '#e8e8f0',
+      color: hit ? fx.hitCore : fx.missCore,
       age: 0,
       life: hit ? 0.1 : 0.07,
     });
@@ -122,9 +132,8 @@ export class Effects {
    * left/right foot so puffs straddle the path.
    */
   spawnDust(x: number, y: number, vx: number, vy: number, side: number): void {
-    const speed = Math.hypot(vx, vy);
-    const nx = speed > 1e-3 ? vx / speed : 0;
-    const ny = speed > 1e-3 ? vy / speed : 1;
+    const fx = palette().effects;
+    const { x: nx, y: ny } = normalize(vx, vy);
     // Perpendicular for left/right foot offset.
     const px = -ny * side;
     const py = nx * side;
@@ -139,7 +148,7 @@ export class Effects {
         vx: -nx * back + px * (4 + Math.random() * 6) + (Math.random() - 0.5) * 8,
         vy: -ny * back + py * (4 + Math.random() * 6) + (Math.random() - 0.5) * 6 - 6,
         size: 1.1 + Math.random() * 2.2,
-        color: DUST_COLORS[(Math.random() * DUST_COLORS.length) | 0],
+        color: pick(fx.dust),
         age: 0,
         life: 0.28 + Math.random() * 0.22,
         gy: 18,
@@ -153,7 +162,7 @@ export class Effects {
       vx: -nx * 4,
       vy: -ny * 4,
       size: 2.8 + Math.random() * 1.4,
-      color: '#5c584e',
+      color: fx.dustSmear,
       age: 0,
       life: 0.2,
       gy: 0,
@@ -173,41 +182,49 @@ export class Effects {
   update(dt: number): void {
     this.tracers = advance(this.tracers, dt);
     this.flashes = advance(this.flashes, dt);
-    this.particles = stepParticles(this.particles, dt, 6);
-    this.dust = stepParticles(this.dust, dt, 4.5);
+    this.particles = stepParticles(this.particles, dt, PARTICLE_DRAG);
+    this.dust = stepParticles(this.dust, dt, DUST_DRAG);
+    this.damageFloats = advance(this.damageFloats, dt, (d) => {
+      d.y -= FLOAT_RISE * dt;
+    });
+  }
 
-    const nextFloats: DamageFloat[] = [];
-    for (const d of this.damageFloats) {
-      d.age += dt;
-      if (d.age >= d.life) continue;
-      d.y -= 18 * dt;
-      nextFloats.push(d);
-    }
-    this.damageFloats = nextFloats;
+  /** Drop every live effect — used on disconnect and when switching rooms. */
+  clear(): void {
+    this.tracers.length = 0;
+    this.flashes.length = 0;
+    this.particles.length = 0;
+    this.dust.length = 0;
+    this.damageFloats.length = 0;
   }
 }
 
+/**
+ * Age every item by `dt`, drop the expired ones, and run `step` on survivors.
+ * One loop serves tracers, flashes, particles, dust and damage floats.
+ */
+function advance<T extends { age: number; life: number }>(
+  items: T[],
+  dt: number,
+  step?: (item: T) => void,
+): T[] {
+  const out: T[] = [];
+  for (const item of items) {
+    item.age += dt;
+    if (item.age >= item.life) continue;
+    step?.(item);
+    out.push(item);
+  }
+  return out;
+}
+
 function stepParticles(items: Particle[], dt: number, dragRate: number): Particle[] {
-  const out: Particle[] = [];
-  const drag = Math.exp(-dragRate * dt);
-  for (const p of items) {
-    p.age += dt;
-    if (p.age >= p.life) continue;
+  const drag = expDamp(dragRate, dt);
+  return advance(items, dt, (p) => {
     if (p.gy) p.vy += p.gy * dt;
     p.x += p.vx * dt;
     p.y += p.vy * dt;
     p.vx *= drag;
     p.vy *= drag;
-    out.push(p);
-  }
-  return out;
-}
-
-function advance<T extends { age: number; life: number }>(items: T[], dt: number): T[] {
-  const out: T[] = [];
-  for (const item of items) {
-    item.age += dt;
-    if (item.age < item.life) out.push(item);
-  }
-  return out;
+  });
 }

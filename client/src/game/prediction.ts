@@ -12,6 +12,7 @@
  *      correction is smoothed out instead of snapping the sprite
  */
 
+import { expDamp } from '../lib/math';
 import type { GameConfig, InputPacket, PlayerState } from '../net/protocol';
 import { applyInput, type MovableState } from './simulation';
 import type { TileMap } from './world';
@@ -90,7 +91,7 @@ export class LocalPlayer {
   }
 
   decayError(dt: number): void {
-    const k = Math.exp(-ERROR_DECAY * dt);
+    const k = expDamp(ERROR_DECAY, dt);
     this.errorX *= k;
     this.errorY *= k;
   }

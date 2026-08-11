@@ -1,0 +1,147 @@
+@import 'tailwindcss';
+
+/*
+ * ============================================================================
+ * Design tokens — the single source of truth for every colour in the game.
+ * ============================================================================
+ *
+ * The DOM reads these through the Tailwind utilities mapped in `@theme inline`
+ * below. The canvas reads the SAME custom properties at runtime via
+ * `src/theme/palette.ts`. Nothing hardcodes a hex value anywhere else, so
+ * retheming the game means editing this block and nothing else.
+ */
+:root {
+  /* chrome */
+  --surface: #0a0a10;
+  --panel: #0a0a10;
+  --panel-border: #565673;
+  --panel-inset: #1b1b24;
+  --track: #12121a;
+  --track-border: #2e2e3d;
+
+  /* text */
+  --ink: #d8d8e4;
+  --ink-muted: #6f6f85;
+  --ink-accent: #f2a541;
+
+  /* meters */
+  --hp-high: #7bd389;
+  --hp-mid: #f2a541;
+  --hp-low: #e6484f;
+  --xp: #6ea8fe;
+  --neutral: #8b8ba3;
+
+  /* world tiles (canvas + minimap) */
+  --tile-floor-a: #23232c;
+  --tile-floor-b: #262630;
+  --tile-floor-c: #202029;
+  --tile-floor-speck: #2c2c38;
+  --tile-wall-body: #3a3a4e;
+  --tile-wall-top: #565673;
+  --tile-wall-edge: #1b1b24;
+
+  /* impact debris */
+  --fx-hit-a: #ff5a5a;
+  --fx-hit-b: #ff8a70;
+  --fx-hit-c: #ffe0e0;
+  --fx-hit-d: #ffffff;
+  --fx-miss-a: #cfcfe0;
+  --fx-miss-b: #9a9ab0;
+  --fx-miss-c: #6e6e82;
+  --fx-hit-core: #ffffff;
+  --fx-miss-core: #e8e8f0;
+
+  /* footstep dust */
+  --fx-dust-a: #6a6558;
+  --fx-dust-b: #5a564c;
+  --fx-dust-c: #7a7466;
+  --fx-dust-d: #4a4840;
+  --fx-dust-e: #8a8274;
+  --fx-dust-smear: #5c584e;
+
+  /* shots */
+  --fx-tracer-core: #fff6d5;
+  --fx-muzzle: #ffe9a8;
+  --fx-damage-text: #ffe8e8;
+  --fx-shot-fallback: #ffd166;
+
+  /* entity chrome */
+  --entity-shadow: rgb(0 0 0 / 0.32);
+  --entity-bar-backdrop: rgb(0 0 0 / 0.6);
+  --entity-aim-local: rgb(255 255 255 / 0.55);
+  --entity-aim-remote: rgb(255 255 255 / 0.25);
+  --entity-label-shadow: rgb(0 0 0 / 0.75);
+  --fx-text-shadow: rgb(0 0 0 / 0.7);
+  --minimap-local-ring: #ffffff;
+
+  /* HUD chrome */
+  --hud-text-shadow: #000;
+  --meter-shade: rgb(0 0 0 / 0.35);
+
+  /*
+   * Low-HP vignette. Stored as bare `R G B` channels, not finished colours,
+   * because the layer computes its own alpha per gradient stop from the
+   * current danger level and heartbeat phase.
+   */
+  --danger-inner: 40 0 8;
+  --danger-mid: 90 4 14;
+  --danger-outer: 140 6 18;
+  --danger-wash: 160 12 28;
+  --danger-edge: 0 0 0;
+}
+
+/*
+ * Utility mappings. `inline` is required because these reference other custom
+ * properties — without it the utilities would emit a var() indirection that
+ * re-resolves in the wrong scope.
+ */
+@theme inline {
+  --color-surface: var(--surface);
+  --color-panel: var(--panel);
+  --color-panel-border: var(--panel-border);
+  --color-panel-inset: var(--panel-inset);
+  --color-track: var(--track);
+  --color-track-border: var(--track-border);
+
+  --color-ink: var(--ink);
+  --color-ink-muted: var(--ink-muted);
+  --color-ink-accent: var(--ink-accent);
+
+  --color-hp-high: var(--hp-high);
+  --color-hp-mid: var(--hp-mid);
+  --color-hp-low: var(--hp-low);
+  --color-xp: var(--xp);
+  --color-neutral: var(--neutral);
+
+  --font-mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+    width: 100%;
+  }
+
+  body {
+    overflow: hidden;
+    background-color: var(--surface);
+    color: var(--ink);
+    font-family: var(--font-mono);
+    cursor: crosshair;
+  }
+}
+
+@utility pixelated {
+  image-rendering: pixelated;
+}
+
+/* Every HUD overlay is decoration: it must never eat a click meant for the
+   canvas. Interactive panels opt back in with `pointer-events-auto`. */
+@utility hud-layer {
+  position: fixed;
+  pointer-events: none;
+  user-select: none;
+  text-shadow: 0 1px 0 var(--hud-text-shadow);
+}

@@ -7,6 +7,7 @@
  */
 
 import type { TileMap } from '../game/world';
+import { clamp, clamp01, expDamp } from '../lib/math';
 
 /** Higher = less camera lag behind the predicted local player. */
 const FOLLOW_RATE = 24;
@@ -34,7 +35,7 @@ export class Camera {
 
   /** Add camera punch. Amount is trauma units; values stack and clamp to 1. */
   addTrauma(amount: number): void {
-    this.trauma = Math.min(1, this.trauma + amount);
+    this.trauma = clamp01(this.trauma + amount);
   }
 
   snapTo(targetX: number, targetY: number, world: TileMap): void {
@@ -49,7 +50,7 @@ export class Camera {
   follow(targetX: number, targetY: number, world: TileMap, dt: number): void {
     const desiredX = targetX - this.viewWidth / 2;
     const desiredY = targetY - this.viewHeight / 2;
-    const k = 1 - Math.exp(-FOLLOW_RATE * dt);
+    const k = 1 - expDamp(FOLLOW_RATE, dt);
     this.x += (desiredX - this.x) * k;
     this.y += (desiredY - this.y) * k;
     this.clamp(world);
@@ -78,16 +79,8 @@ export class Camera {
   }
 
   private clamp(world: TileMap): void {
-    if (world.pixelWidth <= this.viewWidth) {
-      this.x = (world.pixelWidth - this.viewWidth) / 2;
-    } else {
-      this.x = Math.min(Math.max(this.x, 0), world.pixelWidth - this.viewWidth);
-    }
-    if (world.pixelHeight <= this.viewHeight) {
-      this.y = (world.pixelHeight - this.viewHeight) / 2;
-    } else {
-      this.y = Math.min(Math.max(this.y, 0), world.pixelHeight - this.viewHeight);
-    }
+    this.x = clampAxis(this.x, world.pixelWidth, this.viewWidth);
+    this.y = clampAxis(this.y, world.pixelHeight, this.viewHeight);
   }
 
   /** sx/sy are canvas-relative CSS pixels (the canvas backing store is 1:1). */
@@ -97,4 +90,10 @@ export class Camera {
       y: this.y + sy / this.zoom,
     };
   }
+}
+
+/** Keep the view inside the map, or centre it when the map is smaller. */
+function clampAxis(value: number, worldSize: number, viewSize: number): number {
+  if (worldSize <= viewSize) return (worldSize - viewSize) / 2;
+  return clamp(value, 0, worldSize - viewSize);
 }

@@ -3,7 +3,8 @@
 Browser-based multiplayer 2D pixel-art arena. No lobby, no auth, no setup:
 open the page, you are in the game.
 
-* **Client** — Vite + TypeScript + Canvas 2D (no engine, no React)
+* **Client** — Vite + TypeScript + Canvas 2D (no game engine). React + Tailwind
+  own the HUD and routing only; they are never part of the render loop.
 * **Server** — Python + FastAPI + asyncio, authoritative, fixed 30 Hz tick
 * **Transport** — one WebSocket, JSON messages
 
@@ -13,6 +14,12 @@ Server (terminal 1):
 
 ```bash
 cd server && uv venv .venv && uv pip install --python .venv/bin/python -r requirements.txt && ./.venv/bin/python -m uvicorn app.main:app --reload --port 8000
+```
+
+Windows:
+
+```bash
+cd server && uv venv .venv && uv pip install --python .venv\Scripts\python.exe -r requirements.txt && .venv\Scripts\python.exe -m uvicorn app.main:app --reload --port 8000
 ```
 
 Client (terminal 2):
@@ -89,8 +96,17 @@ server/
 client/
   src/
     net/            connection + protocol types
-    game/           world, simulation, prediction, interpolation, input, effects, combat, game loop
-    render/         camera, sprites/tinting, renderer
+    game/           world, simulation, prediction, interpolation, input, effects,
+                    combat, per-player visuals, game loop, hud-store (UI seam)
+    render/         camera, projection, sprites/tinting, minimap, renderer
+      layers/       tiles, entities, effects, vignette
+    theme/          palette.ts — reads the CSS design tokens for canvas use
+    lib/            math, canvas, store, cn (framework-free helpers)
+    components/     React: game/ (canvas hosts), hud/, ui/
+    hooks/          useGameSession (owns Game lifecycle), useHud
+    screens/        ArenaScreen
+    app/            route table
+    styles/         index.css — Tailwind entry + ALL design tokens
 assets/
   raw/              source art (never served)
   processed/        production art (served by Vite)
@@ -107,6 +123,16 @@ docs/
   Change one, change the other, or the local player will rubber-band.
 * Rendering knows nothing about the network; networking knows nothing about
   rendering; the server simulation knows nothing about either.
+* React never renders per frame. `Game` publishes a snapshot to `hud-store` at
+  5 Hz and React reads it via `useSyncExternalStore`; everything that changes
+  every frame is drawn to canvas. Do not move per-frame state into component
+  state.
+* **All colours live in `client/src/styles/index.css`.** The DOM consumes them
+  as Tailwind utilities, the canvas reads the same custom properties at runtime
+  through `theme/palette.ts`. Never hardcode a colour anywhere else.
+* Anything the client creates — sockets, timers, listeners, observers, rAF —
+  must be released in `Game.dispose()`. React StrictMode and HMR both remount,
+  and a leaked loop is silent until the frame rate collapses.
 
 ## Extension points
 

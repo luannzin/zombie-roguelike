@@ -21,6 +21,13 @@ export class Connection {
   private ws: WebSocket | null = null;
   private reconnectDelay = 500;
   private pingTimer: number | null = null;
+  private reconnectTimer: number | null = null;
+  /**
+   * Set by `close()`. Without it, closing the socket only triggers the
+   * onclose reconnect — the connection would be impossible to stop, because
+   * closing it IS the signal to reopen it.
+   */
+  private disposed = false;
 
   status: ConnectionStatus = 'connecting';
   rtt = 0;
@@ -33,6 +40,7 @@ export class Connection {
   }
 
   connect(): void {
+    if (this.disposed) return;
     this.setStatus('connecting');
     const ws = new WebSocket(this.url);
     this.ws = ws;
@@ -59,12 +67,44 @@ export class Connection {
 
     ws.onclose = () => {
       this.stopPing();
+      if (this.disposed) return;
       this.setStatus('closed');
-      window.setTimeout(() => this.connect(), this.reconnectDelay);
+      this.reconnectTimer = window.setTimeout(() => {
+        this.reconnectTimer = null;
+        this.connect();
+      }, this.reconnectDelay);
       this.reconnectDelay = Math.min(this.reconnectDelay * 2, 5000);
     };
 
     ws.onerror = () => ws.close();
+  }
+
+  /**
+   * Permanently stop this connection: no reconnect, no ping, no callbacks.
+   * Required for React effect cleanup, HMR and leaving a room. Idempotent.
+   */
+  close(): void {
+    this.disposed = true;
+    this.stopPing();
+    if (this.reconnectTimer !== null) {
+      window.clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    const ws = this.ws;
+    this.ws = null;
+    if (ws) {
+      // Drop handlers first so the in-flight close cannot call back into a
+      // game that is already torn down.
+      ws.onopen = null;
+      ws.onmessage = null;
+      ws.onclose = null;
+      ws.onerror = null;
+      if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+        ws.close();
+      }
+    }
+    this.onMessage = () => {};
+    this.onStatus = () => {};
   }
 
   send(msg: ClientMessage): void {

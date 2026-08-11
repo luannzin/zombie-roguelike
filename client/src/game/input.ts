@@ -27,11 +27,31 @@ export class InputController {
     window.addEventListener('keydown', this.onKeyDown);
     window.addEventListener('keyup', this.onKeyUp);
     window.addEventListener('blur', this.onBlur);
+    window.addEventListener('mouseup', this.onMouseUp);
     canvas.addEventListener('mousemove', this.onMouseMove);
     canvas.addEventListener('mousedown', this.onMouseDown);
-    window.addEventListener('mouseup', this.onMouseUp);
-    canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+    canvas.addEventListener('contextmenu', this.onContextMenu);
   }
+
+  /**
+   * Remove every listener. The four `window` listeners in particular outlive
+   * the canvas, so without this a remounted game keeps the old instance alive
+   * and both react to the same keypress.
+   */
+  dispose(): void {
+    window.removeEventListener('keydown', this.onKeyDown);
+    window.removeEventListener('keyup', this.onKeyUp);
+    window.removeEventListener('blur', this.onBlur);
+    window.removeEventListener('mouseup', this.onMouseUp);
+    this.canvas.removeEventListener('mousemove', this.onMouseMove);
+    this.canvas.removeEventListener('mousedown', this.onMouseDown);
+    this.canvas.removeEventListener('contextmenu', this.onContextMenu);
+    this.onBlur();
+  }
+
+  private onContextMenu = (e: MouseEvent) => {
+    e.preventDefault();
+  };
 
   private onKeyDown = (e: KeyboardEvent) => {
     const key = KEY_MAP[e.code];

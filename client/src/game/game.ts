@@ -5,28 +5,39 @@
  * Two clocks:
  *   - fixed 30 Hz tick  -> sample input, predict, send (matches server tick)
  *   - requestAnimationFrame -> interpolate, smooth, render
+ *
+ * The UI boundary is a single `HudStore`: this class publishes a snapshot at
+ * HUD_INTERVAL and never touches the DOM beyond its two canvases. React reads
+ * that store and is never part of the frame loop.
+ *
+ * Lifecycle is explicit — `start()` / `dispose()`. Every timer, listener,
+ * observer and socket created here is released by `dispose()`, so remounting
+ * (StrictMode, HMR, switching rooms) cannot leave a second loop running.
  */
 
-import { Connection, type ConnectionStatus } from "../net/connection";
+import { Connection, type ConnectionStatus } from '../net/connection';
 import type {
-	GameConfig,
-	InputPacket,
-	PlayerState,
-	ServerMessage,
-	SnapshotMessage,
-	WelcomeMessage,
-} from "../net/protocol";
-import { Camera } from "../render/camera";
-import { Minimap } from "../render/minimap";
-import { type DrawablePlayer, Renderer } from "../render/renderer";
-import { loadCharacterSheet, type SpriteSheet } from "../render/sprites";
-import type { ProgressBar } from "../ui/progress-bar";
-import { hitscan, type RayTarget } from "./combat";
-import { Effects } from "./effects";
-import { InputController } from "./input";
-import { SnapshotBuffer } from "./interpolation";
-import { LocalPlayer } from "./prediction";
-import { TileMap } from "./world";
+  GameConfig,
+  InputPacket,
+  PlayerState,
+  ServerMessage,
+  SnapshotMessage,
+  WelcomeMessage,
+} from '../net/protocol';
+import { Camera } from '../render/camera';
+import { Minimap } from '../render/minimap';
+import { Renderer } from '../render/renderer';
+import { loadCharacterSheet, type SpriteSheet } from '../render/sprites';
+import type { DrawablePlayer } from '../render/types';
+import { palette } from '../theme/palette';
+import { hitscan, type RayTarget } from './combat';
+import { Effects } from './effects';
+import { EMPTY_HUD, HUD_INTERVAL, type HudSnapshot, type HudStore } from './hud-store';
+import { InputController } from './input';
+import { SnapshotBuffer } from './interpolation';
+import { PlayerVisuals } from './player-visuals';
+import { LocalPlayer } from './prediction';
+import { TileMap } from './world';
 
 const MAX_TICKS_PER_FRAME = 5;
 /** Camera punch on local fire (miss or hit). */
@@ -35,541 +46,493 @@ const FIRE_TRAUMA = 0.16;
 const HIT_TRAUMA = 0.12;
 /** Camera punch when local player loses HP. */
 const HURT_TRAUMA = 0.55;
-/** Seconds of white flash remaining after a hit. */
-const HIT_FLASH_LIFE = 0.18;
-/** Sprite kick distance opposite aim (world px). */
-const RECOIL_KICK = 0;
-/** How fast recoil springs back (higher = snappier). */
-const RECOIL_RECOVER = 16;
-/** World px travelled between footfall dust puffs. */
-const FOOTSTEP_SPACING = 7;
 /** HP ratio where vignette starts (above = none). */
 const DANGER_START = 0.45;
 /** HP ratio where vignette hits full crush. */
 const DANGER_CRITICAL = 0.2;
+/** Speed (world px/s) above which the local player reads as walking. */
+const MOVING_SPEED = 1;
 
-export interface Hud {
-	status: HTMLElement;
-	net: HTMLElement;
-	minimap: HTMLCanvasElement;
-	vitals: HTMLElement;
-	name: HTMLElement;
-	kd: HTMLElement;
-	state: HTMLElement;
-	hp: ProgressBar;
+/**
+ * Everything `toDrawable` needs, in the shape both a snapshot-interpolated
+ * remote and the locally predicted player can supply.
+ */
+interface DrawableSource {
+  id: string;
+  name: string;
+  color: string;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  ax: number;
+  ay: number;
+  hp: number;
+  alive: boolean;
+  moving: boolean;
+  isLocal: boolean;
+}
+
+export interface GameOptions {
+  canvas: HTMLCanvasElement;
+  minimapCanvas: HTMLCanvasElement;
+  hud: HudStore;
+  /** Override the default server URL (room-scoped URLs land here later). */
+  serverUrl?: string;
 }
 
 export class Game {
-	private readonly connection = new Connection();
-	private readonly input: InputController;
-	private readonly camera = new Camera();
-	private readonly effects = new Effects();
-	private readonly snapshots = new SnapshotBuffer();
-	private readonly minimap: Minimap;
-	private renderer: Renderer | null = null;
-	private sheet: SpriteSheet | null = null;
+  private readonly canvas: HTMLCanvasElement;
+  private readonly hud: HudStore;
+  private readonly connection: Connection;
+  private readonly input: InputController;
+  private readonly minimap: Minimap;
+  private readonly camera = new Camera();
+  private readonly effects = new Effects();
+  private readonly snapshots = new SnapshotBuffer();
+  private readonly visuals = new PlayerVisuals();
 
-	private world: TileMap | null = null;
-	private config: GameConfig | null = null;
-	private localId = "";
-	private local: LocalPlayer | null = null;
-	private localMeta: PlayerState | null = null;
+  private renderer: Renderer | null = null;
+  private sheet: SpriteSheet | null = null;
+  private resizeObserver: ResizeObserver | null = null;
+  private rafId: number | null = null;
+  private started = false;
+  private disposed = false;
 
-	private accumulator = 0;
-	private lastFrame = 0;
-	private localFireCooldown = 0;
-	private animTimes = new Map<string, number>();
-	private hudTimer = 0;
-	private aimX = 1;
-	private aimY = 0;
-	/** local player position interpolated between fixed ticks (see prediction.ts) */
-	private smoothX = 0;
-	private smoothY = 0;
-	private resizeDirty = true;
-	private fps = 0;
-	/** Remaining hit-flash time per player id. */
-	private hitFlashes = new Map<string, number>();
-	/** Last known HP per player — used to detect damage for flash/trauma. */
-	private lastHp = new Map<string, number>();
-	/** Visual recoil offset per player (world px, opposite aim). */
-	private recoils = new Map<string, { x: number; y: number }>();
-	/** Distance since last footfall puff, per player. */
-	private stepAccum = new Map<string, number>();
-	/** Last known position for step distance, per player. */
-	private stepPrev = new Map<string, { x: number; y: number }>();
-	/** Alternating foot side (-1 / 1). */
-	private stepSide = new Map<string, number>();
-	/** Elapsed seconds for vignette heartbeat. */
-	private time = 0;
+  private world: TileMap | null = null;
+  private config: GameConfig | null = null;
+  private localId = '';
+  private local: LocalPlayer | null = null;
+  private localMeta: PlayerState | null = null;
 
-	constructor(
-		private readonly canvas: HTMLCanvasElement,
-		private readonly hud: Hud,
-	) {
-		this.input = new InputController(canvas);
-		this.minimap = new Minimap(hud.minimap);
-	}
+  private accumulator = 0;
+  private lastFrame = 0;
+  private localFireCooldown = 0;
+  private hudTimer = 0;
+  private aimX = 1;
+  private aimY = 0;
+  /** local player position interpolated between fixed ticks (see prediction.ts) */
+  private smoothX = 0;
+  private smoothY = 0;
+  private resizeDirty = true;
+  private fps = 0;
+  /** Elapsed seconds for vignette heartbeat. */
+  private time = 0;
 
-	async start(): Promise<void> {
-		this.sheet = await loadCharacterSheet("player");
-		this.renderer = new Renderer(this.canvas, this.sheet);
+  constructor(options: GameOptions) {
+    this.canvas = options.canvas;
+    this.hud = options.hud;
+    this.connection = new Connection(options.serverUrl);
+    this.input = new InputController(options.canvas);
+    this.minimap = new Minimap(options.minimapCanvas);
+  }
 
-		// Reading clientWidth every frame forces a layout; only resize on change.
-		new ResizeObserver(() => {
-			this.resizeDirty = true;
-		}).observe(this.canvas);
+  async start(): Promise<void> {
+    if (this.started || this.disposed) return;
+    this.started = true;
 
-		this.connection.onStatus = (status) => this.onStatus(status);
-		this.connection.onMessage = (msg) => this.onMessage(msg);
-		this.connection.connect();
+    this.sheet = await loadCharacterSheet('player');
+    // dispose() can land while the sheet is loading.
+    if (this.disposed) return;
 
-		this.lastFrame = performance.now();
-		requestAnimationFrame(this.frame);
-	}
+    this.renderer = new Renderer(this.canvas, this.sheet);
 
-	// --- networking ----------------------------------------------------------
-	private onStatus(status: ConnectionStatus): void {
-		if (status === "connecting") this.hud.status.textContent = "connecting…";
-		if (status === "closed") {
-			this.hud.status.textContent = "disconnected — retrying…";
-			this.local = null;
-			this.world = null;
-			this.minimap.setWorld(null);
-			this.hideVitals();
-		}
-	}
+    // Reading clientWidth every frame forces a layout; only resize on change.
+    this.resizeObserver = new ResizeObserver(() => {
+      this.resizeDirty = true;
+    });
+    this.resizeObserver.observe(this.canvas);
 
-	private onMessage(msg: ServerMessage): void {
-		if (msg.type === "welcome") this.onWelcome(msg);
-		else if (msg.type === "snapshot") this.onSnapshot(msg);
-	}
+    this.connection.onStatus = (status) => this.onStatus(status);
+    this.connection.onMessage = (msg) => this.onMessage(msg);
+    this.connection.connect();
 
-	private onWelcome(msg: WelcomeMessage): void {
-		this.config = msg.config;
-		this.world = new TileMap(msg.map);
-		this.localId = msg.playerId;
-		this.localMeta = msg.player;
-		this.local = new LocalPlayer(msg.player);
-		this.animTimes.clear();
-		this.hitFlashes.clear();
-		this.recoils.clear();
-		this.stepAccum.clear();
-		this.stepPrev.clear();
-		this.stepSide.clear();
-		this.lastHp.clear();
-		this.time = 0;
-		this.lastHp.set(msg.player.id, msg.player.hp);
-		this.localFireCooldown = 0;
-		this.accumulator = 0;
-		this.smoothX = msg.player.x;
-		this.smoothY = msg.player.y;
+    this.lastFrame = performance.now();
+    this.rafId = requestAnimationFrame(this.frame);
+  }
 
-		this.camera.resize(this.canvas.width, this.canvas.height);
-		this.camera.snapTo(msg.player.x, msg.player.y, this.world);
-		this.minimap.setWorld(this.world);
-		this.hud.vitals.hidden = false;
+  /**
+   * Stop everything and release every resource. Idempotent, and safe to call
+   * while `start()` is still awaiting the sprite sheet.
+   */
+  dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
 
-		this.hud.status.textContent = "in arena";
-	}
+    if (this.rafId !== null) {
+      cancelAnimationFrame(this.rafId);
+      this.rafId = null;
+    }
+    this.resizeObserver?.disconnect();
+    this.resizeObserver = null;
 
-	private onSnapshot(msg: SnapshotMessage): void {
-		if (!this.world || !this.config || !this.local) return;
+    this.connection.close();
+    this.input.dispose();
+    this.renderer?.dispose();
+    this.renderer = null;
+    this.minimap.setWorld(null);
 
-		this.snapshots.push(msg, performance.now());
+    this.visuals.clear();
+    this.effects.clear();
+    this.world = null;
+    this.local = null;
+    this.localMeta = null;
 
-		for (const state of msg.players) {
-			if (state.id === this.localId) {
-				this.localMeta = state;
-				this.local.reconcile(state, msg.ack, this.world, this.config);
-			}
-			this.noteDamage(state);
-		}
+    this.hud.set(EMPTY_HUD);
+  }
 
-		// Own shots were already drawn locally at fire time.
-		for (const shot of msg.shots) {
-			if (shot.by === this.localId) continue;
-			const shooter = msg.players.find((p) => p.id === shot.by);
-			const hit = shot.hit !== null;
-			this.effects.spawnShot(
-				shot.x,
-				shot.y,
-				shot.dx,
-				shot.dy,
-				shot.dist,
-				shooter?.color ?? "#ffd166",
-				hit,
-				hit ? this.config.shotDamage : undefined,
-			);
-			this.kickRecoil(shot.by, shot.dx, shot.dy);
-			if (shot.hit) this.pulseHitFlash(shot.hit);
-		}
-	}
+  // --- networking ----------------------------------------------------------
+  private onStatus(status: ConnectionStatus): void {
+    if (status === 'connecting') {
+      this.patchHud({ connection: status, status: 'connecting…' });
+      return;
+    }
+    if (status === 'closed') {
+      this.local = null;
+      this.world = null;
+      this.minimap.setWorld(null);
+      this.visuals.clear();
+      this.effects.clear();
+      this.patchHud({
+        connection: status,
+        status: 'disconnected — retrying…',
+        inArena: false,
+        vitals: null,
+      });
+      return;
+    }
+    this.patchHud({ connection: status });
+  }
 
-	/** Detect HP drops → flash victim; hurt trauma only for local. */
-	private noteDamage(state: PlayerState): void {
-		const prev = this.lastHp.get(state.id);
-		this.lastHp.set(state.id, state.hp);
-		if (prev === undefined || state.hp >= prev) return;
-		this.pulseHitFlash(state.id);
-		if (state.id === this.localId) this.camera.addTrauma(HURT_TRAUMA);
-	}
+  private onMessage(msg: ServerMessage): void {
+    if (msg.type === 'welcome') this.onWelcome(msg);
+    else if (msg.type === 'snapshot') this.onSnapshot(msg);
+  }
 
-	private pulseHitFlash(playerId: string): void {
-		this.hitFlashes.set(playerId, HIT_FLASH_LIFE);
-	}
+  private onWelcome(msg: WelcomeMessage): void {
+    this.config = msg.config;
+    this.world = new TileMap(msg.map);
+    this.localId = msg.playerId;
+    this.localMeta = msg.player;
+    this.local = new LocalPlayer(msg.player);
 
-	// --- loop ----------------------------------------------------------------
-	private frame = (now: number): void => {
-		const dt = Math.min(0.25, (now - this.lastFrame) / 1000);
-		this.lastFrame = now;
-		if (dt > 0) this.fps += (1 / dt - this.fps) * 0.05;
+    this.visuals.clear();
+    this.effects.clear();
+    this.time = 0;
+    this.localFireCooldown = 0;
+    this.accumulator = 0;
+    this.smoothX = msg.player.x;
+    this.smoothY = msg.player.y;
 
-		if (this.resizeDirty && this.renderer) {
-			this.renderer.resize();
-			this.camera.resize(this.canvas.width, this.canvas.height);
-			this.resizeDirty = false;
-		}
+    this.camera.resize(this.canvas.width, this.canvas.height);
+    this.camera.snapTo(msg.player.x, msg.player.y, this.world);
+    this.minimap.setWorld(this.world);
 
-		if (this.world && this.config && this.local) {
-			// Aim updates every frame, not every tick, so the crosshair never feels
-			// capped at the simulation rate.
-			this.updateAim();
+    this.patchHud({ inArena: true, status: 'in arena' });
+  }
 
-			this.accumulator += dt;
-			const step = this.config.dt;
-			let ticks = 0;
-			while (this.accumulator >= step && ticks < MAX_TICKS_PER_FRAME) {
-				this.accumulator -= step;
-				this.tick(step);
-				ticks++;
-			}
-			if (ticks === MAX_TICKS_PER_FRAME) this.accumulator = 0;
+  private onSnapshot(msg: SnapshotMessage): void {
+    if (!this.world || !this.config || !this.local) return;
 
-			this.local.decayError(dt);
-			// Live movement/aim for the render remainder so a mid-tick keypress
-			// starts motion this frame — not after the next 30 Hz sample. Tick
-			// still samples + sends at 30 Hz; this scratch never commits.
-			const liveInput: InputPacket = {
-				type: "input",
-				sequence: 0,
-				movement: { ...this.input.movement },
-				aim: { x: this.aimX, y: this.aimY },
-				shoot: this.input.shooting,
-			};
-			const smooth = this.local.subTickPosition(
-				liveInput,
-				this.world,
-				this.config,
-				this.accumulator,
-			);
-			this.smoothX = smooth.x;
-			this.smoothY = smooth.y;
-			this.camera.follow(smooth.x, smooth.y, this.world, dt);
-		}
+    this.snapshots.push(msg, performance.now());
 
-		this.effects.update(dt);
-		this.decayHitFlashes(dt);
-		this.decayRecoils(dt);
-		this.time += dt;
-		this.render(dt);
-		this.updateHud(dt);
+    for (const state of msg.players) {
+      if (state.id === this.localId) {
+        this.localMeta = state;
+        this.local.reconcile(state, msg.ack, this.world, this.config);
+      }
+      // Damage detection is authoritative: HP dropping between snapshots is
+      // the only signal that works for local and remote players alike.
+      if (this.visuals.noteHp(state.id, state.hp) && state.id === this.localId) {
+        this.camera.addTrauma(HURT_TRAUMA);
+      }
+    }
 
-		requestAnimationFrame(this.frame);
-	};
+    // Own shots were already drawn locally at fire time.
+    for (const shot of msg.shots) {
+      if (shot.by === this.localId) continue;
+      const shooter = msg.players.find((p) => p.id === shot.by);
+      const hit = shot.hit !== null;
+      this.effects.spawnShot(
+        shot.x,
+        shot.y,
+        shot.dx,
+        shot.dy,
+        shot.dist,
+        shooter?.color ?? palette().effects.fallbackShot,
+        hit,
+        hit ? this.config.shotDamage : undefined,
+      );
+      this.visuals.kickRecoil(shot.by, shot.dx, shot.dy);
+      if (shot.hit) this.visuals.pulseHitFlash(shot.hit);
+    }
+  }
 
-	/** One fixed simulation step: sample input, predict, send. */
-	private tick(dt: number): void {
-		const world = this.world!;
-		const config = this.config!;
-		const local = this.local!;
+  // --- loop ----------------------------------------------------------------
+  private frame = (now: number): void => {
+    if (this.disposed) return;
 
-		const packet: InputPacket = {
-			type: "input",
-			sequence: local.nextSequence(),
-			movement: { ...this.input.movement },
-			aim: { x: this.aimX, y: this.aimY },
-			shoot: this.input.shooting,
-		};
+    const dt = Math.min(0.25, (now - this.lastFrame) / 1000);
+    this.lastFrame = now;
+    if (dt > 0) this.fps += (1 / dt - this.fps) * 0.05;
 
-		local.predict(packet, world, config);
-		this.connection.send(packet);
+    if (this.resizeDirty && this.renderer) {
+      this.renderer.resize();
+      this.camera.resize(this.canvas.width, this.canvas.height);
+      this.resizeDirty = false;
+    }
 
-		if (this.localFireCooldown > 0) {
-			this.localFireCooldown = Math.max(0, this.localFireCooldown - dt);
-		}
-		if (packet.shoot && local.alive && this.localFireCooldown === 0) {
-			this.localFireCooldown = config.fireCooldown;
-			this.predictShot();
-		}
-	}
+    if (this.world && this.config && this.local) {
+      // Aim updates every frame, not every tick, so the crosshair never feels
+      // capped at the simulation rate.
+      this.updateAim();
 
-	private updateAim(): void {
-		const local = this.local;
-		if (!local) return;
-		const point = this.camera.screenToWorld(
-			this.input.mouseX,
-			this.input.mouseY,
-		);
-		let dx = point.x - this.smoothX;
-		let dy = point.y - this.smoothY;
-		const len = Math.hypot(dx, dy);
-		if (len > 1e-3) {
-			dx /= len;
-			dy /= len;
-			this.aimX = Number(dx.toFixed(3));
-			this.aimY = Number(dy.toFixed(3));
-		}
-	}
+      this.accumulator += dt;
+      const step = this.config.dt;
+      let ticks = 0;
+      while (this.accumulator >= step && ticks < MAX_TICKS_PER_FRAME) {
+        this.accumulator -= step;
+        this.tick(step);
+        ticks++;
+      }
+      if (ticks === MAX_TICKS_PER_FRAME) this.accumulator = 0;
 
-	/** Immediate local tracer so shooting feels instant; server still decides damage. */
-	private predictShot(): void {
-		const world = this.world!;
-		const config = this.config!;
+      this.local.decayError(dt);
+      // Live movement/aim for the render remainder so a mid-tick keypress
+      // starts motion this frame — not after the next 30 Hz sample. Tick
+      // still samples + sends at 30 Hz; this scratch never commits.
+      const smooth = this.local.subTickPosition(
+        this.liveInput(),
+        this.world,
+        this.config,
+        this.accumulator,
+      );
+      this.smoothX = smooth.x;
+      this.smoothY = smooth.y;
+      this.camera.follow(smooth.x, smooth.y, this.world, dt);
+    }
 
-		const ox = this.smoothX + this.aimX * config.muzzleOffset;
-		const oy = this.smoothY + this.aimY * config.muzzleOffset;
-		const targets: RayTarget[] = this.snapshots
-			.sample(performance.now(), this.localId, this.connection.rtt)
-			.map((p) => ({
-				id: p.id,
-				x: p.x,
-				y: p.y,
-				radius: config.playerHitRadius,
-				alive: p.alive,
-			}));
+    this.effects.update(dt);
+    this.visuals.update(dt);
+    this.time += dt;
+    this.render(dt);
+    this.publishHud(dt);
 
-		const result = hitscan(
-			world,
-			ox,
-			oy,
-			this.aimX,
-			this.aimY,
-			config.shotRange,
-			targets,
-			this.localId,
-		);
-		const hit = result.target !== null;
-		this.effects.spawnShot(
-			ox,
-			oy,
-			this.aimX,
-			this.aimY,
-			result.distance,
-			this.localMeta?.color ?? "#ffd166",
-			hit,
-			hit ? config.shotDamage : undefined,
-		);
-		this.camera.addTrauma(FIRE_TRAUMA + (hit ? HIT_TRAUMA : 0));
-		this.kickRecoil(this.localId, this.aimX, this.aimY);
-		if (result.target) this.pulseHitFlash(result.target.id);
-	}
+    this.rafId = requestAnimationFrame(this.frame);
+  };
 
-	// --- rendering -----------------------------------------------------------
-	private render(dt: number): void {
-		if (!this.renderer || !this.world || !this.config) return;
+  /** One fixed simulation step: sample input, predict, send. */
+  private tick(dt: number): void {
+    const world = this.world!;
+    const config = this.config!;
+    const local = this.local!;
 
-		const drawables: DrawablePlayer[] = [];
-		const now = performance.now();
+    const packet = this.liveInput(local.nextSequence());
+    local.predict(packet, world, config);
+    this.connection.send(packet);
 
-		for (const remote of this.snapshots.sample(
-			now,
-			this.localId,
-			this.connection.rtt,
-		)) {
-			const recoil = this.recoilOf(remote.id);
-			this.emitFootsteps(
-				remote.id,
-				remote.x,
-				remote.y,
-				remote.vx,
-				remote.vy,
-				remote.moving && remote.alive,
-			);
-			drawables.push({
-				id: remote.id,
-				name: remote.name,
-				color: remote.color,
-				x: remote.x,
-				y: remote.y,
-				ax: remote.ax,
-				ay: remote.ay,
-				hp: remote.hp,
-				maxHp: this.config.maxHp,
-				alive: remote.alive,
-				moving: remote.moving,
-				animTime: this.advanceAnim(remote.id, remote.moving, dt),
-				isLocal: false,
-				hitFlash: this.hitFlashAmount(remote.id),
-				recoilX: recoil.x,
-				recoilY: recoil.y,
-			});
-		}
+    if (this.localFireCooldown > 0) {
+      this.localFireCooldown = Math.max(0, this.localFireCooldown - dt);
+    }
+    if (packet.shoot && local.alive && this.localFireCooldown === 0) {
+      this.localFireCooldown = config.fireCooldown;
+      this.predictShot();
+    }
+  }
 
-		if (this.local && this.localMeta) {
-			const moving = Math.hypot(this.local.state.vx, this.local.state.vy) > 1;
-			const recoil = this.recoilOf(this.localId);
-			this.emitFootsteps(
-				this.localId,
-				this.smoothX,
-				this.smoothY,
-				this.local.state.vx,
-				this.local.state.vy,
-				moving && this.local.alive,
-			);
-			drawables.push({
-				id: this.localId,
-				name: this.localMeta.name,
-				color: this.localMeta.color,
-				x: this.smoothX,
-				y: this.smoothY,
-				ax: this.aimX,
-				ay: this.aimY,
-				hp: this.local.hp,
-				maxHp: this.config.maxHp,
-				alive: this.local.alive,
-				moving,
-				animTime: this.advanceAnim(this.localId, moving, dt),
-				isLocal: true,
-				hitFlash: this.hitFlashAmount(this.localId),
-				recoilX: recoil.x,
-				recoilY: recoil.y,
-			});
-		}
+  /** Current keys + aim as a packet. Sequence 0 means "scratch, never sent". */
+  private liveInput(sequence = 0): InputPacket {
+    return {
+      type: 'input',
+      sequence,
+      movement: { ...this.input.movement },
+      aim: { x: this.aimX, y: this.aimY },
+      shoot: this.input.shooting,
+    };
+  }
 
-		this.renderer.draw({
-			world: this.world,
-			camera: this.camera,
-			config: this.config,
-			players: drawables,
-			effects: this.effects,
-			danger: this.dangerLevel(),
-			time: this.time,
-		});
-		this.minimap.draw(drawables, this.localId);
-	}
+  private updateAim(): void {
+    if (!this.local) return;
+    const point = this.camera.screenToWorld(this.input.mouseX, this.input.mouseY);
+    const dx = point.x - this.smoothX;
+    const dy = point.y - this.smoothY;
+    const len = Math.hypot(dx, dy);
+    if (len > 1e-3) {
+      this.aimX = Number((dx / len).toFixed(3));
+      this.aimY = Number((dy / len).toFixed(3));
+    }
+  }
 
-	private advanceAnim(id: string, moving: boolean, dt: number): number {
-		const current = this.animTimes.get(id) ?? 0;
-		const next = moving ? current + dt : 0;
-		this.animTimes.set(id, next);
-		return next;
-	}
+  /** Immediate local tracer so shooting feels instant; server still decides damage. */
+  private predictShot(): void {
+    const world = this.world!;
+    const config = this.config!;
 
-	private decayHitFlashes(dt: number): void {
-		for (const [id, remaining] of this.hitFlashes) {
-			const next = remaining - dt;
-			if (next <= 0) this.hitFlashes.delete(id);
-			else this.hitFlashes.set(id, next);
-		}
-	}
+    const ox = this.smoothX + this.aimX * config.muzzleOffset;
+    const oy = this.smoothY + this.aimY * config.muzzleOffset;
+    const targets: RayTarget[] = this.snapshots
+      .sample(performance.now(), this.localId, this.connection.rtt)
+      .map((p) => ({
+        id: p.id,
+        x: p.x,
+        y: p.y,
+        radius: config.playerHitRadius,
+        alive: p.alive,
+      }));
 
-	private hitFlashAmount(id: string): number {
-		const remaining = this.hitFlashes.get(id);
-		if (!remaining) return 0;
-		return Math.min(1, remaining / HIT_FLASH_LIFE);
-	}
+    const result = hitscan(
+      world,
+      ox,
+      oy,
+      this.aimX,
+      this.aimY,
+      config.shotRange,
+      targets,
+      this.localId,
+    );
+    const hit = result.target !== null;
+    this.effects.spawnShot(
+      ox,
+      oy,
+      this.aimX,
+      this.aimY,
+      result.distance,
+      this.localMeta?.color ?? palette().effects.fallbackShot,
+      hit,
+      hit ? config.shotDamage : undefined,
+    );
+    this.camera.addTrauma(FIRE_TRAUMA + (hit ? HIT_TRAUMA : 0));
+    this.visuals.kickRecoil(this.localId, this.aimX, this.aimY);
+    if (result.target) this.visuals.pulseHitFlash(result.target.id);
+  }
 
-	private kickRecoil(playerId: string, dx: number, dy: number): void {
-		this.recoils.set(playerId, { x: -dx * RECOIL_KICK, y: -dy * RECOIL_KICK });
-	}
+  // --- rendering -----------------------------------------------------------
+  private render(dt: number): void {
+    if (!this.renderer || !this.world || !this.config) return;
 
-	private decayRecoils(dt: number): void {
-		const damp = Math.exp(-RECOIL_RECOVER * dt);
-		for (const [id, r] of this.recoils) {
-			r.x *= damp;
-			r.y *= damp;
-			if (Math.hypot(r.x, r.y) < 0.05) this.recoils.delete(id);
-		}
-	}
+    const drawables: DrawablePlayer[] = [];
+    const now = performance.now();
 
-	private recoilOf(id: string): { x: number; y: number } {
-		return this.recoils.get(id) ?? { x: 0, y: 0 };
-	}
+    for (const remote of this.snapshots.sample(now, this.localId, this.connection.rtt)) {
+      drawables.push(this.toDrawable({ ...remote, isLocal: false }, dt));
+    }
 
-	/** Emit dust when a player covers FOOTSTEP_SPACING world px while moving. */
-	private emitFootsteps(
-		id: string,
-		x: number,
-		y: number,
-		vx: number,
-		vy: number,
-		moving: boolean,
-	): void {
-		const prev = this.stepPrev.get(id);
-		this.stepPrev.set(id, { x, y });
-		if (!moving || !prev || !this.config) {
-			this.stepAccum.set(id, 0);
-			return;
-		}
+    if (this.local && this.localMeta) {
+      const { vx, vy } = this.local.state;
+      drawables.push(
+        this.toDrawable(
+          {
+            id: this.localId,
+            name: this.localMeta.name,
+            color: this.localMeta.color,
+            x: this.smoothX,
+            y: this.smoothY,
+            vx,
+            vy,
+            ax: this.aimX,
+            ay: this.aimY,
+            hp: this.local.hp,
+            alive: this.local.alive,
+            moving: Math.hypot(vx, vy) > MOVING_SPEED,
+            isLocal: true,
+          },
+          dt,
+        ),
+      );
+    }
 
-		const travelled = Math.hypot(x - prev.x, y - prev.y);
-		// Ignore teleport / respawn snaps.
-		if (travelled > this.config.moveSpeed * 0.2) {
-			this.stepAccum.set(id, 0);
-			return;
-		}
+    // Everyone in this frame was touched by toDrawable; anyone who left is now
+    // unreferenced and gets dropped.
+    this.visuals.prune();
 
-		let accum = (this.stepAccum.get(id) ?? 0) + travelled;
-		const feetY = y + this.config.playerHalfHeight * 0.9;
-		while (accum >= FOOTSTEP_SPACING) {
-			accum -= FOOTSTEP_SPACING;
-			const side = this.stepSide.get(id) ?? 1;
-			this.stepSide.set(id, -side);
-			const speed = Math.hypot(vx, vy);
-			const dirX = speed > 1 ? vx : x - prev.x;
-			const dirY = speed > 1 ? vy : y - prev.y;
-			this.effects.spawnDust(x, feetY, dirX, dirY, side);
-		}
-		this.stepAccum.set(id, accum);
-	}
+    this.renderer.draw({
+      world: this.world,
+      camera: this.camera,
+      config: this.config,
+      players: drawables,
+      effects: this.effects,
+      danger: this.dangerLevel(),
+      time: this.time,
+    });
+    this.minimap.draw(drawables, this.localId);
+  }
 
-	/** 0..1 screen danger from local HP. Dead = no vignette (respawn clean). */
-	private dangerLevel(): number {
-		const local = this.local;
-		const config = this.config;
-		if (!local || !config || !local.alive) return 0;
-		const ratio = local.hp / config.maxHp;
-		if (ratio >= DANGER_START) return 0;
-		if (ratio <= DANGER_CRITICAL) {
-			return 0.72 + (1 - ratio / DANGER_CRITICAL) * 0.28;
-		}
-		return ((DANGER_START - ratio) / (DANGER_START - DANGER_CRITICAL)) * 0.72;
-	}
+  /** Build one renderable entity and advance its per-player visual state. */
+  private toDrawable(source: DrawableSource, dt: number): DrawablePlayer {
+    const config = this.config!;
+    const { id, x, y, vx, vy, moving, alive } = source;
 
-	// --- hud -----------------------------------------------------------------
-	private hideVitals(): void {
-		this.hud.vitals.hidden = true;
-		this.hud.name.textContent = "";
-		this.hud.kd.textContent = "0 / 0";
-		this.hud.state.hidden = true;
-		this.hud.hp.clear();
-	}
+    this.visuals.emitFootsteps(id, x, y, vx, vy, moving && alive, this.effects, config);
+    const recoil = this.visuals.recoilOf(id);
 
-	private updateHud(dt: number): void {
-		this.hudTimer += dt;
-		if (this.hudTimer < 0.2) return;
-		this.hudTimer = 0;
+    return {
+      id,
+      name: source.name,
+      color: source.color,
+      x,
+      y,
+      ax: source.ax,
+      ay: source.ay,
+      hp: source.hp,
+      maxHp: config.maxHp,
+      alive,
+      moving,
+      animTime: this.visuals.advanceAnim(id, moving, dt),
+      isLocal: source.isLocal,
+      hitFlash: this.visuals.hitFlashAmount(id),
+      recoilX: recoil.x,
+      recoilY: recoil.y,
+    };
+  }
 
-		if (this.localMeta && this.local && this.config) {
-			const meta = this.localMeta;
-			this.hud.name.textContent = meta.name;
-			this.hud.name.style.color = meta.color;
-			this.hud.kd.textContent = `${meta.kills} / ${meta.deaths}`;
-			this.hud.hp.set({
-				current: this.local.hp,
-				max: this.config.maxHp,
-				label: "HP",
-				tone: "hp",
-			});
-			this.hud.state.hidden = this.local.alive;
-		}
+  /** 0..1 screen danger from local HP. Dead = no vignette (respawn clean). */
+  private dangerLevel(): number {
+    const local = this.local;
+    const config = this.config;
+    if (!local || !config || !local.alive) return 0;
+    const ratio = local.hp / config.maxHp;
+    if (ratio >= DANGER_START) return 0;
+    if (ratio <= DANGER_CRITICAL) {
+      return 0.72 + (1 - ratio / DANGER_CRITICAL) * 0.28;
+    }
+    return ((DANGER_START - ratio) / (DANGER_START - DANGER_CRITICAL)) * 0.72;
+  }
 
-		const latest = this.snapshots.latest;
-		const count = latest ? latest.players.size : 0;
-		this.hud.net.textContent =
-			`players ${count} · rtt ${this.connection.rtt}ms · ` +
-			`interp ${Math.round(this.snapshots.effectiveDelay(this.connection.rtt))}ms · ` +
-			`pending ${this.local ? this.local.pending.length : 0} · ` +
-			`${Math.round(this.fps)} fps`;
-	}
+  // --- hud -----------------------------------------------------------------
+  private patchHud(patch: Partial<HudSnapshot>): void {
+    this.hud.update((previous) => ({ ...previous, ...patch }));
+  }
+
+  /** Republish HUD state at HUD_INTERVAL — text does not need 60 Hz. */
+  private publishHud(dt: number): void {
+    this.hudTimer += dt;
+    if (this.hudTimer < HUD_INTERVAL) return;
+    this.hudTimer = 0;
+
+    const meta = this.localMeta;
+    const local = this.local;
+    const config = this.config;
+
+    this.patchHud({
+      vitals:
+        meta && local && config
+          ? {
+              name: meta.name,
+              color: meta.color,
+              kills: meta.kills,
+              deaths: meta.deaths,
+              hp: local.hp,
+              maxHp: config.maxHp,
+              alive: local.alive,
+            }
+          : null,
+      net: {
+        players: this.snapshots.latest?.players.size ?? 0,
+        rttMs: this.connection.rtt,
+        interpMs: Math.round(this.snapshots.effectiveDelay(this.connection.rtt)),
+        pending: local?.pending.length ?? 0,
+        fps: Math.round(this.fps),
+      },
+    });
+  }
 }

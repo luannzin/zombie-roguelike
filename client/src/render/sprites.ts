@@ -9,6 +9,8 @@
  *   rows = down, left, right, up   cols = 3 animation frames
  */
 
+import { createSurface, sourceSize } from '../lib/canvas';
+
 export type Facing = 'down' | 'left' | 'right' | 'up';
 
 export interface SpriteSheet {
@@ -74,10 +76,7 @@ function loadImage(src: string): Promise<HTMLImageElement> {
 function fallbackSheet(): SpriteSheet {
   const w = FALLBACK_W;
   const h = FALLBACK_H;
-  const canvas = document.createElement('canvas');
-  canvas.width = w * 3;
-  canvas.height = h * 4;
-  const ctx = canvas.getContext('2d')!;
+  const { canvas, ctx } = createSurface(w * 3, h * 4, 'sprites/fallback');
   const rows: Facing[] = ['down', 'left', 'right', 'up'];
   rows.forEach((facing, row) => {
     for (let col = 0; col < 3; col++) {
@@ -124,14 +123,8 @@ export class TintCache {
     if (cached) return cached;
 
     const { image } = this.sheet;
-    const width = image instanceof HTMLImageElement ? image.naturalWidth : image.width;
-    const height = image instanceof HTMLImageElement ? image.naturalHeight : image.height;
-
-    const canvas = document.createElement('canvas');
-    canvas.width = width;
-    canvas.height = height;
-    const ctx = canvas.getContext('2d')!;
-    ctx.imageSmoothingEnabled = false;
+    const { width, height } = sourceSize(image);
+    const { canvas, ctx } = createSurface(width, height, 'sprites/tint');
 
     ctx.drawImage(image, 0, 0);
     ctx.globalCompositeOperation = 'multiply';
@@ -144,6 +137,11 @@ export class TintCache {
 
     this.cache.set(color, canvas);
     return canvas;
+  }
+
+  /** Drop cached tints — colours are per-room, so this runs on teardown. */
+  clear(): void {
+    this.cache.clear();
   }
 }
 

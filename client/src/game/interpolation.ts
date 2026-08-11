@@ -10,6 +10,7 @@
  * next snapshot. Cap keeps rubber-banding bounded. Zombies reuse this buffer.
  */
 
+import { clamp, lerp, normalize } from '../lib/math';
 import type { PlayerState, SnapshotMessage } from '../net/protocol';
 
 /** Fallback before enough arrival samples exist. */
@@ -32,13 +33,8 @@ export interface RenderedPlayer extends PlayerState {
   moving: boolean;
 }
 
-function lerp(a: number, b: number, t: number): number {
-  return a + (b - a) * t;
-}
-
-function clamp(v: number, lo: number, hi: number): number {
-  return Math.min(hi, Math.max(lo, v));
-}
+/** Speed (world px/s) above which a remote reads as walking, not drifting. */
+const MOVING_SPEED = 1;
 
 export class SnapshotBuffer {
   private frames: Frame[] = [];
@@ -151,36 +147,30 @@ export class SnapshotBuffer {
     const out: RenderedPlayer[] = [];
     for (const [id, p] of frame.players) {
       if (id === excludeId) continue;
-      const speed = Math.hypot(p.vx, p.vy);
       out.push({
         ...p,
         x: p.x + p.vx * dtSec,
         y: p.y + p.vy * dtSec,
-        moving: speed > 1,
+        moving: Math.hypot(p.vx, p.vy) > MOVING_SPEED,
       });
     }
     return out;
   }
 
   private lerpPlayer(from: PlayerState, target: PlayerState, t: number): RenderedPlayer {
-    const speed = Math.hypot(target.vx, target.vy);
-    let ax = lerp(from.ax, target.ax, t);
-    let ay = lerp(from.ay, target.ay, t);
-    const len = Math.hypot(ax, ay);
-    if (len > 1e-4) {
-      ax /= len;
-      ay /= len;
-    } else {
-      ax = target.ax;
-      ay = target.ay;
-    }
+    // Aim is a direction, so lerp then re-normalize; a degenerate blend keeps
+    // the authoritative aim rather than collapsing to an arbitrary axis.
+    const aim = normalize(lerp(from.ax, target.ax, t), lerp(from.ay, target.ay, t), {
+      x: target.ax,
+      y: target.ay,
+    });
     return {
       ...target,
       x: lerp(from.x, target.x, t),
       y: lerp(from.y, target.y, t),
-      ax,
-      ay,
-      moving: speed > 1,
+      ax: aim.x,
+      ay: aim.y,
+      moving: Math.hypot(target.vx, target.vy) > MOVING_SPEED,
     };
   }
 }

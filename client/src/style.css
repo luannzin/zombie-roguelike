@@ -1,0 +1,48 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #0a0a10;
+  color: #d8d8e4;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  cursor: crosshair;
+}
+
+#game {
+  display: block;
+  width: 100vw;
+  height: 100vh;
+  image-rendering: pixelated;
+}
+
+#hud {
+  position: fixed;
+  top: 10px;
+  left: 12px;
+  font-size: 12px;
+  line-height: 1.6;
+  text-shadow: 0 1px 0 #000;
+  pointer-events: none;
+  user-select: none;
+}
+
+#hud-status {
+  color: #f2a541;
+}
+
+#hint {
+  position: fixed;
+  bottom: 10px;
+  left: 12px;
+  font-size: 11px;
+  color: #6f6f85;
+  pointer-events: none;
+  user-select: none;
+}

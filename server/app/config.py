@@ -12,13 +12,17 @@ SCALE
 authored in TILES and multiplied by it, so changing this one number rescales
 the whole game consistently — art, collision, movement speed, weapon range.
 
-    TILE_SIZE = 16   ->  sprite 16x24, box 9.6x7.2, speed 70 px/s, range 256
-    TILE_SIZE = 32   ->  sprite 32x48, box 19.2x14.4, speed 141 px/s, range 512
+    TILE_SIZE = 16   ->  sprite 16x16, box 9.6x7.2, speed 70 px/s, range 256
+    TILE_SIZE = 32   ->  sprite 32x32, box 19.2x14.4, speed 141 px/s, range 512
 
 Canonical shape:
     tile           1   x 1     tiles   (16 x 16 px)
-    sprite frame   1   x 1.5   tiles   (16 x 24 px)
+    sprite frame   1   x 1     tiles   (16 x 16 px)
     collision box  0.6 x 0.45  tiles   (9.6 x 7.2 px, feet footprint)
+
+Taller characters (bosses, zombie variants) only need SPRITE_TILES_H raised
+for that entity's asset — the renderer anchors any frame height by its bottom
+edge, so nothing else changes.
 
 Movement is continuous, not tile-by-tile: position is a float in world pixels
 and the grid is only used for collision and (later) pathfinding. That is
@@ -46,14 +50,14 @@ MAX_INPUT_QUEUE = 10
 
 # --- player (authored in tiles) ---------------------------------------------
 SPRITE_TILES_W = 1.0
-SPRITE_TILES_H = 1.5
+SPRITE_TILES_H = 1.0
 PLAYER_BOX_TILES_W = 0.6
 PLAYER_BOX_TILES_H = 0.45
 PLAYER_HIT_TILES_R = 0.375
 MOVE_TILES_PER_SEC = 4.4
 
 SPRITE_WIDTH = round(TILE_SIZE * SPRITE_TILES_W)        # 16
-SPRITE_HEIGHT = round(TILE_SIZE * SPRITE_TILES_H)       # 24
+SPRITE_HEIGHT = round(TILE_SIZE * SPRITE_TILES_H)       # 16
 PLAYER_HALF_WIDTH = TILE_SIZE * PLAYER_BOX_TILES_W / 2  # 4.8
 PLAYER_HALF_HEIGHT = TILE_SIZE * PLAYER_BOX_TILES_H / 2 # 3.6
 PLAYER_HIT_RADIUS = TILE_SIZE * PLAYER_HIT_TILES_R      # 6.0

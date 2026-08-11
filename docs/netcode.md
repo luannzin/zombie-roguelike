@@ -33,7 +33,8 @@ predicts locally, and sends the packet. Rendering runs at display rate.
   "type": "welcome",
   "playerId": "a1b2c3d4",
   "player": { "id": "...", "name": "Player483", "color": "#4d9de0", "x": 200, "y": 168, "...": "..." },
-  "config": { "tickRate": 30, "dt": 0.0333, "moveSpeed": 70, "playerRadius": 5, "...": "..." },
+  "config": { "tickRate": 30, "dt": 0.0333, "tileSize": 16, "moveSpeed": 70.4,
+              "playerHalfWidth": 4.8, "playerHalfHeight": 3.6, "...": "..." },
   "map": { "width": 64, "height": 40, "tileSize": 16, "tiles": [[1, 1, 0, "..."]] }
 }
 ```

@@ -28,6 +28,32 @@ Controls: **WASD** move · **mouse** aim · **left click / hold** shoot.
 
 Point the client at another host with `VITE_SERVER_URL=ws://192.168.0.10:8000/ws bun run dev`.
 
+## Scale
+
+`TILE_SIZE` in [server/app/config.py](server/app/config.py) is the single
+number that defines the game's scale. Every size, speed and distance is
+authored in **tiles** and multiplied by it, so changing it rescales everything
+consistently.
+
+| | tiles | px at `TILE_SIZE = 16` |
+| --- | --- | --- |
+| tile | 1 x 1 | 16 x 16 |
+| sprite frame | 1 x 1 | 16 x 16 |
+| collision box | 0.6 x 0.45 | 9.6 x 7.2 |
+| hit circle | r 0.375 | r 6 |
+| move speed | 4.4 / s | 70.4 px/s |
+| shot range | 16 | 256 px |
+
+Movement is **continuous**, not tile-by-tile: position is a float in world
+pixels and the grid only answers collision (and later, pathfinding) queries.
+That costs the server almost nothing — one move is a few float ops plus an
+overlap test against at most 4 tiles, so a tick is O(entities), never O(map).
+
+The collision box is deliberately much smaller than the sprite: a full 1-tile
+box cannot fit through a 1-tile gap. Position is the **centre of the collision
+box**, and a sprite is drawn with its bottom edge at `y + playerHalfHeight`, so
+frames of any height (bosses, tall zombies) anchor correctly with no extra code.
+
 ## Assets
 
 Source art is a 3×3 sprite sheet on solid magenta (`assets/raw/`). The pipeline
@@ -38,11 +64,11 @@ production sheet into `assets/processed/`. The game only ever reads
 ```bash
 cd server
 ./.venv/bin/python tools/make_placeholder_sheet.py --name player   # regenerate placeholder raw art
-./.venv/bin/python tools/process_sprites.py --name player --size 16
+./.venv/bin/python tools/process_sprites.py --name player --tile 16
 ```
 
-The same command processes future characters, zombies and NPCs — only `--name`
-changes. Player colours are a runtime multiply tint over the single base sheet;
+`--tile` must match `TILE_SIZE`. The same command processes future characters,
+zombies and NPCs — only `--name` changes (plus `--height` for taller entities). Player colours are a runtime multiply tint over the single base sheet;
 no per-colour art exists.
 
 ## Layout

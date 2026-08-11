@@ -19,9 +19,10 @@ Output (assets/processed/<name>/):
     sheet.png     rows = down, left, right, up   cols = 3 frames
     manifest.json
 
-Frames are NOT square. The canonical shape is 1 x 1.5 tiles (16x24 px at the
-project's TILE_SIZE of 16), so `--tile` is normally the only size flag you
-need; it must match TILE_SIZE in server/app/config.py.
+The canonical frame is 1 x 1 tile (16x16 px at the project's TILE_SIZE of 16),
+so `--tile` is normally the only size flag you need; it must match TILE_SIZE in
+server/app/config.py. Frames do not have to be square — a taller entity passes
+`--height` and the renderer anchors it by its bottom edge.
 
 Notes on real (AI-generated) source art:
     * It is usually drawn at high resolution with per-pixel noise, so the big
@@ -60,10 +61,11 @@ OUTPUT_ROWS = ("down", "left", "right", "up")
 
 # Canonical frame shape, in tiles. Mirrors server/app/config.py:
 # TILE_SIZE is the one number that sets the scale; a character frame is
-# 1 tile wide and 1.5 tiles tall (16x24 at tile 16, 32x48 at tile 32).
+# 1 x 1 tile (16x16 at tile 16, 32x32 at tile 32). Taller entities pass
+# --height (or --tiles-h) without changing the tile scale.
 DEFAULT_TILE = 16
 SPRITE_TILES_W = 1.0
-SPRITE_TILES_H = 1.5
+SPRITE_TILES_H = 1.0
 
 FILTERS = {
     "nearest": Image.NEAREST,

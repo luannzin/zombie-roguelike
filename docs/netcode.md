@@ -70,6 +70,26 @@ client.
 This is why `simulation.py` and `simulation.ts` must stay identical, down to the
 wall-snapping arithmetic in `world.py` / `world.ts`.
 
+## Frame rate vs tick rate
+
+Rendering runs on `requestAnimationFrame` (60 fps+); the simulation runs at
+`TICK_RATE`. They are decoupled:
+
+* **local player** — `LocalPlayer.subTickPosition` advances a scratch copy of
+  the state by the leftover accumulator time through the same collision-aware
+  `applyInput`, so the sprite moves on every frame and lands exactly where the
+  next tick commits it. Nothing is stored, so reconciliation is unaffected.
+* **remote players** — interpolation is already continuous in time, so they are
+  smooth at any refresh rate.
+* **aim** — recomputed per frame, not per tick, so the crosshair never feels
+  capped at 30 Hz. The value sent to the server is still sampled per tick.
+* **entities are drawn in screen space** with integer rounding, so motion is
+  quantized to 1 screen pixel instead of `zoom` screen pixels.
+
+Raising the simulation to 60 Hz is a one-line change (`TICK_RATE` in
+`server/app/config.py`): the client reads `dt` from the `welcome` config, so it
+follows automatically — at the cost of double the input packets and snapshots.
+
 ## Remote players: interpolation
 
 `SnapshotBuffer` keeps ~1.5 s of snapshots stamped with local receive time and

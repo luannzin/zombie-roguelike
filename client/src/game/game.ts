@@ -201,8 +201,6 @@ export class Game {
     const config = this.config!;
     const local = this.local!;
 
-    this.updateAim();
-
     const packet: InputPacket = {
       type: 'input',
       sequence: local.nextSequence(),
@@ -213,6 +211,7 @@ export class Game {
 
     local.predict(packet, world, config);
     this.connection.send(packet);
+    this.lastPacket = packet;
 
     if (this.localFireCooldown > 0) {
       this.localFireCooldown = Math.max(0, this.localFireCooldown - dt);
@@ -227,8 +226,8 @@ export class Game {
     const local = this.local;
     if (!local) return;
     const point = this.camera.screenToWorld(this.input.mouseX, this.input.mouseY);
-    let dx = point.x - local.renderX;
-    let dy = point.y - local.renderY;
+    let dx = point.x - this.smoothX;
+    let dy = point.y - this.smoothY;
     const len = Math.hypot(dx, dy);
     if (len > 1e-3) {
       dx /= len;
@@ -242,10 +241,9 @@ export class Game {
   private predictShot(): void {
     const world = this.world!;
     const config = this.config!;
-    const local = this.local!;
 
-    const ox = local.state.x + this.aimX * 4;
-    const oy = local.state.y + this.aimY * 4;
+    const ox = this.smoothX + this.aimX * 4;
+    const oy = this.smoothY + this.aimY * 4;
     const targets: RayTarget[] = this.snapshots
       .sample(performance.now(), this.localId)
       .map((p) => ({
@@ -308,10 +306,10 @@ export class Game {
         id: this.localId,
         name: this.localMeta.name,
         color: this.localMeta.color,
-        x: this.local.renderX,
-        y: this.local.renderY,
-        ax: this.local.state.ax,
-        ay: this.local.state.ay,
+        x: this.smoothX,
+        y: this.smoothY,
+        ax: this.aimX,
+        ay: this.aimY,
         hp: this.local.hp,
         maxHp: this.config.maxHp,
         alive: this.local.alive,
@@ -354,6 +352,7 @@ export class Game {
     const count = latest ? latest.players.size : 0;
     this.hud.net.textContent =
       `players ${count} · rtt ${this.connection.rtt}ms · ` +
-      `pending ${this.local ? this.local.pending.length : 0}`;
+      `pending ${this.local ? this.local.pending.length : 0} · ` +
+      `${Math.round(this.fps)} fps`;
   }
 }

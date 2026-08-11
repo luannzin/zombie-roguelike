@@ -33,7 +33,9 @@ interface Manifest {
   fps: number;
 }
 
-const FALLBACK_SIZE = 16;
+/** Matches the canonical processed frame: 1 x 1.5 tiles at TILE_SIZE 16. */
+const FALLBACK_W = 16;
+const FALLBACK_H = 24;
 
 export async function loadCharacterSheet(name: string): Promise<SpriteSheet> {
   try {
@@ -70,39 +72,40 @@ function loadImage(src: string): Promise<HTMLImageElement> {
 
 /** Minimal procedural stand-in so the game still runs without processed assets. */
 function fallbackSheet(): SpriteSheet {
-  const s = FALLBACK_SIZE;
+  const w = FALLBACK_W;
+  const h = FALLBACK_H;
   const canvas = document.createElement('canvas');
-  canvas.width = s * 3;
-  canvas.height = s * 4;
+  canvas.width = w * 3;
+  canvas.height = h * 4;
   const ctx = canvas.getContext('2d')!;
   const rows: Facing[] = ['down', 'left', 'right', 'up'];
   rows.forEach((facing, row) => {
     for (let col = 0; col < 3; col++) {
-      const ox = col * s;
-      const oy = row * s;
+      const ox = col * w;
+      const oy = row * h;
       const bob = col === 1 ? 0 : 1;
       ctx.fillStyle = '#e8e8f0';
-      ctx.fillRect(ox + 5, oy + 6 + bob, 6, 6); // torso
+      ctx.fillRect(ox + 4, oy + 9 + bob, 8, 8); // torso
       ctx.fillStyle = '#eecaac';
-      ctx.fillRect(ox + 5, oy + 1 + bob, 6, 5); // head
+      ctx.fillRect(ox + 4, oy + 2 + bob, 8, 7); // head
       ctx.fillStyle = '#606476';
-      ctx.fillRect(ox + 5, oy + 12 + bob, 2, 4);
-      ctx.fillRect(ox + 9, oy + 12 + bob, 2, 4);
+      ctx.fillRect(ox + 5, oy + 17 + bob, 2, 6); // legs
+      ctx.fillRect(ox + 9, oy + 17 + bob, 2, 6);
       ctx.fillStyle = '#24222e';
       if (facing === 'down') {
-        ctx.fillRect(ox + 6, oy + 3 + bob, 1, 1);
-        ctx.fillRect(ox + 9, oy + 3 + bob, 1, 1);
+        ctx.fillRect(ox + 6, oy + 5 + bob, 1, 2);
+        ctx.fillRect(ox + 9, oy + 5 + bob, 1, 2);
       } else if (facing === 'left') {
-        ctx.fillRect(ox + 5, oy + 3 + bob, 1, 1);
+        ctx.fillRect(ox + 5, oy + 5 + bob, 1, 2);
       } else if (facing === 'right') {
-        ctx.fillRect(ox + 10, oy + 3 + bob, 1, 1);
+        ctx.fillRect(ox + 10, oy + 5 + bob, 1, 2);
       }
     }
   });
   return {
     image: canvas,
-    frameWidth: s,
-    frameHeight: s,
+    frameWidth: w,
+    frameHeight: h,
     rows: { down: 0, left: 1, right: 2, up: 3 },
     frames: 3,
     idleFrame: 1,

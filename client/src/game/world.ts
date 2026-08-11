@@ -35,12 +35,13 @@ export class TileMap {
     return this.tiles[ty][tx] === WALL;
   }
 
-  boxBlocked(cx: number, cy: number, r: number): boolean {
+  /** Axis-aligned box centred on (cx, cy) with half-extents (hw, hh). */
+  boxBlocked(cx: number, cy: number, hw: number, hh: number): boolean {
     const ts = this.tileSize;
-    const x0 = Math.floor((cx - r) / ts);
-    const x1 = Math.floor((cx + r) / ts);
-    const y0 = Math.floor((cy - r) / ts);
-    const y1 = Math.floor((cy + r) / ts);
+    const x0 = Math.floor((cx - hw) / ts);
+    const x1 = Math.floor((cx + hw) / ts);
+    const y0 = Math.floor((cy - hh) / ts);
+    const y1 = Math.floor((cy + hh) / ts);
     for (let ty = y0; ty <= y1; ty++) {
       for (let tx = x0; tx <= x1; tx++) {
         if (this.isSolidTile(tx, ty)) return true;
@@ -50,29 +51,36 @@ export class TileMap {
   }
 
   /** axis: 0 = x, 1 = y. Returns the new coordinate on that axis. */
-  moveAxis(x: number, y: number, r: number, delta: number, axis: 0 | 1): number {
+  moveAxis(
+    x: number,
+    y: number,
+    hw: number,
+    hh: number,
+    delta: number,
+    axis: 0 | 1,
+  ): number {
     const ts = this.tileSize;
     if (delta === 0) return axis === 0 ? x : y;
 
     if (axis === 0) {
       const nx = x + delta;
-      if (!this.boxBlocked(nx, y, r)) return nx;
+      if (!this.boxBlocked(nx, y, hw, hh)) return nx;
       if (delta > 0) {
-        const col = Math.floor((nx + r) / ts);
-        return col * ts - r - EPS;
+        const col = Math.floor((nx + hw) / ts);
+        return col * ts - hw - EPS;
       }
-      const col = Math.floor((nx - r) / ts);
-      return (col + 1) * ts + r + EPS;
+      const col = Math.floor((nx - hw) / ts);
+      return (col + 1) * ts + hw + EPS;
     }
 
     const ny = y + delta;
-    if (!this.boxBlocked(x, ny, r)) return ny;
+    if (!this.boxBlocked(x, ny, hw, hh)) return ny;
     if (delta > 0) {
-      const row = Math.floor((ny + r) / ts);
-      return row * ts - r - EPS;
+      const row = Math.floor((ny + hh) / ts);
+      return row * ts - hh - EPS;
     }
-    const row = Math.floor((ny - r) / ts);
-    return (row + 1) * ts + r + EPS;
+    const row = Math.floor((ny - hh) / ts);
+    return (row + 1) * ts + hh + EPS;
   }
 
   /** DDA ray march against solid tiles. Used for local shot tracers. */

@@ -242,8 +242,8 @@ export class Game {
     const world = this.world!;
     const config = this.config!;
 
-    const ox = this.smoothX + this.aimX * 4;
-    const oy = this.smoothY + this.aimY * 4;
+    const ox = this.smoothX + this.aimX * config.muzzleOffset;
+    const oy = this.smoothY + this.aimY * config.muzzleOffset;
     const targets: RayTarget[] = this.snapshots
       .sample(performance.now(), this.localId)
       .map((p) => ({
@@ -322,6 +322,7 @@ export class Game {
     this.renderer.draw({
       world: this.world,
       camera: this.camera,
+      config: this.config,
       players: drawables,
       effects: this.effects,
     });

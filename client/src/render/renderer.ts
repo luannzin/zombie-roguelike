@@ -15,6 +15,7 @@
 
 import type { Effects } from '../game/effects';
 import { WALL, type TileMap } from '../game/world';
+import type { GameConfig } from '../net/protocol';
 import type { Camera } from './camera';
 import { facingFromAim, frameIndex, TintCache, type SpriteSheet } from './sprites';
 
@@ -37,6 +38,7 @@ export interface DrawablePlayer {
 export interface RenderState {
   world: TileMap;
   camera: Camera;
+  config: GameConfig;
   players: DrawablePlayer[];
   effects: Effects;
 }
@@ -55,6 +57,8 @@ export class Renderer {
 
   private mapCanvas: HTMLCanvasElement | null = null;
   private mapCanvasFor: TileMap | null = null;
+  /** set at the top of every draw(); all visual sizes are derived from it */
+  private cfg!: GameConfig;
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
@@ -80,6 +84,7 @@ export class Renderer {
   draw(state: RenderState): void {
     const { ctx } = this;
     const { camera } = state;
+    this.cfg = state.config;
 
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.imageSmoothingEnabled = false;
@@ -187,15 +192,15 @@ export class Renderer {
     offsetY: number,
   ): void {
     if (!player.alive) return;
-    const { ctx } = this;
+    const { ctx, cfg } = this;
     const zoom = camera.zoom;
     ctx.fillStyle = 'rgba(0,0,0,0.32)';
     ctx.beginPath();
     ctx.ellipse(
       Math.round(player.x * zoom + offsetX),
-      Math.round((player.y + 6) * zoom + offsetY),
-      5 * zoom,
-      2.5 * zoom,
+      Math.round((player.y + cfg.playerHalfHeight) * zoom + offsetY),
+      cfg.playerHalfWidth * 1.15 * zoom,
+      cfg.playerHalfHeight * 0.75 * zoom,
       0,
       0,
       Math.PI * 2,
@@ -210,8 +215,9 @@ export class Renderer {
     offsetY: number,
   ): void {
     if (!player.alive) return;
-    const { ctx, sheet } = this;
+    const { ctx, sheet, cfg } = this;
     const zoom = camera.zoom;
+    const ts = cfg.tileSize;
 
     const row = sheet.rows[facingFromAim(player.ax, player.ay)] ?? 0;
     const col = frameIndex(sheet, player.animTime, player.moving);
@@ -219,9 +225,11 @@ export class Renderer {
 
     const w = sheet.frameWidth;
     const h = sheet.frameHeight;
-    // feet roughly at the bottom of the collision box
+    // The sprite's bottom edge sits on the bottom of the collision box, so a
+    // 1x1.5-tile character stands correctly on a 0.6x0.45-tile footprint.
+    const spriteTop = player.y + cfg.playerHalfHeight - h;
     const dx = Math.round((player.x - w / 2) * zoom + offsetX);
-    const dy = Math.round((player.y - h + 7) * zoom + offsetY);
+    const dy = Math.round(spriteTop * zoom + offsetY);
     ctx.drawImage(image, col * w, row * h, w, h, dx, dy, w * zoom, h * zoom);
 
     const cx = player.x * zoom + offsetX;
@@ -229,28 +237,30 @@ export class Renderer {
 
     // aim indicator
     ctx.strokeStyle = player.isLocal ? 'rgba(255,255,255,0.55)' : 'rgba(255,255,255,0.25)';
-    ctx.lineWidth = zoom * 0.7;
+    ctx.lineWidth = Math.max(1, zoom * 0.7);
     ctx.beginPath();
-    ctx.moveTo(cx + player.ax * 6 * zoom, cy + player.ay * 6 * zoom);
-    ctx.lineTo(cx + player.ax * 11 * zoom, cy + player.ay * 11 * zoom);
+    ctx.moveTo(cx + player.ax * ts * 0.4 * zoom, cy + player.ay * ts * 0.4 * zoom);
+    ctx.lineTo(cx + player.ax * ts * 0.75 * zoom, cy + player.ay * ts * 0.75 * zoom);
     ctx.stroke();
 
     // health bar
-    const barW = 14 * zoom;
-    const barH = 3 * zoom;
+    const unit = Math.max(1, Math.round(ts * 0.0625) * zoom); // 1 world px
+    const barW = Math.round(ts * 0.875) * zoom;
+    const barH = unit * 3;
     const hpRatio = Math.max(0, Math.min(1, player.hp / player.maxHp));
     const barX = Math.round(cx - barW / 2);
-    const barY = Math.round((player.y - h + 1) * zoom + offsetY);
+    const barY = Math.round((spriteTop - ts * 0.125) * zoom + offsetY);
     ctx.fillStyle = 'rgba(0,0,0,0.6)';
     ctx.fillRect(barX, barY, barW, barH);
     ctx.fillStyle = hpRatio > 0.5 ? '#7bd389' : hpRatio > 0.25 ? '#f2a541' : '#e6484f';
-    ctx.fillRect(barX + zoom, barY + zoom, Math.round((barW - 2 * zoom) * hpRatio), zoom);
+    ctx.fillRect(barX + unit, barY + unit, Math.round((barW - 2 * unit) * hpRatio), unit);
   }
 
   // --- effects -------------------------------------------------------------
   private drawEffects(state: RenderState): void {
     const { ctx } = this;
     const { effects } = state;
+    const ts = state.config.tileSize;
 
     for (const tracer of effects.tracers) {
       const fade = 1 - tracer.age / tracer.life;
@@ -259,7 +269,7 @@ export class Renderer {
 
       ctx.globalAlpha = 0.35 * fade;
       ctx.strokeStyle = tracer.color;
-      ctx.lineWidth = 2;
+      ctx.lineWidth = ts * 0.125;
       ctx.beginPath();
       ctx.moveTo(tracer.x, tracer.y);
       ctx.lineTo(ex, ey);
@@ -267,7 +277,7 @@ export class Renderer {
 
       ctx.globalAlpha = fade;
       ctx.strokeStyle = '#fff6d5';
-      ctx.lineWidth = 0.6;
+      ctx.lineWidth = ts * 0.0375;
       ctx.beginPath();
       ctx.moveTo(tracer.x, tracer.y);
       ctx.lineTo(ex, ey);
@@ -279,7 +289,13 @@ export class Renderer {
       ctx.globalAlpha = fade;
       ctx.fillStyle = '#ffe9a8';
       ctx.beginPath();
-      ctx.arc(flash.x + flash.dx * 2, flash.y + flash.dy * 2, 2.2 * fade + 0.8, 0, Math.PI * 2);
+      ctx.arc(
+        flash.x + flash.dx * ts * 0.125,
+        flash.y + flash.dy * ts * 0.125,
+        ts * (0.14 * fade + 0.05),
+        0,
+        Math.PI * 2,
+      );
       ctx.fill();
     }
 
@@ -287,7 +303,7 @@ export class Renderer {
       const fade = 1 - impact.age / impact.life;
       ctx.globalAlpha = fade;
       ctx.fillStyle = impact.hit ? '#ff5a5a' : '#cfcfe0';
-      const size = impact.hit ? 3 : 2;
+      const size = ts * (impact.hit ? 0.19 : 0.125);
       ctx.fillRect(impact.x - size / 2, impact.y - size / 2, size, size);
     }
 
@@ -302,10 +318,12 @@ export class Renderer {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'bottom';
 
+    const cfg = state.config;
+    const nameOffset = this.sheet.frameHeight - cfg.playerHalfHeight + cfg.tileSize * 0.35;
     for (const player of state.players) {
       if (!player.alive) continue;
       const sx = Math.round(player.x * zoom + offsetX);
-      const sy = Math.round((player.y - this.sheet.frameHeight + 6) * zoom + offsetY);
+      const sy = Math.round((player.y - nameOffset) * zoom + offsetY);
       ctx.fillStyle = 'rgba(0,0,0,0.75)';
       ctx.fillText(player.name, sx + 1, sy + 1);
       ctx.fillStyle = player.color;

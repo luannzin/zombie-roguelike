@@ -41,8 +41,10 @@ export function applyInput(
   state.vx = dx * config.moveSpeed;
   state.vy = dy * config.moveSpeed;
 
-  state.x = world.moveAxis(state.x, state.y, config.playerRadius, state.vx * dt, 0);
-  state.y = world.moveAxis(state.x, state.y, config.playerRadius, state.vy * dt, 1);
+  const hw = config.playerHalfWidth;
+  const hh = config.playerHalfHeight;
+  state.x = world.moveAxis(state.x, state.y, hw, hh, state.vx * dt, 0);
+  state.y = world.moveAxis(state.x, state.y, hw, hh, state.vy * dt, 1);
 
   state.ax = input.aim.x;
   state.ay = input.aim.y;

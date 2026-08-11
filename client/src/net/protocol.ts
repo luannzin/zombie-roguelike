@@ -26,17 +26,27 @@ export interface PingPacket {
 
 export type ClientMessage = InputPacket | PingPacket;
 
+/**
+ * Canonical scale, decided server-side (see server/app/config.py):
+ *   tile 32x32 · sprite frame 32x48 · collision box 18x14 (feet footprint)
+ * Position is the CENTRE of the collision box; the sprite's bottom edge sits
+ * at `y + playerHalfHeight`.
+ */
 export interface GameConfig {
   tickRate: number;
   dt: number;
   tileSize: number;
-  playerRadius: number;
+  spriteWidth: number;
+  spriteHeight: number;
+  playerHalfWidth: number;
+  playerHalfHeight: number;
   playerHitRadius: number;
   moveSpeed: number;
   maxHp: number;
   fireCooldown: number;
   shotRange: number;
   shotDamage: number;
+  muzzleOffset: number;
 }
 
 export interface MapPayload {

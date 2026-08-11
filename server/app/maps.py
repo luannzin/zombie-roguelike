@@ -1,70 +1,119 @@
 """Map data + builders.
 
-Two authoring styles are supported so future maps can come from either:
+Maps are plain `list[list[int]]` (0 = floor, 1 = wall), which is also the JSON
+wire format, so a map can equally well be loaded from a .json file or produced
+by a generator later.
 
-  * `from_ascii()`  — hand-drawn maps ('#' wall, anything else floor)
-  * `from_rects()`  — declarative wall rectangles, easy to tweak/generate
+Two authoring styles:
+  * `from_ascii()` — hand-drawn maps, '#' = wall. This is the readable one.
+  * `from_rects()` — declarative wall rectangles, easy to generate.
 
-Both produce a plain `list[list[int]]`, which is also the JSON wire format,
-so a map can equally well be loaded from a .json file later.
+ARENA is 64x40 tiles = 1024x640 world px at TILE_SIZE 16, comfortably larger
+than the viewport so the camera always has somewhere to go. It is symmetric on
+both axes, fully connected (validated at build time — no sealed pockets), and
+built from lanes and cover rather than tight corridors so hitscan lines of
+sight stay interesting.
+
+Editing: just redraw the ASCII. Rows must all be the same length and the floor
+must stay connected; `build_arena()` checks both.
 """
 
 from __future__ import annotations
 
 from .world import FLOOR, WALL, TileMap
 
-ARENA_WIDTH = 64
-ARENA_HEIGHT = 40
-
-# (x, y, w, h) wall blocks in tile coordinates.
-ARENA_WALLS: list[tuple[int, int, int, int]] = [
-    # outer border
-    (0, 0, ARENA_WIDTH, 1),
-    (0, ARENA_HEIGHT - 1, ARENA_WIDTH, 1),
-    (0, 0, 1, ARENA_HEIGHT),
-    (ARENA_WIDTH - 1, 0, 1, ARENA_HEIGHT),
-    # top-left room
-    (8, 6, 12, 1),
-    (8, 6, 1, 8),
-    (16, 12, 4, 1),
-    # top-right pillars
-    (44, 5, 3, 3),
-    (52, 9, 3, 3),
-    (44, 13, 3, 3),
-    # central cross
-    (28, 16, 10, 2),
-    (31, 12, 2, 4),
-    (31, 18, 2, 6),
-    # bottom-left blocks
-    (7, 24, 8, 2),
-    (7, 30, 2, 6),
-    (13, 30, 8, 2),
-    # bottom-right room
-    (44, 26, 14, 1),
-    (57, 26, 1, 9),
-    (44, 34, 8, 1),
-    # scattered cover
-    (22, 4, 2, 2),
-    (38, 30, 2, 2),
-    (24, 33, 3, 2),
-    (48, 18, 2, 4),
-    (18, 19, 3, 2),
+ARENA: list[str] = [
+    "################################################################",
+    "#..............................................................#",
+    "#..............................................................#",
+    "#.............#..................................#.............#",
+    "#.............#..................................#.............#",
+    "#.............#..................................#.............#",
+    "#.............#..........####......####..........#.............#",
+    "#.............#.....##....................##.....#.............#",
+    "#...................##....................##...................#",
+    "#.............................####.............................#",
+    "#.............................####.............................#",
+    "#.............#..................................#.............#",
+    "#.............#..................................#.............#",
+    "#.............#..................................#.............#",
+    "#.............#..................................#.............#",
+    "#..#####..#####..................................#####..#####..#",
+    "#..............................................................#",
+    "#.....#####...........#....##########....#...........#####.....#",
+    "#.....#####...........#....##########....#...........#####.....#",
+    "#.....................#....##########....#.....................#",
+    "#.....................#....##########....#.....................#",
+    "#.....#####...........#....##########....#...........#####.....#",
+    "#.....#####...........#....##########....#...........#####.....#",
+    "#..............................................................#",
+    "#..#####..#####..................................#####..#####..#",
+    "#.............#..................................#.............#",
+    "#.............#..................................#.............#",
+    "#.............#..................................#.............#",
+    "#.............#..................................#.............#",
+    "#.............................####.............................#",
+    "#.............................####.............................#",
+    "#...................##....................##...................#",
+    "#.............#.....##....................##.....#.............#",
+    "#.............#..........####......####..........#.............#",
+    "#.............#..................................#.............#",
+    "#.............#..................................#.............#",
+    "#.............#..................................#.............#",
+    "#..............................................................#",
+    "#..............................................................#",
+    "################################################################",
 ]
+
+
+def from_ascii(rows: list[str]) -> list[list[int]]:
+    width = len(rows[0])
+    if any(len(row) != width for row in rows):
+        raise ValueError("ascii map rows must all be the same length")
+    return [[WALL if ch == "#" else FLOOR for ch in row] for row in rows]
 
 
 def from_rects(width: int, height: int, rects) -> list[list[int]]:
     tiles = [[FLOOR for _ in range(width)] for _ in range(height)]
     for x, y, w, h in rects:
-        for ty in range(y, min(y + h, height)):
-            for tx in range(x, min(x + w, width)):
-                if tx >= 0 and ty >= 0:
-                    tiles[ty][tx] = WALL
+        for ty in range(max(0, y), min(y + h, height)):
+            for tx in range(max(0, x), min(x + w, width)):
+                tiles[ty][tx] = WALL
     return tiles
 
 
-def from_ascii(rows: list[str]) -> list[list[int]]:
-    return [[WALL if ch == "#" else FLOOR for ch in row] for row in rows]
+def count_reachable(tiles: list[list[int]]) -> int:
+    """Flood fill from the first floor tile. Guards against sealed-off rooms."""
+    height = len(tiles)
+    width = len(tiles[0])
+    start = None
+    for ty in range(height):
+        for tx in range(width):
+            if tiles[ty][tx] == FLOOR:
+                start = (tx, ty)
+                break
+        if start:
+            break
+    if not start:
+        return 0
+
+    seen = {start}
+    stack = [start]
+    while stack:
+        x, y = stack.pop()
+        for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            nx, ny = x + dx, y + dy
+            if 0 <= nx < width and 0 <= ny < height and tiles[ny][nx] == FLOOR:
+                if (nx, ny) not in seen:
+                    seen.add((nx, ny))
+                    stack.append((nx, ny))
+    return len(seen)
 
 
 def build_arena() -> TileMap:
-    return TileMap(from_rects(ARENA_WIDTH, ARENA_HEIGHT, ARENA_WALLS))
+    tiles = from_ascii(ARENA)
+    floor = sum(row.count(FLOOR) for row in tiles)
+    reachable = count_reachable(tiles)
+    if reachable != floor:
+        raise ValueError(f"arena has {floor - reachable} unreachable floor tiles")
+    return TileMap(tiles)

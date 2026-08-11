@@ -21,11 +21,13 @@ from .config import (
     MAX_HP,
     MAX_INPUT_QUEUE,
     MAX_INPUTS_PER_TICK,
+    MUZZLE_OFFSET,
+    PLAYER_HALF_HEIGHT,
+    PLAYER_HALF_WIDTH,
     RESPAWN_DELAY,
     SHOT_DAMAGE,
     SHOT_RANGE,
     SNAPSHOT_EVERY_N_TICKS,
-    PLAYER_RADIUS,
     client_config,
 )
 from .entities import InputCmd, Player, random_color, random_name
@@ -36,7 +38,7 @@ from .simulation import apply_input
 class Room:
     def __init__(self):
         self.world = build_arena()
-        self.spawn_points = self.world.free_spawn_points(PLAYER_RADIUS)
+        self.spawn_points = self.world.free_spawn_points(PLAYER_HALF_WIDTH, PLAYER_HALF_HEIGHT)
         self.players: dict[str, Player] = {}
         self.sockets: dict[str, object] = {}
         self.tick = 0
@@ -154,8 +156,8 @@ class Room:
         self.fire(player, cmd.aim_x, cmd.aim_y)
 
     def fire(self, shooter: Player, dx: float, dy: float) -> None:
-        ox = shooter.x + dx * 4.0
-        oy = shooter.y + dy * 4.0
+        ox = shooter.x + dx * MUZZLE_OFFSET
+        oy = shooter.y + dy * MUZZLE_OFFSET
         hit = combat.raycast(
             self.world,
             ox,

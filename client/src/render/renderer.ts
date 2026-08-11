@@ -46,6 +46,10 @@ export interface RenderState {
   config: GameConfig;
   players: DrawablePlayer[];
   effects: Effects;
+  /** 0..1 local low-HP danger for screen vignette (0 = healthy). */
+  danger: number;
+  /** Elapsed seconds — drives heartbeat pulse. */
+  time: number;
 }
 
 const FLOOR_COLORS = ['#23232c', '#262630', '#202029'];
@@ -103,18 +107,23 @@ export class Renderer {
     ctx.setTransform(camera.zoom, 0, 0, camera.zoom, offsetX, offsetY);
     this.drawMap(state);
 
+    // world-space: dust under feet (before entities)
+    ctx.setTransform(camera.zoom, 0, 0, camera.zoom, offsetX, offsetY);
+    this.drawDust(state);
+
     // screen-space pass: entities (pixel-exact placement)
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     const ordered = [...state.players].sort((a, b) => a.y - b.y);
     for (const player of ordered) this.drawShadow(player, camera, offsetX, offsetY);
     for (const player of ordered) this.drawPlayer(player, camera, offsetX, offsetY);
 
-    // world-space pass: effects draw over entities
+    // world-space pass: combat effects draw over entities
     ctx.setTransform(camera.zoom, 0, 0, camera.zoom, offsetX, offsetY);
     this.drawEffects(state);
 
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     this.drawLabels(state, offsetX, offsetY);
+    this.drawVignette(state);
   }
 
   // --- world ---------------------------------------------------------------
@@ -272,6 +281,21 @@ export class Renderer {
   }
 
   // --- effects -------------------------------------------------------------
+  private drawDust(state: RenderState): void {
+    const { ctx } = this;
+    for (const p of state.effects.dust) {
+      const t = p.age / p.life;
+      const fade = (1 - t) * (1 - t);
+      // Bloom early, shrink late — reads as a puff, not a spark.
+      const grow = t < 0.25 ? 0.6 + t * 2.2 : 1.15 - (t - 0.25) * 0.7;
+      ctx.globalAlpha = 0.55 * fade;
+      ctx.fillStyle = p.color;
+      const s = p.size * Math.max(0.35, grow);
+      ctx.fillRect(p.x - s / 2, p.y - s / 2, s, s);
+    }
+    ctx.globalAlpha = 1;
+  }
+
   private drawEffects(state: RenderState): void {
     const { ctx } = this;
     const { effects } = state;
@@ -323,6 +347,49 @@ export class Renderer {
     }
 
     ctx.globalAlpha = 1;
+  }
+
+  /** Radial red/black crush — intensity from danger, heartbeat from time. */
+  private drawVignette(state: RenderState): void {
+    const danger = state.danger;
+    if (danger <= 0.001) return;
+
+    const { ctx } = this;
+    const w = this.canvas.width;
+    const h = this.canvas.height;
+    const cx = w * 0.5;
+    const cy = h * 0.5;
+    const radius = Math.hypot(cx, cy);
+
+    // Heartbeat: stronger + faster as danger climbs.
+    const bpm = 1.1 + danger * 2.4;
+    const beat = Math.sin(state.time * Math.PI * 2 * bpm);
+    // Soft asymmetric pulse (lub-dub-ish): sharp attack, slow release.
+    const pulse = Math.pow(0.5 + 0.5 * beat, 1.6);
+    const intensity = danger * (0.62 + 0.38 * pulse);
+
+    const grad = ctx.createRadialGradient(cx, cy, radius * 0.22, cx, cy, radius * 0.98);
+    grad.addColorStop(0, 'rgba(0,0,0,0)');
+    grad.addColorStop(0.45, `rgba(40,0,8,${0.08 * intensity})`);
+    grad.addColorStop(0.75, `rgba(90,4,14,${0.42 * intensity})`);
+    grad.addColorStop(1, `rgba(140,6,18,${0.82 * intensity})`);
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, w, h);
+
+    // Critical: full-screen blood wash on the beat peak.
+    if (danger > 0.65) {
+      const wash = (danger - 0.65) / 0.35;
+      ctx.fillStyle = `rgba(160, 12, 28, ${0.1 * wash * pulse})`;
+      ctx.fillRect(0, 0, w, h);
+    }
+
+    // Edge bars for a harder crush on the frame (pixel-art readable).
+    const edge = Math.max(10, Math.round(Math.min(w, h) * 0.04 * (0.5 + intensity)));
+    ctx.fillStyle = `rgba(0,0,0,${0.35 * intensity})`;
+    ctx.fillRect(0, 0, w, edge);
+    ctx.fillRect(0, h - edge, w, edge);
+    ctx.fillRect(0, 0, edge, h);
+    ctx.fillRect(w - edge, 0, edge, h);
   }
 
   // --- screen-space labels -------------------------------------------------

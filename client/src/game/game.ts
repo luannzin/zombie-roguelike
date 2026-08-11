@@ -41,6 +41,12 @@ const HIT_FLASH_LIFE = 0.18;
 const RECOIL_KICK = 0;
 /** How fast recoil springs back (higher = snappier). */
 const RECOIL_RECOVER = 16;
+/** World px travelled between footfall dust puffs. */
+const FOOTSTEP_SPACING = 7;
+/** HP ratio where vignette starts (above = none). */
+const DANGER_START = 0.45;
+/** HP ratio where vignette hits full crush. */
+const DANGER_CRITICAL = 0.2;
 
 export interface Hud {
 	status: HTMLElement;
@@ -87,6 +93,14 @@ export class Game {
 	private lastHp = new Map<string, number>();
 	/** Visual recoil offset per player (world px, opposite aim). */
 	private recoils = new Map<string, { x: number; y: number }>();
+	/** Distance since last footfall puff, per player. */
+	private stepAccum = new Map<string, number>();
+	/** Last known position for step distance, per player. */
+	private stepPrev = new Map<string, { x: number; y: number }>();
+	/** Alternating foot side (-1 / 1). */
+	private stepSide = new Map<string, number>();
+	/** Elapsed seconds for vignette heartbeat. */
+	private time = 0;
 
 	constructor(
 		private readonly canvas: HTMLCanvasElement,
@@ -139,7 +153,11 @@ export class Game {
 		this.animTimes.clear();
 		this.hitFlashes.clear();
 		this.recoils.clear();
+		this.stepAccum.clear();
+		this.stepPrev.clear();
+		this.stepSide.clear();
 		this.lastHp.clear();
+		this.time = 0;
 		this.lastHp.set(msg.player.id, msg.player.hp);
 		this.localFireCooldown = 0;
 		this.accumulator = 0;
@@ -252,6 +270,7 @@ export class Game {
 		this.effects.update(dt);
 		this.decayHitFlashes(dt);
 		this.decayRecoils(dt);
+		this.time += dt;
 		this.render(dt);
 		this.updateHud(dt);
 
@@ -358,6 +377,14 @@ export class Game {
 			this.connection.rtt,
 		)) {
 			const recoil = this.recoilOf(remote.id);
+			this.emitFootsteps(
+				remote.id,
+				remote.x,
+				remote.y,
+				remote.vx,
+				remote.vy,
+				remote.moving && remote.alive,
+			);
 			drawables.push({
 				id: remote.id,
 				name: remote.name,
@@ -381,6 +408,14 @@ export class Game {
 		if (this.local && this.localMeta) {
 			const moving = Math.hypot(this.local.state.vx, this.local.state.vy) > 1;
 			const recoil = this.recoilOf(this.localId);
+			this.emitFootsteps(
+				this.localId,
+				this.smoothX,
+				this.smoothY,
+				this.local.state.vx,
+				this.local.state.vy,
+				moving && this.local.alive,
+			);
 			drawables.push({
 				id: this.localId,
 				name: this.localMeta.name,
@@ -407,6 +442,8 @@ export class Game {
 			config: this.config,
 			players: drawables,
 			effects: this.effects,
+			danger: this.dangerLevel(),
+			time: this.time,
 		});
 		this.minimap.draw(drawables, this.localId);
 	}
@@ -447,6 +484,56 @@ export class Game {
 
 	private recoilOf(id: string): { x: number; y: number } {
 		return this.recoils.get(id) ?? { x: 0, y: 0 };
+	}
+
+	/** Emit dust when a player covers FOOTSTEP_SPACING world px while moving. */
+	private emitFootsteps(
+		id: string,
+		x: number,
+		y: number,
+		vx: number,
+		vy: number,
+		moving: boolean,
+	): void {
+		const prev = this.stepPrev.get(id);
+		this.stepPrev.set(id, { x, y });
+		if (!moving || !prev || !this.config) {
+			this.stepAccum.set(id, 0);
+			return;
+		}
+
+		const travelled = Math.hypot(x - prev.x, y - prev.y);
+		// Ignore teleport / respawn snaps.
+		if (travelled > this.config.moveSpeed * 0.2) {
+			this.stepAccum.set(id, 0);
+			return;
+		}
+
+		let accum = (this.stepAccum.get(id) ?? 0) + travelled;
+		const feetY = y + this.config.playerHalfHeight * 0.9;
+		while (accum >= FOOTSTEP_SPACING) {
+			accum -= FOOTSTEP_SPACING;
+			const side = this.stepSide.get(id) ?? 1;
+			this.stepSide.set(id, -side);
+			const speed = Math.hypot(vx, vy);
+			const dirX = speed > 1 ? vx : x - prev.x;
+			const dirY = speed > 1 ? vy : y - prev.y;
+			this.effects.spawnDust(x, feetY, dirX, dirY, side);
+		}
+		this.stepAccum.set(id, accum);
+	}
+
+	/** 0..1 screen danger from local HP. Dead = no vignette (respawn clean). */
+	private dangerLevel(): number {
+		const local = this.local;
+		const config = this.config;
+		if (!local || !config || !local.alive) return 0;
+		const ratio = local.hp / config.maxHp;
+		if (ratio >= DANGER_START) return 0;
+		if (ratio <= DANGER_CRITICAL) {
+			return 0.72 + (1 - ratio / DANGER_CRITICAL) * 0.28;
+		}
+		return ((DANGER_START - ratio) / (DANGER_START - DANGER_CRITICAL)) * 0.72;
 	}
 
 	// --- hud -----------------------------------------------------------------

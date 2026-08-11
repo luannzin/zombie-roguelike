@@ -35,6 +35,9 @@ export interface DrawablePlayer {
   isLocal: boolean;
   /** 0..1 white flash intensity after taking a hit. */
   hitFlash: number;
+  /** Visual kick opposite aim (world px). Does not affect simulation. */
+  recoilX: number;
+  recoilY: number;
 }
 
 export interface RenderState {
@@ -199,8 +202,8 @@ export class Renderer {
     ctx.fillStyle = 'rgba(0,0,0,0.32)';
     ctx.beginPath();
     ctx.ellipse(
-      Math.round(player.x * zoom + offsetX),
-      Math.round((player.y + cfg.playerHalfHeight) * zoom + offsetY),
+      Math.round((player.x + player.recoilX) * zoom + offsetX),
+      Math.round((player.y + player.recoilY + cfg.playerHalfHeight) * zoom + offsetY),
       cfg.playerHalfWidth * 1.15 * zoom,
       cfg.playerHalfHeight * 0.75 * zoom,
       0,
@@ -229,8 +232,10 @@ export class Renderer {
     const h = sheet.frameHeight;
     // The sprite's bottom edge sits on the bottom of the collision box, so a
     // 1x1.5-tile character stands correctly on a 0.6x0.45-tile footprint.
-    const spriteTop = player.y + cfg.playerHalfHeight - h;
-    const dx = Math.round((player.x - w / 2) * zoom + offsetX);
+    const px = player.x + player.recoilX;
+    const py = player.y + player.recoilY;
+    const spriteTop = py + cfg.playerHalfHeight - h;
+    const dx = Math.round((px - w / 2) * zoom + offsetX);
     const dy = Math.round(spriteTop * zoom + offsetY);
     ctx.drawImage(image, col * w, row * h, w, h, dx, dy, w * zoom, h * zoom);
 
@@ -242,8 +247,8 @@ export class Renderer {
       ctx.globalAlpha = 1;
     }
 
-    const cx = player.x * zoom + offsetX;
-    const cy = player.y * zoom + offsetY;
+    const cx = px * zoom + offsetX;
+    const cy = py * zoom + offsetY;
 
     // aim indicator
     ctx.strokeStyle = player.isLocal ? 'rgba(255,255,255,0.55)' : 'rgba(255,255,255,0.25)';
@@ -332,8 +337,8 @@ export class Renderer {
     const nameOffset = this.sheet.frameHeight - cfg.playerHalfHeight + cfg.tileSize * 0.35;
     for (const player of state.players) {
       if (!player.alive) continue;
-      const sx = Math.round(player.x * zoom + offsetX);
-      const sy = Math.round((player.y - nameOffset) * zoom + offsetY);
+      const sx = Math.round((player.x + player.recoilX) * zoom + offsetX);
+      const sy = Math.round((player.y + player.recoilY - nameOffset) * zoom + offsetY);
       ctx.fillStyle = 'rgba(0,0,0,0.75)';
       ctx.fillText(player.name, sx + 1, sy + 1);
       ctx.fillStyle = player.color;

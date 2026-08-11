@@ -70,10 +70,10 @@ RESPAWN_DELAY = 2.0          # seconds
 SHOT_RANGE_TILES = 8.0
 MUZZLE_OFFSET_TILES = 0.25
 
-FIRE_COOLDOWN = 0.18         # seconds between shots
+FIRE_COOLDOWN = 0.5         # seconds between shots (~2 shots/s)
 SHOT_RANGE = TILE_SIZE * SHOT_RANGE_TILES       # 128 px @ TILE_SIZE=16
 MUZZLE_OFFSET = TILE_SIZE * MUZZLE_OFFSET_TILES # 4 px
-SHOT_DAMAGE = 12
+SHOT_DAMAGE = 8
 
 # --- networking -------------------------------------------------------------
 SNAPSHOT_EVERY_N_TICKS = 1   # broadcast rate = TICK_RATE / this

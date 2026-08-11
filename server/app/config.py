@@ -12,8 +12,8 @@ SCALE
 authored in TILES and multiplied by it, so changing this one number rescales
 the whole game consistently — art, collision, movement speed, weapon range.
 
-    TILE_SIZE = 16   ->  sprite 16x16, box 9.6x7.2, speed 70 px/s, range 256
-    TILE_SIZE = 32   ->  sprite 32x32, box 19.2x14.4, speed 141 px/s, range 512
+    TILE_SIZE = 16   ->  sprite 16x16, box 9.6x7.2, speed 70 px/s, range 128
+    TILE_SIZE = 32   ->  sprite 32x32, box 19.2x14.4, speed 141 px/s, range 256
 
 Canonical shape:
     tile           1   x 1     tiles   (16 x 16 px)
@@ -67,11 +67,11 @@ MAX_HP = 100
 RESPAWN_DELAY = 2.0          # seconds
 
 # --- combat (authored in tiles) ---------------------------------------------
-SHOT_RANGE_TILES = 16.0
+SHOT_RANGE_TILES = 8.0
 MUZZLE_OFFSET_TILES = 0.25
 
 FIRE_COOLDOWN = 0.18         # seconds between shots
-SHOT_RANGE = TILE_SIZE * SHOT_RANGE_TILES       # 256 px
+SHOT_RANGE = TILE_SIZE * SHOT_RANGE_TILES       # 128 px @ TILE_SIZE=16
 MUZZLE_OFFSET = TILE_SIZE * MUZZLE_OFFSET_TILES # 4 px
 SHOT_DAMAGE = 12
 

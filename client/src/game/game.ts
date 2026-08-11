@@ -56,6 +56,12 @@ export class Game {
   private hudTimer = 0;
   private aimX = 1;
   private aimY = 0;
+  private lastPacket: InputPacket | null = null;
+  /** local player position interpolated between fixed ticks (see prediction.ts) */
+  private smoothX = 0;
+  private smoothY = 0;
+  private resizeDirty = true;
+  private fps = 0;
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
@@ -67,6 +73,11 @@ export class Game {
   async start(): Promise<void> {
     this.sheet = await loadCharacterSheet('player');
     this.renderer = new Renderer(this.canvas, this.sheet);
+
+    // Reading clientWidth every frame forces a layout; only resize on change.
+    new ResizeObserver(() => {
+      this.resizeDirty = true;
+    }).observe(this.canvas);
 
     this.connection.onStatus = (status) => this.onStatus(status);
     this.connection.onMessage = (msg) => this.onMessage(msg);
@@ -100,6 +111,9 @@ export class Game {
     this.animTimes.clear();
     this.localFireCooldown = 0;
     this.accumulator = 0;
+    this.lastPacket = null;
+    this.smoothX = msg.player.x;
+    this.smoothY = msg.player.y;
 
     this.camera.resize(this.canvas.width, this.canvas.height);
     this.camera.snapTo(msg.player.x, msg.player.y, this.world);
@@ -139,11 +153,19 @@ export class Game {
   private frame = (now: number): void => {
     const dt = Math.min(0.25, (now - this.lastFrame) / 1000);
     this.lastFrame = now;
+    if (dt > 0) this.fps += (1 / dt - this.fps) * 0.05;
 
-    if (this.renderer) this.renderer.resize();
-    this.camera.resize(this.canvas.width, this.canvas.height);
+    if (this.resizeDirty && this.renderer) {
+      this.renderer.resize();
+      this.camera.resize(this.canvas.width, this.canvas.height);
+      this.resizeDirty = false;
+    }
 
     if (this.world && this.config && this.local) {
+      // Aim updates every frame, not every tick, so the crosshair never feels
+      // capped at the simulation rate.
+      this.updateAim();
+
       this.accumulator += dt;
       const step = this.config.dt;
       let ticks = 0;
@@ -155,7 +177,15 @@ export class Game {
       if (ticks === MAX_TICKS_PER_FRAME) this.accumulator = 0;
 
       this.local.decayError(dt);
-      this.camera.follow(this.local.renderX, this.local.renderY, this.world, dt);
+      const smooth = this.local.subTickPosition(
+        this.lastPacket,
+        this.world,
+        this.config,
+        this.accumulator,
+      );
+      this.smoothX = smooth.x;
+      this.smoothY = smooth.y;
+      this.camera.follow(smooth.x, smooth.y, this.world, dt);
     }
 
     this.effects.update(dt);

@@ -95,12 +95,36 @@ export class LocalPlayer {
     this.errorY *= k;
   }
 
-  /** Smoothed position used for rendering and for the camera. */
+  /** Smoothed position at the last committed tick. */
   get renderX(): number {
     return this.state.x + this.errorX;
   }
 
   get renderY(): number {
     return this.state.y + this.errorY;
+  }
+
+  /**
+   * Render position between two fixed ticks.
+   *
+   * The simulation only advances 30 times per second, so drawing `renderX`
+   * directly makes movement look like 30 fps no matter how fast the display
+   * refreshes. This advances a scratch copy of the state by the leftover
+   * accumulator time using the same collision-aware `applyInput`, so the
+   * sprite moves every frame and lands exactly where the next tick commits it.
+   * Nothing here is stored — reconciliation is unaffected.
+   */
+  subTickPosition(
+    input: InputPacket | null,
+    world: TileMap,
+    config: GameConfig,
+    remainder: number,
+  ): { x: number; y: number } {
+    if (!input || !this.alive || remainder <= 0) {
+      return { x: this.renderX, y: this.renderY };
+    }
+    const scratch: MovableState = { ...this.state };
+    applyInput(scratch, input, world, config, Math.min(remainder, config.dt));
+    return { x: scratch.x + this.errorX, y: scratch.y + this.errorY };
   }
 }

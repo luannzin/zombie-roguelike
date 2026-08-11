@@ -20,6 +20,7 @@ import { Camera } from '../render/camera';
 import { Minimap } from '../render/minimap';
 import { Renderer, type DrawablePlayer } from '../render/renderer';
 import { loadCharacterSheet, type SpriteSheet } from '../render/sprites';
+import type { ProgressBar } from '../ui/progress-bar';
 import { hitscan, type RayTarget } from './combat';
 import { Effects } from './effects';
 import { InputController } from './input';
@@ -31,9 +32,13 @@ const MAX_TICKS_PER_FRAME = 5;
 
 export interface Hud {
   status: HTMLElement;
-  you: HTMLElement;
   net: HTMLElement;
   minimap: HTMLCanvasElement;
+  vitals: HTMLElement;
+  name: HTMLElement;
+  kd: HTMLElement;
+  state: HTMLElement;
+  hp: ProgressBar;
 }
 
 export class Game {
@@ -99,6 +104,7 @@ export class Game {
       this.local = null;
       this.world = null;
       this.minimap.setWorld(null);
+      this.hideVitals();
     }
   }
 
@@ -123,6 +129,7 @@ export class Game {
     this.camera.resize(this.canvas.width, this.canvas.height);
     this.camera.snapTo(msg.player.x, msg.player.y, this.world);
     this.minimap.setWorld(this.world);
+    this.hud.vitals.hidden = false;
 
     this.hud.status.textContent = 'in arena';
   }
@@ -343,17 +350,31 @@ export class Game {
   }
 
   // --- hud -----------------------------------------------------------------
+  private hideVitals(): void {
+    this.hud.vitals.hidden = true;
+    this.hud.name.textContent = '';
+    this.hud.kd.textContent = '0 / 0';
+    this.hud.state.hidden = true;
+    this.hud.hp.clear();
+  }
+
   private updateHud(dt: number): void {
     this.hudTimer += dt;
     if (this.hudTimer < 0.2) return;
     this.hudTimer = 0;
 
-    if (this.localMeta && this.local) {
+    if (this.localMeta && this.local && this.config) {
       const meta = this.localMeta;
-      this.hud.you.innerHTML =
-        `<span style="color:${meta.color}">${meta.name}</span> ` +
-        `· hp ${this.local.hp} · k/d ${meta.kills}/${meta.deaths}` +
-        (this.local.alive ? '' : ' · <span style="color:#e6484f">respawning…</span>');
+      this.hud.name.textContent = meta.name;
+      this.hud.name.style.color = meta.color;
+      this.hud.kd.textContent = `${meta.kills} / ${meta.deaths}`;
+      this.hud.hp.set({
+        current: this.local.hp,
+        max: this.config.maxHp,
+        label: 'HP',
+        tone: 'hp',
+      });
+      this.hud.state.hidden = this.local.alive;
     }
 
     const latest = this.snapshots.latest;

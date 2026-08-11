@@ -50,6 +50,144 @@ body {
   visibility: hidden;
 }
 
+/* --- vitals (bottom-right, mirrors minimap chrome) ----------------------- */
+#vitals {
+  --panel-border: #565673;
+  --panel-bg: #0a0a10;
+  --panel-inset: #1b1b24;
+  --muted: #6f6f85;
+  --text: #d8d8e4;
+
+  position: fixed;
+  right: 12px;
+  bottom: 10px;
+  width: 160px;
+  padding: 8px 10px 10px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel-bg);
+  box-shadow: 0 0 0 1px var(--panel-inset);
+  pointer-events: none;
+  user-select: none;
+  text-shadow: 0 1px 0 #000;
+}
+
+#vitals[hidden] {
+  display: none;
+}
+
+#vitals-name {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 6px;
+}
+
+#vitals-kd {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+  line-height: 1.2;
+  margin-bottom: 8px;
+}
+
+.vitals-kd-label {
+  color: var(--muted);
+  letter-spacing: 0.06em;
+}
+
+#vitals-kd-value {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.vitals-state {
+  margin-top: 6px;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: #e6484f;
+}
+
+.vitals-state[hidden] {
+  display: none;
+}
+
+/* --- shared progress bar (HP / future XP) -------------------------------- */
+.progress {
+  --progress: 0;
+  --progress-fill: #7bd389;
+  --track-bg: #12121a;
+  --track-border: #2e2e3d;
+}
+
+.progress[data-tone='hp'][data-level='high'] {
+  --progress-fill: #7bd389;
+}
+
+.progress[data-tone='hp'][data-level='mid'] {
+  --progress-fill: #f2a541;
+}
+
+.progress[data-tone='hp'][data-level='low'] {
+  --progress-fill: #e6484f;
+}
+
+.progress[data-tone='xp'] {
+  --progress-fill: #6ea8fe;
+}
+
+.progress[data-tone='neutral'] {
+  --progress-fill: #8b8ba3;
+}
+
+.progress-meta {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  line-height: 1.2;
+}
+
+.progress-caption {
+  color: var(--muted, #6f6f85);
+}
+
+.progress-value {
+  color: var(--text, #d8d8e4);
+  font-variant-numeric: tabular-nums;
+}
+
+.progress-track {
+  position: relative;
+  height: 8px;
+  border: 1px solid var(--track-border);
+  background: var(--track-bg);
+  box-shadow: inset 0 0 0 1px #0a0a10;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  width: calc(var(--progress) * 100%);
+  background: var(--progress-fill);
+  box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.35);
+  transition: width 120ms linear, background-color 120ms linear;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .progress-fill {
+    transition: none;
+  }
+}
+
 #hint {
   position: fixed;
   bottom: 10px;

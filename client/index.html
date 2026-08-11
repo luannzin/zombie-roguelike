@@ -10,11 +10,28 @@
 
     <div id="hud">
       <div id="hud-status">connecting…</div>
-      <div id="hud-you"></div>
       <div id="hud-net"></div>
     </div>
 
     <canvas id="minimap" width="160" height="160" aria-label="minimap"></canvas>
+
+    <div id="vitals" hidden>
+      <div id="vitals-name"></div>
+      <div id="vitals-kd">
+        <span class="vitals-kd-label">K/D</span>
+        <span id="vitals-kd-value">0 / 0</span>
+      </div>
+      <div id="vitals-hp" class="progress" data-tone="hp" aria-label="health">
+        <div class="progress-meta">
+          <span class="progress-caption">HP</span>
+          <span class="progress-value">— / —</span>
+        </div>
+        <div class="progress-track">
+          <div class="progress-fill"></div>
+        </div>
+      </div>
+      <div id="vitals-state" class="vitals-state" hidden>respawning…</div>
+    </div>
 
     <div id="hint">WASD move · mouse aim · click/hold to shoot</div>
 

@@ -8,11 +8,15 @@
 
 import type { GameConfig } from '../../net/protocol';
 import { clamp01 } from '../../lib/math';
+import { hudFont } from '../../theme/fonts';
 import { hpColor, palette } from '../../theme/palette';
 import type { Projection } from '../projection';
 import { facingFromAim, frameIndex, type SpriteSheet, type TintCache } from '../sprites';
 import type { DrawablePlayer } from '../types';
 import { fillTextShadowed } from './effects';
+
+/** Player name label size, in screen px (unscaled by zoom). */
+const NAME_LABEL_PX = 11;
 
 export interface EntityContext {
   ctx: CanvasRenderingContext2D;
@@ -116,7 +120,7 @@ function drawHealthBar(
 export function drawNameLabels(entity: EntityContext, players: DrawablePlayer[]): void {
   const { ctx, view, config, sheet } = entity;
 
-  ctx.font = '11px ui-monospace, Menlo, Consolas, monospace';
+  ctx.font = hudFont(NAME_LABEL_PX);
   ctx.textAlign = 'center';
   ctx.textBaseline = 'bottom';
 

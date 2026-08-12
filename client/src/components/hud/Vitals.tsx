@@ -1,7 +1,7 @@
 /** Bottom-right player panel: name, K/D, health, respawn state. */
 
 import type { HudVitals } from '../../game/hud-store';
-import { Panel } from '../ui/Panel';
+import { Panel } from './Panel';
 import { ProgressBar } from './ProgressBar';
 
 export interface VitalsProps {

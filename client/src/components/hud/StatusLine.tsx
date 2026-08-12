@@ -1,6 +1,6 @@
 /** Connection state, top-left. Turns red while the game is unusable. */
 
-import { cn } from '../../lib/cn';
+import { cn } from '@/lib/utils';
 import type { ConnectionStatus } from '../../net/connection';
 
 export interface StatusLineProps {

@@ -8,8 +8,12 @@
 
 import type { Effects } from '../../game/effects';
 import { fadeOf } from '../../lib/math';
+import { hudFont } from '../../theme/fonts';
 import { palette } from '../../theme/palette';
 import type { Projection } from '../projection';
+
+/** Damage numbers never shrink below this, however far out the camera is. */
+const DAMAGE_MIN_PX = 11;
 
 /** World space, under entities. */
 export function drawDust(ctx: CanvasRenderingContext2D, effects: Effects): void {
@@ -77,7 +81,7 @@ export function drawDamageFloats(
   view: Projection,
 ): void {
   const fx = palette().effects;
-  ctx.font = `bold ${Math.max(11, Math.round(10 * view.zoom * 0.45))}px ui-monospace, Menlo, Consolas, monospace`;
+  ctx.font = hudFont(Math.max(DAMAGE_MIN_PX, 10 * view.zoom * 0.45), 'bold');
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
 

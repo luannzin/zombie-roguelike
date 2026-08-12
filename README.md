@@ -100,13 +100,19 @@ client/
                     combat, per-player visuals, game loop, hud-store (UI seam)
     render/         camera, projection, sprites/tinting, minimap, renderer
       layers/       tiles, entities, effects, vignette
-    theme/          palette.ts — reads the CSS design tokens for canvas use
-    lib/            math, canvas, store, cn (framework-free helpers)
-    components/     React: game/ (canvas hosts), hud/, ui/
+    theme/          palette.ts / fonts.ts — read the CSS tokens for canvas use
+    lib/            math, canvas, store, utils (framework-free helpers)
+    components/
+      game/         canvas hosts (GameCanvas, MinimapCanvas)
+      hud/          HUD components — ours
+      ui/           coss primitives — GENERATED, do not hand-edit
     hooks/          useGameSession (owns Game lifecycle), useHud
     screens/        ArenaScreen
     app/            route table
+    assets/fonts/   Departure Mono (bundled + hashed by Vite)
     styles/         index.css — Tailwind entry + ALL design tokens
+assets/
+  raw/              source art + font sources (never served)
 assets/
   raw/              source art (never served)
   processed/        production art (served by Vite)
@@ -129,7 +135,15 @@ docs/
   state.
 * **All colours live in `client/src/styles/index.css`.** The DOM consumes them
   as Tailwind utilities, the canvas reads the same custom properties at runtime
-  through `theme/palette.ts`. Never hardcode a colour anywhere else.
+  through `theme/palette.ts`. Never hardcode a colour anywhere else. Type works
+  the same way via `--font-hud` and `theme/fonts.ts`.
+* The UI kit is [coss](https://coss.com/ui) (Base UI + shadcn-style copy-in).
+  Its components live in `components/ui/` and are generated — add more with
+  `bunx --bun shadcn@latest add @coss/<name>`, don't hand-edit them. coss's
+  semantic tokens (`--background`, `--border`, `--destructive`, …) are
+  re-pointed at the game palette in the **coss skin** block at the bottom of
+  `index.css`, so its components inherit the arena's look with no per-component
+  overrides. The app is permanently `<html class="dark">`.
 * Anything the client creates — sockets, timers, listeners, observers, rAF —
   must be released in `Game.dispose()`. React StrictMode and HMR both remount,
   and a leaked loop is silent until the frame rate collapses.

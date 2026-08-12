@@ -7,7 +7,7 @@
  */
 
 import { clamp01 } from '../../lib/math';
-import { cn } from '../../lib/cn';
+import { cn } from '@/lib/utils';
 import { hpLevel } from '../../theme/palette';
 
 export type ProgressTone = 'hp' | 'xp' | 'neutral';

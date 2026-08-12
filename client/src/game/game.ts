@@ -29,6 +29,7 @@ import { Minimap } from '../render/minimap';
 import { Renderer } from '../render/renderer';
 import { loadCharacterSheet, type SpriteSheet } from '../render/sprites';
 import type { DrawablePlayer } from '../render/types';
+import { whenFontsReady } from '../theme/fonts';
 import { palette } from '../theme/palette';
 import { hitscan, type RayTarget } from './combat';
 import { Effects } from './effects';
@@ -131,9 +132,12 @@ export class Game {
     if (this.started || this.disposed) return;
     this.started = true;
 
-    this.sheet = await loadCharacterSheet('player');
-    // dispose() can land while the sheet is loading.
+    // Wait for the webfont too, so the first frame's labels are not drawn in
+    // the fallback face and then visibly swapped.
+    const [sheet] = await Promise.all([loadCharacterSheet('player'), whenFontsReady()]);
+    // dispose() can land while these are loading.
     if (this.disposed) return;
+    this.sheet = sheet;
 
     this.renderer = new Renderer(this.canvas, this.sheet);
 

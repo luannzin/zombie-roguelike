@@ -53,7 +53,7 @@ export interface Slash {
 }
 
 /** Damage numbers and pickup/reward text share one rising-float list. */
-export type FloatTone = 'damage' | 'reward';
+export type FloatTone = 'damage' | 'reward' | 'gold';
 
 export interface TextFloat {
   x: number;
@@ -247,6 +247,37 @@ export class Effects {
   /** Kill reward, e.g. "+12 xp". Lives longer and rises further than damage. */
   spawnReward(x: number, y: number, text: string): void {
     this.pushFloat(x, y - 6, text, 'reward', 0.9);
+  }
+
+  /** Gold pickup float + sparkle burst. */
+  spawnGoldPickup(x: number, y: number, amount: number): void {
+    this.pushFloat(x, y - 4, `+${amount}`, 'gold', 0.7);
+    const fx = palette().effects;
+    for (let i = 0; i < 8; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 25 + Math.random() * 40;
+      this.particles.push({
+        x,
+        y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed * 0.75,
+        size: 0.9 + Math.random() * 1.4,
+        color: pick(fx.goldParticles),
+        age: 0,
+        life: 0.22 + Math.random() * 0.2,
+        gy: 30,
+      });
+    }
+    this.particles.push({
+      x,
+      y,
+      vx: 0,
+      vy: 0,
+      size: 2.2,
+      color: fx.goldCore,
+      age: 0,
+      life: 0.08,
+    });
   }
 
   private pushFloat(x: number, y: number, text: string, tone: FloatTone, life: number): void {

@@ -50,6 +50,8 @@ export interface GameConfig {
   muzzleOffset: number;
   /** Every enemy stat block, keyed by type. Mirrors server/app/enemies.py. */
   enemyTypes: Record<string, EnemyTypeConfig>;
+  /** Processed asset folder for world gold pickups. */
+  coinSprite: string;
 }
 
 /**
@@ -119,6 +121,15 @@ export interface EnemyState {
   hp: number;
 }
 
+/** One world gold pickup. Value is always 1 — enemies drop one per gold point. */
+export interface CoinState {
+  id: string;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+}
+
 export interface ShotEvent {
   id: number;
   by: string;
@@ -151,8 +162,18 @@ export interface KillEvent {
   victim: string;
   x: number;
   y: number;
-  /** Paid to the killer. Zero for player kills. */
+  /** Paid to the killer immediately. Zero for player kills. */
   xp: number;
+  /** Coins scattered at the corpse — not auto-credited. */
+  gold: number;
+}
+
+/** A coin that just entered a player's pocket. */
+export interface PickupEvent {
+  id: string;
+  by: string;
+  x: number;
+  y: number;
   gold: number;
 }
 
@@ -172,9 +193,12 @@ export interface SnapshotMessage {
   players: PlayerState[];
   /** Live enemies only — an id that disappears is dead or despawned. */
   enemies: EnemyState[];
+  /** Live gold pickups. */
+  coins: CoinState[];
   shots: ShotEvent[];
   attacks: AttackEvent[];
   kills: KillEvent[];
+  pickups: PickupEvent[];
 }
 
 export interface PongMessage {

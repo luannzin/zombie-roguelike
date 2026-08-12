@@ -11,7 +11,14 @@
 
 import { get2d } from '../lib/canvas';
 import { drawCombatEffects, drawDust, drawTextFloats } from './layers/effects';
-import { drawEntity, drawNameLabels, drawShadow, type EntityContext } from './layers/entities';
+import {
+  drawCoinShadows,
+  drawCoins,
+  drawEntity,
+  drawNameLabels,
+  drawShadow,
+  type EntityContext,
+} from './layers/entities';
 import { TileLayer } from './layers/tiles';
 import { drawVignette } from './layers/vignette';
 import { projectionFor } from './projection';
@@ -66,9 +73,10 @@ export class Renderer {
     this.tiles.draw(ctx, state.world, state.camera);
     drawDust(ctx, state.effects);
 
-    // Screen space: entities, pixel-exact. Painter's order by depth, so a
-    // zombie standing below a player overlaps them and not the other way round.
+    // Screen space: coins under characters, then entities depth-sorted.
     this.useScreenSpace();
+    drawCoinShadows(entity, state.coins);
+    drawCoins(entity, state.coins, state.config.coinSprite);
     const ordered = [...state.entities].sort((a, b) => a.y - b.y);
     for (const target of ordered) drawShadow(entity, target);
     for (const target of ordered) drawEntity(entity, target);

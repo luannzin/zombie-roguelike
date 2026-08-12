@@ -124,7 +124,8 @@ export function drawTextFloats(
 
   for (const d of effects.textFloats) {
     ctx.globalAlpha = fadeOf(d);
-    const color = d.tone === 'reward' ? fx.rewardText : fx.damageText;
+    const color =
+      d.tone === 'gold' ? fx.goldText : d.tone === 'reward' ? fx.rewardText : fx.damageText;
     drawCenteredText(ctx, d.text, view.x(d.x), view.y(d.y), color, fx.textShadow);
   }
   ctx.globalAlpha = 1;

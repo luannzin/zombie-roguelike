@@ -11,11 +11,12 @@
  *
  * Players and enemies go through the same code: both are server-driven bodies
  * with position, velocity and facing, and the local player is the only entity
- * that is ever predicted instead of interpolated.
+ * that is ever predicted instead of interpolated. Coins share the position
+ * lerp path but have no facing.
  */
 
 import { clamp, lerp, normalize } from '../lib/math';
-import type { EnemyState, PlayerState, SnapshotMessage } from '../net/protocol';
+import type { CoinState, EnemyState, PlayerState, SnapshotMessage } from '../net/protocol';
 
 /** Fallback before enough arrival samples exist. */
 export const INTERP_DELAY_MS = 66;
@@ -37,21 +38,33 @@ interface Body {
   ay: number;
 }
 
+/** Coins have no facing — blend only position / velocity. */
+interface MovingBody {
+  id: string;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+}
+
 interface Frame {
   tick: number;
   /** local receive time (performance.now) */
   time: number;
   players: Map<string, PlayerState>;
   enemies: Map<string, EnemyState>;
+  coins: Map<string, CoinState>;
 }
 
 export type Moving<T> = T & { moving: boolean };
 export type RenderedPlayer = Moving<PlayerState>;
 export type RenderedEnemy = Moving<EnemyState>;
+export type RenderedCoin = Moving<CoinState>;
 
 export interface RenderedWorld {
   players: RenderedPlayer[];
   enemies: RenderedEnemy[];
+  coins: RenderedCoin[];
 }
 
 /** Speed (world px/s) above which a body reads as walking, not drifting. */
@@ -81,6 +94,7 @@ export class SnapshotBuffer {
       time: now,
       players: index(snapshot.players),
       enemies: index(snapshot.enemies),
+      coins: index(snapshot.coins ?? []),
     });
 
     const cutoff = now - BUFFER_KEEP_MS;
@@ -106,7 +120,7 @@ export class SnapshotBuffer {
    * `rttMs` raises the delay floor slightly on high-latency links.
    */
   sample(now: number, excludeId?: string, rttMs = 0): RenderedWorld {
-    if (this.frames.length === 0) return { players: [], enemies: [] };
+    if (this.frames.length === 0) return { players: [], enemies: [], coins: [] };
 
     const renderTime = now - this.effectiveDelay(rttMs);
 
@@ -132,6 +146,7 @@ export class SnapshotBuffer {
       return {
         players: extrapolate(newest.players, dtSec, excludeId),
         enemies: extrapolate(newest.enemies, dtSec),
+        coins: extrapolatePlain(newest.coins, dtSec),
       };
     }
 
@@ -141,6 +156,7 @@ export class SnapshotBuffer {
     return {
       players: blend(older.players, (newer ?? older).players, t, excludeId),
       enemies: blend(older.enemies, (newer ?? older).enemies, t),
+      coins: blendPlain(older.coins, (newer ?? older).coins, t),
     };
   }
 
@@ -208,6 +224,24 @@ function blend<T extends Body>(
   return out;
 }
 
+function blendPlain<T extends MovingBody>(
+  older: Map<string, T>,
+  source: Map<string, T>,
+  t: number,
+): Moving<T>[] {
+  const out: Moving<T>[] = [];
+  for (const [, target] of source) {
+    const from = older.get(target.id) ?? target;
+    out.push({
+      ...target,
+      x: lerp(from.x, target.x, t),
+      y: lerp(from.y, target.y, t),
+      moving: Math.hypot(target.vx, target.vy) > MOVING_SPEED,
+    });
+  }
+  return out;
+}
+
 function extrapolate<T extends Body>(
   bodies: Map<string, T>,
   dtSec: number,
@@ -216,6 +250,19 @@ function extrapolate<T extends Body>(
   const out: Moving<T>[] = [];
   for (const [id, body] of bodies) {
     if (id === excludeId) continue;
+    out.push({
+      ...body,
+      x: body.x + body.vx * dtSec,
+      y: body.y + body.vy * dtSec,
+      moving: Math.hypot(body.vx, body.vy) > MOVING_SPEED,
+    });
+  }
+  return out;
+}
+
+function extrapolatePlain<T extends MovingBody>(bodies: Map<string, T>, dtSec: number): Moving<T>[] {
+  const out: Moving<T>[] = [];
+  for (const [, body] of bodies) {
     out.push({
       ...body,
       x: body.x + body.vx * dtSec,

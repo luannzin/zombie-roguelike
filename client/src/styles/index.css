@@ -94,6 +94,12 @@
   --fx-slash: #ff9d8a;
   --fx-slash-blocked: #cfd6e6;
   --fx-reward-text: #9ad4a0;
+  --fx-gold-text: #f2a541;
+  --fx-gold-a: #f2a541;
+  --fx-gold-b: #ffd678;
+  --fx-gold-c: #fff1c2;
+  --fx-gold-d: #c47a28;
+  --fx-gold-core: #ffe9a8;
 
   /* entity chrome */
   --entity-shadow: rgb(0 0 0 / 0.32);

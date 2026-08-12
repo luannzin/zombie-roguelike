@@ -22,6 +22,7 @@ import type {
   GameConfig,
   InputPacket,
   KillEvent,
+  PickupEvent,
   PlayerState,
   ServerMessage,
   SnapshotMessage,
@@ -31,7 +32,7 @@ import { Camera } from '../render/camera';
 import { Minimap, type MinimapPlayer } from '../render/minimap';
 import { Renderer } from '../render/renderer';
 import { SpriteBook } from '../render/sprites';
-import type { DrawableEntity } from '../render/types';
+import type { DrawableCoin, DrawableEntity } from '../render/types';
 import { whenFontsReady } from '../theme/fonts';
 import { palette } from '../theme/palette';
 import { hitscan, type RayTarget } from './combat';
@@ -50,6 +51,8 @@ const FIRE_TRAUMA = 0.16;
 const HIT_TRAUMA = 0.12;
 /** Camera punch when local player loses HP. */
 const HURT_TRAUMA = 0.55;
+/** Tiny bump when a coin lands in the pocket. */
+const PICKUP_TRAUMA = 0.06;
 /** HP ratio where vignette starts (above = none). */
 const DANGER_START = 0.45;
 /** HP ratio where vignette hits full crush. */
@@ -58,6 +61,8 @@ const DANGER_CRITICAL = 0.2;
 const MOVING_SPEED = 1;
 /** Sprite sheet for players. Enemy sheets are named by the server's config. */
 const PLAYER_SHEET = 'player';
+/** Fallback if welcome.config.coinSprite is missing (older server). */
+const COIN_SHEET = 'coin';
 
 /**
  * Everything `toDrawablePlayer` needs, in the shape both a snapshot-interpolated
@@ -228,10 +233,14 @@ export class Game {
     this.localMeta = msg.player;
     this.local = new LocalPlayer(msg.player);
 
-    // Enemy art is named by the server's stat blocks, so a new creature ships
-    // without a client change. Loading is fire-and-forget: the renderer skips
-    // any entity whose sheet is not in yet.
-    void this.sprites.load(Object.values(msg.config.enemyTypes).map((t) => t.sprite));
+    // Enemy + coin art are named by the server's config, so a new creature or
+    // pickup ships without a client change. Loading is fire-and-forget: the
+    // renderer skips any entity whose sheet is not in yet.
+    const sheets = [
+      ...Object.values(msg.config.enemyTypes).map((t) => t.sprite),
+      msg.config.coinSprite || COIN_SHEET,
+    ];
+    void this.sprites.load(sheets);
 
     this.visuals.clear();
     this.effects.clear();
@@ -290,6 +299,7 @@ export class Game {
 
     for (const attack of msg.attacks) this.onAttack(attack);
     for (const kill of msg.kills) this.onKill(kill);
+    for (const pickup of msg.pickups ?? []) this.onPickup(pickup);
   }
 
   /**
@@ -313,6 +323,12 @@ export class Game {
     if (kill.killer === this.localId && kill.xp > 0) {
       this.effects.spawnReward(kill.x, kill.y, `+${kill.xp} xp`);
     }
+  }
+
+  private onPickup(pickup: PickupEvent): void {
+    if (pickup.by !== this.localId) return;
+    this.effects.spawnGoldPickup(pickup.x, pickup.y, pickup.gold);
+    this.camera.addTrauma(PICKUP_TRAUMA);
   }
 
   // --- loop ----------------------------------------------------------------
@@ -500,6 +516,13 @@ export class Game {
       if (drawable) entities.push(drawable);
     }
 
+    const coins: DrawableCoin[] = sampled.coins.map((coin) => ({
+      id: coin.id,
+      x: coin.x,
+      y: coin.y,
+      animTime: this.visuals.advanceAnim(coin.id, true, dt),
+    }));
+
     // Everyone in this frame was touched above; anyone who left — a player who
     // disconnected, an enemy that died — is now unreferenced and gets dropped.
     this.visuals.prune();
@@ -509,6 +532,7 @@ export class Game {
       camera: this.camera,
       config: this.config,
       entities,
+      coins,
       effects: this.effects,
       danger: this.dangerLevel(),
       time: this.time,

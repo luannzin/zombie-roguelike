@@ -51,12 +51,21 @@ export interface DrawableEntity {
   halfHeight: number;
 }
 
+/** World gold pickup — drawn under entities, spins forever. */
+export interface DrawableCoin {
+  id: string;
+  x: number;
+  y: number;
+  animTime: number;
+}
+
 export interface RenderState {
   world: TileMap;
   camera: Camera;
   config: GameConfig;
   /** Players and enemies together; the renderer depth-sorts them. */
   entities: DrawableEntity[];
+  coins: DrawableCoin[];
   effects: Effects;
   /** 0..1 local low-HP danger for screen vignette (0 = healthy). */
   danger: number;

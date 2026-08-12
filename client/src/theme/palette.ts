@@ -45,6 +45,9 @@ export interface Palette {
     muzzleFlash: string;
     damageText: string;
     rewardText: string;
+    goldText: string;
+    goldParticles: string[];
+    goldCore: string;
     slash: string;
     slashBlocked: string;
     textShadow: string;
@@ -109,6 +112,9 @@ function resolve(): Palette {
       muzzleFlash: v('--fx-muzzle'),
       damageText: v('--fx-damage-text'),
       rewardText: v('--fx-reward-text'),
+      goldText: v('--fx-gold-text'),
+      goldParticles: [v('--fx-gold-a'), v('--fx-gold-b'), v('--fx-gold-c'), v('--fx-gold-d')],
+      goldCore: v('--fx-gold-core'),
       slash: v('--fx-slash'),
       slashBlocked: v('--fx-slash-blocked'),
       textShadow: v('--fx-text-shadow'),

@@ -4,18 +4,23 @@
 The real project will use AI-generated pixel art, but the raw format is fixed:
 a 3x3 grid of frames on a solid magenta (#FF00FF) background.
 
+Characters:
   rows: 0 = facing down, 1 = facing side (right), 2 = facing up
   cols: 0 = step A, 1 = idle/stand, 2 = step B
 
-One entity per run. `--entity` picks the art set (defaults to `--name`, so
-`--name zombie` draws the zombie); every set is 12x14 characters of ASCII art
-over a per-entity palette, so adding a creature is data, not code.
+Items (coin, …):
+  rows: same art repeated (no facing)
+  cols: spin / idle frames
+
+One art set per run. `--entity` picks it (defaults to `--name`). Creatures and
+items are both data tables, so adding either is not a code change.
 
 Output: assets/raw/<name>.png  (consumed by tools/process_sprites.py)
 
 Usage:
     python tools/make_placeholder_sheet.py --name player
     python tools/make_placeholder_sheet.py --name zombie
+    python tools/make_placeholder_sheet.py --name coin
 """
 
 from __future__ import annotations
@@ -179,8 +184,69 @@ ZOMBIE = Entity(
 
 ENTITIES = {"player": PLAYER, "zombie": ZOMBIE}
 
+# ---------------------------------------------------------------------------
+# Items — pickups use the same 3x3 raw format so process_sprites.py eats them
+# unchanged. Columns are spin frames; every row is the same art (no facing).
+# ---------------------------------------------------------------------------
 
-def render_cell(entity: Entity, rows: Art, cell: int, scale: int) -> Image.Image:
+
+@dataclass(frozen=True)
+class Item:
+    """One pickup: palette + 3 spin frames (cols 0..2 of the raw sheet)."""
+
+    palette: Palette
+    frames: list[Art]
+
+
+COIN_PALETTE: Palette = {
+    "o": (72, 42, 18, 255),      # outline
+    "d": (160, 90, 28, 255),     # dark gold
+    "g": (242, 165, 65, 255),    # body — matches --ink-accent
+    "h": (255, 214, 120, 255),   # highlight
+    "s": (255, 245, 200, 255),   # shine
+}
+
+# Face-on → three-quarter → edge-on. Strong luminance so the 16px downscale
+# still reads as a coin, not a gold blob.
+COIN = Item(
+    palette=COIN_PALETTE,
+    frames=[
+        # Edge-on (thin) → three-quarter → face-on. Chunkier than character art
+        # so the 16px downscale still reads as a coin, not a gold speck.
+        [
+            "......oo....",
+            ".....oddo...",
+            "....odggdo..",
+            "....oghhgo..",
+            "....odggdo..",
+            ".....oddo...",
+            "......oo....",
+        ],
+        [
+            ".....oooo...",
+            "....odggdo..",
+            "...odghhgdo.",
+            "...oggssggo.",
+            "...odghhgdo.",
+            "....odggdo..",
+            ".....oooo...",
+        ],
+        [
+            "....oooooo..",
+            "...odggggdo.",
+            "..odghsshgdo",
+            "..oggssssggo",
+            "..odghsshgdo",
+            "...odggggdo.",
+            "....oooooo..",
+        ],
+    ],
+)
+
+ITEMS = {"coin": COIN}
+
+
+def render_cell(palette: Palette, rows: Art, cell: int, scale: int) -> Image.Image:
     img = Image.new("RGBA", (cell, cell), MAGENTA)
     px = img.load()
     art_w = len(rows[0]) * scale
@@ -191,17 +257,28 @@ def render_cell(entity: Entity, rows: Art, cell: int, scale: int) -> Image.Image
         for x, ch in enumerate(row):
             if ch == ".":
                 continue
-            color = entity.palette[ch]
+            color = palette[ch]
             for sy in range(scale):
                 for sx in range(scale):
                     px[ox + x * scale + sx, oy + y * scale + sy] = color
     return img
 
 
+def write_sheet(frames: list[Art], palette: Palette, cell: int, scale: int, path: Path) -> None:
+    sheet = Image.new("RGBA", (cell * 3, cell * 3), MAGENTA)
+    for row in range(3):
+        for col, art in enumerate(frames):
+            sheet.paste(render_cell(palette, art, cell, scale), (col * cell, row * cell))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    sheet.convert("RGB").save(path)
+    print(f"wrote {path} ({sheet.width}x{sheet.height})")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--name", default="player")
-    ap.add_argument("--entity", choices=tuple(ENTITIES), default=None,
+    keys = (*ENTITIES, *ITEMS)
+    ap.add_argument("--entity", choices=keys, default=None,
                     help="art set to draw (defaults to --name)")
     ap.add_argument("--cell", type=int, default=32, help="raw cell size in px")
     ap.add_argument("--scale", type=int, default=2)
@@ -212,24 +289,28 @@ def main() -> None:
     args = ap.parse_args()
 
     key = args.entity or args.name
+    out = Path(args.out_dir) / f"{args.name}.png"
+
+    if key in ITEMS:
+        item = ITEMS[key]
+        write_sheet(item.frames, item.palette, args.cell, args.scale, out)
+        return
+
     if key not in ENTITIES:
         raise SystemExit(
-            f"no art set for '{key}'; pass --entity {'|'.join(ENTITIES)}"
+            f"no art set for '{key}'; pass --entity {'|'.join(keys)}"
         )
     entity = ENTITIES[key]
-
-    cell = args.cell
-    sheet = Image.new("RGBA", (cell * 3, cell * 3), MAGENTA)
+    sheet = Image.new("RGBA", (args.cell * 3, args.cell * 3), MAGENTA)
     for row, view in enumerate(VIEWS):
         for col in range(3):
-            sheet.paste(render_cell(entity, entity.frame(view, col), cell, args.scale),
-                        (col * cell, row * cell))
-
-    out_dir = Path(args.out_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
-    path = out_dir / f"{args.name}.png"
-    sheet.convert("RGB").save(path)
-    print(f"wrote {path} ({sheet.width}x{sheet.height})")
+            sheet.paste(
+                render_cell(entity.palette, entity.frame(view, col), args.cell, args.scale),
+                (col * args.cell, row * args.cell),
+            )
+    out.parent.mkdir(parents=True, exist_ok=True)
+    sheet.convert("RGB").save(out)
+    print(f"wrote {out} ({sheet.width}x{sheet.height})")
 
 
 if __name__ == "__main__":

@@ -14,8 +14,9 @@ import random
 import time
 import uuid
 
-from . import ai, combat, protocol
+from . import ai, coins, combat, protocol
 from .ai import EnemyDirector
+from .coins import Coin
 from .config import (
     DT,
     FIRE_COOLDOWN,
@@ -46,6 +47,7 @@ class Room:
         self.spawn_points = self.world.free_spawn_points(PLAYER_HALF_WIDTH, PLAYER_HALF_HEIGHT)
         self.players: dict[str, Player] = {}
         self.enemies: dict[str, Enemy] = {}
+        self.coins: dict[str, Coin] = {}
         self.sockets: dict[str, object] = {}
         self.director = EnemyDirector(self.spawn_points)
         self.navigator = Navigator(self.world)
@@ -53,8 +55,10 @@ class Room:
         self.shot_events: list[dict] = []
         self.attack_events: list[dict] = []
         self.kill_events: list[dict] = []
+        self.pickup_events: list[dict] = []
         self._shot_id = 0
         self._enemy_id = 0
+        self._coin_id = 0
         self._task: asyncio.Task | None = None
 
     # --- lifecycle ----------------------------------------------------------
@@ -130,6 +134,7 @@ class Room:
     def step(self, dt: float) -> None:
         self.step_players(dt)
         self.step_enemies(dt)
+        self.step_coins(dt)
 
     def step_players(self, dt: float) -> None:
         for player in self.players.values():
@@ -177,6 +182,11 @@ class Room:
 
         for enemy_type, x, y in self.director.update(dt, self.players.values(), len(self.enemies)):
             self.spawn_enemy(enemy_type, x, y)
+
+    def step_coins(self, dt: float) -> None:
+        outcome = coins.step(self.coins, self.players.values(), dt)
+        for pickup in outcome.collected:
+            self.pickup_events.append(pickup.to_payload())
 
     def spawn_enemy(self, enemy_type: EnemyType, x: float, y: float) -> Enemy:
         self._enemy_id += 1
@@ -279,7 +289,7 @@ class Room:
             )
 
     def damage_enemy(self, target: Enemy, amount: int, source: Player | None) -> None:
-        """Hurt an enemy; on death pay its stat block out to the killer."""
+        """Hurt an enemy; on death pay xp and scatter gold as world coins."""
         if not target.alive:
             return
         target.hp -= amount
@@ -294,7 +304,7 @@ class Room:
         if source is not None:
             source.kills += 1
             source.xp += reward.xp
-            source.gold += reward.gold
+        self.drop_coins(target.x, target.y, reward.gold)
         self.kill_events.append(
             {
                 "kind": "enemy",
@@ -306,6 +316,14 @@ class Room:
                 "gold": reward.gold,
             }
         )
+
+    def drop_coins(self, x: float, y: float, count: int) -> None:
+        """Scatter `count` single-value coins from a death point."""
+        total = max(0, count)
+        for i in range(total):
+            self._coin_id += 1
+            coin = coins.spawn_burst(f"c{self._coin_id}", x, y, i, total)
+            self.coins[coin.id] = coin
 
     def respawn(self, player: Player) -> None:
         player.x, player.y = self.pick_spawn()
@@ -324,15 +342,19 @@ class Room:
             return
         players = [p.to_payload() for p in self.players.values()]
         enemies = [e.to_payload() for e in self.enemies.values()]
+        coin_payloads = [c.to_payload() for c in self.coins.values()]
         shots = self.shot_events
         attacks = self.attack_events
         kills = self.kill_events
+        pickups = self.pickup_events
 
         sends = []
         for pid, socket in list(self.sockets.items()):
             player = self.players.get(pid)
             ack = player.last_processed_seq if player else 0
-            payload = protocol.snapshot(self.tick, ack, players, enemies, shots, attacks, kills)
+            payload = protocol.snapshot(
+                self.tick, ack, players, enemies, coin_payloads, shots, attacks, kills, pickups
+            )
             sends.append(self._safe_send(pid, socket, json.dumps(payload)))
         await asyncio.gather(*sends, return_exceptions=True)
 
@@ -353,6 +375,7 @@ class Room:
                 self.shot_events = []
                 self.attack_events = []
                 self.kill_events = []
+                self.pickup_events = []
             delay = next_time - time.perf_counter()
             if delay > 0:
                 await asyncio.sleep(delay)

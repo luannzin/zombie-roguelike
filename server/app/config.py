@@ -125,6 +125,27 @@ XP_BASE = 40                 # xp required for level 2
 XP_GROWTH = 1.4              # each level costs this much more than the last
 MAX_LEVEL = 30
 
+# --- coins (authored in tiles) ----------------------------------------------
+# Enemies drop one world coin per gold point. Magnet: short outward kick, then
+# suck in. Attract bleeds sideways speed so coins cannot orbit forever.
+COIN_MAGNET_TILES = 2.4
+COIN_COLLECT_TILES = 0.4
+COIN_BURST_TILES_PER_SEC = 5.5    # pop off the corpse
+COIN_REPULSE_TILES_PER_SEC = 3.2  # kick away when magnet starts
+COIN_ATTRACT_ACCEL_TILES = 70.0   # px/s² toward the locked player
+COIN_ATTRACT_MAX_TILES_PER_SEC = 16.0
+COIN_REPULSE_DURATION = 0.1       # seconds of outward kick before attract
+COIN_DRAG = 5.5                   # loose / repulse air drag
+# How fast attract kills tangential velocity (higher = less orbit).
+COIN_ORBIT_DAMP = 18.0
+
+COIN_MAGNET_DIST = TILE_SIZE * COIN_MAGNET_TILES
+COIN_COLLECT_DIST = TILE_SIZE * COIN_COLLECT_TILES
+COIN_BURST_SPEED = TILE_SIZE * COIN_BURST_TILES_PER_SEC
+COIN_REPULSE_SPEED = TILE_SIZE * COIN_REPULSE_TILES_PER_SEC
+COIN_ATTRACT_ACCEL = TILE_SIZE * COIN_ATTRACT_ACCEL_TILES
+COIN_ATTRACT_MAX_SPEED = TILE_SIZE * COIN_ATTRACT_MAX_TILES_PER_SEC
+
 # --- combat (authored in tiles) ---------------------------------------------
 SHOT_RANGE_TILES = 8.0
 MUZZLE_OFFSET_TILES = 0.25
@@ -179,4 +200,5 @@ def client_config() -> dict:
         "shotDamage": SHOT_DAMAGE,
         "muzzleOffset": MUZZLE_OFFSET,
         "enemyTypes": enemy_types_payload(),
+        "coinSprite": "coin",
     }

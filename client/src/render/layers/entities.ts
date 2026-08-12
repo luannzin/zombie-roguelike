@@ -17,11 +17,17 @@ import { HUD_GRID, hudFont } from '../../theme/fonts';
 import { hpColor, palette } from '../../theme/palette';
 import type { Projection } from '../projection';
 import { facingFromAim, frameIndex, type SpriteBook } from '../sprites';
-import type { DrawableEntity } from '../types';
+import type { DrawableCoin, DrawableEntity } from '../types';
 import { drawCenteredText } from './effects';
 
 /** Player name label size, in screen px. One step of the font's pixel grid. */
 const NAME_LABEL_PX = HUD_GRID;
+/** Coin bob amplitude in world px — tiny so it still reads as grounded. */
+const COIN_BOB = 0.35;
+/** Draw scale vs the processed 16px frame. */
+const COIN_SCALE = 0.5;
+/** Spin FPS for the coin sheet columns. */
+const COIN_SPIN_FPS = 10;
 
 export interface EntityContext {
   ctx: CanvasRenderingContext2D;
@@ -46,6 +52,68 @@ export function drawShadow(entity: EntityContext, target: DrawableEntity): void 
     Math.PI * 2,
   );
   ctx.fill();
+}
+
+/** Soft ground puddle under each coin — drawn before the sprite. */
+export function drawCoinShadows(entity: EntityContext, coins: DrawableCoin[]): void {
+  const { ctx, view } = entity;
+  ctx.fillStyle = palette().entity.shadow;
+  for (const coin of coins) {
+    ctx.beginPath();
+    ctx.ellipse(
+      view.x(coin.x),
+      view.y(coin.y + 0.75),
+      view.size(0.8),
+      view.size(0.4),
+      0,
+      0,
+      Math.PI * 2,
+    );
+    ctx.fill();
+  }
+}
+
+/**
+ * Spinning gold pickups. Always animate (walk frames as spin), fixed "down"
+ * row of the processed sheet — item art repeats every facing.
+ */
+export function drawCoins(entity: EntityContext, coins: DrawableCoin[], sheetName: string): void {
+  const { ctx, view, book } = entity;
+  const sheet = book.get(sheetName);
+  const image = book.image(sheetName, null);
+  if (!sheet || !image) return;
+
+  const w = sheet.frameWidth * COIN_SCALE;
+  const h = sheet.frameHeight * COIN_SCALE;
+  const row = sheet.rows.down ?? 0;
+
+  for (const coin of coins) {
+    const col = sheet.walkFrameOrder[
+      Math.floor(coin.animTime * COIN_SPIN_FPS) % sheet.walkFrameOrder.length
+    ];
+    const bob = Math.sin(coin.animTime * 7 + hashId(coin.id)) * COIN_BOB;
+    const dx = view.x(coin.x - w / 2);
+    const dy = view.y(coin.y - h + 0.75 + bob);
+    const dw = view.size(w);
+    const dh = view.size(h);
+    ctx.drawImage(
+      image,
+      col * sheet.frameWidth,
+      row * sheet.frameHeight,
+      sheet.frameWidth,
+      sheet.frameHeight,
+      dx,
+      dy,
+      dw,
+      dh,
+    );
+  }
+}
+
+function hashId(id: string): number {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) | 0;
+  return (h & 0xffff) / 0xffff * Math.PI * 2;
 }
 
 export function drawEntity(entity: EntityContext, target: DrawableEntity): void {

@@ -7,6 +7,7 @@
  */
 
 import { Store } from '../lib/store';
+import type { LanternReading } from './lantern';
 import type { ConnectionStatus } from '../net/connection';
 
 /** How often the game republishes HUD state. 5 Hz is plenty for text. */
@@ -44,6 +45,12 @@ export interface HudSnapshot {
   inArena: boolean;
   vitals: HudVitals | null;
   net: HudNetStats | null;
+  /**
+   * Battery + switch. Published at 5 Hz like everything else here, which is
+   * deliberate: the gauge shows CHARGE, and the per-frame blinking belongs to
+   * the light in the world, not to a React re-render.
+   */
+  lantern: LanternReading | null;
 }
 
 export const EMPTY_HUD: HudSnapshot = {
@@ -52,6 +59,7 @@ export const EMPTY_HUD: HudSnapshot = {
   inArena: false,
   vitals: null,
   net: null,
+  lantern: null,
 };
 
 export type HudStore = Store<HudSnapshot>;

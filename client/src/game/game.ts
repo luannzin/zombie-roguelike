@@ -42,6 +42,7 @@ import { Effects } from './effects';
 import { EntityVisuals } from './entity-visuals';
 import { EMPTY_HUD, HUD_INTERVAL, type HudSnapshot, type HudStore } from './hud-store';
 import { InputController } from './input';
+import { Lantern } from './lantern';
 import { SnapshotBuffer, type RenderedEnemy } from './interpolation';
 import { LocalPlayer } from './prediction';
 import { TileMap } from './world';
@@ -117,6 +118,8 @@ export class Game {
   private readonly snapshots = new SnapshotBuffer();
   private readonly visuals = new EntityVisuals();
   private readonly sprites = new SpriteBook();
+  /** The local player's lamp. Remote lanterns are always on — see lantern.ts. */
+  private readonly lantern = new Lantern();
 
   private renderer: Renderer | null = null;
   private resizeObserver: ResizeObserver | null = null;
@@ -151,6 +154,7 @@ export class Game {
     this.hud = options.hud;
     this.connection = new Connection(options.serverUrl);
     this.input = new InputController(options.canvas);
+    this.input.onToggleLantern = () => this.lantern.toggle();
     this.minimap = new Minimap(options.minimapCanvas);
   }
 
@@ -206,6 +210,7 @@ export class Game {
     this.visuals.clear();
     this.effects.clear();
     this.snapshots.clear();
+    this.lantern.reset();
     this.world = null;
     this.fov = null;
     this.local = null;
@@ -228,11 +233,13 @@ export class Game {
       this.visuals.clear();
       this.effects.clear();
       this.snapshots.clear();
+      this.lantern.reset();
       this.patchHud({
         connection: status,
         status: 'disconnected — retrying…',
         inArena: false,
         vitals: null,
+        lantern: null,
       });
       return;
     }
@@ -265,6 +272,9 @@ export class Game {
     this.visuals.clear();
     this.effects.clear();
     this.snapshots.clear();
+    // A new world hands you a fresh battery, switched off: the first thing the
+    // player does in the dark is press F, which is how the mechanic teaches.
+    this.lantern.reset();
     this.time = 0;
     this.localFireCooldown = 0;
     this.accumulator = 0;
@@ -397,6 +407,9 @@ export class Game {
 
     this.effects.update(dt);
     this.visuals.update(dt);
+    // Dying puts the lamp out: no drain while you are down, and you come back
+    // holding a dark lantern.
+    this.lantern.update(dt, this.local?.alive === true);
     this.time += dt;
     this.render(dt);
     this.publishHud(dt);
@@ -579,7 +592,15 @@ export class Game {
     const viewers: Viewer[] = [];
     for (const entity of entities) {
       if (entity.kind !== 'player' || !entity.alive) continue;
-      viewers.push({ id: entity.id, x: entity.x, y: entity.y, ax: entity.ax, ay: entity.ay });
+      viewers.push({
+        id: entity.id,
+        x: entity.x,
+        y: entity.y,
+        ax: entity.ax,
+        ay: entity.ay,
+        // Only the local lamp has a battery this client can see.
+        lantern: entity.isLocal ? this.lantern.output : 1,
+      });
     }
 
     fov.update(
@@ -762,6 +783,7 @@ export class Game {
               gold: meta.gold,
             }
           : null,
+      lantern: local ? this.lantern.reading() : null,
       net: {
         players: this.snapshots.latest?.players.size ?? 0,
         enemies: this.snapshots.latest?.enemies.size ?? 0,

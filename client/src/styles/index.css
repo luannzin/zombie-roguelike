@@ -126,6 +126,8 @@
   /* HUD chrome */
   --hud-text-shadow: #000;
   --meter-shade: rgb(0 0 0 / 0.35);
+  /* One dark line every third pixel row across the HUD panels. */
+  --hud-scanline: rgb(0 0 0 / 0.28);
 
   /*
    * The HUD type stack, shared with the canvas via `theme/fonts.ts` so labels
@@ -212,6 +214,14 @@
 
   /* coss uses --font-mono for code/kbd/pre; keep the game on one face. */
   --font-mono: var(--font-hud);
+
+  /*
+   * A lamp on its last cell. The world's light is already dropping out (see
+   * game/lantern.ts) — this is the HUD reading of the same fault, so the timings
+   * are irregular for the same reason: an evenly spaced blink reads as a UI
+   * animation, and this has to read as a failure.
+   */
+  --animate-lantern-fail: lantern-fail 1.7s linear infinite;
 
   --animate-skeleton: skeleton 2s -1s infinite linear;
 
@@ -324,6 +334,17 @@
   --radius-3xl: calc(var(--radius) * 2.2);
 
   --radius-4xl: calc(var(--radius) * 2.6);
+  @keyframes lantern-fail {
+  0%, 5%, 9%, 43%, 47%, 71%, 100% {
+    opacity: 1;
+    }
+  7%, 45% {
+    opacity: 0.32;
+    }
+  69% {
+    opacity: 0.5;
+    }
+  }
   @keyframes skeleton {
   to {
     background-position: -200% 0;
@@ -443,6 +464,40 @@
 
 @utility pixelated {
   image-rendering: pixelated;
+}
+
+/*
+ * The HUD's glass — one filtered box holding every overlay. See
+ * `components/hud/HudScreen.tsx` for the filter itself.
+ *
+ * `filter` makes this the containing block for the `position: fixed` layers
+ * inside it, which is harmless only because the box IS the viewport. Do not
+ * give it an inset.
+ */
+@utility hud-screen {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+}
+
+/* Filter definitions have to be in the document to be referenced, but must
+   take up none of it. */
+@utility hud-fx-defs {
+  position: fixed;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+/* Scanlines, for anything that is meant to read as a display panel. Pairs with
+   a background COLOUR utility — this only paints the lines over it. */
+@utility crt-scanlines {
+  background-image: repeating-linear-gradient(
+    to bottom,
+    var(--hud-scanline) 0 1px,
+    transparent 1px 3px
+  );
 }
 
 /* Every HUD overlay is decoration: it must never eat a click meant for the

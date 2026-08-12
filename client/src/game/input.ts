@@ -17,11 +17,21 @@ const KEY_MAP: Record<string, keyof MovementInput> = {
   ArrowRight: 'right',
 };
 
+/** Toggles the lantern. Physical key, so it lands on F under any layout. */
+const LANTERN_KEY = 'KeyF';
+
 export class InputController {
   readonly movement: MovementInput = { up: false, down: false, left: false, right: false };
   shooting = false;
   mouseX = 0;
   mouseY = 0;
+
+  /**
+   * Fired once per press of the lantern key — an EDGE, not a held state, so it
+   * never reaches an input packet. Auto-repeat is filtered out: holding F must
+   * not strobe the lamp thirty times a second.
+   */
+  onToggleLantern: (() => void) | null = null;
 
   constructor(private readonly canvas: HTMLCanvasElement) {
     window.addEventListener('keydown', this.onKeyDown);
@@ -57,6 +67,11 @@ export class InputController {
     const key = KEY_MAP[e.code];
     if (key) {
       this.movement[key] = true;
+      e.preventDefault();
+      return;
+    }
+    if (e.code === LANTERN_KEY && !e.repeat) {
+      this.onToggleLantern?.();
       e.preventDefault();
     }
   };

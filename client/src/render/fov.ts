@@ -13,6 +13,15 @@
  *   beam      a cone along your aim, reaching much further
  *   spill     a wide, weak, short halo around the beam
  *
+ * Two fields come out of this, not one. `light` is VISIBILITY and saturates at
+ * 1 — once a tile is fully visible it cannot become more visible. `heat` is
+ * WARMTH, and it keeps climbing past 1 as you approach the lamp. That split is
+ * what makes the ground under your feet read as *bright* rather than merely
+ * legible: the darkness layer converts heat into additive amber, so the hearth
+ * around the player glows while the far end of the beam stays a pale wash.
+ * Heat is also what the lantern's battery dims — with the lamp off you still
+ * see by ambient light, but it is cold.
+ *
  * The spill is what stops the lantern reading as a graphics primitive. A hard
  * cone with nothing around it looks like a stencil; real light leaks sideways
  * off whatever the beam is hitting, so a dim wash around the beam is the single
@@ -42,7 +51,7 @@
  * no staleness to reason about.
  */
 
-import { expDamp } from '../lib/math';
+import { clamp01, expDamp } from '../lib/math';
 import type { TileMap } from '../game/world';
 
 /** Anything a light can be attached to. Aim must be normalized. */
@@ -53,6 +62,13 @@ export interface Viewer {
   y: number;
   ax: number;
   ay: number;
+  /**
+   * 0..1 lantern output — the battery, the blink and the switch, collapsed into
+   * one number (see `game/lantern.ts`). 0 leaves this viewer with nothing but
+   * the cold ambient glow; remote players, whose switch this client cannot see,
+   * pass 1.
+   */
+  lantern: number;
 }
 
 export interface VisionConfig {
@@ -64,7 +80,28 @@ export interface VisionConfig {
 /** Light at or above this counts as "seen" and is committed to memory. */
 const EXPLORE_THRESHOLD = 0.12;
 /** Fraction of the ambient radius that stays at full brightness. */
-const AMBIENT_CORE = 0.45;
+const AMBIENT_CORE = 0.55;
+/** How much of the ambient glow survives with the lantern switched off. */
+const AMBIENT_DARK = 0.7;
+/** Beam reach with a dying battery, as a fraction of its reach at full output. */
+const BEAM_FLOOR = 0.55;
+
+/**
+ * Warmth constants. `heat` = light x warmth x (base + near-field bonus), so a
+ * tile's amber is the product of "can I see it", "is the lamp on" and "how
+ * close is it".
+ */
+/** Warmth of ambient light with the lantern off — moon, not flame. */
+const HEAT_COLD = 0.25;
+/** Warmth every lit tile gets regardless of range. */
+const HEAT_BASE = 0.62;
+/** Extra warmth at the centre of the hearth, on top of HEAT_BASE. */
+const HEAT_NEAR = 1.15;
+/** The hearth — the pool of spilled light around the lamp itself. */
+const HEARTH_SPAN = 1.45;
+const HEARTH_BEAM = 0.38;
+/** Fraction of the hearth that stays at full warmth. */
+const HEARTH_CORE = 0.12;
 /** Fraction of the lantern reach that stays at full brightness. */
 const LANTERN_CORE = 0.3;
 /** How much of the cone's half-angle is spent softening its edge. */
@@ -95,6 +132,8 @@ export class FovField {
   readonly height: number;
   /** 0..1 current light per tile. Rebuilt every update. */
   readonly light: Float32Array;
+  /** Warmth per tile, 0..~1.8. Unbounded on purpose — see the header. */
+  readonly heat: Float32Array;
   /** 1 once anyone has ever seen this tile. Never cleared. */
   readonly explored: Uint8Array;
 
@@ -105,6 +144,7 @@ export class FovField {
     this.width = width;
     this.height = height;
     this.light = new Float32Array(width * height);
+    this.heat = new Float32Array(width * height);
     this.explored = new Uint8Array(width * height);
   }
 
@@ -127,6 +167,7 @@ export class FovField {
     dt: number,
   ): void {
     this.light.fill(0);
+    this.heat.fill(0);
     this.pruneLag(viewers);
 
     const ts = world.tileSize;
@@ -144,10 +185,22 @@ export class FovField {
       const seed = hashId(viewer.id);
       const flicker =
         Math.sin(time * 2.7 + seed) * 0.6 + Math.sin(time * 6.1 + seed * 2.3) * 0.4;
-      const beamReach = config.lanternTiles * (1 + flicker * FLICKER_REACH);
-      const beamGain = LANTERN_GAIN * (1 + flicker * FLICKER_GAIN);
+      // A dying lantern throws a shorter, weaker cone; a dead one throws none
+      // at all, and the beam maths is skipped rather than multiplied by zero.
+      const power = clamp01(viewer.lantern);
+      const beamReach =
+        power > 0
+          ? config.lanternTiles *
+            (1 + flicker * FLICKER_REACH) *
+            (BEAM_FLOOR + (1 - BEAM_FLOOR) * power)
+          : 0;
+      const beamGain = LANTERN_GAIN * (1 + flicker * FLICKER_GAIN) * power;
       const spillReach = beamReach * SPILL_REACH;
-      const outer = Math.max(config.ambientTiles, beamReach);
+      // Your eyes still work in the dark; the lantern only widens the pool.
+      const ambientTiles = config.ambientTiles * (AMBIENT_DARK + (1 - AMBIENT_DARK) * power);
+      const hearth = Math.max(ambientTiles * HEARTH_SPAN, beamReach * HEARTH_BEAM);
+      const warmth = HEAT_COLD + power * (1 - HEAT_COLD);
+      const outer = Math.max(ambientTiles, beamReach);
       const radius = Math.ceil(outer);
 
       const ox = viewer.x / ts;
@@ -167,10 +220,10 @@ export class FovField {
         if (dist <= 1e-4) {
           value = 1;
         } else {
-          value = falloff(dist, config.ambientTiles, AMBIENT_CORE);
+          value = falloff(dist, ambientTiles, AMBIENT_CORE);
           const alignment = (dx * aim.ax + dy * aim.ay) / dist;
 
-          if (alignment > cosSpill) {
+          if (beamGain > 0 && alignment > cosSpill) {
             // Angle around the beam, used to ripple its reach. Cheap harmonics
             // beat noise here: they are continuous, so the edge undulates
             // instead of shimmering frame to frame.
@@ -195,6 +248,12 @@ export class FovField {
 
         const index = ty * this.width + tx;
         if (value > this.light[index]) this.light[index] = value;
+
+        // Warmth. `light` has already saturated at 1 by the time you are a
+        // couple of tiles from the lamp, so without this second term walking
+        // right up to something would not make it any brighter.
+        const heat = value * warmth * (HEAT_BASE + falloff(dist, hearth, HEARTH_CORE) * HEAT_NEAR);
+        if (heat > this.heat[index]) this.heat[index] = heat;
       };
 
       shine(cx, cy);
@@ -211,6 +270,7 @@ export class FovField {
   /** Forget everything. Called on a new map. */
   clear(): void {
     this.light.fill(0);
+    this.heat.fill(0);
     this.explored.fill(0);
     this.lag.clear();
   }

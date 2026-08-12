@@ -12,8 +12,15 @@
  *   night   a cold wash whose alpha is the INVERSE of the light. Unseen ground
  *           is dimmed, never blacked out: you can still read the shape of the
  *           map, it is just drained and cold.
- *   warm    an additive amber pass over lit tiles, so the lantern reads as a
- *           light source rather than as a hole in the dark.
+ *   warm    an additive amber pass driven by the fov's HEAT, so the lantern
+ *           reads as a light source rather than as a hole in the dark.
+ *
+ * The warm pass is deliberately not a copy of the night pass. Night uses
+ * `light`, which saturates: everything within a couple of tiles is equally
+ * visible. Warm uses `heat`, which does not, so the ground the player is
+ * standing on glows hot while the far end of the same beam is a pale wash —
+ * that difference is the whole reason the lantern reads as a lamp being
+ * carried rather than as a flashlight texture pasted on the floor.
  *
  * Explored-but-unlit tiles sit between the two: remembered, colourless, and
  * empty of anything that has moved since you left.
@@ -35,8 +42,11 @@ import type { FovField } from '../fov';
 const UNSEEN_ALPHA = 0.9;
 /** Darkness over ground the team has seen before but cannot see now. */
 const FOG_ALPHA = 0.66;
-/** Strength of the additive warm light in the brightest part of the beam. */
-const WARM_STRENGTH = 0.22;
+/**
+ * Amber per unit of heat. Heat runs past 1 close to the lamp, so this is the
+ * slope of the warm pass and not its ceiling — the alpha is clamped instead.
+ */
+const WARM_GAIN = 0.31;
 
 /**
  * `#rgb` / `#rrggbb` -> `rgb(r g b / a)`. Gradient stops need per-stop alpha,
@@ -126,7 +136,7 @@ export class DarknessLayer {
       warmPixels[offset] = warmR;
       warmPixels[offset + 1] = warmG;
       warmPixels[offset + 2] = warmB;
-      warmPixels[offset + 3] = Math.round(lit * WARM_STRENGTH * 255);
+      warmPixels[offset + 3] = Math.min(255, Math.round(fov.heat[i] * WARM_GAIN * 255));
     }
 
     night.putImageData(this.nightData, 0, 0);

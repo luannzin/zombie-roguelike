@@ -10,7 +10,8 @@ Output (assets/processed/terrain/):
     ground.png    64x64 — a 4x4 grid of 16px floor tiles
     rock.png      5 frames, 16x20   solid blocker
     tree.png      4 frames, 24x40   solid blocker, overhangs its tile
-    grass.png     6 frames, 10x10   decoration, non-solid
+    grass.png     6 frames, 10x10   decoration, non-solid, sways
+    fern.png      5 frames, 20x18   FOREGROUND decoration, drawn over characters
     manifest.json
 
 Two shapes of asset, because the world has two kinds of thing in it:
@@ -82,6 +83,10 @@ LEAF: Ramp = [rgb(c) for c in ("#1a2618", "#22321f", "#2b3f26", "#354d2d", "#425
 TREE_OUTLINE = rgb("#10160f")
 
 BLADE: Ramp = [rgb(c) for c in ("#26331f", "#324428", "#3f5632", "#4d693d")]
+# Ferns are FOREGROUND: they draw over the player, so they are deliberately
+# darker and cooler than the grass underfoot. A bright silhouette in front of
+# the character would read as an obstruction; a dark one reads as depth.
+FROND: Ramp = [rgb(c) for c in ("#0b100b", "#131c12", "#1d2b1b", "#2a3f28")]
 
 TRANSPARENT: RGBA = (0, 0, 0, 0)
 
@@ -320,6 +325,45 @@ def make_tree(width: int, height: int, tile: int, rng: random.Random) -> Image.I
     return img
 
 
+def make_fern(width: int, height: int, rng: random.Random) -> Image.Image:
+    """A low bush of arcing fronds. Drawn IN FRONT of characters.
+
+    This is the depth trick: a handful of these scattered over open ground means
+    the player walks behind foliage instead of across a flat plane, and it costs
+    one sprite plus a draw pass. Kept sparse and dark so it never fights the
+    character for attention.
+    """
+    img = Image.new("RGBA", (width, height), TRANSPARENT)
+    px = img.load()
+
+    root_x = width / 2.0
+    for _ in range(rng.randint(11, 15)):
+        # Fronds fan out from a common base, arcing over as they rise.
+        angle = rng.uniform(-1.2, 1.2)
+        length = rng.uniform(height * 0.6, height * 1.1)
+        arc = rng.uniform(0.4, 1.1) * (1 if angle >= 0 else -1)
+        x = root_x + rng.uniform(-2.0, 2.0)
+        y = float(height - 1)
+        for step in range(int(length)):
+            t = step / max(length - 1, 1)
+            # Straighten near the root, curl over near the tip.
+            bend = angle + arc * t * t
+            x += math.sin(bend) * 0.9
+            y -= math.cos(bend) * 0.9
+            ix, iy = int(round(x)), int(round(y))
+            if not (0 <= ix < width and 0 <= iy < height):
+                break
+            # Only the tips catch any light; the mass stays near-black so the
+            # bush reads as a silhouette against lit ground.
+            px[ix, iy] = pick(FROND, t * t * 0.95, ix, iy)
+            # Thicken toward the root so it has a body, not just strands.
+            thickness = 2 if t < 0.35 else 1
+            for offset in range(1, thickness + 1):
+                if ix + offset < width:
+                    px[ix + offset, iy] = pick(FROND, t * t * 0.7, ix + offset, iy)
+    return img
+
+
 def make_grass(width: int, height: int, rng: random.Random) -> Image.Image:
     """A tuft of blades rising from the bottom edge. Decoration only."""
     img = Image.new("RGBA", (width, height), TRANSPARENT)
@@ -378,6 +422,11 @@ def build(args) -> Path:
     grasses = [make_grass(grass_w, grass_h, rng) for _ in range(6)]
     pack(grasses, grass_w, grass_h).save(out_dir / "grass.png")
 
+    fern_w, fern_h = round(tile * 1.25), round(tile * 1.125)
+    rng = random.Random(args.seed + 404)
+    ferns = [make_fern(fern_w, fern_h, rng) for _ in range(5)]
+    pack(ferns, fern_w, fern_h).save(out_dir / "fern.png")
+
     manifest = {
         "tile": tile,
         "seed": args.seed,
@@ -412,6 +461,15 @@ def build(args) -> Path:
                 "frames": len(grasses),
                 "solid": False,
             },
+            "fern": {
+                "file": "fern.png",
+                "frameWidth": fern_w,
+                "frameHeight": fern_h,
+                "frames": len(ferns),
+                "solid": False,
+                # Drawn after characters, so the player passes behind it.
+                "foreground": True,
+            },
         },
     }
     (out_dir / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
@@ -421,7 +479,8 @@ def build(args) -> Path:
         f"({GROUND_TILES}x{GROUND_TILES} tiles), "
         f"rock {len(rocks)}x{rock_w}x{rock_h}, "
         f"tree {len(trees)}x{tree_w}x{tree_h}, "
-        f"grass {len(grasses)}x{grass_w}x{grass_h}"
+        f"grass {len(grasses)}x{grass_w}x{grass_h}, "
+        f"fern {len(ferns)}x{fern_w}x{fern_h}"
     )
     return out_dir
 

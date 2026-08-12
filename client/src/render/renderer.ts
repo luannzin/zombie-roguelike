@@ -19,6 +19,7 @@ import {
   drawShadow,
   type EntityContext,
 } from './layers/entities';
+import { AtmosphereLayer } from './layers/atmosphere';
 import { DarknessLayer } from './layers/darkness';
 import { TerrainLayer } from './layers/terrain';
 import { drawVignette } from './layers/vignette';
@@ -34,6 +35,7 @@ export class Renderer {
   private readonly ctx: CanvasRenderingContext2D;
   private readonly terrain = new TerrainLayer();
   private readonly darkness = new DarknessLayer();
+  private readonly atmosphere = new AtmosphereLayer();
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
@@ -60,6 +62,7 @@ export class Renderer {
   dispose(): void {
     this.terrain.reset();
     this.darkness.reset();
+    this.atmosphere.reset();
     this.book.clearTints();
   }
 
@@ -75,9 +78,9 @@ export class Renderer {
 
     this.clear();
 
-    // World space: map, then dust under everything.
+    // World space: floor, swaying undergrowth, props, then footstep dust.
     this.useWorldSpace(view.zoom, view.offsetX, view.offsetY);
-    this.terrain.draw(ctx, state.world, state.camera);
+    this.terrain.ground(ctx, state.world, state.camera, state.time);
     drawDust(ctx, state.effects);
 
     // Screen space: coins under characters, then entities depth-sorted.
@@ -88,14 +91,20 @@ export class Renderer {
     for (const target of ordered) drawShadow(entity, target);
     for (const target of ordered) drawEntity(entity, target);
 
-    // World space: foliage closes over anyone standing behind a tree, then the
-    // darkness dims whatever the team cannot see. Combat effects come AFTER the
-    // darkness on purpose — a muzzle flash is a light source, not a thing being
-    // lit, so it stays bright in an unlit corner.
+    // World space again, and the order here IS the atmosphere:
+    //   overgrowth  canopies and ferns close over whoever is standing behind
+    //               them, which is where a flat 2D scene gains depth
+    //   atmosphere  motes go under the darkness so they only show up where
+    //               there is light to catch them
+    //   darkness    dims everything the team cannot see
+    //   effects     tracers, slashes and event lights go OVER the darkness: a
+    //               muzzle flash is a light source, not a thing being lit
     this.useWorldSpace(view.zoom, view.offsetX, view.offsetY);
-    this.terrain.drawCanopies(ctx, state.world, state.camera);
+    this.terrain.overgrowth(ctx, state.world, state.camera, state.time);
+    this.atmosphere.draw(ctx, state.camera, state.dt);
     if (state.fov) this.darkness.draw(ctx, state.world, state.fov);
     drawCombatEffects(ctx, state.effects, state.config.tileSize);
+    this.darkness.drawLights(ctx, state.effects.lights);
 
     // Screen space: labels, numbers, then the full-screen vignette.
     this.useScreenSpace();

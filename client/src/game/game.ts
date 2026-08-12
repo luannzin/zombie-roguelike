@@ -15,6 +15,7 @@
  * (StrictMode, HMR, switching rooms) cannot leave a second loop running.
  */
 
+import { clamp01 } from '../lib/math';
 import { Connection, type ConnectionStatus } from '../net/connection';
 import type {
   AttackEvent,
@@ -73,6 +74,9 @@ const VISION_FALLBACK: VisionConfig = {
   lanternTiles: 11,
   coneDegrees: 75,
 };
+/** Below this much light an enemy is invisible; above the second it is solid. */
+const ENEMY_HIDE_LIGHT = 0.1;
+const ENEMY_SHOW_LIGHT = 0.26;
 
 /**
  * Everything `toDrawablePlayer` needs, in the shape both a snapshot-interpolated
@@ -543,7 +547,8 @@ export class Game {
     // disconnected, an enemy that died — is now unreferenced and gets dropped.
     this.visuals.prune();
 
-    this.updateVision(entities);
+    this.updateVision(entities, dt);
+    this.applyVisibility(entities);
 
     this.renderer.draw({
       world: this.world,
@@ -555,6 +560,7 @@ export class Game {
       fov: this.fov,
       danger: this.dangerLevel(),
       time: this.time,
+      dt,
     });
     this.minimap.draw(toMinimap(entities), this.localId, this.fov);
   }
@@ -564,7 +570,7 @@ export class Game {
    * ones included, which is what makes vision shared: their light lands in the
    * same field as yours and the renderer never has to know whose it was.
    */
-  private updateVision(entities: DrawableEntity[]): void {
+  private updateVision(entities: DrawableEntity[], dt: number): void {
     const fov = this.fov;
     const world = this.world;
     const config = this.config;
@@ -573,14 +579,42 @@ export class Game {
     const viewers: Viewer[] = [];
     for (const entity of entities) {
       if (entity.kind !== 'player' || !entity.alive) continue;
-      viewers.push({ x: entity.x, y: entity.y, ax: entity.ax, ay: entity.ay });
+      viewers.push({ id: entity.id, x: entity.x, y: entity.y, ax: entity.ax, ay: entity.ay });
     }
 
-    fov.update(world, viewers, {
-      ambientTiles: config.visionAmbientTiles ?? VISION_FALLBACK.ambientTiles,
-      lanternTiles: config.visionLanternTiles ?? VISION_FALLBACK.lanternTiles,
-      coneDegrees: config.visionConeDegrees ?? VISION_FALLBACK.coneDegrees,
-    });
+    fov.update(
+      world,
+      viewers,
+      {
+        ambientTiles: config.visionAmbientTiles ?? VISION_FALLBACK.ambientTiles,
+        lanternTiles: config.visionLanternTiles ?? VISION_FALLBACK.lanternTiles,
+        coneDegrees: config.visionConeDegrees ?? VISION_FALLBACK.coneDegrees,
+      },
+      this.time,
+      dt,
+    );
+  }
+
+  /**
+   * Hide enemies the team has no light on.
+   *
+   * Runs after `updateVision` because it reads the light that pass just wrote.
+   * The threshold has a soft band rather than a hard cut: a zombie crossing the
+   * edge of the beam fades in over a few frames instead of blinking into
+   * existence, which is the difference between "something stepped into my
+   * light" and "a sprite was toggled".
+   */
+  private applyVisibility(entities: DrawableEntity[]): void {
+    const fov = this.fov;
+    const world = this.world;
+    if (!fov || !world) return;
+    const ts = world.tileSize;
+
+    for (const entity of entities) {
+      if (entity.kind === 'player') continue;
+      const lit = fov.lightAt(Math.floor(entity.x / ts), Math.floor(entity.y / ts));
+      entity.visibility = clamp01((lit - ENEMY_HIDE_LIGHT) / (ENEMY_SHOW_LIGHT - ENEMY_HIDE_LIGHT));
+    }
   }
 
   /** Build one renderable player and advance its per-entity visual state. */
@@ -618,6 +652,8 @@ export class Game {
       moving,
       animTime: this.visuals.advanceAnim(id, moving, dt),
       isLocal: source.isLocal,
+      // Teammates are never hidden by the dark; only enemies are.
+      visibility: 1,
       hitFlash: this.visuals.hitFlashAmount(id),
       recoilX: recoil.x,
       recoilY: recoil.y,
@@ -667,6 +703,8 @@ export class Game {
       moving,
       animTime: this.visuals.advanceAnim(id, moving, dt),
       isLocal: false,
+      // Overwritten by applyVisibility once the light field is current.
+      visibility: 0,
       hitFlash: this.visuals.hitFlashAmount(id),
       recoilX: recoil.x,
       recoilY: recoil.y,

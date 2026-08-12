@@ -37,9 +37,10 @@ export interface EntityContext {
 }
 
 export function drawShadow(entity: EntityContext, target: DrawableEntity): void {
-  if (!target.alive) return;
+  if (!target.alive || target.visibility <= 0.01) return;
   const { ctx, view } = entity;
 
+  ctx.globalAlpha = target.visibility;
   ctx.fillStyle = palette().entity.shadow;
   ctx.beginPath();
   ctx.ellipse(
@@ -52,6 +53,7 @@ export function drawShadow(entity: EntityContext, target: DrawableEntity): void 
     Math.PI * 2,
   );
   ctx.fill();
+  ctx.globalAlpha = 1;
 }
 
 /** Soft ground puddle under each coin — drawn before the sprite. */
@@ -117,7 +119,8 @@ function hashId(id: string): number {
 }
 
 export function drawEntity(entity: EntityContext, target: DrawableEntity): void {
-  if (!target.alive) return;
+  // Unlit enemies are not drawn at all — see DrawableEntity.visibility.
+  if (!target.alive || target.visibility <= 0.01) return;
   const { ctx, view, book } = entity;
 
   const sheet = book.get(target.sheet);
@@ -140,14 +143,15 @@ export function drawEntity(entity: EntityContext, target: DrawableEntity): void 
   const dw = view.size(w);
   const dh = view.size(h);
 
+  ctx.globalAlpha = target.visibility;
   ctx.drawImage(image, col * w, row * h, w, h, dx, dy, dw, dh);
 
   if (target.hitFlash > 0) {
     ctx.globalCompositeOperation = 'lighter';
-    ctx.globalAlpha = Math.min(1, target.hitFlash * 0.95);
+    ctx.globalAlpha = Math.min(1, target.hitFlash * 0.95) * target.visibility;
     ctx.drawImage(image, col * w, row * h, w, h, dx, dy, dw, dh);
     ctx.globalCompositeOperation = 'source-over';
-    ctx.globalAlpha = 1;
+    ctx.globalAlpha = target.visibility;
   }
 
   if (target.kind === 'player') {
@@ -156,6 +160,7 @@ export function drawEntity(entity: EntityContext, target: DrawableEntity): void 
   } else if (target.hp < target.maxHp) {
     drawHealthBar(entity, target, view.rawX(px), spriteTop);
   }
+  ctx.globalAlpha = 1;
 }
 
 function drawAimIndicator(

@@ -41,6 +41,16 @@ export interface DrawableEntity {
   isLocal: boolean;
   /** 0..1 white flash intensity after taking a hit. */
   hitFlash: number;
+  /**
+   * 0..1 how much of this entity is drawn at all.
+   *
+   * Enemies standing where the team has no light are 0 — genuinely not on
+   * screen, not merely dimmed. Dimming leaves a readable silhouette, which
+   * turns the darkness into a slight handicap instead of a real unknown, and
+   * the whole point of the lantern is that something can be out there.
+   * Teammates are always 1: you are never hunting your own party.
+   */
+  visibility: number;
   /** Visual kick (world px). Recoil for players, attack lunge for enemies. */
   recoilX: number;
   recoilY: number;
@@ -72,6 +82,8 @@ export interface RenderState {
   fov: FovField | null;
   /** 0..1 local low-HP danger for screen vignette (0 = healthy). */
   danger: number;
-  /** Elapsed seconds — drives heartbeat pulse. */
+  /** Elapsed seconds — drives the heartbeat pulse, sway, flicker and drift. */
   time: number;
+  /** Seconds since the previous frame — for effects that integrate motion. */
+  dt: number;
 }

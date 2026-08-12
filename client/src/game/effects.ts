@@ -52,6 +52,26 @@ export interface Slash {
   life: number;
 }
 
+/**
+ * A short-lived light in the world: muzzle flash, death pop, coin glint.
+ *
+ * These are the reason the scene feels reactive rather than lit. A gunshot in a
+ * dark forest should briefly light the forest — the flash is not a sprite drawn
+ * near the barrel, it is a light source that the ground around it responds to,
+ * and it decays over a few frames.
+ */
+export interface PointLight {
+  x: number;
+  y: number;
+  /** World px at which the light has fallen to nothing. */
+  radius: number;
+  /** Peak brightness, 0..1. */
+  strength: number;
+  color: string;
+  age: number;
+  life: number;
+}
+
 /** Damage numbers and pickup/reward text share one rising-float list. */
 export type FloatTone = 'damage' | 'reward' | 'gold';
 
@@ -82,6 +102,19 @@ export class Effects {
   dust: Particle[] = [];
   slashes: Slash[] = [];
   textFloats: TextFloat[] = [];
+  /** Transient world lights — see PointLight. */
+  lights: PointLight[] = [];
+
+  spawnLight(
+    x: number,
+    y: number,
+    radius: number,
+    strength: number,
+    color: string,
+    life: number,
+  ): void {
+    this.lights.push({ x, y, radius, strength, color, age: 0, life });
+  }
 
   spawnShot(
     x: number,
@@ -93,12 +126,17 @@ export class Effects {
     hit: boolean,
     damage?: number,
   ): void {
+    const fx = palette().effects;
     this.tracers.push({ x, y, dx, dy, dist, color, age: 0, life: 0.09 });
     this.flashes.push({ x, y, dx, dy, age: 0, life: 0.06 });
+    // The muzzle throws light, not just a sprite: brief, warm, and wide enough
+    // that a shot in the dark shows you the ground you are standing on.
+    this.spawnLight(x, y, 74, 0.85, fx.muzzleFlash, 0.09);
 
     const ix = x + dx * dist;
     const iy = y + dy * dist;
     this.spawnImpact(ix, iy, dx, dy, hit);
+    if (hit) this.spawnLight(ix, iy, 30, 0.5, fx.hitCore, 0.08);
 
     if (hit && damage !== undefined && damage > 0) {
       this.spawnDamage(ix, iy, damage);
@@ -238,6 +276,7 @@ export class Effects {
       });
     }
     this.spawnDust(x, y, 0, 1, 1);
+    this.spawnLight(x, y, 46, 0.55, fx.hitCore, 0.16);
   }
 
   spawnDamage(x: number, y: number, value: number): void {
@@ -278,6 +317,7 @@ export class Effects {
       age: 0,
       life: 0.08,
     });
+    this.spawnLight(x, y, 34, 0.42, fx.goldCore, 0.14);
   }
 
   private pushFloat(x: number, y: number, text: string, tone: FloatTone, life: number): void {
@@ -295,6 +335,7 @@ export class Effects {
     this.tracers = advance(this.tracers, dt);
     this.flashes = advance(this.flashes, dt);
     this.slashes = advance(this.slashes, dt);
+    this.lights = advance(this.lights, dt);
     this.particles = stepParticles(this.particles, dt, PARTICLE_DRAG);
     this.dust = stepParticles(this.dust, dt, DUST_DRAG);
     this.textFloats = advance(this.textFloats, dt, (d) => {
@@ -310,6 +351,7 @@ export class Effects {
     this.particles.length = 0;
     this.dust.length = 0;
     this.textFloats.length = 0;
+    this.lights.length = 0;
   }
 }
 

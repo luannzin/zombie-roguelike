@@ -1,20 +1,23 @@
 /**
- * Terrain layer: the forest floor and everything rooted in it.
+ * Terrain layer: the forest floor, what is rooted in it, and what moves.
  *
- * The map is baked once into an offscreen canvas, so a frame costs one blit
- * instead of thousands of draw calls. Very large maps fall back to painting
- * only the visible window each frame.
+ * Split into THREE passes because the world is stacked in three parts and the
+ * player stands in the middle of it:
  *
- * Bake order matters and mirrors how the world is actually stacked:
- *   1. ground   every tile, from the seamless atlas
- *   2. grass    hashed tufts on floor tiles — decoration, never solid
- *   3. props    rocks and trees, row by row, each with a contact shadow
+ *   ground()      floor + rocks + tree trunks. Static, so it bakes into two
+ *                 offscreen canvases and costs two blits a frame.
+ *   undergrowth() grass tufts. Drawn live because they SWAY, which is the
+ *                 cheapest thing that stops a forest looking like a photograph.
+ *   overgrowth()  tree canopies and ferns, drawn AFTER characters, so you walk
+ *                 under foliage and behind bushes instead of over a flat plane.
  *
- * Tree canopies are baked too, but they are ALSO redrawn per frame by
- * `drawCanopies`, after the entity pass. Redrawing opaque pixels over
- * themselves is a no-op where nothing moved, and where a player is standing
- * north of a trunk it puts them under the foliage — which is the whole reason
- * a top-down forest reads as a forest and not as a field of lollipops.
+ * The bake is two canvases, not one, precisely so the swaying grass can sit
+ * between them: ground underneath, grass on top of it, props on top of that.
+ * Merging them would force the grass either under the ground or over the rocks.
+ *
+ * Sway is per-plant, never global. Every tuft gets its own phase and speed from
+ * the tile hash; a forest where every blade leans the same way at the same
+ * moment reads as a screen filter, not as wind.
  */
 
 import { FLOOR, ROCK, TREE, type TileMap } from '../../game/world';
@@ -30,6 +33,15 @@ const MAX_CACHED_MAP_PIXELS = 4096 * 4096;
 const GRASS_CHANCE = 0.34;
 /** Second tuft on a tile that already has one. */
 const GRASS_DOUBLE_CHANCE = 0.4;
+/** Share of floor tiles that get a foreground bush. Deliberately rare. */
+const FERN_CHANCE = 0.045;
+
+/** Peak horizontal lean of a swaying plant, in world px. */
+const SWAY_GRASS = 0.9;
+const SWAY_FERN = 1.4;
+/** Radians/second of the sway oscillation, before per-plant variation. */
+const SWAY_RATE = 1.5;
+
 /** Contact shadow under a prop, as a fraction of the tile. */
 const SHADOW_WIDTH = 0.78;
 const SHADOW_HEIGHT = 0.24;
@@ -37,7 +49,8 @@ const SHADOW_ALPHA = 0.3;
 
 export class TerrainLayer {
   private atlas: TerrainAtlas | null = null;
-  private cache: HTMLCanvasElement | null = null;
+  private groundCache: HTMLCanvasElement | null = null;
+  private propCache: HTMLCanvasElement | null = null;
   private cachedFor: TileMap | null = null;
 
   /** Swap in the loaded atlas (or null to keep the flat fallback). */
@@ -46,22 +59,25 @@ export class TerrainLayer {
     this.reset();
   }
 
-  /** Caller must have applied the world-space transform. */
-  draw(ctx: CanvasRenderingContext2D, world: TileMap, camera: Camera): void {
+  /**
+   * Floor and everything standing in it. Two blits when cached.
+   * Caller must have applied the world-space transform.
+   */
+  ground(ctx: CanvasRenderingContext2D, world: TileMap, camera: Camera, time: number): void {
     if (this.cachedFor !== world) this.rebuild(world);
+    const window = visibleTiles(world, camera);
 
-    if (this.cache) {
-      const sx = Math.max(0, Math.floor(camera.renderX));
-      const sy = Math.max(0, Math.floor(camera.renderY));
-      const sw = Math.min(world.pixelWidth - sx, Math.ceil(camera.viewWidth) + 2);
-      const sh = Math.min(world.pixelHeight - sy, Math.ceil(camera.viewHeight) + 2);
-      if (sw > 0 && sh > 0) ctx.drawImage(this.cache, sx, sy, sw, sh, sx, sy, sw, sh);
+    if (this.groundCache) {
+      blit(ctx, this.groundCache, world, camera);
+      this.undergrowth(ctx, world, window, time);
+      if (this.propCache) blit(ctx, this.propCache, world, camera);
       return;
     }
 
-    const window = visibleTiles(world, camera);
+    // Uncached (very large map): paint the visible window in the same order.
     if (this.atlas) {
       paintGround(ctx, world, this.atlas, window);
+      this.undergrowth(ctx, world, window, time);
       paintProps(ctx, world, this.atlas, window);
     } else {
       paintFlat(ctx, world, window);
@@ -69,60 +85,111 @@ export class TerrainLayer {
   }
 
   /**
-   * The overhanging part of every visible tree, drawn after entities.
-   * Cheap: a few dozen blits of an already-decoded bitmap, no clipping.
+   * Foliage that closes over the player: tree canopies and ferns.
+   * Drawn after the entity pass, still in world space.
    */
-  drawCanopies(ctx: CanvasRenderingContext2D, world: TileMap, camera: Camera): void {
+  overgrowth(ctx: CanvasRenderingContext2D, world: TileMap, camera: Camera, time: number): void {
     const atlas = this.atlas;
-    if (!atlas || atlas.tree.canopyHeight <= 0) return;
+    if (!atlas) return;
 
     const ts = world.tileSize;
-    const { tree } = atlas;
+    const seed = world.seed;
     const { x0, y0, x1, y1 } = visibleTiles(world, camera);
+    const { tree, fern } = atlas;
 
     for (let ty = y0; ty <= y1; ty++) {
       for (let tx = x0; tx <= x1; tx++) {
-        if (world.tiles[ty][tx] !== TREE) continue;
-        const frame = variant(tree, tx, ty, world.seed, 2);
-        // Same placement as the bake, cropped to the strip above the tile.
-        const dx = tx * ts + (ts - tree.frameWidth) / 2;
-        const dy = (ty + 1) * ts - tree.frameHeight;
+        const tile = world.tiles[ty][tx];
+
+        if (tile === TREE && tree.canopyHeight > 0) {
+          // The canopy is already in the prop bake; redrawing the same opaque
+          // pixels is a no-op except where a character has since been drawn
+          // over them, which is exactly the case we want covered.
+          const frame = variant(tree, tx, ty, seed, 2);
+          ctx.drawImage(
+            tree.image,
+            frame * tree.frameWidth,
+            0,
+            tree.frameWidth,
+            tree.canopyHeight,
+            tx * ts + (ts - tree.frameWidth) / 2,
+            (ty + 1) * ts - tree.frameHeight,
+            tree.frameWidth,
+            tree.canopyHeight,
+          );
+          continue;
+        }
+
+        if (tile !== FLOOR) continue;
+        if (tileHash(tx, ty, seed, 51) >= FERN_CHANCE) continue;
+        const frame = variant(fern, tx, ty, seed, 52);
+        const lean = sway(tx, ty, seed, time, SWAY_FERN, 53);
         ctx.drawImage(
-          tree.image,
-          frame * tree.frameWidth,
+          fern.image,
+          frame * fern.frameWidth,
           0,
-          tree.frameWidth,
-          tree.canopyHeight,
-          dx,
-          dy,
-          tree.frameWidth,
-          tree.canopyHeight,
+          fern.frameWidth,
+          fern.frameHeight,
+          Math.round(tx * ts + (ts - fern.frameWidth) / 2 + lean),
+          Math.round((ty + 1) * ts - fern.frameHeight),
+          fern.frameWidth,
+          fern.frameHeight,
         );
       }
     }
   }
 
-  /** Drop the cached bitmap (map change, atlas arrival, teardown). */
+  /** Drop the cached bitmaps (map change, atlas arrival, teardown). */
   reset(): void {
-    this.cache = null;
+    this.groundCache = null;
+    this.propCache = null;
     this.cachedFor = null;
+  }
+
+  /** Swaying grass. Live, so it cannot live in the bake. */
+  private undergrowth(
+    ctx: CanvasRenderingContext2D,
+    world: TileMap,
+    { x0, y0, x1, y1 }: TileWindow,
+    time: number,
+  ): void {
+    const atlas = this.atlas;
+    if (!atlas) return;
+    const seed = world.seed;
+
+    for (let ty = y0; ty <= y1; ty++) {
+      for (let tx = x0; tx <= x1; tx++) {
+        if (world.tiles[ty][tx] !== FLOOR) continue;
+        if (tileHash(tx, ty, seed, 11) >= GRASS_CHANCE) continue;
+        drawTuft(ctx, atlas.grass, world, tx, ty, 0, time);
+        if (tileHash(tx, ty, seed, 12) < GRASS_DOUBLE_CHANCE) {
+          drawTuft(ctx, atlas.grass, world, tx, ty, 1, time);
+        }
+      }
+    }
   }
 
   private rebuild(world: TileMap): void {
     this.cachedFor = world;
     if (world.pixelWidth * world.pixelHeight > MAX_CACHED_MAP_PIXELS) {
-      this.cache = null;
+      this.groundCache = null;
+      this.propCache = null;
       return;
     }
-    const { canvas, ctx } = createSurface(world.pixelWidth, world.pixelHeight, 'terrain/cache');
     const window = { x0: 0, y0: 0, x1: world.width - 1, y1: world.height - 1 };
+
+    const ground = createSurface(world.pixelWidth, world.pixelHeight, 'terrain/ground');
+    if (this.atlas) paintGround(ground.ctx, world, this.atlas, window);
+    else paintFlat(ground.ctx, world, window);
+    this.groundCache = ground.canvas;
+
     if (this.atlas) {
-      paintGround(ctx, world, this.atlas, window);
-      paintProps(ctx, world, this.atlas, window);
+      const props = createSurface(world.pixelWidth, world.pixelHeight, 'terrain/props');
+      paintProps(props.ctx, world, this.atlas, window);
+      this.propCache = props.canvas;
     } else {
-      paintFlat(ctx, world, window);
+      this.propCache = null;
     }
-    this.cache = canvas;
   }
 }
 
@@ -131,6 +198,19 @@ interface TileWindow {
   y0: number;
   x1: number;
   y1: number;
+}
+
+function blit(
+  ctx: CanvasRenderingContext2D,
+  cache: HTMLCanvasElement,
+  world: TileMap,
+  camera: Camera,
+): void {
+  const sx = Math.max(0, Math.floor(camera.renderX));
+  const sy = Math.max(0, Math.floor(camera.renderY));
+  const sw = Math.min(world.pixelWidth - sx, Math.ceil(camera.viewWidth) + 2);
+  const sh = Math.min(world.pixelHeight - sy, Math.ceil(camera.viewHeight) + 2);
+  if (sw > 0 && sh > 0) ctx.drawImage(cache, sx, sy, sw, sh, sx, sy, sw, sh);
 }
 
 function visibleTiles(world: TileMap, camera: Camera): TileWindow {
@@ -148,6 +228,26 @@ function visibleTiles(world: TileMap, camera: Camera): TileWindow {
 /** Which frame of a prop sheet this tile uses. Stable for the map's lifetime. */
 function variant(sheet: PropSheet, tx: number, ty: number, seed: number, salt: number): number {
   return Math.floor(tileHash(tx, ty, seed, salt) * sheet.frames) % sheet.frames;
+}
+
+/**
+ * Horizontal lean of one plant, in world px.
+ *
+ * Phase and rate both come from the tile hash. That per-plant variation is the
+ * whole point: a synchronised field looks like the screen is wobbling, while a
+ * desynchronised one looks like air moving through leaves.
+ */
+function sway(
+  tx: number,
+  ty: number,
+  seed: number,
+  time: number,
+  amount: number,
+  salt: number,
+): number {
+  const phase = tileHash(tx, ty, seed, salt) * Math.PI * 2;
+  const rate = SWAY_RATE * (0.7 + tileHash(tx, ty, seed, salt + 1) * 0.6);
+  return Math.sin(time * rate + phase) * amount;
 }
 
 function paintGround(
@@ -178,21 +278,9 @@ function paintProps(
 ): void {
   const ts = world.tileSize;
   const seed = world.seed;
-
-  // Grass first: it is ground cover, so props and their shadows sit over it.
-  for (let ty = y0; ty <= y1; ty++) {
-    for (let tx = x0; tx <= x1; tx++) {
-      if (world.tiles[ty][tx] !== FLOOR) continue;
-      if (tileHash(tx, ty, seed, 11) >= GRASS_CHANCE) continue;
-      drawTuft(ctx, atlas.grass, world, tx, ty, 0);
-      if (tileHash(tx, ty, seed, 12) < GRASS_DOUBLE_CHANCE) {
-        drawTuft(ctx, atlas.grass, world, tx, ty, 1);
-      }
-    }
-  }
+  const shadow = palette().entity.shadow;
 
   // Row order so a prop overlaps the one behind it, never the one in front.
-  const shadow = palette().entity.shadow;
   for (let ty = y0; ty <= y1; ty++) {
     for (let tx = x0; tx <= x1; tx++) {
       const tile = world.tiles[ty][tx];
@@ -238,6 +326,7 @@ function drawTuft(
   tx: number,
   ty: number,
   index: number,
+  time: number,
 ): void {
   const ts = world.tileSize;
   const seed = world.seed;
@@ -245,13 +334,14 @@ function drawTuft(
   // Jitter inside the tile so tufts do not line up on a lattice.
   const jx = (tileHash(tx, ty, seed, 30 + index) - 0.5) * (ts - grass.frameWidth);
   const jy = (tileHash(tx, ty, seed, 40 + index) - 0.5) * ts * 0.5;
+  const lean = sway(tx, ty, seed, time, SWAY_GRASS, 60 + index * 2);
   ctx.drawImage(
     grass.image,
     frame * grass.frameWidth,
     0,
     grass.frameWidth,
     grass.frameHeight,
-    Math.round(tx * ts + (ts - grass.frameWidth) / 2 + jx),
+    Math.round(tx * ts + (ts - grass.frameWidth) / 2 + jx + lean),
     Math.round((ty + 1) * ts - grass.frameHeight + jy),
     grass.frameWidth,
     grass.frameHeight,

@@ -12,10 +12,11 @@
  *   into one continuous texture, so they are guaranteed to line up and the
  *   floor has no grid seams.
  *
- *   PROPS (rock, tree, grass) are not square. They are alpha silhouettes that
- *   sit ON TOP of the ground, bottom-anchored and centred on their tile, the
- *   same way process_sprites.py anchors a character. A tree is taller than a
- *   tile and overhangs the tile above it by `canopyHeight` px.
+ *   PROPS (rock, tree, grass, fern) are not square. They are alpha silhouettes
+ *   that sit ON TOP of the ground, bottom-anchored and centred on their tile,
+ *   the same way process_sprites.py anchors a character. A tree is taller than
+ *   a tile and overhangs the tile above it by `canopyHeight` px, and a fern is
+ *   drawn in FRONT of characters rather than behind them.
  *
  * Loading is best-effort: a missing atlas resolves to `null` and the terrain
  * layer falls back to flat colours, so the game still runs with no assets
@@ -45,6 +46,7 @@ export interface TerrainAtlas {
   rock: PropSheet;
   tree: PropSheet;
   grass: PropSheet;
+  fern: PropSheet;
 }
 
 interface PropManifest {
@@ -58,7 +60,7 @@ interface PropManifest {
 interface TerrainManifest {
   tile: number;
   ground: { file: string; tile: number; cols: number; rows: number };
-  props: Record<'rock' | 'tree' | 'grass', PropManifest>;
+  props: Record<'rock' | 'tree' | 'grass' | 'fern', PropManifest>;
 }
 
 const ROOT = '/terrain';
@@ -66,11 +68,12 @@ const ROOT = '/terrain';
 export async function loadTerrain(): Promise<TerrainAtlas | null> {
   try {
     const manifest = await loadJson<TerrainManifest>(`${ROOT}/manifest.json`);
-    const [ground, rock, tree, grass] = await Promise.all([
+    const [ground, rock, tree, grass, fern] = await Promise.all([
       loadImage(`${ROOT}/${manifest.ground.file}`),
       loadProp(manifest.props.rock),
       loadProp(manifest.props.tree),
       loadProp(manifest.props.grass),
+      loadProp(manifest.props.fern),
     ]);
     return {
       ground,
@@ -80,6 +83,7 @@ export async function loadTerrain(): Promise<TerrainAtlas | null> {
       rock,
       tree,
       grass,
+      fern,
     };
   } catch (err) {
     console.warn('[terrain] falling back to flat tiles:', err);

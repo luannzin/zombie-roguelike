@@ -29,6 +29,14 @@
       "frameHeight": 10,
       "frames": 6,
       "solid": false
+    },
+    "fern": {
+      "file": "fern.png",
+      "frameWidth": 20,
+      "frameHeight": 18,
+      "frames": 5,
+      "solid": false,
+      "foreground": true
     }
   }
 }

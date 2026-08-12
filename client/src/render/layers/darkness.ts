@@ -17,10 +17,17 @@
  *
  * Explored-but-unlit tiles sit between the two: remembered, colourless, and
  * empty of anything that has moved since you left.
+ *
+ * On top of those goes a third, unrelated pass: EVENT LIGHTS. A muzzle flash, a
+ * death pop, a coin glint — each is a radial gradient added over the darkness,
+ * at full canvas resolution rather than per tile, because these are small, brief
+ * and the eye is looking straight at them. They are drawn last so a gunshot lights
+ * the dark instead of being dimmed by it.
  */
 
 import { createSurface } from '../../lib/canvas';
 import { palette } from '../../theme/palette';
+import type { PointLight } from '../../game/effects';
 import type { TileMap } from '../../game/world';
 import type { FovField } from '../fov';
 
@@ -31,6 +38,32 @@ const FOG_ALPHA = 0.66;
 /** Strength of the additive warm light in the brightest part of the beam. */
 const WARM_STRENGTH = 0.22;
 
+/**
+ * `#rgb` / `#rrggbb` -> `rgb(r g b / a)`. Gradient stops need per-stop alpha,
+ * which `globalAlpha` cannot express. Non-hex input is passed through with the
+ * alpha applied as a channel, which the browser will reject loudly rather than
+ * silently painting the wrong colour.
+ */
+function withAlpha(color: string, alpha: number): string {
+  const hex = color.trim();
+  if (hex.startsWith('#')) {
+    const body = hex.slice(1);
+    const full =
+      body.length === 3
+        ? body
+            .split('')
+            .map((c) => c + c)
+            .join('')
+        : body;
+    const value = parseInt(full, 16);
+    const r = (value >> 16) & 255;
+    const g = (value >> 8) & 255;
+    const b = value & 255;
+    return `rgb(${r} ${g} ${b} / ${alpha})`;
+  }
+  return color;
+}
+
 export class DarknessLayer {
   private night: HTMLCanvasElement | null = null;
   private nightCtx: CanvasRenderingContext2D | null = null;
@@ -40,6 +73,33 @@ export class DarknessLayer {
   private warmData: ImageData | null = null;
   private width = 0;
   private height = 0;
+
+  /**
+   * Additive event lights, in world space, over everything else.
+   *
+   * Each fades on a sharp attack / slow release curve — a flash that fades
+   * linearly reads as a fading lamp, not as a bang.
+   */
+  drawLights(ctx: CanvasRenderingContext2D, lights: readonly PointLight[]): void {
+    if (lights.length === 0) return;
+
+    ctx.globalCompositeOperation = 'lighter';
+    for (const light of lights) {
+      const remaining = 1 - light.age / light.life;
+      if (remaining <= 0) continue;
+      const intensity = light.strength * remaining * remaining;
+
+      const gradient = ctx.createRadialGradient(light.x, light.y, 0, light.x, light.y, light.radius);
+      gradient.addColorStop(0, withAlpha(light.color, intensity));
+      gradient.addColorStop(0.45, withAlpha(light.color, intensity * 0.34));
+      gradient.addColorStop(1, withAlpha(light.color, 0));
+      ctx.fillStyle = gradient;
+      ctx.beginPath();
+      ctx.arc(light.x, light.y, light.radius, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalCompositeOperation = 'source-over';
+  }
 
   /** Caller must have applied the world-space transform. */
   draw(ctx: CanvasRenderingContext2D, world: TileMap, fov: FovField): void {

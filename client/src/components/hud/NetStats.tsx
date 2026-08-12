@@ -1,4 +1,4 @@
-/** Netcode telemetry line: player count, RTT, interpolation delay, FPS. */
+/** Netcode telemetry line: entity counts, RTT, interpolation delay, FPS. */
 
 import type { HudNetStats } from '../../game/hud-store';
 
@@ -11,8 +11,8 @@ export function NetStats({ net }: NetStatsProps) {
 
   return (
     <div className="text-ink tabular-nums">
-      {`players ${net.players} · rtt ${net.rttMs}ms · interp ${net.interpMs}ms · ` +
-        `pending ${net.pending} · ${net.fps} fps`}
+      {`players ${net.players} · zombies ${net.enemies} · rtt ${net.rttMs}ms · ` +
+        `interp ${net.interpMs}ms · pending ${net.pending} · ${net.fps} fps`}
     </div>
   );
 }

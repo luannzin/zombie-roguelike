@@ -46,14 +46,35 @@ predicts locally, and sends the packet. Rendering runs at display rate.
   "type": "snapshot",
   "tick": 4021,
   "ack": 183,
-  "players": [{ "id": "...", "x": 0, "y": 0, "vx": 0, "vy": 0, "ax": 1, "ay": 0, "hp": 100, "alive": true }],
+  "players": [{ "id": "...", "x": 0, "y": 0, "vx": 0, "vy": 0, "ax": 1, "ay": 0, "hp": 100, "alive": true,
+                "xp": 24, "gold": 6, "level": 1, "xpInLevel": 24, "xpToLevel": 40 }],
+  "enemies": [{ "id": "e12", "t": "zombie", "x": 0, "y": 0, "vx": 0, "vy": 0, "ax": 1, "ay": 0, "hp": 22 }],
   "shots": [{ "id": 7, "by": "a1b2c3d4", "x": 0, "y": 0, "dx": 1, "dy": 0, "dist": 132.5, "hit": "b5c6" }],
-  "kills": [{ "killer": "a1b2c3d4", "victim": "b5c6", "x": 0, "y": 0 }]
+  "attacks": [{ "by": "e12", "target": "a1b2c3d4", "x": 0, "y": 0, "dx": 1, "dy": 0, "dmg": 9, "blocked": false }],
+  "kills": [{ "kind": "enemy", "killer": "a1b2c3d4", "victim": "e12", "x": 0, "y": 0, "xp": 12, "gold": 3 }]
 }
 ```
 
 `ack` is per-recipient: the last input sequence the server processed for *that*
 client.
+
+Enemies carry no per-type constants: `t` keys into `welcome.config.enemyTypes`,
+which is the stat block table from `server/app/enemies.py`. Only live enemies
+are listed — an id that stops appearing is dead or despawned.
+
+`attacks` is enemy melee. `dmg` is 0 and `blocked` true when the victim's
+i-frames absorbed the swing (see below); the event is still broadcast so the
+client can show the hit being absorbed rather than silently dropping it.
+
+## Melee damage is rate-limited per victim
+
+`MELEE_IMMUNITY` (0.6 s) is a property of the **victim**, not the attacker. A
+landed hit opens a window in which further melee whiffs, so the damage ceiling
+is one enemy's damage per window no matter how many are in contact — eight
+zombies on one player deal exactly what one does. Without it, a pack that
+surrounds you resolves every swing on the same tick and kills instantly, which
+is a matter of spawn luck rather than play. Respawns get a longer window
+(`RESPAWN_IMMUNITY`) so waking up inside the horde is survivable.
 
 ## Local player: prediction + reconciliation
 
@@ -93,7 +114,11 @@ Raising the simulation to 60 Hz is a one-line change (`TICK_RATE` in
 `server/app/config.py`): the client reads `dt` from the `welcome` config, so it
 follows automatically — at the cost of double the input packets and snapshots.
 
-## Remote players: interpolation
+## Remote entities: interpolation
+
+Enemies are pure server state — the client never predicts them, it interpolates
+them exactly like remote players, through the same `SnapshotBuffer`. The local
+player is the only entity that is ever predicted.
 
 `SnapshotBuffer` keeps ~1.5 s of snapshots stamped with local receive time and
 renders everything at `now - INTERP_DELAY_MS` (100 ms), interpolating position

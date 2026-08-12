@@ -90,6 +90,11 @@
   --fx-damage-text: #ffe8e8;
   --fx-shot-fallback: #ffd166;
 
+  /* enemy melee: a landed claw sweep, and one the i-frames ate */
+  --fx-slash: #ff9d8a;
+  --fx-slash-blocked: #cfd6e6;
+  --fx-reward-text: #9ad4a0;
+
   /* entity chrome */
   --entity-shadow: rgb(0 0 0 / 0.32);
   --entity-bar-backdrop: rgb(0 0 0 / 0.6);
@@ -98,6 +103,7 @@
   --entity-label-shadow: rgb(0 0 0 / 0.75);
   --fx-text-shadow: rgb(0 0 0 / 0.7);
   --minimap-local-ring: #ffffff;
+  --minimap-enemy: #8ab06a;
 
   /* HUD chrome */
   --hud-text-shadow: #000;

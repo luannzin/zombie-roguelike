@@ -1,9 +1,14 @@
 /**
  * Sprite sheet loading + per-colour tinting.
  *
- * There is ONE character asset. Player colours are applied as a multiply tint
- * over the base sheet and cached per colour, so adding a colour costs nothing
- * and no per-colour art is ever generated.
+ * Sheets are keyed by asset name ("player", "zombie", …) in a `SpriteBook`.
+ * Which enemy sheets to load is not hardcoded here: the server names them in
+ * `welcome.config.enemyTypes[*].sprite`, so a new creature is a server-side
+ * stat block plus a processed folder, with no client change.
+ *
+ * Player colours are a multiply tint over the base sheet, cached per colour, so
+ * adding a colour costs nothing and no per-colour art is ever generated.
+ * Enemies are drawn untinted — their art carries its own palette.
  *
  * Sheet layout (produced by server/tools/process_sprites.py):
  *   rows = down, left, right, up   cols = 3 animation frames
@@ -111,6 +116,54 @@ function fallbackSheet(): SpriteSheet {
     walkFrameOrder: [0, 1, 2, 1],
     fps: 8,
   };
+}
+
+/**
+ * Every loaded sheet, plus its tint cache.
+ *
+ * Loading is idempotent and deduplicated: `load()` can be called again on every
+ * `welcome` without refetching, and two entity types sharing a sprite share one
+ * bitmap. A name that has not finished loading simply has no sheet yet and the
+ * renderer skips it — enemies appear seconds after `welcome`, so nothing pops.
+ */
+export class SpriteBook {
+  private readonly sheets = new Map<string, SpriteSheet>();
+  private readonly tints = new Map<string, TintCache>();
+  private readonly inFlight = new Map<string, Promise<void>>();
+
+  /** Fetch any sheets not already loaded (or loading). Resolves when all are in. */
+  async load(names: readonly string[]): Promise<void> {
+    const pending = names.map((name) => {
+      const existing = this.inFlight.get(name);
+      if (existing) return existing;
+      if (this.sheets.has(name)) return Promise.resolve();
+
+      const task = loadCharacterSheet(name).then((sheet) => {
+        this.sheets.set(name, sheet);
+        this.tints.set(name, new TintCache(sheet));
+      });
+      this.inFlight.set(name, task);
+      return task;
+    });
+    await Promise.all(pending);
+  }
+
+  get(name: string): SpriteSheet | undefined {
+    return this.sheets.get(name);
+  }
+
+  /** The sheet's bitmap, multiplied by `color` when one is given. */
+  image(name: string, color: string | null): CanvasImageSource | undefined {
+    const sheet = this.sheets.get(name);
+    if (!sheet) return undefined;
+    if (!color) return sheet.image;
+    return this.tints.get(name)?.get(color) ?? sheet.image;
+  }
+
+  /** Drop cached tints. Sheets themselves are kept — the art does not change. */
+  clearTints(): void {
+    for (const cache of this.tints.values()) cache.clear();
+  }
 }
 
 export class TintCache {

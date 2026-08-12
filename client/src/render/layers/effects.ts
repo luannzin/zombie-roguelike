@@ -1,9 +1,9 @@
 /**
  * Transient combat visuals: footstep dust, tracers, muzzle flashes, impact
- * debris and floating damage numbers.
+ * debris, melee slashes and floating text.
  *
- * Dust draws under entities; the rest draws over them. Damage numbers are
- * screen-space so they stay legible at any zoom.
+ * Dust draws under entities; the rest draws over them. Floating text is
+ * screen-space so it stays legible at any zoom.
  */
 
 import type { Effects } from '../../game/effects';
@@ -60,6 +60,8 @@ export function drawCombatEffects(
     ctx.fill();
   }
 
+  drawSlashes(ctx, effects, tileSize, fx);
+
   for (const p of effects.particles) {
     const fade = fadeOf(p);
     ctx.globalAlpha = fade;
@@ -71,8 +73,44 @@ export function drawCombatEffects(
   ctx.globalAlpha = 1;
 }
 
+/**
+ * Claw arcs, drawn perpendicular to the swing so they read as something raking
+ * ACROSS the victim rather than a line pointing at them. A landed hit sweeps a
+ * thick bright arc; a blocked one is a thin ring — same event, different
+ * weight, so a swarm of absorbed swings never looks like a swarm of damage.
+ */
+function drawSlashes(
+  ctx: CanvasRenderingContext2D,
+  effects: Effects,
+  tileSize: number,
+  fx: ReturnType<typeof palette>['effects'],
+): void {
+  for (const slash of effects.slashes) {
+    const fade = fadeOf(slash);
+    const t = 1 - fade;
+    // Sweep outward from the victim as it fades.
+    const radius = tileSize * (slash.blocked ? 0.34 + t * 0.14 : 0.28 + t * 0.4);
+    const facing = Math.atan2(slash.dy, slash.dx);
+    const half = slash.blocked ? 0.75 : 1.15;
+    // Pull the arc's centre back towards the attacker so the sweep passes
+    // through the victim instead of hanging in the air behind them.
+    const cx = slash.x - slash.dx * radius * 0.6;
+    const cy = slash.y - slash.dy * radius * 0.6;
+
+    ctx.globalAlpha = fade * (slash.blocked ? 0.45 : 0.95);
+    ctx.strokeStyle = slash.blocked ? fx.slashBlocked : fx.slash;
+    ctx.lineWidth = tileSize * (slash.blocked ? 0.05 : 0.11) * (0.5 + fade);
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius, facing - half, facing + half);
+    ctx.stroke();
+  }
+  ctx.lineCap = 'butt';
+  ctx.globalAlpha = 1;
+}
+
 /** Screen space, over everything except the vignette. */
-export function drawDamageFloats(
+export function drawTextFloats(
   ctx: CanvasRenderingContext2D,
   effects: Effects,
   view: Projection,
@@ -84,9 +122,10 @@ export function drawDamageFloats(
   ctx.font = hudFont(10 * view.zoom * 0.45);
   ctx.textBaseline = 'middle';
 
-  for (const d of effects.damageFloats) {
+  for (const d of effects.textFloats) {
     ctx.globalAlpha = fadeOf(d);
-    drawCenteredText(ctx, String(d.value), view.x(d.x), view.y(d.y), fx.damageText, fx.textShadow);
+    const color = d.tone === 'reward' ? fx.rewardText : fx.damageText;
+    drawCenteredText(ctx, d.text, view.x(d.x), view.y(d.y), color, fx.textShadow);
   }
   ctx.globalAlpha = 1;
 }

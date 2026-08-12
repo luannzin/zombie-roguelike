@@ -44,6 +44,9 @@ export interface Palette {
     tracerCore: string;
     muzzleFlash: string;
     damageText: string;
+    rewardText: string;
+    slash: string;
+    slashBlocked: string;
     textShadow: string;
     fallbackShot: string;
   };
@@ -58,7 +61,7 @@ export interface Palette {
 
   hp: { high: string; mid: string; low: string };
   progress: { xp: string; neutral: string };
-  minimap: { localRing: string };
+  minimap: { localRing: string; enemy: string };
 
   /** Bare `R G B` channels — the vignette computes alpha per stop. */
   danger: {
@@ -105,6 +108,9 @@ function resolve(): Palette {
       tracerCore: v('--fx-tracer-core'),
       muzzleFlash: v('--fx-muzzle'),
       damageText: v('--fx-damage-text'),
+      rewardText: v('--fx-reward-text'),
+      slash: v('--fx-slash'),
+      slashBlocked: v('--fx-slash-blocked'),
       textShadow: v('--fx-text-shadow'),
       fallbackShot: v('--fx-shot-fallback'),
     },
@@ -119,7 +125,7 @@ function resolve(): Palette {
 
     hp: { high: v('--hp-high'), mid: v('--hp-mid'), low: v('--hp-low') },
     progress: { xp: v('--xp'), neutral: v('--neutral') },
-    minimap: { localRing: v('--minimap-local-ring') },
+    minimap: { localRing: v('--minimap-local-ring'), enemy: v('--minimap-enemy') },
 
     danger: {
       inner: v('--danger-inner'),

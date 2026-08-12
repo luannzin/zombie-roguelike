@@ -14,6 +14,8 @@ import { floorColor, palette } from '../theme/palette';
 
 const MAX_SIDE = 160;
 const DOT_R = 2.5;
+/** Enemies read as a smaller swarm so players stay the thing you look for. */
+const ENEMY_DOT_R = 1.6;
 const LOCAL_RING_R = 4;
 
 export interface MinimapPlayer {
@@ -22,6 +24,7 @@ export interface MinimapPlayer {
   y: number;
   color: string;
   alive: boolean;
+  kind?: 'player' | 'enemy';
 }
 
 export class Minimap {
@@ -79,6 +82,14 @@ export class Minimap {
       const py = player.y * sy;
 
       ctx.globalAlpha = player.alive ? 1 : 0.35;
+
+      if (player.kind === 'enemy') {
+        ctx.beginPath();
+        ctx.arc(px, py, ENEMY_DOT_R, 0, Math.PI * 2);
+        ctx.fillStyle = player.color;
+        ctx.fill();
+        continue;
+      }
 
       if (player.id === localId) {
         ctx.beginPath();

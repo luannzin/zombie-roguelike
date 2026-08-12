@@ -39,10 +39,27 @@ export interface Particle {
   gy?: number;
 }
 
-export interface DamageFloat {
+/** An enemy melee swing: an arc sweeping through the victim. */
+export interface Slash {
   x: number;
   y: number;
-  value: number;
+  /** Swing direction, attacker -> victim. */
+  dx: number;
+  dy: number;
+  /** True when the victim's i-frames ate it — drawn as a thin deflect. */
+  blocked: boolean;
+  age: number;
+  life: number;
+}
+
+/** Damage numbers and pickup/reward text share one rising-float list. */
+export type FloatTone = 'damage' | 'reward';
+
+export interface TextFloat {
+  x: number;
+  y: number;
+  text: string;
+  tone: FloatTone;
   age: number;
   life: number;
 }
@@ -63,7 +80,8 @@ export class Effects {
   particles: Particle[] = [];
   /** Footstep / walk puffs — drawn under entities. */
   dust: Particle[] = [];
-  damageFloats: DamageFloat[] = [];
+  slashes: Slash[] = [];
+  textFloats: TextFloat[] = [];
 
   spawnShot(
     x: number,
@@ -169,22 +187,86 @@ export class Effects {
     });
   }
 
+  /**
+   * An enemy melee hit landing on `(x, y)`, swung along `(dx, dy)`.
+   *
+   * A blocked swing still draws — the player must be able to tell "it hit me
+   * and my i-frames ate it" from "nothing happened" — but only as a thin
+   * deflect arc with no debris and no number.
+   */
+  spawnMelee(x: number, y: number, dx: number, dy: number, damage: number, blocked: boolean): void {
+    this.slashes.push({ x, y, dx, dy, blocked, age: 0, life: blocked ? 0.14 : 0.2 });
+    if (blocked) return;
+
+    const fx = palette().effects;
+    for (let i = 0; i < 8; i++) {
+      // Spray forward along the swing, in a wide cone.
+      const spread = (Math.random() - 0.5) * 2.4;
+      const cos = Math.cos(spread);
+      const sin = Math.sin(spread);
+      const speed = 40 * (0.4 + Math.random());
+      this.particles.push({
+        x,
+        y,
+        vx: (dx * cos - dy * sin) * speed,
+        vy: (dy * cos + dx * sin) * speed,
+        size: 1 + Math.random() * 1.6,
+        color: pick(fx.hitParticles),
+        age: 0,
+        life: 0.22 * (0.7 + Math.random() * 0.6),
+      });
+    }
+    if (damage > 0) this.spawnDamage(x, y, damage);
+  }
+
+  /** Gore burst where something died. */
+  spawnDeath(x: number, y: number): void {
+    const fx = palette().effects;
+    for (let i = 0; i < 16; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 30 + Math.random() * 55;
+      this.particles.push({
+        x,
+        y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed * 0.7,
+        size: 1.2 + Math.random() * 2,
+        color: pick(fx.hitParticles),
+        age: 0,
+        life: 0.32 + Math.random() * 0.28,
+        gy: 40,
+      });
+    }
+    this.spawnDust(x, y, 0, 1, 1);
+  }
+
   spawnDamage(x: number, y: number, value: number): void {
-    this.damageFloats.push({
+    this.pushFloat(x, y, String(Math.round(value)), 'damage', 0.55);
+  }
+
+  /** Kill reward, e.g. "+12 xp". Lives longer and rises further than damage. */
+  spawnReward(x: number, y: number, text: string): void {
+    this.pushFloat(x, y - 6, text, 'reward', 0.9);
+  }
+
+  private pushFloat(x: number, y: number, text: string, tone: FloatTone, life: number): void {
+    this.textFloats.push({
       x: x + (Math.random() - 0.5) * 4,
       y: y - 4,
-      value: Math.round(value),
+      text,
+      tone,
       age: 0,
-      life: 0.55,
+      life,
     });
   }
 
   update(dt: number): void {
     this.tracers = advance(this.tracers, dt);
     this.flashes = advance(this.flashes, dt);
+    this.slashes = advance(this.slashes, dt);
     this.particles = stepParticles(this.particles, dt, PARTICLE_DRAG);
     this.dust = stepParticles(this.dust, dt, DUST_DRAG);
-    this.damageFloats = advance(this.damageFloats, dt, (d) => {
+    this.textFloats = advance(this.textFloats, dt, (d) => {
       d.y -= FLOAT_RISE * dt;
     });
   }
@@ -193,9 +275,10 @@ export class Effects {
   clear(): void {
     this.tracers.length = 0;
     this.flashes.length = 0;
+    this.slashes.length = 0;
     this.particles.length = 0;
     this.dust.length = 0;
-    this.damageFloats.length = 0;
+    this.textFloats.length = 0;
   }
 }
 

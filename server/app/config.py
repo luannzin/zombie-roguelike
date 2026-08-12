@@ -68,6 +68,63 @@ MOVE_SPEED = TILE_SIZE * MOVE_TILES_PER_SEC             # 70.4 px/s
 MAX_HP = 100
 RESPAWN_DELAY = 2.0          # seconds
 
+# --- enemies -----------------------------------------------------------------
+# Per-creature stat blocks (health, damage, xp, gold, speed…) are NOT here:
+# they are `EnemyType` entries in enemies.py, authored in the same tiles/seconds
+# units and shipped to the client in `welcome.config.enemyTypes`. Only the rules
+# that apply to *every* enemy live below.
+
+# Damage a player can take from melee is rate-limited PER PLAYER, not per
+# attacker. Without this, N zombies in contact deal N x damage on the same tick
+# and a pack is an instant death sentence no matter how well you play. One hit
+# opens a window during which further melee whiffs harmlessly, so the ceiling is
+# `max(enemy damage) / MELEE_IMMUNITY` dps regardless of how many are on you.
+MELEE_IMMUNITY = 0.6         # seconds of melee i-frames after being hit
+RESPAWN_IMMUNITY = 1.5       # longer window on respawn, so you can walk away
+
+# Population. The cap scales with the number of living players so a solo run is
+# not a swarm and a full room is not empty.
+ENEMY_MAX_PER_PLAYER = 6
+ENEMY_MAX_TOTAL = 32
+ENEMY_SPAWN_INTERVAL = 2.5   # seconds between spawn attempts
+ENEMY_FIRST_SPAWN_DELAY = 4.0
+
+# Spawns land in a ring around a random living player: far enough not to appear
+# in your face, close enough that they actually reach you.
+ENEMY_SPAWN_MIN_TILES = 7.0
+ENEMY_SPAWN_MAX_TILES = 15.0
+# How hard packed enemies push each other apart (see ai.separation).
+ENEMY_SEPARATION_TILES = 0.75
+
+# Navigation. An enemy walks straight at its target while it has a clear
+# body-width corridor within this range, and follows the flow field otherwise
+# (see pathing.py). The cap bounds how far the clearance rays are traced.
+ENEMY_DIRECT_SIGHT_TILES = 12.0
+# How long an enemy may make no headway before it stops trusting its eyes and
+# commits to the field route. Short enough to be invisible, long enough that
+# brushing a wall does not send it onto tile centres.
+ENEMY_STUCK_DELAY = 0.25
+
+# An enemy nobody is near stops being content and starts being budget: after
+# this long with every living player beyond the distance, it is recycled so the
+# director can spawn a fresh one where the fight actually is. Players outrun
+# zombies by design, so without this the map slowly fills with statues.
+ENEMY_DESPAWN_TILES = 34.0
+ENEMY_DESPAWN_DELAY = 8.0    # seconds abandoned before recycling
+
+ENEMY_SPAWN_MIN_DIST = TILE_SIZE * ENEMY_SPAWN_MIN_TILES
+ENEMY_SPAWN_MAX_DIST = TILE_SIZE * ENEMY_SPAWN_MAX_TILES
+ENEMY_SEPARATION = TILE_SIZE * ENEMY_SEPARATION_TILES
+ENEMY_DESPAWN_DIST = TILE_SIZE * ENEMY_DESPAWN_TILES
+ENEMY_DIRECT_SIGHT_DIST = TILE_SIZE * ENEMY_DIRECT_SIGHT_TILES
+
+# --- progression -------------------------------------------------------------
+# Levels are derived from total xp by the server and sent already split into
+# (level, xp into level, xp needed) so the client never re-implements the curve.
+XP_BASE = 40                 # xp required for level 2
+XP_GROWTH = 1.4              # each level costs this much more than the last
+MAX_LEVEL = 30
+
 # --- combat (authored in tiles) ---------------------------------------------
 SHOT_RANGE_TILES = 8.0
 MUZZLE_OFFSET_TILES = 0.25
@@ -81,8 +138,31 @@ SHOT_DAMAGE = 8
 SNAPSHOT_EVERY_N_TICKS = 1   # broadcast rate = TICK_RATE / this
 
 
+def xp_to_next(level: int) -> int:
+    """Total xp required to go from `level` to `level + 1`."""
+    return round(XP_BASE * XP_GROWTH ** (level - 1))
+
+
+def level_progress(xp: int) -> tuple[int, int, int]:
+    """Split lifetime xp into (level, xp into this level, xp needed to level)."""
+    level = 1
+    remaining = max(0, xp)
+    while level < MAX_LEVEL:
+        need = xp_to_next(level)
+        if remaining < need:
+            return level, remaining, need
+        remaining -= need
+        level += 1
+    return MAX_LEVEL, remaining, xp_to_next(MAX_LEVEL)
+
+
 def client_config() -> dict:
     """Gameplay constants mirrored by the client's prediction code."""
+    # Local import: enemies.py reads TILE_SIZE from this module, so importing it
+    # at module scope would be a cycle. Enemy stat blocks still reach the client
+    # through this one function, which stays the single client-config contract.
+    from .enemies import enemy_types_payload
+
     return {
         "tickRate": TICK_RATE,
         "dt": DT,
@@ -98,4 +178,5 @@ def client_config() -> dict:
         "shotRange": SHOT_RANGE,
         "shotDamage": SHOT_DAMAGE,
         "muzzleOffset": MUZZLE_OFFSET,
+        "enemyTypes": enemy_types_payload(),
     }

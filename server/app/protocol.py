@@ -12,8 +12,16 @@ client -> server
 server -> client
   {"type":"welcome","playerId":"...","player":{...},"config":{...},"map":{...}}
   {"type":"snapshot","tick":N,"ack":<last processed input seq for you>,
-   "players":[...],"shots":[...],"kills":[...]}
+   "players":[...],"enemies":[...],"shots":[...],"attacks":[...],"kills":[...]}
   {"type":"pong","t":<echoed>}
+
+Snapshot arrays:
+  players   full state, every tick
+  enemies   live enemies only; `t` keys into welcome.config.enemyTypes
+  shots     hitscan tracers fired since the last snapshot
+  attacks   enemy melee swings; `dmg` is 0 when the victim's i-frames ate it
+  kills     deaths since the last snapshot, players and enemies alike
+            ({"kind":"enemy"} entries carry the xp/gold paid to the killer)
 """
 
 from __future__ import annotations
@@ -36,12 +44,22 @@ def welcome(player_payload: dict, config: dict, map_payload: dict) -> dict:
     }
 
 
-def snapshot(tick: int, ack: int, players: list[dict], shots: list[dict], kills: list[dict]) -> dict:
+def snapshot(
+    tick: int,
+    ack: int,
+    players: list[dict],
+    enemies: list[dict],
+    shots: list[dict],
+    attacks: list[dict],
+    kills: list[dict],
+) -> dict:
     return {
         "type": MSG_SNAPSHOT,
         "tick": tick,
         "ack": ack,
         "players": players,
+        "enemies": enemies,
         "shots": shots,
+        "attacks": attacks,
         "kills": kills,
     }

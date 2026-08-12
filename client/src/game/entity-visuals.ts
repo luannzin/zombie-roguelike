@@ -1,6 +1,11 @@
 /**
- * Per-player transient VISUAL state — animation phase, hit flash, recoil kick,
- * footstep cadence and the last seen HP used to detect damage.
+ * Per-entity transient VISUAL state — animation phase, hit flash, recoil or
+ * attack lunge, footstep cadence and the last seen HP used to detect damage.
+ *
+ * Keyed by entity id, so players and enemies share it: a zombie animates,
+ * flashes when shot and kicks up dust exactly the way a player does, and
+ * `prune()` reclaims a record the moment its owner stops appearing in
+ * snapshots — which for enemies is every death and despawn.
  *
  * None of this is authoritative: it can be dropped or rebuilt at any time and
  * the simulation is unaffected.
@@ -8,21 +13,28 @@
  * This used to be seven parallel `Map<string, X>` fields on `Game`, which meant
  * seven places to clear on join and — because nothing removed entries when a
  * player left — seven maps that grew for the lifetime of the page. One record
- * per player, with `prune()` driven by the current snapshot, fixes both.
+ * per entity, with `prune()` driven by the current snapshot, fixes both.
  */
 
 import type { Effects } from './effects';
 import { clamp01, expDamp } from '../lib/math';
-import type { GameConfig } from '../net/protocol';
 
 /** Seconds of white flash after taking a hit. */
 const HIT_FLASH_LIFE = 0.18;
 /** Sprite kick distance opposite aim (world px). */
 const RECOIL_KICK = 0;
-/** How fast recoil springs back (higher = snappier). */
+/** How far an enemy lurches into its own attack (world px). */
+const LUNGE_KICK = 3.5;
+/** How fast recoil and lunges spring back (higher = snappier). */
 const RECOIL_RECOVER = 16;
 /** World px travelled between footfall dust puffs. */
 const FOOTSTEP_SPACING = 7;
+/**
+ * Minimum gap between "your i-frames ate that" visuals on one target. A pack in
+ * contact throws several absorbed swings per second and drawing every one of
+ * them turns the victim into a strobe.
+ */
+const BLOCKED_VFX_GAP = 0.2;
 
 interface VisualState {
   animTime: number;
@@ -38,7 +50,9 @@ interface VisualState {
   stepPrevY: number;
   /** Alternating foot side (-1 / 1). */
   stepSide: number;
-  /** Set every frame the player appears; drives prune(). */
+  /** Seconds until this entity may show another blocked-hit visual. */
+  blockedCooldown: number;
+  /** Set every frame the entity appears; drives prune(). */
   seen: boolean;
 }
 
@@ -53,11 +67,12 @@ function blank(): VisualState {
     stepPrevX: Number.NaN,
     stepPrevY: Number.NaN,
     stepSide: 1,
+    blockedCooldown: 0,
     seen: true,
   };
 }
 
-export class PlayerVisuals {
+export class EntityVisuals {
   private readonly states = new Map<string, VisualState>();
 
   private state(id: string): VisualState {
@@ -76,8 +91,9 @@ export class PlayerVisuals {
   }
 
   /**
-   * Drop players that were not touched since the last call. Without this the
-   * map keeps a record for every player who ever joined.
+   * Drop entities that were not touched since the last call. Without this the
+   * map keeps a record for every player who ever joined and every enemy that
+   * ever spawned.
    */
   prune(): void {
     for (const [id, state] of this.states) {
@@ -97,7 +113,7 @@ export class PlayerVisuals {
   // --- damage feedback -----------------------------------------------------
   /**
    * Record an authoritative HP value. Returns true when HP dropped, i.e. the
-   * player just took damage and should flash.
+   * entity just took damage and should flash.
    */
   noteHp(id: string, hp: number): boolean {
     const state = this.state(id);
@@ -119,11 +135,29 @@ export class PlayerVisuals {
     return clamp01(state.hitFlash / HIT_FLASH_LIFE);
   }
 
-  // --- recoil --------------------------------------------------------------
+  /**
+   * Claim the right to draw a blocked-hit visual on `id`, at most one per
+   * BLOCKED_VFX_GAP. Returns false when the last one is still too recent.
+   */
+  allowBlockedVfx(id: string): boolean {
+    const state = this.state(id);
+    if (state.blockedCooldown > 0) return false;
+    state.blockedCooldown = BLOCKED_VFX_GAP;
+    return true;
+  }
+
+  // --- recoil / lunge ------------------------------------------------------
   kickRecoil(id: string, aimX: number, aimY: number): void {
     const state = this.state(id);
     state.recoilX = -aimX * RECOIL_KICK;
     state.recoilY = -aimY * RECOIL_KICK;
+  }
+
+  /** Shove an attacker forward along its swing; same spring as recoil. */
+  lunge(id: string, dirX: number, dirY: number): void {
+    const state = this.state(id);
+    state.recoilX = dirX * LUNGE_KICK;
+    state.recoilY = dirY * LUNGE_KICK;
   }
 
   recoilOf(id: string): { x: number; y: number } {
@@ -137,6 +171,9 @@ export class PlayerVisuals {
     const damp = expDamp(RECOIL_RECOVER, dt);
     for (const state of this.states.values()) {
       if (state.hitFlash > 0) state.hitFlash = Math.max(0, state.hitFlash - dt);
+      if (state.blockedCooldown > 0) {
+        state.blockedCooldown = Math.max(0, state.blockedCooldown - dt);
+      }
       state.recoilX *= damp;
       state.recoilY *= damp;
       if (Math.abs(state.recoilX) < 0.01) state.recoilX = 0;
@@ -148,6 +185,11 @@ export class PlayerVisuals {
   /**
    * Emit dust once per FOOTSTEP_SPACING world px travelled, alternating feet.
    * Teleports and respawn snaps are ignored so they do not spray a burst.
+   *
+   * `halfHeight` is the entity's own collision half-height (its feet), and
+   * `topSpeed` the fastest it could plausibly have moved in one frame — both
+   * come from the entity, not from the player constants, so enemies of any
+   * size and speed leave footprints in the right place.
    */
   emitFootsteps(
     id: string,
@@ -157,7 +199,8 @@ export class PlayerVisuals {
     vy: number,
     moving: boolean,
     effects: Effects,
-    config: GameConfig,
+    halfHeight: number,
+    topSpeed: number,
   ): void {
     const state = this.state(id);
     const prevX = state.stepPrevX;
@@ -172,13 +215,13 @@ export class PlayerVisuals {
 
     const travelled = Math.hypot(x - prevX, y - prevY);
     // Ignore teleport / respawn snaps.
-    if (travelled > config.moveSpeed * 0.2) {
+    if (travelled > topSpeed * 0.2) {
       state.stepAccum = 0;
       return;
     }
 
     state.stepAccum += travelled;
-    const feetY = y + config.playerHalfHeight * 0.9;
+    const feetY = y + halfHeight * 0.9;
     const speed = Math.hypot(vx, vy);
     const dirX = speed > 1 ? vx : x - prevX;
     const dirY = speed > 1 ? vy : y - prevY;

@@ -17,26 +17,29 @@
 
 import { Connection, type ConnectionStatus } from '../net/connection';
 import type {
+  AttackEvent,
+  EnemyTypeConfig,
   GameConfig,
   InputPacket,
+  KillEvent,
   PlayerState,
   ServerMessage,
   SnapshotMessage,
   WelcomeMessage,
 } from '../net/protocol';
 import { Camera } from '../render/camera';
-import { Minimap } from '../render/minimap';
+import { Minimap, type MinimapPlayer } from '../render/minimap';
 import { Renderer } from '../render/renderer';
-import { loadCharacterSheet, type SpriteSheet } from '../render/sprites';
-import type { DrawablePlayer } from '../render/types';
+import { SpriteBook } from '../render/sprites';
+import type { DrawableEntity } from '../render/types';
 import { whenFontsReady } from '../theme/fonts';
 import { palette } from '../theme/palette';
 import { hitscan, type RayTarget } from './combat';
 import { Effects } from './effects';
+import { EntityVisuals } from './entity-visuals';
 import { EMPTY_HUD, HUD_INTERVAL, type HudSnapshot, type HudStore } from './hud-store';
 import { InputController } from './input';
-import { SnapshotBuffer } from './interpolation';
-import { PlayerVisuals } from './player-visuals';
+import { SnapshotBuffer, type RenderedEnemy } from './interpolation';
 import { LocalPlayer } from './prediction';
 import { TileMap } from './world';
 
@@ -53,12 +56,14 @@ const DANGER_START = 0.45;
 const DANGER_CRITICAL = 0.2;
 /** Speed (world px/s) above which the local player reads as walking. */
 const MOVING_SPEED = 1;
+/** Sprite sheet for players. Enemy sheets are named by the server's config. */
+const PLAYER_SHEET = 'player';
 
 /**
- * Everything `toDrawable` needs, in the shape both a snapshot-interpolated
+ * Everything `toDrawablePlayer` needs, in the shape both a snapshot-interpolated
  * remote and the locally predicted player can supply.
  */
-interface DrawableSource {
+interface PlayerSource {
   id: string;
   name: string;
   color: string;
@@ -91,10 +96,10 @@ export class Game {
   private readonly camera = new Camera();
   private readonly effects = new Effects();
   private readonly snapshots = new SnapshotBuffer();
-  private readonly visuals = new PlayerVisuals();
+  private readonly visuals = new EntityVisuals();
+  private readonly sprites = new SpriteBook();
 
   private renderer: Renderer | null = null;
-  private sheet: SpriteSheet | null = null;
   private resizeObserver: ResizeObserver | null = null;
   private rafId: number | null = null;
   private started = false;
@@ -133,13 +138,14 @@ export class Game {
     this.started = true;
 
     // Wait for the webfont too, so the first frame's labels are not drawn in
-    // the fallback face and then visibly swapped.
-    const [sheet] = await Promise.all([loadCharacterSheet('player'), whenFontsReady()]);
+    // the fallback face and then visibly swapped. Enemy sheets are NOT loaded
+    // here: which ones exist is the server's answer, and it arrives with
+    // `welcome` — long before the first zombie does.
+    await Promise.all([this.sprites.load([PLAYER_SHEET]), whenFontsReady()]);
     // dispose() can land while these are loading.
     if (this.disposed) return;
-    this.sheet = sheet;
 
-    this.renderer = new Renderer(this.canvas, this.sheet);
+    this.renderer = new Renderer(this.canvas, this.sprites);
 
     // Reading clientWidth every frame forces a layout; only resize on change.
     this.resizeObserver = new ResizeObserver(() => {
@@ -178,6 +184,7 @@ export class Game {
 
     this.visuals.clear();
     this.effects.clear();
+    this.snapshots.clear();
     this.world = null;
     this.local = null;
     this.localMeta = null;
@@ -197,6 +204,7 @@ export class Game {
       this.minimap.setWorld(null);
       this.visuals.clear();
       this.effects.clear();
+      this.snapshots.clear();
       this.patchHud({
         connection: status,
         status: 'disconnected — retrying…',
@@ -220,8 +228,14 @@ export class Game {
     this.localMeta = msg.player;
     this.local = new LocalPlayer(msg.player);
 
+    // Enemy art is named by the server's stat blocks, so a new creature ships
+    // without a client change. Loading is fire-and-forget: the renderer skips
+    // any entity whose sheet is not in yet.
+    void this.sprites.load(Object.values(msg.config.enemyTypes).map((t) => t.sprite));
+
     this.visuals.clear();
     this.effects.clear();
+    this.snapshots.clear();
     this.time = 0;
     this.localFireCooldown = 0;
     this.accumulator = 0;
@@ -252,6 +266,9 @@ export class Game {
       }
     }
 
+    // Same rule for enemies: whoever hurt them, they flash.
+    for (const enemy of msg.enemies) this.visuals.noteHp(enemy.id, enemy.hp);
+
     // Own shots were already drawn locally at fire time.
     for (const shot of msg.shots) {
       if (shot.by === this.localId) continue;
@@ -269,6 +286,32 @@ export class Game {
       );
       this.visuals.kickRecoil(shot.by, shot.dx, shot.dy);
       if (shot.hit) this.visuals.pulseHitFlash(shot.hit);
+    }
+
+    for (const attack of msg.attacks) this.onAttack(attack);
+    for (const kill of msg.kills) this.onKill(kill);
+  }
+
+  /**
+   * An enemy swing. The camera punch for the local player is NOT triggered
+   * here — HP loss already does that above, and a blocked swing must not shake
+   * the screen for damage it did not deal.
+   */
+  private onAttack(attack: AttackEvent): void {
+    this.visuals.lunge(attack.by, attack.dx, attack.dy);
+
+    // A pack in contact throws several absorbed swings a second; drawing all
+    // of them turns the victim into a strobe.
+    if (attack.blocked && !this.visuals.allowBlockedVfx(attack.target)) return;
+
+    this.effects.spawnMelee(attack.x, attack.y, attack.dx, attack.dy, attack.dmg, attack.blocked);
+  }
+
+  private onKill(kill: KillEvent): void {
+    if (kill.kind !== 'enemy') return;
+    this.effects.spawnDeath(kill.x, kill.y);
+    if (kill.killer === this.localId && kill.xp > 0) {
+      this.effects.spawnReward(kill.x, kill.y, `+${kill.xp} xp`);
     }
   }
 
@@ -374,21 +417,21 @@ export class Game {
 
     const ox = this.smoothX + this.aimX * config.muzzleOffset;
     const oy = this.smoothY + this.aimY * config.muzzleOffset;
+    const world_ = this.snapshots.sample(performance.now(), this.localId, this.connection.rtt);
+
     const hitR = config.playerHitRadius;
-    const targets: RayTarget[] = this.snapshots
-      .sample(performance.now(), this.localId, this.connection.rtt)
-      .map((p) => {
-        const feet = p.y + config.playerHalfHeight;
-        const head = feet - config.spriteHeight;
-        return {
-          id: p.id,
-          x: p.x,
-          capsuleY0: feet - hitR,
-          capsuleY1: head + hitR,
-          radius: hitR,
-          alive: p.alive,
-        };
-      });
+    const targets: RayTarget[] = world_.players.map((p) =>
+      capsule(p.id, p.x, p.y, config.playerHalfHeight, config.spriteHeight, hitR, p.alive),
+    );
+    // Enemies are shootable, so the predicted tracer has to stop on them too —
+    // otherwise the local shot draws through a zombie the server says it hit.
+    for (const enemy of world_.enemies) {
+      const type = this.enemyType(enemy.t);
+      if (!type) continue;
+      targets.push(
+        capsule(enemy.id, enemy.x, enemy.y, type.halfHeight, type.spriteHeight, type.hitRadius, true),
+      );
+    }
 
     const result = hitscan(
       world,
@@ -420,17 +463,18 @@ export class Game {
   private render(dt: number): void {
     if (!this.renderer || !this.world || !this.config) return;
 
-    const drawables: DrawablePlayer[] = [];
+    const entities: DrawableEntity[] = [];
     const now = performance.now();
+    const sampled = this.snapshots.sample(now, this.localId, this.connection.rtt);
 
-    for (const remote of this.snapshots.sample(now, this.localId, this.connection.rtt)) {
-      drawables.push(this.toDrawable({ ...remote, isLocal: false }, dt));
+    for (const remote of sampled.players) {
+      entities.push(this.toDrawablePlayer({ ...remote, isLocal: false }, dt));
     }
 
     if (this.local && this.localMeta) {
       const { vx, vy } = this.local.state;
-      drawables.push(
-        this.toDrawable(
+      entities.push(
+        this.toDrawablePlayer(
           {
             id: this.localId,
             name: this.localMeta.name,
@@ -451,34 +495,52 @@ export class Game {
       );
     }
 
-    // Everyone in this frame was touched by toDrawable; anyone who left is now
-    // unreferenced and gets dropped.
+    for (const enemy of sampled.enemies) {
+      const drawable = this.toDrawableEnemy(enemy, dt);
+      if (drawable) entities.push(drawable);
+    }
+
+    // Everyone in this frame was touched above; anyone who left — a player who
+    // disconnected, an enemy that died — is now unreferenced and gets dropped.
     this.visuals.prune();
 
     this.renderer.draw({
       world: this.world,
       camera: this.camera,
       config: this.config,
-      players: drawables,
+      entities,
       effects: this.effects,
       danger: this.dangerLevel(),
       time: this.time,
     });
-    this.minimap.draw(drawables, this.localId);
+    this.minimap.draw(toMinimap(entities), this.localId);
   }
 
-  /** Build one renderable entity and advance its per-player visual state. */
-  private toDrawable(source: DrawableSource, dt: number): DrawablePlayer {
+  /** Build one renderable player and advance its per-entity visual state. */
+  private toDrawablePlayer(source: PlayerSource, dt: number): DrawableEntity {
     const config = this.config!;
     const { id, x, y, vx, vy, moving, alive } = source;
 
-    this.visuals.emitFootsteps(id, x, y, vx, vy, moving && alive, this.effects, config);
+    this.visuals.emitFootsteps(
+      id,
+      x,
+      y,
+      vx,
+      vy,
+      moving && alive,
+      this.effects,
+      config.playerHalfHeight,
+      config.moveSpeed,
+    );
     const recoil = this.visuals.recoilOf(id);
 
     return {
       id,
-      name: source.name,
+      kind: 'player',
+      sheet: PLAYER_SHEET,
+      tint: source.color,
       color: source.color,
+      name: source.name,
       x,
       y,
       ax: source.ax,
@@ -492,7 +554,62 @@ export class Game {
       hitFlash: this.visuals.hitFlashAmount(id),
       recoilX: recoil.x,
       recoilY: recoil.y,
+      halfWidth: config.playerHalfWidth,
+      halfHeight: config.playerHalfHeight,
     };
+  }
+
+  /**
+   * Build one renderable enemy. Every number comes from its stat block, so a
+   * bigger, tougher creature needs nothing here. Untyped enemies (a server
+   * newer than this client) are skipped rather than guessed at.
+   */
+  private toDrawableEnemy(enemy: RenderedEnemy, dt: number): DrawableEntity | null {
+    const type = this.enemyType(enemy.t);
+    if (!type) return null;
+
+    const { id, x, y, vx, vy, moving } = enemy;
+    this.visuals.emitFootsteps(
+      id,
+      x,
+      y,
+      vx,
+      vy,
+      moving,
+      this.effects,
+      type.halfHeight,
+      this.config!.moveSpeed,
+    );
+    const recoil = this.visuals.recoilOf(id);
+
+    return {
+      id,
+      kind: 'enemy',
+      sheet: type.sprite,
+      // The art carries its own palette; tinting it would flatten the pixels.
+      tint: null,
+      color: palette().minimap.enemy,
+      name: '',
+      x,
+      y,
+      ax: enemy.ax,
+      ay: enemy.ay,
+      hp: enemy.hp,
+      maxHp: type.maxHp,
+      alive: true,
+      moving,
+      animTime: this.visuals.advanceAnim(id, moving, dt),
+      isLocal: false,
+      hitFlash: this.visuals.hitFlashAmount(id),
+      recoilX: recoil.x,
+      recoilY: recoil.y,
+      halfWidth: type.halfWidth,
+      halfHeight: type.halfHeight,
+    };
+  }
+
+  private enemyType(key: string): EnemyTypeConfig | undefined {
+    return this.config?.enemyTypes[key];
   }
 
   /** 0..1 screen danger from local HP. Dead = no vignette (respawn clean). */
@@ -534,10 +651,15 @@ export class Game {
               hp: local.hp,
               maxHp: config.maxHp,
               alive: local.alive,
+              level: meta.level,
+              xpInLevel: meta.xpInLevel,
+              xpToLevel: meta.xpToLevel,
+              gold: meta.gold,
             }
           : null,
       net: {
         players: this.snapshots.latest?.players.size ?? 0,
+        enemies: this.snapshots.latest?.enemies.size ?? 0,
         rttMs: this.connection.rtt,
         interpMs: Math.round(this.snapshots.effectiveDelay(this.connection.rtt)),
         pending: local?.pending.length ?? 0,
@@ -545,4 +667,37 @@ export class Game {
       },
     });
   }
+}
+
+/** A vertical full-body hit capsule, the shape server/app/combat.py expects. */
+function capsule(
+  id: string,
+  x: number,
+  y: number,
+  halfHeight: number,
+  spriteHeight: number,
+  radius: number,
+  alive: boolean,
+): RayTarget {
+  const feet = y + halfHeight;
+  return {
+    id,
+    x,
+    capsuleY0: feet - radius,
+    capsuleY1: feet - spriteHeight + radius,
+    radius,
+    alive,
+  };
+}
+
+/** Dots for the minimap: same entities, only the fields it needs. */
+function toMinimap(entities: DrawableEntity[]): MinimapPlayer[] {
+  return entities.map((e) => ({
+    id: e.id,
+    x: e.x,
+    y: e.y,
+    color: e.color,
+    alive: e.alive,
+    kind: e.kind,
+  }));
 }

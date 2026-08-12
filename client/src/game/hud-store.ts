@@ -20,10 +20,16 @@ export interface HudVitals {
   hp: number;
   maxHp: number;
   alive: boolean;
+  /** Progression, paid out by the enemies you kill. */
+  level: number;
+  xpInLevel: number;
+  xpToLevel: number;
+  gold: number;
 }
 
 export interface HudNetStats {
   players: number;
+  enemies: number;
   rttMs: number;
   interpMs: number;
   pending: number;

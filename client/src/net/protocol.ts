@@ -48,6 +48,27 @@ export interface GameConfig {
   shotRange: number;
   shotDamage: number;
   muzzleOffset: number;
+  /** Every enemy stat block, keyed by type. Mirrors server/app/enemies.py. */
+  enemyTypes: Record<string, EnemyTypeConfig>;
+}
+
+/**
+ * One creature's stat block, authored server-side in `enemies.py`. Everything
+ * the client needs to draw it, shoot it and show its numbers — nothing here is
+ * ever hardcoded on this side.
+ */
+export interface EnemyTypeConfig {
+  key: string;
+  /** Processed asset folder: /<sprite>/sheet.png. */
+  sprite: string;
+  maxHp: number;
+  damage: number;
+  xp: number;
+  gold: number;
+  hitRadius: number;
+  spriteHeight: number;
+  halfWidth: number;
+  halfHeight: number;
 }
 
 export interface MapPayload {
@@ -72,6 +93,30 @@ export interface PlayerState {
   alive: boolean;
   kills: number;
   deaths: number;
+  /** Lifetime xp. The server also sends it pre-split into the level below. */
+  xp: number;
+  gold: number;
+  level: number;
+  xpInLevel: number;
+  xpToLevel: number;
+}
+
+/**
+ * A live enemy. Per-type constants are NOT repeated here — `t` keys into
+ * `GameConfig.enemyTypes`, so a 30 Hz snapshot stays small.
+ */
+export interface EnemyState {
+  id: string;
+  /** Enemy type key, e.g. "zombie". */
+  t: string;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  /** normalized facing */
+  ax: number;
+  ay: number;
+  hp: number;
 }
 
 export interface ShotEvent {
@@ -85,11 +130,30 @@ export interface ShotEvent {
   hit: string | null;
 }
 
+/** One enemy melee swing. `dmg` is 0 when the victim's i-frames ate it. */
+export interface AttackEvent {
+  /** Attacking enemy id. */
+  by: string;
+  /** Victim player id. */
+  target: string;
+  x: number;
+  y: number;
+  /** Swing direction, attacker -> victim. */
+  dx: number;
+  dy: number;
+  dmg: number;
+  blocked: boolean;
+}
+
 export interface KillEvent {
+  kind: 'player' | 'enemy';
   killer: string | null;
   victim: string;
   x: number;
   y: number;
+  /** Paid to the killer. Zero for player kills. */
+  xp: number;
+  gold: number;
 }
 
 export interface WelcomeMessage {
@@ -106,7 +170,10 @@ export interface SnapshotMessage {
   /** last input sequence the server processed for THIS client */
   ack: number;
   players: PlayerState[];
+  /** Live enemies only — an id that disappears is dead or despawned. */
+  enemies: EnemyState[];
   shots: ShotEvent[];
+  attacks: AttackEvent[];
   kills: KillEvent[];
 }
 

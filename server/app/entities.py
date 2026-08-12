@@ -1,8 +1,8 @@
 """Authoritative entity state.
 
-`Player` is the only entity today. Zombies/NPCs will be a sibling dataclass
-that reuses the same (x, capsule_y0, capsule_y1, radius, hp, alive) shape so
-`combat.raycast` can target them without changes.
+`Player` lives here; `Enemy` is its sibling in enemies.py and reuses the same
+(x, capsule_y0, capsule_y1, radius, hp, alive) shape, so `combat.raycast`
+targets both from one list.
 """
 
 from __future__ import annotations
@@ -11,7 +11,13 @@ import random
 from collections import deque
 from dataclasses import dataclass, field
 
-from .config import MAX_HP, PLAYER_HALF_HEIGHT, PLAYER_HIT_RADIUS, SPRITE_HEIGHT
+from .config import (
+    MAX_HP,
+    PLAYER_HALF_HEIGHT,
+    PLAYER_HIT_RADIUS,
+    SPRITE_HEIGHT,
+    level_progress,
+)
 
 COLORS = [
     "#e6484f", "#f2a541", "#f6e05e", "#7bd389", "#3fb8af",
@@ -72,6 +78,9 @@ class Player:
 
     kills: int = 0
     deaths: int = 0
+    #: Lifetime xp; the level curve lives in config.level_progress.
+    xp: int = 0
+    gold: int = 0
 
     # server bookkeeping (never sent verbatim)
     inputs: deque = field(default_factory=deque)
@@ -80,6 +89,8 @@ class Player:
     idle_ticks: int = 0
     fire_cooldown: float = 0.0
     respawn_timer: float = 0.0
+    #: Melee i-frames — see MELEE_IMMUNITY in config.py.
+    hurt_immunity: float = 0.0
 
     @property
     def capsule_y0(self) -> float:
@@ -96,6 +107,7 @@ class Player:
         # pushes right/down snaps onto the tile boundary so box_blocked flips
         # true. Client reconcile then blocks the other axis (strafe "lag"
         # while sliding down a wall; up/left were fine because +EPS rounds away).
+        level, into_level, to_level = level_progress(self.xp)
         return {
             "id": self.id,
             "name": self.name,
@@ -110,6 +122,12 @@ class Player:
             "alive": self.alive,
             "kills": self.kills,
             "deaths": self.deaths,
+            "xp": self.xp,
+            "gold": self.gold,
+            # Pre-split so the client never re-implements the xp curve.
+            "level": level,
+            "xpInLevel": into_level,
+            "xpToLevel": to_level,
         }
 
 

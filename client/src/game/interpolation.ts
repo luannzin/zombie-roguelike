@@ -1,5 +1,5 @@
 /**
- * Remote players: snapshot buffer + entity interpolation.
+ * Remote entities: snapshot buffer + entity interpolation.
  *
  * Remotes render `delayMs` in the past so two snapshots exist to lerp between.
  * Delay adapts to snapshot arrival jitter (and a light RTT floor): LAN sits
@@ -7,11 +7,15 @@
  *
  * Past the newest frame we briefly extrapolate with velocity instead of
  * freezing — late packets read as continued motion, then catch up on the
- * next snapshot. Cap keeps rubber-banding bounded. Zombies reuse this buffer.
+ * next snapshot. Cap keeps rubber-banding bounded.
+ *
+ * Players and enemies go through the same code: both are server-driven bodies
+ * with position, velocity and facing, and the local player is the only entity
+ * that is ever predicted instead of interpolated.
  */
 
 import { clamp, lerp, normalize } from '../lib/math';
-import type { PlayerState, SnapshotMessage } from '../net/protocol';
+import type { EnemyState, PlayerState, SnapshotMessage } from '../net/protocol';
 
 /** Fallback before enough arrival samples exist. */
 export const INTERP_DELAY_MS = 66;
@@ -22,18 +26,35 @@ const MAX_EXTRAP_MS = 100;
 const BUFFER_KEEP_MS = 1500;
 const INTERVAL_SAMPLES = 30;
 
+/** The shape interpolation needs: a body that moves and faces somewhere. */
+interface Body {
+  id: string;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  ax: number;
+  ay: number;
+}
+
 interface Frame {
   tick: number;
   /** local receive time (performance.now) */
   time: number;
   players: Map<string, PlayerState>;
+  enemies: Map<string, EnemyState>;
 }
 
-export interface RenderedPlayer extends PlayerState {
-  moving: boolean;
+export type Moving<T> = T & { moving: boolean };
+export type RenderedPlayer = Moving<PlayerState>;
+export type RenderedEnemy = Moving<EnemyState>;
+
+export interface RenderedWorld {
+  players: RenderedPlayer[];
+  enemies: RenderedEnemy[];
 }
 
-/** Speed (world px/s) above which a remote reads as walking, not drifting. */
+/** Speed (world px/s) above which a body reads as walking, not drifting. */
 const MOVING_SPEED = 1;
 
 export class SnapshotBuffer {
@@ -55,9 +76,12 @@ export class SnapshotBuffer {
     }
     this.lastPushTime = now;
 
-    const players = new Map<string, PlayerState>();
-    for (const p of snapshot.players) players.set(p.id, p);
-    this.frames.push({ tick: snapshot.tick, time: now, players });
+    this.frames.push({
+      tick: snapshot.tick,
+      time: now,
+      players: index(snapshot.players),
+      enemies: index(snapshot.enemies),
+    });
 
     const cutoff = now - BUFFER_KEEP_MS;
     while (this.frames.length > 2 && this.frames[0].time < cutoff) {
@@ -69,15 +93,22 @@ export class SnapshotBuffer {
     return this.frames[this.frames.length - 1];
   }
 
+  /** Drop every buffered frame — disconnect, or joining a new room. */
+  clear(): void {
+    this.frames.length = 0;
+    this.intervals.length = 0;
+    this.lastPushTime = 0;
+    this.delayMs = INTERP_DELAY_MS;
+  }
+
   /**
-   * Interpolated (or briefly extrapolated) state at `now - delayMs`.
+   * Interpolated (or briefly extrapolated) world at `now - delayMs`.
    * `rttMs` raises the delay floor slightly on high-latency links.
    */
-  sample(now: number, excludeId?: string, rttMs = 0): RenderedPlayer[] {
-    if (this.frames.length === 0) return [];
+  sample(now: number, excludeId?: string, rttMs = 0): RenderedWorld {
+    if (this.frames.length === 0) return { players: [], enemies: [] };
 
-    const delay = this.effectiveDelay(rttMs);
-    const renderTime = now - delay;
+    const renderTime = now - this.effectiveDelay(rttMs);
 
     let older: Frame | undefined;
     let newer: Frame | undefined;
@@ -97,21 +128,20 @@ export class SnapshotBuffer {
 
     // Past newest snapshot: coast on velocity instead of freezing.
     if (renderTime > newest.time) {
-      const extrapMs = Math.min(renderTime - newest.time, MAX_EXTRAP_MS);
-      return this.extrapolateFrame(newest, extrapMs / 1000, excludeId);
+      const dtSec = Math.min(renderTime - newest.time, MAX_EXTRAP_MS) / 1000;
+      return {
+        players: extrapolate(newest.players, dtSec, excludeId),
+        enemies: extrapolate(newest.enemies, dtSec),
+      };
     }
 
     const span = newer ? newer.time - older.time : 0;
     const t = span > 0 ? clamp((renderTime - older.time) / span, 0, 1) : 1;
 
-    const out: RenderedPlayer[] = [];
-    const source = newer ?? older;
-    for (const [id, target] of source.players) {
-      if (id === excludeId) continue;
-      const from = older.players.get(id) ?? target;
-      out.push(this.lerpPlayer(from, target, t));
-    }
-    return out;
+    return {
+      players: blend(older.players, (newer ?? older).players, t, excludeId),
+      enemies: blend(older.enemies, (newer ?? older).enemies, t),
+    };
   }
 
   /** Delay actually used for rendering (jitter adaptive + RTT floor). */
@@ -138,39 +168,60 @@ export class SnapshotBuffer {
     // Two intervals of buffer + jitter padding.
     this.delayMs = clamp(avg * 2 + jitter * 2, MIN_DELAY_MS, MAX_DELAY_MS);
   }
+}
 
-  private extrapolateFrame(
-    frame: Frame,
-    dtSec: number,
-    excludeId?: string,
-  ): RenderedPlayer[] {
-    const out: RenderedPlayer[] = [];
-    for (const [id, p] of frame.players) {
-      if (id === excludeId) continue;
-      out.push({
-        ...p,
-        x: p.x + p.vx * dtSec,
-        y: p.y + p.vy * dtSec,
-        moving: Math.hypot(p.vx, p.vy) > MOVING_SPEED,
-      });
-    }
-    return out;
-  }
+function index<T extends { id: string }>(list: T[]): Map<string, T> {
+  const map = new Map<string, T>();
+  for (const item of list) map.set(item.id, item);
+  return map;
+}
 
-  private lerpPlayer(from: PlayerState, target: PlayerState, t: number): RenderedPlayer {
+/**
+ * Interpolate every body present in `source`, pairing it with its state in
+ * `older`. Bodies that appeared this frame simply hold their new state.
+ */
+function blend<T extends Body>(
+  older: Map<string, T>,
+  source: Map<string, T>,
+  t: number,
+  excludeId?: string,
+): Moving<T>[] {
+  const out: Moving<T>[] = [];
+  for (const [id, target] of source) {
+    if (id === excludeId) continue;
+    const from = older.get(id) ?? target;
     // Aim is a direction, so lerp then re-normalize; a degenerate blend keeps
     // the authoritative aim rather than collapsing to an arbitrary axis.
     const aim = normalize(lerp(from.ax, target.ax, t), lerp(from.ay, target.ay, t), {
       x: target.ax,
       y: target.ay,
     });
-    return {
+    out.push({
       ...target,
       x: lerp(from.x, target.x, t),
       y: lerp(from.y, target.y, t),
       ax: aim.x,
       ay: aim.y,
       moving: Math.hypot(target.vx, target.vy) > MOVING_SPEED,
-    };
+    });
   }
+  return out;
+}
+
+function extrapolate<T extends Body>(
+  bodies: Map<string, T>,
+  dtSec: number,
+  excludeId?: string,
+): Moving<T>[] {
+  const out: Moving<T>[] = [];
+  for (const [id, body] of bodies) {
+    if (id === excludeId) continue;
+    out.push({
+      ...body,
+      x: body.x + body.vx * dtSec,
+      y: body.y + body.vy * dtSec,
+      moving: Math.hypot(body.vx, body.vy) > MOVING_SPEED,
+    });
+  }
+  return out;
 }

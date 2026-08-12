@@ -61,6 +61,43 @@ box cannot fit through a 1-tile gap. Position is the **centre of the collision
 box**, and a sprite is drawn with its bottom edge at `y + playerHalfHeight`, so
 frames of any height (bosses, tall zombies) anchor correctly with no extra code.
 
+## Enemies
+
+An **`EnemyType`** ([server/app/enemies.py](server/app/enemies.py)) is a frozen
+stat block — health, damage, speed, aggro range, attack range and cooldown, and
+the xp and gold it pays out. An **`Enemy`** is one live instance of a type. The
+instance exposes the same hit-capsule shape as `Player`, so `combat.raycast`
+shoots both from a single target list, and per-type constants never enter a
+snapshot: the wire carries a type key, and the client looks it up in
+`welcome.config.enemyTypes`.
+
+Adding a creature is a stat block, a spawn weight, and a sprite sheet of the
+same name. No client change, no new draw path, no protocol change.
+
+| | zombie |
+| --- | --- |
+| health | 30 (4 shots) |
+| damage | 9 per hit, every 1.1 s |
+| speed | 2.6 tiles/s vs the player's 4.4 — always outrunnable |
+| pays | 12 xp, 3 gold |
+
+Behaviour is in [ai.py](server/app/ai.py): chase the nearest living player,
+swing on contact. Steering walks straight at the target while the enemy's full
+body width has a clear line to it, and otherwise follows a BFS **flow field**
+from [pathing.py](server/app/pathing.py) — one field per player, rebuilt when
+they change tile and shared by every enemy hunting them, so the cost does not
+grow with the size of the horde. Greedy chase alone cannot round a corner: it
+presses into the wall and the collision slide cancels the only axis that was
+helping. A stuck detector backs it up, dropping an enemy that stops making
+headway onto the field route.
+
+Melee damage is rate-limited **per victim** (`MELEE_IMMUNITY`), so a pack that
+surrounds you cannot resolve eight swings on one tick and delete you — eight
+zombies deal what one does, and the swings they waste are drawn as absorbed
+rather than dropped. The director scales the population with the number of
+living players, spawns in a ring around a random one, and recycles enemies
+everyone has run away from.
+
 ## Assets
 
 Source art is a 3×3 sprite sheet on solid magenta (`assets/raw/`). The pipeline
@@ -72,11 +109,20 @@ production sheet into `assets/processed/`. The game only ever reads
 cd server
 ./.venv/bin/python tools/make_placeholder_sheet.py --name player   # regenerate placeholder raw art
 ./.venv/bin/python tools/process_sprites.py --name player --tile 16
+
+./.venv/bin/python tools/make_placeholder_sheet.py --name zombie
+./.venv/bin/python tools/process_sprites.py --name zombie --tile 16
 ```
 
 `--tile` must match `TILE_SIZE`. The same command processes future characters,
 zombies and NPCs — only `--name` changes (plus `--height` for taller entities). Player colours are a runtime multiply tint over the single base sheet;
 no per-colour art exists.
+
+Placeholder art sets live in `ENTITIES` in `make_placeholder_sheet.py` (`player`,
+`zombie`) as 12-column ASCII art over a per-entity palette; `--entity` picks one
+and defaults to `--name`. Detail finer than 2 raw pixels does not survive the
+downscale to a 16x16 frame, so read features (eyes, wounds) need luminance
+contrast, not just hue.
 
 ## Layout
 
@@ -86,10 +132,13 @@ server/
     main.py         FastAPI app + /ws endpoint
     room.py         authoritative room: tick loop, spawning, broadcast
     simulation.py   movement (mirrored by the client for prediction)
-    combat.py       hitscan raycast (entity-agnostic — zombies plug in here)
+    combat.py       hitscan raycast (entity-agnostic — players and enemies)
     world.py        tile grid + collision
+    pathing.py      BFS flow field per player — how enemies get around cover
     maps.py         map data and builders
     entities.py     Player / InputCmd
+    enemies.py      EnemyType stat blocks + live Enemy instances
+    ai.py           enemy behaviour (chase, attack) + the spawn director
     protocol.py     wire message shapes
     config.py       tuning constants, shipped to the client on join
   tools/            asset pipeline
@@ -152,9 +201,10 @@ docs/
 
 | Later feature | Where it goes |
 | --- | --- |
-| zombies / AI / spawning | new dataclass beside `Player`, stepped in `Room.step`; already targetable by `combat.raycast` |
+| a new enemy | one `EnemyType` in `enemies.py` + a weight in `SPAWN_TABLE` + a processed sprite folder of the same name. No client change: stats and art name ship in `welcome.config.enemyTypes` |
+| a new enemy behaviour | `ai.py` — `update()` decides, `Room` applies. Steering already has flow-field navigation to reuse |
 | projectiles | new entity list in `Room`, new event array in the snapshot |
-| weapons, upgrades, XP, levels | fields on `Player` + constants in `config.py` |
+| weapons, upgrades, shops | fields on `Player` + constants in `config.py`; `gold` is already accumulating |
 | procedural maps | another builder in `maps.py` returning `list[list[int]]` |
 | multiple rooms | `Room` is not a singleton — key a dict by room id and put the id in the WS path |
 | new characters | run the asset pipeline with a different `--name` |

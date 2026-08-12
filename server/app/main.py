@@ -36,7 +36,12 @@ app.add_middleware(
 @app.get("/health")
 async def health():
     room = get_room()
-    return {"ok": True, "tick": room.tick, "players": len(room.players)}
+    return {
+        "ok": True,
+        "tick": room.tick,
+        "players": len(room.players),
+        "enemies": len(room.enemies),
+    }
 
 
 @app.websocket("/ws")

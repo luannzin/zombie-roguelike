@@ -2,36 +2,34 @@
  * Canvas 2D renderer.
  *
  * Consumes a plain RenderState snapshot and draws it. It never touches the
- * network, never mutates game state, and holds no gameplay logic — swapping
- * renderers (or adding zombies to `players`) requires no changes elsewhere.
+ * network, never mutates game state, and holds no gameplay logic — players and
+ * enemies arrive in one `entities` list and are drawn by one path.
  *
  * This file only sequences passes and owns the transform between world space
  * and screen space. The drawing itself lives in `layers/`.
  */
 
 import { get2d } from '../lib/canvas';
-import { drawCombatEffects, drawDamageFloats, drawDust } from './layers/effects';
-import { drawNameLabels, drawPlayer, drawShadow, type EntityContext } from './layers/entities';
+import { drawCombatEffects, drawDust, drawTextFloats } from './layers/effects';
+import { drawEntity, drawNameLabels, drawShadow, type EntityContext } from './layers/entities';
 import { TileLayer } from './layers/tiles';
 import { drawVignette } from './layers/vignette';
 import { projectionFor } from './projection';
 import { palette } from '../theme/palette';
-import { TintCache, type SpriteSheet } from './sprites';
+import type { SpriteBook } from './sprites';
 import type { RenderState } from './types';
 
-export type { DrawablePlayer, RenderState } from './types';
+export type { DrawableEntity, RenderState } from './types';
 
 export class Renderer {
   private readonly ctx: CanvasRenderingContext2D;
-  private readonly tints: TintCache;
   private readonly tiles = new TileLayer();
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
-    private readonly sheet: SpriteSheet,
+    private readonly book: SpriteBook,
   ) {
     this.ctx = get2d(canvas, 'renderer', { alpha: false });
-    this.tints = new TintCache(sheet);
   }
 
   /** Call only when the canvas element actually changed size (see ResizeObserver). */
@@ -48,7 +46,7 @@ export class Renderer {
   /** Release cached bitmaps. Safe to call more than once. */
   dispose(): void {
     this.tiles.reset();
-    this.tints.clear();
+    this.book.clearTints();
   }
 
   draw(state: RenderState): void {
@@ -58,8 +56,7 @@ export class Renderer {
       ctx,
       view,
       config: state.config,
-      sheet: this.sheet,
-      tints: this.tints,
+      book: this.book,
     };
 
     this.clear();
@@ -69,11 +66,12 @@ export class Renderer {
     this.tiles.draw(ctx, state.world, state.camera);
     drawDust(ctx, state.effects);
 
-    // Screen space: entities, pixel-exact. Painter's order by depth.
+    // Screen space: entities, pixel-exact. Painter's order by depth, so a
+    // zombie standing below a player overlaps them and not the other way round.
     this.useScreenSpace();
-    const ordered = [...state.players].sort((a, b) => a.y - b.y);
-    for (const player of ordered) drawShadow(entity, player);
-    for (const player of ordered) drawPlayer(entity, player);
+    const ordered = [...state.entities].sort((a, b) => a.y - b.y);
+    for (const target of ordered) drawShadow(entity, target);
+    for (const target of ordered) drawEntity(entity, target);
 
     // World space: combat effects draw over entities.
     this.useWorldSpace(view.zoom, view.offsetX, view.offsetY);
@@ -81,8 +79,8 @@ export class Renderer {
 
     // Screen space: labels, numbers, then the full-screen vignette.
     this.useScreenSpace();
-    drawNameLabels(entity, state.players);
-    drawDamageFloats(ctx, state.effects, view);
+    drawNameLabels(entity, state.entities);
+    drawTextFloats(ctx, state.effects, view);
     drawVignette(ctx, this.canvas.width, this.canvas.height, state.danger, state.time);
   }
 

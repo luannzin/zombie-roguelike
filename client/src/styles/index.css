@@ -383,6 +383,10 @@
   #root {
     height: 100%;
     width: 100%;
+
+   
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
 
   /*
@@ -424,6 +428,21 @@
   pointer-events: none;
   user-select: none;
   text-shadow: 0 1px 0 var(--hud-text-shadow);
+}
+
+/*
+ * Departure Mono is a pixel face: it is only crisp at multiples of 11px (its
+ * em is 550 units on a 50-unit grid, so one design pixel = size / 11). Use
+ * `text-[11px]` / `text-[22px]` and integer line-heights for HUD text — 10px
+ * or 12px puts the glyph grid between screen pixels and the stems shimmer.
+ *
+ * Smoothing is disabled so the rasterizer does not soften the hard edges.
+ * Firefox ignores `none` and falls back to greyscale AA, which is acceptable.
+ */
+@utility pixel-text {
+  -webkit-font-smoothing: none;
+  -moz-osx-font-smoothing: grayscale;
+  font-family: var(--font-hud);
 }
 /*
  ---break---

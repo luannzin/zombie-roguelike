@@ -13,7 +13,26 @@
 
 let cached: string | null = null;
 
-const FALLBACK = "ui-monospace, Menlo, Consolas, monospace";
+const FALLBACK = 'ui-monospace, Menlo, Consolas, monospace';
+
+/**
+ * Departure Mono's design grid.
+ *
+ * The font has `unitsPerEm: 550` and draws every feature on a 50-unit grid
+ * (cap height 400, x-height 300, ascender 550, descender -150). 550 / 50 = 11,
+ * so one design pixel is exactly `fontSize / 11` screen pixels.
+ *
+ * At 11px (or 22px, 33px…) that lands on whole pixels and the glyphs are
+ * crisp. At 10px or 12px it lands on 0.91 / 1.09 pixels, the rasterizer
+ * antialiases stems unevenly, and the text visibly shimmers. Every HUD size —
+ * DOM and canvas — must therefore be a multiple of this number.
+ */
+export const HUD_GRID = 11;
+
+/** Nearest usable size on the font's pixel grid, never below one grid step. */
+export function snapHudSize(px: number): number {
+  return Math.max(HUD_GRID, Math.round(px / HUD_GRID) * HUD_GRID);
+}
 
 /** The resolved `--font-hud` family list. */
 export function hudFamily(): string {
@@ -24,10 +43,16 @@ export function hudFamily(): string {
   return cached;
 }
 
-/** A canvas `ctx.font` shorthand at `sizePx`, e.g. `bold 12px "Departure Mono", …`. */
-export function hudFont(sizePx: number, weight?: 'bold'): string {
-  const prefix = weight ? `${weight} ` : '';
-  return `${prefix}${Math.round(sizePx)}px ${hudFamily()}`;
+/**
+ * A canvas `ctx.font` shorthand, snapped to the font's pixel grid so callers
+ * cannot accidentally request a blurry size.
+ *
+ * Deliberately offers no weight argument: only Departure Mono Regular (400) is
+ * loaded, so any bolder request would be synthesized by the rasterizer and
+ * thicken stems unevenly. Emphasis comes from colour and size instead.
+ */
+export function hudFont(sizePx: number): string {
+  return `${snapHudSize(sizePx)}px ${hudFamily()}`;
 }
 
 /**

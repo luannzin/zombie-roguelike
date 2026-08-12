@@ -12,9 +12,6 @@ import { hudFont } from '../../theme/fonts';
 import { palette } from '../../theme/palette';
 import type { Projection } from '../projection';
 
-/** Damage numbers never shrink below this, however far out the camera is. */
-const DAMAGE_MIN_PX = 11;
-
 /** World space, under entities. */
 export function drawDust(ctx: CanvasRenderingContext2D, effects: Effects): void {
   for (const p of effects.dust) {
@@ -81,13 +78,15 @@ export function drawDamageFloats(
   view: Projection,
 ): void {
   const fx = palette().effects;
-  ctx.font = hudFont(Math.max(DAMAGE_MIN_PX, 10 * view.zoom * 0.45), 'bold');
-  ctx.textAlign = 'center';
+  // hudFont snaps to the 11px grid, so this picks 11 / 22 / 33 — never a size
+  // that would land the glyph grid between pixels. No bold: only Regular (400)
+  // is loaded, so a bold request would be synthesized and smear the stems.
+  ctx.font = hudFont(10 * view.zoom * 0.45);
   ctx.textBaseline = 'middle';
 
   for (const d of effects.damageFloats) {
     ctx.globalAlpha = fadeOf(d);
-    fillTextShadowed(ctx, String(d.value), view.x(d.x), view.y(d.y), fx.damageText, fx.textShadow);
+    drawCenteredText(ctx, String(d.value), view.x(d.x), view.y(d.y), fx.damageText, fx.textShadow);
   }
   ctx.globalAlpha = 1;
 }
@@ -111,17 +110,31 @@ function strokeLine(
   ctx.stroke();
 }
 
-/** 1px dark offset behind the glyphs so text survives any background. */
-export function fillTextShadowed(
+/**
+ * Centred pixel text with a 1px dark offset behind it, snapped to whole pixels.
+ *
+ * `textAlign: 'center'` cannot be used here. Departure Mono advances 7px per
+ * glyph at 11px, so any odd-length string has an odd total width and the
+ * browser would place the glyph origin on a half pixel — which antialiases the
+ * stems and reads as a shimmer. Measuring and rounding the LEFT origin keeps
+ * every string on the pixel grid regardless of its length.
+ *
+ * Callers must not set `ctx.textAlign`; this owns it.
+ */
+export function drawCenteredText(
   ctx: CanvasRenderingContext2D,
   text: string,
-  x: number,
+  centerX: number,
   y: number,
   color: string,
   shadow: string,
 ): void {
+  ctx.textAlign = 'left';
+  const left = Math.round(centerX - ctx.measureText(text).width / 2);
+  const top = Math.round(y);
+
   ctx.fillStyle = shadow;
-  ctx.fillText(text, x + 1, y + 1);
+  ctx.fillText(text, left + 1, top + 1);
   ctx.fillStyle = color;
-  ctx.fillText(text, x, y);
+  ctx.fillText(text, left, top);
 }

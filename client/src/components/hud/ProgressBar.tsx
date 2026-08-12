@@ -41,7 +41,7 @@ export function ProgressBar({ current, max, label, tone = 'neutral', className }
   return (
     <div className={className} aria-label={label}>
       {label && (
-        <div className="mb-1 flex items-baseline justify-between gap-2 text-[10px] leading-tight tracking-[0.05em]">
+        <div className="mb-1 flex items-baseline justify-between gap-2 text-[11px] leading-[11px] tracking-[0.05em]">
           <span className="text-ink-muted">{label}</span>
           <span className="text-ink tabular-nums">
             {Math.round(clamped)} / {Math.round(safeMax)}

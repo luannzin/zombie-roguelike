@@ -8,15 +8,15 @@
 
 import type { GameConfig } from '../../net/protocol';
 import { clamp01 } from '../../lib/math';
-import { hudFont } from '../../theme/fonts';
+import { HUD_GRID, hudFont } from '../../theme/fonts';
 import { hpColor, palette } from '../../theme/palette';
 import type { Projection } from '../projection';
 import { facingFromAim, frameIndex, type SpriteSheet, type TintCache } from '../sprites';
 import type { DrawablePlayer } from '../types';
-import { fillTextShadowed } from './effects';
+import { drawCenteredText } from './effects';
 
-/** Player name label size, in screen px (unscaled by zoom). */
-const NAME_LABEL_PX = 11;
+/** Player name label size, in screen px. One step of the font's pixel grid. */
+const NAME_LABEL_PX = HUD_GRID;
 
 export interface EntityContext {
   ctx: CanvasRenderingContext2D;
@@ -121,14 +121,13 @@ export function drawNameLabels(entity: EntityContext, players: DrawablePlayer[])
   const { ctx, view, config, sheet } = entity;
 
   ctx.font = hudFont(NAME_LABEL_PX);
-  ctx.textAlign = 'center';
   ctx.textBaseline = 'bottom';
 
   const labelShadow = palette().entity.labelShadow;
   const nameOffset = sheet.frameHeight - config.playerHalfHeight + config.tileSize * 0.35;
   for (const player of players) {
     if (!player.alive) continue;
-    fillTextShadowed(
+    drawCenteredText(
       ctx,
       player.name,
       view.x(player.x + player.recoilX),

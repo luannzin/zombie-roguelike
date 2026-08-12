@@ -22,20 +22,20 @@ export interface HudProps {
 export function Hud({ snapshot, minimapRef, error }: HudProps) {
   return (
     <>
-      <div className="hud-layer top-2.5 left-3 text-xs leading-[1.6]">
+      <div className="hud-layer pixel-text top-2.5 left-3 text-[11px] leading-[17px]">
         <StatusLine status={snapshot.status} connection={snapshot.connection} error={error} />
         <NetStats net={snapshot.net} />
       </div>
 
-      <div className="hud-layer top-2.5 right-3">
+      <div className="hud-layer pixel-text top-2.5 right-3">
         <MinimapCanvas ref={minimapRef} visible={snapshot.inArena} />
       </div>
 
-      <div className="hud-layer right-3 bottom-2.5">
+      <div className="hud-layer pixel-text right-3 bottom-2.5">
         <Vitals vitals={snapshot.vitals} />
       </div>
 
-      <div className="hud-layer bottom-2.5 left-3">
+      <div className="hud-layer pixel-text bottom-2.5 left-3">
         <ControlsHint />
       </div>
     </>

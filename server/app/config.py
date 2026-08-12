@@ -68,6 +68,31 @@ MOVE_SPEED = TILE_SIZE * MOVE_TILES_PER_SEC             # 70.4 px/s
 MAX_HP = 100
 RESPAWN_DELAY = 2.0          # seconds
 
+# --- spawning (authored in tiles) -------------------------------------------
+# Players start together in the middle clearing, not scattered across the map:
+# a co-op run that opens with everyone lost is a bad first ten seconds. The ring
+# keeps them close without stacking them on one tile.
+SPAWN_RING_TILES = 2.5
+SPAWN_SEPARATION_TILES = 1.2
+
+SPAWN_RING = TILE_SIZE * SPAWN_RING_TILES
+SPAWN_SEPARATION = TILE_SIZE * SPAWN_SEPARATION_TILES
+
+# --- vision (authored in tiles) ---------------------------------------------
+# The client draws the darkness; these numbers decide its shape. They live here
+# for the same reason every other constant does — one source of truth — and are
+# shipped in `welcome.config` so the client never invents its own.
+#
+# Sight is blocked by solid tiles, so a thicket casts a real shadow. Two lights
+# stack: a small glow you always carry, and a directional lantern along your aim.
+# Vision is SHARED: the team sees the union of what its members see.
+VISION_AMBIENT_TILES = 3.5   # omnidirectional glow around a player
+VISION_LANTERN_TILES = 11.0  # how far the lantern cone reaches
+VISION_CONE_DEGREES = 75.0   # full width of the cone
+
+VISION_AMBIENT_DIST = TILE_SIZE * VISION_AMBIENT_TILES
+VISION_LANTERN_DIST = TILE_SIZE * VISION_LANTERN_TILES
+
 # --- enemies -----------------------------------------------------------------
 # Per-creature stat blocks (health, damage, xp, gold, speed…) are NOT here:
 # they are `EnemyType` entries in enemies.py, authored in the same tiles/seconds
@@ -201,4 +226,7 @@ def client_config() -> dict:
         "muzzleOffset": MUZZLE_OFFSET,
         "enemyTypes": enemy_types_payload(),
         "coinSprite": "coin",
+        "visionAmbientTiles": VISION_AMBIENT_TILES,
+        "visionLanternTiles": VISION_LANTERN_TILES,
+        "visionConeDegrees": VISION_CONE_DEGREES,
     }

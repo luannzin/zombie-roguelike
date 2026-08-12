@@ -14,6 +14,7 @@ import type { Effects } from '../game/effects';
 import type { TileMap } from '../game/world';
 import type { GameConfig } from '../net/protocol';
 import type { Camera } from './camera';
+import type { FovField } from './fov';
 
 export type EntityKind = 'player' | 'enemy';
 
@@ -67,6 +68,8 @@ export interface RenderState {
   entities: DrawableEntity[];
   coins: DrawableCoin[];
   effects: Effects;
+  /** Team light + explored memory. Null disables the darkness pass entirely. */
+  fov: FovField | null;
   /** 0..1 local low-HP danger for screen vignette (0 = healthy). */
   danger: number;
   /** Elapsed seconds — drives heartbeat pulse. */

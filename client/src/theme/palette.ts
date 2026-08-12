@@ -19,6 +19,9 @@ const FALLBACK = '#ff00ff';
 
 let cache: Palette | null = null;
 
+/** A colour as raw `[r, g, b]` bytes. */
+export type Channels = [number, number, number];
+
 export interface Palette {
   surface: string;
   panelBorder: string;
@@ -32,6 +35,8 @@ export interface Palette {
     wallBody: string;
     wallTop: string;
     wallEdge: string;
+    tree: string;
+    treeTop: string;
   };
 
   effects: {
@@ -64,7 +69,13 @@ export interface Palette {
 
   hp: { high: string; mid: string; low: string };
   progress: { xp: string; neutral: string };
-  minimap: { localRing: string; enemy: string };
+  minimap: { localRing: string; enemy: string; fog: string; unseen: string };
+
+  /**
+   * Lighting tones as `[r, g, b]`. The darkness layer writes raw ImageData
+   * bytes, so it needs channels, not a CSS colour string.
+   */
+  night: { shadow: Channels; lantern: Channels };
 
   /** Bare `R G B` channels — the vignette computes alpha per stop. */
   danger: {
@@ -79,6 +90,12 @@ export interface Palette {
 function resolve(): Palette {
   const style = getComputedStyle(document.documentElement);
   const v = (name: string): string => style.getPropertyValue(name).trim() || FALLBACK;
+  /** Read a bare `R G B` token as bytes. Magenta if the token is missing. */
+  const rgb = (name: string): Channels => {
+    const parts = v(name).split(/[\s,]+/).map(Number);
+    if (parts.length < 3 || parts.some(Number.isNaN)) return [255, 0, 255];
+    return [parts[0], parts[1], parts[2]];
+  };
 
   return {
     surface: v('--surface'),
@@ -93,6 +110,8 @@ function resolve(): Palette {
       wallBody: v('--tile-wall-body'),
       wallTop: v('--tile-wall-top'),
       wallEdge: v('--tile-wall-edge'),
+      tree: v('--tile-tree'),
+      treeTop: v('--tile-tree-top'),
     },
 
     effects: {
@@ -131,7 +150,14 @@ function resolve(): Palette {
 
     hp: { high: v('--hp-high'), mid: v('--hp-mid'), low: v('--hp-low') },
     progress: { xp: v('--xp'), neutral: v('--neutral') },
-    minimap: { localRing: v('--minimap-local-ring'), enemy: v('--minimap-enemy') },
+    minimap: {
+      localRing: v('--minimap-local-ring'),
+      enemy: v('--minimap-enemy'),
+      fog: v('--minimap-fog'),
+      unseen: v('--minimap-unseen'),
+    },
+
+    night: { shadow: rgb('--night-shadow'), lantern: rgb('--night-lantern') },
 
     danger: {
       inner: v('--danger-inner'),

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import math
 import random
 import time
 import uuid
@@ -32,19 +33,36 @@ from .config import (
     SHOT_DAMAGE,
     SHOT_RANGE,
     SNAPSHOT_EVERY_N_TICKS,
+    SPAWN_RING,
+    SPAWN_SEPARATION,
     client_config,
 )
 from .enemies import Enemy, EnemyType
 from .entities import InputCmd, Player, random_color, random_name
-from .maps import build_arena
+from .mapgen import build_forest
 from .pathing import Navigator
 from .simulation import apply_input
 
 
 class Room:
-    def __init__(self):
-        self.world = build_arena()
+    def __init__(self, seed: int | None = None):
+        self.world = build_forest(seed=seed)
         self.spawn_points = self.world.free_spawn_points(PLAYER_HALF_WIDTH, PLAYER_HALF_HEIGHT)
+        # Spawn candidates, best first: closest to the ring around the centre
+        # clearing. Sorted once here so pick_spawn is a linear scan, not a sort
+        # on every join and every respawn.
+        centre_x = self.world.pixel_width / 2
+        centre_y = self.world.pixel_height / 2
+        # The jitter matters: without it the list is ordered by distance alone,
+        # so a filling room hands out spawns that walk monotonically around the
+        # ring instead of landing wherever there is room.
+        self.spawn_ring = sorted(
+            self.spawn_points,
+            key=lambda p: (
+                abs(math.hypot(p[0] - centre_x, p[1] - centre_y) - SPAWN_RING)
+                + random.uniform(0.0, SPAWN_SEPARATION)
+            ),
+        )
         self.players: dict[str, Player] = {}
         self.enemies: dict[str, Enemy] = {}
         self.coins: dict[str, Coin] = {}
@@ -77,20 +95,20 @@ class Room:
 
     # --- membership ---------------------------------------------------------
     def pick_spawn(self) -> tuple[float, float]:
-        """Random free tile, biased away from other players."""
-        best = None
-        best_score = -1.0
-        for _ in range(12):
-            x, y = random.choice(self.spawn_points)
-            if not self.players:
+        """A tile on the ring around the centre clearing, clear of teammates.
+
+        Co-op: everyone lands together in the middle. The separation test only
+        stops players from spawning inside each other — it does not push them
+        apart, so a full room still starts as one group.
+        """
+        living = [p for p in self.players.values() if p.alive]
+        minimum = SPAWN_SEPARATION * SPAWN_SEPARATION
+        for x, y in self.spawn_ring:
+            if all((p.x - x) ** 2 + (p.y - y) ** 2 >= minimum for p in living):
                 return x, y
-            score = min(
-                (p.x - x) ** 2 + (p.y - y) ** 2 for p in self.players.values() if p.alive
-            ) if any(p.alive for p in self.players.values()) else 1e9
-            if score > best_score:
-                best_score = score
-                best = (x, y)
-        return best or random.choice(self.spawn_points)
+        # Every ring tile is occupied (a very full room): take the centre-most
+        # one anyway rather than scattering someone across the map.
+        return self.spawn_ring[0] if self.spawn_ring else random.choice(self.spawn_points)
 
     def add_player(self, socket) -> Player:
         pid = uuid.uuid4().hex[:8]

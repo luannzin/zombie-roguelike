@@ -8,8 +8,13 @@
 
 import type { MapPayload } from '../net/protocol';
 
+/** Tile kinds. Mirror of server/app/world.py. */
 export const FLOOR = 0;
-export const WALL = 1;
+export const ROCK = 1;
+export const TREE = 2;
+
+/** Legacy alias: '#' in a hand-drawn ASCII map is a rock. */
+export const WALL = ROCK;
 
 const EPS = 1e-4;
 
@@ -20,19 +25,27 @@ export class TileMap {
   readonly tileSize: number;
   readonly pixelWidth: number;
   readonly pixelHeight: number;
+  /** Generator seed — hashed with tile coords to place decoration. */
+  readonly seed: number;
 
   constructor(payload: MapPayload) {
     this.tiles = payload.tiles;
     this.width = payload.width;
     this.height = payload.height;
     this.tileSize = payload.tileSize;
+    this.seed = payload.seed ?? 0;
     this.pixelWidth = this.width * this.tileSize;
     this.pixelHeight = this.height * this.tileSize;
   }
 
+  /**
+   * Anything that is not floor blocks movement, shots and sight. Testing for
+   * "not floor" rather than a list of known blockers is what lets the server
+   * add a tile kind without touching collision on either side.
+   */
   isSolidTile(tx: number, ty: number): boolean {
     if (tx < 0 || ty < 0 || tx >= this.width || ty >= this.height) return true;
-    return this.tiles[ty][tx] === WALL;
+    return this.tiles[ty][tx] !== FLOOR;
   }
 
   /** Axis-aligned box centred on (cx, cy) with half-extents (hw, hh). */

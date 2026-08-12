@@ -29,6 +29,7 @@ import type {
   WelcomeMessage,
 } from '../net/protocol';
 import { Camera } from '../render/camera';
+import { FovField, type VisionConfig, type Viewer } from '../render/fov';
 import { Minimap, type MinimapPlayer } from '../render/minimap';
 import { Renderer } from '../render/renderer';
 import { SpriteBook } from '../render/sprites';
@@ -63,6 +64,15 @@ const MOVING_SPEED = 1;
 const PLAYER_SHEET = 'player';
 /** Fallback if welcome.config.coinSprite is missing (older server). */
 const COIN_SHEET = 'coin';
+/**
+ * Only used against a server too old to send vision numbers. A missing value
+ * would otherwise put NaN through the light field and black out the screen.
+ */
+const VISION_FALLBACK: VisionConfig = {
+  ambientTiles: 3.5,
+  lanternTiles: 11,
+  coneDegrees: 75,
+};
 
 /**
  * Everything `toDrawablePlayer` needs, in the shape both a snapshot-interpolated
@@ -112,6 +122,8 @@ export class Game {
 
   private world: TileMap | null = null;
   private config: GameConfig | null = null;
+  /** Team light + explored memory. Rebuilt per map, updated per frame. */
+  private fov: FovField | null = null;
   private localId = '';
   private local: LocalPlayer | null = null;
   private localMeta: PlayerState | null = null;
@@ -191,6 +203,7 @@ export class Game {
     this.effects.clear();
     this.snapshots.clear();
     this.world = null;
+    this.fov = null;
     this.local = null;
     this.localMeta = null;
 
@@ -206,6 +219,7 @@ export class Game {
     if (status === 'closed') {
       this.local = null;
       this.world = null;
+      this.fov = null;
       this.minimap.setWorld(null);
       this.visuals.clear();
       this.effects.clear();
@@ -229,6 +243,8 @@ export class Game {
   private onWelcome(msg: WelcomeMessage): void {
     this.config = msg.config;
     this.world = new TileMap(msg.map);
+    // A new map is a new forest: nothing has been explored yet.
+    this.fov = new FovField(this.world.width, this.world.height);
     this.localId = msg.playerId;
     this.localMeta = msg.player;
     this.local = new LocalPlayer(msg.player);
@@ -527,6 +543,8 @@ export class Game {
     // disconnected, an enemy that died — is now unreferenced and gets dropped.
     this.visuals.prune();
 
+    this.updateVision(entities);
+
     this.renderer.draw({
       world: this.world,
       camera: this.camera,
@@ -534,10 +552,35 @@ export class Game {
       entities,
       coins,
       effects: this.effects,
+      fov: this.fov,
       danger: this.dangerLevel(),
       time: this.time,
     });
-    this.minimap.draw(toMinimap(entities), this.localId);
+    this.minimap.draw(toMinimap(entities), this.localId, this.fov);
+  }
+
+  /**
+   * Refresh the team's light. Every living PLAYER carries a lantern — remote
+   * ones included, which is what makes vision shared: their light lands in the
+   * same field as yours and the renderer never has to know whose it was.
+   */
+  private updateVision(entities: DrawableEntity[]): void {
+    const fov = this.fov;
+    const world = this.world;
+    const config = this.config;
+    if (!fov || !world || !config) return;
+
+    const viewers: Viewer[] = [];
+    for (const entity of entities) {
+      if (entity.kind !== 'player' || !entity.alive) continue;
+      viewers.push({ x: entity.x, y: entity.y, ax: entity.ax, ay: entity.ay });
+    }
+
+    fov.update(world, viewers, {
+      ambientTiles: config.visionAmbientTiles ?? VISION_FALLBACK.ambientTiles,
+      lanternTiles: config.visionLanternTiles ?? VISION_FALLBACK.lanternTiles,
+      coneDegrees: config.visionConeDegrees ?? VISION_FALLBACK.coneDegrees,
+    });
   }
 
   /** Build one renderable player and advance its per-entity visual state. */

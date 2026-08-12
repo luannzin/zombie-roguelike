@@ -19,10 +19,12 @@ import {
   drawShadow,
   type EntityContext,
 } from './layers/entities';
-import { TileLayer } from './layers/tiles';
+import { DarknessLayer } from './layers/darkness';
+import { TerrainLayer } from './layers/terrain';
 import { drawVignette } from './layers/vignette';
 import { projectionFor } from './projection';
 import { palette } from '../theme/palette';
+import { loadTerrain } from './terrain';
 import type { SpriteBook } from './sprites';
 import type { RenderState } from './types';
 
@@ -30,13 +32,17 @@ export type { DrawableEntity, RenderState } from './types';
 
 export class Renderer {
   private readonly ctx: CanvasRenderingContext2D;
-  private readonly tiles = new TileLayer();
+  private readonly terrain = new TerrainLayer();
+  private readonly darkness = new DarknessLayer();
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
     private readonly book: SpriteBook,
   ) {
     this.ctx = get2d(canvas, 'renderer', { alpha: false });
+    // Fire-and-forget: until the atlas lands the terrain layer paints flat
+    // colours, so the first frames are plain rather than blank.
+    void loadTerrain().then((atlas) => this.terrain.setAtlas(atlas));
   }
 
   /** Call only when the canvas element actually changed size (see ResizeObserver). */
@@ -52,7 +58,8 @@ export class Renderer {
 
   /** Release cached bitmaps. Safe to call more than once. */
   dispose(): void {
-    this.tiles.reset();
+    this.terrain.reset();
+    this.darkness.reset();
     this.book.clearTints();
   }
 
@@ -70,7 +77,7 @@ export class Renderer {
 
     // World space: map, then dust under everything.
     this.useWorldSpace(view.zoom, view.offsetX, view.offsetY);
-    this.tiles.draw(ctx, state.world, state.camera);
+    this.terrain.draw(ctx, state.world, state.camera);
     drawDust(ctx, state.effects);
 
     // Screen space: coins under characters, then entities depth-sorted.
@@ -81,8 +88,13 @@ export class Renderer {
     for (const target of ordered) drawShadow(entity, target);
     for (const target of ordered) drawEntity(entity, target);
 
-    // World space: combat effects draw over entities.
+    // World space: foliage closes over anyone standing behind a tree, then the
+    // darkness dims whatever the team cannot see. Combat effects come AFTER the
+    // darkness on purpose — a muzzle flash is a light source, not a thing being
+    // lit, so it stays bright in an unlit corner.
     this.useWorldSpace(view.zoom, view.offsetX, view.offsetY);
+    this.terrain.drawCanopies(ctx, state.world, state.camera);
+    if (state.fov) this.darkness.draw(ctx, state.world, state.fov);
     drawCombatEffects(ctx, state.effects, state.config.tileSize);
 
     // Screen space: labels, numbers, then the full-screen vignette.

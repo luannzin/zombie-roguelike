@@ -15,6 +15,7 @@
  */
 
 import { createSurface, sourceSize } from '../lib/canvas';
+import { loadImage } from '../lib/image';
 
 export type Facing = 'down' | 'left' | 'right' | 'up';
 
@@ -66,15 +67,6 @@ export async function loadCharacterSheet(name: string): Promise<SpriteSheet> {
     console.warn(`[sprites] falling back to generated art for "${name}":`, err);
     return fallbackSheet();
   }
-}
-
-function loadImage(src: string): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => resolve(img);
-    img.onerror = () => reject(new Error(`failed to load ${src}`));
-    img.src = src;
-  });
 }
 
 /** Minimal procedural stand-in so the game still runs without processed assets. */

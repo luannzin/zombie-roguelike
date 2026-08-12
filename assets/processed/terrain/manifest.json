@@ -1,0 +1,34 @@
+{
+  "tile": 16,
+  "seed": 1337,
+  "ground": {
+    "file": "ground.png",
+    "tile": 16,
+    "cols": 4,
+    "rows": 4
+  },
+  "props": {
+    "rock": {
+      "file": "rock.png",
+      "frameWidth": 16,
+      "frameHeight": 20,
+      "frames": 5,
+      "solid": true
+    },
+    "tree": {
+      "file": "tree.png",
+      "frameWidth": 24,
+      "frameHeight": 40,
+      "frames": 4,
+      "solid": true,
+      "canopyHeight": 24
+    },
+    "grass": {
+      "file": "grass.png",
+      "frameWidth": 10,
+      "frameHeight": 10,
+      "frames": 6,
+      "solid": false
+    }
+  }
+}

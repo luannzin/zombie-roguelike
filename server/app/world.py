@@ -1,7 +1,17 @@
 """Tile grid world: map data + collision queries.
 
 The grid is a plain 2D array of ints so future maps can be authored as JSON,
-Python literals or generated procedurally. 0 = walkable floor, 1 = solid wall.
+Python literals or generated procedurally.
+
+    0 FLOOR   walkable
+    1 ROCK    solid boulder
+    2 TREE    solid trunk
+
+Only FLOOR is walkable, and the solidity test is `!= FLOOR` rather than a list
+of known blockers: adding a fourth tile kind (water, rubble, a bush) is then a
+generator change and a client sprite, never a change to collision, pathing or
+raycasting. `WALL` remains as an alias for ROCK so hand-drawn ASCII maps keep
+building.
 
 Movement is continuous (float world pixels); the grid only answers "is this box
 / ray blocked". Collision boxes are axis-aligned rectangles given as half
@@ -14,14 +24,22 @@ from __future__ import annotations
 from .config import TILE_SIZE
 
 FLOOR = 0
-WALL = 1
+ROCK = 1
+TREE = 2
+
+# Legacy name: '#' in an ASCII map is a rock.
+WALL = ROCK
 
 _EPS = 1e-4
 
 
 class TileMap:
-    def __init__(self, tiles: list[list[int]]):
+    def __init__(self, tiles: list[list[int]], seed: int = 0):
         self.tiles = tiles
+        # Shipped to the client, which hashes it with tile coordinates to place
+        # decoration (grass tufts, prop variants). Sending a seed instead of a
+        # decoration layer keeps the map payload the size of the map.
+        self.seed = seed
         self.height = len(tiles)
         self.width = len(tiles[0]) if tiles else 0
         self.tile_size = TILE_SIZE
@@ -32,7 +50,7 @@ class TileMap:
     def is_solid_tile(self, tx: int, ty: int) -> bool:
         if tx < 0 or ty < 0 or tx >= self.width or ty >= self.height:
             return True
-        return self.tiles[ty][tx] == WALL
+        return self.tiles[ty][tx] != FLOOR
 
     def is_solid_at(self, x: float, y: float) -> bool:
         return self.is_solid_tile(int(x // TILE_SIZE), int(y // TILE_SIZE))
@@ -97,5 +115,6 @@ class TileMap:
             "width": self.width,
             "height": self.height,
             "tileSize": TILE_SIZE,
+            "seed": self.seed,
             "tiles": self.tiles,
         }

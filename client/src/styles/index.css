@@ -57,13 +57,18 @@
   --neutral: #8b8ba3;
 
   /* world tiles (canvas + minimap) */
-  --tile-floor-a: #23232c;
-  --tile-floor-b: #262630;
-  --tile-floor-c: #202029;
-  --tile-floor-speck: #2c2c38;
-  --tile-wall-body: #3a3a4e;
-  --tile-wall-top: #565673;
-  --tile-wall-edge: #1b1b24;
+  /* Forest floor + blockers. These are the minimap's colours and the fallback
+     the canvas paints before the terrain atlas finishes loading, so they track
+     the generated textures rather than the old grey arena. */
+  --tile-floor-a: #2b2620;
+  --tile-floor-b: #302a22;
+  --tile-floor-c: #26211b;
+  --tile-floor-speck: #3a3226;
+  --tile-wall-body: #3d3a42;
+  --tile-wall-top: #4e4a53;
+  --tile-wall-edge: #1e1c22;
+  --tile-tree: #24331f;
+  --tile-tree-top: #2f4327;
 
   /* impact debris */
   --fx-hit-a: #ff5a5a;
@@ -110,6 +115,13 @@
   --fx-text-shadow: rgb(0 0 0 / 0.7);
   --minimap-local-ring: #ffffff;
   --minimap-enemy: #8ab06a;
+  /* minimap fog: remembered ground vs ground nobody has walked into yet */
+  --minimap-fog: rgb(8 11 20 / 0.62);
+  --minimap-unseen: rgb(6 8 14 / 0.92);
+
+  /* lighting — bare `R G B`, the darkness layer computes its own alpha */
+  --night-shadow: 8 12 22;
+  --night-lantern: 255 206 138;
 
   /* HUD chrome */
   --hud-text-shadow: #000;

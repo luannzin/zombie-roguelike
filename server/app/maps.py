@@ -1,8 +1,10 @@
-"""Map data + builders.
+"""Hand-authored map data + builders.
 
-Maps are plain `list[list[int]]` (0 = floor, 1 = wall), which is also the JSON
-wire format, so a map can equally well be loaded from a .json file or produced
-by a generator later.
+Maps are plain `list[list[int]]` (see world.py for the tile alphabet), which is
+also the JSON wire format, so a map can equally well be loaded from a .json
+file, drawn here, or produced by a generator — `mapgen.py` is the procedural
+one, and it is what `Room` actually builds. This module stays as the readable,
+deterministic alternative: handy for reproducing a bug on a known layout.
 
 Two authoring styles:
   * `from_ascii()` — hand-drawn maps, '#' = wall. This is the readable one.

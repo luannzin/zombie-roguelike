@@ -52,6 +52,12 @@ export interface GameConfig {
   enemyTypes: Record<string, EnemyTypeConfig>;
   /** Processed asset folder for world gold pickups. */
   coinSprite: string;
+  /** Omnidirectional glow every player carries, in tiles. */
+  visionAmbientTiles: number;
+  /** Reach of the directional lantern cone, in tiles. */
+  visionLanternTiles: number;
+  /** Full width of the lantern cone, in degrees. */
+  visionConeDegrees: number;
 }
 
 /**
@@ -77,6 +83,13 @@ export interface MapPayload {
   width: number;
   height: number;
   tileSize: number;
+  /**
+   * Generator seed. Decoration (grass tufts, which prop variant a tile gets) is
+   * hashed from this plus the tile coordinate rather than transmitted, so the
+   * payload stays exactly as big as the map itself.
+   */
+  seed: number;
+  /** Tile kinds — see game/world.ts. */
   tiles: number[][];
 }
 

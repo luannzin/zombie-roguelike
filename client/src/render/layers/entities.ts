@@ -26,8 +26,8 @@ const NAME_LABEL_PX = HUD_GRID;
 const COIN_BOB = 0.35;
 /** Draw scale vs the processed 16px frame. */
 const COIN_SCALE = 0.5;
-/** Spin FPS for the coin sheet columns. */
-const COIN_SPIN_FPS = 10;
+/** Spin FPS — face → ¾ → edge → ¾ reads as a continuous flip. */
+const COIN_SPIN_FPS = 12;
 
 export interface EntityContext {
   ctx: CanvasRenderingContext2D;

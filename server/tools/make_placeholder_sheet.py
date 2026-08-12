@@ -200,45 +200,46 @@ class Item:
 
 COIN_PALETTE: Palette = {
     "o": (72, 42, 18, 255),      # outline
-    "d": (160, 90, 28, 255),     # dark gold
+    "d": (160, 90, 28, 255),     # dark gold / rim
     "g": (242, 165, 65, 255),    # body — matches --ink-accent
     "h": (255, 214, 120, 255),   # highlight
     "s": (255, 245, 200, 255),   # shine
 }
 
-# Face-on → three-quarter → edge-on. Strong luminance so the 16px downscale
-# still reads as a coin, not a gold blob.
+# Y-axis spin: face → three-quarter → edge. Process with `--uniform` so every
+# frame shares one crop box and stays the same on-screen size while rotating.
 COIN = Item(
     palette=COIN_PALETTE,
     frames=[
-        # Edge-on (thin) → three-quarter → face-on. Chunkier than character art
-        # so the 16px downscale still reads as a coin, not a gold speck.
+        # Face-on — full disc, bright face.
         [
-            "......oo....",
-            ".....oddo...",
-            "....odggdo..",
-            "....oghhgo..",
-            "....odggdo..",
-            ".....oddo...",
-            "......oo....",
+            "..oooooo..",
+            ".odggggdo.",
+            "odghsshgdo",
+            "oggssssggo",
+            "odghsshgdo",
+            ".odggggdo.",
+            "..oooooo..",
         ],
+        # Three-quarter — body foreshortens, shine slides to the rim.
         [
-            ".....oooo...",
-            "....odggdo..",
-            "...odghhgdo.",
-            "...oggssggo.",
-            "...odghhgdo.",
-            "....odggdo..",
-            ".....oooo...",
+            "...oooo...",
+            "..odggdo..",
+            ".odghhgdo.",
+            ".oggssggo.",
+            ".odghhgdo.",
+            "..odggdo..",
+            "...oooo...",
         ],
+        # Edge-on — thin slab, rim gleam. Same height as the face disc.
         [
-            "....oooooo..",
-            "...odggggdo.",
-            "..odghsshgdo",
-            "..oggssssggo",
-            "..odghsshgdo",
-            "...odggggdo.",
-            "....oooooo..",
+            "....oo....",
+            "...oddo...",
+            "...oggo...",
+            "...ohso...",
+            "...oggo...",
+            "...oddo...",
+            "....oo....",
         ],
     ],
 )
@@ -246,13 +247,16 @@ COIN = Item(
 ITEMS = {"coin": COIN}
 
 
-def render_cell(palette: Palette, rows: Art, cell: int, scale: int) -> Image.Image:
+def render_cell(
+    palette: Palette, rows: Art, cell: int, scale: int, *, center: bool = False
+) -> Image.Image:
     img = Image.new("RGBA", (cell, cell), MAGENTA)
     px = img.load()
     art_w = len(rows[0]) * scale
     art_h = len(rows) * scale
     ox = (cell - art_w) // 2
-    oy = cell - art_h - scale  # feet near the bottom of the cell
+    # Characters plant feet near the bottom; pickups sit centred in the cell.
+    oy = (cell - art_h) // 2 if center else cell - art_h - scale
     for y, row in enumerate(rows):
         for x, ch in enumerate(row):
             if ch == ".":
@@ -268,7 +272,10 @@ def write_sheet(frames: list[Art], palette: Palette, cell: int, scale: int, path
     sheet = Image.new("RGBA", (cell * 3, cell * 3), MAGENTA)
     for row in range(3):
         for col, art in enumerate(frames):
-            sheet.paste(render_cell(palette, art, cell, scale), (col * cell, row * cell))
+            sheet.paste(
+                render_cell(palette, art, cell, scale, center=True),
+                (col * cell, row * cell),
+            )
     path.parent.mkdir(parents=True, exist_ok=True)
     sheet.convert("RGB").save(path)
     print(f"wrote {path} ({sheet.width}x{sheet.height})")

@@ -113,6 +113,20 @@ def crop_to_content(img: Image.Image) -> Image.Image:
     return img.crop(box) if box else img
 
 
+def union_bbox(images: list[Image.Image]) -> tuple[int, int, int, int] | None:
+    """Shared crop box across frames — keeps spin / idle sizes locked together."""
+    boxes = [img.getbbox() for img in images]
+    boxes = [b for b in boxes if b]
+    if not boxes:
+        return None
+    return (
+        min(b[0] for b in boxes),
+        min(b[1] for b in boxes),
+        max(b[2] for b in boxes),
+        max(b[3] for b in boxes),
+    )
+
+
 def pick_filter(name: str, scale: float):
     if name != "auto":
         return FILTERS[name]
@@ -161,12 +175,23 @@ def process(args) -> Path:
     height = args.height or round(args.tile * SPRITE_TILES_H)
 
     grid = split_grid(Image.open(src))
+    keyed = [
+        [key_out(cell, args.tolerance, not args.no_hue_key) for cell in row]
+        for row in grid
+    ]
+
+    # Spin sheets (coin, …): one crop box for every cell so foreshortened
+    # frames do not shrink relative to the face-on frame.
+    shared = union_bbox([cell for row in keyed for cell in row]) if args.uniform else None
+
     frames: dict[str, list[Image.Image]] = {}
     for row_index, view in enumerate(SOURCE_ROWS):
         cells = []
-        for cell in grid[row_index]:
-            cell = key_out(cell, args.tolerance, not args.no_hue_key)
-            cell = crop_to_content(cell)
+        for cell in keyed[row_index]:
+            if shared is not None:
+                cell = cell.crop(shared)
+            else:
+                cell = crop_to_content(cell)
             cell = normalize(
                 cell, width, height, args.bottom_pad, args.filter, args.alpha_threshold
             )
@@ -191,6 +216,11 @@ def process(args) -> Path:
     sheet_path = out_dir / "sheet.png"
     sheet.save(sheet_path)
 
+    # Coin-style spin: face → ¾ → edge → ¾. Character walk keeps the old order.
+    walk_order = [0, 1, 2, 1]
+    idle = 0 if args.uniform else 1
+    fps = 12 if args.uniform else 8
+
     manifest = {
         "name": args.name,
         "sheet": "sheet.png",
@@ -198,9 +228,9 @@ def process(args) -> Path:
         "frameHeight": height,
         "frames": GRID_COLS,
         "rows": {view: i for i, view in enumerate(OUTPUT_ROWS)},
-        "idleFrame": 1,
-        "walkFrameOrder": [0, 1, 2, 1],
-        "fps": 8,
+        "idleFrame": idle,
+        "walkFrameOrder": walk_order,
+        "fps": fps,
         "anchor": {"x": 0.5, "y": 1.0},
     }
     (out_dir / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
@@ -224,6 +254,11 @@ def main() -> None:
     ap.add_argument("--alpha-threshold", type=int, default=128,
                     help="0 disables; otherwise alpha is forced to 0 or 255")
     ap.add_argument("--bottom-pad", type=int, default=0)
+    ap.add_argument(
+        "--uniform",
+        action="store_true",
+        help="shared crop box across all cells (spin/item sheets stay one size)",
+    )
     args = ap.parse_args()
     process(args)
 

@@ -10,14 +10,14 @@
     "right": 2,
     "up": 3
   },
-  "idleFrame": 1,
+  "idleFrame": 0,
   "walkFrameOrder": [
     0,
     1,
     2,
     1
   ],
-  "fps": 8,
+  "fps": 12,
   "anchor": {
     "x": 0.5,
     "y": 1.0

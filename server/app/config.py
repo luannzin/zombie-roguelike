@@ -19,10 +19,11 @@ Canonical shape:
     tile           1   x 1     tiles   (16 x 16 px)
     sprite frame   1   x 1     tiles   (16 x 16 px)
     collision box  0.6 x 0.45  tiles   (9.6 x 7.2 px, feet footprint)
+    hit capsule    r 0.3, full sprite height (stadium from feet to head)
 
 Taller characters (bosses, zombie variants) only need SPRITE_TILES_H raised
 for that entity's asset — the renderer anchors any frame height by its bottom
-edge, so nothing else changes.
+edge, and the hit capsule grows with sprite height, so nothing else changes.
 
 Movement is continuous, not tile-by-tile: position is a float in world pixels
 and the grid is only used for collision and (later) pathfinding. That is
@@ -53,14 +54,15 @@ SPRITE_TILES_W = 1.0
 SPRITE_TILES_H = 1.0
 PLAYER_BOX_TILES_W = 0.6
 PLAYER_BOX_TILES_H = 0.45
-PLAYER_HIT_TILES_R = 0.375
+# Capsule radius ≈ collision half-width; vertical span = full sprite.
+PLAYER_HIT_TILES_R = 0.3
 MOVE_TILES_PER_SEC = 4.4
 
 SPRITE_WIDTH = round(TILE_SIZE * SPRITE_TILES_W)        # 16
 SPRITE_HEIGHT = round(TILE_SIZE * SPRITE_TILES_H)       # 16
 PLAYER_HALF_WIDTH = TILE_SIZE * PLAYER_BOX_TILES_W / 2  # 4.8
 PLAYER_HALF_HEIGHT = TILE_SIZE * PLAYER_BOX_TILES_H / 2 # 3.6
-PLAYER_HIT_RADIUS = TILE_SIZE * PLAYER_HIT_TILES_R      # 6.0
+PLAYER_HIT_RADIUS = TILE_SIZE * PLAYER_HIT_TILES_R      # 4.8
 MOVE_SPEED = TILE_SIZE * MOVE_TILES_PER_SEC             # 70.4 px/s
 
 MAX_HP = 100

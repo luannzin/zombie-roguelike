@@ -1,8 +1,9 @@
 """Hitscan combat.
 
 `raycast` is deliberately entity-agnostic: it takes any iterable of objects
-exposing `.id`, `.x`, `.y`, `.radius` and `.alive`. Zombies will drop straight
-into `targets` with no changes here.
+exposing `.id`, `.x`, `.capsule_y0`, `.capsule_y1`, `.radius` and `.alive`.
+A capsule is a vertical stadium (segment + radius) covering the full body.
+Zombies drop straight into `targets` with no changes here.
 """
 
 from __future__ import annotations
@@ -90,6 +91,71 @@ def ray_circle(
     return t
 
 
+def _point_segment_dist2(
+    px: float, py: float, ax: float, ay: float, bx: float, by: float
+) -> float:
+    abx = bx - ax
+    aby = by - ay
+    apx = px - ax
+    apy = py - ay
+    ab2 = abx * abx + aby * aby
+    if ab2 < 1e-12:
+        return apx * apx + apy * apy
+    t = max(0.0, min(1.0, (apx * abx + apy * aby) / ab2))
+    cx = ax + abx * t
+    cy = ay + aby * t
+    return (px - cx) * (px - cx) + (py - cy) * (py - cy)
+
+
+def ray_capsule(
+    ox: float,
+    oy: float,
+    dx: float,
+    dy: float,
+    ax: float,
+    ay: float,
+    bx: float,
+    by: float,
+    r: float,
+) -> Optional[float]:
+    """Nearest t>=0 where unit ray hits capsule (segment AB + radius), else None."""
+    if _point_segment_dist2(ox, oy, ax, ay, bx, by) <= r * r:
+        return 0.0
+
+    best: Optional[float] = None
+
+    def consider(t: Optional[float]) -> None:
+        nonlocal best
+        if t is not None and (best is None or t < best):
+            best = t
+
+    consider(ray_circle(ox, oy, dx, dy, ax, ay, r))
+    consider(ray_circle(ox, oy, dx, dy, bx, by, r))
+
+    abx = bx - ax
+    aby = by - ay
+    ab2 = abx * abx + aby * aby
+    if ab2 < 1e-12:
+        return best
+
+    ab_len = math.sqrt(ab2)
+    # 2D cross: hit when |(O + tD - A) × AB| / |AB| == r  and proj in (0, 1)
+    cross_d = dx * aby - dy * abx
+    cross_oa = (ox - ax) * aby - (oy - ay) * abx
+    if abs(cross_d) > 1e-12:
+        for sign in (1.0, -1.0):
+            t = (sign * r * ab_len - cross_oa) / cross_d
+            if t < 0.0:
+                continue
+            px = ox + t * dx
+            py = oy + t * dy
+            proj = ((px - ax) * abx + (py - ay) * aby) / ab2
+            if 0.0 < proj < 1.0:
+                consider(t)
+
+    return best
+
+
 def raycast(
     world: TileMap,
     ox: float,
@@ -105,7 +171,17 @@ def raycast(
     for t in targets:
         if getattr(t, "id", None) == ignore_id or not getattr(t, "alive", True):
             continue
-        d = ray_circle(ox, oy, dx, dy, t.x, t.y, t.radius)
+        d = ray_capsule(
+            ox,
+            oy,
+            dx,
+            dy,
+            t.x,
+            t.capsule_y0,
+            t.x,
+            t.capsule_y1,
+            t.radius,
+        )
         if d is not None and d <= best:
             best = d
             hit = t

@@ -1,8 +1,8 @@
 """Authoritative entity state.
 
 `Player` is the only entity today. Zombies/NPCs will be a sibling dataclass
-that reuses the same (x, y, radius, hp, alive) shape so `combat.raycast` can
-target them without changes.
+that reuses the same (x, capsule_y0, capsule_y1, radius, hp, alive) shape so
+`combat.raycast` can target them without changes.
 """
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ import random
 from collections import deque
 from dataclasses import dataclass, field
 
-from .config import MAX_HP, PLAYER_HIT_RADIUS
+from .config import MAX_HP, PLAYER_HALF_HEIGHT, PLAYER_HIT_RADIUS, SPRITE_HEIGHT
 
 COLORS = [
     "#e6484f", "#f2a541", "#f6e05e", "#7bd389", "#3fb8af",
@@ -80,6 +80,16 @@ class Player:
     idle_ticks: int = 0
     fire_cooldown: float = 0.0
     respawn_timer: float = 0.0
+
+    @property
+    def capsule_y0(self) -> float:
+        """Feet end of the vertical hit capsule (inset by radius)."""
+        return self.y + PLAYER_HALF_HEIGHT - self.radius
+
+    @property
+    def capsule_y1(self) -> float:
+        """Head end of the vertical hit capsule (inset by radius)."""
+        return self.y + PLAYER_HALF_HEIGHT - SPRITE_HEIGHT + self.radius
 
     def to_payload(self) -> dict:
         # Positions need ≥4 decimals: wall snaps use EPS=1e-4, and round(_, 2)

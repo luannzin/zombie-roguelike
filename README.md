@@ -47,7 +47,7 @@ consistently.
 | tile | 1 x 1 | 16 x 16 |
 | sprite frame | 1 x 1 | 16 x 16 |
 | collision box | 0.6 x 0.45 | 9.6 x 7.2 |
-| hit circle | r 0.375 | r 6 |
+| hit capsule | r 0.3 × sprite H | r 4.8, full body |
 | move speed | 4.4 / s | 70.4 px/s |
 | shot range | 16 | 256 px |
 

@@ -40,6 +40,7 @@ export interface GameConfig {
   spriteHeight: number;
   playerHalfWidth: number;
   playerHalfHeight: number;
+  /** Radius of the vertical full-body hit capsule (stadium). */
   playerHitRadius: number;
   moveSpeed: number;
   maxHp: number;

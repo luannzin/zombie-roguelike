@@ -374,15 +374,21 @@ export class Game {
 
     const ox = this.smoothX + this.aimX * config.muzzleOffset;
     const oy = this.smoothY + this.aimY * config.muzzleOffset;
+    const hitR = config.playerHitRadius;
     const targets: RayTarget[] = this.snapshots
       .sample(performance.now(), this.localId, this.connection.rtt)
-      .map((p) => ({
-        id: p.id,
-        x: p.x,
-        y: p.y,
-        radius: config.playerHitRadius,
-        alive: p.alive,
-      }));
+      .map((p) => {
+        const feet = p.y + config.playerHalfHeight;
+        const head = feet - config.spriteHeight;
+        return {
+          id: p.id,
+          x: p.x,
+          capsuleY0: feet - hitR,
+          capsuleY1: head + hitR,
+          radius: hitR,
+          alive: p.alive,
+        };
+      });
 
     const result = hitscan(
       world,

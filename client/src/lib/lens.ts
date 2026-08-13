@@ -36,7 +36,14 @@ export interface LensMap {
 
 /**
  * The map is a smooth quadratic field, so it is generated small and stretched
- * across the viewport by the filter — bilinear sampling reconstructs it exactly.
+ * across the viewport by the filter, which reconstructs it closely enough that
+ * a bigger map changes nothing visible.
+ *
+ * What IS visible: browsers resample the displaced layer with nearest
+ * neighbour, so a 1px line crossing the lens steps rather than curving
+ * smoothly. That is left alone deliberately — the alternative is a filtered,
+ * softened HUD, and this game's type is a pixel face that must not be blurred.
+ * Stepping reads as pixel art; blur reads as a mistake.
  */
 const RESOLUTION = 96;
 

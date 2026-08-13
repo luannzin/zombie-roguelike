@@ -7,8 +7,10 @@
  * subscription set. In a co-op PvE game the trade is free: the only thing a
  * modified client gains by ignoring the dark is spoiling its own tension.
  *
- * Three lights per viewer, and the brightest one wins on each tile:
+ * Four lights per viewer, and the brightest one wins on each tile:
  *
+ *   sight     a nearly-invisible wash over everything in line of sight, so the
+ *             dark holds silhouettes rather than nothing at all
  *   ambient   a small omnidirectional glow, so you can always see your feet
  *   beam      a cone along your aim, reaching much further
  *   spill     a wide, weak, short halo around the beam
@@ -83,6 +85,23 @@ const EXPLORE_THRESHOLD = 0.12;
 const AMBIENT_CORE = 0.55;
 /** How much of the ambient glow survives with the lantern switched off. */
 const AMBIENT_DARK = 0.7;
+
+/**
+ * SIGHT: a nearly-invisible wash over everything the viewer has line of sight
+ * to, lantern or no lantern, out to `lanternTiles * SIGHT_REACH`.
+ *
+ * Without it the beam is a hard question — anything outside the cone does not
+ * exist, so a zombie two tiles to your left is *nothing* until you sweep over
+ * it. That is not what being in a dark forest is like. This is the shape you
+ * half-see: enemies standing in it are drawn, but at a fraction of their alpha,
+ * so you get a silhouette you are not sure about rather than an empty screen.
+ *
+ * It is kept below EXPLORE_THRESHOLD on purpose. Half-seeing a tile must not
+ * commit it to the explored map — that is what pointing the lantern at it is
+ * for.
+ */
+const SIGHT_GAIN = 0.085;
+const SIGHT_REACH = 1;
 /** Beam reach with a dying battery, as a fraction of its reach at full output. */
 const BEAM_FLOOR = 0.55;
 
@@ -95,13 +114,19 @@ const BEAM_FLOOR = 0.55;
 const HEAT_COLD = 0.25;
 /** Warmth every lit tile gets regardless of range. */
 const HEAT_BASE = 0.62;
-/** Extra warmth at the centre of the hearth, on top of HEAT_BASE. */
-const HEAT_NEAR = 1.15;
-/** The hearth — the pool of spilled light around the lamp itself. */
-const HEARTH_SPAN = 1.45;
-const HEARTH_BEAM = 0.38;
-/** Fraction of the hearth that stays at full warmth. */
-const HEARTH_CORE = 0.12;
+/**
+ * Extra warmth at the lamp itself, on top of HEAT_BASE. Deliberately small: the
+ * near field only has to be *warmer* than the far end of the beam, and a big
+ * value stops reading as brightness and starts reading as a bright disc drawn
+ * around the player.
+ */
+const HEAT_NEAR = 0.42;
+/**
+ * The hearth — the pool of spilled light around the lamp. It falls off from the
+ * very centre (no flat core) precisely so that it has no edge to see.
+ */
+const HEARTH_SPAN = 1.6;
+const HEARTH_BEAM = 0.42;
 /** Fraction of the lantern reach that stays at full brightness. */
 const LANTERN_CORE = 0.3;
 /** How much of the cone's half-angle is spent softening its edge. */
@@ -200,7 +225,11 @@ export class FovField {
       const ambientTiles = config.ambientTiles * (AMBIENT_DARK + (1 - AMBIENT_DARK) * power);
       const hearth = Math.max(ambientTiles * HEARTH_SPAN, beamReach * HEARTH_BEAM);
       const warmth = HEAT_COLD + power * (1 - HEAT_COLD);
-      const outer = Math.max(ambientTiles, beamReach);
+      // Sight does not depend on the lamp, so the flood radius — and therefore
+      // the cost of this whole pass — stays constant however the battery is
+      // doing.
+      const sight = config.lanternTiles * SIGHT_REACH;
+      const outer = Math.max(ambientTiles, beamReach, sight);
       const radius = Math.ceil(outer);
 
       const ox = viewer.x / ts;
@@ -220,7 +249,10 @@ export class FovField {
         if (dist <= 1e-4) {
           value = 1;
         } else {
-          value = falloff(dist, ambientTiles, AMBIENT_CORE);
+          value = Math.max(
+            falloff(dist, ambientTiles, AMBIENT_CORE),
+            falloff(dist, sight, 0) * SIGHT_GAIN,
+          );
           const alignment = (dx * aim.ax + dy * aim.ay) / dist;
 
           if (beamGain > 0 && alignment > cosSpill) {
@@ -252,7 +284,7 @@ export class FovField {
         // Warmth. `light` has already saturated at 1 by the time you are a
         // couple of tiles from the lamp, so without this second term walking
         // right up to something would not make it any brighter.
-        const heat = value * warmth * (HEAT_BASE + falloff(dist, hearth, HEARTH_CORE) * HEAT_NEAR);
+        const heat = value * warmth * (HEAT_BASE + falloff(dist, hearth, 0) * HEAT_NEAR);
         if (heat > this.heat[index]) this.heat[index] = heat;
       };
 

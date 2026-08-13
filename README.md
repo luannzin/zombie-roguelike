@@ -31,7 +31,8 @@ cd client && bun install && bun run dev
 Open http://localhost:5173 in two or more tabs. Each tab joins the same room
 with its own random name, colour, id and spawn point.
 
-Controls: **WASD** move · **mouse** aim · **left click / hold** shoot.
+Controls: **WASD** move · **mouse** aim · **left click / hold** shoot · **F**
+lantern on/off.
 
 Point the client at another host with `VITE_SERVER_URL=ws://192.168.0.10:8000/ws bun run dev`.
 
@@ -98,6 +99,38 @@ rather than dropped. The director scales the population with the number of
 living players, spawns in a ring around a random one, and recycles enemies
 everyone has run away from.
 
+## Light
+
+Vision is a **client** system ([render/fov.ts](client/src/render/fov.ts)): the
+server broadcasts the whole world and the client decides what you are allowed to
+make out. Four lights per player, brightest wins per tile, all of them traced
+with recursive shadowcasting so cover throws real shadows:
+
+| | reach | what it is for |
+| --- | --- | --- |
+| sight | full lantern range | a near-zero wash over everything in line of sight — enemies in it are drawn at ~20% alpha, so the dark holds silhouettes instead of nothing |
+| ambient | `visionAmbientTiles` | you can always see your own feet |
+| beam | `visionLanternTiles` | the cone along your aim |
+| spill | 50% of the beam | a weak halo, so the cone is not a stencil |
+
+Two fields come out of that pass. `light` is visibility and saturates at 1;
+`heat` is warmth and keeps climbing as you approach the lamp, which is what the
+darkness layer turns into additive amber. That split is why the ground under
+your feet reads as *bright* while the far end of the same beam is a pale wash.
+
+The lamp runs on a **battery of four cells**
+([game/lantern.ts](client/src/game/lantern.ts)), drawn on the HUD as four pixel
+batteries that drain top-down from the right. Every time a cell empties the
+lantern cuts out and has to be switched back on with **F** — the light is not a
+slider that fades over four minutes, it is four hard interruptions at moments
+you did not choose. On the last cell it starts dropping out at random, and the
+HUD tears in sympathy. Switching on stutters before it catches; dying puts it
+out. It trickles back while off, at less than half the rate it drains, so
+darkness is the resource you spend to get light back.
+
+The battery is client-local — the server does not know the lamp exists, so
+remote players always light at full output.
+
 ## Assets
 
 Source art is a 3×3 sprite sheet on solid magenta (`assets/raw/`). The pipeline
@@ -112,6 +145,14 @@ cd server
 
 ./.venv/bin/python tools/make_placeholder_sheet.py --name zombie
 ./.venv/bin/python tools/process_sprites.py --name zombie --tile 16
+```
+
+Terrain and HUD icons have no raw stage — they are generated straight into
+`assets/processed/`, deterministically:
+
+```bash
+./.venv/bin/python tools/make_textures.py     # forest floor, rocks, trees, ferns
+./.venv/bin/python tools/make_hud_icons.py    # battery.png for the lantern gauge
 ```
 
 `--tile` must match `TILE_SIZE`. The same command processes future characters,
@@ -146,11 +187,13 @@ client/
   src/
     net/            connection + protocol types
     game/           world, simulation, prediction, interpolation, input, effects,
-                    combat, per-player visuals, game loop, hud-store (UI seam)
-    render/         camera, projection, sprites/tinting, minimap, renderer
-      layers/       tiles, entities, effects, vignette
+                    combat, per-player visuals, lantern battery, game loop,
+                    hud-store (UI seam)
+    render/         camera, projection, sprites/tinting, minimap, fov, renderer
+      layers/       terrain, entities, effects, atmosphere, darkness, vignette
     theme/          palette.ts / fonts.ts — read the CSS tokens for canvas use
-    lib/            math, canvas, store, utils (framework-free helpers)
+    lib/            math, canvas, store, lens (HUD barrel map), utils
+                    (framework-free helpers)
     components/
       game/         canvas hosts (GameCanvas, MinimapCanvas)
       hud/          HUD components — ours
@@ -208,3 +251,4 @@ docs/
 | procedural maps | another builder in `maps.py` returning `list[list[int]]` |
 | multiple rooms | `Room` is not a singleton — key a dict by room id and put the id in the WS path |
 | new characters | run the asset pipeline with a different `--name` |
+| battery pickups | a coin-shaped entity in `Room` + a `pickups` event; give `Lantern` a `refill()` and set `RECHARGE_SECONDS` to `Infinity` so cells stop trickling back on their own |

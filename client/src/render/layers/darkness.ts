@@ -46,7 +46,7 @@ const FOG_ALPHA = 0.66;
  * Amber per unit of heat. Heat runs past 1 close to the lamp, so this is the
  * slope of the warm pass and not its ceiling — the alpha is clamped instead.
  */
-const WARM_GAIN = 0.31;
+const WARM_GAIN = 0.27;
 
 /**
  * `#rgb` / `#rrggbb` -> `rgb(r g b / a)`. Gradient stops need per-stop alpha,

@@ -75,15 +75,27 @@ export function HudScreen({ unstable, children }: HudScreenProps) {
     unstableRef.current = unstable;
   }, [unstable]);
 
-  // The lens is a function of the viewport, so it is rebuilt on resize and
-  // coalesced to one rebuild per frame — a drag-resize fires far faster than
-  // a canvas readback wants to run.
+  // The lens is measured off the WRAPPER, not off `window`. Two reasons, and
+  // the first one bites: the filter region is this element's bounding box, so
+  // anything else is a lens for a different rectangle — and an effect body can
+  // run before that box has been laid out, where `window.innerWidth` is a
+  // plausible-looking number that produces a silently flat map.
+  //
+  // A ResizeObserver answers both (it fires once on observe, with a real box)
+  // and matches how the game sizes its canvas. Rebuilds are coalesced to one
+  // per frame: a drag-resize fires far faster than a canvas readback wants to
+  // run.
   useEffect(() => {
+    const box = root.current;
+    if (!box) return;
     let pending = 0;
 
     const build = () => {
       pending = 0;
-      const map = barrelMap(window.innerWidth, window.innerHeight, LENS);
+      const { width, height } = box.getBoundingClientRect();
+      if (width < 1 || height < 1) return;
+
+      const map = barrelMap(width, height, LENS);
       const image = warp.current;
       if (image) {
         image.setAttribute('href', map.url);
@@ -93,14 +105,13 @@ export function HudScreen({ unstable, children }: HudScreenProps) {
       bulge.current?.setAttribute('scale', map.scale.toFixed(2));
     };
 
-    const queue = () => {
+    const observer = new ResizeObserver(() => {
       if (pending === 0) pending = requestAnimationFrame(build);
-    };
+    });
+    observer.observe(box);
 
-    build();
-    window.addEventListener('resize', queue);
     return () => {
-      window.removeEventListener('resize', queue);
+      observer.disconnect();
       if (pending !== 0) cancelAnimationFrame(pending);
     };
   }, []);

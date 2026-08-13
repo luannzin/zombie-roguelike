@@ -75,9 +75,16 @@ const VISION_FALLBACK: VisionConfig = {
   lanternTiles: 11,
   coneDegrees: 75,
 };
-/** Below this much light an enemy is invisible; above the second it is solid. */
-const ENEMY_HIDE_LIGHT = 0.1;
-const ENEMY_SHOW_LIGHT = 0.26;
+/**
+ * Below this much light an enemy is invisible; above the second it is solid.
+ *
+ * The floor is tiny because the fov lays a near-zero SIGHT wash over everything
+ * in line of sight (see fov.ts): a zombie standing in that wash and nothing
+ * else lands around 20% alpha — a shape you notice moving and cannot identify —
+ * and only resolves properly once the beam actually reaches it.
+ */
+const ENEMY_HIDE_LIGHT = 0.012;
+const ENEMY_SHOW_LIGHT = 0.3;
 
 /**
  * Everything `toDrawablePlayer` needs, in the shape both a snapshot-interpolated

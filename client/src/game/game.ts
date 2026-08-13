@@ -78,10 +78,12 @@ const VISION_FALLBACK: VisionConfig = {
 /**
  * Below this much light an enemy is invisible; above the second it is solid.
  *
- * The floor is tiny because the fov lays a near-zero SIGHT wash over everything
- * in line of sight (see fov.ts): a zombie standing in that wash and nothing
- * else lands around 20% alpha — a shape you notice moving and cannot identify —
- * and only resolves properly once the beam actually reaches it.
+ * The floor is tiny because the fov lays a near-zero SIGHT wash over what the
+ * player can see (see fov.ts — everything in line of sight with the lamp on,
+ * the naked-eye cone with it off): a zombie standing in that wash and nothing
+ * else lands around 25% alpha — a shape you notice moving and cannot identify —
+ * and only resolves properly once the beam actually reaches it. A zombie
+ * outside the wash gets no light at all and is not drawn.
  */
 const ENEMY_HIDE_LIGHT = 0.012;
 const ENEMY_SHOW_LIGHT = 0.3;

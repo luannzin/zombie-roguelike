@@ -9,7 +9,7 @@
  *
  * Four lights per viewer, and the brightest one wins on each tile:
  *
- *   sight     a nearly-invisible wash over everything in line of sight, so the
+ *   sight     a nearly-invisible wash over what the player is FACING, so the
  *             dark holds silhouettes rather than nothing at all
  *   ambient   a small omnidirectional glow, so you can always see your feet
  *   beam      a cone along your aim, reaching much further
@@ -83,12 +83,18 @@ export interface VisionConfig {
 const EXPLORE_THRESHOLD = 0.12;
 /** Fraction of the ambient radius that stays at full brightness. */
 const AMBIENT_CORE = 0.55;
-/** How much of the ambient glow survives with the lantern switched off. */
-const AMBIENT_DARK = 0.7;
+/**
+ * How much of the ambient glow survives with the lantern switched off. Small on
+ * purpose: ambient is omnidirectional, so it is the one thing that can still
+ * light an enemy standing behind you, and a wide dark ambient would undo the
+ * naked-eye cone. At this radius the bubble is arm's reach — something touching
+ * you is not something you can fail to notice.
+ */
+const AMBIENT_DARK = 0.45;
 
 /**
- * SIGHT: a nearly-invisible wash over everything the viewer has line of sight
- * to, lantern or no lantern, out to `lanternTiles * SIGHT_REACH`.
+ * SIGHT: a nearly-invisible wash over what the viewer has line of sight to,
+ * lantern or no lantern, out to `lanternTiles * SIGHT_REACH`.
  *
  * Without it the beam is a hard question — anything outside the cone does not
  * exist, so a zombie two tiles to your left is *nothing* until you sweep over
@@ -99,9 +105,24 @@ const AMBIENT_DARK = 0.7;
  * It is kept below EXPLORE_THRESHOLD on purpose. Half-seeing a tile must not
  * commit it to the explored map — that is what pointing the lantern at it is
  * for.
+ *
+ * With the lamp ON the wash is omnidirectional — the lantern is doing the
+ * pointing, and the beam is the thing the player aims. With the lamp OFF it
+ * collapses to the NAKED-EYE cone below: a wide, short, low-opacity wedge along
+ * the aim. That cone is the whole answer to "what can I see in the dark" — a
+ * shape you half-make-out inside it, and nothing at all outside it. Being
+ * flanked in the dark is then a real thing that can happen to you, which is
+ * what the lamp costs battery to prevent.
  */
 const SIGHT_GAIN = 0.085;
 const SIGHT_REACH = 1;
+/** Naked-eye cone with the lamp off: full width, and reach vs the beam's. */
+const EYE_CONE_DEGREES = 110;
+const EYE_REACH = 0.62;
+/** How much of the eye cone's half-angle is spent softening its edge. */
+const EYE_SOFTNESS = 0.5;
+const EYE_COS = Math.cos((EYE_CONE_DEGREES * Math.PI) / 360);
+const EYE_EDGE = EYE_COS + (1 - EYE_COS) * EYE_SOFTNESS;
 /** Beam reach with a dying battery, as a fraction of its reach at full output. */
 const BEAM_FLOOR = 0.55;
 
@@ -225,10 +246,11 @@ export class FovField {
       const ambientTiles = config.ambientTiles * (AMBIENT_DARK + (1 - AMBIENT_DARK) * power);
       const hearth = Math.max(ambientTiles * HEARTH_SPAN, beamReach * HEARTH_BEAM);
       const warmth = HEAT_COLD + power * (1 - HEAT_COLD);
-      // Sight does not depend on the lamp, so the flood radius — and therefore
-      // the cost of this whole pass — stays constant however the battery is
-      // doing.
-      const sight = config.lanternTiles * SIGHT_REACH;
+      // With the lamp off, sight is the naked eye: shorter, and a cone rather
+      // than a full circle. Both open back up as the lamp comes on, so a
+      // stutter or a dropout closes the world in around you instead of
+      // switching between two unrelated vision models.
+      const sight = config.lanternTiles * (EYE_REACH + (SIGHT_REACH - EYE_REACH) * power);
       const outer = Math.max(ambientTiles, beamReach, sight);
       const radius = Math.ceil(outer);
 
@@ -249,11 +271,16 @@ export class FovField {
         if (dist <= 1e-4) {
           value = 1;
         } else {
+          const alignment = (dx * aim.ax + dy * aim.ay) / dist;
+          // Blend the mask, not the angle: interpolating the cone's cosine
+          // toward -1 leaves a soft edge behind the player that never closes.
+          const eyes =
+            smoothstep(EYE_COS, EYE_EDGE, alignment) * (1 - power) + power;
+
           value = Math.max(
             falloff(dist, ambientTiles, AMBIENT_CORE),
-            falloff(dist, sight, 0) * SIGHT_GAIN,
+            falloff(dist, sight, 0) * SIGHT_GAIN * eyes,
           );
-          const alignment = (dx * aim.ax + dy * aim.ay) / dist;
 
           if (beamGain > 0 && alignment > cosSpill) {
             // Angle around the beam, used to ripple its reach. Cheap harmonics

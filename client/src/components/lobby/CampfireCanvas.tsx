@@ -12,24 +12,37 @@ export interface CampfireCanvasProps {
   members: readonly LobbyMember[];
   /** Room code (or any string): decides which clearing gets generated. */
   seed?: string;
+  /**
+   * Where the fire sits in the canvas, as 0..1 fractions. Defaults to centred.
+   * The title screen moves it down and left, out from under the menu.
+   */
+  anchorX?: number;
+  anchorY?: number;
   className?: string;
 }
 
-export function CampfireCanvas({ members, seed = '', className }: CampfireCanvasProps) {
+export function CampfireCanvas({
+  members,
+  seed = '',
+  anchorX = 0.5,
+  anchorY = 0.42,
+  className,
+}: CampfireCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const sceneRef = useRef<LobbyScene | null>(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const scene = new LobbyScene(canvas, hashSeed(seed));
+    // Anchor is read once per scene; it is a framing decision, not state.
+    const scene = new LobbyScene(canvas, hashSeed(seed), { x: anchorX, y: anchorY });
     sceneRef.current = scene;
     void scene.start();
     return () => {
       scene.dispose();
       sceneRef.current = null;
     };
-  }, [seed]);
+  }, [seed, anchorX, anchorY]);
 
   // Runs after the mount effect above, so the first roster is never dropped.
   // `setMembers` diffs by id: re-sending an unchanged list is a no-op, not a

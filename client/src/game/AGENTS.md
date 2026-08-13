@@ -40,6 +40,11 @@ seam React is allowed to read.
   draws through the arena's own `TerrainLayer` over a locally generated
   `TileMap`, so the lobby and the forest cannot drift apart. Art scale comes
   from the terrain manifest, never a hardcoded tile size.
+- The **hearth** (`HEARTH_TILES`) is the fire plus the seat ring, and nothing
+  decorative stands in it: the map generator refuses trees and rocks there, and
+  a `TerrainLayer` decoration mask refuses grass and ferns. Both measure on the
+  same ellipse the seats use. A plant in front of a seated player hides the
+  character the roster is pointing at.
 - `dispose()` releases every timer, listener, observer and rAF handle created in
   this folder.
 - Tuning comes from `welcome.config`; the lantern's own constants are the

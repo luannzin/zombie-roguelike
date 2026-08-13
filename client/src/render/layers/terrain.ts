@@ -47,16 +47,36 @@ const SHADOW_WIDTH = 0.78;
 const SHADOW_HEIGHT = 0.24;
 const SHADOW_ALPHA = 0.3;
 
+/**
+ * Veto for a decorative plant on a floor tile. Used to keep an area clear of
+ * undergrowth without making its tiles solid — see the lobby's hearth.
+ */
+export type DecorationMask = (tx: number, ty: number) => boolean;
+
 export class TerrainLayer {
   private atlas: TerrainAtlas | null = null;
   private groundCache: HTMLCanvasElement | null = null;
   private propCache: HTMLCanvasElement | null = null;
   private cachedFor: TileMap | null = null;
+  private decorationMask: DecorationMask | null = null;
 
   /** Swap in the loaded atlas (or null to keep the flat fallback). */
   setAtlas(atlas: TerrainAtlas | null): void {
     this.atlas = atlas;
     this.reset();
+  }
+
+  /**
+   * Restrict where grass and ferns may grow. `null` (the default) allows them
+   * on every floor tile, which is what the arena wants.
+   *
+   * Only plants are affected: rocks and trees are tile kinds and are decided by
+   * whoever built the map. This is deliberately not a tile kind of its own —
+   * "floor with nothing growing on it" must stay walkable, and `isSolidTile`
+   * treats anything that is not `FLOOR` as a wall.
+   */
+  setDecorationMask(mask: DecorationMask | null): void {
+    this.decorationMask = mask;
   }
 
   /**
@@ -121,6 +141,7 @@ export class TerrainLayer {
         }
 
         if (tile !== FLOOR) continue;
+        if (this.decorationMask && !this.decorationMask(tx, ty)) continue;
         if (tileHash(tx, ty, seed, 51) >= FERN_CHANCE) continue;
         const frame = variant(fern, tx, ty, seed, 52);
         const lean = sway(tx, ty, seed, time, SWAY_FERN, 53);
@@ -160,6 +181,7 @@ export class TerrainLayer {
     for (let ty = y0; ty <= y1; ty++) {
       for (let tx = x0; tx <= x1; tx++) {
         if (world.tiles[ty][tx] !== FLOOR) continue;
+        if (this.decorationMask && !this.decorationMask(tx, ty)) continue;
         if (tileHash(tx, ty, seed, 11) >= GRASS_CHANCE) continue;
         drawTuft(ctx, atlas.grass, world, tx, ty, 0, time);
         if (tileHash(tx, ty, seed, 12) < GRASS_DOUBLE_CHANCE) {

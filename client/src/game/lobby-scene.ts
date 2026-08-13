@@ -42,7 +42,16 @@ const FALLBACK_TILE = 16;
 const MAP_TILES_W = 46;
 const MAP_TILES_H = 32;
 /** Open ground around the fire, in tiles, before the treeline starts. */
-const CLEARING_TILES = 6.4;
+const CLEARING_TILES = 8.2;
+/**
+ * The hearth: the fire plus the ring of players around it, in tiles.
+ *
+ * Nothing decorative may stand inside this — no trees, no boulders, no grass,
+ * no ferns. It is comfortably wider than the seat ring (RING_TILES_X) because
+ * "does not overlap a player" is not the bar; the bar is that the party reads
+ * as a group sitting in cleared ground, which needs empty floor around them.
+ */
+const HEARTH_TILES = 5.6;
 /** How many tiles of forest the camera should frame. Decides the zoom. */
 const VIEW_TILES_W = 26;
 const VIEW_TILES_H = 17;
@@ -155,6 +164,12 @@ export class LobbyScene {
 		canvas: HTMLCanvasElement,
 		/** Seed for the clearing. Two rooms should not be the same forest. */
 		private readonly seed = 1,
+		/**
+		 * Where the fire sits in the viewport, as 0..1 fractions. The lobby wants
+		 * it centred; the title screen pushes it down and left so the menu is not
+		 * standing on top of it.
+		 */
+		private readonly anchor: { x: number; y: number } = { x: 0.5, y: 0.42 },
 		sprites: SpriteBook = new SpriteBook(),
 	) {
 		this.canvas = canvas;
@@ -182,6 +197,14 @@ export class LobbyScene {
 		this.tile = atlas?.groundTile ?? FALLBACK_TILE;
 		this.terrain.setAtlas(atlas);
 		this.world = buildClearing(this.seed, this.tile);
+		// Grass and ferns are placed by the terrain layer from the tile hash, so
+		// keeping them out of the hearth has to be told to it — the map itself
+		// only decides trees and rocks.
+		const cx = (MAP_TILES_W - 1) / 2;
+		const cy = (MAP_TILES_H - 1) / 2;
+		this.terrain.setDecorationMask((tx, ty) =>
+			decorationAllowed(tx, ty, cx, cy, this.seed),
+		);
 		this.fireX = (Math.floor(MAP_TILES_W / 2) + 0.5) * this.tile;
 		this.fireY = (Math.floor(MAP_TILES_H / 2) + 1) * this.tile;
 		if (this.pending) {
@@ -435,8 +458,15 @@ export class LobbyScene {
 		);
 		this.camera.resize(width, height);
 		if (world) {
-			// The fire sits above centre so the front row has room to stand.
-			this.camera.snapTo(this.fireX, this.fireY + this.tile * 1.2, world);
+			// `snapTo` centres its target, so the point handed to it is displaced by
+			// however far the anchor is from the middle. Clamping still applies: the
+			// map is big enough that it never bites, but a smaller one would pull
+			// the fire back toward centre rather than show the edge of the world.
+			this.camera.snapTo(
+				this.fireX + this.camera.viewWidth * (0.5 - this.anchor.x),
+				this.fireY + this.camera.viewHeight * (0.5 - this.anchor.y),
+				world,
+			);
 		}
 	}
 
@@ -887,6 +917,10 @@ function clearingTile(
 	if (tx < 2 || ty < 2 || tx >= MAP_TILES_W - 2 || ty >= MAP_TILES_H - 2)
 		return TREE;
 
+	const hearth = hearthDistance(tx, ty, cx, cy);
+	// Nothing is allowed to stand in the hearth — see HEARTH_TILES.
+	if (hearth < HEARTH_TILES) return FLOOR;
+
 	// Squashed vertically to match the ellipse the seats sit on and the shape of
 	// a landscape viewport — a circular clearing reads as a bulge on a wide screen.
 	const dx = tx - cx;
@@ -896,8 +930,8 @@ function clearingTile(
 	const edge = CLEARING_TILES + tileHash(tx, ty, seed, 7) * 1.8 - 0.9;
 
 	if (distance < edge) {
-		// A couple of boulders inside the clearing, kept off the seat ring.
-		if (distance > RING_TILES_X + 0.8 && tileHash(tx, ty, seed, 8) > 0.94)
+		// A couple of boulders out on the clearing floor, well clear of the party.
+		if (hearth > HEARTH_TILES + 1.5 && tileHash(tx, ty, seed, 8) > 0.94)
 			return ROCK;
 		return FLOOR;
 	}
@@ -907,6 +941,40 @@ function clearingTile(
 	if (tileHash(tx, ty, seed, 9) < 0.16 + depth * 0.66) return TREE;
 	if (tileHash(tx, ty, seed, 10) < 0.05 + depth * 0.06) return ROCK;
 	return FLOOR;
+}
+
+/**
+ * Distance from the fire in tiles, on the same ellipse the seats sit on.
+ *
+ * Elliptical rather than circular because the seat ring is: measuring with a
+ * circle would leave the players at the top and bottom of the ring standing in
+ * scrub while the ones at the sides had room.
+ */
+function hearthDistance(tx: number, ty: number, cx: number, cy: number): number {
+	const dx = tx - cx;
+	const dy = (ty - cy) * (RING_TILES_X / RING_TILES_Y);
+	return Math.hypot(dx, dy);
+}
+
+/**
+ * Whether a decorative tuft or bush may stand on this floor tile.
+ *
+ * The hearth is the fire plus the ring of players around it, and it is kept
+ * clear: a fern in front of a seated player hides the character the roster on
+ * the left is pointing at, and grass growing out of the fire reads as a bug.
+ * Past the threshold the chance ramps in over a couple of tiles rather than
+ * switching on, so the cleared area has a soft edge instead of looking stamped.
+ */
+function decorationAllowed(
+	tx: number,
+	ty: number,
+	cx: number,
+	cy: number,
+	seed: number,
+): boolean {
+	const hearth = hearthDistance(tx, ty, cx, cy);
+	if (hearth < HEARTH_TILES) return false;
+	return tileHash(tx, ty, seed, 61) < clamp01((hearth - HEARTH_TILES) / 2.2);
 }
 
 /** Even spacing round the ring, with the front seat (nearest the camera) first. */

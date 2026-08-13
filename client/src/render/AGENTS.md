@@ -42,6 +42,11 @@ mutation, no React.
 - `terrain.ts` and `layers/terrain.ts` are also used by `game/lobby-scene.ts`
   over a locally generated map. Nothing in them may assume a server sent the
   `TileMap`.
+- `TerrainLayer.setDecorationMask` vetoes grass and ferns per tile. It exists so
+  an area can be kept clear of undergrowth **without** its tiles becoming solid
+  — `isSolidTile` treats anything that is not `FLOOR` as a wall, so "bare floor"
+  can never be a tile kind. Rocks and trees are not affected; those are the
+  map's decision.
 - Cached bitmaps and tints are released in `Renderer.dispose()`.
 - `imageSmoothingEnabled` stays `false` — this is pixel art.
 

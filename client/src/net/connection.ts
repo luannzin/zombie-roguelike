@@ -1,20 +1,19 @@
 /**
- * Thin WebSocket wrapper: auto-connect, auto-reconnect, RTT measurement.
+ * Thin WebSocket wrapper: auto-reconnect, RTT measurement, multicast delivery.
  * Knows nothing about the game — it only moves JSON messages.
+ *
+ * Delivery is a listener SET rather than one callback because a room socket
+ * has two readers with different lifetimes: the session (which owns the
+ * connection from the lobby onward) and the `Game` (which exists only while
+ * the arena is mounted). Each subscribes and unsubscribes independently;
+ * neither can silently steal the other's messages.
  */
 
 import type { ClientMessage, ServerMessage } from './protocol';
 
 export type ConnectionStatus = 'connecting' | 'open' | 'closed';
 
-function defaultUrl(): string {
-  const env = import.meta.env.VITE_SERVER_URL as string | undefined;
-  if (env) return env;
-  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  // Dev default: Vite on :5173, FastAPI on :8000 of the same host.
-  const host = location.hostname || 'localhost';
-  return `${proto}//${host}:8000/ws`;
-}
+export type Unsubscribe = () => void;
 
 export class Connection {
   readonly url: string;
@@ -29,14 +28,27 @@ export class Connection {
    */
   private disposed = false;
 
+  private readonly messageListeners = new Set<(msg: ServerMessage) => void>();
+  private readonly statusListeners = new Set<(status: ConnectionStatus) => void>();
+
   status: ConnectionStatus = 'connecting';
   rtt = 0;
 
-  onMessage: (msg: ServerMessage) => void = () => {};
-  onStatus: (status: ConnectionStatus) => void = () => {};
-
-  constructor(url: string = defaultUrl()) {
+  constructor(url: string) {
     this.url = url;
+  }
+
+  /** Subscribe to every non-`pong` message. Returns its own unsubscribe. */
+  onMessage(listener: (msg: ServerMessage) => void): Unsubscribe {
+    this.messageListeners.add(listener);
+    return () => this.messageListeners.delete(listener);
+  }
+
+  /** Subscribe to socket status. Fires immediately with the current value. */
+  onStatus(listener: (status: ConnectionStatus) => void): Unsubscribe {
+    this.statusListeners.add(listener);
+    listener(this.status);
+    return () => this.statusListeners.delete(listener);
   }
 
   connect(): void {
@@ -62,7 +74,8 @@ export class Connection {
         this.rtt = Math.round(performance.now() - msg.t);
         return;
       }
-      this.onMessage(msg);
+      // Copied: a listener may unsubscribe itself while being notified.
+      for (const listener of [...this.messageListeners]) listener(msg);
     };
 
     ws.onclose = () => {
@@ -103,8 +116,8 @@ export class Connection {
         ws.close();
       }
     }
-    this.onMessage = () => {};
-    this.onStatus = () => {};
+    this.messageListeners.clear();
+    this.statusListeners.clear();
   }
 
   send(msg: ClientMessage): void {
@@ -129,6 +142,6 @@ export class Connection {
 
   private setStatus(status: ConnectionStatus): void {
     this.status = status;
-    this.onStatus(status);
+    for (const listener of [...this.statusListeners]) listener(status);
   }
 }

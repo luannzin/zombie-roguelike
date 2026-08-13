@@ -131,6 +131,11 @@ class Player:
         }
 
 
+#: Longest name the roster can show without truncating. Also the cap that keeps
+#: a hand-written query string from becoming a broadcast payload.
+MAX_NAME_LENGTH = 16
+
+
 def random_name(taken: set[str]) -> str:
     for _ in range(50):
         name = f"Player{random.randint(100, 999)}"
@@ -139,5 +144,30 @@ def random_name(taken: set[str]) -> str:
     return f"Player{random.randint(1000, 999999)}"
 
 
-def random_color() -> str:
-    return random.choice(COLORS)
+def clean_name(raw: str | None, taken: set[str]) -> str:
+    """Sanitise a player-supplied name. Returns "" when nothing usable is left.
+
+    The name arrives in a query string and is echoed to every other player in
+    the room, so it is trimmed to printable characters and a fixed length here
+    rather than anywhere downstream. Collisions get a numeric suffix: two
+    friends both called "ana" must still be two readable rows in the roster.
+    """
+    if not raw:
+        return ""
+    name = "".join(c for c in raw.strip() if c.isprintable())[:MAX_NAME_LENGTH].strip()
+    if not name:
+        return ""
+    if name not in taken:
+        return name
+    for n in range(2, 100):
+        suffix = f" {n}"
+        candidate = name[: MAX_NAME_LENGTH - len(suffix)] + suffix
+        if candidate not in taken:
+            return candidate
+    return ""
+
+
+def pick_color(taken: set[str]) -> str:
+    """An unused swatch if one is left, otherwise any. Colour is lobby identity."""
+    free = [c for c in COLORS if c not in taken]
+    return random.choice(free or COLORS)

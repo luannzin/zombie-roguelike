@@ -77,6 +77,22 @@ export interface Palette {
    */
   night: { shadow: Channels; lantern: Channels };
 
+  /** The lobby campfire — the only light in that scene. */
+  fire: {
+    stone: string;
+    log: string;
+    logLit: string;
+    outer: string;
+    mid: string;
+    core: string;
+    embers: string[];
+    /** Bare channels: the glow's alpha comes from the flicker, not the token. */
+    glow: Channels;
+  };
+
+  /** A player materialising into a lobby seat. */
+  summon: { beam: Channels; spark: string; core: string };
+
   /** Bare `R G B` channels — the vignette computes alpha per stop. */
   danger: {
     inner: string;
@@ -158,6 +174,23 @@ function resolve(): Palette {
     },
 
     night: { shadow: rgb('--night-shadow'), lantern: rgb('--night-lantern') },
+
+    fire: {
+      stone: v('--fire-stone'),
+      log: v('--fire-log'),
+      logLit: v('--fire-log-lit'),
+      outer: v('--fire-outer'),
+      mid: v('--fire-mid'),
+      core: v('--fire-core'),
+      embers: [v('--fire-ember-a'), v('--fire-ember-b'), v('--fire-ember-c')],
+      glow: rgb('--fire-glow'),
+    },
+
+    summon: {
+      beam: rgb('--summon-beam'),
+      spark: v('--summon-spark'),
+      core: v('--summon-core'),
+    },
 
     danger: {
       inner: v('--danger-inner'),

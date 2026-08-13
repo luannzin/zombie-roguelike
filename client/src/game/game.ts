@@ -16,7 +16,7 @@
  */
 
 import { clamp01 } from '../lib/math';
-import { Connection, type ConnectionStatus } from '../net/connection';
+import type { Connection, ConnectionStatus, Unsubscribe } from '../net/connection';
 import type {
   AttackEvent,
   EnemyTypeConfig,
@@ -112,8 +112,14 @@ export interface GameOptions {
   canvas: HTMLCanvasElement;
   minimapCanvas: HTMLCanvasElement;
   hud: HudStore;
-  /** Override the default server URL (room-scoped URLs land here later). */
-  serverUrl?: string;
+  /**
+   * The room socket, opened and owned by the session (see
+   * `hooks/useRoomSession`) — it was already carrying the lobby before this
+   * game existed. `Game` subscribes to it and never closes it.
+   */
+  connection: Connection;
+  /** The `welcome` that started this run; it arrived before `start()` ran. */
+  welcome: WelcomeMessage;
 }
 
 export class Game {
@@ -129,6 +135,10 @@ export class Game {
   private readonly sprites = new SpriteBook();
   /** The local player's lamp. Remote lanterns are always on — see lantern.ts. */
   private readonly lantern = new Lantern();
+
+  /** The welcome this game was built from, applied once `start()` is ready. */
+  private readonly initialWelcome: WelcomeMessage;
+  private readonly subscriptions: Unsubscribe[] = [];
 
   private renderer: Renderer | null = null;
   private resizeObserver: ResizeObserver | null = null;
@@ -161,7 +171,8 @@ export class Game {
   constructor(options: GameOptions) {
     this.canvas = options.canvas;
     this.hud = options.hud;
-    this.connection = new Connection(options.serverUrl);
+    this.connection = options.connection;
+    this.initialWelcome = options.welcome;
     this.input = new InputController(options.canvas);
     this.input.onToggleLantern = () => this.lantern.toggle();
     this.minimap = new Minimap(options.minimapCanvas);
@@ -187,9 +198,14 @@ export class Game {
     });
     this.resizeObserver.observe(this.canvas);
 
-    this.connection.onStatus = (status) => this.onStatus(status);
-    this.connection.onMessage = (msg) => this.onMessage(msg);
-    this.connection.connect();
+    this.subscriptions.push(
+      this.connection.onStatus((status) => this.onStatus(status)),
+      this.connection.onMessage((msg) => this.onMessage(msg)),
+    );
+    // The socket has been open since the lobby, so `welcome` landed before this
+    // object existed. Replaying it here is what builds the world — snapshots
+    // arriving in the gap were dropped by `onSnapshot`'s own guard.
+    this.onWelcome(this.initialWelcome);
 
     this.lastFrame = performance.now();
     this.rafId = requestAnimationFrame(this.frame);
@@ -210,7 +226,9 @@ export class Game {
     this.resizeObserver?.disconnect();
     this.resizeObserver = null;
 
-    this.connection.close();
+    // Unsubscribe, never close: the session owns the socket and the player may
+    // be dropping back to a lobby that is still live on it.
+    for (const unsubscribe of this.subscriptions.splice(0)) unsubscribe();
     this.input.dispose();
     this.renderer?.dispose();
     this.renderer = null;

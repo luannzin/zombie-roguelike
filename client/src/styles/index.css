@@ -123,6 +123,29 @@
   --night-shadow: 8 12 22;
   --night-lantern: 255 206 138;
 
+  /*
+   * Campfire. The lobby has exactly one light source and everything in that
+   * scene is lit by it, so these are its whole palette: the wood, the three
+   * bands of the flame, and the sparks it throws. `--fire-glow` is bare
+   * `R G B` for the same reason the night tones are — the scene computes its
+   * own alpha from the flicker.
+   */
+  --fire-stone: #35323c;
+  --fire-log: #4a3524;
+  --fire-log-lit: #7a5330;
+  --fire-outer: #d2431f;
+  --fire-mid: #f2882b;
+  --fire-core: #ffe08a;
+  --fire-ember-a: #ffb347;
+  --fire-ember-b: #ff7b3d;
+  --fire-ember-c: #ffe6b0;
+  --fire-glow: 255 168 78;
+
+  /* summoning — a player materialising into a seat at the fire */
+  --summon-beam: 150 200 255;
+  --summon-spark: #cfe6ff;
+  --summon-core: #ffffff;
+
   /* HUD chrome */
   --hud-text-shadow: #000;
   --meter-shade: rgb(0 0 0 / 0.35);
@@ -222,6 +245,20 @@
    * animation, and this has to read as a failure.
    */
   --animate-lantern-fail: lantern-fail 1.7s linear infinite;
+
+  /*
+   * The lobby's start button, once it is actually pressable. A ring that
+   * breathes outward reads as "ready" without moving the button itself —
+   * anything that shifts layout under a cursor is a worse click target.
+   */
+  --animate-ready-glow: ready-glow 2.6s ease-in-out infinite;
+
+  /*
+   * The title, wired to a generator that is not coping. Long steady stretches
+   * with two irregular dropouts — an even blink would read as a CSS animation
+   * rather than as a place where the power is failing.
+   */
+  --animate-sign-flicker: sign-flicker 6.5s linear infinite;
 
   --animate-skeleton: skeleton 2s -1s infinite linear;
 
@@ -343,6 +380,25 @@
     }
   69% {
     opacity: 0.5;
+    }
+  }
+  @keyframes ready-glow {
+  0%, 100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--ink-accent) 45%, transparent);
+    }
+  70%, 99% {
+    box-shadow: 0 0 0 5px color-mix(in srgb, var(--ink-accent) 0%, transparent);
+    }
+  }
+  @keyframes sign-flicker {
+  0%, 41%, 44%, 61%, 63%, 100% {
+    opacity: 1;
+    }
+  42.5% {
+    opacity: 0.55;
+    }
+  62% {
+    opacity: 0.72;
     }
   }
   @keyframes skeleton {

@@ -2,6 +2,10 @@
  * Wire protocol types. Mirrors server/app/protocol.py — keep both in sync.
  * All gameplay tuning arrives from the server in `welcome.config`; never
  * hardcode a gameplay constant here.
+ *
+ * One socket carries both phases of a room: `hello` + `lobby` while the party
+ * gathers, then `welcome` and the snapshot stream once the host starts. There
+ * is no second connection — see `hooks/useRoomSession`.
  */
 
 export interface MovementInput {
@@ -24,7 +28,12 @@ export interface PingPacket {
   t: number;
 }
 
-export type ClientMessage = InputPacket | PingPacket;
+/** Leave the lobby and start the run. Ignored from anyone but the host. */
+export interface StartPacket {
+  type: 'start';
+}
+
+export type ClientMessage = InputPacket | PingPacket | StartPacket;
 
 /**
  * Canonical scale, decided server-side (see server/app/config.py):
@@ -190,6 +199,40 @@ export interface PickupEvent {
   gold: number;
 }
 
+export type RoomPhase = 'lobby' | 'playing';
+
+/** One row of the lobby roster. Colour is this player's identity everywhere. */
+export interface LobbyPlayer {
+  id: string;
+  name: string;
+  color: string;
+}
+
+/**
+ * Sent once, before anything else. `lobby` is one payload broadcast to the
+ * whole room, so which row is yours has to arrive in a message only you get.
+ */
+export interface HelloMessage {
+  type: 'hello';
+  playerId: string;
+  code: string;
+}
+
+/** Room membership + phase. Pushed on every change, not on a tick. */
+export interface LobbyMessage {
+  type: 'lobby';
+  code: string;
+  hostId: string | null;
+  phase: RoomPhase;
+  players: LobbyPlayer[];
+}
+
+/** A refusal, followed by the server closing the socket. */
+export interface ErrorMessage {
+  type: 'error';
+  code: 'room_not_found' | string;
+}
+
 export interface WelcomeMessage {
   type: 'welcome';
   playerId: string;
@@ -219,4 +262,10 @@ export interface PongMessage {
   t: number;
 }
 
-export type ServerMessage = WelcomeMessage | SnapshotMessage | PongMessage;
+export type ServerMessage =
+  | HelloMessage
+  | LobbyMessage
+  | ErrorMessage
+  | WelcomeMessage
+  | SnapshotMessage
+  | PongMessage;

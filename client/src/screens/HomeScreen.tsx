@@ -1,0 +1,205 @@
+/**
+ * The title screen.
+ *
+ * Two stages on one route: the menu, and the play panel it opens into. They
+ * are not separate routes because there is nothing to link to or come back to
+ * — the only durable addresses in this game are `/` and a room.
+ *
+ * The campfire behind it is the same scene the lobby draws, with nobody in it.
+ * That is the whole point of the shot: an empty fire, waiting for a party.
+ */
+
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router';
+import { CampfireCanvas } from '@/components/lobby/CampfireCanvas';
+import { HudInput } from '@/components/menu/HudInput';
+import { JoinRoomDialog } from '@/components/menu/JoinRoomDialog';
+import { MenuButton } from '@/components/menu/MenuButton';
+import { loadName, MAX_NAME_LENGTH, randomName, saveName } from '@/lib/identity';
+import { cn } from '@/lib/utils';
+import { createRoom } from '@/net/rooms';
+
+/** Nobody is at the fire on the title screen. Hoisted so it is a stable ref. */
+const NOBODY = Object.freeze([]) as never[];
+
+type Stage = 'menu' | 'play';
+
+interface MenuEntry {
+  label: string;
+  onSelect: () => void;
+}
+
+export function HomeScreen() {
+  const navigate = useNavigate();
+  const [stage, setStage] = useState<Stage>('menu');
+  const [name, setName] = useState(loadName);
+  const [creating, setCreating] = useState(false);
+  const [joinOpen, setJoinOpen] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const nameRef = useRef<HTMLInputElement>(null);
+
+  // Memoised because the key handler below depends on it; a fresh array each
+  // render would resubscribe the window listener on every keystroke.
+  const entries = useMemo<MenuEntry[]>(
+    () => [{ label: 'Jogar', onSelect: () => setStage('play') }],
+    [],
+  );
+  const [selected, setSelected] = useState(0);
+
+  /** The name is committed on the way out, not on every keystroke. */
+  const commitName = useCallback((): string => {
+    const trimmed = name.trim().slice(0, MAX_NAME_LENGTH) || randomName();
+    if (trimmed !== name) setName(trimmed);
+    saveName(trimmed);
+    return trimmed;
+  }, [name]);
+
+  const enterRoom = useCallback(
+    (code: string) => {
+      commitName();
+      void navigate(`/r/${code}`);
+    },
+    [commitName, navigate],
+  );
+
+  const create = async () => {
+    if (creating) return;
+    setCreating(true);
+    setError(null);
+    try {
+      enterRoom(await createRoom());
+    } catch {
+      setError('não foi possível falar com o servidor');
+      setCreating(false);
+    }
+  };
+
+  // Menu keyboard: a title screen that only answers the mouse feels like a web
+  // page. Only bound in the menu stage, so it never eats a keystroke meant for
+  // the name field or the join dialog.
+  useEffect(() => {
+    if (stage !== 'menu') return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'ArrowDown') {
+        setSelected((i) => (i + 1) % entries.length);
+      } else if (event.key === 'ArrowUp') {
+        setSelected((i) => (i - 1 + entries.length) % entries.length);
+      } else if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        entries[selected]?.onSelect();
+      } else {
+        return;
+      }
+      event.preventDefault();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [stage, selected, entries]);
+
+  // Escape backs out of the play panel — but not while the dialog owns it.
+  useEffect(() => {
+    if (stage !== 'play' || joinOpen) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setStage('menu');
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [stage, joinOpen]);
+
+  useEffect(() => {
+    if (stage === 'play') nameRef.current?.focus();
+  }, [stage]);
+
+  return (
+    <div className="relative h-screen w-screen overflow-hidden bg-surface">
+      <CampfireCanvas members={NOBODY} className="absolute inset-0" />
+      {/* Legibility scrim: the menu sits on top of a live scene. */}
+      <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-surface via-surface/78 to-transparent" />
+
+      <div className="relative flex h-full max-w-xl flex-col justify-center gap-10 px-8 sm:px-14">
+        <h1 className="pixel-text animate-sign-flicker select-none">
+          <span className="block text-[33px] leading-[37px] tracking-[0.3em] text-ink uppercase">
+            Zombie
+          </span>
+          <span className="block text-[55px] leading-[59px] tracking-[0.1em] text-ink-accent uppercase drop-shadow-[0_3px_0_var(--hud-text-shadow)]">
+            Roguelike
+          </span>
+        </h1>
+
+        {stage === 'menu' ? (
+          <nav className="flex w-64 flex-col items-start gap-1">
+            {entries.map((entry, index) => (
+              <button
+                key={entry.label}
+                type="button"
+                onMouseEnter={() => setSelected(index)}
+                onClick={entry.onSelect}
+                className={cn(
+                  'pixel-text group flex cursor-pointer items-center gap-3 py-1.5 text-[22px] leading-[26px] tracking-[0.16em] uppercase transition-colors focus-visible:outline-none',
+                  index === selected ? 'text-ink-accent' : 'text-ink-muted hover:text-ink',
+                )}
+              >
+                <span
+                  aria-hidden="true"
+                  className={cn(
+                    'inline-block transition-[opacity,translate] duration-150',
+                    index === selected
+                      ? 'translate-x-0 opacity-100'
+                      : '-translate-x-2 opacity-0',
+                  )}
+                >
+                  ▸
+                </span>
+                {entry.label}
+              </button>
+            ))}
+          </nav>
+        ) : (
+          <div className="animate-in fade-in slide-in-from-bottom-2 flex w-full max-w-sm flex-col gap-5 duration-200">
+            <HudInput
+              ref={nameRef}
+              label="Seu nome"
+              value={name}
+              maxLength={MAX_NAME_LENGTH}
+              autoComplete="off"
+              spellCheck={false}
+              hint={
+                <button
+                  type="button"
+                  onClick={() => setName(randomName())}
+                  className="cursor-pointer uppercase underline-offset-4 hover:text-ink hover:underline"
+                >
+                  ⟳ sortear outro nome
+                </button>
+              }
+              onChange={(event) => setName(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') void create();
+              }}
+            />
+
+            <div className="flex flex-col gap-2">
+              <MenuButton variant="primary" disabled={creating} onClick={() => void create()}>
+                {creating ? 'Acendendo a fogueira…' : 'Criar uma sala'}
+              </MenuButton>
+              <MenuButton onClick={() => setJoinOpen(true)}>Entrar em uma sala</MenuButton>
+              <MenuButton variant="quiet" onClick={() => setStage('menu')}>
+                ← Voltar (esc)
+              </MenuButton>
+            </div>
+
+            {error ? (
+              <p className="pixel-text text-[11px] leading-[17px] text-hp-low">{error}</p>
+            ) : null}
+          </div>
+        )}
+      </div>
+
+      <p className="pixel-text pointer-events-none absolute bottom-3 left-4 text-[11px] leading-[17px] text-ink-muted uppercase">
+        Zombie Roguelike — vertical slice
+      </p>
+
+      <JoinRoomDialog open={joinOpen} onOpenChange={setJoinOpen} onJoin={enterRoom} />
+    </div>
+  );
+}

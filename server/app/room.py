@@ -1,9 +1,12 @@
 """The game room: authoritative state + fixed-tick simulation loop.
 
-One process currently hosts exactly one room (`get_room()`), which is all the
-vertical slice needs. Multiple rooms later = a dict of Room instances keyed by
-id, plus a room id in the WebSocket path; nothing in this class assumes it is
-a singleton.
+A room has two phases. In `lobby` nothing ticks: players join, take a colour
+and wait around the campfire the client draws, and state is pushed only when
+membership changes. `begin()` flips it to `playing`, respawns everyone on the
+centre ring and starts the 30 Hz loop. The socket is the same one throughout.
+
+Rooms are created and looked up by code in `rooms.py`; nothing in this class
+assumes it is the only one.
 """
 
 from __future__ import annotations
@@ -38,14 +41,18 @@ from .config import (
     client_config,
 )
 from .enemies import Enemy, EnemyType
-from .entities import InputCmd, Player, random_color, random_name
+from .entities import InputCmd, Player, clean_name, pick_color, random_name
 from .mapgen import build_forest
 from .pathing import Navigator
 from .simulation import apply_input
 
 
 class Room:
-    def __init__(self, seed: int | None = None):
+    def __init__(self, code: str = "LOCAL", seed: int | None = None):
+        self.code = code
+        self.phase = protocol.PHASE_LOBBY
+        #: First player in wins the start button; promoted on departure.
+        self.host_id: str | None = None
         self.world = build_forest(seed=seed)
         self.spawn_points = self.world.free_spawn_points(PLAYER_HALF_WIDTH, PLAYER_HALF_HEIGHT)
         # Spawn candidates, best first: closest to the ring around the centre
@@ -110,28 +117,65 @@ class Room:
         # one anyway rather than scattering someone across the map.
         return self.spawn_ring[0] if self.spawn_ring else random.choice(self.spawn_points)
 
-    def add_player(self, socket) -> Player:
+    def add_player(self, socket, name: str | None = None) -> Player:
         pid = uuid.uuid4().hex[:8]
         x, y = self.pick_spawn()
+        taken_names = {p.name for p in self.players.values()}
         player = Player(
             id=pid,
-            name=random_name({p.name for p in self.players.values()}),
-            color=random_color(),
+            name=clean_name(name, taken_names) or random_name(taken_names),
+            # Colour is the lobby's identity — two players sharing one makes the
+            # roster unreadable, so an unused swatch is picked rather than a
+            # random one.
+            color=pick_color({p.color for p in self.players.values()}),
             x=x,
             y=y,
         )
         self.players[pid] = player
         self.sockets[pid] = socket
+        if self.host_id is None:
+            self.host_id = pid
         return player
 
     def remove_player(self, pid: str) -> None:
         self.players.pop(pid, None)
         self.sockets.pop(pid, None)
+        # The host leaving must not lock the room out of ever starting.
+        if pid == self.host_id:
+            self.host_id = next(iter(self.players), None)
 
     def welcome_payload(self, player: Player) -> dict:
         return protocol.welcome(
             player.to_payload(), client_config(), self.world.to_payload()
         )
+
+    def lobby_payload(self) -> dict:
+        return protocol.lobby(
+            self.code,
+            self.host_id,
+            self.phase,
+            [
+                {"id": p.id, "name": p.name, "color": p.color}
+                for p in self.players.values()
+            ],
+        )
+
+    async def begin(self) -> None:
+        """Leave the campfire: respawn everyone, hand out the map, start ticking."""
+        if self.phase == protocol.PHASE_PLAYING:
+            return
+        self.phase = protocol.PHASE_PLAYING
+        # Lobby spawns were picked as players trickled in, against a room that
+        # kept changing size. Re-pick now so the party actually lands together.
+        for player in self.players.values():
+            self.respawn(player)
+
+        await self.broadcast(self.lobby_payload())
+        for pid, socket in list(self.sockets.items()):
+            player = self.players.get(pid)
+            if player is not None:
+                await self._safe_send(pid, socket, json.dumps(self.welcome_payload(player)))
+        self.start()
 
     # --- input --------------------------------------------------------------
     def queue_input(self, pid: str, msg: dict) -> None:
@@ -355,6 +399,22 @@ class Room:
         player.last_input = InputCmd(sequence=player.last_processed_seq)
 
     # --- networking ---------------------------------------------------------
+    async def broadcast(self, payload: dict) -> None:
+        """Send one identical payload to every socket. Lobby state, not snapshots."""
+        if not self.sockets:
+            return
+        text = json.dumps(payload)
+        await asyncio.gather(
+            *(
+                self._safe_send(pid, socket, text)
+                for pid, socket in list(self.sockets.items())
+            ),
+            return_exceptions=True,
+        )
+
+    async def broadcast_lobby(self) -> None:
+        await self.broadcast(self.lobby_payload())
+
     async def broadcast_snapshot(self) -> None:
         if not self.sockets:
             return
@@ -400,13 +460,3 @@ class Room:
             else:
                 # Fell behind: drop the accumulated debt instead of spiralling.
                 next_time = time.perf_counter()
-
-
-_room: Room | None = None
-
-
-def get_room() -> Room:
-    global _room
-    if _room is None:
-        _room = Room()
-    return _room

@@ -1,6 +1,14 @@
-"""FastAPI entrypoint: one WebSocket endpoint + a health route.
+"""FastAPI entrypoint: room REST + one WebSocket endpoint per room.
 
 Run with:  uvicorn app.main:app --reload --port 8000   (from server/)
+
+    POST /rooms          -> {"code": "ABC1234"}   creates a room + its forest
+    GET  /rooms/{code}   -> {"code","phase","players"}  or 404
+    WS   /ws/{code}?name=…                        lobby, then arena
+
+The REST pair exists so the menu can tell a player their code is wrong while
+they are still typing it, instead of routing them into a room screen that
+immediately fails.
 """
 
 from __future__ import annotations
@@ -8,19 +16,19 @@ from __future__ import annotations
 import json
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
-from . import protocol
-from .room import get_room
+from . import protocol, rooms
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    room = get_room()
-    room.start()
     yield
-    await room.stop()
+    # Every live room owns a tick task; leaving them running past shutdown
+    # keeps the event loop alive and hangs reload.
+    for room in rooms.all_rooms():
+        await room.stop()
 
 
 app = FastAPI(title="zombie-roguelike server", lifespan=lifespan)
@@ -35,22 +43,45 @@ app.add_middleware(
 
 @app.get("/health")
 async def health():
-    room = get_room()
+    live = rooms.all_rooms()
     return {
         "ok": True,
-        "tick": room.tick,
-        "players": len(room.players),
-        "enemies": len(room.enemies),
+        "rooms": len(live),
+        "players": sum(len(r.players) for r in live),
     }
 
 
-@app.websocket("/ws")
-async def game_socket(ws: WebSocket):
+@app.post("/rooms")
+async def create_room():
+    return {"code": rooms.create().code}
+
+
+@app.get("/rooms/{code}")
+async def room_info(code: str):
+    room = rooms.get(code)
+    if room is None:
+        raise HTTPException(status_code=404, detail=protocol.ERR_ROOM_NOT_FOUND)
+    return {"code": room.code, "phase": room.phase, "players": len(room.players)}
+
+
+@app.websocket("/ws/{code}")
+async def game_socket(ws: WebSocket, code: str, name: str | None = None):
     await ws.accept()
-    room = get_room()
-    player = room.add_player(ws)
+    room = rooms.get(code)
+    if room is None:
+        await ws.send_text(json.dumps(protocol.error(protocol.ERR_ROOM_NOT_FOUND)))
+        await ws.close()
+        return
+
+    player = room.add_player(ws, name)
     try:
-        await ws.send_text(json.dumps(room.welcome_payload(player)))
+        await ws.send_text(json.dumps(protocol.hello(player.id, room.code)))
+        await room.broadcast_lobby()
+        # Joining a run already in progress: skip the campfire and drop straight
+        # into the forest.
+        if room.phase == protocol.PHASE_PLAYING:
+            await ws.send_text(json.dumps(room.welcome_payload(player)))
+
         while True:
             raw = await ws.receive_text()
             try:
@@ -64,9 +95,16 @@ async def game_socket(ws: WebSocket):
                 await ws.send_text(
                     json.dumps({"type": protocol.MSG_PONG, "t": msg.get("t")})
                 )
+            elif kind == protocol.MSG_START and player.id == room.host_id:
+                await room.begin()
     except WebSocketDisconnect:
         pass
     except Exception:
         pass
     finally:
         room.remove_player(player.id)
+        if room.players:
+            await room.broadcast_lobby()
+        else:
+            # Last one out: the room's whole content was its players.
+            await rooms.drop(room.code)

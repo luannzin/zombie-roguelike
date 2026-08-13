@@ -25,6 +25,7 @@ export type Channels = [number, number, number];
 export interface Palette {
   surface: string;
   panelBorder: string;
+  panelInset: string;
   ink: string;
   inkMuted: string;
   inkAccent: string;
@@ -90,8 +91,9 @@ export interface Palette {
     glow: Channels;
   };
 
-  /** A player materialising into a lobby seat. */
-  summon: { beam: Channels; spark: string; core: string };
+  /** The motes falling around a player materialising into a lobby seat. The
+   * column itself is a greyscale sheet tinted with the player's own colour. */
+  summon: { spark: string; core: string };
 
   /** Bare `R G B` channels — the vignette computes alpha per stop. */
   danger: {
@@ -116,6 +118,7 @@ function resolve(): Palette {
   return {
     surface: v('--surface'),
     panelBorder: v('--panel-border'),
+    panelInset: v('--panel-inset'),
     ink: v('--ink'),
     inkMuted: v('--ink-muted'),
     inkAccent: v('--ink-accent'),
@@ -187,7 +190,6 @@ function resolve(): Palette {
     },
 
     summon: {
-      beam: rgb('--summon-beam'),
       spark: v('--summon-spark'),
       core: v('--summon-core'),
     },

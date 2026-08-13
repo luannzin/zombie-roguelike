@@ -50,7 +50,13 @@ seam React is allowed to read.
   `server/tools/make_vfx.py`; the body must finish resolving on the frame the
   sprite flashes, or the arrival lands twice. The sheet owns the flash and the
   shockwaves — the code only adds what it cannot know, which is whose arrival
-  it is (one ring and a spray of sparks in the player's colour).
+  it is: the sheet is greyscale and tinted with the arriving player's colour,
+  plus one ring and a spray of sparks in the same colour.
+- Lobby names are drawn in SCREEN space, on a card ABOVE the head. Above,
+  because the seat ring is elliptical and a label under a player's feet lands
+  on whoever is sitting closer to the camera. The card is the roster row in
+  pixels — inset fill, hairline border, 2px colour bar — and every measurement
+  is a whole multiple of one design pixel so it stays on the font's grid.
 - `dispose()` releases every timer, listener, observer and rAF handle created in
   this folder.
 - Tuning comes from `welcome.config`; the lantern's drain/recharge constants

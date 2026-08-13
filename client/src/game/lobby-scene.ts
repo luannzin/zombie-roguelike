@@ -28,7 +28,12 @@ import { Camera } from "../render/camera";
 import { TerrainLayer } from "../render/layers/terrain";
 import { frameIndex, SpriteBook } from "../render/sprites";
 import { loadTerrain, type TerrainAtlas, tileHash } from "../render/terrain";
-import { effectFrame, loadVfx, type VfxAtlas } from "../render/vfx";
+import {
+	effectFrame,
+	effectImage,
+	loadVfx,
+	type VfxAtlas,
+} from "../render/vfx";
 import { HUD_GRID, hudFont, whenFontsReady } from "../theme/fonts";
 import { palette } from "../theme/palette";
 import { FLOOR, ROCK, TileMap, TREE } from "./world";
@@ -866,6 +871,11 @@ export class LobbyScene {
 	 * The sheet is anchored on its contact row, not its bottom edge, because the
 	 * impact throws a shockwave into the rows below the ground line. It also
 	 * carries the flash and the wave, so nothing here re-draws those.
+	 *
+	 * The art is greyscale and tinted per seat: the column that delivers a
+	 * player is in their own colour, which is the same join the roster makes
+	 * with its swatches. A single baked-in blue for everybody would make an
+	 * arrival an event that happened NEAR somebody rather than TO them.
 	 */
 	private drawSummons(): void {
 		const sheet = this.vfx?.summon;
@@ -879,7 +889,7 @@ export class LobbyScene {
 			const { x, y } = this.seatPosition(seat.angle);
 			const frame = effectFrame(sheet, seat.t);
 			ctx.drawImage(
-				sheet.image,
+				effectImage(sheet, seat.color),
 				frame * sheet.frameWidth,
 				0,
 				sheet.frameWidth,
@@ -937,35 +947,110 @@ export class LobbyScene {
 	}
 
 	/**
-	 * Names, in screen space.
+	 * Names, in screen space, on a card above the head.
 	 *
 	 * Departure Mono is a pixel face and is only crisp at multiples of 11 px, so
 	 * labels are drawn at the real screen scale instead of being blown up with
 	 * the rest of the scene.
+	 *
+	 * ABOVE, not below: the ring is elliptical, so the player at the front sits
+	 * lower than the fire and a label under their feet lands on the seat of
+	 * whoever is closer to the camera. Above the head the only thing a card can
+	 * collide with is empty night.
+	 *
+	 * The card is the roster row from the panel on the left, drawn in pixels:
+	 * inset panel fill, a hairline border, and a 2px bar in the player's colour
+	 * down the leading edge. Same three parts, same order, so the list and the
+	 * scene read as one thing — see components/lobby/PlayerRoster.tsx.
 	 */
 	private drawLabels(): void {
 		const { ctx, camera } = this;
 		const tone = palette();
-		const size = HUD_GRID * Math.max(1, Math.round(this.dpr));
+		// One design pixel, in device pixels. Every measurement below is a whole
+		// multiple of it, so the card's edges land on the same grid as the font.
+		const unit = Math.max(1, Math.round(this.dpr));
+		const size = HUD_GRID * unit;
+		const sheet = this.sprites.get(PLAYER_SHEET);
+		// Departure Mono's metrics, in design pixels: caps rise 8 above the
+		// baseline and descenders drop 3 below it. Measuring the card off those
+		// rather than off the em box keeps the padding optically even.
+		const capHeight = 8 * unit;
+		const descent = 3 * unit;
+		const padX = 4 * unit;
+		// Descender space is reserved whether or not the name has one, so two
+		// cards side by side are the same height and sit on the same line.
+		const cardHeight = capHeight + descent + 5 * unit;
 
 		ctx.save();
 		ctx.setTransform(1, 0, 0, 1, 0, 0);
 		ctx.font = hudFont(size);
 		ctx.textAlign = "center";
-		ctx.textBaseline = "bottom";
+		ctx.textBaseline = "alphabetic";
 
 		for (const seat of this.seats) {
 			const alpha = this.seatAlpha(seat);
 			if (alpha <= 0.05) continue;
 			const { x, y } = this.seatPosition(seat.angle);
-			const sx = Math.round((x - camera.renderX) * camera.zoom);
-			const sy = Math.round((y - camera.renderY) * camera.zoom + size * 1.5);
+			// Clear of the head, and of the crown when there is one. The body's
+			// idle bob is deliberately NOT applied: a nameplate that bobs with the
+			// character is a label that will not hold still to be read.
+			// The crown is drawn 6px above the sprite, so a host needs the extra
+			// room or their plate sits on it.
+			const headTop =
+				y - (sheet?.frameHeight ?? this.tile) - (seat.isHost ? 7 : 2);
+			const cx = Math.round((x - camera.renderX) * camera.zoom);
+			// The tip of the pointer touches the head; the card floats above it.
+			const tipY = Math.round((headTop - camera.renderY) * camera.zoom);
+			const cardBottom = tipY - 2 * unit;
+			const cardTop = cardBottom - cardHeight;
+			const baseline = cardBottom - descent - 2 * unit;
 
+			const accent = 2 * unit;
+			const textWidth =
+				Math.ceil(ctx.measureText(seat.name).width / unit) * unit;
+			const width = accent + padX * 2 + textWidth;
+			const left = cx - Math.round(width / 2 / unit) * unit;
+
+			ctx.globalAlpha = alpha * 0.88;
+			ctx.fillStyle = tone.panelInset;
+			ctx.fillRect(left, cardTop, width, cardHeight);
+
+			// Border as four fills rather than a stroke: a 1px stroke straddles the
+			// path and comes out as two half-lit rows on a canvas this size.
+			ctx.globalAlpha = alpha * (seat.isLocal ? 0.9 : 0.5);
+			ctx.fillStyle = tone.panelBorder;
+			ctx.fillRect(left, cardTop, width, unit);
+			ctx.fillRect(left, cardBottom - unit, width, unit);
+			ctx.fillRect(left, cardTop, unit, cardHeight);
+			ctx.fillRect(left + width - unit, cardTop, unit, cardHeight);
+
+			// The colour bar, and the pointer below it. The pointer's first step
+			// overlaps the bottom border so the two merge instead of leaving a
+			// seam where the card ends.
+			ctx.globalAlpha = alpha;
+			ctx.fillStyle = seat.color;
+			ctx.fillRect(left, cardTop, accent, cardHeight);
+			ctx.globalAlpha = alpha * 0.88;
+			ctx.fillStyle = tone.panelInset;
+			for (let step = 0; step < 3; step++) {
+				ctx.fillRect(
+					cx - (2 - step) * unit,
+					cardBottom - unit + step * unit,
+					(5 - step * 2) * unit,
+					unit,
+				);
+			}
+
+			// Centred on the space BESIDE the colour bar rather than on the card,
+			// so the bar does not push the name off its own plate. Snapped to the
+			// design grid, since anything else puts the glyphs between pixels.
+			const textX =
+				Math.round((left + accent + padX + textWidth / 2) / unit) * unit;
 			ctx.globalAlpha = alpha;
 			ctx.fillStyle = tone.entity.labelShadow;
-			ctx.fillText(seat.name, sx + 1, sy + 1);
+			ctx.fillText(seat.name, textX + unit, baseline + unit);
 			ctx.fillStyle = seat.isLocal ? tone.ink : tone.inkMuted;
-			ctx.fillText(seat.name, sx, sy);
+			ctx.fillText(seat.name, textX, baseline);
 		}
 		ctx.restore();
 	}

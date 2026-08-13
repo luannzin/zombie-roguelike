@@ -38,6 +38,9 @@ imported by `app/` and never run at request time.
   with frame 0 and the last frame near-empty so there is no pop at either end.
   They are anchored on `anchorY` — the row the effect happens at, with spare
   rows BELOW it for an impact to spread into — not on the bottom edge.
+- VFX sheets are GREYSCALE. An effect belonging to a player is tinted with that
+  player's colour by the client (`client/src/render/vfx.ts`); a hue baked in
+  here would mean one sheet per colour and would not match the roster.
 - A VFX sheet's `frames / fps` is the effect's duration and the client times
   itself off it. Changing either means changing whatever the client aligns to
   it (`SUMMON_TIME`, `SUMMON_IMPACT` in `client/src/game/lobby-scene.ts`).

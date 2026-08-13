@@ -10,6 +10,12 @@ Output (assets/processed/vfx/):
     summon.png    14 frames, 32x96 — a player materialising at the campfire
     manifest.json
 
+EFFECT SHEETS ARE GREYSCALE. An effect that belongs to somebody — a summon, a
+revive, a marker — is tinted at draw time with that player's colour (see
+client/src/render/vfx.ts). Baking a hue in here would mean one sheet per
+colour, and the arriving player's column would not match their row in the
+roster.
+
 WHY A SPRITE AND NOT A GRADIENT
 A beam of light is the one effect a canvas gradient does worst. The gradient
 version of this was smooth, and smooth is the opposite of everything else on
@@ -56,11 +62,18 @@ from make_textures import (
     rgb,
 )
 
-# A cold, hard light — the one thing in this forest that is not firelight. The
-# top step is pure white: the core of the column has to be the brightest pixel
-# on screen at the moment of impact, or the strike has no punch.
+# NEUTRAL ON PURPOSE — the hue is the client's to decide.
+#
+# The sheet is greyscale so it can be multiplied by whoever is arriving: their
+# roster colour lands on the beam and the column becomes theirs, which is a
+# thing a baked-in blue can never be. Ramp the steps here and every tint gets
+# the same shape for free.
+#
+# The top step is pure white: the core of the column has to be the brightest
+# pixel on screen at the moment of impact, or the strike has no punch — and
+# under a multiply it is the step that comes out as the colour itself.
 BEAM: Ramp = [
-    rgb(c) for c in ("#16233d", "#274a86", "#3f79c6", "#7fb4ec", "#c6e4ff", "#ffffff")
+    rgb(c) for c in ("#232329", "#4a4a55", "#7d7d8c", "#b4b4c0", "#e2e2e8", "#ffffff")
 ]
 
 SUMMON_FRAMES = 14
@@ -143,9 +156,17 @@ def _column(
 ) -> None:
     """The shaft itself: a vertical band with a hot core and banded texture."""
     for y in range(max(0, int(top)), min(len(field), int(bottom) + 1)):
-        # Flare where it meets the ground; the column is not a rectangle.
+        # Flare where it meets the ground; the column is not a rectangle. The
+        # taper is steep and the exponent holds it narrow for most of the drop:
+        # a shaft that widens evenly from top to bottom reads as a wedge sitting
+        # in the frame, while one that enters as a thread and only opens up near
+        # the contact line reads as light arriving FROM somewhere above it.
         depth = clamp01((y - top) / max(bottom - top, 1.0))
-        row_half = half * (0.80 + depth * 0.50)
+        row_half = half * (0.20 + depth**1.35 * 1.15)
+        # A narrow row spreads the same strength over fewer pixels, so without
+        # a gain the thinned top fades out under the alpha quantization and the
+        # beam comes out as a flare with nothing feeding it.
+        row_gain = 1.0 + (1.0 - depth) * 0.45
         # Bands travelling DOWN the shaft. Tied to the frame index rather than
         # to y alone, so the texture moves instead of sitting still. Kept
         # shallow: at full contrast the shaft breaks into a dotted line and
@@ -161,7 +182,7 @@ def _column(
             # look of the beam: too high and it is a thread with a halo.
             core = (1.0 - offset) ** 1.5
             grain = 0.9 + hash01(x, y, frame * 31 + 7) * 0.2
-            _add(field, x, y, strength * core * band * grain)
+            _add(field, x, y, strength * core * band * grain * row_gain)
 
 
 def make_summon_frame(

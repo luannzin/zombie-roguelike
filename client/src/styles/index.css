@@ -141,8 +141,9 @@
   --fire-ember-c: #ffe6b0;
   --fire-glow: 255 168 78;
 
-  /* summoning — a player materialising into a seat at the fire */
-  --summon-beam: 150 200 255;
+  /* summoning — a player materialising into a seat at the fire.
+     The column itself has no token: the sheet is greyscale and takes the
+     arriving player's own colour. These are the motes falling around it. */
   --summon-spark: #cfe6ff;
   --summon-core: #ffffff;
 

@@ -45,6 +45,11 @@ mutation, no React.
   after the darkness pass: a beam of light is a light source, not a thing being
   lit. Their `frames / fps` is the effect's duration — callers time themselves
   off the sheet rather than picking their own.
+- VFX art is GREYSCALE and tinted at draw time through `effectImage(sheet,
+  color)`, so an effect that belongs to a player carries their colour. That
+  tint is not `sprites.TintCache`: a straight multiply is right for a material
+  and turns a white-hot core into flat paint, so `EffectTintCache` adds the
+  neutral art back over it. Never bake a hue into a sheet in `make_vfx.py`.
 - `terrain.ts` and `layers/terrain.ts` are also used by `game/lobby-scene.ts`
   over a locally generated map. Nothing in them may assume a server sent the
   `TileMap`.

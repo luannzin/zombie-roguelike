@@ -78,7 +78,33 @@ Default section order:
 
 When the user requests a durable behavior change, record it here or in the relevant child AGENTS.md
 
+## Project
+
+Browser-based multiplayer 2D pixel-art zombie roguelike. Python + FastAPI
+authoritative server at a fixed 30 Hz, Vite + TypeScript + Canvas 2D client, one
+WebSocket carrying JSON. `README.md` is the tour; the rules below bind every
+subtree.
+
+- The server is authoritative. Clients send inputs, never positions.
+- Every gameplay constant lives in `server/app/config.py` and reaches the client
+  in `welcome.config`. Never hardcode one client-side.
+- These pairs are mirrors and change together:
+  - `server/app/simulation.py` ↔ `client/src/game/simulation.ts`
+  - `server/app/protocol.py` ↔ `client/src/net/protocol.ts`
+- Sizes, speeds and distances are authored in tiles/seconds and multiplied by
+  `TILE_SIZE`. No raw pixel numbers.
+- All colours and type live in `client/src/styles/index.css`, read by the canvas
+  through `client/src/theme/`.
+- Rendering knows nothing about the network; networking knows nothing about
+  rendering; the server simulation knows nothing about either.
+- `assets/processed/` is generated output. Edit the generator in
+  `server/tools/`, never the PNG.
+
 ## Child DOX Index
 
-- No child AGENTS.md files are needed for the current repository structure.
-- Root-owned files: `README.md`, `LICENSE`, `banner.jpg`, `video-thumbnail.jpg`, and root-level project documentation.
+- `server/AGENTS.md` — authoritative Python server and the asset pipeline
+- `client/AGENTS.md` — browser client: canvas game, React HUD, tokens, build
+- `assets/AGENTS.md` — raw source art vs served production art
+- `docs/AGENTS.md` — durable reference docs and design specs
+- Root-owned files: `README.md`, `.gitignore`, and root-level project
+  documentation.

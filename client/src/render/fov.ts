@@ -72,6 +72,27 @@ export interface Viewer {
   lantern: number;
 }
 
+/**
+ * A light that is part of the WORLD rather than carried by somebody: the
+ * bonfire in the camp, and whatever else gets planted in a level later.
+ *
+ * It is not a `Viewer` with the aim fields zeroed. A viewer's light is shaped
+ * by where they are looking and dimmed by their battery; a fire has neither, it
+ * is omnidirectional, always at full power, and WARM — the camp is lit by fire
+ * and has to read that way, not as a lantern somebody left on the ground.
+ *
+ * Occlusion is the same shadowcast, so the trees around the clearing still
+ * throw real shadows across it.
+ */
+export interface LightSource {
+  /** Stable per light, so its flicker does not walk when the list re-orders. */
+  id: number;
+  x: number;
+  y: number;
+  /** Omnidirectional reach, in tiles. */
+  radiusTiles: number;
+}
+
 export interface VisionConfig {
   ambientTiles: number;
   lanternTiles: number;
@@ -167,6 +188,39 @@ const FLICKER_GAIN = 0.07;
 const WOBBLE_A = 0.055;
 const WOBBLE_B = 0.035;
 
+/**
+ * A bonfire's light. Brighter and much warmer than a lantern's — standing at
+ * the hearth is the warmest the game gets, and it is the reference the lantern
+ * is deliberately measured against (see LANTERN_GAIN).
+ */
+const FIRE_CORE = 0.34;
+const FIRE_GAIN = 1;
+const FIRE_WARMTH = 1.25;
+/** Fraction of the reach that stays at full warmth around the flame. */
+const FIRE_HEARTH = 0.42;
+/** How much of the fire's reach and brightness the flicker moves. */
+const FIRE_FLICKER_REACH = 0.06;
+const FIRE_FLICKER_GAIN = 0.1;
+
+/**
+ * 0..1 flame brightness for fire `index` at `time`.
+ *
+ * Three sines with no common period, so the fire never repeats a beat — that
+ * is the whole difference between "burning" and "animated". Exported because
+ * the additive glow the darkness layer paints has to breathe on exactly the
+ * same curve as the light this file writes; two fires flickering out of phase
+ * on the same log reads as a bug.
+ */
+export function fireFlicker(time: number, index = 0): number {
+  const phase = index * 1.7;
+  return clamp01(
+    0.78 +
+      Math.sin(time * 7.3 + phase) * 0.1 +
+      Math.sin(time * 13.1 + 1.7 + phase) * 0.07 +
+      Math.sin(time * 2.9 + 0.4 + phase) * 0.08,
+  );
+}
+
 interface Lag {
   ax: number;
   ay: number;
@@ -207,6 +261,7 @@ export class FovField {
   update(
     world: TileMap,
     viewers: readonly Viewer[],
+    lights: readonly LightSource[],
     config: VisionConfig,
     time: number,
     dt: number,
@@ -320,8 +375,59 @@ export class FovField {
       }
     }
 
+    this.burn(world, lights, time);
+
     for (let i = 0; i < this.light.length; i++) {
       if (this.light[i] >= EXPLORE_THRESHOLD) this.explored[i] = 1;
+    }
+  }
+
+  /**
+   * Fold the world's own lights in on top of the team's.
+   *
+   * A second, much simpler loop rather than a branch inside the viewer pass: a
+   * fire has no aim, no cone, no spill and no battery, so everything that makes
+   * the viewer path complicated is dead weight here. Same `max()` merge, same
+   * shadowcast, so a fire and a lantern lighting the same tile agree about it.
+   */
+  private burn(world: TileMap, lights: readonly LightSource[], time: number): void {
+    if (lights.length === 0) return;
+    const ts = world.tileSize;
+
+    for (const light of lights) {
+      const flicker = fireFlicker(time, light.id);
+      const reach = light.radiusTiles * (1 - FIRE_FLICKER_REACH + flicker * FIRE_FLICKER_REACH);
+      const gain = FIRE_GAIN * (1 - FIRE_FLICKER_GAIN + flicker * FIRE_FLICKER_GAIN);
+      const hearth = reach * FIRE_HEARTH;
+      const radius = Math.ceil(reach);
+
+      const ox = light.x / ts;
+      const oy = light.y / ts;
+      const cx = Math.floor(ox);
+      const cy = Math.floor(oy);
+
+      const shine = (tx: number, ty: number): void => {
+        if (tx < 0 || ty < 0 || tx >= this.width || ty >= this.height) return;
+        const dx = tx + 0.5 - ox;
+        const dy = ty + 0.5 - oy;
+        const dist = Math.hypot(dx, dy);
+        if (dist > reach) return;
+
+        const value = falloff(dist, reach, FIRE_CORE) * gain;
+        if (value <= 0) return;
+
+        const index = ty * this.width + tx;
+        if (value > this.light[index]) this.light[index] = value;
+
+        const heat =
+          value * FIRE_WARMTH * (HEAT_BASE + falloff(dist, hearth, 0) * HEAT_NEAR);
+        if (heat > this.heat[index]) this.heat[index] = heat;
+      };
+
+      shine(cx, cy);
+      for (let octant = 0; octant < 8; octant++) {
+        castLight(world, cx, cy, 1, 1, 0, radius, OCTANTS[octant], shine);
+      }
     }
   }
 
@@ -413,6 +519,9 @@ const OCTANTS: ReadonlyArray<readonly [number, number, number, number]> = [
  * the scan recurses into the still-visible part to its side and continues past
  * it with a tighter start slope, which is what produces a real shadow with a
  * penumbra-free edge — the standard roguelike algorithm, on floats.
+ *
+ * Occlusion is `blocksSight`, not `isSolidTile`: see world.ts for why a
+ * campfire blocks a body but not a beam.
  */
 function castLight(
   world: TileMap,
@@ -441,7 +550,7 @@ function castLight(
 
       shine(tx, ty);
 
-      const solid = world.isSolidTile(tx, ty);
+      const solid = world.blocksSight(tx, ty);
       if (blocked) {
         if (solid) {
           nextStart = rightSlope;

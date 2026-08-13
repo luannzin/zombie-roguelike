@@ -20,10 +20,11 @@
  * moment reads as a screen filter, not as wind.
  */
 
-import { FLOOR, ROCK, TREE, type TileMap } from '../../game/world';
+import { FLOOR, ROCK, TREE, type FirePlace, type TileMap } from '../../game/world';
 import { createSurface } from '../../lib/canvas';
 import { floorColor, hasFloorSpeck, palette } from '../../theme/palette';
 import type { Camera } from '../camera';
+import type { Projection } from '../projection';
 import { tileHash, type PropSheet, type TerrainAtlas } from '../terrain';
 
 /** Above this a map is drawn per-tile instead of cached. */
@@ -102,6 +103,41 @@ export class TerrainLayer {
     } else {
       paintFlat(ctx, world, window);
     }
+  }
+
+  /**
+   * One bonfire, in SCREEN space, so it can be depth-sorted with the party.
+   *
+   * The fire is the one prop that is neither baked nor drawn with the ground.
+   * Baked, it could not animate; drawn under the entity pass, it would be
+   * covered by a player standing behind it, and a ring of characters sitting
+   * around a picture of a fire is the exact thing this scene must not look
+   * like. So the renderer hands it to the same sort the entities go through and
+   * it overlaps whoever is further from the camera than the flame is.
+   *
+   * `fps` on the manifest entry is what makes these frames a loop rather than
+   * variants — see the prop-sheet contract in `render/terrain.ts`.
+   */
+  fire(
+    ctx: CanvasRenderingContext2D,
+    view: Projection,
+    fire: FirePlace,
+    time: number,
+  ): void {
+    const sheet = this.atlas?.campfire;
+    if (!sheet) return;
+    const frame = sheet.fps > 0 ? Math.floor(time * sheet.fps) % sheet.frames : 0;
+    ctx.drawImage(
+      sheet.image,
+      frame * sheet.frameWidth,
+      0,
+      sheet.frameWidth,
+      sheet.frameHeight,
+      view.x(fire.x) - Math.round((sheet.frameWidth * view.zoom) / 2),
+      view.y(fire.y) - sheet.frameHeight * view.zoom,
+      sheet.frameWidth * view.zoom,
+      sheet.frameHeight * view.zoom,
+    );
   }
 
   /**

@@ -1,9 +1,22 @@
-/** Bottom-left controls reminder. */
+/**
+ * Bottom-left controls reminder.
+ *
+ * It lists what works HERE. A safe zone has no trigger and no lamp, and a hint
+ * that offers both teaches the player two controls that will not answer — which
+ * is worse than not mentioning them, because the first thing they will do is
+ * try one.
+ */
 
-export function ControlsHint() {
-  return (
-    <div className="text-ink-muted text-[11px] leading-[11px]">
-      WASD move · mouse aim · click/hold to shoot · F lantern
-    </div>
-  );
+import type { ZoneInfo } from '../../net/protocol';
+
+export interface ControlsHintProps {
+  zone: ZoneInfo | null;
+}
+
+export function ControlsHint({ zone }: ControlsHintProps) {
+  const parts = ['WASD mover', 'mouse mirar'];
+  if (zone?.hostile !== false) parts.push('clique para atirar');
+  if (zone?.lantern !== false) parts.push('F lanterna');
+
+  return <div className="text-ink-muted text-[11px] leading-[11px]">{parts.join(' · ')}</div>;
 }

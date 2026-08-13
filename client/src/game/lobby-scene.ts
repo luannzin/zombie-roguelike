@@ -5,17 +5,26 @@
  * no input is read — the party standing around the fire is the roster the
  * server broadcast, drawn.
  *
- * It is, however, the SAME forest. The ground, trees, rocks, grass and ferns
- * come out of `render/terrain` and are painted by the arena's own
- * `TerrainLayer`, over a `TileMap` generated here rather than sent by a server.
- * That reuse is the point: swaying grass, canopies that close over a character
- * and the seamless floor atlas all arrive for free, and the lobby cannot drift
- * away from the look of the game it opens into. The fire itself is a generated
- * animated prop (`campfire.png`, see server/tools/make_textures.py), not shapes
- * drawn with canvas calls.
+ * It is not a picture of the camp. It is THE camp: the tiles come down in
+ * `hello` (see `setCamp`) and the players stand on the coordinates the
+ * simulation is already holding for them, so the seat somebody is sitting on
+ * here is the tile they walk off when the host presses start. Nothing teleports
+ * at the transition because there is nothing to teleport between. The title
+ * screen is the one caller with no server, and it falls back to a clearing
+ * generated locally — the shot there only has to look like the place, since
+ * nobody is standing in it.
+ *
+ * The ground, trees, rocks, grass and ferns are painted by the arena's own
+ * `TerrainLayer`. That reuse is the point: swaying grass, canopies that close
+ * over a character and the seamless floor atlas all arrive for free, and the
+ * lobby cannot drift away from the look of the game it opens into. The fire
+ * itself is a generated animated prop (`campfire.png`, see
+ * server/tools/make_textures.py), not shapes drawn with canvas calls.
  *
  * World units are the game's own pixels; the whole scene is blitted through an
- * integer camera zoom so the art stays on its pixel grid. The one exception is
+ * integer camera zoom so the art stays on its pixel grid — the SAME zoom the
+ * arena's arrival opens on (see `render/framing.ts`), which is what makes the
+ * push-in read as a camera move rather than as a cut. The one exception is
  * text: names are drawn in SCREEN space after the world pass, because Departure
  * Mono is only crisp at multiples of 11 screen px.
  *
@@ -23,8 +32,10 @@
  */
 
 import { get2d } from "../lib/canvas";
-import { clamp, clamp01, lerp } from "../lib/math";
+import { clamp01, lerp } from "../lib/math";
+import type { GameConfig, MapPayload } from "../net/protocol";
 import { Camera } from "../render/camera";
+import { campZoom } from "../render/framing";
 import { TerrainLayer } from "../render/layers/terrain";
 import { frameIndex, SpriteBook } from "../render/sprites";
 import { loadTerrain, type TerrainAtlas, tileHash } from "../render/terrain";
@@ -36,7 +47,7 @@ import {
 } from "../render/vfx";
 import { HUD_GRID, hudFont, whenFontsReady } from "../theme/fonts";
 import { palette } from "../theme/palette";
-import { FLOOR, ROCK, TileMap, TREE } from "./world";
+import { FIRE, FLOOR, hearthMask, ROCK, TileMap, TREE } from "./world";
 
 const TAU = Math.PI * 2;
 /** Sprite sheet every seated player is drawn from. */
@@ -44,7 +55,15 @@ const PLAYER_SHEET = "player";
 /** Art scale if the terrain manifest is missing; it is the authority normally. */
 const FALLBACK_TILE = 16;
 
-/** The clearing, in tiles. Big enough that the camera never sees an edge. */
+/**
+ * The FALLBACK clearing, in tiles — the title screen's backdrop, generated
+ * locally because there is no room and therefore no server. A real lobby throws
+ * all of this away and draws `hello.map` instead.
+ *
+ * These are deliberate near-copies of the authoritative numbers in
+ * server/app/camp.py. They do not have to agree to the pixel — nobody stands in
+ * this one — they have to make the same kind of clearing.
+ */
 const MAP_TILES_W = 46;
 const MAP_TILES_H = 32;
 /** Open ground around the fire, in tiles, before the treeline starts. */
@@ -58,14 +77,11 @@ const CLEARING_TILES = 8.2;
  * as a group sitting in cleared ground, which needs empty floor around them.
  */
 const HEARTH_TILES = 5.6;
-/** How many tiles of forest the camera should frame. Decides the zoom. */
-const VIEW_TILES_W = 26;
-const VIEW_TILES_H = 17;
 
 /** Seat ring, in tiles. Elliptical: a circle reads as a flat disc from here. */
 const RING_TILES_X = 3.5;
 const RING_TILES_Y = 2.0;
-/** How fast a seat slides to its new angle when the party grows. */
+/** How fast a seat slides to a new position when the party re-spaces. */
 const RESEAT_RATE = 3.2;
 
 /**
@@ -101,6 +117,19 @@ export interface LobbyMember {
 	color: string;
 	isLocal: boolean;
 	isHost: boolean;
+	/**
+	 * Where the server says this player is, in world pixels — the centre of
+	 * their collision box, exactly as a snapshot would carry it. The scene
+	 * converts it to a contact point on the ground and never invents one.
+	 */
+	x: number;
+	y: number;
+}
+
+/** The camp, once it has arrived. Until then the scene draws its fallback. */
+export interface CampView {
+	map: MapPayload;
+	config: GameConfig;
 }
 
 type SeatPhase = "summoning" | "seated" | "leaving";
@@ -111,9 +140,15 @@ interface Seat {
 	color: string;
 	isLocal: boolean;
 	isHost: boolean;
-	/** Current and desired position on the ring, in radians. */
-	angle: number;
-	targetAngle: number;
+	/**
+	 * Current and desired CONTACT POINT — where the feet are, in world pixels.
+	 * The current one eases toward the target so a party re-spacing around the
+	 * fire slides rather than snaps.
+	 */
+	x: number;
+	y: number;
+	targetX: number;
+	targetY: number;
 	phase: SeatPhase;
 	/** Seconds spent in the current phase. */
 	t: number;
@@ -167,6 +202,8 @@ export class LobbyScene {
 	private readonly rings: Ring[] = [];
 	/** Members handed in before `start()` finished loading the atlas. */
 	private pending: readonly LobbyMember[] | null = null;
+	/** The server's camp, if this scene has one. Null on the title screen. */
+	private camp: CampView | null = null;
 
 	private atlas: TerrainAtlas | null = null;
 	private vfx: VfxAtlas | null = null;
@@ -221,22 +258,8 @@ export class LobbyScene {
 
 		this.atlas = atlas;
 		this.vfx = vfx;
-		// The manifest is the authority on art scale — the lobby has no server
-		// config to read `tileSize` from, and inventing one here would put the
-		// clearing on a different grid from the arena's.
-		this.tile = atlas?.groundTile ?? FALLBACK_TILE;
 		this.terrain.setAtlas(atlas);
-		this.world = buildClearing(this.seed, this.tile);
-		// Grass and ferns are placed by the terrain layer from the tile hash, so
-		// keeping them out of the hearth has to be told to it — the map itself
-		// only decides trees and rocks.
-		const cx = (MAP_TILES_W - 1) / 2;
-		const cy = (MAP_TILES_H - 1) / 2;
-		this.terrain.setDecorationMask((tx, ty) =>
-			decorationAllowed(tx, ty, cx, cy, this.seed),
-		);
-		this.fireX = (Math.floor(MAP_TILES_W / 2) + 0.5) * this.tile;
-		this.fireY = (Math.floor(MAP_TILES_H / 2) + 1) * this.tile;
+		this.buildWorld();
 		if (this.pending) {
 			const members = this.pending;
 			this.pending = null;
@@ -270,13 +293,38 @@ export class LobbyScene {
 	}
 
 	/**
+	 * Hand the scene the camp the server sent.
+	 *
+	 * Safe at any time: before `start()` it is simply remembered, and after it
+	 * the world is rebuilt in place. It arrives in `hello`, which lands before
+	 * the first roster, so in practice the fallback clearing is never drawn in
+	 * a real room.
+	 */
+	setCamp(camp: CampView | null): void {
+		this.camp = camp;
+		if (!this.atlas && !this.world) return;
+		this.buildWorld();
+		this.resizeDirty = true;
+		// Seats were placed against the previous world's fire.
+		for (const seat of this.seats) {
+			seat.x = seat.targetX;
+			seat.y = seat.targetY;
+		}
+	}
+
+	/**
 	 * Reconcile the drawn party with the roster.
 	 *
 	 * Arrivals get summoned rather than appearing: a player who blinks into
 	 * existence reads as a rendering bug, and the whole point of the lobby is to
 	 * make somebody joining feel like an event. Departures dissolve for the same
-	 * reason. The local player always takes the front seat, so "which one is me"
-	 * is never a question.
+	 * reason.
+	 *
+	 * Where somebody stands is NOT this scene's decision. It used to force the
+	 * local player into the front seat, which made "which one is me" free but
+	 * meant every client was looking at a different party — and the instant the
+	 * run started, everyone's characters jumped. Positions are the server's now;
+	 * the local player is marked by the ring under their feet instead.
 	 */
 	setMembers(members: readonly LobbyMember[]): void {
 		// Before the atlas lands there is no world to place a seat in. Hold the
@@ -286,11 +334,7 @@ export class LobbyScene {
 			return;
 		}
 
-		const ordered = [...members].sort(
-			(a, b) => Number(b.isLocal) - Number(a.isLocal),
-		);
-		const live = new Set(ordered.map((m) => m.id));
-
+		const live = new Set(members.map((m) => m.id));
 		for (const seat of this.seats) {
 			if (seat.phase !== "leaving" && !live.has(seat.id)) {
 				seat.phase = "leaving";
@@ -299,8 +343,8 @@ export class LobbyScene {
 			}
 		}
 
-		ordered.forEach((member, index) => {
-			const angle = seatAngle(index, ordered.length);
+		members.forEach((member, index) => {
+			const { x, y } = this.contactPoint(member, index, members.length);
 			const existing = this.seats.find(
 				(s) => s.id === member.id && s.phase !== "leaving",
 			);
@@ -308,7 +352,8 @@ export class LobbyScene {
 				existing.name = member.name;
 				existing.color = member.color;
 				existing.isHost = member.isHost;
-				existing.targetAngle = nearestTurn(existing.angle, angle);
+				existing.targetX = x;
+				existing.targetY = y;
 				return;
 			}
 			const seat: Seat = {
@@ -317,8 +362,10 @@ export class LobbyScene {
 				color: member.color,
 				isLocal: member.isLocal,
 				isHost: member.isHost,
-				angle,
-				targetAngle: angle,
+				x,
+				y,
+				targetX: x,
+				targetY: y,
 				phase: "summoning",
 				t: 0,
 				bobPhase: Math.random() * TAU,
@@ -329,11 +376,65 @@ export class LobbyScene {
 	}
 
 	// --- geometry ------------------------------------------------------------
-	private seatPosition(angle: number): { x: number; y: number } {
-		return {
-			x: this.fireX + Math.cos(angle) * RING_TILES_X * this.tile,
-			y: this.fireY + Math.sin(angle) * RING_TILES_Y * this.tile,
-		};
+	/**
+	 * Where a member's feet touch the ground, in world pixels.
+	 *
+	 * The server sends the centre of the collision box, which is where the
+	 * simulation keeps a player; the sprite is bottom-anchored, so the contact
+	 * point is half a box lower. Getting this wrong is a party floating a few
+	 * pixels above their own shadows.
+	 *
+	 * The ring fallback is for the title screen only, where there is no config
+	 * to convert with and nobody to place.
+	 */
+	private contactPoint(
+		member: LobbyMember,
+		index: number,
+		total: number,
+	): { x: number; y: number } {
+		const config = this.camp?.config;
+		if (!config) {
+			const angle = seatAngle(index, total);
+			return {
+				x: this.fireX + Math.cos(angle) * RING_TILES_X * this.tile,
+				y: this.fireY + Math.sin(angle) * RING_TILES_Y * this.tile,
+			};
+		}
+		return { x: member.x, y: member.y + config.playerHalfHeight };
+	}
+
+	/**
+	 * (Re)build the tile map, the hearth mask and the fire anchor.
+	 *
+	 * One path for both sources: the server's camp if there is one, a locally
+	 * generated clearing otherwise. Everything downstream reads `world.fires`,
+	 * so neither branch has to be special-cased again after this.
+	 */
+	private buildWorld(): void {
+		const camp = this.camp;
+		// The manifest is the authority on art scale for the fallback — with no
+		// server config to read `tileSize` from, inventing one here would put
+		// the clearing on a different grid from the arena's.
+		this.tile = camp?.map.tileSize ?? this.atlas?.groundTile ?? FALLBACK_TILE;
+		this.world = camp
+			? new TileMap(camp.map)
+			: buildClearing(this.seed, this.tile);
+
+		const fire = this.world.fires[0];
+		this.fireX = fire?.x ?? this.world.pixelWidth / 2;
+		this.fireY = fire?.y ?? this.world.pixelHeight / 2;
+
+		// Grass and ferns are placed by the terrain layer from the tile hash, so
+		// keeping them out of the hearth has to be told to it — the map itself
+		// only decides trees, rocks and the fire.
+		this.terrain.setDecorationMask(
+			hearthMask(
+				this.world,
+				camp?.config.hearthTiles ?? HEARTH_TILES,
+				camp ? camp.config.ringTilesX / camp.config.ringTilesY : RING_TILES_X / RING_TILES_Y,
+				tileHash,
+			),
+		);
 	}
 
 	// --- vfx -----------------------------------------------------------------
@@ -348,7 +449,7 @@ export class LobbyScene {
 	 * something behind.
 	 */
 	private spawnSummon(seat: Seat): void {
-		const { x, y } = this.seatPosition(seat.angle);
+		const { x, y } = seat;
 		const ts = this.tile;
 		const tone = palette().summon;
 		for (let i = 0; i < 38; i++) {
@@ -391,7 +492,7 @@ export class LobbyScene {
 	 * and it is what ties the character in the scene to the row in the list.
 	 */
 	private spawnLanding(seat: Seat): void {
-		const { x, y } = this.seatPosition(seat.angle);
+		const { x, y } = seat;
 		const ts = this.tile;
 		this.rings.push({
 			x,
@@ -419,7 +520,7 @@ export class LobbyScene {
 	}
 
 	private spawnDeparture(seat: Seat): void {
-		const { x, y } = this.seatPosition(seat.angle);
+		const { x, y } = seat;
 		const ts = this.tile;
 		for (let i = 0; i < 18; i++) {
 			this.particles.push({
@@ -493,17 +594,9 @@ export class LobbyScene {
 		this.ctx.imageSmoothingEnabled = false;
 
 		// Integer zoom only: a fractional one puts the sprite grid between screen
-		// pixels and the whole scene goes soft.
-		this.camera.zoom = clamp(
-			Math.floor(
-				Math.min(
-					width / (VIEW_TILES_W * this.tile),
-					height / (VIEW_TILES_H * this.tile),
-				),
-			),
-			2,
-			6,
-		);
+		// pixels and the whole scene goes soft. It is also the scale the arena's
+		// arrival opens on — see render/framing.ts.
+		this.camera.zoom = campZoom(width, height, this.tile);
 		this.camera.resize(width, height);
 		if (world) {
 			// `snapTo` centres its target, so the point handed to it is displaced by
@@ -533,11 +626,13 @@ export class LobbyScene {
 
 		for (const seat of this.seats) {
 			seat.t += dt;
-			seat.angle = lerp(
-				seat.angle,
-				seat.targetAngle,
-				1 - Math.exp(-RESEAT_RATE * dt),
-			);
+			// Ease toward the server's position rather than snap to it: the
+			// party re-spaces around the fire every time somebody joins, and a
+			// roomful of characters teleporting a tile sideways is the same
+			// event as a roomful sliding over to make room, told badly.
+			const k = 1 - Math.exp(-RESEAT_RATE * dt);
+			seat.x = lerp(seat.x, seat.targetX, k);
+			seat.y = lerp(seat.y, seat.targetY, k);
 			if (seat.phase === "summoning") {
 				// The shockwave fires the moment the body finishes resolving.
 				if (
@@ -691,7 +786,7 @@ export class LobbyScene {
 		];
 		for (const seat of this.seats) {
 			entries.push({
-				y: this.seatPosition(seat.angle).y,
+				y: seat.y,
 				draw: () => this.drawSeat(seat),
 			});
 		}
@@ -735,7 +830,7 @@ export class LobbyScene {
 		const alpha = this.seatAlpha(seat);
 		if (alpha <= 0.01) return;
 
-		const { x, y } = this.seatPosition(seat.angle);
+		const { x, y } = seat;
 		const tone = palette();
 		const bob = Math.round(Math.sin(this.time * 1.7 + seat.bobPhase));
 		const row = sheet.rows.down ?? 0;
@@ -806,7 +901,12 @@ export class LobbyScene {
 			// Firelight on the body: a warm wash that breathes, masked to the sprite
 			// so it lands on the character and not on the ground behind it. Weaker
 			// the further round the ring you are.
-			const facing = 0.55 + 0.45 * Math.max(0, Math.sin(seat.angle));
+			// How much of the flame this body is facing: everyone on the near
+			// side of the fire catches more of it than the ones behind it.
+			const facing =
+				0.55 +
+				0.45 *
+					clamp01((y - this.fireY) / (RING_TILES_Y * this.tile));
 			ctx.globalCompositeOperation = "lighter";
 			ctx.globalAlpha = alpha * 0.12 * this.flicker * facing;
 			ctx.drawImage(
@@ -886,7 +986,7 @@ export class LobbyScene {
 		ctx.globalCompositeOperation = "lighter";
 		for (const seat of this.seats) {
 			if (seat.phase !== "summoning") continue;
-			const { x, y } = this.seatPosition(seat.angle);
+			const { x, y } = seat;
 			const frame = effectFrame(sheet, seat.t);
 			ctx.drawImage(
 				effectImage(sheet, seat.color),
@@ -990,7 +1090,7 @@ export class LobbyScene {
 		for (const seat of this.seats) {
 			const alpha = this.seatAlpha(seat);
 			if (alpha <= 0.05) continue;
-			const { x, y } = this.seatPosition(seat.angle);
+			const { x, y } = seat;
 			// Clear of the head, and of the crown when there is one. The body's
 			// idle bob is deliberately NOT applied: a nameplate that bobs with the
 			// character is a label that will not hold still to be read.
@@ -1057,23 +1157,28 @@ export class LobbyScene {
 }
 
 /**
- * A clearing in the forest, generated the same way the arena's map is: one
- * seed, hashed with the tile coordinate. Open ground in the middle for the
- * fire and the party, a ragged treeline closing in, and a solid wall of trunks
- * at the border so the camera never frames the end of the world.
+ * A clearing in the forest, for a scene with no server to ask — the title
+ * screen. Mirrors what `server/app/camp.py` builds, closely enough that the
+ * two look like the same place: open ground in the middle for the fire, a
+ * ragged treeline closing in, and a solid wall of trunks at the border so the
+ * camera never frames the end of the world.
+ *
+ * It stamps a FIRE tile like the real camp does, so the rest of this file can
+ * read `world.fires` without caring which source it is drawing.
  */
 function buildClearing(seed: number, tile: number): TileMap {
-	const cx = (MAP_TILES_W - 1) / 2;
-	const cy = (MAP_TILES_H - 1) / 2;
+	const fx = Math.floor(MAP_TILES_W / 2);
+	const fy = Math.floor(MAP_TILES_H / 2);
 	const tiles: number[][] = [];
 
 	for (let ty = 0; ty < MAP_TILES_H; ty++) {
 		const row: number[] = [];
 		for (let tx = 0; tx < MAP_TILES_W; tx++) {
-			row.push(clearingTile(tx, ty, cx, cy, seed));
+			row.push(clearingTile(tx, ty, fx, fy, seed));
 		}
 		tiles.push(row);
 	}
+	tiles[fy][fx] = FIRE;
 
 	return new TileMap({
 		width: MAP_TILES_W,
@@ -1134,40 +1239,11 @@ function hearthDistance(tx: number, ty: number, cx: number, cy: number): number 
 }
 
 /**
- * Whether a decorative tuft or bush may stand on this floor tile.
+ * Even spacing round the ring, front seat (nearest the camera) first.
  *
- * The hearth is the fire plus the ring of players around it, and it is kept
- * clear: a fern in front of a seated player hides the character the roster on
- * the left is pointing at, and grass growing out of the fire reads as a bug.
- * Past the threshold the chance ramps in over a couple of tiles rather than
- * switching on, so the cleared area has a soft edge instead of looking stamped.
+ * Mirrors `camp.seat_position` on the server, and is only reached when there is
+ * no server to mirror — see `contactPoint`.
  */
-function decorationAllowed(
-	tx: number,
-	ty: number,
-	cx: number,
-	cy: number,
-	seed: number,
-): boolean {
-	const hearth = hearthDistance(tx, ty, cx, cy);
-	if (hearth < HEARTH_TILES) return false;
-	return tileHash(tx, ty, seed, 61) < clamp01((hearth - HEARTH_TILES) / 2.2);
-}
-
-/** Even spacing round the ring, with the front seat (nearest the camera) first. */
 function seatAngle(index: number, total: number): number {
 	return Math.PI / 2 + (index / Math.max(1, total)) * TAU;
-}
-
-/**
- * The same angle, expressed as the closest one to `from`.
- *
- * Without this a seat re-spacing from 350° to 10° eases the long way round and
- * walks a player backwards through the whole party.
- */
-function nearestTurn(from: number, to: number): number {
-	let delta = (to - from) % TAU;
-	if (delta > Math.PI) delta -= TAU;
-	if (delta < -Math.PI) delta += TAU;
-	return from + delta;
 }

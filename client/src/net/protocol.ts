@@ -69,6 +69,34 @@ export interface GameConfig {
   visionLanternTiles: number;
   /** Full width of the lantern cone, in degrees. */
   visionConeDegrees: number;
+  /** How far a bonfire throws light, in tiles. The camp's only light source. */
+  campfireLightTiles: number;
+  /** The fire plus the seat ring, in tiles: nothing grows inside it. */
+  hearthTiles: number;
+  /** Seat ring radii, in tiles. Elliptical — see server/app/camp.py. */
+  ringTilesX: number;
+  ringTilesY: number;
+}
+
+/**
+ * Where the room is, and how that place behaves. Mirrors server/app/zones.py.
+ *
+ * `title` / `subtitle` are fiction the server authors — "Preparação" over
+ * "Dia 1", later "Dia 3" over "21:58 da noite" — so a new level announces
+ * itself with no client change. The two booleans are rules, not flavour, and
+ * the client must not infer either of them from the map.
+ */
+export interface ZoneInfo {
+  /** Stable identity for one arrival. A change is what replays the intro. */
+  key: string;
+  kind: 'camp' | 'forest' | string;
+  day: number;
+  title: string;
+  subtitle: string;
+  /** Enemies spawn and weapons fire. */
+  hostile: boolean;
+  /** The lantern switch works. False in the camp: the bonfire is the light. */
+  lantern: boolean;
 }
 
 /**
@@ -205,21 +233,37 @@ export interface PickupEvent {
 
 export type RoomPhase = 'lobby' | 'playing';
 
-/** One row of the lobby roster. Colour is this player's identity everywhere. */
+/**
+ * One row of the lobby roster. Colour is this player's identity everywhere.
+ *
+ * `x`/`y` are the player's REAL position in the camp — the same numbers the
+ * simulation will hand back in a snapshot the moment the host starts. The lobby
+ * scene draws them rather than inventing a seating plan of its own, which is
+ * what makes the party you are looking at the party you are about to play with.
+ */
 export interface LobbyPlayer {
   id: string;
   name: string;
   color: string;
+  x: number;
+  y: number;
 }
 
 /**
  * Sent once, before anything else. `lobby` is one payload broadcast to the
  * whole room, so which row is yours has to arrive in a message only you get.
+ *
+ * It also carries the camp: the lobby is not a picture of the clearing, it is
+ * the clearing, drawn before anybody may walk on it. Sending the map here means
+ * it travels once per socket rather than on every roster change.
  */
 export interface HelloMessage {
   type: 'hello';
   playerId: string;
   code: string;
+  config: GameConfig;
+  map: MapPayload;
+  zone: ZoneInfo;
 }
 
 /** Room membership + phase. Pushed on every change, not on a tick. */
@@ -228,6 +272,7 @@ export interface LobbyMessage {
   code: string;
   hostId: string | null;
   phase: RoomPhase;
+  zone: ZoneInfo;
   players: LobbyPlayer[];
 }
 
@@ -243,6 +288,8 @@ export interface WelcomeMessage {
   player: PlayerState;
   config: GameConfig;
   map: MapPayload;
+  /** Where the run now is. Entering it is what plays the zone intro. */
+  zone: ZoneInfo;
 }
 
 export interface SnapshotMessage {

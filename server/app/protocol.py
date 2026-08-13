@@ -17,11 +17,14 @@ client -> server
   {"type":"start"}                      host only; ignored otherwise
 
 server -> client
-  {"type":"hello","playerId":"...","code":"ABC1234"}   once, first message
+  {"type":"hello","playerId":"...","code":"ABC1234",
+   "config":{...},"map":{...},"zone":{...}}          once, first message
   {"type":"lobby","code":"ABC1234","hostId":"...","phase":"lobby"|"playing",
-   "players":[{"id","name","color"}]}   on every membership/phase change
+   "zone":{...},"players":[{"id","name","color","x","y"}]}
+                                        on every membership/phase change
   {"type":"error","code":"room_not_found"}  followed by a close
-  {"type":"welcome","playerId":"...","player":{...},"config":{...},"map":{...}}
+  {"type":"welcome","playerId":"...","player":{...},"config":{...},"map":{...},
+   "zone":{...}}
   {"type":"snapshot","tick":N,"ack":<last processed input seq for you>,
    "players":[...],"enemies":[...],"coins":[...],
    "shots":[...],"attacks":[...],"kills":[...],"pickups":[...]}
@@ -29,6 +32,14 @@ server -> client
 
 `hello` exists because `lobby` is one payload broadcast to everybody: telling
 each client which row is theirs has to happen in a message only they receive.
+It also carries the MAP, because the lobby is not a picture of the camp — it is
+the camp, drawn before anyone may walk on it. The roster rows carry real world
+positions for the same reason: the seat a player is standing on at the fire is
+the tile they start `preparation` on, so the lobby cannot invent its own layout.
+
+`zone` says where the room is and how that place behaves — see zones.py. It is
+on all three messages because all three can be the first thing a client learns
+about a room it just joined.
 
 Snapshot arrays:
   players   full state, every tick
@@ -61,16 +72,28 @@ PHASE_PLAYING = "playing"
 ERR_ROOM_NOT_FOUND = "room_not_found"
 
 
-def hello(player_id: str, code: str) -> dict:
-    return {"type": MSG_HELLO, "playerId": player_id, "code": code}
+def hello(
+    player_id: str, code: str, config: dict, map_payload: dict, zone: dict
+) -> dict:
+    return {
+        "type": MSG_HELLO,
+        "playerId": player_id,
+        "code": code,
+        "config": config,
+        "map": map_payload,
+        "zone": zone,
+    }
 
 
-def lobby(code: str, host_id: str | None, phase: str, players: list[dict]) -> dict:
+def lobby(
+    code: str, host_id: str | None, phase: str, zone: dict, players: list[dict]
+) -> dict:
     return {
         "type": MSG_LOBBY,
         "code": code,
         "hostId": host_id,
         "phase": phase,
+        "zone": zone,
         "players": players,
     }
 
@@ -79,13 +102,14 @@ def error(code: str) -> dict:
     return {"type": MSG_ERROR, "code": code}
 
 
-def welcome(player_payload: dict, config: dict, map_payload: dict) -> dict:
+def welcome(player_payload: dict, config: dict, map_payload: dict, zone: dict) -> dict:
     return {
         "type": MSG_WELCOME,
         "playerId": player_payload["id"],
         "player": player_payload,
         "config": config,
         "map": map_payload,
+        "zone": zone,
     }
 
 

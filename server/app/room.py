@@ -1,9 +1,23 @@
 """The game room: authoritative state + fixed-tick simulation loop.
 
-A room has two phases. In `lobby` nothing ticks: players join, take a colour
-and wait around the campfire the client draws, and state is pushed only when
-membership changes. `begin()` flips it to `playing`, respawns everyone on the
-centre ring and starts the 30 Hz loop. The socket is the same one throughout.
+A room has two phases and, separately, a ZONE.
+
+The phases are `lobby` and `playing`. In `lobby` nothing ticks: players join,
+take a colour and a seat at the fire, and state is pushed only when membership
+changes. `begin()` flips it to `playing` and starts the 30 Hz loop. The socket
+is the same one throughout.
+
+The zone (see zones.py) is WHERE the room is, and it does not change when the
+phase does. A room opens in the camp and stays there: the lobby is the camp seen
+from a chair, `preparation` is the same camp with the simulation running. That
+is why `begin()` does not respawn anybody — the seat you were standing on is the
+tile you start on, and a party watching their characters teleport the instant
+the host clicks start would learn that the lobby was only ever a picture.
+
+Zone rules the loop obeys:
+  * a non-hostile zone runs no enemy director and fires no weapons
+  * seats are re-spaced around the fire while the room is in `lobby`, and never
+    afterwards — position belongs to the simulation once it is running
 
 Rooms are created and looked up by code in `rooms.py`; nothing in this class
 assumes it is the only one.
@@ -18,7 +32,7 @@ import random
 import time
 import uuid
 
-from . import ai, coins, combat, protocol
+from . import ai, camp, coins, combat, protocol, zones
 from .ai import EnemyDirector
 from .coins import Coin
 from .config import (
@@ -42,7 +56,6 @@ from .config import (
 )
 from .enemies import Enemy, EnemyType
 from .entities import InputCmd, Player, clean_name, pick_color, random_name
-from .mapgen import build_forest
 from .pathing import Navigator
 from .simulation import apply_input
 
@@ -53,7 +66,15 @@ class Room:
         self.phase = protocol.PHASE_LOBBY
         #: First player in wins the start button; promoted on departure.
         self.host_id: str | None = None
-        self.world = build_forest(seed=seed)
+        #: Which day the run is on. Day 1 opens in the camp.
+        self.day = 1
+        self.zone = zones.camp(self.day)
+        # The camp IS the lobby's backdrop and `preparation`'s ground. One map,
+        # generated once, sent in `hello` before anybody may walk on it.
+        self.world = camp.build_camp(seed if seed is not None else random.randrange(1, 2**31))
+        #: Join order. It decides who sits where, and every client agrees on it
+        #: because it is only ever computed here.
+        self.seating: list[str] = []
         self.spawn_points = self.world.free_spawn_points(PLAYER_HALF_WIDTH, PLAYER_HALF_HEIGHT)
         # Spawn candidates, best first: closest to the ring around the centre
         # clearing. Sorted once here so pick_spawn is a linear scan, not a sort
@@ -117,9 +138,25 @@ class Room:
         # one anyway rather than scattering someone across the map.
         return self.spawn_ring[0] if self.spawn_ring else random.choice(self.spawn_points)
 
+    def reseat(self) -> None:
+        """Space the party evenly around the fire, in join order.
+
+        Only legal while the room is in `lobby`. Once the simulation is running,
+        position is the simulation's — shoving a player two tiles sideways
+        because somebody else joined would fight their own prediction.
+        """
+        if self.phase != protocol.PHASE_LOBBY:
+            return
+        total = len(self.seating)
+        for index, pid in enumerate(self.seating):
+            player = self.players.get(pid)
+            if player is None:
+                continue
+            player.x, player.y = camp.seat_position(self.world, index, total)
+            player.vx = player.vy = 0.0
+
     def add_player(self, socket, name: str | None = None) -> Player:
         pid = uuid.uuid4().hex[:8]
-        x, y = self.pick_spawn()
         taken_names = {p.name for p in self.players.values()}
         player = Player(
             id=pid,
@@ -128,25 +165,45 @@ class Room:
             # roster unreadable, so an unused swatch is picked rather than a
             # random one.
             color=pick_color({p.color for p in self.players.values()}),
-            x=x,
-            y=y,
         )
         self.players[pid] = player
         self.sockets[pid] = socket
+        self.seating.append(pid)
         if self.host_id is None:
             self.host_id = pid
+        if self.phase == protocol.PHASE_LOBBY:
+            # Everyone shuffles round to make room, which is what the client
+            # animates. Someone joining a run in progress takes a spawn instead.
+            self.reseat()
+        else:
+            player.x, player.y = self.pick_spawn()
         return player
 
     def remove_player(self, pid: str) -> None:
         self.players.pop(pid, None)
         self.sockets.pop(pid, None)
+        if pid in self.seating:
+            self.seating.remove(pid)
         # The host leaving must not lock the room out of ever starting.
         if pid == self.host_id:
             self.host_id = next(iter(self.players), None)
+        self.reseat()
 
     def welcome_payload(self, player: Player) -> dict:
         return protocol.welcome(
-            player.to_payload(), client_config(), self.world.to_payload()
+            player.to_payload(),
+            client_config(),
+            self.world.to_payload(),
+            self.zone.to_payload(),
+        )
+
+    def hello_payload(self, player: Player) -> dict:
+        return protocol.hello(
+            player.id,
+            self.code,
+            client_config(),
+            self.world.to_payload(),
+            self.zone.to_payload(),
         )
 
     def lobby_payload(self) -> dict:
@@ -154,21 +211,31 @@ class Room:
             self.code,
             self.host_id,
             self.phase,
+            self.zone.to_payload(),
             [
-                {"id": p.id, "name": p.name, "color": p.color}
+                {
+                    "id": p.id,
+                    "name": p.name,
+                    "color": p.color,
+                    # Where they actually are. The lobby draws this, so the
+                    # scene and the simulation cannot disagree about the party.
+                    "x": round(p.x, 4),
+                    "y": round(p.y, 4),
+                }
                 for p in self.players.values()
             ],
         )
 
     async def begin(self) -> None:
-        """Leave the campfire: respawn everyone, hand out the map, start ticking."""
+        """Leave the chairs: hand out the map and start ticking.
+
+        Nobody moves. The zone is already the camp, everyone is already standing
+        on their seat, and the only thing that changes is that the world starts
+        answering their input.
+        """
         if self.phase == protocol.PHASE_PLAYING:
             return
         self.phase = protocol.PHASE_PLAYING
-        # Lobby spawns were picked as players trickled in, against a room that
-        # kept changing size. Re-pick now so the party actually lands together.
-        for player in self.players.values():
-            self.respawn(player)
 
         await self.broadcast(self.lobby_payload())
         for pid, socket in list(self.sockets.items()):
@@ -234,6 +301,11 @@ class Room:
 
     def step_enemies(self, dt: float) -> None:
         """Advance the pack, resolve its swings, then top the population up."""
+        # A safe zone has no director and, having never spawned anything, no
+        # pack to advance. Checked here rather than in `step` so a zone that
+        # turns hostile mid-run still finishes whatever is already on the map.
+        if not self.zone.hostile and not self.enemies:
+            return
         outcome = ai.update(
             self.enemies.values(), self.players.values(), self.world, self.navigator, dt
         )
@@ -242,6 +314,8 @@ class Room:
         for stranded in outcome.despawned:
             self.enemies.pop(stranded.id, None)
 
+        if not self.zone.hostile:
+            return
         for enemy_type, x, y in self.director.update(dt, self.players.values(), len(self.enemies)):
             self.spawn_enemy(enemy_type, x, y)
 
@@ -286,6 +360,10 @@ class Room:
         )
 
     def handle_shooting(self, player: Player, cmd: InputCmd, dt: float) -> None:
+        # Nobody fires in a safe zone. The camp has nothing to shoot at except
+        # the person standing next to you at the fire.
+        if not self.zone.hostile:
+            return
         if not cmd.shoot or not player.alive or player.fire_cooldown > 0.0:
             return
         player.fire_cooldown = FIRE_COOLDOWN
@@ -388,7 +466,14 @@ class Room:
             self.coins[coin.id] = coin
 
     def respawn(self, player: Player) -> None:
-        player.x, player.y = self.pick_spawn()
+        # In a safe zone you come back to your own seat at the fire, not to a
+        # ring tile somewhere in the trees.
+        if not self.zone.hostile and player.id in self.seating:
+            player.x, player.y = camp.seat_position(
+                self.world, self.seating.index(player.id), len(self.seating)
+            )
+        else:
+            player.x, player.y = self.pick_spawn()
         player.hp = MAX_HP
         player.alive = True
         player.vx = player.vy = 0.0

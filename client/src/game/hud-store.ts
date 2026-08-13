@@ -9,6 +9,7 @@
 import { Store } from '../lib/store';
 import type { LanternReading } from './lantern';
 import type { ConnectionStatus } from '../net/connection';
+import type { ZoneInfo } from '../net/protocol';
 
 /** How often the game republishes HUD state. 5 Hz is plenty for text. */
 export const HUD_INTERVAL = 0.2;
@@ -37,6 +38,18 @@ export interface HudNetStats {
   fps: number;
 }
 
+/**
+ * One arrival in a zone, announced once.
+ *
+ * `key` is the zone's, not a counter: the card is a statement about a PLACE, so
+ * re-entering the same one replays it and a reconnect into the zone you are
+ * already standing in does not. Components key their entry animation off it.
+ */
+export interface HudArrival {
+  key: string;
+  zone: ZoneInfo;
+}
+
 export interface HudSnapshot {
   connection: ConnectionStatus;
   /** Human-readable connection line. */
@@ -51,6 +64,10 @@ export interface HudSnapshot {
    * the light in the world, not to a React re-render.
    */
   lantern: LanternReading | null;
+  /** Where the run is. Decides what the HUD offers and what it greys out. */
+  zone: ZoneInfo | null;
+  /** Set on entering a zone; the title card plays and then leaves it alone. */
+  arrival: HudArrival | null;
 }
 
 export const EMPTY_HUD: HudSnapshot = {
@@ -60,6 +77,8 @@ export const EMPTY_HUD: HudSnapshot = {
   vitals: null,
   net: null,
   lantern: null,
+  zone: null,
+  arrival: null,
 };
 
 export type HudStore = Store<HudSnapshot>;

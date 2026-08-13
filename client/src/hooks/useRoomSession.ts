@@ -13,6 +13,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import type { CampView } from '../game/lobby-scene';
 import { Connection, type ConnectionStatus } from '../net/connection';
 import { roomSocketUrl } from '../net/endpoints';
 import type { LobbyMessage, ServerMessage, WelcomeMessage } from '../net/protocol';
@@ -24,6 +25,11 @@ export interface RoomSession {
   lobby: LobbyMessage | null;
   /** Your own player id in this room, from `hello`. */
   selfId: string | null;
+  /**
+   * The camp, from `hello`. The lobby draws this exact map, which is the same
+   * one the run starts on — see game/lobby-scene.ts.
+   */
+  camp: CampView | null;
   /** Set once the host starts; the arena is built from this. */
   welcome: WelcomeMessage | null;
   /** A server refusal code, e.g. `room_not_found`. Terminal. */
@@ -38,6 +44,7 @@ export function useRoomSession(code: string, name: string): RoomSession {
   const [status, setStatus] = useState<ConnectionStatus>('connecting');
   const [lobby, setLobby] = useState<LobbyMessage | null>(null);
   const [selfId, setSelfId] = useState<string | null>(null);
+  const [camp, setCamp] = useState<CampView | null>(null);
   const [welcome, setWelcome] = useState<WelcomeMessage | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -52,6 +59,7 @@ export function useRoomSession(code: string, name: string): RoomSession {
       switch (msg.type) {
         case 'hello':
           setSelfId(msg.playerId);
+          setCamp({ map: msg.map, config: msg.config });
           setError(null);
           break;
         case 'lobby':
@@ -81,6 +89,7 @@ export function useRoomSession(code: string, name: string): RoomSession {
       setConnection(null);
       setLobby(null);
       setSelfId(null);
+      setCamp(null);
       setWelcome(null);
     };
   }, [code]);
@@ -94,6 +103,7 @@ export function useRoomSession(code: string, name: string): RoomSession {
     status,
     lobby,
     selfId,
+    camp,
     welcome,
     error,
     isHost: selfId !== null && lobby?.hostId === selfId,

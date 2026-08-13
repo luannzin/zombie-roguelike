@@ -272,6 +272,35 @@
    */
   --animate-sign-flicker: sign-flicker 6.5s linear infinite;
 
+  /*
+   * Arriving in a zone. Five tracks, one beat: the wash comes up, a rule draws
+   * out of nothing, the title wipes in and flickers as it catches, the subtitle
+   * follows a beat later, and one bright band sweeps across the type.
+   *
+   * The durations are cut to the camera's push-in (ARRIVAL_TIME in
+   * game/game.ts) and to CARD_MS in components/hud/ZoneTitle.tsx. All three
+   * move together or the card outlives the move it belongs to.
+   */
+  --animate-zone-wash: zone-wash 3.4s ease-in-out 1 forwards;
+  --animate-zone-rule: zone-rule 3.4s cubic-bezier(0.16, 1, 0.3, 1) 1 forwards;
+  --animate-zone-title: zone-title 3.4s ease-out 1 forwards;
+  --animate-zone-subtitle: zone-subtitle 3.4s ease-out 1 forwards;
+  --animate-zone-sweep: zone-sweep 1.5s ease-in-out 0.45s 1 forwards;
+  --animate-zone-blackout: zone-blackout 3.4s ease-out 1 forwards;
+
+  /*
+   * The lobby chrome leaving. It slides off its own edge rather than fading,
+   * because the panel is a physical thing on the glass and things on glass are
+   * taken away, not dissolved. Its duration is LAUNCH_MS in LobbyScreen.
+   */
+  --animate-lobby-exit: lobby-exit 0.42s cubic-bezier(0.7, 0, 0.84, 0) 1 forwards;
+
+  /*
+   * A lamp the zone will not let you switch on. One hard sideways refusal, held
+   * on steps so it reads as a control saying no rather than as a wobble.
+   */
+  --animate-lantern-refused: lantern-refused 0.3s steps(1, end) 1;
+
   --animate-skeleton: skeleton 2s -1s infinite linear;
 
   --animate-caret-blink: 1s ease-out infinite caret-blink;
@@ -445,6 +474,142 @@
     }
   62% {
     opacity: 0.72;
+    }
+  }
+  @keyframes zone-wash {
+  0% {
+    opacity: 0;
+    }
+  12%, 74% {
+    opacity: 0.92;
+    }
+  100% {
+    opacity: 0;
+    }
+  }
+  @keyframes zone-rule {
+  0% {
+    width: 0;
+    opacity: 0;
+    }
+  22% {
+    width: 320px;
+    opacity: 1;
+    }
+  76% {
+    width: 320px;
+    opacity: 1;
+    }
+  100% {
+    width: 0;
+    opacity: 0;
+    }
+  }
+  /*
+   * The title wipes in from its own left edge rather than fading: a clip is a
+   * thing being revealed, an opacity ramp is a thing being turned up. The two
+   * flicker frames at 26% and 30% are the same idea as the menu sign — the
+   * light catches, drops, and holds.
+   */
+  @keyframes zone-title {
+  0% {
+    opacity: 0;
+    clip-path: inset(0 100% 0 0);
+    translate: 0 6px;
+    }
+  8% {
+    opacity: 1;
+    translate: 0 0;
+    }
+  24% {
+    clip-path: inset(0 0 0 0);
+    }
+  26% {
+    opacity: 0.45;
+    }
+  30% {
+    opacity: 1;
+    }
+  78% {
+    opacity: 1;
+    clip-path: inset(0 0 0 0);
+    translate: 0 0;
+    }
+  100% {
+    opacity: 0;
+    translate: 0 -8px;
+    }
+  }
+  @keyframes zone-subtitle {
+  0%, 16% {
+    opacity: 0;
+    letter-spacing: 0.7em;
+    }
+  34% {
+    opacity: 1;
+    letter-spacing: 0.34em;
+    }
+  78% {
+    opacity: 1;
+    letter-spacing: 0.34em;
+    }
+  100% {
+    opacity: 0;
+    letter-spacing: 0.34em;
+    }
+  }
+  @keyframes zone-sweep {
+  0% {
+    opacity: 0;
+    translate: -120% 0;
+    }
+  25% {
+    opacity: 0.85;
+    }
+  100% {
+    opacity: 0;
+    translate: 120% 0;
+    }
+  }
+  /*
+   * The cut into the arena. The screen is already covered when the first frame
+   * of the new scene is drawn, so the layout change underneath it — the lobby's
+   * sidebar going away, the canvas becoming the whole window — happens behind
+   * a closed curtain and the player never sees the reflow.
+   */
+  @keyframes zone-blackout {
+  0% {
+    opacity: 1;
+    }
+  14%, 100% {
+    opacity: 0;
+    }
+  }
+  @keyframes lobby-exit {
+  0% {
+    translate: 0 0;
+    opacity: 1;
+    }
+  100% {
+    translate: -100% 0;
+    opacity: 0;
+    }
+  }
+  @keyframes lantern-refused {
+  0% {
+    translate: 0 0;
+    }
+  16% {
+    translate: -4px 0;
+    }
+  36% {
+    translate: 3px 0;
+    }
+  58% {
+    translate: -2px 0;
+    }
+  100% {
+    translate: 0 0;
     }
   }
   @keyframes skeleton {

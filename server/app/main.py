@@ -75,10 +75,13 @@ async def game_socket(ws: WebSocket, code: str, name: str | None = None):
 
     player = room.add_player(ws, name)
     try:
-        await ws.send_text(json.dumps(protocol.hello(player.id, room.code)))
+        # `hello` carries the camp map: the lobby draws the real thing, so this
+        # is the first and only time it has to travel for a player who never
+        # leaves it.
+        await ws.send_text(json.dumps(room.hello_payload(player)))
         await room.broadcast_lobby()
         # Joining a run already in progress: skip the campfire and drop straight
-        # into the forest.
+        # into whatever zone the room is in.
         if room.phase == protocol.PHASE_PLAYING:
             await ws.send_text(json.dumps(room.welcome_payload(player)))
 

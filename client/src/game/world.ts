@@ -12,11 +12,18 @@ import type { MapPayload } from '../net/protocol';
 export const FLOOR = 0;
 export const ROCK = 1;
 export const TREE = 2;
+export const FIRE = 3;
 
 /** Legacy alias: '#' in a hand-drawn ASCII map is a rock. */
 export const WALL = ROCK;
 
 const EPS = 1e-4;
+
+/** A bonfire, at the BASE of its flame in world pixels — where the sprite sits. */
+export interface FirePlace {
+  x: number;
+  y: number;
+}
 
 export class TileMap {
   readonly tiles: number[][];
@@ -27,6 +34,12 @@ export class TileMap {
   readonly pixelHeight: number;
   /** Generator seed — hashed with tile coords to place decoration. */
   readonly seed: number;
+  /**
+   * Every FIRE tile, resolved once. A fire is three things — a blocker, a
+   * sprite and a light — and all three read this list, so the map is the only
+   * place any of them is written down.
+   */
+  readonly fires: readonly FirePlace[];
 
   constructor(payload: MapPayload) {
     this.tiles = payload.tiles;
@@ -36,6 +49,7 @@ export class TileMap {
     this.seed = payload.seed ?? 0;
     this.pixelWidth = this.width * this.tileSize;
     this.pixelHeight = this.height * this.tileSize;
+    this.fires = findFires(this.tiles, this.tileSize);
   }
 
   /**
@@ -46,6 +60,20 @@ export class TileMap {
   isSolidTile(tx: number, ty: number): boolean {
     if (tx < 0 || ty < 0 || tx >= this.width || ty >= this.height) return true;
     return this.tiles[ty][tx] !== FLOOR;
+  }
+
+  /**
+   * Whether this tile stops LIGHT. Solid, with one exception: a bonfire.
+   *
+   * A fire is knee-high and it is the thing doing the lighting. Left as an
+   * occluder it would cast a shadow of itself across the party sitting on the
+   * far side of it — the one place in the camp that must be lit. Collision and
+   * bullets still treat it as solid, because you cannot walk through a fire.
+   */
+  blocksSight(tx: number, ty: number): boolean {
+    if (tx < 0 || ty < 0 || tx >= this.width || ty >= this.height) return true;
+    const tile = this.tiles[ty][tx];
+    return tile !== FLOOR && tile !== FIRE;
   }
 
   /** Axis-aligned box centred on (cx, cy) with half-extents (hw, hh). */
@@ -132,4 +160,77 @@ export class TileMap {
     }
     return maxDist;
   }
+}
+
+/**
+ * Bottom-centre of every FIRE tile, in world pixels.
+ *
+ * Bottom-centre because that is where a prop is anchored and where the light
+ * comes from — mirrors `TileMap.fire_points` in server/app/world.py.
+ */
+function findFires(tiles: number[][], tileSize: number): FirePlace[] {
+  const found: FirePlace[] = [];
+  for (let ty = 0; ty < tiles.length; ty++) {
+    const row = tiles[ty];
+    for (let tx = 0; tx < row.length; tx++) {
+      if (row[tx] === FIRE) {
+        found.push({ x: (tx + 0.5) * tileSize, y: (ty + 1) * tileSize });
+      }
+    }
+  }
+  return found;
+}
+
+/**
+ * Distance from a fire in tiles, on the ellipse the seat ring sits on.
+ *
+ * Mirrors `hearth_distance` in server/app/camp.py. Elliptical rather than
+ * circular because the ring is: measuring with a circle would leave the players
+ * at the top and bottom of it standing in scrub while the ones at the sides had
+ * room.
+ */
+export function hearthDistance(
+  tx: number,
+  ty: number,
+  fire: FirePlace,
+  tileSize: number,
+  ringRatio: number,
+): number {
+  const dx = tx + 0.5 - fire.x / tileSize;
+  const dy = (ty + 0.5 - fire.y / tileSize) * ringRatio;
+  return Math.hypot(dx, dy);
+}
+
+/**
+ * Whether a decorative tuft or bush may stand on this tile.
+ *
+ * The hearth is kept clear: a fern in front of a seated player hides the
+ * character the roster is pointing at, and grass growing out of the fire reads
+ * as a bug. Past the threshold the chance ramps in over a couple of tiles
+ * rather than switching on, so the cleared ground has a soft edge instead of
+ * looking stamped.
+ *
+ * Returns `null` when the map has no fire in it — the forest wants undergrowth
+ * everywhere, and a mask that allows everything still costs a call per tile.
+ */
+export function hearthMask(
+  world: TileMap,
+  hearthTiles: number,
+  ringRatio: number,
+  hash: (tx: number, ty: number, seed: number, salt: number) => number,
+): ((tx: number, ty: number) => boolean) | null {
+  const fires = world.fires;
+  if (fires.length === 0) return null;
+  const ts = world.tileSize;
+  const seed = world.seed;
+
+  return (tx, ty) => {
+    let nearest = Infinity;
+    for (const fire of fires) {
+      const distance = hearthDistance(tx, ty, fire, ts, ringRatio);
+      if (distance < nearest) nearest = distance;
+    }
+    if (nearest < hearthTiles) return false;
+    return hash(tx, ty, seed, 61) < Math.min(1, (nearest - hearthTiles) / 2.2);
+  };
 }

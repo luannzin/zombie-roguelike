@@ -6,12 +6,18 @@ Python literals or generated procedurally.
     0 FLOOR   walkable
     1 ROCK    solid boulder
     2 TREE    solid trunk
+    3 FIRE    solid campfire — a lit tile, and a landmark
 
 Only FLOOR is walkable, and the solidity test is `!= FLOOR` rather than a list
-of known blockers: adding a fourth tile kind (water, rubble, a bush) is then a
+of known blockers: adding a fifth tile kind (water, rubble, a bush) is then a
 generator change and a client sprite, never a change to collision, pathing or
 raycasting. `WALL` remains as an alias for ROCK so hand-drawn ASCII maps keep
 building.
+
+FIRE is a tile rather than an entity for exactly that reason. It blocks, it
+casts a shadow and it stops a shot with no special case anywhere, and the client
+reads the same tiles to place the animated sprite and the light it throws — so
+the fire in the camp is in one place on the wire, not three.
 
 Movement is continuous (float world pixels); the grid only answers "is this box
 / ray blocked". Collision boxes are axis-aligned rectangles given as half
@@ -26,6 +32,7 @@ from .config import TILE_SIZE
 FLOOR = 0
 ROCK = 1
 TREE = 2
+FIRE = 3
 
 # Legacy name: '#' in an ASCII map is a rock.
 WALL = ROCK
@@ -66,6 +73,20 @@ class TileMap:
                 if self.is_solid_tile(tx, ty):
                     return True
         return False
+
+    def fire_points(self) -> list[tuple[float, float]]:
+        """Every FIRE tile, as the BASE of its flame in world pixels.
+
+        Bottom-centre rather than centre, because that is where the sprite is
+        anchored and where the light comes from — the client derives both from
+        the same tiles, so the seat ring, the glow and the art cannot drift.
+        """
+        return [
+            (tx * TILE_SIZE + TILE_SIZE / 2, (ty + 1) * TILE_SIZE)
+            for ty in range(self.height)
+            for tx in range(self.width)
+            if self.tiles[ty][tx] == FIRE
+        ]
 
     def free_spawn_points(self, hw: float, hh: float) -> list[tuple[float, float]]:
         """Tile centres where a (hw, hh) box fits without touching a wall."""

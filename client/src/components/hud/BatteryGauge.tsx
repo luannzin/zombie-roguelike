@@ -17,8 +17,17 @@
  * blinking lives in the light itself (see `game/lantern.ts`), and the HUD only
  * republishes at 5 Hz. The one exception is the failing state, which animates
  * in CSS.
+ *
+ * DISABLED is a third state, and it is not the same as empty. In the camp the
+ * lamp may not be switched on at all, so the gauge stays exactly where it is —
+ * the player has to be able to see how much light they are carrying INTO the
+ * night while they are standing in the one place it does not matter — and only
+ * the readout changes: the cells drain of colour, the hint says why, and
+ * pressing the key kicks the panel sideways instead of doing nothing. Hiding it
+ * would answer "how much battery do I have" with silence.
  */
 
+import { useEffect, useState } from 'react';
 import { clamp01 } from '@/lib/math';
 import { cn } from '@/lib/utils';
 import { BATTERY_CELLS, type LanternReading } from '../../game/lantern';
@@ -35,37 +44,77 @@ export interface BatteryGaugeProps {
 }
 
 export function BatteryGauge({ lantern }: BatteryGaugeProps) {
+  const refused = useRefusalKick(lantern?.refusals ?? 0);
   if (!lantern) return null;
 
+  const disabled = !lantern.allowed;
   const dead = lantern.cells === 0;
-  const tone = dead
-    ? 'text-hp-low'
-    : lantern.failing
-      ? 'text-hp-mid'
-      : lantern.on
-        ? 'text-ink-accent'
-        : 'text-ink-muted';
+  const tone = disabled
+    ? 'text-ink-muted'
+    : dead
+      ? 'text-hp-low'
+      : lantern.failing
+        ? 'text-hp-mid'
+        : lantern.on
+          ? 'text-ink-accent'
+          : 'text-ink-muted';
 
   return (
-    <Panel className={cn('w-40 px-2.5 py-2', lantern.failing && 'animate-lantern-fail')}>
+    <Panel
+      className={cn(
+        'w-40 px-2.5 py-2',
+        lantern.failing && 'animate-lantern-fail',
+        // Held back rather than hidden: the panel is still the answer to "how
+        // much light am I carrying", it just cannot be spent here.
+        disabled && 'opacity-55',
+        refused && 'animate-lantern-refused',
+      )}
+    >
       <div className="mb-1.5 flex items-baseline justify-between gap-2 text-[11px] leading-[11px]">
         <span className="text-ink-muted tracking-[0.06em]">LANTERN</span>
         <span className={cn('tabular-nums', tone)}>
-          {dead ? 'DEAD' : lantern.on ? 'ON' : 'OFF'}
+          {disabled ? 'GUARDADA' : dead ? 'DEAD' : lantern.on ? 'ON' : 'OFF'}
         </span>
       </div>
 
-      <div className="flex gap-1.5">
+      <div className={cn('flex gap-1.5', disabled && 'saturate-0')}>
         {Array.from({ length: BATTERY_CELLS }, (_, index) => (
           <Cell key={index} fill={clamp01(lantern.charge * BATTERY_CELLS - index)} />
         ))}
       </div>
 
-      <div className="text-ink-muted mt-1.5 text-[11px] leading-[11px] tracking-[0.04em]">
-        [F] {lantern.on ? 'off' : 'on'}
+      <div
+        className={cn(
+          'mt-1.5 text-[11px] leading-[11px] tracking-[0.04em]',
+          refused ? 'text-hp-mid' : 'text-ink-muted',
+        )}
+      >
+        {disabled ? 'a fogueira basta' : `[F] ${lantern.on ? 'off' : 'on'}`}
       </div>
     </Panel>
   );
+}
+
+/**
+ * True for a moment after each refused press of the lantern key.
+ *
+ * The game counts refusals rather than raising an event, because the HUD only
+ * republishes at 5 Hz and a boolean would collapse two presses into one. The
+ * counter changing is the signal; this turns it back into a moment.
+ */
+function useRefusalKick(refusals: number): boolean {
+  const [kicking, setKicking] = useState(false);
+  const [seen, setSeen] = useState(refusals);
+
+  useEffect(() => {
+    if (refusals === seen) return;
+    setSeen(refusals);
+    setKicking(true);
+    const timer = window.setTimeout(() => setKicking(false), 300);
+    return () => window.clearTimeout(timer);
+  }, [refusals, seen]);
+
+  return kicking;
 }
 
 /** One cell: a grey battery with a colour one clipped over the charge left. */

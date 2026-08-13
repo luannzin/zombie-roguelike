@@ -19,6 +19,7 @@ import { HudScreen } from './HudScreen';
 import { NetStats } from './NetStats';
 import { StatusLine } from './StatusLine';
 import { Vitals } from './Vitals';
+import { ZoneTitle } from './ZoneTitle';
 
 export interface HudProps {
   snapshot: HudSnapshot;
@@ -44,8 +45,12 @@ export function Hud({ snapshot, minimapRef, error }: HudProps) {
       </div>
 
       <div className="hud-layer pixel-text bottom-2.5 left-3">
-        <ControlsHint />
+        <ControlsHint zone={snapshot.zone} />
       </div>
+
+      {/* Last, so the arrival card sits over every corner — it is the one thing
+          here that is allowed to own the whole screen, and only for a moment. */}
+      <ZoneTitle arrival={snapshot.arrival} />
     </HudScreen>
   );
 }

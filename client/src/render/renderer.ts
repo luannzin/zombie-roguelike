@@ -21,7 +21,7 @@ import {
 } from './layers/entities';
 import { AtmosphereLayer } from './layers/atmosphere';
 import { DarknessLayer } from './layers/darkness';
-import { TerrainLayer } from './layers/terrain';
+import { TerrainLayer, type DecorationMask } from './layers/terrain';
 import { drawVignette } from './layers/vignette';
 import { projectionFor } from './projection';
 import { palette } from '../theme/palette';
@@ -45,6 +45,15 @@ export class Renderer {
     // Fire-and-forget: until the atlas lands the terrain layer paints flat
     // colours, so the first frames are plain rather than blank.
     void loadTerrain().then((atlas) => this.terrain.setAtlas(atlas));
+  }
+
+  /**
+   * Keep grass and ferns off some tiles. Null (the default) allows them
+   * everywhere, which is what a forest wants; the camp passes a hearth mask so
+   * nothing grows where the party is standing. See `layers/terrain.ts`.
+   */
+  setDecorationMask(mask: DecorationMask | null): void {
+    this.terrain.setDecorationMask(mask);
   }
 
   /** Call only when the canvas element actually changed size (see ResizeObserver). */
@@ -83,13 +92,32 @@ export class Renderer {
     this.terrain.ground(ctx, state.world, state.camera, state.time);
     drawDust(ctx, state.effects);
 
-    // Screen space: coins under characters, then entities depth-sorted.
+    // Screen space: coins under characters, then everything that STANDS on the
+    // ground, depth-sorted together. Bonfires are in that sort rather than in
+    // the terrain bake because a player on the near side of a fire has to
+    // overlap the flame and one behind it has to be hidden by it — drawn as
+    // scenery, the fire would flatten the party into a row of characters
+    // standing in front of a picture of a fire.
     this.useScreenSpace();
     drawCoinShadows(entity, state.coins);
     drawCoins(entity, state.coins, state.config.coinSprite);
     const ordered = [...state.entities].sort((a, b) => a.y - b.y);
     for (const target of ordered) drawShadow(entity, target);
-    for (const target of ordered) drawEntity(entity, target);
+
+    const standing: { y: number; draw: () => void }[] = ordered.map((target) => ({
+      y: target.y,
+      draw: () => drawEntity(entity, target),
+    }));
+    for (const fire of state.world.fires) {
+      // Sorted as if it were a body whose feet are at the base of the flame,
+      // since entity `y` is a box centre and the fire's is a contact point.
+      standing.push({
+        y: fire.y - state.config.playerHalfHeight,
+        draw: () => this.terrain.fire(ctx, view, fire, state.time),
+      });
+    }
+    if (state.world.fires.length > 0) standing.sort((a, b) => a.y - b.y);
+    for (const item of standing) item.draw();
 
     // World space again, and the order here IS the atmosphere:
     //   overgrowth  canopies and ferns close over whoever is standing behind
@@ -103,6 +131,13 @@ export class Renderer {
     this.terrain.overgrowth(ctx, state.world, state.camera, state.time);
     this.atmosphere.draw(ctx, state.camera, state.dt);
     if (state.fov) this.darkness.draw(ctx, state.world, state.fov);
+    this.darkness.drawFires(
+      ctx,
+      state.world.fires,
+      state.world.tileSize,
+      state.config.campfireLightTiles,
+      state.time,
+    );
     drawCombatEffects(ctx, state.effects, state.config.tileSize);
     this.darkness.drawLights(ctx, state.effects.lights);
 

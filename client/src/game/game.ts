@@ -28,12 +28,15 @@ import type {
   ServerMessage,
   SnapshotMessage,
   WelcomeMessage,
+  ZoneInfo,
 } from '../net/protocol';
 import { Camera } from '../render/camera';
-import { FovField, type VisionConfig, type Viewer } from '../render/fov';
+import { campZoom } from '../render/framing';
+import { FovField, type LightSource, type VisionConfig, type Viewer } from '../render/fov';
 import { Minimap, type MinimapPlayer } from '../render/minimap';
 import { Renderer } from '../render/renderer';
 import { SpriteBook } from '../render/sprites';
+import { tileHash } from '../render/terrain';
 import type { DrawableCoin, DrawableEntity } from '../render/types';
 import { whenFontsReady } from '../theme/fonts';
 import { palette } from '../theme/palette';
@@ -45,7 +48,7 @@ import { InputController } from './input';
 import { Lantern } from './lantern';
 import { SnapshotBuffer, type RenderedEnemy, type RenderedPlayer } from './interpolation';
 import { LocalPlayer } from './prediction';
-import { TileMap } from './world';
+import { hearthMask, TileMap } from './world';
 
 const MAX_TICKS_PER_FRAME = 5;
 /** Camera punch on local fire (miss or hit). */
@@ -87,6 +90,15 @@ const VISION_FALLBACK: VisionConfig = {
  */
 const ENEMY_HIDE_LIGHT = 0.012;
 const ENEMY_SHOW_LIGHT = 0.3;
+
+/**
+ * Seconds the arrival shot takes: wide on the whole zone, then in onto you.
+ *
+ * Long enough to read the place and find your own character in it, short
+ * enough that a player who already knows the camp is not waiting on a cutscene.
+ * The zone title card is timed against this — see components/hud/ZoneTitle.
+ */
+const ARRIVAL_TIME = 2.1;
 
 /**
  * Everything `toDrawablePlayer` needs, in the shape both a snapshot-interpolated
@@ -148,6 +160,10 @@ export class Game {
 
   private world: TileMap | null = null;
   private config: GameConfig | null = null;
+  /** Where the run is and how it behaves. Rebuilt from every `welcome`. */
+  private zone: ZoneInfo | null = null;
+  /** The world's own lights — bonfires. Derived from the map, never a message. */
+  private lights: LightSource[] = [];
   /** Team light + explored memory. Rebuilt per map, updated per frame. */
   private fov: FovField | null = null;
   private localId = '';
@@ -174,6 +190,9 @@ export class Game {
     this.connection = options.connection;
     this.initialWelcome = options.welcome;
     this.input = new InputController(options.canvas);
+    // The lamp itself decides whether it may light — a zone that forbids it
+    // still has to ANSWER the key, or pressing F in the camp is indistinguishable
+    // from a broken keybind. See `Lantern.toggle`.
     this.input.onToggleLantern = () => this.lantern.toggle();
     this.minimap = new Minimap(options.minimapCanvas);
   }
@@ -240,6 +259,8 @@ export class Game {
     this.lantern.reset();
     this.world = null;
     this.fov = null;
+    this.zone = null;
+    this.lights = [];
     this.local = null;
     this.localMeta = null;
 
@@ -261,12 +282,14 @@ export class Game {
       this.effects.clear();
       this.snapshots.clear();
       this.lantern.reset();
+      this.lights = [];
       this.patchHud({
         connection: status,
         status: 'disconnected — retrying…',
         inArena: false,
         vitals: null,
         lantern: null,
+        arrival: null,
       });
       return;
     }
@@ -280,12 +303,35 @@ export class Game {
 
   private onWelcome(msg: WelcomeMessage): void {
     this.config = msg.config;
+    this.zone = msg.zone;
     this.world = new TileMap(msg.map);
     // A new map is a new forest: nothing has been explored yet.
     this.fov = new FovField(this.world.width, this.world.height);
     this.localId = msg.playerId;
     this.localMeta = msg.player;
     this.local = new LocalPlayer(msg.player);
+
+    // Bonfires are read off the tiles, not off a message: the fire that blocks
+    // you, the fire you can see and the fire that lights you are one tile.
+    this.lights = this.world.fires.map((fire, index) => ({
+      id: index,
+      x: fire.x,
+      // Lifted off the contact row — the light comes from the flame, not from
+      // the ashes — so the pool is centred on the fire rather than in front of it.
+      y: fire.y - msg.config.tileSize * 0.5,
+      radiusTiles: msg.config.campfireLightTiles,
+    }));
+    // Nothing grows in the hearth: a fern in front of a player hides the
+    // character somebody is looking for. Cleared here rather than left over
+    // from a previous zone, since a forest wants undergrowth everywhere.
+    this.renderer?.setDecorationMask(
+      hearthMask(
+        this.world,
+        msg.config.hearthTiles,
+        msg.config.ringTilesX / msg.config.ringTilesY,
+        tileHash,
+      ),
+    );
 
     // Enemy + coin art are named by the server's config, so a new creature or
     // pickup ships without a client change. Loading is fire-and-forget: the
@@ -301,18 +347,59 @@ export class Game {
     this.snapshots.clear();
     // A new world hands you a fresh battery, switched off: the first thing the
     // player does in the dark is press F, which is how the mechanic teaches.
+    // A zone that forbids the lamp is a zone where that press has to fail
+    // audibly instead of silently.
     this.lantern.reset();
+    this.lantern.allowed = msg.zone.lantern;
     this.time = 0;
     this.localFireCooldown = 0;
     this.accumulator = 0;
     this.smoothX = msg.player.x;
     this.smoothY = msg.player.y;
 
+    // Size the canvas NOW rather than on the first frame: the arrival picks its
+    // wide zoom from the viewport, and a zero-width canvas would open the shot
+    // at the wrong scale and then correct itself in front of the player.
+    if (this.renderer) {
+      this.renderer.resize();
+      this.resizeDirty = false;
+    }
     this.camera.resize(this.canvas.width, this.canvas.height);
     this.camera.snapTo(msg.player.x, msg.player.y, this.world);
+    this.beginArrival(msg.player);
     this.minimap.setWorld(this.world);
 
-    this.patchHud({ inArena: true, status: 'in arena' });
+    this.patchHud({
+      inArena: true,
+      status: msg.zone.hostile ? 'em campo' : 'no acampamento',
+      zone: msg.zone,
+      arrival: { key: msg.zone.key, zone: msg.zone },
+    });
+  }
+
+  /**
+   * The establishing shot: open on the place, push in onto the player.
+   *
+   * The wide framing is the LOBBY's — same landmark, same scale (see
+   * `render/framing.ts`) — so the moment the host starts, the picture the party
+   * was already looking at simply comes to life and closes in on their own
+   * character. Cutting straight to a zoomed-in player would throw away the one
+   * frame where "we are all standing here together" is legible.
+   *
+   * A zone with no landmark to open on (a forest drop) pushes in from directly
+   * above the player instead, which still reads as an arrival.
+   */
+  private beginArrival(player: PlayerState): void {
+    const world = this.world;
+    const config = this.config;
+    if (!world || !config) return;
+    const landmark = world.fires[0];
+    this.camera.beginArrival(
+      landmark?.x ?? player.x,
+      landmark?.y ?? player.y,
+      campZoom(this.canvas.width, this.canvas.height, config.tileSize),
+      ARRIVAL_TIME,
+    );
   }
 
   private onSnapshot(msg: SnapshotMessage): void {
@@ -463,14 +550,21 @@ export class Game {
     }
   }
 
-  /** Current keys + aim as a packet. Sequence 0 means "scratch, never sent". */
+  /**
+   * Current keys + aim as a packet. Sequence 0 means "scratch, never sent".
+   *
+   * `shoot` is masked in a safe zone rather than filtered at the input layer:
+   * the server drops it there too (see `Room.handle_shooting`), and the mask
+   * has to be on the packet or prediction would draw a tracer the server never
+   * fired.
+   */
   private liveInput(sequence = 0): InputPacket {
     return {
       type: 'input',
       sequence,
       movement: { ...this.input.movement },
       aim: { x: this.aimX, y: this.aimY },
-      shoot: this.input.shooting,
+      shoot: this.input.shooting && this.zone?.hostile !== false,
       lantern: this.lantern.on,
     };
   }
@@ -610,6 +704,10 @@ export class Game {
    * Refresh the team's light. Every living PLAYER with the lamp on is a
    * viewer — remotes included, which is what makes vision shared. Their
    * switch arrives on the snapshot; only the local lamp has a battery.
+   *
+   * The world's own lights go in alongside them. In the camp they are the only
+   * ones there are: lanterns are off by rule, and the bonfire is what lets the
+   * party see each other.
    */
   private updateVision(remotes: RenderedPlayer[], dt: number): void {
     const fov = this.fov;
@@ -643,6 +741,7 @@ export class Game {
     fov.update(
       world,
       viewers,
+      this.lights,
       {
         ambientTiles: config.visionAmbientTiles ?? VISION_FALLBACK.ambientTiles,
         lanternTiles: config.visionLanternTiles ?? VISION_FALLBACK.lanternTiles,

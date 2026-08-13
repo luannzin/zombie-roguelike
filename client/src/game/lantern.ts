@@ -33,6 +33,11 @@
  * The battery is CLIENT-LOCAL. The switch is not: `on` rides the input packet
  * and comes back on every player snapshot so remotes go dark when the lamp is
  * off. Vision itself stays a visual system (see fov.ts).
+ *
+ * Some zones forbid the lamp outright (`allowed`) — the camp is lit by its
+ * bonfire and the battery is what you carry out of it. A forbidden lamp still
+ * ANSWERS the key: it counts the refusal so the HUD can push back, because a
+ * control that silently does nothing reads as a broken keybind.
  */
 
 import { clamp01, expDamp } from '../lib/math';
@@ -79,9 +84,28 @@ export interface LanternReading {
   cells: number;
   /** True once the lamp is on its last cell and dropping out. */
   failing: boolean;
+  /** Whether this zone lets the lamp be switched on at all. */
+  allowed: boolean;
+  /**
+   * How many times the switch has been refused. A COUNTER rather than a flag
+   * because the HUD has to react to each press, and at 5 Hz two refusals a
+   * second apart are otherwise indistinguishable from one.
+   */
+  refusals: number;
 }
 
 export class Lantern {
+  /**
+   * Whether this zone permits the lamp. False in the camp: the bonfire is the
+   * light there, and the battery is a resource you carry OUT rather than burn
+   * standing next to a fire.
+   *
+   * It is a property of the LAMP and not a check at the call site so that every
+   * route to switching on — a keypress, a future toggle button, a respawn —
+   * goes through one refusal.
+   */
+  allowed = true;
+
   private switchedOn = false;
   private stored = 1;
   /** Smoothed light actually leaving the lamp. */
@@ -91,6 +115,8 @@ export class Lantern {
   private phaseLeft = 0;
   private dark = false;
   private clock = 0;
+  /** Monotonic: survives `reset()` so a refusal is never swallowed by a rejoin. */
+  private refusals = 0;
   /** Per-instance phase, so the waver is not in lockstep with anything else. */
   private readonly seed = Math.random() * 1000;
 
@@ -122,16 +148,26 @@ export class Lantern {
       charge: this.stored,
       cells: this.cells,
       failing: this.failing,
+      allowed: this.allowed,
+      refusals: this.refusals,
     };
   }
 
-  /** Flip the switch. A flat battery refuses, which is the feedback. */
+  /**
+   * Flip the switch. A flat battery refuses, and so does a zone that forbids
+   * the lamp — in both cases the refusal is COUNTED rather than ignored, so the
+   * HUD can answer the keypress. A control that does nothing at all reads as a
+   * bug; one that visibly says no reads as a rule.
+   */
   toggle(): void {
     if (this.switchedOn) {
       this.cut();
       return;
     }
-    if (this.stored <= 0) return;
+    if (!this.allowed || this.stored <= 0) {
+      this.refusals++;
+      return;
+    }
     this.switchedOn = true;
     this.stutter();
   }

@@ -78,6 +78,32 @@ SPAWN_SEPARATION_TILES = 1.2
 SPAWN_RING = TILE_SIZE * SPAWN_RING_TILES
 SPAWN_SEPARATION = TILE_SIZE * SPAWN_SEPARATION_TILES
 
+# --- the camp (authored in tiles) -------------------------------------------
+# The clearing the party gathers in. It is ONE place shown twice: the lobby
+# draws it while people trickle in, and `preparation` is the same map, walkable,
+# once the host starts. Every number below is therefore read by both — the seat
+# a player was standing on at the campfire is the tile they wake up on.
+CAMP_WIDTH_TILES = 60
+CAMP_HEIGHT_TILES = 40
+# Open ground around the fire before the treeline starts.
+CAMP_CLEARING_TILES = 8.2
+# The hearth: the fire plus the ring of players around it. Nothing grows here —
+# the map generator refuses trees and rocks, and the client refuses grass and
+# ferns on the same ellipse. A bush in front of a seated player hides the
+# character the roster is pointing at.
+CAMP_HEARTH_TILES = 5.6
+# The seat ring. Elliptical: a circle reads as a flat disc from this angle, and
+# it is squashed by exactly the ratio the clearing and the decoration mask use.
+CAMP_RING_TILES_X = 3.5
+CAMP_RING_TILES_Y = 2.0
+# How far the bonfire throws light, in tiles. In the camp this is the ONLY light
+# — lanterns are off (see zones.py), so this number decides whether the party
+# can see each other.
+CAMPFIRE_LIGHT_TILES = 10.0
+
+CAMP_RING_X = TILE_SIZE * CAMP_RING_TILES_X
+CAMP_RING_Y = TILE_SIZE * CAMP_RING_TILES_Y
+
 # --- vision (authored in tiles) ---------------------------------------------
 # The client draws the darkness; these numbers decide its shape. They live here
 # for the same reason every other constant does — one source of truth — and are
@@ -229,4 +255,10 @@ def client_config() -> dict:
         "visionAmbientTiles": VISION_AMBIENT_TILES,
         "visionLanternTiles": VISION_LANTERN_TILES,
         "visionConeDegrees": VISION_CONE_DEGREES,
+        # Camp geometry. The client needs it to keep undergrowth out of the
+        # hearth and to light the fire it can already see in the tiles.
+        "campfireLightTiles": CAMPFIRE_LIGHT_TILES,
+        "hearthTiles": CAMP_HEARTH_TILES,
+        "ringTilesX": CAMP_RING_TILES_X,
+        "ringTilesY": CAMP_RING_TILES_Y,
     }

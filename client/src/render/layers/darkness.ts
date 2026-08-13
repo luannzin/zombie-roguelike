@@ -35,7 +35,8 @@
 import { createSurface } from '../../lib/canvas';
 import { palette } from '../../theme/palette';
 import type { PointLight } from '../../game/effects';
-import type { TileMap } from '../../game/world';
+import type { FirePlace, TileMap } from '../../game/world';
+import { fireFlicker } from '../fov';
 import type { FovField } from '../fov';
 
 /** Darkness over ground nobody has ever seen. */
@@ -107,6 +108,45 @@ export class DarknessLayer {
       ctx.beginPath();
       ctx.arc(light.x, light.y, light.radius, 0, Math.PI * 2);
       ctx.fill();
+    }
+    ctx.globalCompositeOperation = 'source-over';
+  }
+
+  /**
+   * The warm pool a bonfire throws on the ground it is standing on.
+   *
+   * The fov already made the camp VISIBLE (see its light sources) — this is the
+   * part that makes it look burnt rather than merely lit: a soft additive disc
+   * that breathes on the same flicker the sprite's own frames do, so the ground,
+   * the flame and the shadows on the party are all moving together. Drawn over
+   * the darkness, like every other light in this file.
+   *
+   * Caller must have applied the world-space transform.
+   */
+  drawFires(
+    ctx: CanvasRenderingContext2D,
+    fires: readonly FirePlace[],
+    tileSize: number,
+    reachTiles: number,
+    time: number,
+  ): void {
+    if (fires.length === 0) return;
+    const glow = palette().fire.glow.join(' ');
+
+    ctx.globalCompositeOperation = 'lighter';
+    for (let i = 0; i < fires.length; i++) {
+      const fire = fires[i];
+      const flicker = fireFlicker(time, i);
+      const radius = tileSize * reachTiles * (0.55 + flicker * 0.12);
+      // Lifted off the ground line: the light comes from the flame, not from
+      // the ashes it is sitting in.
+      const cy = fire.y - tileSize * 0.55;
+      const gradient = ctx.createRadialGradient(fire.x, cy, 1, fire.x, cy, radius);
+      gradient.addColorStop(0, `rgb(${glow} / ${(0.3 * flicker).toFixed(3)})`);
+      gradient.addColorStop(0.4, `rgb(${glow} / ${(0.11 * flicker).toFixed(3)})`);
+      gradient.addColorStop(1, `rgb(${glow} / 0)`);
+      ctx.fillStyle = gradient;
+      ctx.fillRect(fire.x - radius, cy - radius, radius * 2, radius * 2);
     }
     ctx.globalCompositeOperation = 'source-over';
   }

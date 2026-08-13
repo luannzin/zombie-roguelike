@@ -61,9 +61,12 @@ own the HUD and routing only. Talks to the server over one WebSocket.
 cd client && bun install && bun run dev
 ```
 
-- `VITE_SERVER_URL=http://host:8000 bun run dev` points at another host. It is
-  an HTTP **origin**, not a socket URL — `endpoints.ts` derives both the REST
-  calls and `ws://…/ws/{code}` from it.
+- Dev talks to the page origin. Vite proxies `/rooms`, `/health` and `/ws` to
+  `http://127.0.0.1:8000` (`ws: true` on `/ws`), so a phone on the LAN only
+  needs the Network URL Vite prints.
+- `VITE_SERVER_URL=http://host:8000 bun run dev` skips the proxy and hits that
+  origin directly. It is an HTTP **origin**, not a socket URL — `endpoints.ts`
+  derives both the REST calls and `ws://…/ws/{code}` from it.
 - Add coss components with `bunx --bun shadcn@latest add @coss/<name>`.
 
 ## Verification

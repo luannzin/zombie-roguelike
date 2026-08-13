@@ -6,6 +6,13 @@ import { defineConfig } from 'vite';
 
 const dir = path.dirname(fileURLToPath(import.meta.url));
 
+// Same-origin API so a phone on the LAN only needs :5173. Uvicorn stays on loopback.
+const api = {
+  '/rooms': 'http://127.0.0.1:8000',
+  '/health': 'http://127.0.0.1:8000',
+  '/ws': { target: 'http://127.0.0.1:8000', ws: true },
+};
+
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   // The game consumes ONLY processed assets. `assets/raw` is never served.
@@ -17,5 +24,10 @@ export default defineConfig({
   server: {
     port: 5173,
     host: true,
+    proxy: api,
+  },
+  preview: {
+    host: true,
+    proxy: api,
   },
 });

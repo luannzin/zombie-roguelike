@@ -39,13 +39,15 @@ cd client && bun install && bun run dev
 
 Open http://localhost:5173, create a room, then paste `/r/CODE` into a second
 tab. Each tab is its own player, with its own name, colour, id and seat at the
-fire.
+fire. On another device, use the Network URL Vite prints (`http://192.168.x.x:5173`);
+the client talks to that same origin and Vite proxies `/ws` to the server.
 
 Controls: **WASD** move · **mouse** aim · **left click / hold** shoot · **F**
 lantern on/off.
 
 Point the client at another host with `VITE_SERVER_URL=http://192.168.0.10:8000 bun run dev`
-— an HTTP origin, not a socket URL; the client derives both from it.
+— an HTTP origin, not a socket URL; the client derives both from it. That host
+must bind uvicorn with `--host 0.0.0.0`.
 
 ## Scale
 

@@ -21,6 +21,8 @@ export interface InputPacket {
   movement: MovementInput;
   aim: { x: number; y: number };
   shoot: boolean;
+  /** Switch state. Battery/flicker stay client-local; remotes only need on/off. */
+  lantern: boolean;
 }
 
 export interface PingPacket {
@@ -113,6 +115,8 @@ export interface PlayerState {
   /** normalized aim direction */
   ax: number;
   ay: number;
+  /** Whether this player's lantern switch is on. */
+  lantern: boolean;
   hp: number;
   alive: boolean;
   kills: number;

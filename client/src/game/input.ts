@@ -27,9 +27,9 @@ export class InputController {
   mouseY = 0;
 
   /**
-   * Fired once per press of the lantern key — an EDGE, not a held state, so it
-   * never reaches an input packet. Auto-repeat is filtered out: holding F must
-   * not strobe the lamp thirty times a second.
+   * Fired once per press of the lantern key — an EDGE, not a held state.
+   * Auto-repeat is filtered out: holding F must not strobe the lamp thirty
+   * times a second. The resulting on/off rides the input packet from `Lantern`.
    */
   onToggleLantern: (() => void) | null = null;
 

@@ -45,13 +45,20 @@ seam React is allowed to read.
   a `TerrainLayer` decoration mask refuses grass and ferns. Both measure on the
   same ellipse the seats use. A plant in front of a seated player hides the
   character the roster is pointing at.
+- **The summon sheet is the clock.** `SUMMON_TIME` is the sheet's
+  `frames / fps` and `SUMMON_IMPACT` mirrors `IMPACT_AT` in
+  `server/tools/make_vfx.py`; the body must finish resolving on the frame the
+  sprite flashes, or the arrival lands twice. The sheet owns the flash and the
+  shockwaves — the code only adds what it cannot know, which is whose arrival
+  it is (one ring and a spray of sparks in the player's colour).
 - `dispose()` releases every timer, listener, observer and rAF handle created in
   this folder.
-- Tuning comes from `welcome.config`; the lantern's own constants are the
-  exception, because the battery is client-local and the server does not know
-  the lamp exists.
-- `lantern.output` is the single value the lighting system reads — fov beam gain
-  and reach, hearth warmth, and the HUD cells.
+- Tuning comes from `welcome.config`; the lantern's drain/recharge constants
+  are the exception, because the battery is client-local. The switch is not:
+  `on` is on the input packet and every player snapshot so remotes go dark.
+- `lantern.output` is the local lamp the lighting system reads — fov beam gain
+  and reach, hearth warmth, and the HUD cells. Remotes contribute 0 or 1
+  from their snapshot `lantern` flag.
 
 ## Work Guidance
 

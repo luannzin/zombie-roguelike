@@ -15,6 +15,7 @@ mutation, no React.
 | `projection.ts` | zoom + offset between world and screen space |
 | `sprites.ts` | sheet loading, `SpriteBook`, per-colour multiply tints |
 | `terrain.ts` | terrain atlas loading (ground, props, the animated campfire) |
+| `vfx.ts` | effect atlas loading: one-shot animation sheets |
 | `fov.ts` | shared field of view — `light` and `heat` fields |
 | `minimap.ts` | the minimap canvas |
 | `layers/` | the actual drawing: terrain, entities, effects, atmosphere, darkness, vignette |
@@ -31,7 +32,7 @@ mutation, no React.
 - Vision is a client-side visual system: the server broadcasts the whole world.
   `fov.ts` produces two fields — `light` saturates at 1 (visibility), `heat`
   keeps climbing (warmth, drawn as additive amber). Shared vision is a `max()`
-  across viewers.
+  across viewers whose snapshot `lantern` is on (plus the local lamp's output).
 - Sprites are keyed by asset name; which enemy sheets to load comes from
   `welcome.config.enemyTypes[*].sprite`, never a hardcoded list.
 - Colours come from `theme/palette.ts` only. Never write a literal colour here.
@@ -39,6 +40,11 @@ mutation, no React.
 - A prop sheet's frames are VARIANTS unless its manifest entry carries `fps`
   (only the campfire does), in which case they are an animation loop. Playing a
   variant sheet makes the boulders twitch.
+- `vfx.ts` sheets are one-shot TIMELINES anchored on `anchorY` (the row the
+  effect happens at), not bottom-anchored like props. Draw them ADDITIVELY,
+  after the darkness pass: a beam of light is a light source, not a thing being
+  lit. Their `frames / fps` is the effect's duration — callers time themselves
+  off the sheet rather than picking their own.
 - `terrain.ts` and `layers/terrain.ts` are also used by `game/lobby-scene.ts`
   over a locally generated map. Nothing in them may assume a server sent the
   `TileMap`.

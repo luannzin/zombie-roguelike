@@ -12,6 +12,7 @@ imported by `app/` and never run at request time.
 | `make_placeholder_sheet.py` | generates raw art | `assets/raw/<name>.png` |
 | `process_sprites.py` | raw → production | `assets/processed/<name>/` |
 | `make_textures.py` | generates final pixels | `assets/processed/terrain/` (ground, rock, tree, grass, fern, campfire) |
+| `make_vfx.py` | generates final pixels | `assets/processed/vfx/` (summon) |
 | `make_hud_icons.py` | generates final pixels | `assets/processed/hud/` |
 
 ## Local Contracts
@@ -33,6 +34,16 @@ imported by `app/` and never run at request time.
   must LOOP: every wobble is a sine of the frame phase (or an integer multiple),
   so the last frame hands back to the first with no snap. Do not use `rng` per
   frame; it stutters at the wrap even when each frame looks right alone.
+- VFX sheets (`make_vfx.py`) are TIMELINES, not loops: played once per event,
+  with frame 0 and the last frame near-empty so there is no pop at either end.
+  They are anchored on `anchorY` — the row the effect happens at, with spare
+  rows BELOW it for an impact to spread into — not on the bottom edge.
+- A VFX sheet's `frames / fps` is the effect's duration and the client times
+  itself off it. Changing either means changing whatever the client aligns to
+  it (`SUMMON_TIME`, `SUMMON_IMPACT` in `client/src/game/lobby-scene.ts`).
+- Shared helpers (`pick`, `hash01`, `clamp01`, `pack`, `rgb`, the ramps) live in
+  `make_textures.py` and are imported by the other generators, so every sheet
+  keeps one shading vocabulary. Do not copy them.
 - Shared drawing helpers live in `make_textures.py` and are imported, not
   copied, so all generated art keeps one shading vocabulary.
 
@@ -44,6 +55,7 @@ Run from `server/` with the venv python:
 python tools/make_placeholder_sheet.py --name player
 python tools/process_sprites.py --name player --tile 16
 python tools/make_textures.py
+python tools/make_vfx.py
 python tools/make_hud_icons.py
 ```
 

@@ -30,8 +30,9 @@
  * back, which is the trade this game wants. Set RECHARGE_SECONDS to Infinity
  * to make cells permanent once battery pickups exist.
  *
- * This is CLIENT-LOCAL. The server does not know the lamp exists (see fov.ts:
- * vision is a visual system), so remote players always light at full output.
+ * The battery is CLIENT-LOCAL. The switch is not: `on` rides the input packet
+ * and comes back on every player snapshot so remotes go dark when the lamp is
+ * off. Vision itself stays a visual system (see fov.ts).
  */
 
 import { clamp01, expDamp } from '../lib/math';

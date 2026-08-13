@@ -1,0 +1,14 @@
+{
+  "tile": 16,
+  "effects": {
+    "summon": {
+      "file": "summon.png",
+      "frameWidth": 32,
+      "frameHeight": 96,
+      "frames": 14,
+      "fps": 14,
+      "anchorY": 84,
+      "loop": false
+    }
+  }
+}

@@ -15,7 +15,7 @@ game's scale.
 | `room.py` | authoritative state, lobby phase, tick loop, broadcasts |
 | `simulation.py` | movement + tile collision — mirrored by the client |
 | `combat.py` | hitscan raycast, entity-agnostic |
-| `entities.py` | `Player`, `InputCmd` |
+| `entities.py` | `Player`, `InputCmd` (includes the lantern switch, relayed not simulated) |
 | `enemies.py` | `EnemyType` stat blocks, live `Enemy` instances |
 | `ai.py` | enemy steering/attack + the spawn director |
 | `pathing.py` | BFS flow field, one per player |

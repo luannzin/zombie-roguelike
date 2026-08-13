@@ -21,6 +21,12 @@ import { createRoom } from '@/net/rooms';
 
 /** Nobody is at the fire on the title screen. Hoisted so it is a stable ref. */
 const NOBODY = Object.freeze([]) as never[];
+/**
+ * How long a menu choice is acknowledged before it is obeyed, in ms. Matches
+ * the `menu-select` keyframes in styles/index.css; changing one without the
+ * other either cuts the flick short or leaves a dead pause after it.
+ */
+const CONFIRM_MS = 360;
 
 type Stage = 'menu' | 'play';
 
@@ -45,6 +51,37 @@ export function HomeScreen() {
     [],
   );
   const [selected, setSelected] = useState(0);
+  /** Label of the item playing its confirm flick, if any. */
+  const [confirming, setConfirming] = useState<string | null>(null);
+  const confirmTimer = useRef<number | null>(null);
+
+  useEffect(
+    () => () => {
+      if (confirmTimer.current !== null) window.clearTimeout(confirmTimer.current);
+    },
+    [],
+  );
+
+  /**
+   * Acknowledge a menu choice, then act on it.
+   *
+   * The delay is the feature: the item flicks and desaturates first (see the
+   * `menu-select` keyframes) and the screen only changes once that has played.
+   * Acting immediately is faster and feels like a web page.
+   */
+  const select = useCallback((entry: MenuEntry) => {
+    if (confirmTimer.current !== null) return;
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      entry.onSelect();
+      return;
+    }
+    setConfirming(entry.label);
+    confirmTimer.current = window.setTimeout(() => {
+      confirmTimer.current = null;
+      setConfirming(null);
+      entry.onSelect();
+    }, CONFIRM_MS);
+  }, []);
 
   /** The name is committed on the way out, not on every keystroke. */
   const commitName = useCallback((): string => {
@@ -86,7 +123,8 @@ export function HomeScreen() {
         setSelected((i) => (i - 1 + entries.length) % entries.length);
       } else if (event.key === 'Enter' || event.key === ' ') {
         event.preventDefault();
-        entries[selected]?.onSelect();
+        const entry = entries[selected];
+        if (entry) select(entry);
       } else {
         return;
       }
@@ -94,7 +132,7 @@ export function HomeScreen() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [stage, selected, entries]);
+  }, [stage, selected, entries, select]);
 
   // Escape backs out of the play panel — but not while the dialog owns it.
   useEffect(() => {
@@ -134,16 +172,25 @@ export function HomeScreen() {
         </h1>
 
         {stage === 'menu' ? (
-          <nav className="flex w-64 flex-col items-start gap-1">
+          <nav
+            className={cn(
+              'flex w-64 flex-col items-start gap-1',
+              // No second choice while one is being acknowledged.
+              confirming && 'pointer-events-none',
+            )}
+          >
             {entries.map((entry, index) => (
               <button
                 key={entry.label}
                 type="button"
                 onMouseEnter={() => setSelected(index)}
-                onClick={entry.onSelect}
+                onClick={() => select(entry)}
                 className={cn(
                   'pixel-text group flex cursor-pointer items-center gap-3 py-1.5 text-[22px] leading-[26px] tracking-[0.16em] uppercase transition-colors focus-visible:outline-none',
                   index === selected ? 'text-ink-accent' : 'text-ink-muted hover:text-ink',
+                  // The keyframes drive `color` directly, so they win over the
+                  // classes above for as long as the flick is running.
+                  confirming === entry.label && 'animate-menu-select',
                 )}
               >
                 <span

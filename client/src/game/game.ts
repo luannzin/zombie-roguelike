@@ -43,7 +43,7 @@ import { EntityVisuals } from './entity-visuals';
 import { EMPTY_HUD, HUD_INTERVAL, type HudSnapshot, type HudStore } from './hud-store';
 import { InputController } from './input';
 import { Lantern } from './lantern';
-import { SnapshotBuffer, type RenderedEnemy } from './interpolation';
+import { SnapshotBuffer, type RenderedEnemy, type RenderedPlayer } from './interpolation';
 import { LocalPlayer } from './prediction';
 import { TileMap } from './world';
 
@@ -133,7 +133,7 @@ export class Game {
   private readonly snapshots = new SnapshotBuffer();
   private readonly visuals = new EntityVisuals();
   private readonly sprites = new SpriteBook();
-  /** The local player's lamp. Remote lanterns are always on — see lantern.ts. */
+  /** The local player's lamp. Remotes use the `lantern` flag on their snapshot. */
   private readonly lantern = new Lantern();
 
   /** The welcome this game was built from, applied once `start()` is ready. */
@@ -471,6 +471,7 @@ export class Game {
       movement: { ...this.input.movement },
       aim: { x: this.aimX, y: this.aimY },
       shoot: this.input.shooting,
+      lantern: this.lantern.on,
     };
   }
 
@@ -587,7 +588,7 @@ export class Game {
     // disconnected, an enemy that died — is now unreferenced and gets dropped.
     this.visuals.prune();
 
-    this.updateVision(entities, dt);
+    this.updateVision(sampled.players, dt);
     this.applyVisibility(entities);
 
     this.renderer.draw({
@@ -606,27 +607,36 @@ export class Game {
   }
 
   /**
-   * Refresh the team's light. Every living PLAYER carries a lantern — remote
-   * ones included, which is what makes vision shared: their light lands in the
-   * same field as yours and the renderer never has to know whose it was.
+   * Refresh the team's light. Every living PLAYER with the lamp on is a
+   * viewer — remotes included, which is what makes vision shared. Their
+   * switch arrives on the snapshot; only the local lamp has a battery.
    */
-  private updateVision(entities: DrawableEntity[], dt: number): void {
+  private updateVision(remotes: RenderedPlayer[], dt: number): void {
     const fov = this.fov;
     const world = this.world;
     const config = this.config;
     if (!fov || !world || !config) return;
 
     const viewers: Viewer[] = [];
-    for (const entity of entities) {
-      if (entity.kind !== 'player' || !entity.alive) continue;
+    if (this.local?.alive) {
       viewers.push({
-        id: entity.id,
-        x: entity.x,
-        y: entity.y,
-        ax: entity.ax,
-        ay: entity.ay,
-        // Only the local lamp has a battery this client can see.
-        lantern: entity.isLocal ? this.lantern.output : 1,
+        id: this.localId,
+        x: this.smoothX,
+        y: this.smoothY,
+        ax: this.aimX,
+        ay: this.aimY,
+        lantern: this.lantern.output,
+      });
+    }
+    for (const remote of remotes) {
+      if (!remote.alive) continue;
+      viewers.push({
+        id: remote.id,
+        x: remote.x,
+        y: remote.y,
+        ax: remote.ax,
+        ay: remote.ay,
+        lantern: remote.lantern ? 1 : 0,
       });
     }
 

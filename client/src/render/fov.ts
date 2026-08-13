@@ -67,8 +67,7 @@ export interface Viewer {
   /**
    * 0..1 lantern output — the battery, the blink and the switch, collapsed into
    * one number (see `game/lantern.ts`). 0 leaves this viewer with nothing but
-   * the cold ambient glow; remote players, whose switch this client cannot see,
-   * pass 1.
+   * the cold ambient glow. Remotes pass 0 or 1 from the snapshot switch.
    */
   lantern: number;
 }

@@ -28,6 +28,7 @@ import { Camera } from "../render/camera";
 import { TerrainLayer } from "../render/layers/terrain";
 import { frameIndex, SpriteBook } from "../render/sprites";
 import { loadTerrain, type TerrainAtlas, tileHash } from "../render/terrain";
+import { effectFrame, loadVfx, type VfxAtlas } from "../render/vfx";
 import { HUD_GRID, hudFont, whenFontsReady } from "../theme/fonts";
 import { palette } from "../theme/palette";
 import { FLOOR, ROCK, TileMap, TREE } from "./world";
@@ -62,12 +63,29 @@ const RING_TILES_Y = 2.0;
 /** How fast a seat slides to its new angle when the party grows. */
 const RESEAT_RATE = 3.2;
 
-/** Seconds a player spends materialising, and dissolving. */
-const SUMMON_TIME = 1.05;
+/**
+ * Seconds a player spends materialising.
+ *
+ * The summon sheet is the clock: 14 frames at 14 fps. Overriding it here would
+ * either cut the collapse off or leave a dead beat after the beam has gone.
+ */
+const SUMMON_TIME = 1.0;
 const LEAVE_TIME = 0.45;
+/**
+ * Normalized moment the beam hits the ground. Mirrors `IMPACT_AT` in
+ * server/tools/make_vfx.py — the body has to finish resolving on the same
+ * frame the sprite flashes, or the arrival lands twice.
+ */
+const SUMMON_IMPACT = 0.52;
 /** When in the summon the body starts to appear, and when it has fully landed. */
-const BODY_FADE_IN = 0.42;
-const BODY_LANDED = 0.72;
+const BODY_FADE_IN = 0.34;
+const BODY_LANDED = SUMMON_IMPACT;
+/**
+ * Squash-and-stretch after touchdown, in seconds. The body arrives compressed
+ * and springs back — a character that simply becomes opaque has been faded in,
+ * not delivered.
+ */
+const LANDING_SETTLE = 0.24;
 
 /** Embers per second thrown by the fire, on top of the ones in the sprite. */
 const EMBER_RATE = 14;
@@ -117,6 +135,10 @@ interface Particle {
 	ty?: number;
 	sx?: number;
 	sy?: number;
+	/** Draw as a motion streak between last frame's position and this one. */
+	streak?: boolean;
+	/** Previous Y, written by `update`. Only meaningful with `streak`. */
+	py?: number;
 }
 
 interface Ring {
@@ -142,6 +164,7 @@ export class LobbyScene {
 	private pending: readonly LobbyMember[] | null = null;
 
 	private atlas: TerrainAtlas | null = null;
+	private vfx: VfxAtlas | null = null;
 	private world: TileMap | null = null;
 	private resizeObserver: ResizeObserver | null = null;
 	private rafId: number | null = null;
@@ -183,14 +206,16 @@ export class LobbyScene {
 
 		// The webfont too: names drawn in the fallback face and then swapped is the
 		// one flicker in this scene that is not on purpose.
-		const [, atlas] = await Promise.all([
+		const [, atlas, vfx] = await Promise.all([
 			this.sprites.load([PLAYER_SHEET]),
 			loadTerrain(),
+			loadVfx(),
 			whenFontsReady(),
 		]);
 		if (this.disposed) return;
 
 		this.atlas = atlas;
+		this.vfx = vfx;
 		// The manifest is the authority on art scale — the lobby has no server
 		// config to read `tileSize` from, and inventing one here would put the
 		// clearing on a different grid from the arena's.
@@ -236,6 +261,7 @@ export class LobbyScene {
 		this.rings.length = 0;
 		this.world = null;
 		this.atlas = null;
+		this.vfx = null;
 	}
 
 	/**
@@ -306,66 +332,83 @@ export class LobbyScene {
 	}
 
 	// --- vfx -----------------------------------------------------------------
-	/** A column of motes falling out of the dark onto an empty seat. */
+	/**
+	 * Motes falling out of the dark onto an empty seat.
+	 *
+	 * The summon sheet is only six tiles tall, so these are what make the
+	 * arrival come from ABOVE rather than from just off the top of a sprite:
+	 * they start well outside the frame and converge into the column as it
+	 * strikes. They also streak (see `drawParticles`) — a dot moving fast
+	 * enough to cross tiles between frames reads as a stutter unless it leaves
+	 * something behind.
+	 */
 	private spawnSummon(seat: Seat): void {
 		const { x, y } = this.seatPosition(seat.angle);
 		const ts = this.tile;
 		const tone = palette().summon;
-		for (let i = 0; i < 34; i++) {
-			const spread = (Math.random() * 2 - 1) * ts * 0.7;
-			const startY = y - ts * (5.5 + Math.random() * 9);
+		for (let i = 0; i < 38; i++) {
+			const spread = (Math.random() * 2 - 1) * ts * 0.9;
+			const startY = y - ts * (7 + Math.random() * 11);
 			this.particles.push({
 				x: x + spread,
 				y: startY,
 				sx: x + spread,
 				sy: startY,
-				tx: x + spread * 0.15,
+				tx: x + spread * 0.12,
 				ty: y - Math.random() * ts * 0.75,
 				vx: 0,
 				vy: 0,
 				gy: 0,
-				age: -Math.random() * 0.35,
-				life: SUMMON_TIME * (0.6 + Math.random() * 0.3),
-				size: Math.random() < 0.25 ? 2 : 1,
-				color: Math.random() < 0.3 ? tone.core : tone.spark,
+				// Staggered so they arrive as a volley, not a curtain. The last
+				// of them lands as the beam does.
+				age: -Math.random() * 0.4,
+				life: SUMMON_TIME * (0.5 + Math.random() * 0.28),
+				size: Math.random() < 0.22 ? 2 : 1,
+				streak: true,
+				// One in four wears the arriving player's colour, so even the
+				// fall is theirs rather than a generic white.
+				color:
+					Math.random() < 0.26
+						? seat.color
+						: Math.random() < 0.4
+							? tone.core
+							: tone.spark,
 			});
 		}
 	}
 
-	/** The landing: a flat shockwave and a burst of sparks kicked off the ground. */
+	/**
+	 * The landing, in the arriving player's own colour.
+	 *
+	 * The white flash and the two shockwaves are baked into the summon sheet, so
+	 * nothing here repeats them. What the sprite cannot know is WHO arrived —
+	 * one ring and a spray of sparks in their roster colour is the whole job,
+	 * and it is what ties the character in the scene to the row in the list.
+	 */
 	private spawnLanding(seat: Seat): void {
 		const { x, y } = this.seatPosition(seat.angle);
 		const ts = this.tile;
-		const tone = palette().summon;
 		this.rings.push({
 			x,
 			y,
 			age: 0,
-			life: 0.5,
-			maxRadius: ts * 1.6,
-			color: tone.core,
-		});
-		this.rings.push({
-			x,
-			y,
-			age: -0.08,
-			life: 0.62,
-			maxRadius: ts * 2.4,
+			life: 0.66,
+			maxRadius: ts * 2.6,
 			color: seat.color,
 		});
-		for (let i = 0; i < 16; i++) {
+		for (let i = 0; i < 14; i++) {
 			const angle = Math.random() * TAU;
-			const speed = ts * (1.5 + Math.random() * 2.9);
+			const speed = ts * (1.6 + Math.random() * 3.2);
 			this.particles.push({
 				x,
 				y,
 				vx: Math.cos(angle) * speed,
-				vy: Math.sin(angle) * speed * 0.45 - ts * 0.9,
+				vy: Math.sin(angle) * speed * 0.45 - ts * 1.1,
 				gy: ts * 5.6,
 				age: 0,
-				life: 0.35 + Math.random() * 0.4,
+				life: 0.4 + Math.random() * 0.45,
 				size: 1,
-				color: i % 3 === 0 ? seat.color : tone.spark,
+				color: seat.color,
 			});
 		}
 	}
@@ -519,6 +562,7 @@ export class LobbyScene {
 				continue;
 			}
 			if (p.age < 0) continue;
+			p.py = p.y;
 			if (p.tx !== undefined && p.ty !== undefined) {
 				// Ease-in: motes drift, then drop. A linear fall reads as rain.
 				const k = clamp01(p.age / p.life) ** 2.1;
@@ -553,14 +597,19 @@ export class LobbyScene {
 
 		this.terrain.ground(ctx, world, camera, this.time);
 		this.drawFirelight();
-		this.drawBeams();
 		this.drawStanding();
-		this.drawParticles();
-		this.drawRings();
 		// Canopies and ferns close over whoever is standing behind them, exactly
 		// as they do in the arena.
 		this.terrain.overgrowth(ctx, world, camera, this.time);
 		this.drawNight();
+
+		// Everything below is LIGHT, so it goes over the darkness rather than
+		// under it — the same rule the arena's renderer follows for muzzle
+		// flashes. The summon column washing over the body it is delivering is
+		// the point: the character resolves inside the beam, not next to it.
+		this.drawSummons();
+		this.drawRings();
+		this.drawParticles();
 
 		ctx.restore();
 		this.drawLabels();
@@ -727,6 +776,16 @@ export class LobbyScene {
 			ctx.globalAlpha = alpha;
 		}
 
+		// Squash-and-stretch, applied about the feet: the body arrives compressed
+		// and springs back. Everything below is inside this transform, including
+		// the crown, so the head and what sits on it move together.
+		const settle = this.landingSquash(seat);
+		if (settle !== 1) {
+			ctx.translate(x, y);
+			ctx.scale(1 + (1 - settle) * 0.75, settle);
+			ctx.translate(-x, -y);
+		}
+
 		if (image) {
 			ctx.drawImage(
 				image,
@@ -771,6 +830,21 @@ export class LobbyScene {
 		ctx.restore();
 	}
 
+	/**
+	 * Vertical scale of a body that has just landed: 1 when it is not settling.
+	 *
+	 * A damped cosine rather than an ease — the body overshoots, comes back
+	 * past its height, and settles. A one-way ease reads as the sprite growing
+	 * into place, which is a loading animation, not an impact.
+	 */
+	private landingSquash(seat: Seat): number {
+		if (seat.phase !== "summoning") return 1;
+		const since = seat.t - BODY_LANDED * SUMMON_TIME;
+		if (since < 0 || since > LANDING_SETTLE) return 1;
+		const k = since / LANDING_SETTLE;
+		return 1 - 0.34 * Math.exp(-4.5 * k) * Math.cos(k * 9);
+	}
+
 	/** 0..1 body opacity: fades in during a summon, out during a departure. */
 	private seatAlpha(seat: Seat): number {
 		if (seat.phase === "leaving") return 1 - clamp01(seat.t / LEAVE_TIME);
@@ -781,33 +855,40 @@ export class LobbyScene {
 		return 1;
 	}
 
-	/** The summoning column, falling out of the top of the view. */
-	private drawBeams(): void {
-		const { ctx, camera } = this;
-		const beam = palette().summon.beam.join(" ");
-		const top = camera.renderY;
+	/**
+	 * The summoning column: a generated sprite, not a gradient.
+	 *
+	 * See server/tools/make_vfx.py. A canvas gradient was the one shape in this
+	 * scene with no pixels in it — smooth against a screen where the ground is
+	 * dithered and the fire is six flat colours — and it read as a filter laid
+	 * over the game rather than as part of it.
+	 *
+	 * The sheet is anchored on its contact row, not its bottom edge, because the
+	 * impact throws a shockwave into the rows below the ground line. It also
+	 * carries the flash and the wave, so nothing here re-draws those.
+	 */
+	private drawSummons(): void {
+		const sheet = this.vfx?.summon;
+		if (!sheet) return;
+		const { ctx } = this;
 
 		ctx.save();
 		ctx.globalCompositeOperation = "lighter";
 		for (const seat of this.seats) {
 			if (seat.phase !== "summoning") continue;
-			const progress = clamp01(seat.t / SUMMON_TIME);
 			const { x, y } = this.seatPosition(seat.angle);
-			const strength = Math.sin(Math.PI * progress) ** 0.7;
-			const width = this.tile * (0.2 + strength * 0.6);
-
-			const gradient = ctx.createLinearGradient(0, top, 0, y);
-			gradient.addColorStop(0, `rgb(${beam} / 0)`);
-			gradient.addColorStop(
-				0.55,
-				`rgb(${beam} / ${(0.16 * strength).toFixed(3)})`,
+			const frame = effectFrame(sheet, seat.t);
+			ctx.drawImage(
+				sheet.image,
+				frame * sheet.frameWidth,
+				0,
+				sheet.frameWidth,
+				sheet.frameHeight,
+				Math.round(x - sheet.frameWidth / 2),
+				Math.round(y - sheet.anchorY),
+				sheet.frameWidth,
+				sheet.frameHeight,
 			);
-			gradient.addColorStop(
-				1,
-				`rgb(${beam} / ${(0.42 * strength).toFixed(3)})`,
-			);
-			ctx.fillStyle = gradient;
-			ctx.fillRect(x - width / 2, top, width, y - top);
 		}
 		ctx.restore();
 	}
@@ -820,7 +901,18 @@ export class LobbyScene {
 			if (p.age < 0) continue;
 			ctx.globalAlpha = clamp01(1 - p.age / p.life);
 			ctx.fillStyle = p.color;
-			ctx.fillRect(Math.round(p.x), Math.round(p.y), p.size, p.size);
+			const x = Math.round(p.x);
+			const y = Math.round(p.y);
+			if (p.streak && p.py !== undefined) {
+				// A falling mote can cross several pixels between frames. Drawing
+				// the segment it travelled instead of the point it landed on is
+				// the difference between rain and a dotted line.
+				const from = Math.min(y, Math.round(p.py));
+				const span = Math.max(p.size, Math.abs(y - Math.round(p.py)));
+				ctx.fillRect(x, from, p.size, span);
+				continue;
+			}
+			ctx.fillRect(x, y, p.size, p.size);
 		}
 		ctx.restore();
 	}

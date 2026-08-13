@@ -254,6 +254,17 @@
   --animate-ready-glow: ready-glow 2.6s ease-in-out infinite;
 
   /*
+   * Menu confirm. The item is kicked right, left, right while its colour snaps
+   * between full ink and muted, then the screen changes — the arcade cadence
+   * where a selection is acknowledged before it is obeyed.
+   *
+   * `steps(1, end)` is the whole trick: interpolated, the offsets become a
+   * smooth slide and the colours a cross-fade, which reads as a transition. Held
+   * on each keyframe they read as a signal being interrupted.
+   */
+  --animate-menu-select: menu-select 0.36s steps(1, end) 1;
+
+  /*
    * The title, wired to a generator that is not coping. Long steady stretches
    * with two irregular dropouts — an even blink would read as a CSS animation
    * rather than as a place where the power is failing.
@@ -380,6 +391,40 @@
     }
   69% {
     opacity: 0.5;
+    }
+  }
+  @keyframes menu-select {
+  0% {
+    translate: 0 0;
+    color: var(--ink);
+    }
+  12% {
+    translate: 5px 0;
+    color: var(--ink-muted);
+    }
+  24% {
+    translate: -4px 0;
+    color: var(--ink);
+    }
+  38% {
+    translate: 4px 0;
+    color: var(--ink-muted);
+    }
+  52% {
+    translate: -2px 0;
+    color: var(--ink);
+    }
+  66% {
+    translate: 3px 0;
+    color: var(--ink-muted);
+    }
+  82% {
+    translate: 0 0;
+    color: var(--ink);
+    }
+  100% {
+    translate: 0 0;
+    color: var(--ink);
     }
   }
   @keyframes ready-glow {

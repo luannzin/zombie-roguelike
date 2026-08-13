@@ -158,13 +158,20 @@ cd server
 ./.venv/bin/python tools/process_sprites.py --name zombie --tile 16
 ```
 
-Terrain and HUD icons have no raw stage — they are generated straight into
-`assets/processed/`, deterministically:
+Terrain, effects and HUD icons have no raw stage — they are generated straight
+into `assets/processed/`, deterministically:
 
 ```bash
-./.venv/bin/python tools/make_textures.py     # forest floor, rocks, trees, ferns
+./.venv/bin/python tools/make_textures.py     # floor, rocks, trees, ferns, campfire
+./.venv/bin/python tools/make_vfx.py          # summon beam
 ./.venv/bin/python tools/make_hud_icons.py    # battery.png for the lantern gauge
 ```
+
+Two kinds of animated sheet, and the difference matters. The campfire's eight
+frames are a **loop**: every wobble is a sine of the frame phase, so the last
+frame hands back to the first with no snap. The summon beam's fourteen are a
+**timeline** played once per arrival — charge, strike, impact, collapse — and
+its `frames / fps` is what the lobby times the whole materialisation against.
 
 `--tile` must match `TILE_SIZE`. The same command processes future characters,
 zombies and NPCs — only `--name` changes (plus `--height` for taller entities). Player colours are a runtime multiply tint over the single base sheet;
@@ -201,7 +208,8 @@ client/
     game/           world, simulation, prediction, interpolation, input, effects,
                     combat, per-player visuals, lantern battery, game loop,
                     lobby-scene (the campfire), hud-store (UI seam)
-    render/         camera, projection, sprites/tinting, minimap, fov, renderer
+    render/         camera, projection, sprites/tinting, minimap, fov, renderer,
+                    terrain + vfx atlas loading
       layers/       terrain, entities, effects, atmosphere, darkness, vignette
     theme/          palette.ts / fonts.ts — read the CSS tokens for canvas use
     lib/            math, canvas, store, lens (HUD barrel map), utils
@@ -222,7 +230,7 @@ assets/
   raw/              source art + font sources (never served)
 assets/
   raw/              source art (never served)
-  processed/        production art (served by Vite)
+  processed/        production art (served by Vite): sprites, terrain, vfx, hud
 docs/
   netcode.md        protocol + prediction/reconciliation details
 ```

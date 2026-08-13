@@ -36,6 +36,7 @@ class InputCmd:
     aim_x: float = 1.0
     aim_y: float = 0.0
     shoot: bool = False
+    lantern: bool = False
 
     @staticmethod
     def from_message(msg: dict) -> "InputCmd":
@@ -58,6 +59,7 @@ class InputCmd:
             aim_x=ax,
             aim_y=ay,
             shoot=bool(msg.get("shoot")),
+            lantern=bool(msg.get("lantern")),
         )
 
 
@@ -118,6 +120,7 @@ class Player:
             "vy": round(self.vy, 2),
             "ax": round(self.aim_x, 3),
             "ay": round(self.aim_y, 3),
+            "lantern": self.last_input.lantern,
             "hp": self.hp,
             "alive": self.alive,
             "kills": self.kills,

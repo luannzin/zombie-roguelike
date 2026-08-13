@@ -12,7 +12,7 @@ is no second socket and no re-handshake.
 client -> server
   {"type":"input","sequence":183,
    "movement":{"up":true,"down":false,"left":false,"right":true},
-   "aim":{"x":0.72,"y":-0.69},"shoot":true}
+   "aim":{"x":0.72,"y":-0.69},"shoot":true,"lantern":true}
   {"type":"ping","t":<client ms>}
   {"type":"start"}                      host only; ignored otherwise
 

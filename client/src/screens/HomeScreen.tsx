@@ -112,12 +112,12 @@ export function HomeScreen() {
 
   return (
     <div className="relative h-screen w-screen overflow-hidden bg-surface">
-      {/* Pushed down and left: the fire is the backdrop, not the subject, and
-          the menu should not be standing in it. */}
+      {/* Pushed right and a little below centre: the menu owns the left edge,
+          so the fire sits in the space it leaves rather than under it. */}
       <CampfireCanvas
         members={NOBODY}
-        anchorX={0.34}
-        anchorY={0.72}
+        anchorX={0.66}
+        anchorY={0.56}
         className="absolute inset-0"
       />
       {/* Legibility scrim: the menu sits on top of a live scene. */}

@@ -120,10 +120,10 @@ your feet reads as *bright* while the far end of the same beam is a pale wash.
 
 The lamp runs on a **battery of four cells**
 ([game/lantern.ts](client/src/game/lantern.ts)), drawn on the HUD as four pixel
-batteries that drain top-down from the right. Every time a cell empties the
-lantern cuts out and has to be switched back on with **F** — the light is not a
-slider that fades over four minutes, it is four hard interruptions at moments
-you did not choose. On the last cell it starts dropping out at random, and the
+batteries that drain top-down from the right. The cells are a readout: the lamp
+burns continuously for four minutes and only cuts out once the battery is flat,
+at which point **F** does nothing until it has trickled back. On the last cell
+it starts dropping out at random, and the
 HUD tears in sympathy. Switching on stutters before it catches; dying puts it
 out. It trickles back while off, at less than half the rate it drains, so
 darkness is the resource you spend to get light back.

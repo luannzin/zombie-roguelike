@@ -6,12 +6,9 @@
  * the HUD's four cells. Everything else here exists to make that number lie
  * convincingly.
  *
- * The battery is FOUR CELLS, and they are not just a readout. Every time one
- * empties the lamp CUTS OUT and the player has to press F again. That is the
- * point of the mechanic: the light is not a slider that fades away over four
- * minutes, it is four hard interruptions, each one landing at a moment the
- * player did not choose. A quarter of your light dying while a zombie is
- * walking at you is a decision — run, or stand still and reach for the switch.
+ * The battery is FOUR CELLS, drawn on the HUD so the player can read how much
+ * light is left at a glance. They drain continuously — the lamp burns until the
+ * last cell runs dry, and only a flat battery cuts it out.
  *
  * Three kinds of flicker, and they mean different things:
  *
@@ -39,7 +36,7 @@
 
 import { clamp01, expDamp } from '../lib/math';
 
-/** Cells on the HUD, and therefore the number of cut-outs a full charge gives. */
+/** Cells on the HUD. Purely a readout — draining one does not cut the lamp. */
 export const BATTERY_CELLS = 4;
 /** Seconds of continuous light on a full charge. One cell is a quarter of it. */
 const DRAIN_SECONDS = 120;
@@ -104,7 +101,7 @@ export class Lantern {
     return this.stored;
   }
 
-  /** Cells with any juice left. Crossing one of these boundaries cuts the lamp. */
+  /** Cells with any juice left. */
   get cells(): number {
     return Math.ceil(this.stored * BATTERY_CELLS);
   }
@@ -149,11 +146,8 @@ export class Lantern {
     if (this.switchedOn && !powered) this.cut();
 
     if (this.switchedOn) {
-      const before = this.cells;
       this.stored = Math.max(0, this.stored - dt / DRAIN_SECONDS);
-      // Order matters: a flat battery is dead, not merely one cell down.
       if (this.stored <= 0) this.cut();
-      else if (this.cells < before) this.cut();
     } else {
       this.stored = Math.min(1, this.stored + dt / RECHARGE_SECONDS);
     }

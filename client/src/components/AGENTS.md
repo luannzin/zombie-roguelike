@@ -11,6 +11,9 @@ and nowhere near the frame loop.
   `Game`; React never touches those pixels again.
 - `hud/` — ours: `Hud`, `HudScreen`, `Panel`, `Vitals`, `BatteryGauge`,
   `ProgressBar`, `StatusLine`, `NetStats`, `ControlsHint`.
+- `lobby/` — `CampfireCanvas` (mounts `LobbyScene`), `RoomCode`, `PlayerRoster`.
+- `menu/` — `MenuButton`, `HudInput`, `JoinRoomDialog`: the title screen's
+  controls, in HUD chrome.
 - `ui/` — coss primitives (Base UI + shadcn-style copy-in). **Generated. Do not
   hand-edit.**
 
@@ -26,6 +29,11 @@ and nowhere near the frame loop.
   Tailwind utilities. No literal colours in components.
 - coss semantic tokens are re-pointed at the game palette in the coss skin block
   at the bottom of `index.css`; do not add per-component overrides.
+- `menu/` reimplements the button and the text field rather than restyling the
+  coss ones: every visual decision in those primitives (radius, shadow, ring,
+  sans face) is the opposite of the HUD's, and overriding them all at the call
+  site costs more than the component. Structural primitives with real behaviour
+  — `Dialog`'s portal, focus trap and escape handling — are still reused.
 
 ## Work Guidance
 

@@ -85,6 +85,11 @@ authoritative server at a fixed 30 Hz, Vite + TypeScript + Canvas 2D client, one
 WebSocket carrying JSON. `README.md` is the tour; the rules below bind every
 subtree.
 
+- Open a link, pick a name, create or join a room by its 7-character code, wait
+  at the campfire, start. One socket (`/ws/{code}`) carries the lobby and the
+  run; rooms live in memory and die with their last player.
+- Nothing is persisted server-side. The only durable client datum is the
+  player's name, in `localStorage`.
 - The server is authoritative. Clients send inputs, never positions.
 - Every gameplay constant lives in `server/app/config.py` and reaches the client
   in `welcome.config`. Never hardcode one client-side.

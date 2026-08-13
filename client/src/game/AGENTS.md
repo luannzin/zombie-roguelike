@@ -10,7 +10,8 @@ seam React is allowed to read.
 
 | file | owns |
 | --- | --- |
-| `game.ts` | orchestrator: connection, two clocks, render loop, `start()`/`dispose()` |
+| `game.ts` | orchestrator: two clocks, render loop, `start()`/`dispose()` |
+| `lobby-scene.ts` | the campfire clearing drawn before the run starts |
 | `simulation.ts` | movement — mirror of `server/app/simulation.py` |
 | `prediction.ts` | apply-locally, replay-on-ack reconciliation |
 | `interpolation.ts` | remote entity smoothing |
@@ -30,8 +31,17 @@ seam React is allowed to read.
   must stay a line-for-line mirror of the Python version.
 - `hud-store.ts` is the only channel to the UI. Nothing here may touch the DOM
   beyond the two canvases `game.ts` owns.
-- `dispose()` releases every socket, timer, listener, observer and rAF handle
-  created in this folder.
+- **`Game` does not own its socket.** The connection is created by
+  `hooks/useRoomSession` and has been carrying the lobby since before the game
+  existed; `Game` subscribes in `start()` and unsubscribes in `dispose()`, and
+  must never close it. The `welcome` it was built from is replayed in `start()`
+  because it arrived first.
+- `lobby-scene.ts` is decoration only: no input, no prediction, no socket. It
+  draws through the arena's own `TerrainLayer` over a locally generated
+  `TileMap`, so the lobby and the forest cannot drift apart. Art scale comes
+  from the terrain manifest, never a hardcoded tile size.
+- `dispose()` releases every timer, listener, observer and rAF handle created in
+  this folder.
 - Tuning comes from `welcome.config`; the lantern's own constants are the
   exception, because the battery is client-local and the server does not know
   the lamp exists.

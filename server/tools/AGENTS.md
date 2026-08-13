@@ -11,7 +11,7 @@ imported by `app/` and never run at request time.
 | --- | --- | --- |
 | `make_placeholder_sheet.py` | generates raw art | `assets/raw/<name>.png` |
 | `process_sprites.py` | raw → production | `assets/processed/<name>/` |
-| `make_textures.py` | generates final pixels | `assets/processed/terrain/` |
+| `make_textures.py` | generates final pixels | `assets/processed/terrain/` (ground, rock, tree, grass, fern, campfire) |
 | `make_hud_icons.py` | generates final pixels | `assets/processed/hud/` |
 
 ## Local Contracts
@@ -25,8 +25,14 @@ imported by `app/` and never run at request time.
 - Generation is deterministic: the same command must produce byte-identical
   PNGs. Do not introduce unseeded randomness.
 - `--tile` must match `TILE_SIZE` in `app/config.py`.
-- Non-square props (rock, tree, grass, fern) are bottom-anchored silhouettes
-  with alpha, centred on their tile; only `ground.png` tiles seamlessly.
+- Non-square props (rock, tree, grass, fern, campfire) are bottom-anchored
+  silhouettes with alpha, centred on their tile; only `ground.png` tiles
+  seamlessly.
+- Prop frames are VARIANTS, except the campfire's, which are an ANIMATION —
+  flagged with `animated` + `fps` in the manifest. An animated sheet's frames
+  must LOOP: every wobble is a sine of the frame phase (or an integer multiple),
+  so the last frame hands back to the first with no snap. Do not use `rng` per
+  frame; it stutters at the wrap even when each frame looks right alone.
 - Shared drawing helpers live in `make_textures.py` and are imported, not
   copied, so all generated art keeps one shading vocabulary.
 

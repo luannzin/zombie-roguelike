@@ -2,10 +2,11 @@
 
 ## Purpose
 
-Python 3 process that owns the game. FastAPI serves one WebSocket endpoint
-(`/ws`); a room runs a fixed 30 Hz tick, simulates every entity, and broadcasts
-JSON snapshots. The same tree also holds the offline asset pipeline that
-produces everything the client renders.
+Python 3 process that owns the game. FastAPI serves a small room REST pair
+(`POST /rooms`, `GET /rooms/{code}`) and one WebSocket endpoint per room
+(`/ws/{code}`); a started room runs a fixed 30 Hz tick, simulates every entity,
+and broadcasts JSON snapshots. The same tree also holds the offline asset
+pipeline that produces everything the client renders.
 
 ## Ownership
 

@@ -10,8 +10,9 @@ game's scale.
 
 | file | owns |
 | --- | --- |
-| `main.py` | FastAPI app, `/ws` endpoint, room lifespan |
-| `room.py` | authoritative state, tick loop, spawning, snapshot broadcast |
+| `main.py` | FastAPI app, room REST, `/ws/{code}` endpoint, shutdown |
+| `rooms.py` | the room registry: code generation, lookup, disposal |
+| `room.py` | authoritative state, lobby phase, tick loop, broadcasts |
 | `simulation.py` | movement + tile collision — mirrored by the client |
 | `combat.py` | hitscan raycast, entity-agnostic |
 | `entities.py` | `Player`, `InputCmd` |
@@ -38,8 +39,16 @@ game's scale.
   is connected.
 - Damage from melee is rate-limited per victim (`MELEE_IMMUNITY`), not per
   attacker. Do not add a damage path that bypasses it.
-- `Room` is not a singleton by design; keep it free of module-global state so
-  multiple rooms stay a dict away.
+- `rooms.py` owns every live `Room`. Nothing else may hold one past the request
+  that fetched it — a reference kept elsewhere outlives `rooms.drop()` and keeps
+  a tick task alive after the last player left.
+- A room has two phases. In `lobby` **nothing ticks**: state is pushed on
+  membership change only. `Room.begin()` is the single transition into
+  `playing`, and it is the only place that starts the loop. Do not add a code
+  path that simulates a lobby.
+- Player-supplied values (the `name` query parameter) are sanitised in
+  `entities.clean_name` before they enter room state, because they are echoed
+  to every other player.
 
 ## Work Guidance
 

@@ -14,7 +14,7 @@ mutation, no React.
 | `camera.ts` | follow, clamp to map bounds |
 | `projection.ts` | zoom + offset between world and screen space |
 | `sprites.ts` | sheet loading, `SpriteBook`, per-colour multiply tints |
-| `terrain.ts` | terrain atlas loading |
+| `terrain.ts` | terrain atlas loading (ground, props, the animated campfire) |
 | `fov.ts` | shared field of view — `light` and `heat` fields |
 | `minimap.ts` | the minimap canvas |
 | `layers/` | the actual drawing: terrain, entities, effects, atmosphere, darkness, vignette |
@@ -36,6 +36,12 @@ mutation, no React.
   `welcome.config.enemyTypes[*].sprite`, never a hardcoded list.
 - Colours come from `theme/palette.ts` only. Never write a literal colour here.
 - Frames are bottom-anchored, so any frame height works with no extra code.
+- A prop sheet's frames are VARIANTS unless its manifest entry carries `fps`
+  (only the campfire does), in which case they are an animation loop. Playing a
+  variant sheet makes the boulders twitch.
+- `terrain.ts` and `layers/terrain.ts` are also used by `game/lobby-scene.ts`
+  over a locally generated map. Nothing in them may assume a server sent the
+  `TileMap`.
 - Cached bitmaps and tints are released in `Renderer.dispose()`.
 - `imageSmoothingEnabled` stays `false` — this is pixel art.
 

@@ -1,7 +1,16 @@
 # Zombie Roguelike — Vertical Slice
 
-Browser-based multiplayer 2D pixel-art arena. No lobby, no auth, no setup:
-open the page, you are in the game.
+Browser-based multiplayer 2D pixel-art arena. No auth, no setup, no install:
+open the link, take a name, and you are at a campfire with your friends. One
+of you presses start and the forest happens.
+
+The whole flow is three screens. `/` is the title: pick a name, then **create a
+room** (the server generates a 7-character code and its own procedurally
+generated forest) or **join one** with a code somebody read out to you. Both
+land you on `/r/CODE` — the invite link — where the party gathers around a fire
+while the host waits for stragglers. Rooms live in memory and are dropped when
+the last player leaves; nothing is stored anywhere, and the only thing your
+browser remembers is the name you chose.
 
 * **Client** — Vite + TypeScript + Canvas 2D (no game engine). React + Tailwind
   own the HUD and routing only; they are never part of the render loop.
@@ -28,13 +37,15 @@ Client (terminal 2):
 cd client && bun install && bun run dev
 ```
 
-Open http://localhost:5173 in two or more tabs. Each tab joins the same room
-with its own random name, colour, id and spawn point.
+Open http://localhost:5173, create a room, then paste `/r/CODE` into a second
+tab. Each tab is its own player, with its own name, colour, id and seat at the
+fire.
 
 Controls: **WASD** move · **mouse** aim · **left click / hold** shoot · **F**
 lantern on/off.
 
-Point the client at another host with `VITE_SERVER_URL=ws://192.168.0.10:8000/ws bun run dev`.
+Point the client at another host with `VITE_SERVER_URL=http://192.168.0.10:8000 bun run dev`
+— an HTTP origin, not a socket URL; the client derives both from it.
 
 ## Scale
 
@@ -170,8 +181,9 @@ contrast, not just hue.
 ```
 server/
   app/
-    main.py         FastAPI app + /ws endpoint
-    room.py         authoritative room: tick loop, spawning, broadcast
+    main.py         FastAPI app: room REST + the /ws/{code} endpoint
+    rooms.py        room registry: code generation, lookup, disposal
+    room.py         authoritative room: lobby phase, tick loop, broadcast
     simulation.py   movement (mirrored by the client for prediction)
     combat.py       hitscan raycast (entity-agnostic — players and enemies)
     world.py        tile grid + collision
@@ -185,10 +197,10 @@ server/
   tools/            asset pipeline
 client/
   src/
-    net/            connection + protocol types
+    net/            connection, protocol types, server endpoints, room REST
     game/           world, simulation, prediction, interpolation, input, effects,
                     combat, per-player visuals, lantern battery, game loop,
-                    hud-store (UI seam)
+                    lobby-scene (the campfire), hud-store (UI seam)
     render/         camera, projection, sprites/tinting, minimap, fov, renderer
       layers/       terrain, entities, effects, atmosphere, darkness, vignette
     theme/          palette.ts / fonts.ts — read the CSS tokens for canvas use
@@ -197,10 +209,13 @@ client/
     components/
       game/         canvas hosts (GameCanvas, MinimapCanvas)
       hud/          HUD components — ours
+      lobby/        CampfireCanvas, RoomCode, PlayerRoster
+      menu/         MenuButton, HudInput, JoinRoomDialog
       ui/           coss primitives — GENERATED, do not hand-edit
-    hooks/          useGameSession (owns Game lifecycle), useHud
-    screens/        ArenaScreen
-    app/            route table
+    hooks/          useRoomSession (owns the socket), useGameSession (owns Game),
+                    useHud
+    screens/        HomeScreen, RoomScreen, LobbyScreen, ArenaScreen
+    app/            route table — / and /r/:code
     assets/fonts/   Departure Mono (bundled + hashed by Vite)
     styles/         index.css — Tailwind entry + ALL design tokens
 assets/
@@ -221,6 +236,11 @@ docs/
   Change one, change the other, or the local player will rubber-band.
 * Rendering knows nothing about the network; networking knows nothing about
   rendering; the server simulation knows nothing about either.
+* One socket per room, owned by `useRoomSession`, carrying the lobby and then
+  the run. `Game` subscribes to it and never closes it — starting a match must
+  not mean reconnecting and becoming a different player.
+* Rooms are in-memory and code-addressed (`server/app/rooms.py`). A room with no
+  sockets left is dropped, tick task and all.
 * React never renders per frame. `Game` publishes a snapshot to `hud-store` at
   5 Hz and React reads it via `useSyncExternalStore`; everything that changes
   every frame is drawn to canvas. Do not move per-frame state into component

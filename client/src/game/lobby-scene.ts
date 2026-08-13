@@ -1,36 +1,55 @@
 /**
- * The campfire: the lobby's canvas, and the title screen's backdrop.
+ * The campfire clearing: the lobby's canvas, and the title screen's backdrop.
  *
- * This is a scene, not a game. Nothing here is authoritative, nothing is
- * predicted, no input is read — the party standing around the fire is the
- * roster the server broadcast, drawn. That is exactly why it can afford to be
- * expensive-looking: it costs a handful of gradients and a couple of hundred
- * particles, and it is the first thing anybody sees.
+ * This is a scene, not a game. Nothing is authoritative, nothing is predicted,
+ * no input is read — the party standing around the fire is the roster the
+ * server broadcast, drawn.
  *
- * Everything is authored in LOGICAL pixels (the game's own scale, 16 px to a
- * tile) and blitted through an integer `zoom`, so the art stays on its pixel
- * grid at any window size. The one exception is text: names are drawn in
- * SCREEN space after the world pass, because Departure Mono is only crisp at
- * multiples of 11 screen px and would shimmer if it were scaled with the rest.
+ * It is, however, the SAME forest. The ground, trees, rocks, grass and ferns
+ * come out of `render/terrain` and are painted by the arena's own
+ * `TerrainLayer`, over a `TileMap` generated here rather than sent by a server.
+ * That reuse is the point: swaying grass, canopies that close over a character
+ * and the seamless floor atlas all arrive for free, and the lobby cannot drift
+ * away from the look of the game it opens into. The fire itself is a generated
+ * animated prop (`campfire.png`, see server/tools/make_textures.py), not shapes
+ * drawn with canvas calls.
+ *
+ * World units are the game's own pixels; the whole scene is blitted through an
+ * integer camera zoom so the art stays on its pixel grid. The one exception is
+ * text: names are drawn in SCREEN space after the world pass, because Departure
+ * Mono is only crisp at multiples of 11 screen px.
  *
  * Lifecycle is explicit — `start()` / `dispose()`, same contract as `Game`.
  */
 
-import { clamp01, lerp } from '../lib/math';
+import { clamp, clamp01, lerp } from '../lib/math';
 import { get2d } from '../lib/canvas';
-import { facingFromAim, frameIndex, SpriteBook } from '../render/sprites';
+import { Camera } from '../render/camera';
+import { TerrainLayer } from '../render/layers/terrain';
+import { frameIndex, SpriteBook } from '../render/sprites';
+import { loadTerrain, tileHash, type TerrainAtlas } from '../render/terrain';
 import { HUD_GRID, hudFont, whenFontsReady } from '../theme/fonts';
-import { floorColor, hasFloorSpeck, palette } from '../theme/palette';
+import { palette } from '../theme/palette';
+import { FLOOR, ROCK, TREE, TileMap } from './world';
 
 const TAU = Math.PI * 2;
 /** Sprite sheet every seated player is drawn from. */
 const PLAYER_SHEET = 'player';
-/** Tile size of the ground dither. Matches the arena's floor so it reads as the same world. */
-const TILE = 16;
+/** Art scale if the terrain manifest is missing; it is the authority normally. */
+const FALLBACK_TILE = 16;
 
-/** Seat ring, in logical px. Elliptical: a circle reads as a flat disc from this angle. */
-const RING_RX = 54;
-const RING_RY = 31;
+/** The clearing, in tiles. Big enough that the camera never sees an edge. */
+const MAP_TILES_W = 46;
+const MAP_TILES_H = 32;
+/** Open ground around the fire, in tiles, before the treeline starts. */
+const CLEARING_TILES = 6.4;
+/** How many tiles of forest the camera should frame. Decides the zoom. */
+const VIEW_TILES_W = 26;
+const VIEW_TILES_H = 17;
+
+/** Seat ring, in tiles. Elliptical: a circle reads as a flat disc from here. */
+const RING_TILES_X = 3.5;
+const RING_TILES_Y = 2.0;
 /** How fast a seat slides to its new angle when the party grows. */
 const RESEAT_RATE = 3.2;
 
@@ -41,8 +60,8 @@ const LEAVE_TIME = 0.45;
 const BODY_FADE_IN = 0.42;
 const BODY_LANDED = 0.72;
 
-/** Embers per second thrown by the fire. */
-const EMBER_RATE = 16;
+/** Embers per second thrown by the fire, on top of the ones in the sprite. */
+const EMBER_RATE = 14;
 
 export interface LobbyMember {
   id: string;
@@ -68,7 +87,6 @@ interface Seat {
   t: number;
   /** Per-seat offset so idle bobbing is not synchronised across the party. */
   bobPhase: number;
-  animTime: number;
 }
 
 interface Particle {
@@ -80,7 +98,7 @@ interface Particle {
   life: number;
   size: number;
   color: string;
-  /** Upward drag / gravity, logical px per second squared. */
+  /** Gravity, world px per second squared. */
   gy: number;
   /**
    * Summon motes home on a point instead of drifting: with a target set,
@@ -105,29 +123,40 @@ export class LobbyScene {
   private readonly canvas: HTMLCanvasElement;
   private readonly ctx: CanvasRenderingContext2D;
   private readonly sprites: SpriteBook;
+  private readonly terrain = new TerrainLayer();
+  private readonly camera = new Camera();
 
   private readonly seats: Seat[] = [];
   private readonly particles: Particle[] = [];
   private readonly rings: Ring[] = [];
+  /** Members handed in before `start()` finished loading the atlas. */
+  private pending: readonly LobbyMember[] | null = null;
 
+  private atlas: TerrainAtlas | null = null;
+  private world: TileMap | null = null;
   private resizeObserver: ResizeObserver | null = null;
   private rafId: number | null = null;
   private started = false;
   private disposed = false;
   private resizeDirty = true;
 
-  private zoom = 3;
+  private tile = FALLBACK_TILE;
   private dpr = 1;
-  /** Scene origin (the fire) in device px. */
-  private originX = 0;
-  private originY = 0;
+  /** The fire's base, in world pixels — the anchor for seats and light. */
+  private fireX = 0;
+  private fireY = 0;
   private time = 0;
   private lastFrame = 0;
   private emberDebt = 0;
   /** 0..1 flame brightness, driven by layered sines. Read by every lit thing. */
   private flicker = 1;
 
-  constructor(canvas: HTMLCanvasElement, sprites: SpriteBook = new SpriteBook()) {
+  constructor(
+    canvas: HTMLCanvasElement,
+    /** Seed for the clearing. Two rooms should not be the same forest. */
+    private readonly seed = 1,
+    sprites: SpriteBook = new SpriteBook(),
+  ) {
     this.canvas = canvas;
     this.ctx = get2d(canvas, 'lobby-scene');
     this.sprites = sprites;
@@ -139,8 +168,27 @@ export class LobbyScene {
 
     // The webfont too: names drawn in the fallback face and then swapped is the
     // one flicker in this scene that is not on purpose.
-    await Promise.all([this.sprites.load([PLAYER_SHEET]), whenFontsReady()]);
+    const [, atlas] = await Promise.all([
+      this.sprites.load([PLAYER_SHEET]),
+      loadTerrain(),
+      whenFontsReady(),
+    ]);
     if (this.disposed) return;
+
+    this.atlas = atlas;
+    // The manifest is the authority on art scale — the lobby has no server
+    // config to read `tileSize` from, and inventing one here would put the
+    // clearing on a different grid from the arena's.
+    this.tile = atlas?.groundTile ?? FALLBACK_TILE;
+    this.terrain.setAtlas(atlas);
+    this.world = buildClearing(this.seed, this.tile);
+    this.fireX = (Math.floor(MAP_TILES_W / 2) + 0.5) * this.tile;
+    this.fireY = (Math.floor(MAP_TILES_H / 2) + 1) * this.tile;
+    if (this.pending) {
+      const members = this.pending;
+      this.pending = null;
+      this.setMembers(members);
+    }
 
     // Reading clientWidth every frame forces a layout; only resize on change.
     this.resizeObserver = new ResizeObserver(() => {
@@ -159,9 +207,12 @@ export class LobbyScene {
     this.rafId = null;
     this.resizeObserver?.disconnect();
     this.resizeObserver = null;
+    this.terrain.reset();
     this.seats.length = 0;
     this.particles.length = 0;
     this.rings.length = 0;
+    this.world = null;
+    this.atlas = null;
   }
 
   /**
@@ -174,9 +225,14 @@ export class LobbyScene {
    * is never a question.
    */
   setMembers(members: readonly LobbyMember[]): void {
-    const ordered = [...members].sort(
-      (a, b) => Number(b.isLocal) - Number(a.isLocal),
-    );
+    // Before the atlas lands there is no world to place a seat in. Hold the
+    // roster rather than dropping it — the first one arrives during loading.
+    if (!this.world) {
+      this.pending = members;
+      return;
+    }
+
+    const ordered = [...members].sort((a, b) => Number(b.isLocal) - Number(a.isLocal));
     const live = new Set(ordered.map((m) => m.id));
 
     for (const seat of this.seats) {
@@ -208,28 +264,36 @@ export class LobbyScene {
         phase: 'summoning',
         t: 0,
         bobPhase: Math.random() * TAU,
-        animTime: Math.random(),
       };
       this.seats.push(seat);
       this.spawnSummon(seat);
     });
   }
 
+  // --- geometry ------------------------------------------------------------
+  private seatPosition(angle: number): { x: number; y: number } {
+    return {
+      x: this.fireX + Math.cos(angle) * RING_TILES_X * this.tile,
+      y: this.fireY + Math.sin(angle) * RING_TILES_Y * this.tile,
+    };
+  }
+
   // --- vfx -----------------------------------------------------------------
   /** A column of motes falling out of the dark onto an empty seat. */
   private spawnSummon(seat: Seat): void {
-    const { x, y } = seatPosition(seat.angle);
+    const { x, y } = this.seatPosition(seat.angle);
+    const ts = this.tile;
     const tone = palette().summon;
     for (let i = 0; i < 34; i++) {
-      const spread = (Math.random() * 2 - 1) * 11;
-      const startY = y - 90 - Math.random() * 150;
+      const spread = (Math.random() * 2 - 1) * ts * 0.7;
+      const startY = y - ts * (5.5 + Math.random() * 9);
       this.particles.push({
         x: x + spread,
         y: startY,
         sx: x + spread,
         sy: startY,
         tx: x + spread * 0.15,
-        ty: y - Math.random() * 12,
+        ty: y - Math.random() * ts * 0.75,
         vx: 0,
         vy: 0,
         gy: 0,
@@ -243,19 +307,20 @@ export class LobbyScene {
 
   /** The landing: a flat shockwave and a burst of sparks kicked off the ground. */
   private spawnLanding(seat: Seat): void {
-    const { x, y } = seatPosition(seat.angle);
+    const { x, y } = this.seatPosition(seat.angle);
+    const ts = this.tile;
     const tone = palette().summon;
-    this.rings.push({ x, y, age: 0, life: 0.5, maxRadius: 26, color: tone.core });
-    this.rings.push({ x, y, age: -0.08, life: 0.62, maxRadius: 38, color: seat.color });
+    this.rings.push({ x, y, age: 0, life: 0.5, maxRadius: ts * 1.6, color: tone.core });
+    this.rings.push({ x, y, age: -0.08, life: 0.62, maxRadius: ts * 2.4, color: seat.color });
     for (let i = 0; i < 16; i++) {
       const angle = Math.random() * TAU;
-      const speed = 24 + Math.random() * 46;
+      const speed = ts * (1.5 + Math.random() * 2.9);
       this.particles.push({
         x,
         y,
         vx: Math.cos(angle) * speed,
-        vy: Math.sin(angle) * speed * 0.45 - 14,
-        gy: 90,
+        vy: Math.sin(angle) * speed * 0.45 - ts * 0.9,
+        gy: ts * 5.6,
         age: 0,
         life: 0.35 + Math.random() * 0.4,
         size: 1,
@@ -265,14 +330,15 @@ export class LobbyScene {
   }
 
   private spawnDeparture(seat: Seat): void {
-    const { x, y } = seatPosition(seat.angle);
+    const { x, y } = this.seatPosition(seat.angle);
+    const ts = this.tile;
     for (let i = 0; i < 18; i++) {
       this.particles.push({
-        x: x + (Math.random() * 2 - 1) * 5,
-        y: y - Math.random() * 14,
-        vx: (Math.random() * 2 - 1) * 12,
-        vy: -18 - Math.random() * 26,
-        gy: -6,
+        x: x + (Math.random() * 2 - 1) * ts * 0.3,
+        y: y - Math.random() * ts * 0.9,
+        vx: (Math.random() * 2 - 1) * ts * 0.75,
+        vy: -ts * (1.1 + Math.random() * 1.6),
+        gy: -ts * 0.4,
         age: 0,
         life: 0.45 + Math.random() * 0.35,
         size: 1,
@@ -281,18 +347,26 @@ export class LobbyScene {
     }
   }
 
+  /**
+   * Live embers on top of the ones baked into the sprite loop.
+   *
+   * The sprite's own sparks sell the fire at rest; these are what make it feel
+   * like it is in a space — they drift off the frame, past the seated players,
+   * and are not on an eight-frame cycle.
+   */
   private spawnEmbers(dt: number): void {
     this.emberDebt += dt * EMBER_RATE * (0.6 + this.flicker * 0.7);
+    const ts = this.tile;
     const tones = palette().fire.embers;
     while (this.emberDebt >= 1) {
       this.emberDebt -= 1;
       this.particles.push({
-        x: (Math.random() * 2 - 1) * 5,
-        y: -4 - Math.random() * 6,
-        vx: (Math.random() * 2 - 1) * 9,
-        vy: -22 - Math.random() * 26,
+        x: this.fireX + (Math.random() * 2 - 1) * ts * 0.3,
+        y: this.fireY - ts * (0.4 + Math.random() * 0.5),
+        vx: (Math.random() * 2 - 1) * ts * 0.55,
+        vy: -ts * (1.4 + Math.random() * 1.6),
         // Embers slow as they cool, so gravity is a gentle brake, not a fall.
-        gy: 7,
+        gy: ts * 0.45,
         age: 0,
         life: 1 + Math.random() * 1.6,
         size: Math.random() < 0.18 ? 2 : 1,
@@ -320,19 +394,29 @@ export class LobbyScene {
   };
 
   private resize(): void {
-    const { canvas } = this;
+    const { canvas, world } = this;
     this.dpr = Math.min(2, window.devicePixelRatio || 1);
     const width = Math.max(1, Math.round(canvas.clientWidth * this.dpr));
     const height = Math.max(1, Math.round(canvas.clientHeight * this.dpr));
     if (canvas.width !== width) canvas.width = width;
     if (canvas.height !== height) canvas.height = height;
+    // Resizing the backing store resets context state.
+    this.ctx.imageSmoothingEnabled = false;
+
     // Integer zoom only: a fractional one puts the sprite grid between screen
     // pixels and the whole scene goes soft.
-    this.zoom = Math.max(2, Math.floor(Math.min(width / 300, height / 210)));
-    this.originX = Math.round(width / 2);
-    // The fire sits above centre so the front row has room to stand.
-    this.originY = Math.round(height * 0.46);
-    this.ctx.imageSmoothingEnabled = false;
+    this.camera.zoom = clamp(
+      Math.floor(
+        Math.min(width / (VIEW_TILES_W * this.tile), height / (VIEW_TILES_H * this.tile)),
+      ),
+      2,
+      6,
+    );
+    this.camera.resize(width, height);
+    if (world) {
+      // The fire sits above centre so the front row has room to stand.
+      this.camera.snapTo(this.fireX, this.fireY + this.tile * 1.2, world);
+    }
   }
 
   private update(dt: number): void {
@@ -350,7 +434,6 @@ export class LobbyScene {
 
     for (const seat of this.seats) {
       seat.t += dt;
-      seat.animTime += dt;
       seat.angle = lerp(seat.angle, seat.targetAngle, 1 - Math.exp(-RESEAT_RATE * dt));
       if (seat.phase === 'summoning') {
         // The shockwave fires the moment the body finishes resolving.
@@ -398,259 +481,198 @@ export class LobbyScene {
 
   // --- drawing -------------------------------------------------------------
   private draw(): void {
-    const { ctx, canvas } = this;
+    const { ctx, canvas, camera, world } = this;
     const tone = palette();
 
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.fillStyle = tone.surface;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
+    if (!world) return;
 
     ctx.save();
-    ctx.translate(this.originX, this.originY);
-    ctx.scale(this.zoom, this.zoom);
+    ctx.scale(camera.zoom, camera.zoom);
+    ctx.translate(-camera.renderX, -camera.renderY);
 
-    const halfW = this.originX / this.zoom;
-    const halfH = this.originY / this.zoom;
-    const bottom = (canvas.height - this.originY) / this.zoom;
-    const right = (canvas.width - this.originX) / this.zoom;
-
-    this.drawGround(-halfW, -halfH, right, bottom);
-    this.drawNight(Math.max(halfW, right), Math.max(halfH, bottom));
+    this.terrain.ground(ctx, world, camera, this.time);
     this.drawFirelight();
-    this.drawBeams(halfH);
-    this.drawFire();
-    this.drawSeats();
+    this.drawBeams();
+    this.drawStanding();
     this.drawParticles();
     this.drawRings();
+    // Canopies and ferns close over whoever is standing behind them, exactly
+    // as they do in the arena.
+    this.terrain.overgrowth(ctx, world, camera, this.time);
+    this.drawNight();
 
     ctx.restore();
     this.drawLabels();
   }
 
-  /** The same dithered forest floor the arena paints, so this is the same world. */
-  private drawGround(left: number, top: number, right: number, bottom: number): void {
-    const { ctx } = this;
-    const tone = palette();
-    const x0 = Math.floor(left / TILE);
-    const x1 = Math.ceil(right / TILE);
-    const y0 = Math.floor(top / TILE);
-    const y1 = Math.ceil(bottom / TILE);
-
-    for (let ty = y0; ty <= y1; ty++) {
-      for (let tx = x0; tx <= x1; tx++) {
-        ctx.fillStyle = floorColor(tx + 64, ty + 64);
-        ctx.fillRect(tx * TILE, ty * TILE, TILE, TILE);
-        if (hasFloorSpeck(tx + 64, ty + 64)) {
-          ctx.fillStyle = tone.tiles.floorSpeck;
-          ctx.fillRect(tx * TILE + 5, ty * TILE + 9, 2, 1);
-        }
-      }
-    }
-  }
-
-  /** Everything past the fire's reach is night, not floor. */
-  private drawNight(halfW: number, halfH: number): void {
-    const { ctx } = this;
-    const tone = palette();
-    const reach = Math.hypot(halfW, halfH);
-    const gradient = ctx.createRadialGradient(0, 0, RING_RX * 0.5, 0, 0, reach);
-    gradient.addColorStop(0, 'rgb(0 0 0 / 0)');
-    gradient.addColorStop(0.34, `rgb(${tone.night.shadow.join(' ')} / 0.55)`);
-    gradient.addColorStop(0.72, `rgb(${tone.night.shadow.join(' ')} / 0.94)`);
-    gradient.addColorStop(1, tone.surface);
-    ctx.fillStyle = gradient;
-    ctx.fillRect(-halfW - TILE, -halfH - TILE, (halfW + TILE) * 2, (halfH + TILE) * 2);
-  }
-
-  /** The warm pool the fire actually throws. Breathes with the flicker. */
+  /** The warm pool the fire throws on the ground. Breathes with the flicker. */
   private drawFirelight(): void {
     const { ctx } = this;
     const glow = palette().fire.glow.join(' ');
-    const radius = 96 + this.flicker * 26;
+    const radius = this.tile * (6 + this.flicker * 1.8);
+    const cy = this.fireY - this.tile * 0.4;
 
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
-    const gradient = ctx.createRadialGradient(0, -4, 2, 0, -4, radius);
-    gradient.addColorStop(0, `rgb(${glow} / ${(0.5 * this.flicker).toFixed(3)})`);
-    gradient.addColorStop(0.35, `rgb(${glow} / ${(0.19 * this.flicker).toFixed(3)})`);
+    const gradient = ctx.createRadialGradient(this.fireX, cy, 2, this.fireX, cy, radius);
+    gradient.addColorStop(0, `rgb(${glow} / ${(0.42 * this.flicker).toFixed(3)})`);
+    gradient.addColorStop(0.38, `rgb(${glow} / ${(0.15 * this.flicker).toFixed(3)})`);
     gradient.addColorStop(1, `rgb(${glow} / 0)`);
     ctx.fillStyle = gradient;
-    ctx.fillRect(-radius, -radius - 4, radius * 2, radius * 2);
+    ctx.fillRect(this.fireX - radius, cy - radius, radius * 2, radius * 2);
     ctx.restore();
   }
 
-  private drawFire(): void {
-    const { ctx } = this;
-    const fire = palette().fire;
-    const t = this.time;
-
-    // Stones, then logs. Both are lit from the flame above, so their top edge
-    // gets the warm tone and the rest stays in shadow.
-    ctx.fillStyle = fire.stone;
-    for (let i = 0; i < 7; i++) {
-      const angle = (i / 7) * TAU + 0.3;
-      ctx.fillRect(Math.round(Math.cos(angle) * 13) - 1, Math.round(Math.sin(angle) * 7) + 1, 3, 2);
-    }
-
-    const logs: [number, number, number][] = [
-      [-7, 0, 0.22],
-      [-6, 2, -0.3],
-      [-1, 3, 1.35],
-    ];
-    for (const [x, y, angle] of logs) {
-      ctx.save();
-      ctx.translate(x, y);
-      ctx.rotate(angle);
-      ctx.fillStyle = fire.log;
-      ctx.fillRect(0, 0, 14, 3);
-      ctx.fillStyle = fire.logLit;
-      ctx.fillRect(0, 0, 14, 1);
-      ctx.restore();
-    }
-
-    // Three nested tongues. Each one is narrower, shorter-lived and hotter than
-    // the one behind it, and they wobble at unrelated rates — that mismatch is
-    // what stops the flame reading as a single looping sprite.
-    ctx.save();
-    ctx.globalCompositeOperation = 'lighter';
-    const tongues: [string, number, number, number, number][] = [
-      [fire.outer, 9, 22, 5.1, 0.55],
-      [fire.mid, 6, 16, 7.7, 0.75],
-      [fire.core, 3, 9, 11.3, 0.95],
-    ];
-    for (const [color, width, height, rate, alpha] of tongues) {
-      const sway = Math.sin(t * rate) * 1.6 + Math.sin(t * rate * 0.37 + 2) * 1.1;
-      const stretch = height * (0.78 + this.flicker * 0.34);
-      ctx.globalAlpha = alpha * (0.7 + this.flicker * 0.3);
-      ctx.fillStyle = color;
-      ctx.beginPath();
-      ctx.moveTo(-width / 2, 1);
-      ctx.quadraticCurveTo(-width * 0.62 + sway * 0.4, -stretch * 0.55, sway, -stretch);
-      ctx.quadraticCurveTo(width * 0.62 + sway * 0.4, -stretch * 0.55, width / 2, 1);
-      ctx.closePath();
-      ctx.fill();
-    }
-    ctx.globalAlpha = 1;
-    ctx.restore();
-  }
-
-  /** The summoning column, drawn behind the bodies it is delivering. */
-  private drawBeams(halfH: number): void {
-    const { ctx } = this;
-    const beam = palette().summon.beam.join(' ');
-
-    ctx.save();
-    ctx.globalCompositeOperation = 'lighter';
-    for (const seat of this.seats) {
-      if (seat.phase !== 'summoning') continue;
-      const progress = clamp01(seat.t / SUMMON_TIME);
-      const { x, y } = seatPosition(seat.angle);
-      const strength = Math.sin(Math.PI * progress) ** 0.7;
-      const width = 3 + strength * 9;
-      const top = -halfH - TILE;
-
-      const gradient = ctx.createLinearGradient(0, top, 0, y);
-      gradient.addColorStop(0, `rgb(${beam} / 0)`);
-      gradient.addColorStop(0.55, `rgb(${beam} / ${(0.16 * strength).toFixed(3)})`);
-      gradient.addColorStop(1, `rgb(${beam} / ${(0.42 * strength).toFixed(3)})`);
-      ctx.fillStyle = gradient;
-      ctx.fillRect(x - width / 2, top, width, y - top);
-    }
-    ctx.restore();
+  /** Everything past the fire's reach is night, not floor. */
+  private drawNight(): void {
+    const { ctx, camera } = this;
+    const tone = palette();
+    const reach = Math.hypot(camera.viewWidth, camera.viewHeight) * 0.62;
+    const gradient = ctx.createRadialGradient(
+      this.fireX,
+      this.fireY,
+      this.tile * 2,
+      this.fireX,
+      this.fireY,
+      reach,
+    );
+    gradient.addColorStop(0, 'rgb(0 0 0 / 0)');
+    gradient.addColorStop(0.42, `rgb(${tone.night.shadow.join(' ')} / 0.5)`);
+    gradient.addColorStop(0.78, `rgb(${tone.night.shadow.join(' ')} / 0.93)`);
+    gradient.addColorStop(1, tone.surface);
+    ctx.fillStyle = gradient;
+    ctx.fillRect(camera.renderX, camera.renderY, camera.viewWidth, camera.viewHeight);
   }
 
   /**
-   * The party, painted back to front.
+   * The fire and the party, painted back to front.
    *
-   * Depth sorting is by seat Y and nothing else: the ring is shallow enough
-   * that overlap only ever happens between neighbours, and a full sort of a
-   * handful of seats is cheaper than any structure that would avoid it.
+   * The campfire is in this sort rather than drawn before it: a player seated
+   * on the near side of the pit has to overlap the flame, and one behind it has
+   * to be hidden by it. Drawing the fire as a background would flatten the ring
+   * into a row of characters standing in front of a picture of a fire.
    */
-  private drawSeats(): void {
+  private drawStanding(): void {
+    const entries: { y: number; draw: () => void }[] = [
+      { y: this.fireY, draw: () => this.drawCampfire() },
+    ];
+    for (const seat of this.seats) {
+      entries.push({ y: this.seatPosition(seat.angle).y, draw: () => this.drawSeat(seat) });
+    }
+    entries.sort((a, b) => a.y - b.y);
+    for (const entry of entries) entry.draw();
+  }
+
+  private drawCampfire(): void {
+    const sheet = this.atlas?.campfire;
+    if (!sheet) return;
+    const { ctx } = this;
+    // The frames are a loop, not variants — see `fps` in the terrain manifest.
+    const frame = sheet.fps > 0 ? Math.floor(this.time * sheet.fps) % sheet.frames : 0;
+    ctx.drawImage(
+      sheet.image,
+      frame * sheet.frameWidth,
+      0,
+      sheet.frameWidth,
+      sheet.frameHeight,
+      Math.round(this.fireX - sheet.frameWidth / 2),
+      Math.round(this.fireY - sheet.frameHeight),
+      sheet.frameWidth,
+      sheet.frameHeight,
+    );
+  }
+
+  /**
+   * One seated player.
+   *
+   * Everybody faces the camera. They are arranged around the fire, but a ring
+   * of characters drawn with their backs to the viewer is a ring of anonymous
+   * shoulders — and the roster on the left is keyed to colours you can only
+   * match to a face you can see.
+   */
+  private drawSeat(seat: Seat): void {
     const { ctx } = this;
     const sheet = this.sprites.get(PLAYER_SHEET);
     if (!sheet) return;
 
-    const ordered = [...this.seats].sort(
-      (a, b) => seatPosition(a.angle).y - seatPosition(b.angle).y,
-    );
+    const alpha = this.seatAlpha(seat);
+    if (alpha <= 0.01) return;
+
+    const { x, y } = this.seatPosition(seat.angle);
     const tone = palette();
+    const bob = Math.round(Math.sin(this.time * 1.7 + seat.bobPhase));
+    const row = sheet.rows.down ?? 0;
+    const column = frameIndex(sheet, 0, false);
+    const image = this.sprites.image(PLAYER_SHEET, seat.color);
+    const drawX = Math.round(x - sheet.frameWidth / 2);
+    const drawY = Math.round(y - sheet.frameHeight) + bob;
 
-    for (const seat of ordered) {
-      const { x, y } = seatPosition(seat.angle);
-      const alpha = this.seatAlpha(seat);
-      if (alpha <= 0.01) continue;
+    ctx.save();
+    ctx.globalAlpha = alpha;
 
-      const bob = Math.round(Math.sin(this.time * 1.7 + seat.bobPhase) * 1);
-      const facing = facingFromAim(-Math.cos(seat.angle) * RING_RX, -Math.sin(seat.angle) * RING_RY);
-      const row = sheet.rows[facing] ?? 0;
-      const column = frameIndex(sheet, seat.animTime, false);
-      const image = this.sprites.image(PLAYER_SHEET, seat.color);
-      const drawX = Math.round(x - sheet.frameWidth / 2);
-      const drawY = Math.round(y - sheet.frameHeight) + bob;
+    // Contact shadow. Without it everyone looks pasted onto the ground.
+    ctx.fillStyle = tone.entity.shadow;
+    ctx.beginPath();
+    ctx.ellipse(Math.round(x), Math.round(y), this.tile * 0.3, this.tile * 0.12, 0, 0, TAU);
+    ctx.fill();
 
-      ctx.save();
-      ctx.globalAlpha = alpha;
-
-      // Contact shadow. Without it everyone looks pasted onto the ground.
-      ctx.fillStyle = tone.entity.shadow;
+    // The local player gets a ring in their own colour, pulsing at the same
+    // rate as the fire so it belongs to the scene rather than to the UI.
+    if (seat.isLocal) {
+      ctx.globalAlpha = alpha * (0.3 + this.flicker * 0.35);
+      ctx.strokeStyle = seat.color;
+      ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.ellipse(Math.round(x), Math.round(y), 5, 2, 0, 0, TAU);
-      ctx.fill();
-
-      // The local player gets a ring in their own colour, pulsing at the same
-      // rate as the fire so it belongs to the scene rather than to the UI.
-      if (seat.isLocal) {
-        ctx.globalAlpha = alpha * (0.3 + this.flicker * 0.35);
-        ctx.strokeStyle = seat.color;
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.ellipse(Math.round(x), Math.round(y), 8, 3.5, 0, 0, TAU);
-        ctx.stroke();
-        ctx.globalAlpha = alpha;
-      }
-
-      if (image) {
-        ctx.drawImage(
-          image,
-          column * sheet.frameWidth,
-          row * sheet.frameHeight,
-          sheet.frameWidth,
-          sheet.frameHeight,
-          drawX,
-          drawY,
-          sheet.frameWidth,
-          sheet.frameHeight,
-        );
-        // Firelight on the body: a warm wash that breathes, masked to the
-        // sprite so it lands on the character and not on the ground behind it.
-        ctx.globalCompositeOperation = 'lighter';
-        ctx.globalAlpha = alpha * 0.1 * this.flicker;
-        ctx.drawImage(
-          this.sprites.image(PLAYER_SHEET, palette().fire.core) ?? image,
-          column * sheet.frameWidth,
-          row * sheet.frameHeight,
-          sheet.frameWidth,
-          sheet.frameHeight,
-          drawX,
-          drawY,
-          sheet.frameWidth,
-          sheet.frameHeight,
-        );
-        ctx.globalCompositeOperation = 'source-over';
-      }
-
-      if (seat.isHost) {
-        ctx.globalAlpha = alpha;
-        ctx.fillStyle = tone.inkAccent;
-        // A four-point crown, five pixels wide, sitting above the head.
-        ctx.fillRect(drawX + 5, drawY - 4, 6, 1);
-        ctx.fillRect(drawX + 5, drawY - 6, 1, 2);
-        ctx.fillRect(drawX + 7, drawY - 5, 1, 1);
-        ctx.fillRect(drawX + 10, drawY - 6, 1, 2);
-      }
-      ctx.restore();
+      ctx.ellipse(Math.round(x), Math.round(y), this.tile * 0.5, this.tile * 0.22, 0, 0, TAU);
+      ctx.stroke();
+      ctx.globalAlpha = alpha;
     }
+
+    if (image) {
+      ctx.drawImage(
+        image,
+        column * sheet.frameWidth,
+        row * sheet.frameHeight,
+        sheet.frameWidth,
+        sheet.frameHeight,
+        drawX,
+        drawY,
+        sheet.frameWidth,
+        sheet.frameHeight,
+      );
+      // Firelight on the body: a warm wash that breathes, masked to the sprite
+      // so it lands on the character and not on the ground behind it. Weaker
+      // the further round the ring you are.
+      const facing = 0.55 + 0.45 * Math.max(0, Math.sin(seat.angle));
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = alpha * 0.12 * this.flicker * facing;
+      ctx.drawImage(
+        this.sprites.image(PLAYER_SHEET, palette().fire.core) ?? image,
+        column * sheet.frameWidth,
+        row * sheet.frameHeight,
+        sheet.frameWidth,
+        sheet.frameHeight,
+        drawX,
+        drawY,
+        sheet.frameWidth,
+        sheet.frameHeight,
+      );
+      ctx.globalCompositeOperation = 'source-over';
+    }
+
+    if (seat.isHost) {
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = tone.inkAccent;
+      // A four-point crown, six pixels wide, sitting above the head.
+      ctx.fillRect(drawX + 5, drawY - 4, 6, 1);
+      ctx.fillRect(drawX + 5, drawY - 6, 1, 2);
+      ctx.fillRect(drawX + 7, drawY - 5, 1, 1);
+      ctx.fillRect(drawX + 10, drawY - 6, 1, 2);
+    }
+    ctx.restore();
   }
 
   /** 0..1 body opacity: fades in during a summon, out during a departure. */
@@ -661,6 +683,31 @@ export class LobbyScene {
       return clamp01((progress - BODY_FADE_IN) / (BODY_LANDED - BODY_FADE_IN));
     }
     return 1;
+  }
+
+  /** The summoning column, falling out of the top of the view. */
+  private drawBeams(): void {
+    const { ctx, camera } = this;
+    const beam = palette().summon.beam.join(' ');
+    const top = camera.renderY;
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    for (const seat of this.seats) {
+      if (seat.phase !== 'summoning') continue;
+      const progress = clamp01(seat.t / SUMMON_TIME);
+      const { x, y } = this.seatPosition(seat.angle);
+      const strength = Math.sin(Math.PI * progress) ** 0.7;
+      const width = this.tile * (0.2 + strength * 0.6);
+
+      const gradient = ctx.createLinearGradient(0, top, 0, y);
+      gradient.addColorStop(0, `rgb(${beam} / 0)`);
+      gradient.addColorStop(0.55, `rgb(${beam} / ${(0.16 * strength).toFixed(3)})`);
+      gradient.addColorStop(1, `rgb(${beam} / ${(0.42 * strength).toFixed(3)})`);
+      ctx.fillStyle = gradient;
+      ctx.fillRect(x - width / 2, top, width, y - top);
+    }
+    ctx.restore();
   }
 
   private drawParticles(): void {
@@ -703,7 +750,7 @@ export class LobbyScene {
    * the rest of the scene.
    */
   private drawLabels(): void {
-    const { ctx } = this;
+    const { ctx, camera } = this;
     const tone = palette();
     const size = HUD_GRID * Math.max(1, Math.round(this.dpr));
 
@@ -716,9 +763,9 @@ export class LobbyScene {
     for (const seat of this.seats) {
       const alpha = this.seatAlpha(seat);
       if (alpha <= 0.05) continue;
-      const { x, y } = seatPosition(seat.angle);
-      const sx = Math.round(this.originX + x * this.zoom);
-      const sy = Math.round(this.originY + y * this.zoom + size * 1.6);
+      const { x, y } = this.seatPosition(seat.angle);
+      const sx = Math.round((x - camera.renderX) * camera.zoom);
+      const sy = Math.round((y - camera.renderY) * camera.zoom + size * 1.5);
 
       ctx.globalAlpha = alpha;
       ctx.fillStyle = tone.entity.labelShadow;
@@ -730,13 +777,55 @@ export class LobbyScene {
   }
 }
 
+/**
+ * A clearing in the forest, generated the same way the arena's map is: one
+ * seed, hashed with the tile coordinate. Open ground in the middle for the
+ * fire and the party, a ragged treeline closing in, and a solid wall of trunks
+ * at the border so the camera never frames the end of the world.
+ */
+function buildClearing(seed: number, tile: number): TileMap {
+  const cx = (MAP_TILES_W - 1) / 2;
+  const cy = (MAP_TILES_H - 1) / 2;
+  const tiles: number[][] = [];
+
+  for (let ty = 0; ty < MAP_TILES_H; ty++) {
+    const row: number[] = [];
+    for (let tx = 0; tx < MAP_TILES_W; tx++) {
+      row.push(clearingTile(tx, ty, cx, cy, seed));
+    }
+    tiles.push(row);
+  }
+
+  return new TileMap({ width: MAP_TILES_W, height: MAP_TILES_H, tileSize: tile, seed, tiles });
+}
+
+function clearingTile(tx: number, ty: number, cx: number, cy: number, seed: number): number {
+  if (tx < 2 || ty < 2 || tx >= MAP_TILES_W - 2 || ty >= MAP_TILES_H - 2) return TREE;
+
+  // Squashed vertically to match the ellipse the seats sit on and the shape of
+  // a landscape viewport — a circular clearing reads as a bulge on a wide screen.
+  const dx = tx - cx;
+  const dy = (ty - cy) * 1.45;
+  const distance = Math.hypot(dx, dy);
+  // A ragged edge, not a stamped circle.
+  const edge = CLEARING_TILES + tileHash(tx, ty, seed, 7) * 1.8 - 0.9;
+
+  if (distance < edge) {
+    // A couple of boulders inside the clearing, kept off the seat ring.
+    if (distance > RING_TILES_X + 0.8 && tileHash(tx, ty, seed, 8) > 0.94) return ROCK;
+    return FLOOR;
+  }
+
+  // Density ramps with depth so the treeline thickens instead of starting solid.
+  const depth = clamp01((distance - edge) / 5);
+  if (tileHash(tx, ty, seed, 9) < 0.16 + depth * 0.66) return TREE;
+  if (tileHash(tx, ty, seed, 10) < 0.05 + depth * 0.06) return ROCK;
+  return FLOOR;
+}
+
 /** Even spacing round the ring, with the front seat (nearest the camera) first. */
 function seatAngle(index: number, total: number): number {
   return Math.PI / 2 + (index / Math.max(1, total)) * TAU;
-}
-
-function seatPosition(angle: number): { x: number; y: number } {
-  return { x: Math.cos(angle) * RING_RX, y: Math.sin(angle) * RING_RY };
 }
 
 /**

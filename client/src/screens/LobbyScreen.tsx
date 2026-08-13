@@ -87,7 +87,7 @@ export function LobbyScreen({ code, session, onLeave }: LobbyScreenProps) {
       </aside>
 
       <main className="relative min-h-0 flex-1">
-        <CampfireCanvas members={members} className="absolute inset-0" />
+        <CampfireCanvas members={members} seed={code} className="absolute inset-0" />
         <p className="pixel-text pointer-events-none absolute bottom-4 left-1/2 -translate-x-1/2 text-center text-[11px] leading-[17px] text-ink-muted">
           {players.length < 2
             ? 'compartilhe o código — a floresta é grande'

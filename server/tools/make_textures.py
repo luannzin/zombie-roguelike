@@ -12,6 +12,7 @@ Output (assets/processed/terrain/):
     tree.png      4 frames, 24x40   solid blocker, overhangs its tile
     grass.png     6 frames, 10x10   decoration, non-solid, sways
     fern.png      5 frames, 20x18   FOREGROUND decoration, drawn over characters
+    campfire.png  8 frames, 24x28   solid blocker, ANIMATED (a frame loop)
     manifest.json
 
 Two shapes of asset, because the world has two kinds of thing in it:
@@ -56,6 +57,11 @@ PROCESSED_DIR = ROOT / "assets" / "processed"
 DEFAULT_TILE = 16
 GROUND_TILES = 4
 
+# Campfire animation. Eight frames is enough for the loop to read as fire and
+# short enough that the whole sheet stays under one tile-row of pixels.
+CAMPFIRE_FRAMES = 8
+CAMPFIRE_FPS = 12
+
 RGBA = tuple[int, int, int, int]
 Ramp = list[RGBA]
 
@@ -81,6 +87,15 @@ ROCK_MOSS = rgb("#33422c")
 BARK: Ramp = [rgb(c) for c in ("#231a13", "#2e231a", "#3b2d21", "#493829")]
 LEAF: Ramp = [rgb(c) for c in ("#1a2618", "#22321f", "#2b3f26", "#354d2d", "#425e37")]
 TREE_OUTLINE = rgb("#10160f")
+
+# Campfire. The flame ramp is the one place in this file that goes bright: it is
+# the only self-lit object in the game, and the client's darkness pass multiplies
+# over everything else. A flame in the same value range as the forest floor would
+# have nothing left to read as fire.
+FLAME: Ramp = [rgb(c) for c in ("#5c1606", "#a82c0c", "#d9531a", "#f5892a", "#ffc44e", "#fff2bd")]
+COAL: Ramp = [rgb(c) for c in ("#140f0c", "#2a1710", "#4d2410", "#8a3a12", "#d4600f")]
+TIMBER: Ramp = [rgb(c) for c in ("#241a11", "#332417", "#46311f", "#5e4229")]
+TIMBER_OUTLINE = rgb("#0d0907")
 
 BLADE: Ramp = [rgb(c) for c in ("#26331f", "#324428", "#3f5632", "#4d693d")]
 # Ferns are FOREGROUND: they draw over the player, so they are deliberately
@@ -364,6 +379,189 @@ def make_fern(width: int, height: int, rng: random.Random) -> Image.Image:
     return img
 
 
+# --- campfire ---------------------------------------------------------------
+# The only animated prop, and the only light source that is actually drawn
+# rather than composited. Frames are a LOOP: every wobble is a sine of the frame
+# phase (or an integer multiple of it), so frame N-1 hands back to frame 0 with
+# no snap. Nothing here uses rng — an unseeded jitter would make the loop stutter
+# at the wrap even though each frame looked fine on its own.
+
+
+def _blob(px, cx: float, cy: float, radius: float, ramp: Ramp, shade: float) -> None:
+    """A small round mass, lit from the upper left. Used for the pit stones."""
+    r2 = radius * radius
+    for y in range(int(cy - radius) - 1, int(cy + radius) + 2):
+        for x in range(int(cx - radius) - 1, int(cx + radius) + 2):
+            dx = x - cx
+            dy = y - cy
+            if dx * dx + dy * dy > r2:
+                continue
+            lit = clamp01(shade + (-dy / radius) * 0.28 + (-dx / radius) * 0.18)
+            try:
+                px[x, y] = pick(ramp, lit, x, y)
+            except IndexError:
+                pass
+
+
+def _flame_field(width: int, height: int, cx: float, base_y: float,
+                 reach: float, phase: float) -> list[list[float]]:
+    """Accumulated heat, 0 outside the flame and >1 in its core.
+
+    Three tongues of different width, height and sway rate are summed rather
+    than drawn: overlapping tongues add up, so the place where they cross comes
+    out hottest, which is where a real flame is brightest too. Drawing them as
+    separate shapes gives three flames standing next to each other instead.
+    """
+    heat = [[0.0] * width for _ in range(height)]
+    tongues = (
+        # (half width, height ratio, sway px, sway harmonic, phase offset)
+        (width * 0.24, 0.80, 1.1, 1, 0.0),
+        (width * 0.15, 1.00, 1.9, 2, 2.1),
+        (width * 0.10, 0.62, 2.4, 3, 4.3),
+    )
+    for half_w, tall, sway, harmonic, offset in tongues:
+        span = reach * tall * (0.92 + 0.08 * math.sin(phase * 2 + offset))
+        steps = int(span * 3)
+        for step in range(steps + 1):
+            t = step / max(steps, 1)
+            # Lean grows with height: the base is anchored in the wood, the tip
+            # is what the air is moving.
+            lean = math.sin(phase * harmonic + offset + t * 2.6) * sway * t
+            fx = cx + lean
+            fy = base_y - t * span
+            # Tapered: full width at the base, a point at the tip.
+            half = max(0.6, half_w * (1.0 - t) ** 0.62)
+            for x in range(int(fx - half) - 1, int(fx + half) + 2):
+                if not 0 <= x < width:
+                    continue
+                y = int(round(fy))
+                if not 0 <= y < height:
+                    continue
+                falloff = 1.0 - abs(x - fx) / half
+                if falloff <= 0.0:
+                    continue
+                heat[y][x] += falloff * (1.0 - t * 0.45)
+    return heat
+
+
+def make_campfire(width: int, height: int, frame: int, frames: int) -> Image.Image:
+    """One frame of a lit campfire: stone ring, logs, coals, flame, sparks.
+
+    Read order matters more than detail at this size. The silhouette is three
+    bands stacked bottom to top — a broken ring of stones, crossed logs with
+    burning ends, and the flame — and each one is drawn in a value range the
+    others do not use, so the whole prop still resolves when the client scales
+    it down to a couple of tiles on screen.
+    """
+    img = Image.new("RGBA", (width, height), TRANSPARENT)
+    px = img.load()
+
+    phase = math.tau * frame / frames
+    cx = (width - 1) / 2.0
+    ring_y = height - 1.0 - height * 0.11
+    ring_rx = width * 0.30
+    ring_ry = max(1.8, height * 0.075)
+    # Everything the fire does breathes on one slow pulse.
+    pulse = 0.5 + 0.5 * math.sin(phase)
+
+    # A BROKEN ring: seven stones with gaps between them. A closed ring at this
+    # scale merges into one grey slab and the pit stops being a pit.
+    stones = []
+    for i in range(5):
+        angle = math.tau * i / 5 + 0.55
+        stones.append(
+            (
+                cx + math.cos(angle) * ring_rx,
+                ring_y + math.sin(angle) * ring_ry,
+                math.sin(angle),
+                1.05 + 0.45 * abs(math.cos(angle * 2.3)),
+            )
+        )
+
+    for sx, sy, facing, radius in stones:
+        if facing < 0:
+            _blob(px, sx, sy - 0.5, radius, ROCK_RAMP, 0.34)
+
+    # Coal bed: charred ground with embers that brighten on the pulse.
+    coal_rx = ring_rx * 0.82
+    coal_ry = ring_ry * 0.9
+    for y in range(int(ring_y - coal_ry) - 1, int(ring_y + coal_ry) + 2):
+        for x in range(int(cx - coal_rx) - 1, int(cx + coal_rx) + 2):
+            if not (0 <= x < width and 0 <= y < height):
+                continue
+            dx = (x - cx) / coal_rx
+            dy = (y - ring_y) / max(coal_ry, 0.6)
+            dist = dx * dx + dy * dy
+            if dist > 1.0:
+                continue
+            ember = (1.0 - dist) * 0.7 + hash01(x, y, 77) * 0.5
+            px[x, y] = pick(COAL, ember * (0.5 + pulse * 0.5), x, y)
+
+    # Three logs crossing the pit, ends poking out past the stones so the
+    # silhouette has something sticking out of it.
+    # Two logs lying across the pit and one leaning in from the right. Angles
+    # stay shallow: anything steeper walks off the bottom of the frame, which
+    # reads as a leg rather than as firewood.
+    logs = ((-0.44, -0.05, 0.20), (0.44, -0.02, math.pi - 0.24), (0.40, -0.13, math.pi - 0.05))
+    for ox, oy, angle in logs:
+        length = width * 0.58
+        lx = cx + ox * width
+        ly = ring_y + oy * height
+        for step in range(int(length)):
+            t = step / max(length - 1, 1)
+            x = int(round(lx + math.cos(angle) * step))
+            y = int(round(ly + math.sin(angle) * step * 0.42))
+            if not (0 <= x < width and 0 <= y < height):
+                continue
+            grain = (hash01(x, y, 151) - 0.5) * 0.35
+            # The end nearest the middle is glowing, not wood any more.
+            burn = clamp01(1.0 - abs(t - 0.62) * 3.2)
+            for w in (0, 1):
+                yy = y + w
+                if not 0 <= yy < height:
+                    continue
+                if burn > 0.4:
+                    px[x, yy] = pick(COAL, 0.5 + burn * 0.45 * (0.6 + pulse * 0.4), x, yy)
+                else:
+                    px[x, yy] = pick(TIMBER, clamp01(0.62 - w * 0.3 + grain), x, yy)
+
+    # Flame.
+    reach = height * 0.56 * (0.86 + 0.14 * math.sin(phase * 2 + 0.6))
+    heat = _flame_field(width, height, cx, ring_y - 1.0, reach, phase)
+    for y in range(height):
+        for x in range(width):
+            value = heat[y][x]
+            if value < 0.30:
+                continue
+            # Divided, not scaled: three overlapping tongues push the sum well
+            # past 1, and mapping that straight onto the ramp made every lit
+            # pixel the top step — a white blob with no fire in it.
+            #
+            # The height term is the other half of that: a flame is hottest at
+            # its root and cools on the way up, so without it the tips came out
+            # as bright as the core and the shape lost its direction.
+            rise = clamp01((ring_y - y) / max(reach, 1.0))
+            px[x, y] = pick(FLAME, clamp01((value - 0.28) / 1.9) * (1.0 - rise * 0.34), x, y)
+
+    # Front of the ring, over the flame's feet — this is what makes the fire
+    # read as burning in a pit rather than on top of one.
+    for sx, sy, facing, radius in stones:
+        if facing >= 0:
+            _blob(px, sx, sy, radius + 0.55, [ROCK_OUTLINE], 1.0)
+            _blob(px, sx, sy, radius, ROCK_RAMP, 0.5)
+
+    # A few sparks riding the column. Their height is keyed to the frame index
+    # so they travel up the loop instead of blinking in place.
+    for i in range(4):
+        rise = ((frame + i * 2) % frames) / frames
+        sx = int(round(cx + math.sin(phase + i * 1.9) * width * 0.14))
+        sy = int(round(ring_y - reach * 0.8 - rise * height * 0.32))
+        if 0 <= sx < width and 0 <= sy < height and px[sx, sy][3] == 0:
+            px[sx, sy] = pick(FLAME, 0.45 + (1 - rise) * 0.45, sx, sy)
+
+    return img
+
+
 def make_grass(width: int, height: int, rng: random.Random) -> Image.Image:
     """A tuft of blades rising from the bottom edge. Decoration only."""
     img = Image.new("RGBA", (width, height), TRANSPARENT)
@@ -427,6 +625,10 @@ def build(args) -> Path:
     ferns = [make_fern(fern_w, fern_h, rng) for _ in range(5)]
     pack(ferns, fern_w, fern_h).save(out_dir / "fern.png")
 
+    fire_w, fire_h = round(tile * 1.5), round(tile * 1.75)
+    fires = [make_campfire(fire_w, fire_h, i, CAMPFIRE_FRAMES) for i in range(CAMPFIRE_FRAMES)]
+    pack(fires, fire_w, fire_h).save(out_dir / "campfire.png")
+
     manifest = {
         "tile": tile,
         "seed": args.seed,
@@ -470,6 +672,17 @@ def build(args) -> Path:
                 # Drawn after characters, so the player passes behind it.
                 "foreground": True,
             },
+            "campfire": {
+                "file": "campfire.png",
+                "frameWidth": fire_w,
+                "frameHeight": fire_h,
+                "frames": len(fires),
+                "solid": True,
+                # The only prop whose frames are an ANIMATION rather than
+                # variants. The client plays them on a loop at this rate.
+                "animated": True,
+                "fps": CAMPFIRE_FPS,
+            },
         },
     }
     (out_dir / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
@@ -480,7 +693,8 @@ def build(args) -> Path:
         f"rock {len(rocks)}x{rock_w}x{rock_h}, "
         f"tree {len(trees)}x{tree_w}x{tree_h}, "
         f"grass {len(grasses)}x{grass_w}x{grass_h}, "
-        f"fern {len(ferns)}x{fern_w}x{fern_h}"
+        f"fern {len(ferns)}x{fern_w}x{fern_h}, "
+        f"campfire {len(fires)}x{fire_w}x{fire_h}"
     )
     return out_dir
 

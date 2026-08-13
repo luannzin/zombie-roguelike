@@ -37,6 +37,15 @@
       "frames": 5,
       "solid": false,
       "foreground": true
+    },
+    "campfire": {
+      "file": "campfire.png",
+      "frameWidth": 24,
+      "frameHeight": 28,
+      "frames": 8,
+      "solid": true,
+      "animated": true,
+      "fps": 12
     }
   }
 }

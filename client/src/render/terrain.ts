@@ -36,6 +36,12 @@ export interface PropSheet {
    * under the foliage instead of on top of it.
    */
   canopyHeight: number;
+  /**
+   * Frames per second when the frames are an ANIMATION rather than variants.
+   * Zero for every prop except the campfire — a rock's five frames are five
+   * rocks, and playing them would make the boulders twitch.
+   */
+  fps: number;
 }
 
 export interface TerrainAtlas {
@@ -47,6 +53,12 @@ export interface TerrainAtlas {
   tree: PropSheet;
   grass: PropSheet;
   fern: PropSheet;
+  /**
+   * The lobby's campfire. Optional because it arrived after the first atlas
+   * shipped: a client running against older `assets/processed/` still gets a
+   * forest, just no fire in it.
+   */
+  campfire: PropSheet | null;
 }
 
 interface PropManifest {
@@ -55,12 +67,15 @@ interface PropManifest {
   frameHeight: number;
   frames: number;
   canopyHeight?: number;
+  fps?: number;
 }
 
 interface TerrainManifest {
   tile: number;
   ground: { file: string; tile: number; cols: number; rows: number };
-  props: Record<'rock' | 'tree' | 'grass' | 'fern', PropManifest>;
+  props: Record<'rock' | 'tree' | 'grass' | 'fern', PropManifest> & {
+    campfire?: PropManifest;
+  };
 }
 
 const ROOT = '/terrain';
@@ -68,12 +83,13 @@ const ROOT = '/terrain';
 export async function loadTerrain(): Promise<TerrainAtlas | null> {
   try {
     const manifest = await loadJson<TerrainManifest>(`${ROOT}/manifest.json`);
-    const [ground, rock, tree, grass, fern] = await Promise.all([
+    const [ground, rock, tree, grass, fern, campfire] = await Promise.all([
       loadImage(`${ROOT}/${manifest.ground.file}`),
       loadProp(manifest.props.rock),
       loadProp(manifest.props.tree),
       loadProp(manifest.props.grass),
       loadProp(manifest.props.fern),
+      manifest.props.campfire ? loadProp(manifest.props.campfire) : Promise.resolve(null),
     ]);
     return {
       ground,
@@ -84,6 +100,7 @@ export async function loadTerrain(): Promise<TerrainAtlas | null> {
       tree,
       grass,
       fern,
+      campfire,
     };
   } catch (err) {
     console.warn('[terrain] falling back to flat tiles:', err);
@@ -98,6 +115,7 @@ async function loadProp(manifest: PropManifest): Promise<PropSheet> {
     frameHeight: manifest.frameHeight,
     frames: manifest.frames,
     canopyHeight: manifest.canopyHeight ?? 0,
+    fps: manifest.fps ?? 0,
   };
 }
 

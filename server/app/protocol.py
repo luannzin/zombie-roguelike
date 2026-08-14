@@ -15,6 +15,7 @@ client -> server
    "aim":{"x":0.72,"y":-0.69},"shoot":true,"lantern":true}
   {"type":"ping","t":<client ms>}
   {"type":"start"}                      host only; ignored otherwise
+  {"type":"ready"}                      toggle ready, camp only, near the fire
 
 server -> client
   {"type":"hello","playerId":"...","code":"ABC1234",
@@ -26,6 +27,7 @@ server -> client
   {"type":"welcome","playerId":"...","player":{...},"config":{...},"map":{...},
    "zone":{...}}
   {"type":"snapshot","tick":N,"ack":<last processed input seq for you>,
+   "departing":false,"zoneKey":"camp-1",
    "players":[...],"enemies":[...],"coins":[...],
    "shots":[...],"attacks":[...],"kills":[...],"pickups":[...]}
   {"type":"pong","t":<echoed>}
@@ -57,6 +59,7 @@ from __future__ import annotations
 MSG_INPUT = "input"
 MSG_PING = "ping"
 MSG_START = "start"
+MSG_READY = "ready"
 
 MSG_HELLO = "hello"
 MSG_LOBBY = "lobby"
@@ -123,11 +126,15 @@ def snapshot(
     attacks: list[dict],
     kills: list[dict],
     pickups: list[dict],
+    departing: bool = False,
+    zone_key: str | None = None,
 ) -> dict:
     return {
         "type": MSG_SNAPSHOT,
         "tick": tick,
         "ack": ack,
+        "departing": departing,
+        "zoneKey": zone_key,
         "players": players,
         "enemies": enemies,
         "coins": coins,

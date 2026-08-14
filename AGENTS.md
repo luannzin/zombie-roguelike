@@ -89,8 +89,10 @@ subtree.
   at the campfire, start. One socket (`/ws/{code}`) carries the lobby and the
   run; rooms live in memory and die with their last player.
 - A run is an **expedition loop**: prepare at the camp, go out to a level,
-  extract with what you found, spend it, and go again. Only the first half of
-  the first lap exists today — `Preparação` (day 1), in the camp.
+  extract with what you found, spend it, and go again. The first lap's
+  hand-off exists: in `Preparação` the party readies at the fire, files
+  through the black exit, and a second `welcome` drops them in the forest.
+  Extract and return are not built.
 - The room's ZONE (`server/app/zones.py`) says where the run is and how that
   place behaves: its title card, whether enemies spawn and guns fire
   (`hostile`), and whether the lantern may be switched on (`lantern`). The
@@ -98,7 +100,9 @@ subtree.
 - **The camp is one place, not two.** The lobby draws the map the server sent
   in `hello`, with every player on the coordinates the simulation is holding
   for them; starting the run changes what answers your input, not where anybody
-  is standing. Nothing may teleport at that transition. The title screen frames
+  is standing. Nothing may teleport at that transition. Leaving the camp is
+  different: the walk-out is a puppeted march into the VOID corridor, and the
+  forest `welcome` that follows is a new map. The title screen frames
   the same fire on the same rest shot (`campFireAnchor`); entering a room must
   not jump it.
 - Entering a zone is an EVENT, and it is one continuous move: the lobby's chrome

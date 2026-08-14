@@ -2,8 +2,10 @@
 
 A run is a sequence of zones. `camp` is the first one and the one you come back
 to between expeditions; the forest levels that follow are the same shape with
-different rules. A zone owns three separate things and they are deliberately not
-the same field:
+different rules. Leaving the camp is the walk-out: everyone readies at the
+fire, the party files through the black exit, and the room swaps this zone for
+`forest` — same socket, a second `welcome`. A zone owns three separate things
+and they are deliberately not the same field:
 
   TITLE / SUBTITLE   the card the client throws up on arrival — "Preparação"
                      over "Dia 1", later "Dia 3" over "21:58 da noite". This is

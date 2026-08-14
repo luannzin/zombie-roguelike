@@ -825,6 +825,40 @@
 }
 
 /*
+ * Approaching the fire. Occasional, so it may animate: a short rise into place,
+ * not a pop. Reduced motion drops the travel and keeps the fade.
+ */
+.interact-prompt {
+  animation: interact-in 200ms cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+
+@keyframes interact-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .interact-prompt {
+    animation: interact-in-fade 160ms ease both;
+  }
+}
+
+@keyframes interact-in-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/*
  * Departure Mono is a pixel face: it is only crisp at multiples of 11px (its
  * em is 550 units on a 50-unit grid, so one design pixel = size / 11). Use
  * `text-[11px]` / `text-[22px]` and integer line-heights for HUD text — 10px

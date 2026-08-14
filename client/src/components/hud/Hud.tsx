@@ -34,6 +34,8 @@ import { NetStats } from './NetStats';
 import { StatusLine } from './StatusLine';
 import { Vitals } from './Vitals';
 import { ZONE_INTRO_MS, ZoneTitle } from './ZoneTitle';
+import { ReadyCount } from './ReadyCount';
+import { InteractPrompt } from './InteractPrompt';
 
 export interface HudProps {
   snapshot: HudSnapshot;
@@ -46,7 +48,7 @@ export function Hud({ snapshot, minimapRef, error }: HudProps) {
   // yours, so it gets time; going away is housekeeping and should not linger.
   const chrome = cn(
     'transition-opacity duration-700 ease-out',
-    snapshot.introducing && 'opacity-0 duration-200',
+    (snapshot.introducing || snapshot.cinematic) && 'opacity-0 duration-200',
   );
 
   return (
@@ -63,10 +65,15 @@ export function Hud({ snapshot, minimapRef, error }: HudProps) {
         a few frames later, and those frames are a flash of undimmed scene at
         exactly the seam this is here to hide.
       */}
-      {snapshot.introducing ? (
+      {snapshot.introducing || snapshot.cinematic ? (
         <div
-          className="zone-bars animate-zone-bars-hold"
-          style={{ animationDuration: `${ZONE_INTRO_MS}ms` }}
+          className={cn(
+            'zone-bars',
+            snapshot.introducing ? 'animate-zone-bars-hold' : 'opacity-100',
+          )}
+          style={
+            snapshot.introducing ? { animationDuration: `${ZONE_INTRO_MS}ms` } : undefined
+          }
           aria-hidden="true"
         />
       ) : null}
@@ -95,6 +102,24 @@ export function Hud({ snapshot, minimapRef, error }: HudProps) {
 
         <div className={cn('hud-layer pixel-text bottom-2.5 left-3', chrome)}>
           <ControlsHint zone={snapshot.zone} />
+        </div>
+
+        <div
+          className={cn(
+            'hud-layer pixel-text top-2.5 left-1/2 -translate-x-1/2',
+            chrome,
+          )}
+        >
+          <ReadyCount ready={snapshot.ready} />
+        </div>
+
+        <div
+          className={cn(
+            'hud-layer pixel-text bottom-10 left-1/2 -translate-x-1/2',
+            chrome,
+          )}
+        >
+          <InteractPrompt prompt={snapshot.prompt} />
         </div>
 
         {/* Last, so the arrival card sits over every corner — it is the one thing

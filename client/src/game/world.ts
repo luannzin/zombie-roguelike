@@ -3,7 +3,7 @@
  *
  * `moveAxis` MUST stay numerically identical to the Python version, otherwise
  * client prediction and the server disagree near walls and the local player
- * rubber-bands.
+ * rubber-bands. VOID is solid like a tree, with no sprite — the camp exit.
  */
 
 import type { MapPayload } from '../net/protocol';
@@ -13,6 +13,8 @@ export const FLOOR = 0;
 export const ROCK = 1;
 export const TREE = 2;
 export const FIRE = 3;
+/** Solid, unpainted. The camp's black exit. Mirror of server/app/world.py. */
+export const VOID = 4;
 
 /** Legacy alias: '#' in a hand-drawn ASCII map is a rock. */
 export const WALL = ROCK;
@@ -232,5 +234,28 @@ export function hearthMask(
     }
     if (nearest < hearthTiles) return false;
     return hash(tx, ty, seed, 61) < Math.min(1, (nearest - hearthTiles) / 2.2);
+  };
+}
+
+/**
+ * West-most VOID tile centre, in world pixels — the mouth of the camp exit.
+ * Null when this map has no exit (the forest).
+ */
+export function exitMouth(world: TileMap): { x: number; y: number } | null {
+  let minTx = world.width;
+  const ys: number[] = [];
+  for (let ty = 0; ty < world.height; ty++) {
+    const row = world.tiles[ty];
+    for (let tx = 0; tx < row.length; tx++) {
+      if (row[tx] !== VOID) continue;
+      minTx = Math.min(minTx, tx);
+      ys.push(ty);
+    }
+  }
+  if (ys.length === 0) return null;
+  const ts = world.tileSize;
+  return {
+    x: (minTx + 0.5) * ts,
+    y: (ys.reduce((a, b) => a + b, 0) / ys.length + 0.5) * ts,
   };
 }

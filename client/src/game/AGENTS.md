@@ -112,6 +112,11 @@ seam React is allowed to read.
   the HUD keeps its corners off the glass. What is on screen for that beat is
   the place, one character standing in it, and the day's name — then the
   controls and the chrome return together.
+- The camp walk-out (`snapshot.departing`) is the same mask plus no local
+  prediction: the server puppets every body, and the local player is
+  interpolated with the remotes so they cannot fight the march. Camera follows
+  the party, looking ahead at the VOID mouth. E at the fire sends
+  `{type:"ready"}`; the server is what decides whether it counted.
 - Entering a zone is announced ONCE, through `hud-store.arrival`, keyed by the
   zone key; `introducing` says whether the hold is still running. INTRO_TIME,
   `CARD_MS` in `hud/ZoneTitle` and the `zone-*` keyframes are one timeline. The
@@ -121,7 +126,8 @@ seam React is allowed to read.
 
 - New per-frame state stays here or in `render/`; it must not reach React.
 - New HUD data means a field on the `hud-store` snapshot, published at 5 Hz —
-  not a subscription from a component to the game.
+  not a subscription from a component to the game. Camp ready uses `ready` and
+  `prompt`; the walk-out uses `cinematic`.
 - Anything long-lived created here gets a matching release in `Game.dispose()`
   in the same change.
 

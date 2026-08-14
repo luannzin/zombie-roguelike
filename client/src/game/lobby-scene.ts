@@ -50,7 +50,7 @@ import {
 } from "../render/vfx";
 import { HUD_GRID, hudFont, whenFontsReady } from "../theme/fonts";
 import { palette } from "../theme/palette";
-import { FIRE, FLOOR, hearthMask, ROCK, TileMap, TREE } from "./world";
+import { FIRE, FLOOR, hearthMask, ROCK, TileMap, TREE, VOID } from "./world";
 
 const TAU = Math.PI * 2;
 /** Sprite sheet every seated player is drawn from. */
@@ -1414,6 +1414,7 @@ function buildClearing(seed: number, tile: number): TileMap {
 		tiles.push(row);
 	}
 	tiles[fy][fx] = FIRE;
+	carveExit(tiles, fx, fy);
 
 	return new TileMap({
 		width: MAP_TILES_W,
@@ -1458,6 +1459,22 @@ function clearingTile(
 	if (tileHash(tx, ty, seed, 9) < 0.16 + depth * 0.66) return TREE;
 	if (tileHash(tx, ty, seed, 10) < 0.05 + depth * 0.06) return ROCK;
 	return FLOOR;
+}
+
+/**
+ * Black corridor through the right-hand treeline. Mirrors `_carve_exit` in
+ * server/app/camp.py so the title screen's rest shot has the same hole the
+ * real camp does.
+ */
+function carveExit(tiles: number[][], cx: number, cy: number): void {
+	const fy = Math.round(cy);
+	const startX = Math.floor(cx + CLEARING_TILES) + 1;
+	const half = 2;
+	for (let tx = startX; tx < MAP_TILES_W; tx++) {
+		for (let ty = fy - half; ty <= fy + half; ty++) {
+			if (ty >= 0 && ty < MAP_TILES_H) tiles[ty][tx] = VOID;
+		}
+	}
 }
 
 /**

@@ -25,6 +25,14 @@ predicts locally, and sends the packet. Rendering runs at display rate.
 
 `{"type":"ping","t":<client ms>}` → `{"type":"pong","t":<echo>}` for RTT.
 
+`{"type":"start"}` — host only; ignored otherwise.
+
+`{"type":"ready"}` — toggle ready at the campfire. The server ignores it unless
+the room is in the camp, the walk-out has not started, and the player's feet
+are inside `readyRangeTiles` of the fire. When every living player is ready the
+snapshots flip `departing` and the server puppets the party through the VOID
+exit; a second `welcome` is the forest.
+
 ### server → client
 
 `hello` (once, first message — the lobby is built from this):
@@ -82,8 +90,11 @@ presses start.
   "type": "snapshot",
   "tick": 4021,
   "ack": 183,
+  "departing": false,
+  "zoneKey": "camp-1",
   "players": [{ "id": "...", "x": 0, "y": 0, "vx": 0, "vy": 0, "ax": 1, "ay": 0, "lantern": true,
-                "hp": 100, "alive": true, "xp": 24, "gold": 6, "level": 1, "xpInLevel": 24, "xpToLevel": 40 }],
+                "hp": 100, "alive": true, "xp": 24, "gold": 6, "level": 1, "xpInLevel": 24, "xpToLevel": 40,
+                "ready": false }],
   "enemies": [{ "id": "e12", "t": "zombie", "x": 0, "y": 0, "vx": 0, "vy": 0, "ax": 1, "ay": 0, "hp": 22 }],
   "shots": [{ "id": 7, "by": "a1b2c3d4", "x": 0, "y": 0, "dx": 1, "dy": 0, "dist": 132.5, "hit": "b5c6" }],
   "attacks": [{ "by": "e12", "target": "a1b2c3d4", "x": 0, "y": 0, "dx": 1, "dy": 0, "dmg": 9, "blocked": false }],
@@ -92,7 +103,13 @@ presses start.
 ```
 
 `ack` is per-recipient: the last input sequence the server processed for *that*
-client.
+client. `departing` is the camp walk-out: the server is moving everybody and
+the local player must not predict. `ready` is camp-only. `zoneKey` is the
+zone this snapshot belongs to — drop it if it does not match the last welcome.
+
+A second `welcome` (same socket) is a new zone. The client rebuilds the map
+from it the same way it did the first time — that is how the party leaves the
+camp for the forest.
 
 Enemies carry no per-type constants: `t` keys into `welcome.config.enemyTypes`,
 which is the stat block table from `server/app/enemies.py`. Only live enemies

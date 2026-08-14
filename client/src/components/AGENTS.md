@@ -10,7 +10,8 @@ and nowhere near the frame loop.
 - `game/` — `GameCanvas`, `MinimapCanvas`. Mount a canvas and hand the ref to
   `Game`; React never touches those pixels again.
 - `hud/` — ours: `Hud`, `HudScreen`, `Panel`, `Vitals`, `BatteryGauge`,
-  `ProgressBar`, `StatusLine`, `NetStats`, `ControlsHint`, `ZoneTitle`.
+  `ProgressBar`, `StatusLine`, `NetStats`, `ControlsHint`, `ZoneTitle`,
+  `ReadyCount`, `InteractPrompt`.
 - `lobby/` — `CampfireCanvas` (mounts `LobbyScene`; owns the rest-shot fire
   position via `campFireAnchor`, not via per-screen props), `RoomCode`,
   `PlayerRoster`.
@@ -46,11 +47,17 @@ and nowhere near the frame loop.
   utility, one gradient — two that were merely similar would show themselves.
   In the arena it is a sibling of `HudScreen`, not a child: the glass filter
   would bend the soft edge and the bars would jump taller on the handover.
+  The walk-out reuses it (`cinematic`) so leaving the camp is the same frame
+  closing that arriving was.
 - A control a zone forbids is shown DISABLED, never hidden. `BatteryGauge` in
   the camp still answers "how much light am I carrying into the night"; only
   its readout changes, and a refused keypress kicks the panel instead of doing
   nothing. `ControlsHint` lists what works here for the same reason — offering
   a key that will not answer is worse than not mentioning it.
+- `ReadyCount` and `InteractPrompt` are camp-only HUD, fed from `hud-store`
+  (`ready`, `prompt`). The prompt mounts only while E will answer, so its
+  enter animation is the approach. Both ride the same chrome fade as the
+  corners, so the walk-out (`cinematic`) takes them off with everything else.
 - Colours and type come from the tokens in `src/styles/index.css`, consumed as
   Tailwind utilities. No literal colours in components.
 - coss semantic tokens are re-pointed at the game palette in the coss skin block

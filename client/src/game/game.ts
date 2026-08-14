@@ -47,7 +47,7 @@ import { InputController } from './input';
 import { Lantern } from './lantern';
 import { SnapshotBuffer, type RenderedEnemy, type RenderedPlayer } from './interpolation';
 import { LocalPlayer } from './prediction';
-import { hearthMask, TileMap } from './world';
+import { hearthMask, TileMap, exitMouth } from './world';
 
 const MAX_TICKS_PER_FRAME = 5;
 /** Camera punch on local fire (miss or hit). */
@@ -108,6 +108,9 @@ const INTRO_TIME = 3;
 /** Which way the character faces while the intro holds them. Down = at you. */
 const INTRO_AIM_X = 0;
 const INTRO_AIM_Y = 1;
+/** Walk-out faces the black exit, which is always east of the fire. */
+const DEPART_AIM_X = 1;
+const DEPART_AIM_Y = 0;
 
 /**
  * Everything `toDrawablePlayer` needs, in the shape both a snapshot-interpolated
@@ -198,6 +201,8 @@ export class Game {
   private hudTimer = 0;
   /** Seconds of the arrival hold still to run. 0 = the player has the controls. */
   private introLeft = 0;
+  /** Camp walk-out: local prediction is off, camera follows the party. */
+  private departing = false;
   private aimX = 1;
   private aimY = 0;
   /** local player position interpolated between fixed ticks (see prediction.ts) */
@@ -219,6 +224,7 @@ export class Game {
     // still has to ANSWER the key, or pressing F in the camp is indistinguishable
     // from a broken keybind. See `Lantern.toggle`.
     this.input.onToggleLantern = () => this.lantern.toggle();
+    this.input.onReady = () => this.sendReady();
     this.minimap = new Minimap(options.minimapCanvas);
   }
 
@@ -287,6 +293,7 @@ export class Game {
     this.world = null;
     this.fov = null;
     this.zone = null;
+    this.departing = false;
     this.lights = [];
     this.local = null;
     this.localMeta = null;
@@ -384,6 +391,7 @@ export class Game {
     this.accumulator = 0;
     this.smoothX = msg.player.x;
     this.smoothY = msg.player.y;
+    this.departing = false;
     // Held still, facing the camera, while the zone names itself.
     this.introLeft = INTRO_TIME;
     this.aimX = INTRO_AIM_X;
@@ -408,18 +416,38 @@ export class Game {
       zone: msg.zone,
       arrival: { key: msg.zone.key, zone: msg.zone },
       introducing: true,
+      cinematic: false,
+      ready: null,
+      prompt: null,
     });
   }
 
   private onSnapshot(msg: SnapshotMessage): void {
     if (!this.world || !this.config || !this.local) return;
+    if (msg.zoneKey && this.zone && msg.zoneKey !== this.zone.key) return;
 
     this.snapshots.push(msg, performance.now());
+    const wasDeparting = this.departing;
+    this.departing = Boolean(msg.departing) && this.zone?.kind === 'camp';
+    if (this.departing && !wasDeparting) {
+      this.patchHud({ cinematic: true, prompt: null, ready: null });
+    }
 
     for (const state of msg.players) {
       if (state.id === this.localId) {
         this.localMeta = state;
-        this.local.reconcile(state, msg.ack, this.world, this.config);
+        if (this.departing) {
+          this.local.state.x = state.x;
+          this.local.state.y = state.y;
+          this.local.state.vx = state.vx;
+          this.local.state.vy = state.vy;
+          this.local.state.ax = state.ax;
+          this.local.state.ay = state.ay;
+          this.local.pending = [];
+          this.local.lastAck = msg.ack;
+        } else {
+          this.local.reconcile(state, msg.ack, this.world, this.config);
+        }
       }
       // Damage detection is authoritative: HP dropping between snapshots is
       // the only signal that works for local and remote players alike.
@@ -512,7 +540,7 @@ export class Game {
       // capped at the simulation rate. Not while the intro holds them: the
       // character is facing the camera on purpose, and a cursor that had drifted
       // across the window would spin them the moment the frame opened.
-      if (this.introLeft === 0) this.updateAim();
+      if (this.introLeft === 0 && !this.departing) this.updateAim();
 
       this.accumulator += dt;
       const step = this.config.dt;
@@ -536,7 +564,11 @@ export class Game {
       );
       this.smoothX = smooth.x;
       this.smoothY = smooth.y;
-      this.camera.follow(smooth.x, smooth.y, this.world, dt);
+      if (this.departing) {
+        this.followDepartCamera(dt);
+      } else {
+        this.camera.follow(smooth.x, smooth.y, this.world, dt);
+      }
     }
 
     this.effects.update(dt);
@@ -558,8 +590,12 @@ export class Game {
     const local = this.local!;
 
     const packet = this.liveInput(local.nextSequence());
-    local.predict(packet, world, config);
+    if (!this.departing) {
+      local.predict(packet, world, config);
+    }
     this.connection.send(packet);
+
+    if (this.departing) return;
 
     if (this.localFireCooldown > 0) {
       this.localFireCooldown = Math.max(0, this.localFireCooldown - dt);
@@ -580,12 +616,14 @@ export class Game {
    * would still move the character locally and then be yanked back.
    */
   private liveInput(sequence = 0): InputPacket {
-    if (this.introLeft > 0) {
+    if (this.introLeft > 0 || this.departing) {
       return {
         type: 'input',
         sequence,
         movement: { up: false, down: false, left: false, right: false },
-        aim: { x: INTRO_AIM_X, y: INTRO_AIM_Y },
+        aim: this.departing
+          ? { x: DEPART_AIM_X, y: DEPART_AIM_Y }
+          : { x: INTRO_AIM_X, y: INTRO_AIM_Y },
         shoot: false,
         lantern: this.lantern.on,
       };
@@ -667,13 +705,19 @@ export class Game {
 
     const entities: DrawableEntity[] = [];
     const now = performance.now();
-    const sampled = this.snapshots.sample(now, this.localId, this.connection.rtt);
+    const sampled = this.snapshots.sample(
+      now,
+      this.departing ? undefined : this.localId,
+      this.connection.rtt,
+    );
 
     for (const remote of sampled.players) {
-      entities.push(this.toDrawablePlayer({ ...remote, isLocal: false }, dt));
+      entities.push(
+        this.toDrawablePlayer({ ...remote, isLocal: remote.id === this.localId }, dt),
+      );
     }
 
-    if (this.local && this.localMeta) {
+    if (!this.departing && this.local && this.localMeta) {
       const { vx, vy } = this.local.state;
       entities.push(
         this.toDrawablePlayer(
@@ -965,6 +1009,9 @@ export class Game {
             }
           : null,
       lantern: local ? this.lantern.reading() : null,
+      cinematic: this.departing,
+      ready: this.readyCount(),
+      prompt: this.readyPrompt(),
       net: {
         players: this.snapshots.latest?.players.size ?? 0,
         enemies: this.snapshots.latest?.enemies.size ?? 0,
@@ -974,6 +1021,71 @@ export class Game {
         fps: Math.round(this.fps),
       },
     });
+  }
+
+  private sendReady(): void {
+    if (this.departing || this.introLeft > 0) return;
+    if (this.zone?.kind !== 'camp') return;
+    if (!this.nearFire()) return;
+    this.connection.send({ type: 'ready' });
+    if (this.localMeta) this.localMeta.ready = !this.localMeta.ready;
+  }
+
+  private nearFire(): boolean {
+    const world = this.world;
+    const config = this.config;
+    const local = this.local;
+    if (!world || !config || !local) return false;
+    const fire = world.fires[0];
+    if (!fire) return false;
+    const range = (config.readyRangeTiles ?? config.hearthTiles) * config.tileSize;
+    const feetY = local.state.y + config.playerHalfHeight;
+    return Math.hypot(local.state.x - fire.x, feetY - fire.y) <= range;
+  }
+
+  private readyCount(): { here: number; total: number } | null {
+    if (this.zone?.kind !== 'camp' || this.departing) return null;
+    const latest = this.snapshots.latest;
+    if (!latest || latest.players.size === 0) return { here: 0, total: 1 };
+    let here = 0;
+    for (const player of latest.players.values()) {
+      const ready =
+        player.id === this.localId ? (this.localMeta?.ready ?? player.ready) : player.ready;
+      if (ready) here += 1;
+    }
+    return { here, total: latest.players.size };
+  }
+
+  private readyPrompt(): 'ready' | null {
+    if (this.zone?.kind !== 'camp' || this.departing || this.introLeft > 0) return null;
+    if (this.localMeta?.ready) return null;
+    return this.nearFire() ? 'ready' : null;
+  }
+
+  /**
+   * Frame the party walking east, looking a little ahead toward the mouth so
+   * the exit is in the shot rather than sitting on the cut-off.
+   */
+  private followDepartCamera(dt: number): void {
+    const world = this.world;
+    if (!world) return;
+    const latest = this.snapshots.latest;
+    let cx = this.smoothX;
+    let cy = this.smoothY;
+    if (latest && latest.players.size > 0) {
+      cx = 0;
+      cy = 0;
+      for (const player of latest.players.values()) {
+        cx += player.x;
+        cy += player.y;
+      }
+      cx /= latest.players.size;
+      cy /= latest.players.size;
+    }
+    const mouth = exitMouth(world);
+    const look = world.tileSize * 4;
+    const targetX = mouth ? cx * 0.55 + (mouth.x + look) * 0.45 : cx + look;
+    this.camera.follow(targetX, cy, world, dt);
   }
 }
 

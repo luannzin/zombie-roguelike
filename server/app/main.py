@@ -100,6 +100,8 @@ async def game_socket(ws: WebSocket, code: str, name: str | None = None):
                 )
             elif kind == protocol.MSG_START and player.id == room.host_id:
                 await room.begin()
+            elif kind == protocol.MSG_READY:
+                room.toggle_ready(player.id)
     except WebSocketDisconnect:
         pass
     except Exception:

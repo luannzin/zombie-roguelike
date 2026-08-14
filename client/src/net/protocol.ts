@@ -6,6 +6,10 @@
  * One socket carries both phases of a room: `hello` + `lobby` while the party
  * gathers, then `welcome` and the snapshot stream once the host starts. There
  * is no second connection — see `hooks/useRoomSession`.
+ *
+ * `{type:"ready"}` toggles ready at the campfire. When everyone is ready the
+ * snapshots flip `departing` and the server walks the party out; a second
+ * `welcome` is the forest.
  */
 
 export interface MovementInput {
@@ -35,7 +39,12 @@ export interface StartPacket {
   type: 'start';
 }
 
-export type ClientMessage = InputPacket | PingPacket | StartPacket;
+/** Toggle ready at the campfire. Ignored unless you are in the camp, near the fire. */
+export interface ReadyPacket {
+  type: 'ready';
+}
+
+export type ClientMessage = InputPacket | PingPacket | StartPacket | ReadyPacket;
 
 /**
  * Canonical scale, decided server-side (see server/app/config.py):
@@ -76,6 +85,8 @@ export interface GameConfig {
   /** Seat ring radii, in tiles. Elliptical — see server/app/camp.py. */
   ringTilesX: number;
   ringTilesY: number;
+  /** How close to the fire (tiles, feet to flame) the ready prompt answers. */
+  readyRangeTiles: number;
 }
 
 /**
@@ -155,6 +166,8 @@ export interface PlayerState {
   level: number;
   xpInLevel: number;
   xpToLevel: number;
+  /** Camp only: standing at the fire and confirmed. */
+  ready?: boolean;
 }
 
 /**
@@ -297,6 +310,10 @@ export interface SnapshotMessage {
   tick: number;
   /** last input sequence the server processed for THIS client */
   ack: number;
+  /** Camp walk-out: input is locked and bodies are puppeted toward the exit. */
+  departing?: boolean;
+  /** Drop the snapshot if this does not match `welcome.zone.key` — a stale camp tick after embark. */
+  zoneKey?: string;
   players: PlayerState[];
   /** Live enemies only — an id that disappears is dead or despawned. */
   enemies: EnemyState[];

@@ -86,6 +86,15 @@ export interface HudSnapshot {
    * (or a dropped connection, which has news to show) turns it off.
    */
   introducing: boolean;
+  /**
+   * Camp walk-out. Chrome off, letterbox on, same as an arrival — the party
+   * is leaving and the HUD has nothing to say about it.
+   */
+  cinematic: boolean;
+  /** Living players ready / total, camp only. Null in the forest. */
+  ready: { here: number; total: number } | null;
+  /** Proximity prompt at the fire. Null when it should not be on screen. */
+  prompt: 'ready' | null;
 }
 
 export const EMPTY_HUD: HudSnapshot = {
@@ -98,6 +107,9 @@ export const EMPTY_HUD: HudSnapshot = {
   zone: null,
   arrival: null,
   introducing: true,
+  cinematic: false,
+  ready: null,
+  prompt: null,
 };
 
 export type HudStore = Store<HudSnapshot>;

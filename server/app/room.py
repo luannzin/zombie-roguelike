@@ -32,12 +32,13 @@ import random
 import time
 import uuid
 
-from . import ai, camp, coins, combat, protocol, zones
+from . import ai, camp, coins, combat, mapgen, protocol, zones
 from .ai import EnemyDirector
 from .coins import Coin
 from .config import (
     DT,
     FIRE_COOLDOWN,
+    MARCH_SPEED,
     MAX_HP,
     MAX_INPUT_QUEUE,
     MAX_INPUTS_PER_TICK,
@@ -52,6 +53,7 @@ from .config import (
     SNAPSHOT_EVERY_N_TICKS,
     SPAWN_RING,
     SPAWN_SEPARATION,
+    TILE_SIZE,
     client_config,
 )
 from .enemies import Enemy, EnemyType
@@ -106,6 +108,13 @@ class Room:
         self._enemy_id = 0
         self._coin_id = 0
         self._task: asyncio.Task | None = None
+        #: Walk-out cinematic. The camp is still the map; input is ignored and
+        #: bodies are slid toward formation slots, then into the black exit.
+        self.departing = False
+        self._depart_phase: str | None = None
+        self._depart_hold = 0.0
+        self._slots: dict[str, tuple[float, float]] = {}
+        self._pending_embark = False
 
     # --- lifecycle ----------------------------------------------------------
     def start(self) -> None:
@@ -177,6 +186,10 @@ class Room:
             self.reseat()
         else:
             player.x, player.y = self.pick_spawn()
+            if self.departing:
+                self._slots = camp.formation_slots(
+                    self.world, self.seating, set(self.players)
+                )
         return player
 
     def remove_player(self, pid: str) -> None:
@@ -244,6 +257,90 @@ class Room:
                 await self._safe_send(pid, socket, json.dumps(self.welcome_payload(player)))
         self.start()
 
+    def toggle_ready(self, pid: str) -> None:
+        """Flip ready if this player is standing at the fire in the camp.
+
+        When every living player is ready, the walk-out starts. Too late to
+        unready once it has: the camera has already left.
+        """
+        if self.phase != protocol.PHASE_PLAYING or self.departing:
+            return
+        if self.zone.kind != zones.KIND_CAMP:
+            return
+        player = self.players.get(pid)
+        if player is None or not player.alive:
+            return
+        if not camp.near_fire(player.x, player.y, self.world):
+            return
+        player.ready = not player.ready
+        living = [p for p in self.players.values() if p.alive]
+        if living and all(p.ready for p in living):
+            self.begin_depart()
+
+    def begin_depart(self) -> None:
+        """Lock input and line the party up for the exit."""
+        if self.departing or self.zone.kind != zones.KIND_CAMP:
+            return
+        self.departing = True
+        self._depart_phase = "hold"
+        self._depart_hold = 0.45
+        self._slots = camp.formation_slots(
+            self.world, self.seating, set(self.players)
+        )
+        for player in self.players.values():
+            player.vx = player.vy = 0.0
+            player.aim_x = 1.0
+            player.aim_y = 0.0
+            player.inputs.clear()
+
+    async def embark(self) -> None:
+        """They have crossed. Swap the camp for the forest and welcome again.
+
+        Same phase, new zone, new map. The client treats a second `welcome` as
+        arriving somewhere: intro, title card, lantern on. Nobody is persisted
+        across this — gold and xp they have not earned yet stay zero.
+        """
+        if self.zone.kind != zones.KIND_CAMP:
+            self._pending_embark = False
+            return
+        self.departing = False
+        self._pending_embark = False
+        self._depart_phase = None
+        self._slots = {}
+        self.zone = zones.forest(self.day, "21:00 da noite")
+        self.world = mapgen.build_forest()
+        self.spawn_points = self.world.free_spawn_points(
+            PLAYER_HALF_WIDTH, PLAYER_HALF_HEIGHT
+        )
+        centre_x = self.world.pixel_width / 2
+        centre_y = self.world.pixel_height / 2
+        self.spawn_ring = sorted(
+            self.spawn_points,
+            key=lambda p: (
+                abs(math.hypot(p[0] - centre_x, p[1] - centre_y) - SPAWN_RING)
+                + random.uniform(0.0, SPAWN_SEPARATION)
+            ),
+        )
+        self.navigator = Navigator(self.world)
+        self.director = EnemyDirector(self.spawn_points)
+        self.enemies.clear()
+        self.coins.clear()
+        for player in self.players.values():
+            player.ready = False
+            player.x, player.y = self.pick_spawn()
+            player.vx = player.vy = 0.0
+            player.aim_x = 0.0
+            player.aim_y = 1.0
+            player.inputs.clear()
+            player.idle_ticks = 0
+            player.last_input = InputCmd(sequence=player.last_processed_seq)
+        for pid, socket in list(self.sockets.items()):
+            player = self.players.get(pid)
+            if player is not None:
+                await self._safe_send(
+                    pid, socket, json.dumps(self.welcome_payload(player))
+                )
+
     # --- input --------------------------------------------------------------
     def queue_input(self, pid: str, msg: dict) -> None:
         player = self.players.get(pid)
@@ -266,6 +363,9 @@ class Room:
         self.step_coins(dt)
 
     def step_players(self, dt: float) -> None:
+        if self.departing:
+            self.step_depart(dt)
+            return
         for player in self.players.values():
             if player.fire_cooldown > 0.0:
                 player.fire_cooldown = max(0.0, player.fire_cooldown - dt)
@@ -298,6 +398,71 @@ class Room:
                 player.idle_ticks += 1
             else:
                 player.idle_ticks = 0
+
+    def step_depart(self, dt: float) -> None:
+        """Puppet every body through the walk-out. Input is acked and dropped."""
+        for player in self.players.values():
+            while player.inputs:
+                cmd = player.inputs.popleft()
+                player.last_processed_seq = cmd.sequence
+                player.last_input = cmd
+            player.idle_ticks = 0
+
+        if self._depart_phase == "hold":
+            self._depart_hold -= dt
+            for player in self.players.values():
+                player.vx = player.vy = 0.0
+                player.aim_x = 1.0
+                player.aim_y = 0.0
+            if self._depart_hold <= 0.0:
+                self._depart_phase = "align"
+            return
+
+        if self._depart_phase == "align":
+            arrived = True
+            for pid, player in self.players.items():
+                slot = self._slots.get(pid)
+                if slot is None:
+                    continue
+                (
+                    player.x,
+                    player.y,
+                    player.vx,
+                    player.vy,
+                    player.aim_x,
+                    player.aim_y,
+                    done,
+                ) = camp.march_towards(
+                    player.x, player.y, slot[0], slot[1], MARCH_SPEED, dt
+                )
+                if not done:
+                    arrived = False
+            if arrived:
+                self._depart_phase = "walk"
+            return
+
+        if self._depart_phase != "walk":
+            return
+
+        mouth_x, _, east_x = camp.exit_corridor(self.world)
+        dest_x = east_x + TILE_SIZE * 2
+        for pid, player in self.players.items():
+            slot = self._slots.get(pid)
+            ty = slot[1] if slot is not None else player.y
+            (
+                player.x,
+                player.y,
+                player.vx,
+                player.vy,
+                player.aim_x,
+                player.aim_y,
+                _,
+            ) = camp.march_towards(
+                player.x, player.y, dest_x, ty, MARCH_SPEED, dt
+            )
+        crossed = mouth_x + TILE_SIZE * 3.5
+        if self.players and all(p.x >= crossed for p in self.players.values()):
+            self._pending_embark = True
 
     def step_enemies(self, dt: float) -> None:
         """Advance the pack, resolve its swings, then top the population up."""
@@ -516,7 +681,17 @@ class Room:
             player = self.players.get(pid)
             ack = player.last_processed_seq if player else 0
             payload = protocol.snapshot(
-                self.tick, ack, players, enemies, coin_payloads, shots, attacks, kills, pickups
+                self.tick,
+                ack,
+                players,
+                enemies,
+                coin_payloads,
+                shots,
+                attacks,
+                kills,
+                pickups,
+                departing=self.departing,
+                zone_key=self.zone.key,
             )
             sends.append(self._safe_send(pid, socket, json.dumps(payload)))
         await asyncio.gather(*sends, return_exceptions=True)
@@ -533,6 +708,9 @@ class Room:
             next_time += DT
             self.tick += 1
             self.step(DT)
+            if self._pending_embark:
+                await self.embark()
+                continue
             if self.tick % SNAPSHOT_EVERY_N_TICKS == 0:
                 await self.broadcast_snapshot()
                 self.shot_events = []

@@ -83,7 +83,8 @@ mutation, no React.
   an area can be kept clear of undergrowth **without** its tiles becoming solid
   — `isSolidTile` treats anything that is not `FLOOR` as a wall, so "bare floor"
   can never be a tile kind. Rocks and trees are not affected; those are the
-  map's decision.
+  map's decision. VOID tiles are skipped in the ground bake so the clear colour
+  shows through — that is the black exit.
 - Cached bitmaps and tints are released in `Renderer.dispose()`.
 - `imageSmoothingEnabled` stays `false` — this is pixel art.
 

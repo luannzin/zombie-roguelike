@@ -13,6 +13,9 @@ Shape, from the middle out:
               read as a stamped circle.
   TREELINE    density ramps with depth, then a solid border of trunks so the
               camera never frames the end of the world.
+  EXIT        a VOID corridor through the trees on the right. Solid, unpainted,
+              so the party can walk up to a black gap and not cross it until
+              the walk-out puppets them through.
 
 Determinism: one seed in, one camp out. The seed also ships to the client, which
 hashes it with tile coordinates to place grass, ferns and prop variants — the
@@ -25,8 +28,10 @@ import math
 
 from .config import (
     CAMP_CLEARING_TILES,
+    CAMP_EXIT_HALF_TILES,
     CAMP_HEARTH_TILES,
     CAMP_HEIGHT_TILES,
+    CAMP_READY_RANGE_TILES,
     CAMP_RING_TILES_X,
     CAMP_RING_TILES_Y,
     CAMP_RING_X,
@@ -35,7 +40,7 @@ from .config import (
     PLAYER_HALF_HEIGHT,
     TILE_SIZE,
 )
-from .world import FIRE, FLOOR, ROCK, TREE, TileMap
+from .world import FIRE, FLOOR, ROCK, TREE, VOID, TileMap
 
 #: Trunks around the edge, in tiles.
 BORDER_TILES = 2
@@ -119,7 +124,26 @@ def build_camp(seed: int) -> TileMap:
         for ty in range(CAMP_HEIGHT_TILES)
     ]
     tiles[fy][fx] = FIRE
+    _carve_exit(tiles, cx, cy)
     return TileMap(tiles, seed=seed)
+
+
+def _carve_exit(tiles: list[list[int]], cx: float, cy: float) -> None:
+    """Punch a VOID corridor through the trees on the right, to the map edge.
+
+    The mouth sits in the treeline, just past the clearing, so the party can
+    walk up to a black gap and bounce. VOID is solid: nobody crosses it until
+    the walk-out puppets them through.
+    """
+    fy = int(round(cy))
+    start_x = int(cx + CAMP_CLEARING_TILES) + 1
+    half = CAMP_EXIT_HALF_TILES
+    height = len(tiles)
+    width = len(tiles[0]) if tiles else 0
+    for tx in range(start_x, width):
+        for ty in range(fy - half, fy + half + 1):
+            if 0 <= ty < height:
+                tiles[ty][tx] = VOID
 
 
 def fire_position(world: TileMap) -> tuple[float, float]:
@@ -148,6 +172,102 @@ def seat_position(world: TileMap, index: int, total: int) -> tuple[float, float]
 
 def seat_positions(world: TileMap, total: int) -> list[tuple[float, float]]:
     return [seat_position(world, index, total) for index in range(total)]
+
+
+def exit_corridor(world: TileMap) -> tuple[float, float, float]:
+    """The black exit as (mouth_x, centre_y, east_x) in world pixels.
+
+    Mouth is the west-most VOID tile centre — where the party lines up.
+    East is the last VOID tile, past which they have crossed.
+    """
+    min_tx = world.width
+    max_tx = -1
+    ys: list[int] = []
+    for ty, row in enumerate(world.tiles):
+        for tx, tile in enumerate(row):
+            if tile != VOID:
+                continue
+            min_tx = min(min_tx, tx)
+            max_tx = max(max_tx, tx)
+            ys.append(ty)
+    if max_tx < 0:
+        fire_x, fire_y = fire_position(world)
+        return fire_x + CAMP_CLEARING_TILES * TILE_SIZE, fire_y, world.pixel_width
+    centre_y = (sum(ys) / len(ys) + 0.5) * TILE_SIZE
+    mouth_x = (min_tx + 0.5) * TILE_SIZE
+    east_x = (max_tx + 0.5) * TILE_SIZE
+    return mouth_x, centre_y, east_x
+
+
+def near_fire(player_x: float, player_y: float, world: TileMap) -> bool:
+    """True when the player's feet are inside the ready range of the bonfire."""
+    fire_x, fire_y = fire_position(world)
+    feet_y = player_y + PLAYER_HALF_HEIGHT
+    dist = math.hypot(player_x - fire_x, feet_y - fire_y)
+    return dist <= CAMP_READY_RANGE_TILES * TILE_SIZE
+
+
+def _wobble(index: int, salt: int) -> float:
+    """Deterministic -0.5..0.5, so every client would agree if it had to."""
+    h = (index * 374761393 + salt * 668265263) & 0xFFFFFFFF
+    h ^= h >> 13
+    return ((h & 0xFFFF) / 0xFFFF) - 0.5
+
+
+def formation_slots(
+    world: TileMap, seating: list[str], present: set[str]
+) -> dict[str, tuple[float, float]]:
+    """Two staggered files, west of the exit mouth, facing east.
+
+    Not a grid: the lower file sits a half-step closer to the mouth, and each
+    body gets a small hash wobble, so a pair walking out does not look like
+    they were placed with a ruler.
+    """
+    ids = [pid for pid in seating if pid in present]
+    mouth_x, centre_y, _ = exit_corridor(world)
+    base_x = mouth_x - TILE_SIZE * 1.6
+    slots: dict[str, tuple[float, float]] = {}
+    for index, pid in enumerate(ids):
+        file = index % 2
+        col = index // 2
+        x = base_x - col * TILE_SIZE * 1.35
+        if file == 1:
+            x += TILE_SIZE * 0.4
+        y = centre_y + (1 if file else -1) * TILE_SIZE * 0.62
+        x += _wobble(index, 1) * TILE_SIZE * 0.35
+        y += _wobble(index, 2) * TILE_SIZE * 0.18
+        slots[pid] = (x, y - PLAYER_HALF_HEIGHT)
+    return slots
+
+
+def march_towards(
+    player_x: float,
+    player_y: float,
+    tx: float,
+    ty: float,
+    speed: float,
+    dt: float,
+) -> tuple[float, float, float, float, float, float, bool]:
+    """Slide a body toward (tx, ty) with no collision. Returns x,y,vx,vy,ax,ay,arrived."""
+    dx = tx - player_x
+    dy = ty - player_y
+    dist = math.hypot(dx, dy)
+    if dist < 0.8:
+        return tx, ty, 0.0, 0.0, 1.0, 0.0, True
+    inv = 1.0 / dist
+    nx, ny = dx * inv, dy * inv
+    step = speed * dt
+    if step >= dist:
+        return tx, ty, 0.0, 0.0, nx, ny, True
+    return (
+        player_x + nx * step,
+        player_y + ny * step,
+        nx * speed,
+        ny * speed,
+        nx,
+        ny,
+        False,
+    )
 
 
 #: Exported for anyone measuring the camp in pixels rather than tiles.

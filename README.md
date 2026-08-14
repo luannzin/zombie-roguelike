@@ -23,9 +23,8 @@ your lantern stays off, because the bonfire is the light and the battery is
 what you carry out into the dark.
 
 > **Where the loop stops today.** A run is meant to go camp → level → extract →
-> spend → repeat. Only preparation exists: `start` leads to the camp and stays
-> there. The forest generator (`server/app/mapgen.py`) is intact and unchanged,
-> but nothing reaches it until the expedition hand-off is built.
+> spend → repeat. Preparation and the walk-out exist: ready at the fire, file
+> through the black exit, land in the forest. Extract and return are not built.
 
 * **Client** — Vite + TypeScript + Canvas 2D (no game engine). React + Tailwind
   own the HUD and routing only; they are never part of the render loop.
@@ -58,7 +57,7 @@ fire. On another device, use the Network URL Vite prints (`http://192.168.x.x:51
 the client talks to that same origin and Vite proxies `/ws` to the server.
 
 Controls: **WASD** move · **mouse** aim · **left click / hold** shoot · **F**
-lantern on/off.
+lantern on/off · **E** ready (at the campfire).
 
 Point the client at another host with `VITE_SERVER_URL=http://192.168.0.10:8000 bun run dev`
 — an HTTP origin, not a socket URL; the client derives both from it. That host

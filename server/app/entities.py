@@ -93,6 +93,8 @@ class Player:
     respawn_timer: float = 0.0
     #: Melee i-frames — see MELEE_IMMUNITY in config.py.
     hurt_immunity: float = 0.0
+    #: Camp only. Toggled by `{type:"ready"}` while standing at the fire.
+    ready: bool = False
 
     @property
     def capsule_y0(self) -> float:
@@ -131,6 +133,7 @@ class Player:
             "level": level,
             "xpInLevel": into_level,
             "xpToLevel": to_level,
+            "ready": self.ready,
         }
 
 

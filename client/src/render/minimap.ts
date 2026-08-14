@@ -14,7 +14,7 @@
  * whether to mount it. This class only owns pixels.
  */
 
-import { FLOOR, TREE, type TileMap } from '../game/world';
+import { FLOOR, TREE, VOID, type TileMap } from '../game/world';
 import { createSurface, get2d } from '../lib/canvas';
 import { floorColor, palette } from '../theme/palette';
 import type { FovField } from './fov';
@@ -167,7 +167,9 @@ function buildTileCache(world: TileMap): HTMLCanvasElement {
   for (let ty = 0; ty < world.height; ty++) {
     for (let tx = 0; tx < world.width; tx++) {
       const tile = world.tiles[ty][tx];
-      if (tile === FLOOR) {
+      if (tile === VOID) {
+        ctx.fillStyle = palette().surface;
+      } else if (tile === FLOOR) {
         ctx.fillStyle = floorColor(tx, ty);
       } else {
         // Cheap top-edge hint so blockers read the same way as the main view.

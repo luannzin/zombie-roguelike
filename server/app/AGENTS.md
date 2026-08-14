@@ -23,7 +23,7 @@ game's scale.
 | `world.py` | tile grid, tile alphabet, collision queries |
 | `maps.py` | hand-authored maps (`from_ascii`, `from_rects`) |
 | `mapgen.py` | procedural forest, seeded and connectivity-checked |
-| `camp.py` | the camp clearing, its bonfire, and the seat ring around it |
+| `camp.py` | the camp clearing, its bonfire, the seat ring, the VOID exit, and the walk-out formation |
 | `zones.py` | where a run is: title card, `hostile`, `lantern` |
 | `protocol.py` | wire message shapes — source of truth |
 | `config.py` | tuning constants + `client_config()` |
@@ -49,10 +49,10 @@ game's scale.
   `playing`, and it is the only place that starts the loop. Do not add a code
   path that simulates a lobby.
 - A room's ZONE is separate from its phase and does not change when the phase
-  does. A room opens in the camp and stays there: the lobby is the camp seen
-  from a chair, `preparation` is the same map with the loop running. `begin()`
-  therefore moves nobody — the seat a player is standing on is the tile they
-  start on, and the client draws exactly those coordinates.
+  does. A room opens in the camp: the lobby is the camp seen from a chair,
+  `preparation` is the same map with the loop running. `begin()` therefore
+  moves nobody. The zone DOES change on `embark()`: that is the walk-out, and
+  it is the only legal map swap.
 - Zone rules are enforced HERE, not just described to the client. A
   non-hostile zone runs no spawn director and drops `shoot` in
   `handle_shooting`. A client that ignores `zone.lantern` gets light it cannot
@@ -61,6 +61,13 @@ game's scale.
 - `Room.seating` is join order, and it is the only thing that decides who
   stands where. Seats are re-spaced by `reseat()` while the room is in `lobby`
   and never afterwards: once the simulation is running, position belongs to it.
+  The walk-out is the exception: `step_depart` puppets every body, ignoring
+  collision, until `embark()`.
+- VOID (`world.VOID`) is solid and unpainted. Players bounce off it. Only the
+  walk-out may place a body on it.
+- `{type:"ready"}` toggles `Player.ready` only when the feet are inside
+  `CAMP_READY_RANGE_TILES` of the fire, the zone is camp, and the room is not
+  already departing. When every living player is ready, `begin_depart()` runs.
 - The map is sent in `hello`, once per socket, because the lobby draws the real
   one. Never put it in `lobby`, which is re-broadcast on every membership
   change.
@@ -75,9 +82,11 @@ game's scale.
 - Adding a zone = one `zones.Zone` and whatever builds its map. Its title card,
   its safety and its lighting rules are all data; the client needs no change to
   announce or obey a new one.
-- The expedition hand-off is NOT built. `start` leads to `preparation` and the
-  run stops there — `mapgen.build_forest` is intact but nothing reaches it
-  until a camp→forest transition exists.
+- The expedition hand-off IS the walk-out. In the camp, `{type:"ready"}` at
+  the fire; when everyone is ready the room puppets two staggered files into
+  the VOID corridor and `embark()` swaps the map for `mapgen.build_forest`,
+  sends a second `welcome`, and the zone becomes `forest`. Do not invent a
+  third phase for this — `playing` stays `playing`.
 - Keep the tick O(entities). Anything that scales with map size belongs in a
   cached structure (see `pathing.py`, one field per player shared by the horde).
 - New tuning goes in `config.py` in tiles/seconds, plus a `client_config()` key

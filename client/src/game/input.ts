@@ -19,6 +19,8 @@ const KEY_MAP: Record<string, keyof MovementInput> = {
 
 /** Toggles the lantern. Physical key, so it lands on F under any layout. */
 const LANTERN_KEY = 'KeyF';
+/** Ready at the campfire. Physical key, so it lands on E under any layout. */
+const READY_KEY = 'KeyE';
 
 export class InputController {
   readonly movement: MovementInput = { up: false, down: false, left: false, right: false };
@@ -32,6 +34,8 @@ export class InputController {
    * times a second. The resulting on/off rides the input packet from `Lantern`.
    */
   onToggleLantern: (() => void) | null = null;
+  /** Fired once per press of E — same edge contract as the lantern key. */
+  onReady: (() => void) | null = null;
 
   constructor(private readonly canvas: HTMLCanvasElement) {
     window.addEventListener('keydown', this.onKeyDown);
@@ -72,6 +76,11 @@ export class InputController {
     }
     if (e.code === LANTERN_KEY && !e.repeat) {
       this.onToggleLantern?.();
+      e.preventDefault();
+      return;
+    }
+    if (e.code === READY_KEY && !e.repeat) {
+      this.onReady?.();
       e.preventDefault();
     }
   };

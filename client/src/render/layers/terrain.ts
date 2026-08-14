@@ -20,7 +20,7 @@
  * moment reads as a screen filter, not as wind.
  */
 
-import { FLOOR, ROCK, TREE, type FirePlace, type TileMap } from '../../game/world';
+import { FLOOR, ROCK, TREE, VOID, type FirePlace, type TileMap } from '../../game/world';
 import { createSurface } from '../../lib/canvas';
 import { floorColor, hasFloorSpeck, palette } from '../../theme/palette';
 import type { Camera } from '../camera';
@@ -323,6 +323,7 @@ function paintGround(
       // source texture, which is what keeps the floor seamless.
       const sx = (tx % groundCols) * groundTile;
       const sy = (ty % groundRows) * groundTile;
+      if (world.tiles[ty][tx] === VOID) continue;
       ctx.drawImage(ground, sx, sy, groundTile, groundTile, tx * ts, ty * ts, ts, ts);
     }
   }
@@ -419,7 +420,9 @@ function paintFlat(
     for (let tx = x0; tx <= x1; tx++) {
       const px = tx * ts;
       const py = ty * ts;
-      if (world.tiles[ty][tx] !== FLOOR) {
+      const tile = world.tiles[ty][tx];
+      if (tile === VOID) continue;
+      if (tile !== FLOOR) {
         ctx.fillStyle = tiles.wallBody;
         ctx.fillRect(px, py, ts, ts);
         ctx.fillStyle = tiles.wallTop;

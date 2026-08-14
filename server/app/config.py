@@ -83,8 +83,12 @@ SPAWN_SEPARATION = TILE_SIZE * SPAWN_SEPARATION_TILES
 # draws it while people trickle in, and `preparation` is the same map, walkable,
 # once the host starts. Every number below is therefore read by both — the seat
 # a player was standing on at the campfire is the tile they wake up on.
-CAMP_WIDTH_TILES = 60
-CAMP_HEIGHT_TILES = 40
+# Sized so the WIDE shot never frames the edge of the world. The lobby holds the
+# camp at `ARENA_ZOOM - 1` (see client/src/render/framing.ts), which on a very
+# wide monitor is a lot of forest — the map has to be bigger than that view or
+# the camera clamps and the treeline stops looking like it goes on.
+CAMP_WIDTH_TILES = 76
+CAMP_HEIGHT_TILES = 48
 # Open ground around the fire before the treeline starts.
 CAMP_CLEARING_TILES = 8.2
 # The hearth: the fire plus the ring of players around it. Nothing grows here —

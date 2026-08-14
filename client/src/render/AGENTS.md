@@ -40,13 +40,16 @@ mutation, no React.
   shadowcast, merged with the same `max()`.
 - Occlusion is `world.blocksSight`, not `isSolidTile`. A campfire stops a body
   and a bullet but not light.
-- The **arrival** is the only camera move that is not the player: wide on the
-  zone, then in. It is the one place fractional zoom is allowed — a push-in
-  that steps between whole scales judders, and motion hides the softness a
-  still frame would not. It lands exactly on the resting zoom.
-- `framing.campZoom` is the wide shot, and both the lobby scene and the arena's
-  arrival read it. If they diverge, starting a run cuts to a different picture
-  of the same clearing instead of continuing the shot.
+- `Camera` follows the player and nothing else. The move INTO a zone belongs to
+  `game/lobby-scene.ts`, which is already showing the same place when it starts;
+  by the time this camera exists the push-in is over and it opens on the frame
+  it was handed. Do not add an arrival here — it would replay a shot the player
+  has just watched.
+- `framing.ts` holds both ends of that move: `ARENA_ZOOM` is the scale the game
+  is played at, and `campZoom` is the wide shot, clamped to at least one step
+  below it so there is always a push to see. They are read by the lobby and by
+  `Camera`'s resting zoom; if they diverge, starting a run cuts to a different
+  picture of the same clearing instead of continuing the shot.
 - Sprites are keyed by asset name; which enemy sheets to load comes from
   `welcome.config.enemyTypes[*].sprite`, never a hardcoded list.
 - Colours come from `theme/palette.ts` only. Never write a literal colour here.

@@ -15,8 +15,10 @@ name you chose.
 The lobby is not a picture of the camp. It **is** the camp: the map comes down
 in `hello` and everybody stands on the coordinates the server is already
 holding for them, so pressing start changes what answers your input and nothing
-else. The camera opens wide on the clearing, pushes in onto your character, and
-the day announces itself — `Preparação`, `Dia 1`. There you walk around, and
+else. The roster slides off the glass while the camera drifts off the fire onto
+your own character and closes in; the game picks the shot up mid-move, holds
+you still and facing the camera with the HUD off, and the day names itself —
+`Preparação`, `Dia 1` — before you get the controls. Then you walk around, and
 your lantern stays off, because the bonfire is the light and the battery is
 what you carry out into the dark.
 

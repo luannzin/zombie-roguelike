@@ -273,29 +273,35 @@
   --animate-sign-flicker: sign-flicker 6.5s linear infinite;
 
   /*
-   * Arriving in a zone. Five tracks, one beat: the wash comes up, a rule draws
-   * out of nothing, the title wipes in and flickers as it catches, the subtitle
-   * follows a beat later, and one bright band sweeps across the type.
+   * Arriving in a zone. Four tracks, one beat: the wash comes up, two rules
+   * draw out of nothing, the title fades and rises, the subtitle follows a
+   * beat later with its tracking closing.
    *
-   * The durations are cut to the camera's push-in (ARRIVAL_TIME in
-   * game/game.ts) and to CARD_MS in components/hud/ZoneTitle.tsx. All three
-   * move together or the card outlives the move it belongs to.
+   * Everything fades — nothing wipes, snaps or flickers. Arriving at the camp
+   * is the calm before the night, and a title sequence would say the opposite.
+   *
+   * The durations are cut to CARD_MS in components/hud/ZoneTitle.tsx and to
+   * INTRO_TIME in game/game.ts. All three move together, or the card outlives
+   * the hold it plays inside and lands under the HUD.
    */
-  --animate-zone-wash: zone-wash 3.4s ease-in-out 1 forwards;
-  --animate-zone-rule: zone-rule 3.4s cubic-bezier(0.16, 1, 0.3, 1) 1 forwards;
-  --animate-zone-title: zone-title 3.4s ease-out 1 forwards;
-  --animate-zone-subtitle: zone-subtitle 3.4s ease-out 1 forwards;
-  --animate-zone-sweep: zone-sweep 1.5s ease-in-out 0.45s 1 forwards;
+  --animate-zone-wash: zone-wash 3s ease-in-out 1 forwards;
+  --animate-zone-rule: zone-rule 3s cubic-bezier(0.22, 1, 0.36, 1) 1 forwards;
+  --animate-zone-title: zone-title 3s cubic-bezier(0.22, 1, 0.36, 1) 1 forwards;
+  --animate-zone-subtitle: zone-subtitle 3s cubic-bezier(0.22, 1, 0.36, 1) 1 forwards;
 
   /*
    * The lobby chrome leaving, as the camera starts its swoosh. It slides off
    * its own edge rather than fading, because the panel is a physical thing on
-   * the glass and things on glass are taken away, not dissolved. It is
-   * deliberately shorter than LAUNCH_SECONDS in LobbyScreen: the chrome has to
-   * be gone before the move lands, so the last stretch of the push-in is
-   * already nothing but the game.
+   * the glass and things on glass are taken away, not dissolved. It eases IN —
+   * hesitating at the start and accelerating away — which lines it up with the
+   * camera's own hold (LAUNCH_HOLD in game/lobby-scene.ts) and makes the two
+   * feel like one departure.
+   *
+   * Well shorter than LAUNCH_SECONDS in LobbyScreen on purpose: the chrome is
+   * gone long before the move lands, so most of the push-in is already nothing
+   * but the game.
    */
-  --animate-lobby-exit: lobby-exit 0.55s cubic-bezier(0.7, 0, 0.84, 0) 1 forwards;
+  --animate-lobby-exit: lobby-exit 0.8s cubic-bezier(0.55, 0, 0.7, 0.15) 1 forwards;
 
   /*
    * A lamp the zone will not let you switch on. One hard sideways refusal, held
@@ -482,8 +488,8 @@
   0% {
     opacity: 0;
     }
-  12%, 74% {
-    opacity: 0.92;
+  16%, 70% {
+    opacity: 0.88;
     }
   100% {
     opacity: 0;
@@ -494,13 +500,13 @@
     width: 0;
     opacity: 0;
     }
-  22% {
-    width: 320px;
-    opacity: 1;
+  30% {
+    width: 300px;
+    opacity: 0.9;
     }
-  76% {
-    width: 320px;
-    opacity: 1;
+  72% {
+    width: 300px;
+    opacity: 0.9;
     }
   100% {
     width: 0;
@@ -508,69 +514,37 @@
     }
   }
   /*
-   * The title wipes in from its own left edge rather than fading: a clip is a
-   * thing being revealed, an opacity ramp is a thing being turned up. The two
-   * flicker frames at 26% and 30% are the same idea as the menu sign — the
-   * light catches, drops, and holds.
+   * A slow fade with a few pixels of rise, and a slow fade out that keeps
+   * rising. No wipe, no flicker: the type settles into the frame the way the
+   * camera has just settled onto the character.
    */
   @keyframes zone-title {
   0% {
     opacity: 0;
-    clip-path: inset(0 100% 0 0);
-    translate: 0 6px;
+    translate: 0 10px;
     }
-  8% {
+  30%, 72% {
     opacity: 1;
-    translate: 0 0;
-    }
-  24% {
-    clip-path: inset(0 0 0 0);
-    }
-  26% {
-    opacity: 0.45;
-    }
-  30% {
-    opacity: 1;
-    }
-  78% {
-    opacity: 1;
-    clip-path: inset(0 0 0 0);
     translate: 0 0;
     }
   100% {
     opacity: 0;
-    translate: 0 -8px;
+    translate: 0 -10px;
     }
   }
   @keyframes zone-subtitle {
-  0%, 16% {
+  0%, 14% {
     opacity: 0;
-    letter-spacing: 0.7em;
+    letter-spacing: 0.62em;
     }
-  34% {
-    opacity: 1;
-    letter-spacing: 0.34em;
-    }
-  78% {
+  44%, 72% {
     opacity: 1;
     letter-spacing: 0.34em;
     }
   100% {
     opacity: 0;
     letter-spacing: 0.34em;
-    }
-  }
-  @keyframes zone-sweep {
-  0% {
-    opacity: 0;
-    translate: -120% 0;
-    }
-  25% {
-    opacity: 0.85;
-    }
-  100% {
-    opacity: 0;
-    translate: 120% 0;
+    translate: 0 -6px;
     }
   }
   @keyframes lobby-exit {

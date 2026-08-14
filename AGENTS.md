@@ -99,8 +99,11 @@ subtree.
   in `hello`, with every player on the coordinates the simulation is holding
   for them; starting the run changes what answers your input, not where anybody
   is standing. Nothing may teleport at that transition.
-- Entering a zone is an EVENT: the camera opens wide on the place and pushes in
-  onto your character while the title card names the day. Every zone gets it.
+- Entering a zone is an EVENT, and it is one continuous move: the lobby's chrome
+  slides away while its own camera drifts off the fire onto your character and
+  pushes in to game scale; the arena takes over on the frame that lands, holds
+  you still and facing the camera with no HUD while the title names the day,
+  and then hands back the controls and the chrome together. Every zone gets it.
 - Nothing is persisted server-side. The only durable client datum is the
   player's name, in `localStorage`.
 - The server is authoritative. Clients send inputs, never positions.

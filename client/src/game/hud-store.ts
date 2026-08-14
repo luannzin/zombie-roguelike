@@ -68,6 +68,16 @@ export interface HudSnapshot {
   zone: ZoneInfo | null;
   /** Set on entering a zone; the title card plays and then leaves it alone. */
   arrival: HudArrival | null;
+  /**
+   * True while the arrival is still holding the player.
+   *
+   * The HUD stays OFF the glass for this beat. What is on screen is the place
+   * and your own character standing in it, and a full set of corners over that
+   * turns an establishing shot into a gameplay frame with a caption. It comes
+   * back at the same moment the controls do, which is what makes the HUD
+   * arriving read as "you're up".
+   */
+  introducing: boolean;
 }
 
 export const EMPTY_HUD: HudSnapshot = {
@@ -79,6 +89,7 @@ export const EMPTY_HUD: HudSnapshot = {
   lantern: null,
   zone: null,
   arrival: null,
+  introducing: false,
 };
 
 export type HudStore = Store<HudSnapshot>;

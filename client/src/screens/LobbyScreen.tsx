@@ -36,10 +36,14 @@ import type { RoomSession } from '@/hooks/useRoomSession';
 
 /**
  * Seconds the launch takes. The camera move, the panel's exit (`lobby-exit` in
- * styles/index.css, which is shorter so the chrome is gone before the move
+ * styles/index.css, which is shorter so the chrome is gone well before the move
  * lands) and the screen swap are all cut to this one number.
+ *
+ * Long, deliberately. This is a drift onto your character, not a snap-zoom —
+ * the party is what the player is looking at and the camera should take its
+ * time leaving them.
  */
-const LAUNCH_SECONDS = 1.25;
+const LAUNCH_SECONDS = 2.1;
 
 export interface LobbyScreenProps {
   code: string;

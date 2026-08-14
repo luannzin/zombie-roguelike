@@ -48,8 +48,14 @@ own the HUD and routing only. Talks to the server over one WebSocket.
 - **The lobby and the arena are two renders of one place.** `LobbyScreen` draws
   the map from `hello` with the server's own player coordinates; `ArenaScreen`
   draws the same map with the simulation running. Nothing may move at the
-  transition, and the chrome leaving is covered by the arrival's own curtain
-  (see `hud/ZoneTitle`) so the reflow is never seen.
+  transition.
+- **The lobby owns the transition.** Its canvas is full screen with the chrome
+  floating over it — same box as the arena's — and starting a run slides the
+  chrome off while the scene's own camera drifts onto the local player and
+  pushes in to game scale. `RoomScreen` swaps screens when that move LANDS, not
+  when the `welcome` arrives, which is much earlier and would cut it in half.
+  Then the arena holds the player still, facing the camera, with no HUD, while
+  the day names itself.
 - The player's name is client-side state (`lib/identity.ts`, `localStorage`) and
   travels to the server in the socket query string. There is no account, and no
   server-side persistence for it.

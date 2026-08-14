@@ -122,6 +122,18 @@ const FALLBACK_VISION = { ambientTiles: 3.5, lanternTiles: 11, coneDegrees: 75 }
 /** How far the fire reaches without a server saying. Mirrors config.py. */
 const FALLBACK_FIRE_TILES = 10;
 
+/**
+ * Fraction of the launch spent standing still before the camera moves.
+ *
+ * The click has to land somewhere. Without this beat the move has already
+ * started by the time the panel begins sliding, and the two read as one
+ * unprompted lurch instead of as a decision followed by a departure.
+ */
+const LAUNCH_HOLD = 0.14;
+/** Embers the fire throws when the party commits, and how long it flares. */
+const LAUNCH_FLARE_EMBERS = 46;
+const LAUNCH_FLARE_TIME = 0.9;
+
 export interface LobbyMember {
 	id: string;
 	name: string;
@@ -376,6 +388,43 @@ export class LobbyScene {
 			fromZoom: this.camera.zoom,
 			focusId: this.seats.find((seat) => seat.isLocal)?.id ?? "",
 		};
+		this.spawnFlare();
+	}
+
+	/**
+	 * The fire surges as the party commits.
+	 *
+	 * A camera move on its own is the game telling you something happened; a
+	 * shower of embers off the fire at the same instant is the WORLD reacting to
+	 * it. It costs one burst of particles and it is the difference between a
+	 * transition and a departure.
+	 */
+	private spawnFlare(): void {
+		const ts = this.tile;
+		const tones = palette().fire.embers;
+		for (let i = 0; i < LAUNCH_FLARE_EMBERS; i++) {
+			this.particles.push({
+				x: this.fireX + (Math.random() * 2 - 1) * ts * 0.55,
+				y: this.fireY - ts * (0.3 + Math.random() * 0.7),
+				vx: (Math.random() * 2 - 1) * ts * 1.5,
+				vy: -ts * (2.4 + Math.random() * 3.4),
+				gy: ts * 1.1,
+				// Staggered, so the fire keeps throwing sparks through the first
+				// half of the move rather than coughing once and stopping.
+				age: -Math.random() * LAUNCH_FLARE_TIME * 0.55,
+				life: 0.8 + Math.random() * 1.5,
+				size: Math.random() < 0.3 ? 2 : 1,
+				color: tones[Math.floor(Math.random() * tones.length)],
+			});
+		}
+		this.rings.push({
+			x: this.fireX,
+			y: this.fireY,
+			age: 0,
+			life: 0.85,
+			maxRadius: ts * 5.2,
+			color: palette().fire.core,
+		});
 	}
 
 	/** True once `beginLaunch` has run. The scene is on its way out. */
@@ -723,7 +772,13 @@ export class LobbyScene {
 		let zoom = rest * dpr;
 
 		if (launch) {
-			const k = easeInOut(clamp01(launch.elapsed / launch.duration));
+			// The hold is spent at the wide shot, so the press is acknowledged
+			// before anything moves.
+			const k = easeInOut(
+				clamp01(
+					(launch.elapsed / launch.duration - LAUNCH_HOLD) / (1 - LAUNCH_HOLD),
+				),
+			);
 			// Log space: scale is multiplicative, and a linear ramp between two
 			// zooms crawls at the wide end and then lunges at the tight one.
 			zoom = Math.exp(
@@ -789,7 +844,9 @@ export class LobbyScene {
 			0.72 +
 				Math.sin(t * 7.3) * 0.11 +
 				Math.sin(t * 13.1 + 1.7) * 0.08 +
-				Math.sin(t * 2.9 + 0.4) * 0.09,
+				Math.sin(t * 2.9 + 0.4) * 0.09 +
+				// The surge that goes with the flare, decaying over its length.
+				this.flareBoost(),
 		);
 
 		this.spawnEmbers(dt);
@@ -1090,6 +1147,19 @@ export class LobbyScene {
 		if (since < 0 || since > LANDING_SETTLE) return 1;
 		const k = since / LANDING_SETTLE;
 		return 1 - 0.34 * Math.exp(-4.5 * k) * Math.cos(k * 9);
+	}
+
+	/**
+	 * Extra flame brightness while the launch flare is burning, 0 otherwise.
+	 *
+	 * It rides on the same `flicker` every lit thing in the scene reads, so the
+	 * surge reaches the ground, the bodies and the embers at once instead of
+	 * being a separate effect drawn on top of a fire that did not react.
+	 */
+	private flareBoost(): number {
+		const launch = this.launch;
+		if (!launch || launch.elapsed >= LAUNCH_FLARE_TIME) return 0;
+		return 0.3 * (1 - launch.elapsed / LAUNCH_FLARE_TIME) ** 1.6;
 	}
 
 	/**
@@ -1397,9 +1467,16 @@ function hearthDistance(tx: number, ty: number, cx: number, cy: number): number 
 	return Math.hypot(dx, dy);
 }
 
-/** Symmetric ease. Slow out of the wide shot, slow into the landing. */
+/**
+ * Smootherstep: zero velocity AND zero acceleration at both ends.
+ *
+ * A cubic ease still has a detectable kick leaving the wide shot and a
+ * detectable stop arriving; this one does not, which is the difference between
+ * a camera being driven and a camera drifting. It is the whole reason the
+ * launch reads as gentle rather than as a snap-zoom.
+ */
 function easeInOut(t: number): number {
-	return t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2;
+	return t * t * t * (t * (t * 6 - 15) + 10);
 }
 
 /**

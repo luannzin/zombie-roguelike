@@ -91,6 +91,25 @@ const ENEMY_HIDE_LIGHT = 0.012;
 const ENEMY_SHOW_LIGHT = 0.3;
 
 /**
+ * Seconds after arriving in a zone before the player gets the controls back.
+ *
+ * The lobby has just pushed the camera onto their character; this is the beat
+ * that follows, and it is doing real work rather than being a pause. The world
+ * is on screen with NO HUD over it and the character standing still, facing the
+ * camera — so what the player reads, in order, is: this is the same clearing I
+ * was just looking at, that one is me, and it is called Preparação, Dia 1. Hand
+ * back movement any earlier and half of them are walking before the title has
+ * finished saying where they are.
+ *
+ * The title card (components/hud/ZoneTitle) is sized to clear just before this
+ * ends, so the HUD arrives into an empty frame rather than under the type.
+ */
+const INTRO_TIME = 3;
+/** Which way the character faces while the intro holds them. Down = at you. */
+const INTRO_AIM_X = 0;
+const INTRO_AIM_Y = 1;
+
+/**
  * Everything `toDrawablePlayer` needs, in the shape both a snapshot-interpolated
  * remote and the locally predicted player can supply.
  */
@@ -164,6 +183,8 @@ export class Game {
   private lastFrame = 0;
   private localFireCooldown = 0;
   private hudTimer = 0;
+  /** Seconds of the arrival hold still to run. 0 = the player has the controls. */
+  private introLeft = 0;
   private aimX = 1;
   private aimY = 0;
   /** local player position interpolated between fixed ticks (see prediction.ts) */
@@ -280,6 +301,7 @@ export class Game {
         vitals: null,
         lantern: null,
         arrival: null,
+        introducing: false,
       });
       return;
     }
@@ -346,6 +368,10 @@ export class Game {
     this.accumulator = 0;
     this.smoothX = msg.player.x;
     this.smoothY = msg.player.y;
+    // Held still, facing the camera, while the zone names itself.
+    this.introLeft = INTRO_TIME;
+    this.aimX = INTRO_AIM_X;
+    this.aimY = INTRO_AIM_Y;
 
     // Size the canvas NOW rather than on the first frame. The lobby has just
     // finished pushing in onto this exact player at this exact scale (see
@@ -365,6 +391,7 @@ export class Game {
       status: msg.zone.hostile ? 'em campo' : 'no acampamento',
       zone: msg.zone,
       arrival: { key: msg.zone.key, zone: msg.zone },
+      introducing: true,
     });
   }
 
@@ -455,10 +482,21 @@ export class Game {
       this.resizeDirty = false;
     }
 
+    // The arrival hold. It runs on the render clock rather than the tick so it
+    // ends on the same frame the HUD and the title card are cut to, whatever
+    // the frame rate is doing — and the HUD is told the moment it does, not on
+    // the next 5 Hz republish, because a fifth of a second is visible on a cut.
+    if (this.introLeft > 0) {
+      this.introLeft = Math.max(0, this.introLeft - dt);
+      if (this.introLeft === 0) this.patchHud({ introducing: false });
+    }
+
     if (this.world && this.config && this.local) {
       // Aim updates every frame, not every tick, so the crosshair never feels
-      // capped at the simulation rate.
-      this.updateAim();
+      // capped at the simulation rate. Not while the intro holds them: the
+      // character is facing the camera on purpose, and a cursor that had drifted
+      // across the window would spin them the moment the frame opened.
+      if (this.introLeft === 0) this.updateAim();
 
       this.accumulator += dt;
       const step = this.config.dt;
@@ -519,12 +557,23 @@ export class Game {
   /**
    * Current keys + aim as a packet. Sequence 0 means "scratch, never sent".
    *
-   * `shoot` is masked in a safe zone rather than filtered at the input layer:
-   * the server drops it there too (see `Room.handle_shooting`), and the mask
-   * has to be on the packet or prediction would draw a tracer the server never
-   * fired.
+   * Two masks, both applied HERE rather than at the input layer. `shoot` is
+   * dropped in a safe zone because the server drops it too (see
+   * `Room.handle_shooting`), and everything is dropped during the arrival hold
+   * — the packet is what prediction replays, so a key filtered anywhere else
+   * would still move the character locally and then be yanked back.
    */
   private liveInput(sequence = 0): InputPacket {
+    if (this.introLeft > 0) {
+      return {
+        type: 'input',
+        sequence,
+        movement: { up: false, down: false, left: false, right: false },
+        aim: { x: INTRO_AIM_X, y: INTRO_AIM_Y },
+        shoot: false,
+        lantern: this.lantern.on,
+      };
+    }
     return {
       type: 'input',
       sequence,
@@ -869,6 +918,10 @@ export class Game {
     const config = this.config;
 
     this.patchHud({
+      // Republished every HUD tick rather than once at the end of the hold: the
+      // store is a snapshot, and a one-shot flip would be lost if a reconnect
+      // rewrote the snapshot underneath it.
+      introducing: this.introLeft > 0,
       vitals:
         meta && local && config
           ? {

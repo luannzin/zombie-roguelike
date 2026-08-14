@@ -26,8 +26,11 @@ and nowhere near the frame loop.
 - All four corners live inside `HudScreen`, which curves and tears the overlay.
   A panel placed outside that wrapper visibly floats off the glass.
 - `ZoneTitle` is the one thing allowed to own the whole screen, and only for a
-  moment. It is cut to the camera's arrival in `game/game.ts` — the durations
-  in the component, the `zone-*` keyframes and ARRIVAL_TIME move together.
+  moment. It plays into a deliberately EMPTY frame: `Hud` drops its four
+  corners to zero opacity while `snapshot.introducing` is set, and the game is
+  holding the player still at the same time. The durations in the component,
+  the `zone-*` keyframes and INTRO_TIME in `game/game.ts` are one timeline —
+  the card has to clear before the corners come back.
 - A control a zone forbids is shown DISABLED, never hidden. `BatteryGauge` in
   the camp still answers "how much light am I carrying into the night"; only
   its readout changes, and a refused keypress kicks the panel instead of doing

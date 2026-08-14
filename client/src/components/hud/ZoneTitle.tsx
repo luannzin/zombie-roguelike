@@ -8,8 +8,19 @@
  * It lands on the beat the camera stops. The lobby performs the push-in onto
  * your character (see `game/lobby-scene.ts`) and the arena mounts on the frame
  * it finishes, which is when this mounts too — motion settles, then the day is
- * named. It deliberately does not run DURING the move: a title over a travelling
- * camera is two things asking to be read at once.
+ * named. It deliberately does not run DURING the move: a title over a
+ * travelling camera is two things asking to be read at once.
+ *
+ * It plays into an EMPTY frame. `game.ts` holds the player still and facing the
+ * camera for INTRO_TIME and the HUD keeps its corners off the glass for the
+ * same beat, so for three seconds the screen is the clearing, one character
+ * standing in it, and the day's name. That is the whole point of the card: it
+ * is not a caption over gameplay, it is the moment the player is told where
+ * they are before they are allowed to go anywhere.
+ *
+ * Everything FADES. An earlier version wiped and flickered the type in, which
+ * read as a title sequence rather than as arriving somewhere quiet — the camp
+ * is the calm before the night, and the card should feel like it.
  *
  * Four parts, and each one is doing a job:
  *
@@ -17,18 +28,14 @@
  *             dim — the point is to make the type legible over a live scene
  *             while leaving the middle of the frame, where the character is,
  *             completely clear.
- *   RULE      a hairline that draws out from the centre before the words land.
- *             It is what makes the title arrive rather than appear.
- *   TITLE     big, wide-tracked, revealed by a wipe. It also flickers once as
- *             it settles, on the same generator-that-is-not-coping idea the
- *             menu sign uses.
- *   SUBTITLE  the smaller line, held back a beat so the two are read in order.
- *   SWEEP     one bright band travelling across the type, once. A title that
- *             merely fades in is a subtitle; the sweep is what makes it an
- *             announcement.
+ *   RULES     hairlines that draw out from the centre, one above and one below.
+ *             They are what make the title arrive rather than appear.
+ *   TITLE     big, wide-tracked, rising a few pixels as it fades up.
+ *   SUBTITLE  the smaller line, held back a beat so the two are read in order,
+ *             its tracking closing as it settles.
  *
  * Everything is CSS keyframes on a mount, not per-frame state: the whole card
- * exists for two seconds and React must never be in the frame loop (see the
+ * exists for three seconds and React must never be in the frame loop (see the
  * HUD contract in components/AGENTS.md). Remounting on `key` is what replays it.
  */
 
@@ -36,10 +43,13 @@ import { useEffect, useState } from 'react';
 import type { HudArrival } from '../../game/hud-store';
 
 /**
- * How long the card stays mounted, in ms. Comfortably past the camera's
- * ARRIVAL_TIME so the type finishes clearing after the push-in has settled.
+ * How long the card stays mounted, in ms.
+ *
+ * Cut against INTRO_TIME in game/game.ts: the type has to be gone BEFORE the
+ * controls come back, so the HUD rises into an empty frame instead of arriving
+ * underneath a title. Lengthening one without the other closes that gap.
  */
-const CARD_MS = 3400;
+const CARD_MS = 3000;
 
 export interface ZoneTitleProps {
   arrival: HudArrival | null;
@@ -70,19 +80,18 @@ export function ZoneTitle({ arrival }: ZoneTitleProps) {
           the character the camera is pushing onto is never behind a scrim. */}
       <div className="animate-zone-wash absolute inset-0 bg-[linear-gradient(to_bottom,var(--surface)_0%,transparent_38%,transparent_62%,var(--surface)_100%)] opacity-0" />
 
-      <div className="relative flex flex-col items-center gap-3">
-        <div className="animate-zone-rule bg-ink-accent h-px w-0" />
+      <div className="relative flex flex-col items-center gap-4">
+        <div className="animate-zone-rule bg-panel-border h-px w-0" />
 
-        <h2 className="animate-zone-title pixel-text text-ink relative overflow-hidden text-[44px] leading-[48px] tracking-[0.22em] uppercase opacity-0 drop-shadow-[0_3px_0_var(--hud-text-shadow)]">
+        <h2 className="animate-zone-title pixel-text text-ink text-[44px] leading-[48px] tracking-[0.22em] uppercase opacity-0 drop-shadow-[0_3px_0_var(--hud-text-shadow)]">
           {arrival.zone.title}
-          <span className="animate-zone-sweep pointer-events-none absolute inset-0 bg-[linear-gradient(100deg,transparent_38%,var(--ink-accent)_50%,transparent_62%)] mix-blend-overlay" />
         </h2>
 
         <p className="animate-zone-subtitle pixel-text text-ink-accent text-[22px] leading-[26px] tracking-[0.34em] uppercase opacity-0">
           {arrival.zone.subtitle}
         </p>
 
-        <div className="animate-zone-rule bg-panel-border h-px w-0 [animation-delay:120ms]" />
+        <div className="animate-zone-rule bg-panel-border h-px w-0 [animation-delay:140ms]" />
       </div>
     </div>
   );

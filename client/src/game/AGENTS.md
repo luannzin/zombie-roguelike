@@ -50,9 +50,20 @@ seam React is allowed to read.
 - Positions arrive as the CENTRE of a collision box, the way a snapshot carries
   them; the scene converts to a contact point with `config.playerHalfHeight`.
   Getting that wrong is a party floating above their own shadows.
-- The lobby's zoom is `render/framing.campZoom`, the same scale the arena's
-  arrival opens on. They must not diverge, or pressing start cuts to a
-  different picture of the same clearing.
+- **The lobby performs the transition, not the arena.** `beginLaunch` drifts the
+  camera from the fire onto the local player, takes the anchor back to centre
+  and pushes from `campZoom` to `ARENA_ZOOM`, all on one smootherstep — so the
+  last frame this scene draws is pixel-for-pixel the first frame the arena
+  draws, and `Camera` has no arrival code at all. The screen swap waits for the
+  move to land (see `screens/RoomScreen`), never for the `welcome`.
+- The lobby's canvas is FULL SCREEN with the chrome floating over it, for the
+  same reason: the arena's canvas is the whole window, so a lobby canvas in a
+  column beside a sidebar would shift the world sideways at the handover no
+  matter how well the camera matched.
+- The lobby runs the arena's `FovField` and `DarknessLayer` over the same
+  bonfire light, in the arena's pass order. Nothing here may draw its own
+  version of the night — the camp has to be lit identically before and after
+  the run starts, and it is, by being lit by the same code.
 - The **hearth** is the fire plus the seat ring, and nothing decorative stands
   in it: the map generator refuses trees and rocks there, and a `TerrainLayer`
   decoration mask (`world.hearthMask`) refuses grass and ferns. Both measure on
@@ -91,10 +102,16 @@ seam React is allowed to read.
 - The zone also masks `shoot` on the outgoing packet. The server drops it too,
   and the mask has to be on the packet or prediction draws a tracer that was
   never fired.
+- Entering a zone HOLDS the player for `INTRO_TIME`: movement and aim are
+  masked on the outgoing packet (not at the input layer, or prediction would
+  move them locally and yank them back), the character faces the camera, and
+  the HUD keeps its corners off the glass. What is on screen for that beat is
+  the place, one character standing in it, and the day's name — then the
+  controls and the chrome return together.
 - Entering a zone is announced ONCE, through `hud-store.arrival`, keyed by the
-  zone key. `game.ts` cuts the camera's arrival (ARRIVAL_TIME) and the title
-  card to the same beat; changing one without the other leaves a caption
-  hanging over gameplay or a silent zoom.
+  zone key; `introducing` says whether the hold is still running. INTRO_TIME,
+  `CARD_MS` in `hud/ZoneTitle` and the `zone-*` keyframes are one timeline. The
+  card must clear BEFORE the hold ends, or the HUD rises under the title.
 
 ## Work Guidance
 

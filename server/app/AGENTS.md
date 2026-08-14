@@ -16,8 +16,8 @@ game's scale.
 | `simulation.py` | movement + tile collision — mirrored by the client |
 | `combat.py` | hitscan raycast, entity-agnostic |
 | `entities.py` | `Player`, `InputCmd` (includes the lantern switch, relayed not simulated) |
-| `enemies.py` | `EnemyType` stat blocks, live `Enemy` instances |
-| `ai.py` | enemy steering/attack + the spawn director |
+| `enemies.py` | `EnemyType` stat blocks (incl. the sight cone), live `Enemy` |
+| `ai.py` | enemy senses, patrol/hunt/return, steering/attack, the director |
 | `pathing.py` | BFS flow field, one per player |
 | `coins.py` | dropped gold: burst, magnet, collection |
 | `world.py` | tile grid, tile alphabet, collision queries |
@@ -52,6 +52,30 @@ game's scale.
   is connected.
 - Damage from melee is rate-limited per victim (`MELEE_IMMUNITY`), not per
   attacker. Do not add a damage path that bypasses it.
+- **An enemy chases nothing it has not noticed.** `Enemy.mode` is `idle`
+  (patrol a leash around `home`), `hunt`, or `return`, and `Enemy.awareness` is
+  the 0..1 meter between the first two. It fills while a living player stands
+  inside the creature's SIGHT CONE (`EnemyType.view_tiles` / `view_degrees`,
+  occluded by the tile grid, tested in `ai.look`), faster the closer they are,
+  and is PINNED at 1 for the whole hunt — a meter that sagged behind cover
+  would flicker the cone back to calm while the thing was still coming.
+  `aggro_range` is now the give-up distance, not the notice distance.
+- Awareness also arrives from three places that are not the creature's own
+  eyes, and all three go through `ai.commit`: a neighbour's shout (one hop,
+  `ENEMY_ALERT_SHARE_DIST` — a chain would wake the map), an `ai.Noise`, and
+  `ai.alarm` when the room applies damage. Getting shot in the back must wake
+  it; do not add a damage path that skips `alarm`.
+- **`ai.Noise` is the sound system's only shape.** The room collects them
+  during a tick (`Room.noises`) and `ai.update` consumes them; they are
+  cleared every tick, and a noise that survived one would keep waking whatever
+  wandered into it. A gunshot is the only source so far — the next one is an
+  append with a different radius, never a second mechanism.
+- Enemies arrive as a GROUP (`ENEMY_GROUP_SIZES`, weighted): one landing spot,
+  members scattered around it, each taking its own tile as `home`. The
+  director places an occupied patch of forest, not a wave aimed at the party.
+- Only what moves goes on the tick row, and `aw` earns its place: the client
+  paints the cone from it every frame. Cone geometry is per-type and rides
+  `welcome.config.enemyTypes`.
 - `rooms.py` owns every live `Room`. Nothing else may hold one past the request
   that fetched it — a reference kept elsewhere outlives `rooms.drop()` and keeps
   a tick task alive after the last player left.
@@ -91,7 +115,9 @@ game's scale.
 ## Work Guidance
 
 - Adding a creature = one `EnemyType`, a `SPAWN_TABLE` weight, and a processed
-  sprite folder of the same name. It must require no client change.
+  sprite folder of the same name. It must require no client change — its sight
+  cone is two more fields on the same stat block, and the client draws
+  whatever they say.
 - Adding a zone = one `zones.Zone` and whatever builds its map. Its title card,
   its safety and its lighting rules are all data; the client needs no change to
   announce or obey a new one. A forest's subtitle is `night_clock()` — a time

@@ -129,6 +129,14 @@ export interface EnemyTypeConfig {
   spriteHeight: number;
   halfWidth: number;
   halfHeight: number;
+  /**
+   * The sight cone the server tests against: reach in world px, full width in
+   * degrees, both measured off the creature's own facing (`ax`/`ay`). The
+   * client draws this exact wedge — an illustration that did not match would
+   * teach the player a rule the simulation does not follow.
+   */
+  viewRange: number;
+  viewDegrees: number;
 }
 
 export interface MapPayload {
@@ -208,10 +216,17 @@ export interface EnemyState {
   y: number;
   vx: number;
   vy: number;
-  /** normalized facing */
+  /** normalized facing — and so where its sight cone points */
   ax: number;
   ay: number;
   hp: number;
+  /**
+   * 0..1 how much of the party this enemy has noticed. It fills while somebody
+   * stands in its sight cone, and is pinned at 1 for as long as it is hunting.
+   * The cone is drawn from this: white when idle, orange while it is working
+   * you out, red once it has committed.
+   */
+  aw: number;
 }
 
 /**

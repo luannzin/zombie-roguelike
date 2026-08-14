@@ -53,7 +53,11 @@ Snapshot arrays:
   roster    the same players with their name, colour and score board, sent
             every ROSTER_EVERY_N_TICKS and on any membership change. A client
             caches it: those fields feed a 5 Hz HUD and never change per tick
-  enemies   live enemies only; `t` keys into welcome.config.enemyTypes
+  enemies   live enemies only; `t` keys into welcome.config.enemyTypes.
+            `aw` is the 0..1 detection meter — it fills while a player stands
+            in the creature's sight cone and is pinned at 1 while it hunts.
+            The client colours the cone with it; the cone's own reach and
+            width are per-type and ride the config, not the tick
   coins     live gold pickups (one per gold point dropped)
   shots     hitscan tracers fired since the last snapshot
   attacks   enemy melee swings; `dmg` is 0 when the victim's i-frames ate it

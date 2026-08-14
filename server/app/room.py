@@ -49,6 +49,7 @@ from .config import (
     RESPAWN_IMMUNITY,
     ROSTER_EVERY_N_TICKS,
     SHOT_DAMAGE,
+    SHOT_NOISE_DIST,
     SHOT_RANGE,
     SNAPSHOT_EVERY_N_TICKS,
     SPAWN_RING,
@@ -101,6 +102,10 @@ class Room:
         self.navigator = Navigator(self.world)
         self.tick = 0
         self.shot_events: list[dict] = []
+        #: Things enemies can HEAR, made this tick and consumed by the next
+        #: `ai.update`. A gunshot is the only source so far; anything else the
+        #: player does loudly is one more append (see `ai.Noise`).
+        self.noises: list[ai.Noise] = []
         self.attack_events: list[dict] = []
         self.kill_events: list[dict] = []
         self.pickup_events: list[dict] = []
@@ -331,6 +336,7 @@ class Room:
         self.director = EnemyDirector(self.spawn_points)
         self.enemies.clear()
         self.coins.clear()
+        self.noises.clear()
         for player in self.players.values():
             player.ready = False
             player.x, player.y = self.pick_spawn()
@@ -478,10 +484,19 @@ class Room:
         # pack to advance. Checked here rather than in `step` so a zone that
         # turns hostile mid-run still finishes whatever is already on the map.
         if not self.zone.hostile and not self.enemies:
+            self.noises.clear()
             return
         outcome = ai.update(
-            self.enemies.values(), self.players.values(), self.world, self.navigator, dt
+            self.enemies.values(),
+            self.players.values(),
+            self.world,
+            self.navigator,
+            dt,
+            self.noises,
         )
+        # Heard once. A noise that survived the tick would keep waking whatever
+        # walked into its radius long after the sound was over.
+        self.noises.clear()
         for attack in outcome.attacks:
             self.resolve_attack(attack)
         for stranded in outcome.despawned:
@@ -545,6 +560,12 @@ class Room:
     def fire(self, shooter: Player, dx: float, dy: float) -> None:
         ox = shooter.x + dx * MUZZLE_OFFSET
         oy = shooter.y + dy * MUZZLE_OFFSET
+        # A gun is loud. Everything in earshot that has not already noticed
+        # somebody now has a direction to look in — and, close enough to the
+        # muzzle, a person to walk at. See ai.Noise.
+        self.noises.append(
+            ai.Noise(x=shooter.x, y=shooter.y, radius=SHOT_NOISE_DIST, source_id=shooter.id)
+        )
         # Players and enemies share one target list: the capsule contract is
         # identical, so the ray does not care which kind it hits.
         targets = [*self.players.values(), *self.enemies.values()]
@@ -606,6 +627,9 @@ class Room:
         if not target.alive:
             return
         target.hp -= amount
+        # Shot in the back is still shot: damage wakes it regardless of where
+        # its sight cone happens to be pointing.
+        ai.alarm(target, source)
         if target.hp > 0:
             return
 

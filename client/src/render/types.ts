@@ -51,6 +51,15 @@ export interface DrawableEntity {
    * Teammates are always 1: you are never hunting your own party.
    */
   visibility: number;
+  /**
+   * 0..1 how much this enemy has noticed the party — the colour and the reach
+   * of its sight cone, and whether it wears an alert mark. Always 0 for
+   * players, who have no cone: `viewRange` 0 is what skips them.
+   */
+  awareness: number;
+  /** Sight cone reach in world px and full width in degrees. 0 draws nothing. */
+  viewRange: number;
+  viewDegrees: number;
   /** Visual kick (world px). Recoil for players, attack lunge for enemies. */
   recoilX: number;
   recoilY: number;

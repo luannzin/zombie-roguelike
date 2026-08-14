@@ -19,6 +19,7 @@ import {
   drawShadow,
   type EntityContext,
 } from './layers/entities';
+import { drawAlertMarks, drawVisionCones } from './layers/vision';
 import { AtmosphereLayer } from './layers/atmosphere';
 import { DarknessLayer } from './layers/darkness';
 import { TerrainLayer, type DecorationMask } from './layers/terrain';
@@ -89,9 +90,13 @@ export class Renderer {
 
     this.clear();
 
-    // World space: floor, swaying undergrowth, props, then footstep dust.
+    // World space: floor, then what is painted ON the floor — enemy sight
+    // cones and footstep dust. The cones go under the bodies and under the
+    // darkness on purpose: a cone reaching into the dark has to fade out with
+    // the ground it is lying on.
     this.useWorldSpace(view.zoom, view.offsetX, view.offsetY);
     this.terrain.ground(ctx, state.world, state.camera, state.time);
+    drawVisionCones(ctx, state.entities, state.time, view.zoom);
     drawDust(ctx, state.effects);
 
     // Screen space: coins under characters, then everything that STANDS on the
@@ -154,6 +159,7 @@ export class Renderer {
     // Screen space: labels, numbers, then the full-screen vignette.
     this.useScreenSpace();
     drawNameLabels(entity, state.entities);
+    drawAlertMarks(entity, state.entities, state.time);
     drawTextFloats(ctx, state.effects, view);
     drawVignette(ctx, this.canvas.width, this.canvas.height, state.danger, state.time);
   }

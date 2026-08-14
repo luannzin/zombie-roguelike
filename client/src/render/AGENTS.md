@@ -18,8 +18,9 @@ mutation, no React.
 | `terrain.ts` | terrain atlas loading (ground, props, the animated campfire) |
 | `vfx.ts` | effect atlas loading: one-shot animation sheets |
 | `fov.ts` | shared field of view — `light` and `heat` fields |
+| `layers/vision.ts` | the ENEMY's sight cone and its alert mark |
 | `minimap.ts` | the minimap canvas |
-| `layers/` | the actual drawing: terrain, entities, effects, atmosphere, darkness, vignette |
+| `layers/` | the actual drawing: terrain, entities, vision, effects, atmosphere, darkness, vignette |
 
 ## Local Contracts
 
@@ -29,7 +30,20 @@ mutation, no React.
   `layers/`. **The pass order is the atmosphere** — ground → dust → entities
   (depth-sorted by `y`) → overgrowth → motes → darkness → combat effects →
   labels → vignette. Effects go over the darkness because a muzzle flash is a
-  light source, not a thing being lit.
+  light source, not a thing being lit. Enemy sight cones go in just after the
+  ground and the alert marks in with the labels — see below.
+- **`fov.ts` is what the PLAYERS can see; `layers/vision.ts` is what an ENEMY
+  can.** Unrelated systems: the first is a client-side tile field that decides
+  what is drawn at all, the second draws the wedge the SERVER is already
+  testing against (`ai.look`), from the reach and width on the creature's stat
+  block and the `aw` meter on its snapshot row. Do not re-derive that cone
+  here — a tell that does not match the rule is worse than no tell.
+- A sight cone is drawn on the FLOOR, before the darkness pass, and scaled by
+  the enemy's own `visibility`. Both halves matter: a cone reaching into the
+  dark has to fade with the ground it lies on, and painting the cone of
+  something hidden in the dark would hand the player sonar and undo the
+  lantern. The alert mark is the exception — a glyph on the font grid, drawn
+  in screen space with the labels, over the darkness.
 - Vision is a client-side visual system: the server broadcasts the whole world.
   `fov.ts` produces two fields — `light` saturates at 1 (visibility), `heat`
   keeps climbing (warmth, drawn as additive amber). Shared vision is a `max()`

@@ -167,6 +167,68 @@ ENEMY_SPAWN_MAX_TILES = 15.0
 # How hard packed enemies push each other apart (see ai.separation).
 ENEMY_SEPARATION_TILES = 0.75
 
+# Enemies arrive as a GROUP, not one at a time. A lone shambler is a chore; two
+# to four sharing a patch of forest is an encounter you have to decide about
+# before it decides about you. Weights are relative, matched index for index.
+ENEMY_GROUP_SIZES = (1, 2, 3, 4)
+ENEMY_GROUP_WEIGHTS = (4.0, 3.0, 2.0, 1.5)
+# How far apart a group's members land, in tiles. They wander around their OWN
+# landing spot afterwards, so this is also roughly how loose the pack stays.
+ENEMY_GROUP_SPREAD_TILES = 2.5
+
+# --- enemy senses (authored in tiles/seconds) --------------------------------
+# An enemy that has not noticed anybody does not chase: it patrols the ground it
+# spawned on. Being seen is a real event with a real cost, which is what makes
+# the lantern a decision instead of a light switch.
+#
+# The cone itself is per-creature (`EnemyType.view_tiles` / `view_degrees`), for
+# the same reason speed and damage are. Everything below applies to all of them.
+
+# How long a player has to stand in the cone before the enemy commits. Scales
+# with distance: right in its face is nearly instant, the far edge of the cone
+# takes its time. Both are short enough that walking through a cone is a
+# mistake, long enough that clipping the edge is survivable.
+ENEMY_NOTICE_NEAR = 0.18     # seconds to be spotted at touching distance
+ENEMY_NOTICE_FAR = 1.1       # seconds to be spotted at the edge of the cone
+# How fast suspicion drains once nobody is in the cone any more.
+ENEMY_FORGET_RATE = 0.5      # awareness per second
+
+# A hunter that has not had eyes on its target for this long goes home. It keeps
+# walking to where it last saw them for the whole window, which is what stops a
+# corner from being a hard off-switch.
+ENEMY_LOSE_DELAY = 4.0
+# How far from HOME an enemy will chase before it turns around. Past this it
+# stops being a patrol that got interrupted and starts being a conga line.
+ENEMY_LEASH_TILES = 22.0
+# The patrol: how far from its spawn point an idle enemy will drift, and how
+# long it stands still between legs.
+ENEMY_HOME_TILES = 3.5
+ENEMY_WANDER_PAUSE_MIN = 1.0
+ENEMY_WANDER_PAUSE_MAX = 3.5
+# Patrol pace, as a fraction of the creature's own speed. A shamble, not a jog —
+# the difference between a wandering enemy and a hunting one has to be legible
+# from across the clearing.
+ENEMY_WANDER_SPEED_SCALE = 0.42
+# Close enough to a patrol waypoint (or to home) to call it arrived.
+ENEMY_ARRIVE_TILES = 0.6
+
+# One enemy spotting you is every enemy near it spotting you. The shout is a
+# single hop on purpose: a chain would walk across the whole map from one
+# careless step, and a fight you cannot disengage from is not a fight.
+ENEMY_ALERT_SHARE_TILES = 8.0
+
+# --- noise (authored in tiles) ----------------------------------------------
+# Anything the player does that an enemy can HEAR emits one of these. Only the
+# gunshot exists so far; footsteps, doors and thrown objects are the same shape
+# (`ai.Noise`) with a different radius, which is the whole reason this is a list
+# on the room and not a flag on the shot event.
+#
+# A noise fills awareness by `1 + spare` at its centre and tapers to nothing at
+# the rim, so the middle of the blast is an instant hunt and the outer band only
+# makes heads turn.
+SHOT_NOISE_TILES = 16.0
+NOISE_ALERT_GAIN = 1.45
+
 # Navigation. An enemy walks straight at its target while it has a clear
 # body-width corridor within this range, and follows the flow field otherwise
 # (see pathing.py). The cap bounds how far the clearance rays are traced.
@@ -188,6 +250,12 @@ ENEMY_SPAWN_MAX_DIST = TILE_SIZE * ENEMY_SPAWN_MAX_TILES
 ENEMY_SEPARATION = TILE_SIZE * ENEMY_SEPARATION_TILES
 ENEMY_DESPAWN_DIST = TILE_SIZE * ENEMY_DESPAWN_TILES
 ENEMY_DIRECT_SIGHT_DIST = TILE_SIZE * ENEMY_DIRECT_SIGHT_TILES
+ENEMY_GROUP_SPREAD = TILE_SIZE * ENEMY_GROUP_SPREAD_TILES
+ENEMY_LEASH_DIST = TILE_SIZE * ENEMY_LEASH_TILES
+ENEMY_HOME_DIST = TILE_SIZE * ENEMY_HOME_TILES
+ENEMY_ARRIVE_DIST = TILE_SIZE * ENEMY_ARRIVE_TILES
+ENEMY_ALERT_SHARE_DIST = TILE_SIZE * ENEMY_ALERT_SHARE_TILES
+SHOT_NOISE_DIST = TILE_SIZE * SHOT_NOISE_TILES
 
 # --- progression -------------------------------------------------------------
 # Levels are derived from total xp by the server and sent already split into

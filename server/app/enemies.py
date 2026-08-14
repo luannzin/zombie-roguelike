@@ -27,6 +27,7 @@ Adding a creature:
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 
 from .config import (
@@ -53,12 +54,20 @@ class EnemyType:
     gold: int
 
     speed_tiles: float
-    #: How far it notices a player. Beyond this it stands still.
+    #: How far it will keep chasing a target it has already committed to.
+    #: NOT how far it notices one — that is the sight cone below.
     aggro_tiles: float
     #: Centre-to-centre distance at which it can swing.
     attack_range_tiles: float
     #: Seconds between its own swings (its personal rate limit).
     attack_cooldown: float
+
+    #: SIGHT CONE. How far it can see, and how wide, measured off its facing.
+    #: This is the only way an enemy finds a player on its own — everything
+    #: else (a shout from a neighbour, a gunshot, being shot) is somebody
+    #: else's cone doing the work. The client draws this exact wedge.
+    view_tiles: float = 9.0
+    view_degrees: float = 100.0
 
     hit_tiles_r: float = PLAYER_HIT_TILES_R
     sprite_tiles_h: float = SPRITE_TILES_H
@@ -94,6 +103,15 @@ class EnemyType:
     def half_height(self) -> float:
         return TILE_SIZE * self.box_tiles_h / 2
 
+    @property
+    def view_range(self) -> float:
+        return TILE_SIZE * self.view_tiles
+
+    @property
+    def view_cos(self) -> float:
+        """Cosine of the cone's HALF angle — the alignment test's threshold."""
+        return math.cos(math.radians(self.view_degrees) / 2)
+
     def client_payload(self) -> dict:
         """What the client needs: art, hit geometry, and numbers it displays."""
         return {
@@ -108,6 +126,10 @@ class EnemyType:
             "spriteHeight": self.sprite_height,
             "halfWidth": self.half_width,
             "halfHeight": self.half_height,
+            # The sight cone, so the client can draw the wedge the server is
+            # actually testing against rather than an illustration of one.
+            "viewRange": self.view_range,
+            "viewDegrees": self.view_degrees,
         }
 
 
@@ -119,9 +141,13 @@ ZOMBIE = EnemyType(
     xp=12,
     gold=3,
     speed_tiles=2.6,    # vs the player's 4.4 — always outrunnable
-    aggro_tiles=24.0,   # most of the arena: a zombie you can see is coming
+    aggro_tiles=24.0,   # once it has you, most of the arena is not far enough
     attack_range_tiles=0.85,
     attack_cooldown=1.1,
+    # Shorter than the lantern reaches (11 tiles), and wide: you can see a
+    # zombie before it can see you, but only if you are looking at it.
+    view_tiles=8.5,
+    view_degrees=100.0,
 )
 
 ENEMY_TYPES: dict[str, EnemyType] = {ZOMBIE.key: ZOMBIE}
@@ -151,6 +177,13 @@ class Enemy:
     aim_y: float = 1.0
     alive: bool = True
 
+    #: 0..1 how much of a player it has noticed. Below 1 it is only suspicious
+    #: and stays on its patrol; at 1 it is hunting, and it is PINNED there for
+    #: as long as the hunt lasts (see ai.py). The client colours the sight cone
+    #: with this — white, through orange, to red — so the number the simulation
+    #: is deciding on is the number the player is watching.
+    awareness: float = 0.0
+
     # server bookkeeping (never sent verbatim)
     attack_cooldown: float = 0.0
     target_id: str | None = None
@@ -159,9 +192,34 @@ class Enemy:
     #: Seconds spent making no headway; switches steering to the flow field.
     stuck: float = 0.0
 
+    #: What it is doing: one of ai.MODE_*. Never sent — `awareness` is the only
+    #: thing the client needs, and a patrolling enemy and one walking home look
+    #: exactly alike.
+    mode: str = "idle"
+    #: Where it spawned. It patrols around this and comes back to it, so the
+    #: map keeps the shape the director gave it instead of draining toward
+    #: whoever fired last.
+    home_x: float = 0.0
+    home_y: float = 0.0
+    #: Current patrol waypoint (None = standing still) and how long it stands.
+    wander_x: float | None = None
+    wander_y: float | None = None
+    wander_wait: float = 0.0
+    #: Seconds since a hunter last had eyes on its target. It keeps walking to
+    #: the last known position for the whole window, so breaking line of sight
+    #: buys distance, not an instant off-switch.
+    lost: float = 0.0
+    last_seen_x: float = 0.0
+    last_seen_y: float = 0.0
+
     def __post_init__(self) -> None:
         if self.hp <= 0:
             self.hp = self.type.max_hp
+        # Spawning IS being placed at home; a zero here would send the whole
+        # first wave walking to the top-left corner of the map.
+        if self.home_x == 0.0 and self.home_y == 0.0:
+            self.home_x = self.x
+            self.home_y = self.y
 
     # --- hit capsule (same contract as Player) -------------------------------
     @property
@@ -191,4 +249,7 @@ class Enemy:
             "ax": round(self.aim_x, 3),
             "ay": round(self.aim_y, 3),
             "hp": self.hp,
+            # The sight cone's colour and reach. Two decimals is under a
+            # percent of the meter — finer than the client can paint.
+            "aw": round(self.awareness, 2),
         }

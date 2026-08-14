@@ -73,6 +73,13 @@ export interface Palette {
   minimap: { localRing: string; enemy: string; fog: string; unseen: string };
 
   /**
+   * The enemy sight cone's three stops, as `[r, g, b]`: the layer mixes between
+   * them on the awareness meter and picks its own alpha, so a colour string
+   * would be the wrong shape. `mark` is the glyph over a committed hunter.
+   */
+  enemyView: { calm: Channels; alert: Channels; hunt: Channels; mark: string };
+
+  /**
    * Lighting tones as `[r, g, b]`. The darkness layer writes raw ImageData
    * bytes, so it needs channels, not a CSS colour string.
    */
@@ -174,6 +181,13 @@ function resolve(): Palette {
       enemy: v('--minimap-enemy'),
       fog: v('--minimap-fog'),
       unseen: v('--minimap-unseen'),
+    },
+
+    enemyView: {
+      calm: rgb('--enemy-view-calm'),
+      alert: rgb('--enemy-view-alert'),
+      hunt: rgb('--enemy-view-hunt'),
+      mark: v('--enemy-alert-mark'),
     },
 
     night: { shadow: rgb('--night-shadow'), lantern: rgb('--night-lantern') },

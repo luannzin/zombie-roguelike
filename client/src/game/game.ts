@@ -952,6 +952,10 @@ export class Game {
       isLocal: source.isLocal,
       // Teammates are never hidden by the dark; only enemies are.
       visibility: 1,
+      // Players notice nothing and see no cone — that is their own fov field.
+      awareness: 0,
+      viewRange: 0,
+      viewDegrees: 0,
       hitFlash: this.visuals.hitFlashAmount(id),
       recoilX: recoil.x,
       recoilY: recoil.y,
@@ -1003,6 +1007,11 @@ export class Game {
       isLocal: false,
       // Overwritten by applyVisibility once the light field is current.
       visibility: 0,
+      // The detection meter and the wedge it colours. A server too old to send
+      // either leaves the cone off rather than inventing one.
+      awareness: enemy.aw ?? 0,
+      viewRange: type.viewRange ?? 0,
+      viewDegrees: type.viewDegrees ?? 0,
       hitFlash: this.visuals.hitFlashAmount(id),
       recoilX: recoil.x,
       recoilY: recoil.y,

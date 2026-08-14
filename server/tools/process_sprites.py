@@ -188,13 +188,19 @@ def process(args) -> Path:
     for row_index, view in enumerate(SOURCE_ROWS):
         cells = []
         for cell in keyed[row_index]:
-            if shared is not None:
-                cell = cell.crop(shared)
+            if args.exact:
+                # Source already composed at the target grid — keep the artist's
+                # placement instead of re-cropping and re-centring each frame.
+                if cell.size != (width, height):
+                    cell = cell.resize((width, height), Image.NEAREST)
             else:
-                cell = crop_to_content(cell)
-            cell = normalize(
-                cell, width, height, args.bottom_pad, args.filter, args.alpha_threshold
-            )
+                if shared is not None:
+                    cell = cell.crop(shared)
+                else:
+                    cell = crop_to_content(cell)
+                cell = normalize(
+                    cell, width, height, args.bottom_pad, args.filter, args.alpha_threshold
+                )
             cells.append(cell)
         frames[view] = cells
 
@@ -254,6 +260,12 @@ def main() -> None:
     ap.add_argument("--alpha-threshold", type=int, default=128,
                     help="0 disables; otherwise alpha is forced to 0 or 255")
     ap.add_argument("--bottom-pad", type=int, default=0)
+    ap.add_argument(
+        "--exact",
+        action="store_true",
+        help="source cell is already composed at the target grid: straight NEAREST "
+             "downscale, no crop / rescale / re-centre (art drawn at an integer multiple)",
+    )
     ap.add_argument(
         "--uniform",
         action="store_true",

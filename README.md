@@ -162,13 +162,15 @@ remote players always light at full output.
 
 Source art is a 3×3 sprite sheet on solid magenta (`assets/raw/`). The pipeline
 keys out the magenta, crops, normalizes, mirrors the side frames and packs a
-production sheet into `assets/processed/`. The game only ever reads
+production sheet into `assets/processed/`. Art already composed at an integer
+multiple of the target frame passes `--exact`, which skips the crop/normalize
+step so the artist's placement survives verbatim. The game only ever reads
 `assets/processed/` (Vite serves it as its `publicDir`).
 
 ```bash
 cd server
 ./.venv/bin/python tools/make_placeholder_sheet.py --name player   # regenerate placeholder raw art
-./.venv/bin/python tools/process_sprites.py --name player --tile 16
+./.venv/bin/python tools/process_sprites.py --name player --tile 16 --side-facing left --exact
 
 ./.venv/bin/python tools/make_placeholder_sheet.py --name zombie
 ./.venv/bin/python tools/process_sprites.py --name zombie --tile 16

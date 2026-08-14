@@ -63,9 +63,10 @@ game's scale.
   and never afterwards: once the simulation is running, position belongs to it.
   The walk-out is the exception: `step_depart` puppets every body, ignoring
   collision, until `embark()`.
-- VOID (`world.VOID`) is solid forest floor between trees. Players bounce off
-  it. Only the walk-out may place a body on it. The client paints ground and
-  crushes the lighting — it is a shadowed gap, not a missing texture.
+- VOID (`world.VOID`) is a winding path of solid forest floor between trees.
+  Players bounce off it. Only the walk-out may place a body on it. The carve
+  wanders and frays; the client paints ground and crushes a darkness falloff
+  around it — a shadowed gap, not a corridor and not a missing texture.
 - `{type:"ready"}` toggles `Player.ready` only when the feet are inside
   `CAMP_READY_RANGE_TILES` of the fire, the zone is camp, and the room is not
   already departing. When every living player is ready, `begin_depart()` runs.

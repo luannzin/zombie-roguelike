@@ -78,9 +78,10 @@ seam React is allowed to read.
   collision, the animated sprite, and the light. It blocks bodies but not sight
   (`blocksSight`) — left as an occluder it would shadow the half of the party
   sitting behind it, which is the one place in the camp that must be lit.
-- VOID is a gap in the treeline, not a missing floor: solid, painted as ground,
-  crushed by darkness. `blocksSight` lets light fall into it so the trees do
-  not close into a wall; the darkness pass then kills the warmth so leaked
+- VOID is a winding gap in the treeline, not a missing floor and not a
+  rectangle: solid, painted as ground, crushed by a darkness falloff.
+  `blocksSight` lets light fall into it so the trees do not close into a
+  wall; the darkness pass then kills the warmth along the path so leaked
   firelight never turns the mouth into a hallway.
 - **The summon sheet is the clock.** `SUMMON_TIME` is the sheet's
   `frames / fps` and `SUMMON_IMPACT` mirrors `IMPACT_AT` in

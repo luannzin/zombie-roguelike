@@ -40,8 +40,9 @@ mutation, no React.
   shadowcast, merged with the same `max()`.
 - Occlusion is `world.blocksSight`, not `isSolidTile`. A campfire stops a body
   and a bullet but not light. VOID is the same for light: it is a gap between
-  trees, so the beam falls in; darkness then crushes it (`VOID_NIGHT`) so the
-  gap reads as deep woods, not as a hallway.
+  trees, so the beam falls in; darkness then follows the path as a falloff
+  (`VOID_CRUSH_REACH`), not as a stamped rectangle, so it reads as a ribbon
+  of deep woods.
 - `Camera` follows the player and nothing else. The move INTO a zone belongs to
   `game/lobby-scene.ts`, which is already showing the same place when it starts;
   by the time this camera exists the push-in is over and it opens on the frame
@@ -86,8 +87,9 @@ mutation, no React.
   — `isSolidTile` treats anything that is not `FLOOR` as a wall, so "bare floor"
   can never be a tile kind. Rocks and trees are not affected; those are the
   map's decision. VOID is forest floor: the ground bake paints it, grass and
-  ferns stay off it, and the darkness pass crushes the lighting. Skipping it
-  would punch a black rectangle through the woods.
+  ferns stay off it, and the darkness pass crushes a falloff around it. The
+  tiles themselves wander and fray — a rectangle of VOID would read as a
+  corridor punched through the woods.
 - Cached bitmaps and tints are released in `Renderer.dispose()`.
 - `imageSmoothingEnabled` stays `false` — this is pixel art.
 

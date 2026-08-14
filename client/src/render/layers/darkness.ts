@@ -25,9 +25,11 @@
  * Explored-but-unlit tiles sit between the two: remembered, colourless, and
  * empty of anything that has moved since you left.
  *
- * VOID is forest floor in a gap between trees. The night pass crushes it
- * almost opaque and the warm pass is killed, so leaked firelight never turns
- * the exit into a hallway. The ground under that shadow is still the atlas.
+ * VOID is a winding path of forest floor between trees. Darkness is a
+ * falloff around those tiles, not a rectangle of them: the night pass
+ * crushes the path and a couple of tiles of woods beside it, and the warm
+ * pass dies along the same ribbon, so leaked firelight never turns the
+ * mouth into a hallway. The ground under that shadow is still the atlas.
  *
  * On top of those goes a third, unrelated pass: EVENT LIGHTS. A muzzle flash, a
  * death pop, a coin glint — each is a radial gradient added over the darkness,
@@ -48,12 +50,14 @@ const UNSEEN_ALPHA = 0.9;
 /** Darkness over ground the team has seen before but cannot see now. */
 const FOG_ALPHA = 0.66;
 /**
- * The camp exit. Even a little leaked firelight is crushed so the gap between
- * the trees reads as deep woods, not as a lit hallway.
+ * How dark the path itself goes. Even a little leaked firelight is crushed
+ * so the gap between the trees reads as deep woods, not as a lit hallway.
  */
 const VOID_NIGHT = 0.96;
 /** How much light is allowed to punch through VOID_NIGHT. Tiny on purpose. */
 const VOID_LIGHT_LEAK = 0.12;
+/** How far, in tiles, the path's darkness bleeds into the woods around it. */
+const VOID_CRUSH_REACH = 2.3;
 /**
  * Amber per unit of heat. Heat runs past 1 close to the lamp, so this is the
  * slope of the warm pass and not its ceiling — the alpha is clamped instead.
@@ -95,6 +99,9 @@ export class DarknessLayer {
   private warmData: ImageData | null = null;
   private width = 0;
   private height = 0;
+  /** 0..1 falloff around VOID. Rebuilt when the map identity changes. */
+  private pathCrush: Float32Array | null = null;
+  private crushFor: TileMap | null = null;
 
   /**
    * Additive event lights, in world space, over everything else.
@@ -174,13 +181,15 @@ export class DarknessLayer {
     const nightPixels = this.nightData.data;
     const warmPixels = this.warmData.data;
 
+    const crush = this.ensurePathCrush(world);
+    const onPath = crush.length === fov.light.length;
+
     for (let i = 0; i < fov.light.length; i++) {
       const lit = fov.light[i];
-      const tx = i % fov.width;
-      const ty = (i / fov.width) | 0;
-      const gap = world.tiles[ty][tx] === VOID;
-      const base = gap ? VOID_NIGHT : fov.explored[i] === 1 ? FOG_ALPHA : UNSEEN_ALPHA;
-      const leak = gap ? VOID_LIGHT_LEAK : 1;
+      const path = onPath ? crush[i] : 0;
+      const fog = fov.explored[i] === 1 ? FOG_ALPHA : UNSEEN_ALPHA;
+      const base = fog + (VOID_NIGHT - fog) * path;
+      const leak = 1 - (1 - VOID_LIGHT_LEAK) * path;
       const offset = i * 4;
 
       nightPixels[offset] = shadowR;
@@ -191,9 +200,10 @@ export class DarknessLayer {
       warmPixels[offset] = warmR;
       warmPixels[offset + 1] = warmG;
       warmPixels[offset + 2] = warmB;
-      warmPixels[offset + 3] = gap
-        ? 0
-        : Math.min(255, Math.round(fov.heat[i] * WARM_GAIN * 255));
+      warmPixels[offset + 3] = Math.min(
+        255,
+        Math.round(fov.heat[i] * WARM_GAIN * (1 - path) * 255),
+      );
     }
 
     night.putImageData(this.nightData, 0, 0);
@@ -215,7 +225,63 @@ export class DarknessLayer {
     this.night = this.warm = null;
     this.nightCtx = this.warmCtx = null;
     this.nightData = this.warmData = null;
+    this.pathCrush = null;
+    this.crushFor = null;
     this.width = this.height = 0;
+  }
+
+  /**
+   * How much of the exit's darkness sits on each tile. VOID is 1; woods
+   * within VOID_CRUSH_REACH fall off with a smoothstep, so the path reads
+   * as a ribbon through the trees instead of as a stamped block.
+   */
+  private ensurePathCrush(world: TileMap): Float32Array {
+    if (this.crushFor === world && this.pathCrush) return this.pathCrush;
+
+    const width = world.width;
+    const height = world.height;
+    const crush = new Float32Array(width * height);
+    const tiles = world.tiles;
+    let any = false;
+    for (let ty = 0; ty < height; ty++) {
+      const row = tiles[ty];
+      for (let tx = 0; tx < width; tx++) {
+        if (row[tx] === VOID) {
+          crush[ty * width + tx] = 1;
+          any = true;
+        }
+      }
+    }
+    if (any) {
+      const reach = VOID_CRUSH_REACH;
+      const span = Math.ceil(reach);
+      for (let ty = 0; ty < height; ty++) {
+        for (let tx = 0; tx < width; tx++) {
+          const i = ty * width + tx;
+          if (crush[i] === 1) continue;
+          let best = reach;
+          for (let dy = -span; dy <= span; dy++) {
+            const ny = ty + dy;
+            if (ny < 0 || ny >= height) continue;
+            const row = tiles[ny];
+            for (let dx = -span; dx <= span; dx++) {
+              const nx = tx + dx;
+              if (nx < 0 || nx >= width || row[nx] !== VOID) continue;
+              const d = Math.hypot(dx, dy);
+              if (d < best) best = d;
+            }
+          }
+          if (best < reach) {
+            const t = 1 - best / reach;
+            crush[i] = t * t * (3 - 2 * t);
+          }
+        }
+      }
+    }
+
+    this.pathCrush = crush;
+    this.crushFor = world;
+    return crush;
   }
 
   private resize(width: number, height: number): void {

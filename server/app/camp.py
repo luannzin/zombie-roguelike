@@ -13,9 +13,11 @@ Shape, from the middle out:
               read as a stamped circle.
   TREELINE    density ramps with depth, then a solid border of trunks so the
               camera never frames the end of the world.
-  EXIT        a VOID corridor through the trees on the right. Solid ground
-              between trunks, crushed into shadow. The party can walk up to
-              the mouth and bounce; only the walk-out puppets them through.
+  EXIT        a winding VOID path through the trees on the right. Solid
+              ground between trunks, crushed into shadow. Not a rectangle:
+              the centreline wanders and the edges fray. The party can walk
+              up to the mouth and bounce; only the walk-out puppets them
+              through.
 
 Determinism: one seed in, one camp out. The seed also ships to the client, which
 hashes it with tile coordinates to place grass, ferns and prop variants — the
@@ -124,25 +126,58 @@ def build_camp(seed: int) -> TileMap:
         for ty in range(CAMP_HEIGHT_TILES)
     ]
     tiles[fy][fx] = FIRE
-    _carve_exit(tiles, cx, cy)
+    _carve_exit(tiles, cx, cy, seed)
     return TileMap(tiles, seed=seed)
 
 
-def _carve_exit(tiles: list[list[int]], cx: float, cy: float) -> None:
-    """Punch a VOID corridor through the trees on the right, to the map edge.
+def _carve_exit(tiles: list[list[int]], cx: float, cy: float, seed: int) -> None:
+    """Open a winding VOID path through the trees on the right.
 
-    The mouth sits in the treeline, just past the clearing: a gap between
-    trunks, not a missing floor. VOID is solid, so nobody walks in until the
-    walk-out puppets them through.
+    The mouth sits in the treeline, just past the clearing. The centreline
+    wanders, the width breathes, and the edges fray so trunks still stand in
+    the mouth — a gap in the woods, not a corridor. VOID is solid, so nobody
+    walks in until the walk-out puppets them through.
+
+    Numbers here are mirrored in `client/src/game/lobby-scene.ts` `carveExit`
+    so the title screen's rest shot has the same kind of path.
     """
     fy = int(round(cy))
     start_x = int(cx + CAMP_CLEARING_TILES) + 1
-    half = CAMP_EXIT_HALF_TILES
     height = len(tiles)
     width = len(tiles[0]) if tiles else 0
+    if width <= start_x:
+        return
+
+    centre = float(fy)
+    span = width - start_x
+    half0 = float(CAMP_EXIT_HALF_TILES)
+
     for tx in range(start_x, width):
-        for ty in range(fy - half, fy + half + 1):
-            if 0 <= ty < height:
+        t = (tx - start_x) / span
+        centre += (fy - centre) * 0.18 + (_hash(tx, fy, seed, 21) - 0.5) * 1.05
+        if centre < fy - 3.2:
+            centre = fy - 3.2
+        elif centre > fy + 3.2:
+            centre = fy + 3.2
+
+        pinch = 0.45 if tx >= width - BORDER_TILES else 1.0
+        half = (
+            half0 * (0.7 + (1.0 - t) * 0.4)
+            + (_hash(tx, fy, seed, 22) - 0.5) * 0.75
+        ) * pinch
+        if half < 0.8:
+            half = 0.8
+
+        y0 = max(0, int(centre - half - 2))
+        y1 = min(height - 1, int(centre + half + 2))
+        for ty in range(y0, y1 + 1):
+            dist = abs(ty - centre)
+            if dist <= half * 0.5:
+                tiles[ty][tx] = VOID
+            elif dist <= half + 0.2:
+                if not (tiles[ty][tx] == TREE and _hash(tx, ty, seed, 23) > 0.68):
+                    tiles[ty][tx] = VOID
+            elif dist <= half + 1.25 and _hash(tx, ty, seed, 24) < 0.22:
                 tiles[ty][tx] = VOID
 
 
@@ -175,7 +210,7 @@ def seat_positions(world: TileMap, total: int) -> list[tuple[float, float]]:
 
 
 def exit_corridor(world: TileMap) -> tuple[float, float, float]:
-    """The black exit as (mouth_x, centre_y, east_x) in world pixels.
+    """The shadowed exit as (mouth_x, centre_y, east_x) in world pixels.
 
     Mouth is the west-most VOID tile centre — where the party lines up.
     East is the last VOID tile, past which they have crossed.

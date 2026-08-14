@@ -3,8 +3,8 @@
  *
  * `moveAxis` MUST stay numerically identical to the Python version, otherwise
  * client prediction and the server disagree near walls and the local player
- * rubber-bands. VOID is solid like a tree — the camp exit is a shadowed gap
- * in the woods, not a hole in the ground.
+ * rubber-bands. VOID is solid like a tree — the camp exit is a shadowed
+ * winding path in the woods, not a hole in the ground.
  */
 
 import type { MapPayload } from '../net/protocol';

@@ -1414,7 +1414,7 @@ function buildClearing(seed: number, tile: number): TileMap {
 		tiles.push(row);
 	}
 	tiles[fy][fx] = FIRE;
-	carveExit(tiles, fx, fy);
+	carveExit(tiles, fx, fy, seed);
 
 	return new TileMap({
 		width: MAP_TILES_W,
@@ -1462,17 +1462,49 @@ function clearingTile(
 }
 
 /**
- * Gap through the right-hand treeline. Mirrors `_carve_exit` in
- * server/app/camp.py so the title screen's rest shot has the same shadowed
- * mouth the real camp does.
+ * Winding gap through the right-hand treeline. Mirrors `_carve_exit` in
+ * server/app/camp.py so the title screen's rest shot has the same kind of
+ * shadowed path the real camp does — not a rectangle.
  */
-function carveExit(tiles: number[][], cx: number, cy: number): void {
+function carveExit(
+	tiles: number[][],
+	cx: number,
+	cy: number,
+	seed: number,
+): void {
 	const fy = Math.round(cy);
 	const startX = Math.floor(cx + CLEARING_TILES) + 1;
-	const half = 2;
+	if (MAP_TILES_W <= startX) return;
+
+	let centre = fy;
+	const span = MAP_TILES_W - startX;
+	const half0 = 2;
+
 	for (let tx = startX; tx < MAP_TILES_W; tx++) {
-		for (let ty = fy - half; ty <= fy + half; ty++) {
-			if (ty >= 0 && ty < MAP_TILES_H) tiles[ty][tx] = VOID;
+		const t = (tx - startX) / span;
+		centre += (fy - centre) * 0.18 + (tileHash(tx, fy, seed, 21) - 0.5) * 1.05;
+		if (centre < fy - 3.2) centre = fy - 3.2;
+		else if (centre > fy + 3.2) centre = fy + 3.2;
+
+		const pinch = tx >= MAP_TILES_W - 2 ? 0.45 : 1;
+		let half =
+			(half0 * (0.7 + (1 - t) * 0.4) + (tileHash(tx, fy, seed, 22) - 0.5) * 0.75) *
+			pinch;
+		if (half < 0.8) half = 0.8;
+
+		const y0 = Math.max(0, Math.floor(centre - half - 2));
+		const y1 = Math.min(MAP_TILES_H - 1, Math.floor(centre + half + 2));
+		for (let ty = y0; ty <= y1; ty++) {
+			const dist = Math.abs(ty - centre);
+			if (dist <= half * 0.5) {
+				tiles[ty][tx] = VOID;
+			} else if (dist <= half + 0.2) {
+				if (!(tiles[ty][tx] === TREE && tileHash(tx, ty, seed, 23) > 0.68)) {
+					tiles[ty][tx] = VOID;
+				}
+			} else if (dist <= half + 1.25 && tileHash(tx, ty, seed, 24) < 0.22) {
+				tiles[ty][tx] = VOID;
+			}
 		}
 	}
 }

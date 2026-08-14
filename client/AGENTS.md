@@ -14,8 +14,9 @@ own the HUD and routing only. Talks to the server over one WebSocket.
   - `src/net/` — `connection.ts` (socket, reconnect, RTT, multicast delivery),
     `protocol.ts` (wire types, mirror of `server/app/protocol.py`),
     `endpoints.ts` (where the server is) and `rooms.ts` (the room REST pair)
-  - `src/hooks/` — `useRoomSession` owns one socket per mounted room,
-    `useGameSession` owns one `Game` per mounted arena, `useHud` reads the store
+  - `src/hooks/` — `useRoomSession` owns one socket per mounted room and holds
+    the camp from `hello`, `useGameSession` owns one `Game` per mounted arena,
+    `useHud` reads the store
   - `src/screens/`, `src/app/` — `HomeScreen`, `RoomScreen`, `LobbyScreen`,
     `ArenaScreen` and the route table
   - `src/lib/identity.ts` — the player's name, generated and remembered locally
@@ -43,7 +44,12 @@ own the HUD and routing only. Talks to the server over one WebSocket.
   then the arena; `Game` subscribes to it and never closes it. Anything that
   needs the socket takes it as a prop rather than opening a second one.
 - Routes are `/` and `/r/:code`. The room URL is the invite link, so it must
-  work whether the room is at the campfire or already in the forest.
+  work whether the room is at the campfire or already in a level.
+- **The lobby and the arena are two renders of one place.** `LobbyScreen` draws
+  the map from `hello` with the server's own player coordinates; `ArenaScreen`
+  draws the same map with the simulation running. Nothing may move at the
+  transition, and the chrome leaving is covered by the arrival's own curtain
+  (see `hud/ZoneTitle`) so the reflow is never seen.
 - The player's name is client-side state (`lib/identity.ts`, `localStorage`) and
   travels to the server in the socket query string. There is no account, and no
   server-side persistence for it.

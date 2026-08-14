@@ -1,16 +1,29 @@
 # Zombie Roguelike — Vertical Slice
 
-Browser-based multiplayer 2D pixel-art arena. No auth, no setup, no install:
-open the link, take a name, and you are at a campfire with your friends. One
-of you presses start and the forest happens.
+Browser-based multiplayer 2D pixel-art expedition roguelike. No auth, no setup,
+no install: open the link, take a name, and you are at a campfire with your
+friends. One of you presses start and the night begins.
 
 The whole flow is three screens. `/` is the title: pick a name, then **create a
-room** (the server generates a 7-character code and its own procedurally
-generated forest) or **join one** with a code somebody read out to you. Both
-land you on `/r/CODE` — the invite link — where the party gathers around a fire
-while the host waits for stragglers. Rooms live in memory and are dropped when
-the last player leaves; nothing is stored anywhere, and the only thing your
-browser remembers is the name you chose.
+room** (the server generates a 7-character code and its own camp) or **join
+one** with a code somebody read out to you. Both land you on `/r/CODE` — the
+invite link — where the party gathers around a fire while the host waits for
+stragglers. Rooms live in memory and are dropped when the last player leaves;
+nothing is stored anywhere, and the only thing your browser remembers is the
+name you chose.
+
+The lobby is not a picture of the camp. It **is** the camp: the map comes down
+in `hello` and everybody stands on the coordinates the server is already
+holding for them, so pressing start changes what answers your input and nothing
+else. The camera opens wide on the clearing, pushes in onto your character, and
+the day announces itself — `Preparação`, `Dia 1`. There you walk around, and
+your lantern stays off, because the bonfire is the light and the battery is
+what you carry out into the dark.
+
+> **Where the loop stops today.** A run is meant to go camp → level → extract →
+> spend → repeat. Only preparation exists: `start` leads to the camp and stays
+> there. The forest generator (`server/app/mapgen.py`) is intact and unchanged,
+> but nothing reaches it until the expedition hand-off is built.
 
 * **Client** — Vite + TypeScript + Canvas 2D (no game engine). React + Tailwind
   own the HUD and routing only; they are never part of the render loop.
@@ -192,12 +205,14 @@ server/
   app/
     main.py         FastAPI app: room REST + the /ws/{code} endpoint
     rooms.py        room registry: code generation, lookup, disposal
-    room.py         authoritative room: lobby phase, tick loop, broadcast
+    room.py         authoritative room: lobby phase, zone, tick loop, broadcast
     simulation.py   movement (mirrored by the client for prediction)
     combat.py       hitscan raycast (entity-agnostic — players and enemies)
     world.py        tile grid + collision
     pathing.py      BFS flow field per player — how enemies get around cover
     maps.py         map data and builders
+    camp.py         the camp clearing, its bonfire and the seat ring
+    zones.py        where a run is: title card, hostile, lantern
     entities.py     Player / InputCmd
     enemies.py      EnemyType stat blocks + live Enemy instances
     ai.py           enemy behaviour (chase, attack) + the spawn director
@@ -210,8 +225,8 @@ client/
     game/           world, simulation, prediction, interpolation, input, effects,
                     combat, per-player visuals, lantern battery, game loop,
                     lobby-scene (the campfire), hud-store (UI seam)
-    render/         camera, projection, sprites/tinting, minimap, fov, renderer,
-                    terrain + vfx atlas loading
+    render/         camera, projection, framing, sprites/tinting, minimap, fov,
+                    renderer, terrain + vfx atlas loading
       layers/       terrain, entities, effects, atmosphere, darkness, vignette
     theme/          palette.ts / fonts.ts — read the CSS tokens for canvas use
     lib/            math, canvas, store, lens (HUD barrel map), utils

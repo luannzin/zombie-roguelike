@@ -11,7 +11,8 @@ mutation, no React.
 | --- | --- |
 | `renderer.ts` | pass sequencing and the world/screen transform |
 | `types.ts` | `RenderState`, `DrawableEntity` — the renderer's input contract |
-| `camera.ts` | follow, clamp to map bounds |
+| `camera.ts` | follow, clamp to map bounds, the arrival push-in |
+| `framing.ts` | the wide shot of the camp — one zoom, two callers |
 | `projection.ts` | zoom + offset between world and screen space |
 | `sprites.ts` | sheet loading, `SpriteBook`, per-colour multiply tints |
 | `terrain.ts` | terrain atlas loading (ground, props, the animated campfire) |
@@ -33,6 +34,19 @@ mutation, no React.
   `fov.ts` produces two fields — `light` saturates at 1 (visibility), `heat`
   keeps climbing (warmth, drawn as additive amber). Shared vision is a `max()`
   across viewers whose snapshot `lantern` is on (plus the local lamp's output).
+- A `LightSource` is a light the WORLD owns — a bonfire — and it is not a
+  `Viewer` with the aim zeroed: it has no cone, no battery and no lag, and it
+  is warmer than any lamp. It gets its own pass (`FovField.burn`) over the same
+  shadowcast, merged with the same `max()`.
+- Occlusion is `world.blocksSight`, not `isSolidTile`. A campfire stops a body
+  and a bullet but not light.
+- The **arrival** is the only camera move that is not the player: wide on the
+  zone, then in. It is the one place fractional zoom is allowed — a push-in
+  that steps between whole scales judders, and motion hides the softness a
+  still frame would not. It lands exactly on the resting zoom.
+- `framing.campZoom` is the wide shot, and both the lobby scene and the arena's
+  arrival read it. If they diverge, starting a run cuts to a different picture
+  of the same clearing instead of continuing the shot.
 - Sprites are keyed by asset name; which enemy sheets to load comes from
   `welcome.config.enemyTypes[*].sprite`, never a hardcoded list.
 - Colours come from `theme/palette.ts` only. Never write a literal colour here.
@@ -40,6 +54,12 @@ mutation, no React.
 - A prop sheet's frames are VARIANTS unless its manifest entry carries `fps`
   (only the campfire does), in which case they are an animation loop. Playing a
   variant sheet makes the boulders twitch.
+- A `FIRE` tile is drawn in the ENTITY sort, not with the terrain: baked it
+  could not animate, and drawn as scenery it would be covered by whoever is
+  standing behind it — a ring of players around a picture of a fire. Its glow
+  is a separate additive pass over the darkness, breathing on the same
+  `fireFlicker` the light field uses, so the flame, the ground and the party
+  move together.
 - `vfx.ts` sheets are one-shot TIMELINES anchored on `anchorY` (the row the
   effect happens at), not bottom-anchored like props. Draw them ADDITIVELY,
   after the darkness pass: a beam of light is a light source, not a thing being

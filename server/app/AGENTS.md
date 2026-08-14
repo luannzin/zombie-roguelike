@@ -23,6 +23,8 @@ game's scale.
 | `world.py` | tile grid, tile alphabet, collision queries |
 | `maps.py` | hand-authored maps (`from_ascii`, `from_rects`) |
 | `mapgen.py` | procedural forest, seeded and connectivity-checked |
+| `camp.py` | the camp clearing, its bonfire, and the seat ring around it |
+| `zones.py` | where a run is: title card, `hostile`, `lantern` |
 | `protocol.py` | wire message shapes — source of truth |
 | `config.py` | tuning constants + `client_config()` |
 
@@ -46,6 +48,22 @@ game's scale.
   membership change only. `Room.begin()` is the single transition into
   `playing`, and it is the only place that starts the loop. Do not add a code
   path that simulates a lobby.
+- A room's ZONE is separate from its phase and does not change when the phase
+  does. A room opens in the camp and stays there: the lobby is the camp seen
+  from a chair, `preparation` is the same map with the loop running. `begin()`
+  therefore moves nobody — the seat a player is standing on is the tile they
+  start on, and the client draws exactly those coordinates.
+- Zone rules are enforced HERE, not just described to the client. A
+  non-hostile zone runs no spawn director and drops `shoot` in
+  `handle_shooting`. A client that ignores `zone.lantern` gets light it cannot
+  act on, which is the acceptable half of the trade; one that ignores
+  `zone.hostile` gets nothing.
+- `Room.seating` is join order, and it is the only thing that decides who
+  stands where. Seats are re-spaced by `reseat()` while the room is in `lobby`
+  and never afterwards: once the simulation is running, position belongs to it.
+- The map is sent in `hello`, once per socket, because the lobby draws the real
+  one. Never put it in `lobby`, which is re-broadcast on every membership
+  change.
 - Player-supplied values (the `name` query parameter) are sanitised in
   `entities.clean_name` before they enter room state, because they are echoed
   to every other player.
@@ -54,6 +72,12 @@ game's scale.
 
 - Adding a creature = one `EnemyType`, a `SPAWN_TABLE` weight, and a processed
   sprite folder of the same name. It must require no client change.
+- Adding a zone = one `zones.Zone` and whatever builds its map. Its title card,
+  its safety and its lighting rules are all data; the client needs no change to
+  announce or obey a new one.
+- The expedition hand-off is NOT built. `start` leads to `preparation` and the
+  run stops there — `mapgen.build_forest` is intact but nothing reaches it
+  until a camp→forest transition exists.
 - Keep the tick O(entities). Anything that scales with map size belongs in a
   cached structure (see `pathing.py`, one field per player shared by the horde).
 - New tuning goes in `config.py` in tiles/seconds, plus a `client_config()` key

@@ -27,7 +27,41 @@ predicts locally, and sends the packet. Rendering runs at display rate.
 
 ### server → client
 
-`welcome` (once, on join):
+`hello` (once, first message — the lobby is built from this):
+
+```json
+{
+  "type": "hello",
+  "playerId": "a1b2c3d4",
+  "code": "ABC1234",
+  "config": { "tickRate": 30, "dt": 0.0333, "tileSize": 16, "...": "..." },
+  "map": { "width": 60, "height": 40, "tileSize": 16, "seed": 8412, "tiles": [[2, 2, 0, "..."]] },
+  "zone": { "key": "camp-1", "kind": "camp", "day": 1, "title": "Preparação",
+            "subtitle": "Dia 1", "hostile": false, "lantern": false }
+}
+```
+
+The map is here rather than in `lobby` because the lobby is not a picture of
+the camp — it draws the real one, and `lobby` is re-broadcast on every
+membership change. `zone` says where the room is and how that place behaves:
+`hostile` gates enemy spawns and weapons, `lantern` gates the lamp, and both
+are enforced server-side as well as described here.
+
+`lobby` (on every membership or phase change):
+
+```json
+{
+  "type": "lobby", "code": "ABC1234", "hostId": "a1b2c3d4", "phase": "lobby",
+  "zone": { "...": "..." },
+  "players": [{ "id": "a1b2c3d4", "name": "Player483", "color": "#4d9de0", "x": 488, "y": 364.4 }]
+}
+```
+
+Roster rows carry real world positions: the seat a player is standing on at the
+fire is the tile they start `preparation` on, so nothing moves when the host
+presses start.
+
+`welcome` (when the run starts, or on joining one already running):
 
 ```json
 {
@@ -36,7 +70,8 @@ predicts locally, and sends the packet. Rendering runs at display rate.
   "player": { "id": "...", "name": "Player483", "color": "#4d9de0", "x": 200, "y": 168, "...": "..." },
   "config": { "tickRate": 30, "dt": 0.0333, "tileSize": 16, "moveSpeed": 70.4,
               "playerHalfWidth": 4.8, "playerHalfHeight": 3.6, "...": "..." },
-  "map": { "width": 64, "height": 40, "tileSize": 16, "tiles": [[1, 1, 0, "..."]] }
+  "map": { "width": 64, "height": 40, "tileSize": 16, "tiles": [[1, 1, 0, "..."]] },
+  "zone": { "...": "..." }
 }
 ```
 

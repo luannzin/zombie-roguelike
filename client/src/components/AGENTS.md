@@ -10,7 +10,7 @@ and nowhere near the frame loop.
 - `game/` — `GameCanvas`, `MinimapCanvas`. Mount a canvas and hand the ref to
   `Game`; React never touches those pixels again.
 - `hud/` — ours: `Hud`, `HudScreen`, `Panel`, `Vitals`, `BatteryGauge`,
-  `ProgressBar`, `StatusLine`, `NetStats`, `ControlsHint`.
+  `ProgressBar`, `StatusLine`, `NetStats`, `ControlsHint`, `ZoneTitle`.
 - `lobby/` — `CampfireCanvas` (mounts `LobbyScene`), `RoomCode`, `PlayerRoster`.
 - `menu/` — `MenuButton`, `HudInput`, `JoinRoomDialog`: the title screen's
   controls, in HUD chrome.
@@ -25,6 +25,14 @@ and nowhere near the frame loop.
   canvas keeps receiving aim and fire input underneath.
 - All four corners live inside `HudScreen`, which curves and tears the overlay.
   A panel placed outside that wrapper visibly floats off the glass.
+- `ZoneTitle` is the one thing allowed to own the whole screen, and only for a
+  moment. It is cut to the camera's arrival in `game/game.ts` — the durations
+  in the component, the `zone-*` keyframes and ARRIVAL_TIME move together.
+- A control a zone forbids is shown DISABLED, never hidden. `BatteryGauge` in
+  the camp still answers "how much light am I carrying into the night"; only
+  its readout changes, and a refused keypress kicks the panel instead of doing
+  nothing. `ControlsHint` lists what works here for the same reason — offering
+  a key that will not answer is worse than not mentioning it.
 - Colours and type come from the tokens in `src/styles/index.css`, consumed as
   Tailwind utilities. No literal colours in components.
 - coss semantic tokens are re-pointed at the game palette in the coss skin block

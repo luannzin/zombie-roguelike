@@ -11,12 +11,12 @@ seam React is allowed to read.
 | file | owns |
 | --- | --- |
 | `game.ts` | orchestrator: two clocks, render loop, `start()`/`dispose()` |
-| `lobby-scene.ts` | the campfire clearing drawn before the run starts |
+| `lobby-scene.ts` | the camp, drawn before the simulation is allowed to run |
 | `simulation.ts` | movement — mirror of `server/app/simulation.py` |
 | `prediction.ts` | apply-locally, replay-on-ack reconciliation |
 | `interpolation.ts` | remote entity smoothing |
 | `input.ts` | keyboard/mouse sampling into an `InputPacket` |
-| `world.ts` | client tile map + collision queries |
+| `world.ts` | client tile map, collision + sight queries, fires, hearth mask |
 | `combat.ts` | client-side shot feel and tracer bookkeeping |
 | `effects.ts` | tracers, dust, floating text, event lights |
 | `entity-visuals.ts` | per-player colour/name visual state |
@@ -37,14 +37,32 @@ seam React is allowed to read.
   must never close it. The `welcome` it was built from is replayed in `start()`
   because it arrived first.
 - `lobby-scene.ts` is decoration only: no input, no prediction, no socket. It
-  draws through the arena's own `TerrainLayer` over a locally generated
-  `TileMap`, so the lobby and the forest cannot drift apart. Art scale comes
-  from the terrain manifest, never a hardcoded tile size.
-- The **hearth** (`HEARTH_TILES`) is the fire plus the seat ring, and nothing
-  decorative stands in it: the map generator refuses trees and rocks there, and
-  a `TerrainLayer` decoration mask refuses grass and ferns. Both measure on the
-  same ellipse the seats use. A plant in front of a seated player hides the
-  character the roster is pointing at.
+  draws through the arena's own `TerrainLayer`, so the lobby and the game
+  cannot drift apart.
+- **The lobby draws the real camp.** `setCamp` takes the map from `hello` and
+  `setMembers` takes the server's own coordinates; the scene never decides
+  where anybody stands. It used to force the local player into the front seat,
+  which meant every client saw a different party and everyone's characters
+  jumped the instant the run started. The local player is marked by the ring
+  under their feet instead. The one caller with no server — the title screen —
+  falls back to a locally generated clearing, which only has to LOOK like the
+  place because nobody is standing in it.
+- Positions arrive as the CENTRE of a collision box, the way a snapshot carries
+  them; the scene converts to a contact point with `config.playerHalfHeight`.
+  Getting that wrong is a party floating above their own shadows.
+- The lobby's zoom is `render/framing.campZoom`, the same scale the arena's
+  arrival opens on. They must not diverge, or pressing start cuts to a
+  different picture of the same clearing.
+- The **hearth** is the fire plus the seat ring, and nothing decorative stands
+  in it: the map generator refuses trees and rocks there, and a `TerrainLayer`
+  decoration mask (`world.hearthMask`) refuses grass and ferns. Both measure on
+  the same ellipse the seats use. A plant in front of a player hides the
+  character the roster is pointing at. The arena sets the same mask, because
+  `preparation` is that same ground.
+- A **bonfire is a tile** (`FIRE`), and everything reads it off the map:
+  collision, the animated sprite, and the light. It blocks bodies but not sight
+  (`blocksSight`) — left as an occluder it would shadow the half of the party
+  sitting behind it, which is the one place in the camp that must be lit.
 - **The summon sheet is the clock.** `SUMMON_TIME` is the sheet's
   `frames / fps` and `SUMMON_IMPACT` mirrors `IMPACT_AT` in
   `server/tools/make_vfx.py`; the body must finish resolving on the frame the
@@ -65,6 +83,18 @@ seam React is allowed to read.
 - `lantern.output` is the local lamp the lighting system reads — fov beam gain
   and reach, hearth warmth, and the HUD cells. Remotes contribute 0 or 1
   from their snapshot `lantern` flag.
+- `lantern.allowed` comes from `welcome.zone.lantern` and is a property of the
+  LAMP, not a check at the call site, so every route to switching on goes
+  through one refusal. A refused press is COUNTED, not ignored: the HUD reads
+  at 5 Hz and has to be able to answer each keypress, because a control that
+  silently does nothing reads as a broken keybind rather than as a rule.
+- The zone also masks `shoot` on the outgoing packet. The server drops it too,
+  and the mask has to be on the packet or prediction draws a tracer that was
+  never fired.
+- Entering a zone is announced ONCE, through `hud-store.arrival`, keyed by the
+  zone key. `game.ts` cuts the camera's arrival (ARRIVAL_TIME) and the title
+  card to the same beat; changing one without the other leaves a caption
+  hanging over gameplay or a silent zoom.
 
 ## Work Guidance
 

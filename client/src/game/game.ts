@@ -141,6 +141,17 @@ export interface GameOptions {
   connection: Connection;
   /** The `welcome` that started this run; it arrived before `start()` ran. */
   welcome: WelcomeMessage;
+  /**
+   * Fired once, after the first frame that actually drew the world.
+   *
+   * The lobby is still on screen at that point, holding the frame its camera
+   * landed on, and it is what the player is looking at until this says the
+   * arena has something to show. Between mounting and this callback the game
+   * canvas is a blank rectangle — the sheets are loading, the terrain is
+   * baking — and cutting to it on mount is a black flash in the middle of the
+   * transition. See `screens/RoomScreen`.
+   */
+  onFirstFrame?: () => void;
 }
 
 export class Game {
@@ -160,6 +171,8 @@ export class Game {
   /** The welcome this game was built from, applied once `start()` is ready. */
   private readonly initialWelcome: WelcomeMessage;
   private readonly subscriptions: Unsubscribe[] = [];
+  /** Cleared after it fires, so the handover can only happen once. */
+  private onFirstFrame: (() => void) | null = null;
 
   private renderer: Renderer | null = null;
   private resizeObserver: ResizeObserver | null = null;
@@ -200,6 +213,7 @@ export class Game {
     this.hud = options.hud;
     this.connection = options.connection;
     this.initialWelcome = options.welcome;
+    this.onFirstFrame = options.onFirstFrame ?? null;
     this.input = new InputController(options.canvas);
     // The lamp itself decides whether it may light — a zone that forbids it
     // still has to ANSWER the key, or pressing F in the camp is indistinguishable
@@ -248,6 +262,8 @@ export class Game {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    // Never leave the screen waiting on a game that is gone.
+    this.onFirstFrame = null;
 
     if (this.rafId !== null) {
       cancelAnimationFrame(this.rafId);
@@ -713,6 +729,16 @@ export class Game {
       dt,
     });
     this.minimap.draw(toMinimap(entities), this.localId, this.fov);
+
+    // There is now a world on this canvas. Whoever was covering for it can
+    // stop. Fired here rather than from `start()` because the expensive part
+    // is not loading, it is the first draw: the terrain layer bakes the whole
+    // map into its cache on this call.
+    const ready = this.onFirstFrame;
+    if (ready) {
+      this.onFirstFrame = null;
+      ready();
+    }
   }
 
   /**

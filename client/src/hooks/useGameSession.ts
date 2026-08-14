@@ -26,12 +26,22 @@ export interface GameSession {
   error: string | null;
 }
 
-export function useGameSession(connection: Connection, welcome: WelcomeMessage): GameSession {
+export function useGameSession(
+  connection: Connection,
+  welcome: WelcomeMessage,
+  /** Called once the game has drawn a frame. See `Game.onFirstFrame`. */
+  onFirstFrame?: () => void,
+): GameSession {
   // Lazy initializer: one store for the lifetime of the component.
   const [hud] = useState(createHudStore);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const minimapRef = useRef<HTMLCanvasElement | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // Held in a ref rather than a dependency: a caller passing an inline arrow
+  // would otherwise tear down and rebuild the whole game on every render.
+  const ready = useRef(onFirstFrame);
+  ready.current = onFirstFrame;
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -39,7 +49,14 @@ export function useGameSession(connection: Connection, welcome: WelcomeMessage):
     if (!canvas || !minimapCanvas) return;
 
     let cancelled = false;
-    const game = new Game({ canvas, minimapCanvas, hud, connection, welcome });
+    const game = new Game({
+      canvas,
+      minimapCanvas,
+      hud,
+      connection,
+      welcome,
+      onFirstFrame: () => ready.current?.(),
+    });
 
     game.start().catch((err: unknown) => {
       console.error(err);

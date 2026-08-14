@@ -7,11 +7,18 @@
  * sent in `hello`, and the arena draws the same map with the simulation
  * running.
  *
- * Which one is shown is decided by two facts, not one. The `welcome` says the
- * run has begun — but the lobby is in the middle of performing the transition
- * when it lands (see `LobbyScreen`), and swapping on the message would cut that
- * move in half. So the arena waits for the lobby to say it has finished, and
- * takes over on the frame it was left.
+ * Which one is shown is decided by three facts, and each one closes a gap the
+ * player would otherwise see:
+ *
+ *   welcome    the run has begun. Not enough on its own — the lobby is midway
+ *              through its camera move when this lands, and swapping here
+ *              would cut the move in half.
+ *   launched   the lobby says its move has finished. Now the arena may build.
+ *   ready      the arena says it has actually DRAWN. Until then its canvas is
+ *              blank — sheets resolving, terrain baking — so it is mounted
+ *              hidden, over a lobby that is still holding the frame the camera
+ *              landed on. Both are showing the same picture at that point, so
+ *              revealing one and dropping the other changes nothing on screen.
  *
  * The arena is keyed on `playerId`. A reconnect makes you a new player
  * server-side, and a `Game` cannot be patched into a different identity.
@@ -38,12 +45,18 @@ export function RoomScreen() {
   const session = useRoomSession(code.toUpperCase(), name);
   /** True once the lobby has finished handing the screen over. */
   const [launched, setLaunched] = useState(false);
+  /** True once the arena has a world on its canvas. */
+  const [ready, setReady] = useState(false);
   const onLaunched = useCallback(() => setLaunched(true), []);
+  const onFirstFrame = useCallback(() => setReady(true), []);
 
   // Dropping back to the campfire — a reconnect, a fresh room — has to arm the
   // transition again, or the next run would skip straight into the arena.
   useEffect(() => {
-    if (!session.welcome) setLaunched(false);
+    if (!session.welcome) {
+      setLaunched(false);
+      setReady(false);
+    }
   }, [session.welcome]);
 
   const leave = () => void navigate('/');
@@ -61,22 +74,30 @@ export function RoomScreen() {
     );
   }
 
-  if (session.connection && session.welcome && launched) {
-    return (
-      <ArenaScreen
-        key={session.welcome.playerId}
-        connection={session.connection}
-        welcome={session.welcome}
-      />
-    );
-  }
+  const building = Boolean(session.connection && session.welcome && launched);
 
+  // Both, briefly. The lobby is underneath holding the frame its camera landed
+  // on; the arena is over it, hidden, warming up. DOM order is the stacking
+  // order, so the moment it is revealed it covers the lobby exactly.
   return (
-    <LobbyScreen
-      code={session.lobby?.code ?? code.toUpperCase()}
-      session={session}
-      onLeave={leave}
-      onLaunched={onLaunched}
-    />
+    <>
+      {building && ready ? null : (
+        <LobbyScreen
+          code={session.lobby?.code ?? code.toUpperCase()}
+          session={session}
+          onLeave={leave}
+          onLaunched={onLaunched}
+        />
+      )}
+      {building && session.connection && session.welcome ? (
+        <ArenaScreen
+          key={session.welcome.playerId}
+          connection={session.connection}
+          welcome={session.welcome}
+          visible={ready}
+          onFirstFrame={onFirstFrame}
+        />
+      ) : null}
+    </>
   );
 }

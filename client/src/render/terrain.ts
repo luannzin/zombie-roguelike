@@ -80,7 +80,23 @@ interface TerrainManifest {
 
 const ROOT = '/terrain';
 
-export async function loadTerrain(): Promise<TerrainAtlas | null> {
+/**
+ * One atlas per session, shared by every `TerrainLayer`.
+ *
+ * The lobby and the arena each own a layer and both draw the same forest. Two
+ * separate loads would mean the arena spends its first frames with no atlas,
+ * painting flat colours over ground the player is already looking at — a flash
+ * of a different-looking world at the exact moment the two scenes hand over.
+ * The per-map bake caches stay per-layer; only the images are shared.
+ */
+let atlasPromise: Promise<TerrainAtlas | null> | null = null;
+
+export function loadTerrain(): Promise<TerrainAtlas | null> {
+  atlasPromise ??= fetchTerrain();
+  return atlasPromise;
+}
+
+async function fetchTerrain(): Promise<TerrainAtlas | null> {
   try {
     const manifest = await loadJson<TerrainManifest>(`${ROOT}/manifest.json`);
     const [ground, rock, tree, grass, fern, campfire] = await Promise.all([
@@ -104,6 +120,8 @@ export async function loadTerrain(): Promise<TerrainAtlas | null> {
     };
   } catch (err) {
     console.warn('[terrain] falling back to flat tiles:', err);
+    // Not memoized as a permanent failure: a later scene should get another go.
+    atlasPromise = null;
     return null;
   }
 }

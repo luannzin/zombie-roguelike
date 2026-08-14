@@ -13,9 +13,9 @@ Shape, from the middle out:
               read as a stamped circle.
   TREELINE    density ramps with depth, then a solid border of trunks so the
               camera never frames the end of the world.
-  EXIT        a VOID corridor through the trees on the right. Solid, unpainted,
-              so the party can walk up to a black gap and not cross it until
-              the walk-out puppets them through.
+  EXIT        a VOID corridor through the trees on the right. Solid ground
+              between trunks, crushed into shadow. The party can walk up to
+              the mouth and bounce; only the walk-out puppets them through.
 
 Determinism: one seed in, one camp out. The seed also ships to the client, which
 hashes it with tile coordinates to place grass, ferns and prop variants — the
@@ -131,9 +131,9 @@ def build_camp(seed: int) -> TileMap:
 def _carve_exit(tiles: list[list[int]], cx: float, cy: float) -> None:
     """Punch a VOID corridor through the trees on the right, to the map edge.
 
-    The mouth sits in the treeline, just past the clearing, so the party can
-    walk up to a black gap and bounce. VOID is solid: nobody crosses it until
-    the walk-out puppets them through.
+    The mouth sits in the treeline, just past the clearing: a gap between
+    trunks, not a missing floor. VOID is solid, so nobody walks in until the
+    walk-out puppets them through.
     """
     fy = int(round(cy))
     start_x = int(cx + CAMP_CLEARING_TILES) + 1

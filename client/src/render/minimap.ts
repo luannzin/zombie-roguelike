@@ -167,13 +167,11 @@ function buildTileCache(world: TileMap): HTMLCanvasElement {
   for (let ty = 0; ty < world.height; ty++) {
     for (let tx = 0; tx < world.width; tx++) {
       const tile = world.tiles[ty][tx];
-      if (tile === VOID) {
-        ctx.fillStyle = palette().surface;
-      } else if (tile === FLOOR) {
+      if (tile === FLOOR || tile === VOID) {
         ctx.fillStyle = floorColor(tx, ty);
       } else {
         // Cheap top-edge hint so blockers read the same way as the main view.
-        const exposed = ty === 0 || world.tiles[ty - 1][tx] === FLOOR;
+        const exposed = ty === 0 || world.tiles[ty - 1][tx] === FLOOR || world.tiles[ty - 1][tx] === VOID;
         if (tile === TREE) ctx.fillStyle = exposed ? tiles.treeTop : tiles.tree;
         else ctx.fillStyle = exposed ? tiles.wallTop : tiles.wallBody;
       }

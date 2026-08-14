@@ -108,11 +108,12 @@ CAMPFIRE_LIGHT_TILES = 10.0
 CAMP_RING_X = TILE_SIZE * CAMP_RING_TILES_X
 CAMP_RING_Y = TILE_SIZE * CAMP_RING_TILES_Y
 
-# The black exit: a VOID corridor punched through the trees on the RIGHT of the
+# The camp exit: a VOID corridor punched through the trees on the RIGHT of the
 # clearing. Half-height in tiles (full height = 2 * this + 1). Wide enough for
 # two staggered files of players, narrow enough to read as a gap in the woods
 # rather than as a road. Starts just past the clearing edge so the mouth is in
-# the treeline, where the party can walk up to it and bounce.
+# the treeline, where the party can walk up to it and bounce. It is forest
+# floor under extreme shadow, not a missing texture.
 CAMP_EXIT_HALF_TILES = 2
 # How close to the fire (in tiles, from the flame's base to the player's feet)
 # you must stand to ready up. Matches the hearth so anyone in the seat ring

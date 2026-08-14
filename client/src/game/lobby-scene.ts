@@ -1462,9 +1462,9 @@ function clearingTile(
 }
 
 /**
- * Black corridor through the right-hand treeline. Mirrors `_carve_exit` in
- * server/app/camp.py so the title screen's rest shot has the same hole the
- * real camp does.
+ * Gap through the right-hand treeline. Mirrors `_carve_exit` in
+ * server/app/camp.py so the title screen's rest shot has the same shadowed
+ * mouth the real camp does.
  */
 function carveExit(tiles: number[][], cx: number, cy: number): void {
 	const fy = Math.round(cy);

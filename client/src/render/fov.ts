@@ -521,7 +521,7 @@ const OCTANTS: ReadonlyArray<readonly [number, number, number, number]> = [
  * penumbra-free edge — the standard roguelike algorithm, on floats.
  *
  * Occlusion is `blocksSight`, not `isSolidTile`: see world.ts for why a
- * campfire blocks a body but not a beam.
+ * campfire and the camp exit block a body but not a beam.
  */
 function castLight(
   world: TileMap,

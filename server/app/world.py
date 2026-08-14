@@ -7,14 +7,17 @@ Python literals or generated procedurally.
     1 ROCK    solid boulder
     2 TREE    solid trunk
     3 FIRE    solid campfire — a lit tile, and a landmark
-    4 VOID    solid, unpainted — the black exit cut through the camp treeline
+    4 VOID    solid gap — forest floor between trees, too dark to walk into.
+              Blocks bodies, not light; the client paints ground and crushes
+              the lighting so it reads as a hole in the woods, not as a
+              missing texture.
 
 Only FLOOR is walkable, and the solidity test is `!= FLOOR` rather than a list
 of known blockers: adding a fifth tile kind (water, rubble, a bush) is then a
 generator change and a client sprite, never a change to collision, pathing or
 raycasting. `WALL` remains as an alias for ROCK so hand-drawn ASCII maps keep
-building. VOID is the same contract with no art: the renderer leaves it as the
-clear colour, which is how a corridor through the trees reads as a hole.
+building. VOID is the same solidity contract as a tree, with floor art and
+no prop: the camp exit is a shadowed gap, not a black rectangle.
 
 FIRE is a tile rather than an entity for exactly that reason. It blocks, it
 casts a shadow and it stops a shot with no special case anywhere, and the client

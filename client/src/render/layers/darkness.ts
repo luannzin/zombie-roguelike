@@ -25,6 +25,10 @@
  * Explored-but-unlit tiles sit between the two: remembered, colourless, and
  * empty of anything that has moved since you left.
  *
+ * VOID is forest floor in a gap between trees. The night pass crushes it
+ * almost opaque and the warm pass is killed, so leaked firelight never turns
+ * the exit into a hallway. The ground under that shadow is still the atlas.
+ *
  * On top of those goes a third, unrelated pass: EVENT LIGHTS. A muzzle flash, a
  * death pop, a coin glint — each is a radial gradient added over the darkness,
  * at full canvas resolution rather than per tile, because these are small, brief
@@ -35,7 +39,7 @@
 import { createSurface } from '../../lib/canvas';
 import { palette } from '../../theme/palette';
 import type { PointLight } from '../../game/effects';
-import type { FirePlace, TileMap } from '../../game/world';
+import { VOID, type FirePlace, type TileMap } from '../../game/world';
 import { fireFlicker } from '../fov';
 import type { FovField } from '../fov';
 
@@ -43,6 +47,13 @@ import type { FovField } from '../fov';
 const UNSEEN_ALPHA = 0.9;
 /** Darkness over ground the team has seen before but cannot see now. */
 const FOG_ALPHA = 0.66;
+/**
+ * The camp exit. Even a little leaked firelight is crushed so the gap between
+ * the trees reads as deep woods, not as a lit hallway.
+ */
+const VOID_NIGHT = 0.96;
+/** How much light is allowed to punch through VOID_NIGHT. Tiny on purpose. */
+const VOID_LIGHT_LEAK = 0.12;
 /**
  * Amber per unit of heat. Heat runs past 1 close to the lamp, so this is the
  * slope of the warm pass and not its ceiling — the alpha is clamped instead.
@@ -165,18 +176,24 @@ export class DarknessLayer {
 
     for (let i = 0; i < fov.light.length; i++) {
       const lit = fov.light[i];
-      const base = fov.explored[i] === 1 ? FOG_ALPHA : UNSEEN_ALPHA;
+      const tx = i % fov.width;
+      const ty = (i / fov.width) | 0;
+      const gap = world.tiles[ty][tx] === VOID;
+      const base = gap ? VOID_NIGHT : fov.explored[i] === 1 ? FOG_ALPHA : UNSEEN_ALPHA;
+      const leak = gap ? VOID_LIGHT_LEAK : 1;
       const offset = i * 4;
 
       nightPixels[offset] = shadowR;
       nightPixels[offset + 1] = shadowG;
       nightPixels[offset + 2] = shadowB;
-      nightPixels[offset + 3] = Math.round(base * (1 - lit) * 255);
+      nightPixels[offset + 3] = Math.round(base * (1 - lit * leak) * 255);
 
       warmPixels[offset] = warmR;
       warmPixels[offset + 1] = warmG;
       warmPixels[offset + 2] = warmB;
-      warmPixels[offset + 3] = Math.min(255, Math.round(fov.heat[i] * WARM_GAIN * 255));
+      warmPixels[offset + 3] = gap
+        ? 0
+        : Math.min(255, Math.round(fov.heat[i] * WARM_GAIN * 255));
     }
 
     night.putImageData(this.nightData, 0, 0);

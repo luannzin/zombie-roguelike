@@ -3,7 +3,8 @@
  *
  * `moveAxis` MUST stay numerically identical to the Python version, otherwise
  * client prediction and the server disagree near walls and the local player
- * rubber-bands. VOID is solid like a tree, with no sprite — the camp exit.
+ * rubber-bands. VOID is solid like a tree — the camp exit is a shadowed gap
+ * in the woods, not a hole in the ground.
  */
 
 import type { MapPayload } from '../net/protocol';
@@ -13,7 +14,7 @@ export const FLOOR = 0;
 export const ROCK = 1;
 export const TREE = 2;
 export const FIRE = 3;
-/** Solid, unpainted. The camp's black exit. Mirror of server/app/world.py. */
+/** Solid gap in the trees. Painted as floor, blocks bodies, not light. */
 export const VOID = 4;
 
 /** Legacy alias: '#' in a hand-drawn ASCII map is a rock. */
@@ -55,9 +56,10 @@ export class TileMap {
   }
 
   /**
-   * Anything that is not floor blocks movement, shots and sight. Testing for
+   * Anything that is not floor blocks movement and shots. Testing for
    * "not floor" rather than a list of known blockers is what lets the server
-   * add a tile kind without touching collision on either side.
+   * add a tile kind without touching collision on either side. Sight is
+   * `blocksSight` — a fire and the camp exit stop a body but not a beam.
    */
   isSolidTile(tx: number, ty: number): boolean {
     if (tx < 0 || ty < 0 || tx >= this.width || ty >= this.height) return true;
@@ -65,17 +67,15 @@ export class TileMap {
   }
 
   /**
-   * Whether this tile stops LIGHT. Solid, with one exception: a bonfire.
-   *
-   * A fire is knee-high and it is the thing doing the lighting. Left as an
-   * occluder it would cast a shadow of itself across the party sitting on the
-   * far side of it — the one place in the camp that must be lit. Collision and
-   * bullets still treat it as solid, because you cannot walk through a fire.
+   * Whether this tile stops LIGHT. Solid, with two exceptions: a bonfire, and
+   * the camp exit. A fire is knee-high and it is the thing doing the lighting.
+   * VOID is a gap between trees — light falls into it, darkness crushes it,
+   * and a sight-blocker would turn that gap into a painted wall.
    */
   blocksSight(tx: number, ty: number): boolean {
     if (tx < 0 || ty < 0 || tx >= this.width || ty >= this.height) return true;
     const tile = this.tiles[ty][tx];
-    return tile !== FLOOR && tile !== FIRE;
+    return tile !== FLOOR && tile !== FIRE && tile !== VOID;
   }
 
   /** Axis-aligned box centred on (cx, cy) with half-extents (hw, hh). */

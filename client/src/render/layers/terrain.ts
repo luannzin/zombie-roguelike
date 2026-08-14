@@ -323,7 +323,6 @@ function paintGround(
       // source texture, which is what keeps the floor seamless.
       const sx = (tx % groundCols) * groundTile;
       const sy = (ty % groundRows) * groundTile;
-      if (world.tiles[ty][tx] === VOID) continue;
       ctx.drawImage(ground, sx, sy, groundTile, groundTile, tx * ts, ty * ts, ts, ts);
     }
   }
@@ -421,8 +420,7 @@ function paintFlat(
       const px = tx * ts;
       const py = ty * ts;
       const tile = world.tiles[ty][tx];
-      if (tile === VOID) continue;
-      if (tile !== FLOOR) {
+      if (tile !== FLOOR && tile !== VOID) {
         ctx.fillStyle = tiles.wallBody;
         ctx.fillRect(px, py, ts, ts);
         ctx.fillStyle = tiles.wallTop;

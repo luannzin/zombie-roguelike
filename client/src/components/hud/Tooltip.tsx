@@ -6,6 +6,10 @@
  * Positioning is a transform on this wrapper, updated from
  * `tooltip-anchors` in rAF. That is not a React render. The enter animation
  * lives on the inner row so it does not fight the world transform.
+ *
+ * The card itself — fill, hairline, leading bar and pointer — is
+ * `.world-tooltip` in styles/index.css, which is the lobby nameplate in DOM
+ * form. See that rule before changing any measurement here.
  */
 
 import { useEffect, useRef, type ReactNode } from 'react';
@@ -30,7 +34,10 @@ export function Tooltip({ anchor, children, className }: TooltipProps) {
     const tick = () => {
       const pos = readTooltipAnchor(anchor);
       if (pos) {
-        el.style.transform = `translate(${Math.round(pos.x)}px, ${Math.round(pos.y)}px) translate(-50%, -100%)`;
+        // The extra 3px is the pointer, which hangs below the card's box: the
+        // anchor is the point being pointed AT, so the tip has to land on it
+        // and not the card's bottom edge.
+        el.style.transform = `translate(${Math.round(pos.x)}px, ${Math.round(pos.y)}px) translate(-50%, -100%) translateY(-3px)`;
         el.style.visibility = 'visible';
       } else {
         el.style.visibility = 'hidden';
@@ -52,9 +59,12 @@ export function Tooltip({ anchor, children, className }: TooltipProps) {
       )}
       style={anchor ? { visibility: 'hidden' } : undefined}
     >
+      {/* 14px leading is Departure Mono's own content box at 11px (11 up, 3
+          down) — the same span the lobby measures its card off, so the copy
+          sits on the card exactly the way a name does. */}
       <p
         className={cn(
-          'world-tooltip pixel-text text-ink flex items-center gap-1.5 text-[11px] leading-[17px]',
+          'world-tooltip pixel-text text-ink flex items-center gap-1.5 text-[11px] leading-[14px]',
         )}
       >
         {children}
@@ -69,7 +79,7 @@ export interface TooltipKeyProps {
 
 export function TooltipKey({ children }: TooltipKeyProps) {
   return (
-    <kbd className="border-panel-border text-ink inline-flex h-[17px] min-w-[17px] items-center justify-center border px-0.5 text-[11px] leading-[11px]">
+    <kbd className="border-panel-border text-ink inline-flex h-[14px] min-w-[14px] items-center justify-center border px-0.5 text-[11px] leading-[11px]">
       {children}
     </kbd>
   );

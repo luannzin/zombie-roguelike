@@ -18,10 +18,29 @@ import { hpColor, palette } from '../../theme/palette';
 import type { Projection } from '../projection';
 import { facingFromAim, frameIndex, type SpriteBook } from '../sprites';
 import type { DrawableCoin, DrawableEntity } from '../types';
-import { drawCenteredText } from './effects';
 
 /** Player name label size, in screen px. One step of the font's pixel grid. */
 const NAME_LABEL_PX = HUD_GRID;
+/*
+ * The nameplate, in design pixels, measured off Departure Mono's own metrics:
+ * caps rise 8 above the baseline and descenders drop 3 below it. Measuring the
+ * card off those rather than off the em box keeps the padding optically even.
+ *
+ * Descender space is reserved whether or not a name has one, so two cards side
+ * by side are the same height and sit on the same line.
+ *
+ * These are the lobby's numbers (game/lobby-scene.ts `drawLabels`) with no dpr
+ * term: the arena canvas is backed at CSS resolution (see Renderer.resize), so
+ * one design pixel is one canvas pixel here.
+ */
+const LABEL_CAP = 8;
+const LABEL_DESCENT = 3;
+const LABEL_PAD_X = 4;
+/** Width of the identity bar down the card's leading edge. */
+const LABEL_ACCENT = 2;
+const LABEL_CARD_H = LABEL_CAP + LABEL_DESCENT + 5;
+/** Clearance between the pointer's tip and the head it points at. */
+const LABEL_TIP_GAP = 2;
 /** Coin bob amplitude in world px — tiny so it still reads as grounded. */
 const COIN_BOB = 0.35;
 /** Draw scale vs the processed 16px frame. */
@@ -202,24 +221,79 @@ function drawHealthBar(
   ctx.fillRect(barX + unit, barY + unit, Math.round((barW - 2 * unit) * ratio), unit);
 }
 
+/**
+ * Names, on a card above the head — the same card the lobby draws over the
+ * seats at the fire (game/lobby-scene.ts `drawLabels`): inset panel fill, a
+ * hairline border, a 2px bar in the player's own colour down the leading edge,
+ * and a stepped pointer touching the head. Walking out of the camp is a change
+ * of place, not a change of chrome, so the plate over a teammate's head has to
+ * survive the trip unchanged.
+ *
+ * The identity colour lives in the BAR, not in the glyphs. Six players in six
+ * tints is six different legibilities against the night, and the one thing a
+ * name has to do is read; yours is full ink, everyone else's is muted, which
+ * is the same distinction the roster makes.
+ */
 export function drawNameLabels(entity: EntityContext, targets: DrawableEntity[]): void {
   const { ctx, view, config, book } = entity;
+  const tone = palette();
 
   ctx.font = hudFont(NAME_LABEL_PX);
-  ctx.textBaseline = 'bottom';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'alphabetic';
 
-  const labelShadow = palette().entity.labelShadow;
   for (const target of targets) {
-    if (!target.alive || !target.name) continue;
+    if (!target.alive || !target.name || target.visibility <= 0.01) continue;
+    const alpha = target.visibility;
     const frameHeight = book.get(target.sheet)?.frameHeight ?? config.spriteHeight;
     const offset = frameHeight - target.halfHeight + config.tileSize * 0.35;
-    drawCenteredText(
-      ctx,
-      target.name,
-      view.x(target.x + target.recoilX),
-      view.y(target.y + target.recoilY - offset),
-      target.color,
-      labelShadow,
-    );
+
+    const cx = view.x(target.x + target.recoilX);
+    // The tip of the pointer touches the head; the card floats above it.
+    const tipY = view.y(target.y + target.recoilY - offset);
+    const cardBottom = tipY - LABEL_TIP_GAP;
+    const cardTop = cardBottom - LABEL_CARD_H;
+    const baseline = cardBottom - LABEL_DESCENT - 2;
+
+    const textWidth = Math.ceil(ctx.measureText(target.name).width);
+    const width = LABEL_ACCENT + LABEL_PAD_X * 2 + textWidth;
+    const left = cx - Math.round(width / 2);
+
+    ctx.globalAlpha = alpha * 0.88;
+    ctx.fillStyle = tone.panelInset;
+    ctx.fillRect(left, cardTop, width, LABEL_CARD_H);
+
+    // Border as four fills rather than a stroke: a 1px stroke straddles the
+    // path and comes out as two half-lit rows at this size.
+    ctx.globalAlpha = alpha * (target.isLocal ? 0.9 : 0.5);
+    ctx.fillStyle = tone.panelBorder;
+    ctx.fillRect(left, cardTop, width, 1);
+    ctx.fillRect(left, cardBottom - 1, width, 1);
+    ctx.fillRect(left, cardTop, 1, LABEL_CARD_H);
+    ctx.fillRect(left + width - 1, cardTop, 1, LABEL_CARD_H);
+
+    // The colour bar, and the pointer below it. The pointer's first step
+    // overlaps the bottom border so the two merge instead of leaving a seam
+    // where the card ends.
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = target.color;
+    ctx.fillRect(left, cardTop, LABEL_ACCENT, LABEL_CARD_H);
+    ctx.globalAlpha = alpha * 0.88;
+    ctx.fillStyle = tone.panelInset;
+    for (let step = 0; step < 3; step++) {
+      ctx.fillRect(cx - (2 - step), cardBottom - 1 + step, 5 - step * 2, 1);
+    }
+
+    // Centred on the space BESIDE the colour bar rather than on the card, so
+    // the bar does not push the name off its own plate.
+    const textX = Math.round(left + LABEL_ACCENT + LABEL_PAD_X + textWidth / 2);
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = tone.entity.labelShadow;
+    ctx.fillText(target.name, textX + 1, baseline + 1);
+    ctx.fillStyle = target.isLocal ? tone.ink : tone.inkMuted;
+    ctx.fillText(target.name, textX, baseline);
   }
+
+  ctx.globalAlpha = 1;
+  ctx.textAlign = 'left';
 }

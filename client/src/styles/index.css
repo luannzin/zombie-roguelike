@@ -842,9 +842,60 @@
  * rise into place, not a pop. Reduced motion drops the travel and keeps the
  * fade. The transform lives on the INNER row so it does not fight the world
  * position the wrapper is holding.
+ *
+ * The card is the lobby nameplate written in DOM: inset panel fill, a hairline
+ * border, a 2px bar down the leading edge, and the pointer below it. Same four
+ * parts in the same order as `drawLabels` in game/lobby-scene.ts, so a prompt
+ * over a chest and a name over a head read as one piece of furniture rather
+ * than as two things that happen to be near each other. The bar is
+ * `--ink-accent` where a nameplate's is the player's colour: on a tooltip the
+ * leading edge is what marks it as something to act on.
+ *
+ * Sizes are whole design pixels because the face is — see `pixel-text`.
  */
 .world-tooltip {
+  position: relative;
+  padding: 2px 4px;
+  background-color: color-mix(in srgb, var(--panel-inset) 88%, transparent);
+  border: 1px solid var(--panel-border);
+  border-left: 2px solid var(--ink-accent);
   animation: tooltip-in 200ms cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+
+/*
+ * The pointer: a 5 → 3 → 1 staircase in the card's own fill, drawn as one
+ * clipped box rather than the usual rotated square — a 45° corner on a pixel
+ * card is the one shape that gives away that this is CSS and not the canvas.
+ *
+ * `top: 100%` is the inner edge of the bottom border (percentages on an
+ * absolute child resolve against the padding box), so the first step sits ON
+ * the border and the two merge instead of leaving a seam. The -3px pulls it
+ * back to the centre of the BORDER box, which the 2px bar would otherwise
+ * shift it off.
+ */
+.world-tooltip::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  margin-left: -3px;
+  width: 5px;
+  height: 3px;
+  background-color: color-mix(in srgb, var(--panel-inset) 88%, transparent);
+  clip-path: polygon(
+    0 0,
+    5px 0,
+    5px 1px,
+    4px 1px,
+    4px 2px,
+    3px 2px,
+    3px 3px,
+    2px 3px,
+    2px 2px,
+    1px 2px,
+    1px 1px,
+    0 1px
+  );
 }
 
 @keyframes tooltip-in {

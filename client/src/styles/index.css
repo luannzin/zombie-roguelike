@@ -286,14 +286,16 @@
   --animate-zone-title: zone-title 3.4s ease-out 1 forwards;
   --animate-zone-subtitle: zone-subtitle 3.4s ease-out 1 forwards;
   --animate-zone-sweep: zone-sweep 1.5s ease-in-out 0.45s 1 forwards;
-  --animate-zone-blackout: zone-blackout 3.4s ease-out 1 forwards;
 
   /*
-   * The lobby chrome leaving. It slides off its own edge rather than fading,
-   * because the panel is a physical thing on the glass and things on glass are
-   * taken away, not dissolved. Its duration is LAUNCH_MS in LobbyScreen.
+   * The lobby chrome leaving, as the camera starts its swoosh. It slides off
+   * its own edge rather than fading, because the panel is a physical thing on
+   * the glass and things on glass are taken away, not dissolved. It is
+   * deliberately shorter than LAUNCH_SECONDS in LobbyScreen: the chrome has to
+   * be gone before the move lands, so the last stretch of the push-in is
+   * already nothing but the game.
    */
-  --animate-lobby-exit: lobby-exit 0.42s cubic-bezier(0.7, 0, 0.84, 0) 1 forwards;
+  --animate-lobby-exit: lobby-exit 0.55s cubic-bezier(0.7, 0, 0.84, 0) 1 forwards;
 
   /*
    * A lamp the zone will not let you switch on. One hard sideways refusal, held
@@ -569,20 +571,6 @@
   100% {
     opacity: 0;
     translate: 120% 0;
-    }
-  }
-  /*
-   * The cut into the arena. The screen is already covered when the first frame
-   * of the new scene is drawn, so the layout change underneath it — the lobby's
-   * sidebar going away, the canvas becoming the whole window — happens behind
-   * a closed curtain and the player never sees the reflow.
-   */
-  @keyframes zone-blackout {
-  0% {
-    opacity: 1;
-    }
-  14%, 100% {
-    opacity: 0;
     }
   }
   @keyframes lobby-exit {

@@ -5,13 +5,13 @@
  * are the server's (see server/app/zones.py) — this component knows how an
  * arrival FEELS and nothing about what any particular one says.
  *
- * It is cut to the camera. `game.ts` opens every zone on a wide establishing
- * shot and pushes in onto the player over ARRIVAL_TIME; the card runs over that
- * push and clears just after it lands, so the two read as one move rather than
- * as a caption that happens to be on screen. Changing one duration without the
- * other leaves either a title hanging over gameplay or a silent zoom.
+ * It lands on the beat the camera stops. The lobby performs the push-in onto
+ * your character (see `game/lobby-scene.ts`) and the arena mounts on the frame
+ * it finishes, which is when this mounts too — motion settles, then the day is
+ * named. It deliberately does not run DURING the move: a title over a travelling
+ * camera is two things asking to be read at once.
  *
- * Five parts, and each one is doing a job:
+ * Four parts, and each one is doing a job:
  *
  *   WASH      a dark gradient from the top and bottom edges. Not a full-screen
  *             dim — the point is to make the type legible over a live scene
@@ -69,11 +69,6 @@ export function ZoneTitle({ arrival }: ZoneTitleProps) {
       {/* Legibility, from the edges in. The middle of the frame stays clear so
           the character the camera is pushing onto is never behind a scrim. */}
       <div className="animate-zone-wash absolute inset-0 bg-[linear-gradient(to_bottom,var(--surface)_0%,transparent_38%,transparent_62%,var(--surface)_100%)] opacity-0" />
-
-      {/* The curtain the cut happens behind. It is already down on the first
-          frame of the new scene, so the layout change underneath — the lobby's
-          chrome going away, the canvas becoming the window — is never seen. */}
-      <div className="animate-zone-blackout bg-surface absolute inset-0" />
 
       <div className="relative flex flex-col items-center gap-3">
         <div className="animate-zone-rule bg-ink-accent h-px w-0" />

@@ -3,14 +3,21 @@
  *
  * One socket serves both halves of this screen (see `useRoomSession`), so the
  * lobby and the arena are two renders of one connection, not two connections.
- * Which one is shown is decided by a single fact: whether a `welcome` has
- * arrived.
+ * They are also two renders of one PLACE: the lobby draws the camp the server
+ * sent in `hello`, and the arena draws the same map with the simulation
+ * running.
+ *
+ * Which one is shown is decided by two facts, not one. The `welcome` says the
+ * run has begun — but the lobby is in the middle of performing the transition
+ * when it lands (see `LobbyScreen`), and swapping on the message would cut that
+ * move in half. So the arena waits for the lobby to say it has finished, and
+ * takes over on the frame it was left.
  *
  * The arena is keyed on `playerId`. A reconnect makes you a new player
  * server-side, and a `Game` cannot be patched into a different identity.
  */
 
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { MenuButton } from '@/components/menu/MenuButton';
 import { useRoomSession } from '@/hooks/useRoomSession';
@@ -29,6 +36,15 @@ export function RoomScreen() {
   // would tear down the socket.
   const [name] = useState(loadName);
   const session = useRoomSession(code.toUpperCase(), name);
+  /** True once the lobby has finished handing the screen over. */
+  const [launched, setLaunched] = useState(false);
+  const onLaunched = useCallback(() => setLaunched(true), []);
+
+  // Dropping back to the campfire — a reconnect, a fresh room — has to arm the
+  // transition again, or the next run would skip straight into the arena.
+  useEffect(() => {
+    if (!session.welcome) setLaunched(false);
+  }, [session.welcome]);
 
   const leave = () => void navigate('/');
 
@@ -45,7 +61,7 @@ export function RoomScreen() {
     );
   }
 
-  if (session.connection && session.welcome) {
+  if (session.connection && session.welcome && launched) {
     return (
       <ArenaScreen
         key={session.welcome.playerId}
@@ -55,5 +71,12 @@ export function RoomScreen() {
     );
   }
 
-  return <LobbyScreen code={session.lobby?.code ?? code.toUpperCase()} session={session} onLeave={leave} />;
+  return (
+    <LobbyScreen
+      code={session.lobby?.code ?? code.toUpperCase()}
+      session={session}
+      onLeave={leave}
+      onLaunched={onLaunched}
+    />
+  );
 }

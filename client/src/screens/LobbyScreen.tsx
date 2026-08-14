@@ -1,18 +1,27 @@
 /**
- * The campfire lobby: roster on the left, the camp on the right.
+ * The campfire lobby: the camp, full screen, with the roster panel over it.
  *
  * Nothing here is playable — the characters standing in the scene are the
  * party, on the exact tiles the server is holding for them, but the simulation
- * is not running and no input is read. The screen exists to answer three
+ * is not running and no input is read. The panel exists to answer three
  * questions at a glance: what is the code, who is here, and are we waiting on
  * anybody.
  *
- * Starting is ACKNOWLEDGED before it is obeyed. The host's click flicks the
- * button, the chrome slides off the glass, and only then does `start` go up the
- * socket — the same arcade cadence the title screen uses. It also buys the one
- * thing the transition needs: a beat where the camp is on screen with nothing
- * on top of it, so the arena's push-in continues a shot the player is already
- * looking at rather than replacing one.
+ * The canvas is FULL SCREEN and the panel floats on top of it, rather than the
+ * two sharing a row. That is not a styling preference: it is what makes the
+ * launch possible. The arena's canvas is the whole window, so if this one were
+ * a column beside a sidebar, the handover would shift the world sideways by
+ * half the sidebar's width no matter how carefully the camera was matched. Same
+ * box, same picture. The fire is pushed off-centre with the scene's anchor
+ * instead, into the space the panel leaves — and taking that displacement back
+ * is half of what the launch animates.
+ *
+ * LAUNCHING is the transition, and it happens here rather than in the arena.
+ * The panel slides off to the left while the camera swooshes from the fire onto
+ * your own character and pushes in to game scale; by the last frame this screen
+ * draws, the picture is what the arena is about to open on. `onLaunched` fires
+ * when the move lands, and `RoomScreen` swaps the screens then — not when the
+ * `welcome` arrives, which is much earlier and would cut the move in half.
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -21,42 +30,52 @@ import { PlayerRoster } from '@/components/lobby/PlayerRoster';
 import { RoomCode } from '@/components/lobby/RoomCode';
 import { MenuButton } from '@/components/menu/MenuButton';
 import type { LobbyMember } from '@/game/lobby-scene';
+import { useIsMobile } from '@/hooks/use-media-query';
 import { cn } from '@/lib/utils';
 import type { RoomSession } from '@/hooks/useRoomSession';
 
 /**
- * How long the chrome takes to leave, in ms. Matches the `lobby-exit`
- * keyframes in styles/index.css; changing one without the other either cuts the
- * exit short or leaves a dead pause before the run starts.
+ * Seconds the launch takes. The camera move, the panel's exit (`lobby-exit` in
+ * styles/index.css, which is shorter so the chrome is gone before the move
+ * lands) and the screen swap are all cut to this one number.
  */
-const LAUNCH_MS = 420;
+const LAUNCH_SECONDS = 1.25;
 
 export interface LobbyScreenProps {
   code: string;
   session: RoomSession;
   onLeave: () => void;
+  /** Called once the launch has landed and the arena may take the screen. */
+  onLaunched: () => void;
 }
 
-export function LobbyScreen({ code, session, onLeave }: LobbyScreenProps) {
+export function LobbyScreen({ code, session, onLeave, onLaunched }: LobbyScreenProps) {
   const { lobby, selfId, camp, isHost, status, start } = session;
   const players = lobby?.players ?? [];
+  const mobile = useIsMobile();
   const [launching, setLaunching] = useState(false);
-  const launchTimer = useRef<number | null>(null);
+  const landed = useRef(onLaunched);
+  landed.current = onLaunched;
 
-  useEffect(
-    () => () => {
-      if (launchTimer.current !== null) window.clearTimeout(launchTimer.current);
-    },
-    [],
-  );
+  // Everyone launches, not just whoever clicked: the host starts the move on
+  // their own press so the button answers instantly, and every other client
+  // starts it when the phase flips. `beginLaunch` is idempotent, so a host
+  // hitting both paths still gets one move.
+  const playing = lobby?.phase === 'playing';
+  useEffect(() => {
+    if (playing) setLaunching(true);
+  }, [playing]);
+
+  useEffect(() => {
+    if (!launching) return;
+    const timer = window.setTimeout(() => landed.current(), LAUNCH_SECONDS * 1000);
+    return () => window.clearTimeout(timer);
+  }, [launching]);
 
   const launch = () => {
     if (launching) return;
     setLaunching(true);
-    launchTimer.current = window.setTimeout(() => {
-      launchTimer.current = null;
-      start();
-    }, LAUNCH_MS);
+    start();
   };
 
   // The scene diffs by id, but a fresh array every render would still make it
@@ -80,10 +99,24 @@ export function LobbyScreen({ code, session, onLeave }: LobbyScreenProps) {
   const zone = lobby?.zone;
 
   return (
-    <div className="flex h-screen w-screen flex-col overflow-hidden bg-surface md:flex-row">
+    <div className="relative h-screen w-screen overflow-hidden bg-surface">
+      <CampfireCanvas
+        members={members}
+        camp={camp}
+        seed={code}
+        // Out from under the chrome: to the right of the panel on a desktop,
+        // below it on a phone. The launch takes this back to dead centre.
+        anchorX={mobile ? 0.5 : 0.63}
+        anchorY={mobile ? 0.66 : 0.48}
+        launching={launching}
+        launchSeconds={LAUNCH_SECONDS}
+        className="absolute inset-0"
+      />
+
       <aside
         className={cn(
-          'crt-scanlines flex shrink-0 flex-col gap-5 border-panel-border bg-panel p-5 max-md:border-b md:h-full md:w-[336px] md:border-r',
+          'crt-scanlines absolute top-0 left-0 z-10 flex h-full w-full max-w-[336px] flex-col gap-5 border-panel-border bg-panel/95 p-5 md:border-r',
+          'max-md:h-auto max-md:max-w-none max-md:border-b',
           launching && 'animate-lobby-exit pointer-events-none',
         )}
       >
@@ -136,24 +169,16 @@ export function LobbyScreen({ code, session, onLeave }: LobbyScreenProps) {
         </div>
       </aside>
 
-      <main className="relative min-h-0 flex-1">
-        <CampfireCanvas
-          members={members}
-          camp={camp}
-          seed={code}
-          className="absolute inset-0"
-        />
-        <p
-          className={cn(
-            'pixel-text pointer-events-none absolute bottom-4 left-1/2 -translate-x-1/2 text-center text-[11px] leading-[17px] text-ink-muted transition-opacity duration-300',
-            launching && 'opacity-0',
-          )}
-        >
-          {players.length < 2
-            ? 'compartilhe o código — a floresta é grande'
-            : 'a fogueira não vai durar a noite toda'}
-        </p>
-      </main>
+      <p
+        className={cn(
+          'pixel-text pointer-events-none absolute bottom-4 left-1/2 -translate-x-1/2 text-center text-[11px] leading-[17px] text-ink-muted transition-opacity duration-300',
+          launching && 'opacity-0',
+        )}
+      >
+        {players.length < 2
+          ? 'compartilhe o código — a floresta é grande'
+          : 'a fogueira não vai durar a noite toda'}
+      </p>
     </div>
   );
 }

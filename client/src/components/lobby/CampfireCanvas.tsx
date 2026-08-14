@@ -26,10 +26,17 @@ export interface CampfireCanvasProps {
   seed?: string;
   /**
    * Where the fire sits in the canvas, as 0..1 fractions. Defaults to centred.
-   * The title screen moves it down and left, out from under the menu.
+   * Both screens push it aside so their menu is not standing on top of it.
    */
   anchorX?: number;
   anchorY?: number;
+  /**
+   * Flip to true to run the launch: the camera swooshes onto the local player
+   * and pushes in to game scale. One-way — see `LobbyScene.beginLaunch`.
+   */
+  launching?: boolean;
+  /** Seconds the launch takes. Must match whatever is timing the handover. */
+  launchSeconds?: number;
   className?: string;
 }
 
@@ -39,6 +46,8 @@ export function CampfireCanvas({
   seed = '',
   anchorX = 0.5,
   anchorY = 0.42,
+  launching = false,
+  launchSeconds = 1,
   className,
 }: CampfireCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -47,15 +56,20 @@ export function CampfireCanvas({
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    // Anchor is read once per scene; it is a framing decision, not state.
-    const scene = new LobbyScene(canvas, hashSeed(seed), { x: anchorX, y: anchorY });
+    const scene = new LobbyScene(canvas, hashSeed(seed));
     sceneRef.current = scene;
     void scene.start();
     return () => {
       scene.dispose();
       sceneRef.current = null;
     };
-  }, [seed, anchorX, anchorY]);
+    // Anchor is deliberately NOT a dependency: it is live framing, pushed in
+    // below. Rebuilding the scene to move the camera would restart the fire.
+  }, [seed]);
+
+  useEffect(() => {
+    sceneRef.current?.setAnchor(anchorX, anchorY);
+  }, [anchorX, anchorY]);
 
   // Before the roster, so the first party is placed against the real map rather
   // than against the fallback clearing and then shunted.
@@ -69,6 +83,12 @@ export function CampfireCanvas({
   useEffect(() => {
     sceneRef.current?.setMembers(members);
   }, [members]);
+
+  // Last, so the launch always sees the final roster and can find the local
+  // seat to aim at.
+  useEffect(() => {
+    if (launching) sceneRef.current?.beginLaunch(launchSeconds);
+  }, [launching, launchSeconds]);
 
   return (
     <canvas

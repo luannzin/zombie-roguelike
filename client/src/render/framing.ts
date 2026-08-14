@@ -1,41 +1,50 @@
 /**
  * How much of the world a shot frames.
  *
- * One number lives here — the WIDE shot of the camp — because two different
- * things have to agree on it. The lobby draws the clearing at this scale while
- * the party gathers, and the arena's arrival opens at the same scale before it
- * pushes in onto the player. If they disagreed, pressing start would cut to a
- * visibly different picture of the same place and the push-in would read as a
- * scene change rather than as a camera move.
+ * Two scales live here, and the whole lobby→run transition is the move between
+ * them. The lobby holds the camp WIDE, with the fire off to one side so the
+ * menu is not standing on top of it. Starting the run pushes in to `ARENA_ZOOM`
+ * and centres the player. Because the lobby is the thing that performs that
+ * move (see `game/lobby-scene.ts`), both ends of it have to be stated in one
+ * place — the arena then simply opens on the frame the lobby handed it, and the
+ * cut between two canvases is invisible.
+ *
+ * The wide shot is therefore never allowed to be as tight as the arena: it is
+ * clamped to a step below, so however big the window is there is always a push
+ * to see.
  */
 
 import { clamp } from '../lib/math';
 
-/** How many tiles of forest the wide shot holds. Decides the zoom. */
-export const CAMP_VIEW_TILES_W = 26;
-export const CAMP_VIEW_TILES_H = 17;
+/** The scale the game is played at. Integer — this is pixel art. */
+export const ARENA_ZOOM = 4;
 
-/** Pixel art has no half scales; anything outside this stops being readable. */
+/** How many tiles of forest the wide shot tries to hold. Decides the zoom. */
+export const CAMP_VIEW_TILES_W = 30;
+export const CAMP_VIEW_TILES_H = 20;
+
+/** Below this the party stops being readable as people. */
 const MIN_ZOOM = 2;
-const MAX_ZOOM = 6;
 
 /**
- * Integer zoom that fits `CAMP_VIEW_TILES` into a canvas of this size.
+ * Integer zoom for the wide shot, in CSS pixels.
  *
  * Integer only: a fractional scale puts the sprite grid between screen pixels
- * and the whole scene goes soft. The arrival is allowed to pass through
- * fractional scales on its way out of this one because it is moving — see
- * `Camera.beginArrival`.
+ * and the whole scene goes soft. The launch is allowed to pass through
+ * fractional scales on its way to `ARENA_ZOOM` because it is moving, and motion
+ * hides softness that a still frame would not.
+ *
+ * Pass the canvas's CSS size, not its backing store — multiply the result by
+ * the device pixel ratio afterwards, or a hidpi screen silently frames half as
+ * much world as a normal one.
  */
-export function campZoom(canvasWidth: number, canvasHeight: number, tileSize: number): number {
-  return clamp(
-    Math.floor(
-      Math.min(
-        canvasWidth / (CAMP_VIEW_TILES_W * tileSize),
-        canvasHeight / (CAMP_VIEW_TILES_H * tileSize),
-      ),
+export function campZoom(cssWidth: number, cssHeight: number, tileSize: number): number {
+  const fit = Math.floor(
+    Math.min(
+      cssWidth / (CAMP_VIEW_TILES_W * tileSize),
+      cssHeight / (CAMP_VIEW_TILES_H * tileSize),
     ),
-    MIN_ZOOM,
-    MAX_ZOOM,
   );
+  // Never as tight as the game itself: the push-in is the point.
+  return clamp(fit, MIN_ZOOM, ARENA_ZOOM - 1);
 }

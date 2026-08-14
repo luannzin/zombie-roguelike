@@ -35,7 +35,9 @@ import { get2d } from "../lib/canvas";
 import { clamp01, lerp } from "../lib/math";
 import type { GameConfig, MapPayload } from "../net/protocol";
 import { Camera } from "../render/camera";
-import { campZoom } from "../render/framing";
+import { FovField, type LightSource } from "../render/fov";
+import { ARENA_ZOOM, campZoom } from "../render/framing";
+import { DarknessLayer } from "../render/layers/darkness";
 import { TerrainLayer } from "../render/layers/terrain";
 import { frameIndex, SpriteBook } from "../render/sprites";
 import { loadTerrain, type TerrainAtlas, tileHash } from "../render/terrain";
@@ -110,6 +112,15 @@ const LANDING_SETTLE = 0.24;
 
 /** Embers per second thrown by the fire, on top of the ones in the sprite. */
 const EMBER_RATE = 14;
+
+/**
+ * Vision numbers for a scene with no server to ask. Only the fire lights this
+ * place — there are no viewers, so the lantern reach and cone are never read;
+ * they exist because `FovField` takes one config for both kinds of light.
+ */
+const FALLBACK_VISION = { ambientTiles: 3.5, lanternTiles: 11, coneDegrees: 75 };
+/** How far the fire reaches without a server saying. Mirrors config.py. */
+const FALLBACK_FIRE_TILES = 10;
 
 export interface LobbyMember {
 	id: string;
@@ -190,12 +201,40 @@ interface Ring {
 	color: string;
 }
 
+/**
+ * The move out of the lobby and into the run.
+ *
+ * Three things travel together over one eased progress: the framing slides from
+ * the fire to the local player, the anchor slides from wherever the menu left
+ * room to dead centre, and the scale pushes from the wide shot to `ARENA_ZOOM`.
+ * They land on exactly the frame the arena's camera will open on, which is what
+ * makes the handover between two different canvases invisible.
+ */
+interface Launch {
+	elapsed: number;
+	duration: number;
+	fromAnchor: { x: number; y: number };
+	fromZoom: number;
+	/** Whose character the camera ends up on. Empty until a local seat exists. */
+	focusId: string;
+}
+
 export class LobbyScene {
 	private readonly canvas: HTMLCanvasElement;
 	private readonly ctx: CanvasRenderingContext2D;
 	private readonly sprites: SpriteBook;
 	private readonly terrain = new TerrainLayer();
+	private readonly darkness = new DarknessLayer();
 	private readonly camera = new Camera();
+	/**
+	 * The same light field the arena runs, with the bonfire as its only source
+	 * and nobody carrying a lamp. Sharing the system rather than drawing a
+	 * gradient here is what stops the night changing shape at the handover —
+	 * the camp is lit identically before and after the run starts, because it is
+	 * lit by the same code.
+	 */
+	private fov: FovField | null = null;
+	private lights: LightSource[] = [];
 
 	private readonly seats: Seat[] = [];
 	private readonly particles: Particle[] = [];
@@ -213,9 +252,14 @@ export class LobbyScene {
 	private started = false;
 	private disposed = false;
 	private resizeDirty = true;
+	/** Running (or finished) launch. Null while the party is still gathering. */
+	private launch: Launch | null = null;
 
 	private tile = FALLBACK_TILE;
 	private dpr = 1;
+	/** Canvas size in CSS pixels. The zoom fit is decided in these, not device px. */
+	private cssWidth = 0;
+	private cssHeight = 0;
 	/** The fire's base, in world pixels — the anchor for seats and light. */
 	private fireX = 0;
 	private fireY = 0;
@@ -230,11 +274,12 @@ export class LobbyScene {
 		/** Seed for the clearing. Two rooms should not be the same forest. */
 		private readonly seed = 1,
 		/**
-		 * Where the fire sits in the viewport, as 0..1 fractions. The lobby wants
-		 * it centred; the title screen pushes it down and left so the menu is not
-		 * standing on top of it.
+		 * Where the fire sits in the viewport, as 0..1 fractions. Both callers
+		 * push it off-centre so their menu is not standing on top of it — and
+		 * that displacement is half of what the launch takes back, which is why
+		 * it is live state rather than a constructor-only framing decision.
 		 */
-		private readonly anchor: { x: number; y: number } = { x: 0.5, y: 0.42 },
+		private anchor: { x: number; y: number } = { x: 0.5, y: 0.42 },
 		sprites: SpriteBook = new SpriteBook(),
 	) {
 		this.canvas = canvas;
@@ -284,12 +329,58 @@ export class LobbyScene {
 		this.resizeObserver?.disconnect();
 		this.resizeObserver = null;
 		this.terrain.reset();
+		this.darkness.reset();
 		this.seats.length = 0;
 		this.particles.length = 0;
 		this.rings.length = 0;
 		this.world = null;
+		this.fov = null;
+		this.lights = [];
 		this.atlas = null;
 		this.vfx = null;
+	}
+
+	/**
+	 * Move the fire's resting place in the viewport. Ignored once the launch
+	 * has started, which owns the framing from then on.
+	 */
+	setAnchor(x: number, y: number): void {
+		if (this.launch) return;
+		this.anchor = { x, y };
+		this.resizeDirty = true;
+	}
+
+	/**
+	 * Leave the lobby: swoosh onto the local player and push in to game scale.
+	 *
+	 * This is the whole transition, and it happens HERE rather than in the
+	 * arena because the lobby is already showing the place and the people. The
+	 * menu slides off to the left while the camera takes back the room it was
+	 * occupying, travels from the fire to your own character, and closes to
+	 * `ARENA_ZOOM` — so by the last frame this scene draws, the picture is
+	 * pixel-for-pixel what the arena is about to open on. The player never sees
+	 * a cut, only a move that finishes.
+	 *
+	 * Idempotent: the host starts it on their own click and everybody else
+	 * starts it when the phase flips, and both can happen to the same client.
+	 */
+	beginLaunch(duration: number): void {
+		if (this.launch) return;
+		// A room already in progress can launch before the first frame has sized
+		// anything, which would capture a zoom the scene was never drawn at.
+		if (this.cssWidth === 0) this.resize();
+		this.launch = {
+			elapsed: 0,
+			duration,
+			fromAnchor: { ...this.anchor },
+			fromZoom: this.camera.zoom,
+			focusId: this.seats.find((seat) => seat.isLocal)?.id ?? "",
+		};
+	}
+
+	/** True once `beginLaunch` has run. The scene is on its way out. */
+	get launching(): boolean {
+		return this.launch !== null;
 	}
 
 	/**
@@ -423,6 +514,16 @@ export class LobbyScene {
 		const fire = this.world.fires[0];
 		this.fireX = fire?.x ?? this.world.pixelWidth / 2;
 		this.fireY = fire?.y ?? this.world.pixelHeight / 2;
+
+		this.fov = new FovField(this.world.width, this.world.height);
+		this.lights = this.world.fires.map((place, index) => ({
+			id: index,
+			x: place.x,
+			// Lifted off the contact row — the light comes from the flame, not
+			// from the ashes. Same offset the arena applies.
+			y: place.y - this.tile * 0.5,
+			radiusTiles: camp?.config.campfireLightTiles ?? FALLBACK_FIRE_TILES,
+		}));
 
 		// Grass and ferns are placed by the terrain layer from the tile hash, so
 		// keeping them out of the hearth has to be told to it — the map itself
@@ -584,34 +685,103 @@ export class LobbyScene {
 	};
 
 	private resize(): void {
-		const { canvas, world } = this;
+		const { canvas } = this;
 		this.dpr = Math.min(2, window.devicePixelRatio || 1);
-		const width = Math.max(1, Math.round(canvas.clientWidth * this.dpr));
-		const height = Math.max(1, Math.round(canvas.clientHeight * this.dpr));
+		this.cssWidth = Math.max(1, canvas.clientWidth);
+		this.cssHeight = Math.max(1, canvas.clientHeight);
+		const width = Math.max(1, Math.round(this.cssWidth * this.dpr));
+		const height = Math.max(1, Math.round(this.cssHeight * this.dpr));
 		if (canvas.width !== width) canvas.width = width;
 		if (canvas.height !== height) canvas.height = height;
 		// Resizing the backing store resets context state.
 		this.ctx.imageSmoothingEnabled = false;
+		this.frameCamera();
+	}
 
-		// Integer zoom only: a fractional one puts the sprite grid between screen
-		// pixels and the whole scene goes soft. It is also the scale the arena's
-		// arrival opens on — see render/framing.ts.
-		this.camera.zoom = campZoom(width, height, this.tile);
-		this.camera.resize(width, height);
-		if (world) {
-			// `snapTo` centres its target, so the point handed to it is displaced by
-			// however far the anchor is from the middle. Clamping still applies: the
-			// map is big enough that it never bites, but a smaller one would pull
-			// the fire back toward centre rather than show the edge of the world.
-			this.camera.snapTo(
-				this.fireX + this.camera.viewWidth * (0.5 - this.anchor.x),
-				this.fireY + this.camera.viewHeight * (0.5 - this.anchor.y),
-				world,
+	/**
+	 * Point the camera. Called on resize, and every frame while launching.
+	 *
+	 * At rest the scale is an integer: a fractional one puts the sprite grid
+	 * between screen pixels and the whole scene goes soft. The launch is allowed
+	 * to pass through fractional scales because it is MOVING, and it lands
+	 * exactly on `ARENA_ZOOM` — the scale the game itself is played at, so the
+	 * arena opens on this frame rather than on a new one.
+	 *
+	 * The zoom fit is decided in CSS pixels and then multiplied by the device
+	 * ratio. Deciding it in device pixels would frame half as much world on a
+	 * hidpi screen as on a normal one, at the same physical size.
+	 */
+	private frameCamera(): void {
+		const { world, dpr } = this;
+		const rest = campZoom(this.cssWidth, this.cssHeight, this.tile);
+		const launch = this.launch;
+
+		let anchorX = this.anchor.x;
+		let anchorY = this.anchor.y;
+		let focusX = this.fireX;
+		let focusY = this.fireY;
+		let zoom = rest * dpr;
+
+		if (launch) {
+			const k = easeInOut(clamp01(launch.elapsed / launch.duration));
+			// Log space: scale is multiplicative, and a linear ramp between two
+			// zooms crawls at the wide end and then lunges at the tight one.
+			zoom = Math.exp(
+				lerp(Math.log(launch.fromZoom), Math.log(ARENA_ZOOM * dpr), k),
 			);
+			anchorX = lerp(launch.fromAnchor.x, 0.5, k);
+			anchorY = lerp(launch.fromAnchor.y, 0.5, k);
+			const target = this.launchTarget(launch);
+			focusX = lerp(this.fireX, target.x, k);
+			focusY = lerp(this.fireY, target.y, k);
 		}
+
+		this.camera.zoom = zoom;
+		this.camera.resize(this.canvas.width, this.canvas.height);
+		if (!world) return;
+		// `snapTo` centres its target, so the point handed to it is displaced by
+		// however far the anchor is from the middle. Clamping still applies: the
+		// map is big enough that it never bites, but a smaller one would pull the
+		// fire back toward centre rather than show the edge of the world.
+		this.camera.snapTo(
+			focusX + this.camera.viewWidth * (0.5 - anchorX),
+			focusY + this.camera.viewHeight * (0.5 - anchorY),
+			world,
+		);
+	}
+
+	/**
+	 * Where the launch is heading, in world pixels.
+	 *
+	 * The local player's BODY CENTRE, not the ground under their feet: that is
+	 * the point the arena's camera follows, and landing on anything else would
+	 * make the handover a small vertical hop. With nobody local to follow — a
+	 * spectator, or a roster that has not arrived — it settles on the fire,
+	 * which at least reads as a deliberate hold.
+	 */
+	private launchTarget(launch: Launch): { x: number; y: number } {
+		const seat = this.seats.find((s) => s.id === launch.focusId);
+		if (!seat) return { x: this.fireX, y: this.fireY };
+		return {
+			x: seat.targetX,
+			y: seat.targetY - (this.camp?.config.playerHalfHeight ?? 0),
+		};
 	}
 
 	private update(dt: number): void {
+		if (this.launch) {
+			// Clamped, not stopped: the move holds on its last frame until the
+			// arena takes over, so there is never a gap where the lobby has
+			// finished and nothing has replaced it.
+			this.launch.elapsed = Math.min(
+				this.launch.duration,
+				this.launch.elapsed + dt,
+			);
+			// A seat that was still sliding when the host clicked keeps sliding,
+			// so the target is re-read every frame rather than captured.
+			this.frameCamera();
+		}
+
 		// Three sines with no common period: the fire never repeats a beat, which
 		// is the whole difference between "burning" and "animated".
 		const t = this.time;
@@ -679,6 +849,26 @@ export class LobbyScene {
 			this.rings[i].age += dt;
 			if (this.rings[i].age >= this.rings[i].life) this.rings.splice(i, 1);
 		}
+
+		// No viewers: nobody here is carrying a lamp, and the camp is lit by the
+		// fire alone. Same call the arena makes, so the night is the same night.
+		if (this.world && this.fov) {
+			this.fov.update(
+				this.world,
+				[],
+				this.lights,
+				{
+					ambientTiles:
+						this.camp?.config.visionAmbientTiles ?? FALLBACK_VISION.ambientTiles,
+					lanternTiles:
+						this.camp?.config.visionLanternTiles ?? FALLBACK_VISION.lanternTiles,
+					coneDegrees:
+						this.camp?.config.visionConeDegrees ?? FALLBACK_VISION.coneDegrees,
+				},
+				this.time,
+				dt,
+			);
+		}
 	}
 
 	// --- drawing -------------------------------------------------------------
@@ -695,13 +885,22 @@ export class LobbyScene {
 		ctx.scale(camera.zoom, camera.zoom);
 		ctx.translate(-camera.renderX, -camera.renderY);
 
+		// The arena's pass order, to the letter — ground, bodies, overgrowth,
+		// darkness, light. Anything reordered here is a difference the player
+		// would see the instant the run starts.
 		this.terrain.ground(ctx, world, camera, this.time);
-		this.drawFirelight();
 		this.drawStanding();
 		// Canopies and ferns close over whoever is standing behind them, exactly
 		// as they do in the arena.
 		this.terrain.overgrowth(ctx, world, camera, this.time);
-		this.drawNight();
+		if (this.fov) this.darkness.draw(ctx, world, this.fov);
+		this.darkness.drawFires(
+			ctx,
+			world.fires,
+			this.tile,
+			this.camp?.config.campfireLightTiles ?? FALLBACK_FIRE_TILES,
+			this.time,
+		);
 
 		// Everything below is LIGHT, so it goes over the darkness rather than
 		// under it — the same rule the arena's renderer follows for muzzle
@@ -713,63 +912,6 @@ export class LobbyScene {
 
 		ctx.restore();
 		this.drawLabels();
-	}
-
-	/** The warm pool the fire throws on the ground. Breathes with the flicker. */
-	private drawFirelight(): void {
-		const { ctx } = this;
-		const glow = palette().fire.glow.join(" ");
-		const radius = this.tile * (6 + this.flicker * 1.8);
-		const cy = this.fireY - this.tile * 0.4;
-
-		ctx.save();
-		ctx.globalCompositeOperation = "lighter";
-		const gradient = ctx.createRadialGradient(
-			this.fireX,
-			cy,
-			2,
-			this.fireX,
-			cy,
-			radius,
-		);
-		gradient.addColorStop(
-			0,
-			`rgb(${glow} / ${(0.42 * this.flicker).toFixed(3)})`,
-		);
-		gradient.addColorStop(
-			0.38,
-			`rgb(${glow} / ${(0.15 * this.flicker).toFixed(3)})`,
-		);
-		gradient.addColorStop(1, `rgb(${glow} / 0)`);
-		ctx.fillStyle = gradient;
-		ctx.fillRect(this.fireX - radius, cy - radius, radius * 2, radius * 2);
-		ctx.restore();
-	}
-
-	/** Everything past the fire's reach is night, not floor. */
-	private drawNight(): void {
-		const { ctx, camera } = this;
-		const tone = palette();
-		const reach = Math.hypot(camera.viewWidth, camera.viewHeight) * 0.62;
-		const gradient = ctx.createRadialGradient(
-			this.fireX,
-			this.fireY,
-			this.tile * 2,
-			this.fireX,
-			this.fireY,
-			reach,
-		);
-		gradient.addColorStop(0, "rgb(0 0 0 / 0)");
-		gradient.addColorStop(0.42, `rgb(${tone.night.shadow.join(" ")} / 0.5)`);
-		gradient.addColorStop(0.78, `rgb(${tone.night.shadow.join(" ")} / 0.93)`);
-		gradient.addColorStop(1, tone.surface);
-		ctx.fillStyle = gradient;
-		ctx.fillRect(
-			camera.renderX,
-			camera.renderY,
-			camera.viewWidth,
-			camera.viewHeight,
-		);
 	}
 
 	/**
@@ -950,6 +1092,16 @@ export class LobbyScene {
 		return 1 - 0.34 * Math.exp(-4.5 * k) * Math.cos(k * 9);
 	}
 
+	/**
+	 * 0..1 opacity for anything that belongs to the LOBBY rather than to the
+	 * world: gone by halfway through the launch, so the last third of the move
+	 * is already just the game.
+	 */
+	private chromeAlpha(): number {
+		if (!this.launch) return 1;
+		return clamp01(1 - (this.launch.elapsed / this.launch.duration) * 2.4);
+	}
+
 	/** 0..1 body opacity: fades in during a summon, out during a departure. */
 	private seatAlpha(seat: Seat): number {
 		if (seat.phase === "leaving") return 1 - clamp01(seat.t / LEAVE_TIME);
@@ -1062,10 +1214,17 @@ export class LobbyScene {
 	 * inset panel fill, a hairline border, and a 2px bar in the player's colour
 	 * down the leading edge. Same three parts, same order, so the list and the
 	 * scene read as one thing — see components/lobby/PlayerRoster.tsx.
+	 *
+	 * They are LOBBY chrome, so they leave with the rest of it: the launch fades
+	 * them out over its first half, and the arena draws its own labels in its
+	 * own style. Carrying these across the handover would swap one nameplate for
+	 * a different one on the same head, mid-move.
 	 */
 	private drawLabels(): void {
 		const { ctx, camera } = this;
 		const tone = palette();
+		const chrome = this.chromeAlpha();
+		if (chrome <= 0.01) return;
 		// One design pixel, in device pixels. Every measurement below is a whole
 		// multiple of it, so the card's edges land on the same grid as the font.
 		const unit = Math.max(1, Math.round(this.dpr));
@@ -1088,7 +1247,7 @@ export class LobbyScene {
 		ctx.textBaseline = "alphabetic";
 
 		for (const seat of this.seats) {
-			const alpha = this.seatAlpha(seat);
+			const alpha = this.seatAlpha(seat) * chrome;
 			if (alpha <= 0.05) continue;
 			const { x, y } = seat;
 			// Clear of the head, and of the crown when there is one. The body's
@@ -1236,6 +1395,11 @@ function hearthDistance(tx: number, ty: number, cx: number, cy: number): number 
 	const dx = tx - cx;
 	const dy = (ty - cy) * (RING_TILES_X / RING_TILES_Y);
 	return Math.hypot(dx, dy);
+}
+
+/** Symmetric ease. Slow out of the wide shot, slow into the landing. */
+function easeInOut(t: number): number {
+	return t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2;
 }
 
 /**

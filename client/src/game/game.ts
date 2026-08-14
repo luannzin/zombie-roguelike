@@ -31,7 +31,6 @@ import type {
   ZoneInfo,
 } from '../net/protocol';
 import { Camera } from '../render/camera';
-import { campZoom } from '../render/framing';
 import { FovField, type LightSource, type VisionConfig, type Viewer } from '../render/fov';
 import { Minimap, type MinimapPlayer } from '../render/minimap';
 import { Renderer } from '../render/renderer';
@@ -90,15 +89,6 @@ const VISION_FALLBACK: VisionConfig = {
  */
 const ENEMY_HIDE_LIGHT = 0.012;
 const ENEMY_SHOW_LIGHT = 0.3;
-
-/**
- * Seconds the arrival shot takes: wide on the whole zone, then in onto you.
- *
- * Long enough to read the place and find your own character in it, short
- * enough that a player who already knows the camp is not waiting on a cutscene.
- * The zone title card is timed against this — see components/hud/ZoneTitle.
- */
-const ARRIVAL_TIME = 2.1;
 
 /**
  * Everything `toDrawablePlayer` needs, in the shape both a snapshot-interpolated
@@ -357,16 +347,17 @@ export class Game {
     this.smoothX = msg.player.x;
     this.smoothY = msg.player.y;
 
-    // Size the canvas NOW rather than on the first frame: the arrival picks its
-    // wide zoom from the viewport, and a zero-width canvas would open the shot
-    // at the wrong scale and then correct itself in front of the player.
+    // Size the canvas NOW rather than on the first frame. The lobby has just
+    // finished pushing in onto this exact player at this exact scale (see
+    // `LobbyScene.beginLaunch`), and the first frame drawn here has to land on
+    // top of the last frame drawn there — a canvas that is still zero-width
+    // would frame it wrong and then correct itself in front of the player.
     if (this.renderer) {
       this.renderer.resize();
       this.resizeDirty = false;
     }
     this.camera.resize(this.canvas.width, this.canvas.height);
     this.camera.snapTo(msg.player.x, msg.player.y, this.world);
-    this.beginArrival(msg.player);
     this.minimap.setWorld(this.world);
 
     this.patchHud({
@@ -375,31 +366,6 @@ export class Game {
       zone: msg.zone,
       arrival: { key: msg.zone.key, zone: msg.zone },
     });
-  }
-
-  /**
-   * The establishing shot: open on the place, push in onto the player.
-   *
-   * The wide framing is the LOBBY's — same landmark, same scale (see
-   * `render/framing.ts`) — so the moment the host starts, the picture the party
-   * was already looking at simply comes to life and closes in on their own
-   * character. Cutting straight to a zoomed-in player would throw away the one
-   * frame where "we are all standing here together" is legible.
-   *
-   * A zone with no landmark to open on (a forest drop) pushes in from directly
-   * above the player instead, which still reads as an arrival.
-   */
-  private beginArrival(player: PlayerState): void {
-    const world = this.world;
-    const config = this.config;
-    if (!world || !config) return;
-    const landmark = world.fires[0];
-    this.camera.beginArrival(
-      landmark?.x ?? player.x,
-      landmark?.y ?? player.y,
-      campZoom(this.canvas.width, this.canvas.height, config.tileSize),
-      ARRIVAL_TIME,
-    );
   }
 
   private onSnapshot(msg: SnapshotMessage): void {

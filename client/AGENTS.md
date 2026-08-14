@@ -15,7 +15,8 @@ own the HUD and routing only. Talks to the server over one WebSocket.
     `protocol.ts` (wire types, mirror of `server/app/protocol.py`),
     `endpoints.ts` (where the server is) and `rooms.ts` (the room REST pair)
   - `src/hooks/` — `useRoomSession` owns one socket per mounted room and holds
-    the camp from `hello`, `useGameSession` owns one `Game` per mounted arena,
+    the camp from `hello`, `useGameSession` owns one `Game` per playerId (a
+    second welcome is a zone change inside that Game, not a remount),
     `useHud` reads the store
   - `src/screens/`, `src/app/` — `HomeScreen`, `RoomScreen`, `LobbyScreen`,
     `ArenaScreen` and the route table

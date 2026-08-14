@@ -38,7 +38,11 @@ seam React is allowed to read.
   `hooks/useRoomSession` and has been carrying the lobby since before the game
   existed; `Game` subscribes in `start()` and unsubscribes in `dispose()`, and
   must never close it. The `welcome` it was built from is replayed in `start()`
-  because it arrived first.
+  because it arrived first. A later welcome (forest after camp) is handled by
+  `onWelcome` on the same instance: it rebuilds the map and holds the intro,
+  but it must resume the input sequence from `max(local.sequence, welcome.ack)`.
+  Starting at 0 while the server still holds the camp's `last_processed_seq`
+  drops every later packet as a replay, and you cannot walk off the spawn tile.
 - `lobby-scene.ts` is decoration only: no input, no prediction, no socket. It
   draws through the arena's own `TerrainLayer`, so the lobby and the game
   cannot drift apart.

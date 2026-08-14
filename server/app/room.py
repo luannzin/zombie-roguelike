@@ -208,6 +208,7 @@ class Room:
             client_config(),
             self.world.to_payload(),
             self.zone.to_payload(),
+            ack=player.last_processed_seq,
         )
 
     def hello_payload(self, player: Player) -> dict:
@@ -333,6 +334,8 @@ class Room:
             player.aim_y = 1.0
             player.inputs.clear()
             player.idle_ticks = 0
+            # Sequence is NOT reset. The client has been numbering packets since
+            # the camp, and queue_input drops anything ≤ last_processed_seq.
             player.last_input = InputCmd(sequence=player.last_processed_seq)
         for pid, socket in list(self.sockets.items()):
             player = self.players.get(pid)

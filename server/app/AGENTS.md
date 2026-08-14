@@ -90,7 +90,10 @@ game's scale.
   the fire; when everyone is ready the room puppets two staggered files into
   the VOID corridor and `embark()` swaps the map for `mapgen.build_forest`,
   sends a second `welcome`, and the zone becomes `forest`. Do not invent a
-  third phase for this — `playing` stays `playing`.
+  third phase for this — `playing` stays `playing`. Do not reset
+  `last_processed_seq` on embark: the client has been numbering packets since
+  the camp, and `queue_input` drops anything at or below that ack. The
+  welcome carries `ack` so a rebuilt `LocalPlayer` can resume above it.
 - Keep the tick O(entities). Anything that scales with map size belongs in a
   cached structure (see `pathing.py`, one field per player shared by the horde).
 - New tuning goes in `config.py` in tiles/seconds, plus a `client_config()` key

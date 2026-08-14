@@ -9,7 +9,9 @@
  *
  * `{type:"ready"}` toggles ready at the campfire. When everyone is ready the
  * snapshots flip `departing` and the server walks the party out; a second
- * `welcome` is the forest.
+ * `welcome` is the forest. That welcome carries `ack` so the client keeps
+ * numbering inputs above what the server already processed — resetting to 0
+ * makes every later packet look like a replay.
  */
 
 export interface MovementInput {
@@ -303,6 +305,12 @@ export interface WelcomeMessage {
   map: MapPayload;
   /** Where the run now is. Entering it is what plays the zone intro. */
   zone: ZoneInfo;
+  /**
+   * Last input sequence the server processed for this player. Same meaning as
+   * snapshot `ack`. A second welcome (forest after camp) must resume above
+   * this or `queue_input` drops every packet as a replay.
+   */
+  ack: number;
 }
 
 export interface SnapshotMessage {

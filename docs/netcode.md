@@ -79,7 +79,8 @@ presses start.
   "config": { "tickRate": 30, "dt": 0.0333, "tileSize": 16, "moveSpeed": 70.4,
               "playerHalfWidth": 4.8, "playerHalfHeight": 3.6, "...": "..." },
   "map": { "width": 64, "height": 40, "tileSize": 16, "tiles": [[1, 1, 0, "..."]] },
-  "zone": { "...": "..." }
+  "zone": { "...": "..." },
+  "ack": 183
 }
 ```
 
@@ -109,7 +110,10 @@ zone this snapshot belongs to — drop it if it does not match the last welcome.
 
 A second `welcome` (same socket) is a new zone. The client rebuilds the map
 from it the same way it did the first time — that is how the party leaves the
-camp for the forest.
+camp for the forest. `ack` is the same counter snapshots use: the client must
+keep issuing input sequences above it. Resetting to 0 after the camp walk-out
+makes every later packet look like a replay, and the player cannot walk off
+the spawn tile.
 
 Enemies carry no per-type constants: `t` keys into `welcome.config.enemyTypes`,
 which is the stat block table from `server/app/enemies.py`. Only live enemies

@@ -25,7 +25,7 @@ server -> client
                                         on every membership/phase change
   {"type":"error","code":"room_not_found"}  followed by a close
   {"type":"welcome","playerId":"...","player":{...},"config":{...},"map":{...},
-   "zone":{...}}
+   "zone":{...},"ack":<last processed input seq for you>}
   {"type":"snapshot","tick":N,"ack":<last processed input seq for you>,
    "departing":false,"zoneKey":"camp-1",
    "players":[...],"enemies":[...],"coins":[...],
@@ -105,7 +105,13 @@ def error(code: str) -> dict:
     return {"type": MSG_ERROR, "code": code}
 
 
-def welcome(player_payload: dict, config: dict, map_payload: dict, zone: dict) -> dict:
+def welcome(
+    player_payload: dict,
+    config: dict,
+    map_payload: dict,
+    zone: dict,
+    ack: int = 0,
+) -> dict:
     return {
         "type": MSG_WELCOME,
         "playerId": player_payload["id"],
@@ -113,6 +119,9 @@ def welcome(player_payload: dict, config: dict, map_payload: dict, zone: dict) -
         "config": config,
         "map": map_payload,
         "zone": zone,
+        # Same meaning as snapshot.ack: the client must keep issuing sequences
+        # above this, or queue_input drops every packet as a replay.
+        "ack": ack,
     }
 
 

@@ -356,7 +356,16 @@ export class Game {
     this.fov = new FovField(this.world.width, this.world.height);
     this.localId = msg.playerId;
     this.localMeta = msg.player;
-    this.local = new LocalPlayer(msg.player);
+    // Keep numbering inputs above what the server already processed. The camp
+    // walk-out alone can leave last_processed_seq in the hundreds; a fresh
+    // LocalPlayer at 0 would have every later packet dropped as a replay, and
+    // you spawn in the forest unable to leave the tile.
+    const continued = this.local?.sequence ?? 0;
+    const ack = msg.ack ?? 0;
+    this.local = new LocalPlayer(msg.player, {
+      sequence: Math.max(continued, ack),
+      lastAck: ack,
+    });
 
     // Bonfires are read off the tiles, not off a message: the fire that blocks
     // you, the fire you can see and the fire that lights you are one tile.

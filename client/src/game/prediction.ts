@@ -33,7 +33,10 @@ export class LocalPlayer {
   private errorX = 0;
   private errorY = 0;
 
-  constructor(initial: PlayerState) {
+  constructor(
+    initial: PlayerState,
+    resume?: { sequence: number; lastAck: number },
+  ) {
     this.state = {
       x: initial.x,
       y: initial.y,
@@ -43,6 +46,11 @@ export class LocalPlayer {
       ay: initial.ay,
     };
     this.hp = initial.hp;
+    // A second welcome (forest after camp) rebuilds this object. Sequence is
+    // the same counter the server has been acking since the lobby — starting
+    // at 0 again makes every packet look like a replay and you cannot walk.
+    this.sequence = resume?.sequence ?? 0;
+    this.lastAck = resume?.lastAck ?? 0;
   }
 
   nextSequence(): number {

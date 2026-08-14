@@ -3,7 +3,9 @@
  *
  * The socket is NOT created here — it belongs to `useRoomSession` and has been
  * open since the lobby. This hook only builds the game that reads it, from the
- * `welcome` that ended the lobby phase.
+ * `welcome` that ended the lobby phase. A later welcome (forest after camp) is
+ * the same player on a new map: `Game.onWelcome` handles it. Rebuilding here
+ * would reset the input sequence while the server still holds the camp's ack.
  *
  * The effect cleanup is load-bearing, not a formality: it is what stops the
  * rAF loop, unsubscribes from the socket and removes the window listeners.
@@ -43,6 +45,10 @@ export function useGameSession(
   const ready = useRef(onFirstFrame);
   ready.current = onFirstFrame;
 
+  // Identity is the player, not the welcome object. Embark sends a second
+  // welcome with the same playerId; that must not tear the Game down.
+  const playerId = welcome.playerId;
+
   useEffect(() => {
     const canvas = canvasRef.current;
     const minimapCanvas = minimapRef.current;
@@ -67,7 +73,9 @@ export function useGameSession(
       cancelled = true;
       game.dispose();
     };
-  }, [hud, connection, welcome]);
+    // `welcome` is the one that created this identity. Later welcomes for the
+    // same playerId arrive on the socket and Game.onWelcome applies them.
+  }, [hud, connection, playerId]);
 
   return { hud, canvasRef, minimapRef, error };
 }

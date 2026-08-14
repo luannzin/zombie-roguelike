@@ -136,7 +136,16 @@ const AMBIENT_DARK = 0.45;
  */
 const SIGHT_GAIN = 0.085;
 const SIGHT_REACH = 1;
-/** Naked-eye cone with the lamp off: full width, and reach vs the beam's. */
+/**
+ * Naked-eye cone with the lamp off: full width, and reach vs the beam's.
+ *
+ * `EYE_REACH` and `SIGHT_REACH` are mirrored by `ENEMY_VIEW_DARK_SCALE` and
+ * `ENEMY_VIEW_LIT_SCALE` in `server/app/config.py`, which is what makes sight
+ * symmetric: an enemy sees a shape exactly as far as the shape sees it, and a
+ * lit player exactly as far as the lamp reaches. Move one of these and move
+ * the other, or the cones the client draws stop matching the rule the server
+ * is enforcing.
+ */
 const EYE_CONE_DEGREES = 110;
 const EYE_REACH = 0.62;
 /** How much of the eye cone's half-angle is spent softening its edge. */

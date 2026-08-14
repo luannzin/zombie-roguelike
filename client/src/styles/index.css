@@ -120,13 +120,13 @@
   --minimap-unseen: rgb(6 8 14 / 0.92);
 
   /*
-   * Enemy senses. The sight cone is one wedge that changes colour as the thing
-   * inside it works out what you are: bone white while it is only looking,
-   * amber while it is deciding, red once it has. Bare `R G B` — the vision
-   * layer mixes between the three stops and computes its own alpha, so these
-   * cannot be strings.
+   * Enemy senses. The sight cone only exists while something is being noticed,
+   * and it warms as that happens: yellow the instant it catches movement,
+   * amber while it works you out, red once it has committed. Bare `R G B` —
+   * the vision layer mixes between the three stops and computes its own alpha,
+   * so these cannot be strings.
    */
-  --enemy-view-calm: 226 230 240;
+  --enemy-view-notice: 240 214 96;
   --enemy-view-alert: 242 136 43;
   --enemy-view-hunt: 230 72 79;
   /* The mark over the head of something that has committed to you. */

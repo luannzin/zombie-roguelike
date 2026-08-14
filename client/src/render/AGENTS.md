@@ -31,19 +31,32 @@ mutation, no React.
   (depth-sorted by `y`) → overgrowth → motes → darkness → combat effects →
   labels → vignette. Effects go over the darkness because a muzzle flash is a
   light source, not a thing being lit. Enemy sight cones go in just after the
-  ground and the alert marks in with the labels — see below.
+  ground; their alert marks go after the overgrowth — both BEFORE the
+  darkness, see below.
 - **`fov.ts` is what the PLAYERS can see; `layers/vision.ts` is what an ENEMY
   can.** Unrelated systems: the first is a client-side tile field that decides
   what is drawn at all, the second draws the wedge the SERVER is already
   testing against (`ai.look`), from the reach and width on the creature's stat
   block and the `aw` meter on its snapshot row. Do not re-derive that cone
   here — a tell that does not match the rule is worse than no tell.
-- A sight cone is drawn on the FLOOR, before the darkness pass, and scaled by
-  the enemy's own `visibility`. Both halves matter: a cone reaching into the
-  dark has to fade with the ground it lies on, and painting the cone of
-  something hidden in the dark would hand the player sonar and undo the
-  lantern. The alert mark is the exception — a glyph on the font grid, drawn
-  in screen space with the labels, over the darkness.
+- **Everything `vision.ts` draws goes UNDER the darkness pass and is scaled by
+  the enemy's own `visibility`** — the cone on the floor and the alert mark
+  over the head alike. Both halves matter: a cone reaching into the dark has
+  to fade with the ground it lies on, and a mark or a cone painted over
+  something the player cannot see is a free tracker that undoes the lantern.
+  The mark is drawn as world-pixel rectangles, not as type, for the same
+  reason: it lives in the forest, not on the HUD.
+- **A cone is a REACTION, not furniture.** Below `NOTICE_AT` nothing is drawn
+  at all; from there it opens out of nothing and grows — yellow, amber, red,
+  brighter and longer — up to the reach the server enforces, and never past it.
+  Drawing a wedge over every idle creature turns the dark into a diagram and
+  leaves nothing to be afraid of; over-drawing one promises safety that is not
+  there. Both failures are worse than the cone being briefly conservative.
+- The cone's reach is the reach against the LOCAL player, and that depends on
+  their own lamp (`Game.sightReach` picks between `viewRange` and
+  `viewRangeLit` on the battery's output). Switching on stretches every cone on
+  screen toward you. Do not average the two or pick one — the stretch IS the
+  feedback that seeing costs being seen.
 - Vision is a client-side visual system: the server broadcasts the whole world.
   `fov.ts` produces two fields — `light` saturates at 1 (visibility), `heat`
   keeps climbing (warmth, drawn as additive amber). Shared vision is a `max()`

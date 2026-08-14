@@ -28,9 +28,12 @@ Adding a creature:
 from __future__ import annotations
 
 import math
+import random
 from dataclasses import dataclass
 
 from .config import (
+    ENEMY_VIEW_DARK_TILES,
+    ENEMY_VIEW_LIT_TILES,
     PLAYER_BOX_TILES_H,
     PLAYER_BOX_TILES_W,
     PLAYER_HIT_TILES_R,
@@ -64,9 +67,18 @@ class EnemyType:
 
     #: SIGHT CONE. How far it can see, and how wide, measured off its facing.
     #: This is the only way an enemy finds a player on its own — everything
-    #: else (a shout from a neighbour, a gunshot, being shot) is somebody
-    #: else's cone doing the work. The client draws this exact wedge.
-    view_tiles: float = 9.0
+    #: else (a shout from a neighbour, a gunshot, a lantern in the face, being
+    #: shot) is somebody else's cone doing the work. The client draws this
+    #: exact wedge.
+    #:
+    #: Two reaches, because sight is symmetric and the dark is shared: a player
+    #: with the lamp OFF is only a shape, and is made out at `view_tiles`; one
+    #: with the lamp ON is a light in a black forest and is made out at
+    #: `view_lit_tiles`. Which applies is that player's own switch, so the
+    #: choice to see is the choice to be seen. Defaults mirror the two sight
+    #: models in the client's fov — see ENEMY_VIEW_*_TILES in config.py.
+    view_tiles: float = ENEMY_VIEW_DARK_TILES
+    view_lit_tiles: float = ENEMY_VIEW_LIT_TILES
     view_degrees: float = 100.0
 
     hit_tiles_r: float = PLAYER_HIT_TILES_R
@@ -105,7 +117,13 @@ class EnemyType:
 
     @property
     def view_range(self) -> float:
+        """Reach against a player with the lamp OFF — a shape in the dark."""
         return TILE_SIZE * self.view_tiles
+
+    @property
+    def view_lit_range(self) -> float:
+        """Reach against a player with the lamp ON — a light in the dark."""
+        return TILE_SIZE * self.view_lit_tiles
 
     @property
     def view_cos(self) -> float:
@@ -128,7 +146,10 @@ class EnemyType:
             "halfHeight": self.half_height,
             # The sight cone, so the client can draw the wedge the server is
             # actually testing against rather than an illustration of one.
+            # Both reaches: the client picks between them on the LOCAL lamp, so
+            # switching on visibly stretches every cone on screen toward you.
             "viewRange": self.view_range,
+            "viewRangeLit": self.view_lit_range,
             "viewDegrees": self.view_degrees,
         }
 
@@ -144,9 +165,9 @@ ZOMBIE = EnemyType(
     aggro_tiles=24.0,   # once it has you, most of the arena is not far enough
     attack_range_tiles=0.85,
     attack_cooldown=1.1,
-    # Shorter than the lantern reaches (11 tiles), and wide: you can see a
-    # zombie before it can see you, but only if you are looking at it.
-    view_tiles=8.5,
+    # Reaches left at the defaults: a zombie sees exactly as far as you do, and
+    # exactly as far as your lamp lets it. Wide, though — you can spot one
+    # before it spots you, but only by looking at it.
     view_degrees=100.0,
 )
 
@@ -172,7 +193,10 @@ class Enemy:
     hp: int = 0
     vx: float = 0.0
     vy: float = 0.0
-    #: Facing, as a unit vector — the renderer picks a sprite row from it.
+    #: Facing, as a unit vector — the renderer picks a sprite row from it, and
+    #: the sight cone is measured off it. Randomised on spawn (see
+    #: `__post_init__`): a group that landed all facing south would sweep the
+    #: clearing in formation, which is a firing squad, not wildlife.
     aim_x: float = 0.0
     aim_y: float = 1.0
     alive: bool = True
@@ -220,6 +244,10 @@ class Enemy:
         if self.home_x == 0.0 and self.home_y == 0.0:
             self.home_x = self.x
             self.home_y = self.y
+        if self.aim_x == 0.0 and self.aim_y == 1.0:
+            angle = random.uniform(0.0, math.tau)
+            self.aim_x = math.cos(angle)
+            self.aim_y = math.sin(angle)
 
     # --- hit capsule (same contract as Player) -------------------------------
     @property

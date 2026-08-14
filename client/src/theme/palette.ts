@@ -77,7 +77,7 @@ export interface Palette {
    * them on the awareness meter and picks its own alpha, so a colour string
    * would be the wrong shape. `mark` is the glyph over a committed hunter.
    */
-  enemyView: { calm: Channels; alert: Channels; hunt: Channels; mark: string };
+  enemyView: { notice: Channels; alert: Channels; hunt: Channels; mark: string };
 
   /**
    * Lighting tones as `[r, g, b]`. The darkness layer writes raw ImageData
@@ -184,7 +184,7 @@ function resolve(): Palette {
     },
 
     enemyView: {
-      calm: rgb('--enemy-view-calm'),
+      notice: rgb('--enemy-view-notice'),
       alert: rgb('--enemy-view-alert'),
       hunt: rgb('--enemy-view-hunt'),
       mark: v('--enemy-alert-mark'),

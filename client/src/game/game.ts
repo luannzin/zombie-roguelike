@@ -1010,7 +1010,7 @@ export class Game {
       // The detection meter and the wedge it colours. A server too old to send
       // either leaves the cone off rather than inventing one.
       awareness: enemy.aw ?? 0,
-      viewRange: type.viewRange ?? 0,
+      viewRange: this.sightReach(type),
       viewDegrees: type.viewDegrees ?? 0,
       hitFlash: this.visuals.hitFlashAmount(id),
       recoilX: recoil.x,
@@ -1022,6 +1022,24 @@ export class Game {
 
   private enemyType(key: string): EnemyTypeConfig | undefined {
     return this.config?.enemyTypes[key];
+  }
+
+  /**
+   * How far this creature can see THE LOCAL PLAYER right now, in world px.
+   *
+   * Sight is symmetric and the dark is shared, so the answer depends on the
+   * lamp: a shape gets `viewRange`, a shape holding a lantern gets
+   * `viewRangeLit` (see server/app/config.py). Drawn from the local battery's
+   * `output` rather than the switch, so the cones stretch out as the lamp comes
+   * up and pull back in as it dies — the player watches the reach of every
+   * enemy on screen answer their own key. The server switches on the boolean;
+   * the few frames of fade where the two disagree cost nothing and read far
+   * better than a snap.
+   */
+  private sightReach(type: EnemyTypeConfig): number {
+    const dark = type.viewRange ?? 0;
+    const lit = type.viewRangeLit ?? dark;
+    return dark + (lit - dark) * clamp01(this.lantern.output);
   }
 
   /** 0..1 screen danger from local HP. Dead = no vignette (respawn clean). */

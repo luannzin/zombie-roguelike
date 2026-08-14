@@ -33,8 +33,18 @@ there for the whole hunt: the client paints the cone from this number (white →
 orange → red), and a hunter whose meter sagged every time you rounded a corner
 would flicker back to "calm" while it was actively coming for you.
 
-Three things fill the meter without the enemy seeing anything itself:
+**Sight is symmetric.** The cone's reach is not a number the creature owns, it
+is a fraction of the lantern's, chosen PER TARGET by that player's own switch:
+in the same dark forest, if you can make a shape out at that distance it can
+make you out at the same distance. Turning the lamp on to see further is
+turning it on to be seen further — by everything already facing you.
 
+Four things fill the meter without the enemy seeing anybody itself:
+
+    a glare   `glare()`. The beam falling on something that is NOT looking at
+              you turns it around and makes it uneasy, capped below the commit
+              line. It never spots you; it points a cone at you and lets the
+              cone do it. That is the lantern's real price.
     a shout   an enemy that just committed wakes everyone within
               ENEMY_ALERT_SHARE_DIST. One hop only — a chain reaction from one
               careless step would wake the map and there would be nothing left
@@ -94,10 +104,14 @@ from .config import (
     ENEMY_DIRECT_SIGHT_DIST,
     ENEMY_FIRST_SPAWN_DELAY,
     ENEMY_FORGET_RATE,
+    ENEMY_GLARE_CAP,
+    ENEMY_GLARE_DIST,
+    ENEMY_GLARE_RATE,
     ENEMY_GROUP_SIZES,
     ENEMY_GROUP_SPREAD,
     ENEMY_GROUP_WEIGHTS,
     ENEMY_HOME_DIST,
+    ENEMY_IDLE_TURN_DEGREES,
     ENEMY_LEASH_DIST,
     ENEMY_LOSE_DELAY,
     ENEMY_MAX_PER_PLAYER,
@@ -109,10 +123,13 @@ from .config import (
     ENEMY_SPAWN_MAX_DIST,
     ENEMY_SPAWN_MIN_DIST,
     ENEMY_STUCK_DELAY,
+    ENEMY_SUSPICIOUS,
+    ENEMY_TURN_DEGREES,
     ENEMY_WANDER_PAUSE_MAX,
     ENEMY_WANDER_PAUSE_MIN,
     ENEMY_WANDER_SPEED_SCALE,
     NOISE_ALERT_GAIN,
+    VISION_CONE_DEGREES,
 )
 from .enemies import SPAWN_TABLE, Enemy, EnemyType
 from .entities import Player
@@ -204,6 +221,11 @@ def update(
     for noise in noises:
         hear(pack, noise, by_id)
 
+    # Then the beam, before anything looks: an enemy the lantern is turning has
+    # to be facing its new direction when its own cone is tested this tick, or
+    # every glare would cost an extra frame to resolve.
+    glare(pack, living, world, dt)
+
     #: Committed this tick. Their shout goes out after the loop, so an enemy
     #: woken by a neighbour is not itself a shouter — one hop, see the header.
     shouted: list[tuple[Enemy, Player]] = []
@@ -244,6 +266,16 @@ def update(
                 shouted.append((enemy, seen))
             else:
                 enemy.awareness = max(0.0, enemy.awareness - ENEMY_FORGET_RATE * dt)
+                if enemy.awareness >= ENEMY_SUSPICIOUS:
+                    # Something has its attention — a beam on its back, a shot
+                    # across the clearing — and it stops to look rather than
+                    # carrying on with its rounds. Holding still is also what
+                    # protects the facing: the next leg of a patrol would aim
+                    # the head at a waypoint and undo the turn the glare just
+                    # spent half a second making.
+                    enemy.vx = enemy.vy = 0.0
+                    enemy.wander_x = enemy.wander_y = None
+                    continue
                 patrol(enemy, world, dt)
                 continue
 
@@ -325,13 +357,21 @@ def look(enemy: Enemy, living: Sequence[Player], world: TileMap) -> Player | Non
     enemy's own facing, then one ray for occlusion. A single centre ray is
     enough here — unlike `has_clearance`, which asks whether a BODY fits through
     the gap, this only asks whether light does.
+
+    Range is decided PER PLAYER by that player's own lantern switch. It is one
+    dark forest: a shape gets the short reach, a shape holding a lamp gets the
+    long one. That is the same trade the player took when they pressed the key.
     """
-    reach = enemy.type.view_range
     cos_half = enemy.type.view_cos
     best: Player | None = None
     best_d = math.inf
 
     for player in living:
+        reach = (
+            enemy.type.view_lit_range
+            if player.last_input.lantern
+            else enemy.type.view_range
+        )
         dx = player.x - enemy.x
         dy = player.y - enemy.y
         distance = math.hypot(dx, dy)
@@ -436,6 +476,55 @@ def alarm(enemy: Enemy, source: Player | None) -> None:
     commit(enemy, source)
 
 
+def glare(pack: Sequence[Enemy], living: Sequence[Player], world: TileMap, dt: float) -> None:
+    """The lantern beam falling on something that is not looking at you.
+
+    For every player holding a lit lamp, everything inside the bright part of
+    their beam TURNS TOWARD IT and grows uneasy. It does not get spotted by
+    this — awareness is capped below the commit line — it gets pointed at you,
+    and then `look` does the rest a moment later.
+
+    That is deliberately the long way round. A beam that spotted people
+    directly would make the lantern a button nobody presses; a beam that swings
+    heads around gives the player a second to kill the light and back off, and
+    makes the cost of seeing something the fact that it is now facing you.
+
+    Occlusion is the same single ray `look` uses — light that cannot reach an
+    enemy cannot be noticed by it.
+    """
+    reach = ENEMY_GLARE_DIST
+    if reach <= 0.0:
+        return
+    cos_half = math.cos(math.radians(VISION_CONE_DEGREES) / 2)
+
+    for player in living:
+        if not player.last_input.lantern:
+            continue
+        for enemy in pack:
+            if enemy.mode == MODE_HUNT or enemy.awareness >= ENEMY_GLARE_CAP:
+                continue
+            dx = enemy.x - player.x
+            dy = enemy.y - player.y
+            distance = math.hypot(dx, dy)
+            if distance > reach or distance <= 1e-6:
+                continue
+            # Inside the beam, not merely inside its radius: what is being
+            # noticed is where the player is pointing.
+            if (dx * player.aim_x + dy * player.aim_y) / distance < cos_half:
+                continue
+            if (
+                combat.raycast_tiles(world, player.x, player.y, dx / distance, dy / distance, distance)
+                < distance - 1e-3
+            ):
+                continue
+            # Brighter the closer it is standing to the lamp.
+            strength = 1.0 - distance / reach
+            enemy.awareness = min(
+                ENEMY_GLARE_CAP, enemy.awareness + ENEMY_GLARE_RATE * strength * dt
+            )
+            turn_towards(enemy, player.x, player.y, dt)
+
+
 def face(enemy: Enemy, x: float, y: float) -> None:
     """Point the enemy's facing (and so its sight cone) at a world point."""
     dx = x - enemy.x
@@ -445,6 +534,35 @@ def face(enemy: Enemy, x: float, y: float) -> None:
         return
     enemy.aim_x = dx / length
     enemy.aim_y = dy / length
+
+
+def turn_towards(
+    enemy: Enemy, x: float, y: float, dt: float, degrees_per_sec: float = ENEMY_TURN_DEGREES
+) -> None:
+    """Swing the facing toward a point at a bounded rate, never instantly.
+
+    Nothing here ever snaps its head. A body that changes facing between two
+    frames reads as a turret, and a cone that jumped would be a state change
+    rather than a thing happening in front of the player — which is the entire
+    warning both the glare and the patrol are there to give.
+    """
+    dx = x - enemy.x
+    dy = y - enemy.y
+    if math.hypot(dx, dy) <= 1e-6:
+        return
+    turn_to(enemy, math.atan2(dy, dx), dt, degrees_per_sec)
+
+
+def turn_to(enemy: Enemy, wanted: float, dt: float, degrees_per_sec: float) -> None:
+    """Ease the facing toward an absolute angle at a bounded rate."""
+    current = math.atan2(enemy.aim_y, enemy.aim_x)
+    # Shortest way round: an enemy that took the long way would spin away from
+    # the thing it is turning to look at.
+    delta = (wanted - current + math.pi) % math.tau - math.pi
+    step = math.radians(degrees_per_sec) * dt
+    angle = wanted if abs(delta) <= step else current + math.copysign(step, delta)
+    enemy.aim_x = math.cos(angle)
+    enemy.aim_y = math.sin(angle)
 
 
 # --- patrol ------------------------------------------------------------------
@@ -516,13 +634,19 @@ def pick_waypoint(enemy: Enemy, world: TileMap) -> tuple[float, float] | None:
 
 
 def walk(enemy: Enemy, dx: float, dy: float, speed: float, world: TileMap, dt: float) -> None:
-    """Step toward an offset at `speed`, facing where it is going."""
-    length = math.hypot(dx, dy)
-    if length <= 1e-6:
+    """Shamble toward an offset at `speed`, turning into it rather than at it.
+
+    The head eases round at ENEMY_IDLE_TURN_DEGREES and the body walks along
+    whatever the head is currently pointing at, so a new waypoint is a CURVE
+    rather than a change of direction. That is the whole difference between a
+    thing wandering the woods and a sprite being teleported through headings —
+    and, since the sight cone is drawn off this facing, it is also what stops
+    the cones in a clearing from flicking about like searchlights.
+    """
+    if math.hypot(dx, dy) <= 1e-6:
         enemy.vx = enemy.vy = 0.0
         return
-    enemy.aim_x = dx / length
-    enemy.aim_y = dy / length
+    turn_towards(enemy, enemy.x + dx, enemy.y + dy, dt, ENEMY_IDLE_TURN_DEGREES)
     enemy.vx = enemy.aim_x * speed
     enemy.vy = enemy.aim_y * speed
     move(enemy, world, dt)

@@ -134,8 +134,15 @@ export interface EnemyTypeConfig {
    * degrees, both measured off the creature's own facing (`ax`/`ay`). The
    * client draws this exact wedge — an illustration that did not match would
    * teach the player a rule the simulation does not follow.
+   *
+   * Two reaches, because sight is symmetric and the dark is shared: `viewRange`
+   * is how far it makes out a shape, `viewRangeLit` how far it makes out
+   * somebody carrying a lit lantern. The server picks per target by that
+   * player's switch; the renderer picks by the LOCAL lamp, so switching on
+   * stretches every cone on screen toward you.
    */
   viewRange: number;
+  viewRangeLit: number;
   viewDegrees: number;
 }
 

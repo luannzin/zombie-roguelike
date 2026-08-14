@@ -184,14 +184,61 @@ ENEMY_GROUP_SPREAD_TILES = 2.5
 # The cone itself is per-creature (`EnemyType.view_tiles` / `view_degrees`), for
 # the same reason speed and damage are. Everything below applies to all of them.
 
+# SIGHT IS SYMMETRIC. It is one dark forest and everybody is standing in it: if
+# you can make a shape out at that distance, it can make you out at the same
+# distance — provided it happens to be facing you. So an enemy's reach is not a
+# number of its own, it is a fraction of the LANTERN's, and it mirrors the two
+# sight models in `client/src/render/fov.ts`: the naked eye (EYE_REACH) with the
+# lamp off, and the full wash the lamp opens up (SIGHT_REACH) with it on.
+# Changing the lantern rescales the danger along with the visibility.
+#
+# Which of the two applies is decided PER TARGET, by that player's own switch.
+# Switching on does not merely let you see further — it lets you BE seen
+# further, by everything already looking your way.
+ENEMY_VIEW_DARK_SCALE = 0.62
+ENEMY_VIEW_LIT_SCALE = 1.0
+ENEMY_VIEW_DARK_TILES = VISION_LANTERN_TILES * ENEMY_VIEW_DARK_SCALE
+ENEMY_VIEW_LIT_TILES = VISION_LANTERN_TILES * ENEMY_VIEW_LIT_SCALE
+
+# GLARE: the beam falling on something that is not looking at you.
+#
+# A lantern pointed at a thing is a thing that can notice the lantern, whichever
+# way its head happens to be turned. Being in the beam does NOT spot the player
+# — it makes the enemy turn around, and the turn is what puts the player inside
+# its own cone. That indirection is the whole mechanic: the lamp is not what
+# gets you seen, it is what gets you looked at.
+ENEMY_GLARE_RATE = 0.55       # awareness per second in the brightest part
+# Fraction of the beam's reach that is bright enough to be noticed. Past this
+# the light is a wash on the trees and nothing turns around for it.
+ENEMY_GLARE_REACH = 0.7
+# Ceiling the glare alone may reach. It can make something look; it can never
+# make it commit — committing is the sight cone's job, and an enemy that
+# charged a light it had not identified would make the lamp unusable rather
+# than expensive.
+ENEMY_GLARE_CAP = 0.75
+# How fast a glared enemy swings round, in degrees per second. Slow enough to
+# watch the cone come about, fast enough that it is coming about.
+ENEMY_TURN_DEGREES = 200.0
+# How fast a creature turns while it is only patrolling. Nothing in this game
+# ever snaps its head: a body that changes facing between two frames reads as a
+# turret, and half of what makes a shambling thing unsettling is that it takes
+# its time. Every facing change goes through `ai.turn_towards` at one of these
+# two rates — never by assignment.
+ENEMY_IDLE_TURN_DEGREES = 70.0
+
 # How long a player has to stand in the cone before the enemy commits. Scales
 # with distance: right in its face is nearly instant, the far edge of the cone
 # takes its time. Both are short enough that walking through a cone is a
 # mistake, long enough that clipping the edge is survivable.
-ENEMY_NOTICE_NEAR = 0.18     # seconds to be spotted at touching distance
-ENEMY_NOTICE_FAR = 1.1       # seconds to be spotted at the edge of the cone
+ENEMY_NOTICE_NEAR = 0.45     # seconds to be spotted at touching distance
+ENEMY_NOTICE_FAR = 2.0       # seconds to be spotted at the edge of the cone
 # How fast suspicion drains once nobody is in the cone any more.
 ENEMY_FORGET_RATE = 0.5      # awareness per second
+# Above this, an enemy with nothing in its cone stops patrolling and just
+# LOOKS. It is what makes a glare or a distant shot visible from across the
+# clearing — the pack stops shambling and holds still, facing you — and it is
+# also what keeps a turn from being undone by the next leg of its rounds.
+ENEMY_SUSPICIOUS = 0.12
 
 # A hunter that has not had eyes on its target for this long goes home. It keeps
 # walking to where it last saw them for the whole window, which is what stops a
@@ -209,8 +256,12 @@ ENEMY_WANDER_PAUSE_MAX = 3.5
 # the difference between a wandering enemy and a hunting one has to be legible
 # from across the clearing.
 ENEMY_WANDER_SPEED_SCALE = 0.42
-# Close enough to a patrol waypoint (or to home) to call it arrived.
-ENEMY_ARRIVE_TILES = 0.6
+# Close enough to a patrol waypoint (or to home) to call it arrived. It has to
+# comfortably exceed the creature's TURN RADIUS (patrol speed over
+# ENEMY_IDLE_TURN_DEGREES, about 0.9 tiles for a zombie) — a body that turns in
+# a wider circle than its own arrival radius orbits a waypoint it can never
+# reach, and the patrol becomes a carousel.
+ENEMY_ARRIVE_TILES = 1.3
 
 # One enemy spotting you is every enemy near it spotting you. The shout is a
 # single hop on purpose: a chain would walk across the whole map from one
@@ -255,6 +306,7 @@ ENEMY_LEASH_DIST = TILE_SIZE * ENEMY_LEASH_TILES
 ENEMY_HOME_DIST = TILE_SIZE * ENEMY_HOME_TILES
 ENEMY_ARRIVE_DIST = TILE_SIZE * ENEMY_ARRIVE_TILES
 ENEMY_ALERT_SHARE_DIST = TILE_SIZE * ENEMY_ALERT_SHARE_TILES
+ENEMY_GLARE_DIST = VISION_LANTERN_DIST * ENEMY_GLARE_REACH
 SHOT_NOISE_DIST = TILE_SIZE * SHOT_NOISE_TILES
 
 # --- progression -------------------------------------------------------------

@@ -60,11 +60,32 @@ game's scale.
   and is PINNED at 1 for the whole hunt — a meter that sagged behind cover
   would flicker the cone back to calm while the thing was still coming.
   `aggro_range` is now the give-up distance, not the notice distance.
-- Awareness also arrives from three places that are not the creature's own
-  eyes, and all three go through `ai.commit`: a neighbour's shout (one hop,
-  `ENEMY_ALERT_SHARE_DIST` — a chain would wake the map), an `ai.Noise`, and
-  `ai.alarm` when the room applies damage. Getting shot in the back must wake
-  it; do not add a damage path that skips `alarm`.
+- **Sight is symmetric, and the lamp is a two-way switch.** A cone's reach is
+  a fraction of the LANTERN's, chosen per target by that player's own switch:
+  `ENEMY_VIEW_DARK_SCALE` mirrors `EYE_REACH` and `ENEMY_VIEW_LIT_SCALE`
+  mirrors `SIGHT_REACH`, both in `client/src/render/fov.ts`. Move one, move
+  the other — a client drawing a reach the server does not enforce teaches a
+  rule that is not true. Never give a creature an absolute view distance.
+- **Nothing snaps its head.** Every facing change outside an active hunt goes
+  through `ai.turn_towards` at a bounded rate — `ENEMY_IDLE_TURN_DEGREES` while
+  patrolling, `ENEMY_TURN_DEGREES` under a glare — and a patrolling body walks
+  along the facing it currently has, so a new waypoint is a curve rather than a
+  change of direction. Assigning `aim_x`/`aim_y` directly makes a turret out of
+  a shambling thing, and the sight cone is drawn off that facing: a clearing of
+  enemies re-aiming per tick reads as searchlights. `ENEMY_ARRIVE_TILES` must
+  stay comfortably above the resulting turn radius or a patrol orbits a
+  waypoint it can never reach.
+- **`ai.glare` is the lantern's price and it is deliberately indirect.** The
+  beam falling on an enemy that is not looking at you TURNS it (bounded rate,
+  `ENEMY_TURN_DEGREES`) and raises awareness to at most `ENEMY_GLARE_CAP` —
+  never to the commit line. Being spotted stays the sight cone's job. A glare
+  that spotted directly would make the lamp a button nobody presses; one that
+  swings heads around leaves the player a second to kill the light.
+- Awareness also arrives from three more places that are not the creature's
+  own eyes, and all of them go through `ai.commit`: a neighbour's shout (one
+  hop, `ENEMY_ALERT_SHARE_DIST` — a chain would wake the map), an `ai.Noise`,
+  and `ai.alarm` when the room applies damage. Getting shot in the back must
+  wake it; do not add a damage path that skips `alarm`.
 - **`ai.Noise` is the sound system's only shape.** The room collects them
   during a tick (`Room.noises`) and `ai.update` consumes them; they are
   cleared every tick, and a noise that survived one would keep waking whatever

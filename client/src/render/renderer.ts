@@ -144,6 +144,9 @@ export class Renderer {
     //               muzzle flash is a light source, not a thing being lit
     this.useWorldSpace(view.zoom, view.offsetX, view.offsetY);
     this.terrain.overgrowth(ctx, state.world, state.camera, state.time);
+    // Over the ferns so a frond cannot hide it, under the darkness so the night
+    // swallows it exactly as hard as the creature wearing it.
+    drawAlertMarks(entity, state.entities, state.time);
     this.atmosphere.draw(ctx, state.camera, state.dt);
     if (state.fov) this.darkness.draw(ctx, state.world, state.fov);
     this.darkness.drawFires(
@@ -159,7 +162,6 @@ export class Renderer {
     // Screen space: labels, numbers, then the full-screen vignette.
     this.useScreenSpace();
     drawNameLabels(entity, state.entities);
-    drawAlertMarks(entity, state.entities, state.time);
     drawTextFloats(ctx, state.effects, view);
     drawVignette(ctx, this.canvas.width, this.canvas.height, state.danger, state.time);
   }

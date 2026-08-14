@@ -50,34 +50,12 @@ export function Hud({ snapshot, minimapRef, error }: HudProps) {
   );
 
   return (
-    <HudScreen unstable={snapshot.lantern?.failing ?? false}>
-      <div
-        className={cn('hud-layer pixel-text top-2.5 left-3 text-[11px] leading-[17px]', chrome)}
-      >
-        <StatusLine status={snapshot.status} connection={snapshot.connection} error={error} />
-        <NetStats net={snapshot.net} />
-      </div>
-
-      <div className={cn('hud-layer pixel-text top-2.5 right-3', chrome)}>
-        <MinimapCanvas ref={minimapRef} visible={snapshot.inArena} />
-      </div>
-
-      <div
-        className={cn(
-          'hud-layer pixel-text right-3 bottom-2.5 flex flex-col items-end gap-2',
-          chrome,
-        )}
-      >
-        <BatteryGauge lantern={snapshot.lantern} />
-        <Vitals vitals={snapshot.vitals} />
-      </div>
-
-      <div className={cn('hud-layer pixel-text bottom-2.5 left-3', chrome)}>
-        <ControlsHint zone={snapshot.zone} />
-      </div>
-
+    <>
       {/*
-        The letterbox, picked up from the lobby.
+        The letterbox, picked up from the lobby — OUTSIDE HudScreen on purpose.
+        The lobby paints the same `zone-bars` unfiltered; putting this under the
+        glass's fish-eye bends the soft edge and reads as the bars jumping taller
+        on the exact frame the title lands. Same element, same stops, same space.
         It is rendered off `introducing` rather than off `arrival` because that
         flag is true in the store's INITIAL snapshot (see hud-store.ts) — so the
         bars exist on the arena's very first painted frame, which is the frame
@@ -93,9 +71,36 @@ export function Hud({ snapshot, minimapRef, error }: HudProps) {
         />
       ) : null}
 
-      {/* Last, so the arrival card sits over every corner — it is the one thing
-          here that is allowed to own the whole screen, and only for a moment. */}
-      <ZoneTitle arrival={snapshot.arrival} />
-    </HudScreen>
+      <HudScreen unstable={snapshot.lantern?.failing ?? false}>
+        <div
+          className={cn('hud-layer pixel-text top-2.5 left-3 text-[11px] leading-[17px]', chrome)}
+        >
+          <StatusLine status={snapshot.status} connection={snapshot.connection} error={error} />
+          <NetStats net={snapshot.net} />
+        </div>
+
+        <div className={cn('hud-layer pixel-text top-2.5 right-3', chrome)}>
+          <MinimapCanvas ref={minimapRef} visible={snapshot.inArena} />
+        </div>
+
+        <div
+          className={cn(
+            'hud-layer pixel-text right-3 bottom-2.5 flex flex-col items-end gap-2',
+            chrome,
+          )}
+        >
+          <BatteryGauge lantern={snapshot.lantern} />
+          <Vitals vitals={snapshot.vitals} />
+        </div>
+
+        <div className={cn('hud-layer pixel-text bottom-2.5 left-3', chrome)}>
+          <ControlsHint zone={snapshot.zone} />
+        </div>
+
+        {/* Last, so the arrival card sits over every corner — it is the one thing
+            here that is allowed to own the whole screen, and only for a moment. */}
+        <ZoneTitle arrival={snapshot.arrival} />
+      </HudScreen>
+    </>
   );
 }

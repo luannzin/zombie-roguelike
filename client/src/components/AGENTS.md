@@ -42,6 +42,8 @@ and nowhere near the frame loop.
 - The `zone-bars` letterbox is ONE element across two screens: `LobbyScreen`
   fades it in under the camera push, the arena opens holding it at full. One
   utility, one gradient — two that were merely similar would show themselves.
+  In the arena it is a sibling of `HudScreen`, not a child: the glass filter
+  would bend the soft edge and the bars would jump taller on the handover.
 - A control a zone forbids is shown DISABLED, never hidden. `BatteryGauge` in
   the camp still answers "how much light am I carrying into the night"; only
   its readout changes, and a refused keypress kicks the panel instead of doing

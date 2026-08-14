@@ -300,7 +300,14 @@
    * constant that actually times them — LAUNCH_SECONDS and ZONE_INTRO_MS — so
    * the beat cannot drift out of sync with a number in a stylesheet.
    */
-  --animate-zone-bars-in: zone-bars-in 2s cubic-bezier(0.5, 0, 0.75, 0.4) 1 forwards;
+  /*
+   * Closing on the same shape the camera moves on: a smootherstep, which the
+   * bezier below approximates. An ease-IN curve is wrong here however natural
+   * it sounds — its output stays near zero for most of the run and then races
+   * to full in the last stretch, which reads as the bars barely fading and then
+   * snapping shut. The darkening has to be legible the whole way down.
+   */
+  --animate-zone-bars-in: zone-bars-in 2s cubic-bezier(0.37, 0, 0.63, 1) 1 forwards;
   --animate-zone-bars-hold: zone-bars-hold 3s ease-in-out 1 forwards;
 
   /*
@@ -753,10 +760,14 @@
  * edge so they close the frame down without cropping it — the middle, where the
  * character the camera has settled on is standing, stays completely clear.
  *
+ * Solid through 13% of the viewport each side; soft spill to 33%; clear middle
+ * 33–67%. Opacity is the only thing the keyframes move — never the stops.
+ *
  * It is defined once and used by BOTH the lobby (fading in under the push-in)
  * and the arena (already at full, holding through the title). Two gradients
  * that were merely similar would show themselves at the handover, which is the
- * one frame this whole thing exists to hide.
+ * one frame this whole thing exists to hide. The arena paints it outside
+ * `HudScreen` for the same reason: the fish-eye would bend these stops.
  */
 @utility zone-bars {
   position: fixed;

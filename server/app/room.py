@@ -307,7 +307,7 @@ class Room:
         self._pending_embark = False
         self._depart_phase = None
         self._slots = {}
-        self.zone = zones.forest(self.day, "21:44 da noite")
+        self.zone = zones.forest(self.day)
         self.world = mapgen.build_forest()
         self.spawn_points = self.world.free_spawn_points(
             PLAYER_HALF_WIDTH, PLAYER_HALF_HEIGHT

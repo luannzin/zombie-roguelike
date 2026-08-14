@@ -93,9 +93,9 @@ export interface GameConfig {
  * Where the room is, and how that place behaves. Mirrors server/app/zones.py.
  *
  * `title` / `subtitle` are fiction the server authors — "Preparação" over
- * "Dia 1", later "Dia 3" over "21:58 da noite" — so a new level announces
- * itself with no client change. The two booleans are rules, not flavour, and
- * the client must not infer either of them from the map.
+ * "Dia 1", later "Dia 3" over a rolled clock ("21:44 da noite") — so a new
+ * level announces itself with no client change. The two booleans are rules,
+ * not flavour, and the client must not infer either of them from the map.
  */
 export interface ZoneInfo {
   /** Stable identity for one arrival. A change is what replays the intro. */

@@ -825,14 +825,16 @@
 }
 
 /*
- * Approaching the fire. Occasional, so it may animate: a short rise into place,
- * not a pop. Reduced motion drops the travel and keeps the fade.
+ * Approaching something you can use. Occasional, so it may animate: a short
+ * rise into place, not a pop. Reduced motion drops the travel and keeps the
+ * fade. The transform lives on the INNER row so it does not fight the world
+ * position the wrapper is holding.
  */
-.interact-prompt {
-  animation: interact-in 200ms cubic-bezier(0.23, 1, 0.32, 1) both;
+.world-tooltip {
+  animation: tooltip-in 200ms cubic-bezier(0.23, 1, 0.32, 1) both;
 }
 
-@keyframes interact-in {
+@keyframes tooltip-in {
   from {
     opacity: 0;
     transform: translateY(4px);
@@ -844,12 +846,12 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .interact-prompt {
-    animation: interact-in-fade 160ms ease both;
+  .world-tooltip {
+    animation: tooltip-in-fade 160ms ease both;
   }
 }
 
-@keyframes interact-in-fade {
+@keyframes tooltip-in-fade {
   from {
     opacity: 0;
   }

@@ -22,6 +22,7 @@ seam React is allowed to read.
 | `entity-visuals.ts` | per-player colour/name visual state |
 | `lantern.ts` | four-cell battery, produces `output` 0..1 |
 | `hud-store.ts` | the only seam to React; `HUD_INTERVAL` = 0.2 s |
+| `tooltip-anchors.ts` | screen-space points for world `Tooltip`s, written every frame |
 
 ## Local Contracts
 
@@ -29,8 +30,10 @@ seam React is allowed to read.
   interpolates, smooths and renders. Do not move prediction into `rAF`.
 - `simulation.ts` is the **only** place the local player may be moved, and it
   must stay a line-for-line mirror of the Python version.
-- `hud-store.ts` is the only channel to the UI. Nothing here may touch the DOM
-  beyond the two canvases `game.ts` owns.
+- `hud-store.ts` is the only channel to the UI for state. World tooltip
+  positions travel through `tooltip-anchors.ts` (written every frame, never
+  subscribed). Nothing here may touch the DOM beyond the two canvases
+  `game.ts` owns.
 - **`Game` does not own its socket.** The connection is created by
   `hooks/useRoomSession` and has been carrying the lobby since before the game
   existed; `Game` subscribes in `start()` and unsubscribes in `dispose()`, and
@@ -132,7 +135,9 @@ seam React is allowed to read.
 - New per-frame state stays here or in `render/`; it must not reach React.
 - New HUD data means a field on the `hud-store` snapshot, published at 5 Hz —
   not a subscription from a component to the game. Camp ready uses `ready` and
-  `prompt`; the walk-out uses `cinematic`.
+  `prompt`; the walk-out uses `cinematic`. A world `Tooltip` also needs an
+  `anchor` id written in `syncTooltipAnchors` each frame — show/hide is the
+  store, the pixels are the camera.
 - Anything long-lived created here gets a matching release in `Game.dispose()`
   in the same change.
 

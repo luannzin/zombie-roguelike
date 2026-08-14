@@ -1,9 +1,10 @@
 /**
  * The card that names the place you just arrived in.
  *
- * "Preparação" over "Dia 1"; later "Dia 3" over "21:58 da noite". Both strings
- * are the server's (see server/app/zones.py) — this component knows how an
- * arrival FEELS and nothing about what any particular one says.
+ * "Preparação" over "Dia 1"; later "Dia 3" over a night clock the server
+ * rolled. Both strings are the server's (see server/app/zones.py) — this
+ * component knows how an arrival FEELS and nothing about what any particular
+ * one says.
  *
  * It lands on the beat the camera stops. The lobby performs the push-in onto
  * your character (see `game/lobby-scene.ts`) and the arena mounts on the frame

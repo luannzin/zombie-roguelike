@@ -83,7 +83,9 @@ game's scale.
   sprite folder of the same name. It must require no client change.
 - Adding a zone = one `zones.Zone` and whatever builds its map. Its title card,
   its safety and its lighting rules are all data; the client needs no change to
-  announce or obey a new one.
+  announce or obey a new one. A forest's subtitle is `night_clock()` — a time
+  between 20:00 and 03:00, "da noite" before midnight and "da manhã" after.
+  Do not hardcode one.
 - The expedition hand-off IS the walk-out. In the camp, `{type:"ready"}` at
   the fire; when everyone is ready the room puppets two staggered files into
   the VOID corridor and `embark()` swaps the map for `mapgen.build_forest`,

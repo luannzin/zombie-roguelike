@@ -31,6 +31,7 @@ import type {
   ZoneInfo,
 } from '../net/protocol';
 import { Camera } from '../render/camera';
+import { projectionFor } from '../render/projection';
 import { FovField, type LightSource, type VisionConfig, type Viewer } from '../render/fov';
 import { Minimap, type MinimapPlayer } from '../render/minimap';
 import { Renderer } from '../render/renderer';
@@ -48,6 +49,11 @@ import { Lantern } from './lantern';
 import { SnapshotBuffer, type RenderedEnemy, type RenderedPlayer } from './interpolation';
 import { LocalPlayer } from './prediction';
 import { hearthMask, TileMap, exitMouth } from './world';
+import {
+  clearTooltipAnchors,
+  dropTooltipAnchor,
+  writeTooltipAnchor,
+} from './tooltip-anchors';
 
 const MAX_TICKS_PER_FRAME = 5;
 /** Camera punch on local fire (miss or hit). */
@@ -64,6 +70,11 @@ const DANGER_START = 0.45;
 const DANGER_CRITICAL = 0.2;
 /** Speed (world px/s) above which the local player reads as walking. */
 const MOVING_SPEED = 1;
+/**
+ * How far above the fire's base the ready tooltip sits, in tiles. The
+ * campfire sprite is 1.75 tiles tall; this clears the flames by a bit.
+ */
+const FIRE_TOOLTIP_LIFT_TILES = 2.5;
 /** Sprite sheet for players. Enemy sheets are named by the server's config. */
 const PLAYER_SHEET = 'player';
 /** Fallback if welcome.config.coinSprite is missing (older server). */
@@ -290,6 +301,7 @@ export class Game {
     this.effects.clear();
     this.snapshots.clear();
     this.lantern.reset();
+    clearTooltipAnchors();
     this.world = null;
     this.fov = null;
     this.zone = null;
@@ -759,6 +771,7 @@ export class Game {
 
     this.updateVision(sampled.players, dt);
     this.applyVisibility(entities);
+    this.syncTooltipAnchors();
 
     this.renderer.draw({
       world: this.world,
@@ -1060,6 +1073,27 @@ export class Game {
     if (this.zone?.kind !== 'camp' || this.departing || this.introLeft > 0) return null;
     if (this.localMeta?.ready) return null;
     return this.nearFire() ? 'ready' : null;
+  }
+
+  /**
+   * Pin world tooltips to the same camera the canvas just used.
+   *
+   * Show/hide is still `hud-store` (5 Hz). This only writes screen pixels so
+   * the tooltip can sit on the fire without a React render.
+   */
+  private syncTooltipAnchors(): void {
+    if (this.readyPrompt() !== 'ready' || !this.world || !this.config) {
+      dropTooltipAnchor('ready');
+      return;
+    }
+    const fire = this.world.fires[0];
+    if (!fire) {
+      dropTooltipAnchor('ready');
+      return;
+    }
+    const view = projectionFor(this.camera);
+    const lift = this.config.tileSize * FIRE_TOOLTIP_LIFT_TILES;
+    writeTooltipAnchor('ready', view.x(fire.x), view.y(fire.y - lift));
   }
 
   /**

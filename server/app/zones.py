@@ -8,9 +8,10 @@ fire, the party files through the black exit, and the room swaps this zone for
 and they are deliberately not the same field:
 
   TITLE / SUBTITLE   the card the client throws up on arrival — "Preparação"
-                     over "Dia 1", later "Dia 3" over "21:58 da noite". This is
-                     pure fiction and the server is its only author, so a new
-                     level needs no client change to be announced.
+                     over "Dia 1", later "Dia 3" over a rolled clock
+                     ("21:44 da noite", "1:44 da manhã"). The clock is fiction
+                     the server authors, so a new level needs no client change
+                     to be announced.
   HOSTILE            whether the enemy director runs and whether guns fire. The
                      camp is safe: no spawns, and no shooting the person
                      standing next to you at the fire.
@@ -26,10 +27,27 @@ that only shows up when somebody dies in the lobby.
 
 from __future__ import annotations
 
+import random
 from dataclasses import dataclass
 
 KIND_CAMP = "camp"
 KIND_FOREST = "forest"
+
+# 20:00 through 03:00 inclusive, in minutes from 20:00.
+_NIGHT_SPAN_MINUTES = 7 * 60 + 1
+
+
+def night_clock() -> str:
+    """A time between 20:00 and 03:00. Rolled fresh every expedition.
+
+    Before midnight the line is "da noite"; after, "da manhã". Hours are not
+    padded, so 1:44 not 01:44 — that is how the card reads it.
+    """
+    offset = random.randrange(_NIGHT_SPAN_MINUTES)
+    hour = (20 + offset // 60) % 24
+    minute = offset % 60
+    period = "da noite" if hour >= 20 else "da manhã"
+    return f"{hour}:{minute:02d} {period}"
 
 
 @dataclass(frozen=True)
@@ -71,14 +89,14 @@ def camp(day: int) -> Zone:
     )
 
 
-def forest(day: int, clock: str) -> Zone:
-    """An expedition. `clock` is the fiction, e.g. "21:58 da noite"."""
+def forest(day: int, clock: str | None = None) -> Zone:
+    """An expedition. `clock` is the fiction; omit it and a night hour is rolled."""
     return Zone(
         key=f"forest-{day}",
         kind=KIND_FOREST,
         day=day,
         title=f"Dia {day}",
-        subtitle=clock,
+        subtitle=clock if clock is not None else night_clock(),
         hostile=True,
         lantern=True,
     )

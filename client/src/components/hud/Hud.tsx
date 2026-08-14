@@ -5,9 +5,10 @@
  * canvas keeps receiving aim and fire input underneath.
  *
  * All four corners live inside one `HudScreen`, which bends them onto a curved
- * display and tears them when the signal is bad. Anything added here inherits
- * that by construction — a panel outside the wrapper would visibly float off
- * the glass everything else is painted on.
+ * display and tears them when the signal is bad. World tooltips do not: they
+ * sit outside the glass, pinned to a thing in the scene, the same way the
+ * letterbox does. A HUD panel outside the wrapper would visibly float off the
+ * glass everything else is painted on.
  *
  * The corners are OFF while a zone introduces itself. For that beat the screen
  * holds the place and your own character standing in it, with the day's name
@@ -113,19 +114,18 @@ export function Hud({ snapshot, minimapRef, error }: HudProps) {
           <ReadyCount ready={snapshot.ready} />
         </div>
 
-        <div
-          className={cn(
-            'hud-layer pixel-text bottom-10 left-1/2 -translate-x-1/2',
-            chrome,
-          )}
-        >
-          <InteractPrompt prompt={snapshot.prompt} />
-        </div>
-
         {/* Last, so the arrival card sits over every corner — it is the one thing
             here that is allowed to own the whole screen, and only for a moment. */}
         <ZoneTitle arrival={snapshot.arrival} />
       </HudScreen>
+
+      {/*
+        World tooltips sit OUTSIDE the glass. They are pinned to a thing in
+        the scene (the fire, later a chest), and the fish-eye would pull them
+        off that thing. Show/hide is still the store; the screen position is
+        written by the game loop.
+      */}
+      <InteractPrompt prompt={snapshot.prompt} />
     </>
   );
 }

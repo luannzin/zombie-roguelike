@@ -46,7 +46,11 @@ seam React is allowed to read.
   jumped the instant the run started. The local player is marked by the ring
   under their feet instead. The one caller with no server — the title screen —
   falls back to a locally generated clearing, which only has to LOOK like the
-  place because nobody is standing in it.
+  place because nobody is standing in it. Its map is the same size as the real
+  camp (`CAMP_WIDTH_TILES` × `CAMP_HEIGHT_TILES`): a smaller one makes the
+  camera clamp and pulls the fire off the rest anchor, so entering a room jumps
+  it. The rest anchor itself is `campFireAnchor` in `render/framing.ts`, shared
+  with the title screen.
 - Positions arrive as the CENTRE of a collision box, the way a snapshot carries
   them; the scene converts to a contact point with `config.playerHalfHeight`.
   Getting that wrong is a party floating above their own shadows.

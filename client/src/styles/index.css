@@ -274,8 +274,8 @@
 
   /*
    * Arriving in a zone. The bars, then two rules drawing out of nothing, then
-   * the title fading and rising, then the subtitle a beat later with its
-   * tracking closing.
+   * the title materialising (fade, 0.95 → 1 scale, blur coming into focus),
+   * then the subtitle a beat later with its tracking closing.
    *
    * Everything fades — nothing wipes, snaps or flickers. Arriving at the camp
    * is the calm before the night, and a title sequence would say the opposite.
@@ -540,22 +540,30 @@
     }
   }
   /*
-   * A slow fade with a few pixels of rise, and a slow fade out that keeps
-   * rising. No wipe, no flicker: the type settles into the frame the way the
-   * camera has just settled onto the character.
+   * The title materialises rather than appearing: fade, a few pixels of rise,
+   * a soft blur coming into focus, and a 0.95 → 1 scale. Type that starts at
+   * scale(0) comes out of nowhere; 0.95 already has a shape, it just steps
+   * into the light. It leaves quieter — fade and a last bit of blur as it
+   * keeps rising — so enter and exit are the same material, not two tricks.
    */
   @keyframes zone-title {
   0% {
     opacity: 0;
     translate: 0 10px;
+    scale: 0.95;
+    filter: blur(8px);
     }
   30%, 72% {
     opacity: 1;
     translate: 0 0;
+    scale: 1;
+    filter: blur(0);
     }
   100% {
     opacity: 0;
     translate: 0 -10px;
+    scale: 1;
+    filter: blur(4px);
     }
   }
   @keyframes zone-subtitle {
@@ -674,6 +682,29 @@
   100% {
     translate: 0 0;
     }
+  }
+}
+
+/*
+ * Reduced motion keeps the title readable as a fade, and drops the rise,
+ * scale and blur — those are vestibular, the opacity change is not.
+ */
+@keyframes zone-title-fade {
+  0% {
+    opacity: 0;
+  }
+  30%,
+  72% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-zone-title {
+    animation-name: zone-title-fade;
   }
 }
 

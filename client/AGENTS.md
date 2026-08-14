@@ -49,6 +49,10 @@ own the HUD and routing only. Talks to the server over one WebSocket.
   the map from `hello` with the server's own player coordinates; `ArenaScreen`
   draws the same map with the simulation running. Nothing may move at the
   transition.
+- **The title screen and the lobby share one rest shot.** The fire sits on
+  `campFireAnchor` in `src/render/framing.ts` on both; the title's fallback
+  clearing is the same size as the real camp. Entering a room must not jump
+  the fire.
 - **The lobby owns the transition.** Its canvas is full screen with the chrome
   floating over it — same box as the arena's — and starting a run slides the
   chrome off while the scene's own camera drifts onto the local player and

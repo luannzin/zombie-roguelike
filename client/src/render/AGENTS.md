@@ -12,7 +12,7 @@ mutation, no React.
 | `renderer.ts` | pass sequencing and the world/screen transform |
 | `types.ts` | `RenderState`, `DrawableEntity` — the renderer's input contract |
 | `camera.ts` | follow, clamp to map bounds, the arrival push-in |
-| `framing.ts` | the wide shot of the camp — one zoom, two callers |
+| `framing.ts` | the wide shot of the camp — zoom and rest-shot fire position |
 | `projection.ts` | zoom + offset between world and screen space |
 | `sprites.ts` | sheet loading, `SpriteBook`, per-colour multiply tints |
 | `terrain.ts` | terrain atlas loading (ground, props, the animated campfire) |
@@ -47,7 +47,10 @@ mutation, no React.
   has just watched.
 - `framing.ts` holds both ends of that move: `ARENA_ZOOM` is the scale the game
   is played at, and `campZoom` is the wide shot, clamped to at least one step
-  below it so there is always a push to see. They are read by the lobby and by
+  below it so there is always a push to see. The wide shot's fire position
+  (`CAMP_FIRE_ANCHOR` / `campFireAnchor`) lives here too, because the title
+  screen and the lobby share it — two call sites with two numbers is a fire
+  that jumps when you enter a room. They are read by the lobby and by
   `Camera`'s resting zoom; if they diverge, starting a run cuts to a different
   picture of the same clearing instead of continuing the shot.
 - Sprites are keyed by asset name; which enemy sheets to load comes from

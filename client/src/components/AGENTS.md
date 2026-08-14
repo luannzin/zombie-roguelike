@@ -11,7 +11,9 @@ and nowhere near the frame loop.
   `Game`; React never touches those pixels again.
 - `hud/` — ours: `Hud`, `HudScreen`, `Panel`, `Vitals`, `BatteryGauge`,
   `ProgressBar`, `StatusLine`, `NetStats`, `ControlsHint`, `ZoneTitle`.
-- `lobby/` — `CampfireCanvas` (mounts `LobbyScene`), `RoomCode`, `PlayerRoster`.
+- `lobby/` — `CampfireCanvas` (mounts `LobbyScene`; owns the rest-shot fire
+  position via `campFireAnchor`, not via per-screen props), `RoomCode`,
+  `PlayerRoster`.
 - `menu/` — `MenuButton`, `HudInput`, `JoinRoomDialog`: the title screen's
   controls, in HUD chrome.
 - `ui/` — coss primitives (Base UI + shadcn-style copy-in). **Generated. Do not

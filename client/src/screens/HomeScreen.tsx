@@ -5,8 +5,9 @@
  * are not separate routes because there is nothing to link to or come back to
  * — the only durable addresses in this game are `/` and a room.
  *
- * The campfire behind it is the same scene the lobby draws, with nobody in it.
- * That is the whole point of the shot: an empty fire, waiting for a party.
+ * The campfire behind it is the same scene the lobby draws, with nobody in it,
+ * framed on the same rest shot. That is the whole point: an empty fire waiting
+ * for a party, that does not jump when you walk into a room.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -150,14 +151,7 @@ export function HomeScreen() {
 
   return (
     <div className="relative h-screen w-screen overflow-hidden bg-surface">
-      {/* Pushed right and a little below centre: the menu owns the left edge,
-          so the fire sits in the space it leaves rather than under it. */}
-      <CampfireCanvas
-        members={NOBODY}
-        anchorX={0.66}
-        anchorY={0.56}
-        className="absolute inset-0"
-      />
+      <CampfireCanvas members={NOBODY} className="absolute inset-0" />
       {/* Legibility scrim: the menu sits on top of a live scene. */}
       <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-surface via-surface/78 to-transparent" />
 

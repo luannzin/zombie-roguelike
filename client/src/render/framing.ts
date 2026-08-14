@@ -9,6 +9,10 @@
  * place — the arena then simply opens on the frame the lobby handed it, and the
  * cut between two canvases is invisible.
  *
+ * The title screen is the same wide shot. It and the lobby share the rest
+ * anchor below, so walking into a room does not jump the fire. Two call sites
+ * with two numbers is how that jump got in.
+ *
  * The wide shot is therefore never allowed to be as tight as the arena: it is
  * clamped to a step below, so however big the window is there is always a push
  * to see.
@@ -22,6 +26,20 @@ export const ARENA_ZOOM = 4;
 /** How many tiles of forest the wide shot tries to hold. Decides the zoom. */
 export const CAMP_VIEW_TILES_W = 30;
 export const CAMP_VIEW_TILES_H = 20;
+
+/**
+ * Where the fire sits in the wide shot, as 0..1 viewport fractions.
+ *
+ * Desktop: right of centre, into the space the left chrome leaves.
+ * Phone: below centre, into the space a top sheet leaves.
+ * The launch takes whichever of these is live back to dead centre.
+ */
+export const CAMP_FIRE_ANCHOR = { x: 0.63, y: 0.48 } as const;
+export const CAMP_FIRE_ANCHOR_MOBILE = { x: 0.5, y: 0.66 } as const;
+
+export function campFireAnchor(mobile: boolean): { x: number; y: number } {
+  return mobile ? CAMP_FIRE_ANCHOR_MOBILE : CAMP_FIRE_ANCHOR;
+}
 
 /** Below this the party stops being readable as people. */
 const MIN_ZOOM = 2;

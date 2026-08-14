@@ -12,8 +12,8 @@
  * launch possible. The arena's canvas is the whole window, so if this one were
  * a column beside a sidebar, the handover would shift the world sideways by
  * half the sidebar's width no matter how carefully the camera was matched. Same
- * box, same picture. The fire is pushed off-centre with the scene's anchor
- * instead, into the space the panel leaves — and taking that displacement back
+ * box, same picture. The fire sits on the rest shot in `render/framing.ts` —
+ * the same numbers the title screen uses — and taking that displacement back
  * is half of what the launch animates.
  *
  * LAUNCHING is the transition, and it happens here rather than in the arena.
@@ -30,7 +30,6 @@ import { PlayerRoster } from '@/components/lobby/PlayerRoster';
 import { RoomCode } from '@/components/lobby/RoomCode';
 import { MenuButton } from '@/components/menu/MenuButton';
 import type { LobbyMember } from '@/game/lobby-scene';
-import { useIsMobile } from '@/hooks/use-media-query';
 import { cn } from '@/lib/utils';
 import type { RoomSession } from '@/hooks/useRoomSession';
 
@@ -56,7 +55,6 @@ export interface LobbyScreenProps {
 export function LobbyScreen({ code, session, onLeave, onLaunched }: LobbyScreenProps) {
   const { lobby, selfId, camp, isHost, status, start } = session;
   const players = lobby?.players ?? [];
-  const mobile = useIsMobile();
   const [launching, setLaunching] = useState(false);
   const landed = useRef(onLaunched);
   landed.current = onLaunched;
@@ -108,10 +106,6 @@ export function LobbyScreen({ code, session, onLeave, onLaunched }: LobbyScreenP
         members={members}
         camp={camp}
         seed={code}
-        // Out from under the chrome: to the right of the panel on a desktop,
-        // below it on a phone. The launch takes this back to dead centre.
-        anchorX={mobile ? 0.5 : 0.63}
-        anchorY={mobile ? 0.66 : 0.48}
         launching={launching}
         launchSeconds={LAUNCH_SECONDS}
         className="absolute inset-0"

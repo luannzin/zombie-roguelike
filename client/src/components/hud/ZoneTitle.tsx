@@ -32,7 +32,8 @@
  *
  *   RULES     hairlines that draw out from the centre, one above and one below.
  *             They are what make the title arrive rather than appear.
- *   TITLE     big, wide-tracked, rising a few pixels as it fades up.
+ *   TITLE     big, wide-tracked, rising a few pixels as it fades up,
+ *             coming into focus from a soft blur at 0.95 scale.
  *   SUBTITLE  the smaller line, held back a beat so the two are read in order,
  *             its tracking closing as it settles.
  *
@@ -82,9 +83,11 @@ export function ZoneTitle({ arrival }: ZoneTitleProps) {
       <div className="relative flex flex-col items-center gap-4">
         <div className="animate-zone-rule bg-panel-border h-px w-0" />
 
-        <h2 className="animate-zone-title pixel-text text-ink text-[44px] leading-[48px] tracking-[0.22em] uppercase opacity-0 drop-shadow-[0_3px_0_var(--hud-text-shadow)]">
-          {arrival.zone.title}
-        </h2>
+        <div className="animate-zone-title opacity-0">
+          <h2 className="pixel-text text-ink text-[44px] leading-[48px] tracking-[0.22em] uppercase drop-shadow-[0_3px_0_var(--hud-text-shadow)]">
+            {arrival.zone.title}
+          </h2>
+        </div>
 
         <p className="animate-zone-subtitle pixel-text text-ink-accent text-[22px] leading-[26px] tracking-[0.34em] uppercase opacity-0">
           {arrival.zone.subtitle}

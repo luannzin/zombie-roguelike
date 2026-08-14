@@ -11,8 +11,9 @@
  * here is the tile they walk off when the host presses start. Nothing teleports
  * at the transition because there is nothing to teleport between. The title
  * screen is the one caller with no server, and it falls back to a clearing
- * generated locally — the shot there only has to look like the place, since
- * nobody is standing in it.
+ * generated locally — the same size, the same rest shot, so walking into a
+ * room does not jump the fire. The trees only have to look like the place,
+ * since nobody is standing in it.
  *
  * The ground, trees, rocks, grass and ferns are painted by the arena's own
  * `TerrainLayer`. That reuse is the point: swaying grass, canopies that close
@@ -36,7 +37,7 @@ import { clamp01, lerp } from "../lib/math";
 import type { GameConfig, MapPayload } from "../net/protocol";
 import { Camera } from "../render/camera";
 import { FovField, type LightSource } from "../render/fov";
-import { ARENA_ZOOM, campZoom } from "../render/framing";
+import { ARENA_ZOOM, CAMP_FIRE_ANCHOR, campZoom } from "../render/framing";
 import { DarknessLayer } from "../render/layers/darkness";
 import { TerrainLayer } from "../render/layers/terrain";
 import { frameIndex, SpriteBook } from "../render/sprites";
@@ -63,11 +64,14 @@ const FALLBACK_TILE = 16;
  * all of this away and draws `hello.map` instead.
  *
  * These are deliberate near-copies of the authoritative numbers in
- * server/app/camp.py. They do not have to agree to the pixel — nobody stands in
- * this one — they have to make the same kind of clearing.
+ * server/app/camp.py. The SIZE has to match (`CAMP_WIDTH_TILES` /
+ * `CAMP_HEIGHT_TILES`): a smaller clearing makes `Camera.clamp` pull the fire
+ * off the rest anchor, and walking into a lobby then jumps it. The trees do
+ * not have to agree to the pixel — nobody stands in this one — they have to
+ * make the same kind of clearing.
  */
-const MAP_TILES_W = 46;
-const MAP_TILES_H = 32;
+const MAP_TILES_W = 76;
+const MAP_TILES_H = 48;
 /** Open ground around the fire, in tiles, before the treeline starts. */
 const CLEARING_TILES = 8.2;
 /**
@@ -286,12 +290,13 @@ export class LobbyScene {
 		/** Seed for the clearing. Two rooms should not be the same forest. */
 		private readonly seed = 1,
 		/**
-		 * Where the fire sits in the viewport, as 0..1 fractions. Both callers
-		 * push it off-centre so their menu is not standing on top of it — and
-		 * that displacement is half of what the launch takes back, which is why
-		 * it is live state rather than a constructor-only framing decision.
+		 * Where the fire sits in the viewport, as 0..1 fractions. Shared by the
+		 * title screen and the lobby (see `CAMP_FIRE_ANCHOR`) so entering a room
+		 * does not jump the fire — and that displacement is half of what the
+		 * launch takes back, which is why it is live state rather than a
+		 * constructor-only framing decision.
 		 */
-		private anchor: { x: number; y: number } = { x: 0.5, y: 0.42 },
+		private anchor: { x: number; y: number } = { ...CAMP_FIRE_ANCHOR },
 		sprites: SpriteBook = new SpriteBook(),
 	) {
 		this.canvas = canvas;
@@ -796,8 +801,9 @@ export class LobbyScene {
 		if (!world) return;
 		// `snapTo` centres its target, so the point handed to it is displaced by
 		// however far the anchor is from the middle. Clamping still applies: the
-		// map is big enough that it never bites, but a smaller one would pull the
-		// fire back toward centre rather than show the edge of the world.
+		// fallback clearing is the same size as the real camp so it never bites
+		// here, the way a smaller one used to — that pull is a fire that jumps
+		// the moment a room's map arrives.
 		this.camera.snapTo(
 			focusX + this.camera.viewWidth * (0.5 - anchorX),
 			focusY + this.camera.viewHeight * (0.5 - anchorY),

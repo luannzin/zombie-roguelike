@@ -9,11 +9,17 @@
  * time somebody joins or leaves. Both are pushed into the scene through
  * effects rather than through props on a re-render, because the scene is not a
  * React tree — it is a canvas with a loop in it.
+ *
+ * The rest shot — where the fire sits in the viewport — is not a prop. It lives
+ * in `render/framing.ts` so the title screen and the lobby cannot pick different
+ * numbers. The launch still takes that displacement back to centre.
  */
 
 import { useEffect, useRef } from 'react';
 import { LobbyScene, type CampView, type LobbyMember } from '@/game/lobby-scene';
+import { useIsMobile } from '@/hooks/use-media-query';
 import { cn } from '@/lib/utils';
+import { campFireAnchor } from '@/render/framing';
 
 export interface CampfireCanvasProps {
   members: readonly LobbyMember[];
@@ -24,12 +30,6 @@ export interface CampfireCanvasProps {
   camp?: CampView | null;
   /** Room code (or any string): decides which clearing the fallback grows. */
   seed?: string;
-  /**
-   * Where the fire sits in the canvas, as 0..1 fractions. Defaults to centred.
-   * Both screens push it aside so their menu is not standing on top of it.
-   */
-  anchorX?: number;
-  anchorY?: number;
   /**
    * Flip to true to run the launch: the camera swooshes onto the local player
    * and pushes in to game scale. One-way — see `LobbyScene.beginLaunch`.
@@ -44,19 +44,19 @@ export function CampfireCanvas({
   members,
   camp = null,
   seed = '',
-  anchorX = 0.5,
-  anchorY = 0.42,
   launching = false,
   launchSeconds = 1,
   className,
 }: CampfireCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const sceneRef = useRef<LobbyScene | null>(null);
+  // Same rest shot on the title screen and in the lobby — see framing.ts.
+  const { x: anchorX, y: anchorY } = campFireAnchor(useIsMobile());
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const scene = new LobbyScene(canvas, hashSeed(seed));
+    const scene = new LobbyScene(canvas, hashSeed(seed), { x: anchorX, y: anchorY });
     sceneRef.current = scene;
     void scene.start();
     return () => {

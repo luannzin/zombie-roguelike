@@ -98,7 +98,9 @@ subtree.
 - **The camp is one place, not two.** The lobby draws the map the server sent
   in `hello`, with every player on the coordinates the simulation is holding
   for them; starting the run changes what answers your input, not where anybody
-  is standing. Nothing may teleport at that transition.
+  is standing. Nothing may teleport at that transition. The title screen frames
+  the same fire on the same rest shot (`campFireAnchor`); entering a room must
+  not jump it.
 - Entering a zone is an EVENT, and it is one continuous move: the lobby's chrome
   slides away while its own camera drifts off the fire onto your character and
   pushes in to game scale; the arena takes over on the frame that lands, holds

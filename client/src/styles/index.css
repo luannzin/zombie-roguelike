@@ -273,21 +273,35 @@
   --animate-sign-flicker: sign-flicker 6.5s linear infinite;
 
   /*
-   * Arriving in a zone. Four tracks, one beat: the wash comes up, two rules
-   * draw out of nothing, the title fades and rises, the subtitle follows a
-   * beat later with its tracking closing.
+   * Arriving in a zone. The bars, then two rules drawing out of nothing, then
+   * the title fading and rising, then the subtitle a beat later with its
+   * tracking closing.
    *
    * Everything fades — nothing wipes, snaps or flickers. Arriving at the camp
    * is the calm before the night, and a title sequence would say the opposite.
    *
-   * The durations are cut to CARD_MS in components/hud/ZoneTitle.tsx and to
-   * INTRO_TIME in game/game.ts. All three move together, or the card outlives
-   * the hold it plays inside and lands under the HUD.
+   * The durations are cut to ZONE_INTRO_MS in components/hud/ZoneTitle.tsx and
+   * to INTRO_TIME in game/game.ts. All three move together, or the card
+   * outlives the hold it plays inside and lands under the HUD.
    */
-  --animate-zone-wash: zone-wash 3s ease-in-out 1 forwards;
   --animate-zone-rule: zone-rule 3s cubic-bezier(0.22, 1, 0.36, 1) 1 forwards;
   --animate-zone-title: zone-title 3s cubic-bezier(0.22, 1, 0.36, 1) 1 forwards;
   --animate-zone-subtitle: zone-subtitle 3s cubic-bezier(0.22, 1, 0.36, 1) 1 forwards;
+
+  /*
+   * The letterbox, in its two halves. It is ONE continuous element across two
+   * screens, which is the only reason the handover works: `in` runs in the
+   * lobby and darkens the frame as the camera pushes, reaching full exactly as
+   * the zoom lands, and `hold` opens the arena already at full and takes it
+   * away once the title has been read. The cut between the two canvases happens
+   * underneath a bar that is not moving, so there is nothing to see.
+   *
+   * Both callers override `animation-duration` inline from the TypeScript
+   * constant that actually times them — LAUNCH_SECONDS and ZONE_INTRO_MS — so
+   * the beat cannot drift out of sync with a number in a stylesheet.
+   */
+  --animate-zone-bars-in: zone-bars-in 2s cubic-bezier(0.5, 0, 0.75, 0.4) 1 forwards;
+  --animate-zone-bars-hold: zone-bars-hold 3s ease-in-out 1 forwards;
 
   /*
    * The lobby chrome leaving, as the camera starts its swoosh. It slides off
@@ -484,12 +498,17 @@
     opacity: 0.72;
     }
   }
-  @keyframes zone-wash {
+  @keyframes zone-bars-in {
   0% {
     opacity: 0;
     }
-  16%, 70% {
-    opacity: 0.88;
+  100% {
+    opacity: 1;
+    }
+  }
+  @keyframes zone-bars-hold {
+  0%, 66% {
+    opacity: 1;
     }
   100% {
     opacity: 0;
@@ -726,6 +745,31 @@
     to bottom,
     var(--hud-scanline) 0 1px,
     transparent 1px 3px
+  );
+}
+
+/*
+ * The letterbox a zone arrives behind. Bars top and bottom, soft on their inner
+ * edge so they close the frame down without cropping it — the middle, where the
+ * character the camera has settled on is standing, stays completely clear.
+ *
+ * It is defined once and used by BOTH the lobby (fading in under the push-in)
+ * and the arena (already at full, holding through the title). Two gradients
+ * that were merely similar would show themselves at the handover, which is the
+ * one frame this whole thing exists to hide.
+ */
+@utility zone-bars {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background-image: linear-gradient(
+    to bottom,
+    var(--surface) 0%,
+    var(--surface) 13%,
+    transparent 33%,
+    transparent 67%,
+    var(--surface) 87%,
+    var(--surface) 100%
   );
 }
 

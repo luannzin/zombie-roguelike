@@ -76,6 +76,14 @@ export interface HudSnapshot {
    * turns an establishing shot into a gameplay frame with a caption. It comes
    * back at the same moment the controls do, which is what makes the HUD
    * arriving read as "you're up".
+   *
+   * It DEFAULTS TO TRUE, and that default is the whole point. The store is
+   * created when the arena mounts and the game only reaches `onWelcome` a
+   * moment later, after its sheets have loaded — so a default of `false` would
+   * paint the corners at full strength for those frames and then hide them,
+   * which is a flash of HUD exactly where the transition is supposed to be
+   * seamless. Hidden until something says otherwise; only the end of the hold
+   * (or a dropped connection, which has news to show) turns it off.
    */
   introducing: boolean;
 }
@@ -89,7 +97,7 @@ export const EMPTY_HUD: HudSnapshot = {
   lantern: null,
   zone: null,
   arrival: null,
-  introducing: false,
+  introducing: true,
 };
 
 export type HudStore = Store<HudSnapshot>;

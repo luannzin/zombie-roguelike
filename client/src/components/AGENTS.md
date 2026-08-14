@@ -28,9 +28,20 @@ and nowhere near the frame loop.
 - `ZoneTitle` is the one thing allowed to own the whole screen, and only for a
   moment. It plays into a deliberately EMPTY frame: `Hud` drops its four
   corners to zero opacity while `snapshot.introducing` is set, and the game is
-  holding the player still at the same time. The durations in the component,
-  the `zone-*` keyframes and INTRO_TIME in `game/game.ts` are one timeline —
-  the card has to clear before the corners come back.
+  holding the player still at the same time. `ZONE_INTRO_MS`, the `zone-*`
+  keyframes and INTRO_TIME in `game/game.ts` are one timeline — the card has to
+  clear before the corners come back.
+- **Anything that must exist on the arena's FIRST painted frame is driven by
+  `introducing`, not by `arrival`.** The store's initial snapshot has
+  `introducing: true`, so those elements are up before the game has said
+  anything; `arrival` only lands once `onWelcome` has run, which is several
+  frames later. That gap is a flash of undimmed scene at the exact seam the
+  transition exists to hide. It is why the HUD corners and the `zone-bars`
+  letterbox both key off the flag, and why the letterbox lives in `Hud` rather
+  than in `ZoneTitle`.
+- The `zone-bars` letterbox is ONE element across two screens: `LobbyScreen`
+  fades it in under the camera push, the arena opens holding it at full. One
+  utility, one gradient — two that were merely similar would show themselves.
 - A control a zone forbids is shown DISABLED, never hidden. `BatteryGauge` in
   the camp still answers "how much light am I carrying into the night"; only
   its readout changes, and a refused keypress kicks the panel instead of doing

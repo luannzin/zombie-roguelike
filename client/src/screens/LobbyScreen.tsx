@@ -173,6 +173,21 @@ export function LobbyScreen({ code, session, onLeave, onLaunched }: LobbyScreenP
         </div>
       </aside>
 
+      {/*
+        The letterbox closing over the push-in. It reaches full opacity on the
+        exact frame the camera lands, and the arena opens holding it there (see
+        components/hud/Hud) — so the cut between the two canvases happens
+        underneath a bar that is not moving. Above the panel, because the panel
+        is leaving and the frame closing down over it is the point.
+      */}
+      {launching ? (
+        <div
+          className="zone-bars animate-zone-bars-in z-20"
+          style={{ animationDuration: `${LAUNCH_SECONDS}s` }}
+          aria-hidden="true"
+        />
+      ) : null}
+
       <p
         className={cn(
           'pixel-text pointer-events-none absolute bottom-4 left-1/2 -translate-x-1/2 text-center text-[11px] leading-[17px] text-ink-muted transition-opacity duration-300',

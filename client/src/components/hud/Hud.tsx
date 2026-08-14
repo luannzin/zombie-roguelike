@@ -15,6 +15,12 @@
  * controls come back, so it reads as "you're up" rather than as chrome fading
  * in. The title card is deliberately outside that group — it is what the empty
  * frame is for.
+ *
+ * They start hidden and fade UP; they are never faded down from visible on
+ * arrival. `introducing` defaults to true in the store for exactly that reason
+ * (see hud-store.ts) — the alternative is one painted frame of full-strength
+ * HUD before the game has said anything, which is a flash in the middle of the
+ * one transition that has to be seamless.
  */
 
 import type { RefObject } from 'react';
@@ -27,7 +33,7 @@ import { HudScreen } from './HudScreen';
 import { NetStats } from './NetStats';
 import { StatusLine } from './StatusLine';
 import { Vitals } from './Vitals';
-import { ZoneTitle } from './ZoneTitle';
+import { ZONE_INTRO_MS, ZoneTitle } from './ZoneTitle';
 
 export interface HudProps {
   snapshot: HudSnapshot;
@@ -36,8 +42,8 @@ export interface HudProps {
 }
 
 export function Hud({ snapshot, minimapRef, error }: HudProps) {
-  // Long enough that the corners arrive rather than appear, short enough that
-  // they are settled before the player has taken two steps.
+  // Slow up, fast down. Coming back is the beat that says the controls are
+  // yours, so it gets time; going away is housekeeping and should not linger.
   const chrome = cn(
     'transition-opacity duration-700 ease-out',
     snapshot.introducing && 'opacity-0 duration-200',
@@ -69,6 +75,23 @@ export function Hud({ snapshot, minimapRef, error }: HudProps) {
       <div className={cn('hud-layer pixel-text bottom-2.5 left-3', chrome)}>
         <ControlsHint zone={snapshot.zone} />
       </div>
+
+      {/*
+        The letterbox, picked up from the lobby.
+        It is rendered off `introducing` rather than off `arrival` because that
+        flag is true in the store's INITIAL snapshot (see hud-store.ts) — so the
+        bars exist on the arena's very first painted frame, which is the frame
+        the lobby left them at full. Keying them off `arrival` would mount them
+        a few frames later, and those frames are a flash of undimmed scene at
+        exactly the seam this is here to hide.
+      */}
+      {snapshot.introducing ? (
+        <div
+          className="zone-bars animate-zone-bars-hold"
+          style={{ animationDuration: `${ZONE_INTRO_MS}ms` }}
+          aria-hidden="true"
+        />
+      ) : null}
 
       {/* Last, so the arrival card sits over every corner — it is the one thing
           here that is allowed to own the whole screen, and only for a moment. */}

@@ -22,12 +22,14 @@
  * read as a title sequence rather than as arriving somewhere quiet — the camp
  * is the calm before the night, and the card should feel like it.
  *
- * Four parts, and each one is doing a job:
+ * The BARS are not here. They start in the lobby, under the push-in, and are
+ * already at full when the arena takes the screen — see `Hud`, which owns them
+ * for the whole hold. Fading them in from this component would mean fading them
+ * in a few frames AFTER the arena's first paint, which is a flash of bright
+ * scene followed by a dim, right at the seam.
  *
- *   WASH      a dark gradient from the top and bottom edges. Not a full-screen
- *             dim — the point is to make the type legible over a live scene
- *             while leaving the middle of the frame, where the character is,
- *             completely clear.
+ * Three parts, and each one is doing a job:
+ *
  *   RULES     hairlines that draw out from the centre, one above and one below.
  *             They are what make the title arrive rather than appear.
  *   TITLE     big, wide-tracked, rising a few pixels as it fades up.
@@ -43,13 +45,14 @@ import { useEffect, useState } from 'react';
 import type { HudArrival } from '../../game/hud-store';
 
 /**
- * How long the card stays mounted, in ms.
+ * How long the arrival takes on screen, in ms — the bars, the card, and the
+ * gap before the HUD returns.
  *
- * Cut against INTRO_TIME in game/game.ts: the type has to be gone BEFORE the
- * controls come back, so the HUD rises into an empty frame instead of arriving
- * underneath a title. Lengthening one without the other closes that gap.
+ * It must match INTRO_TIME in game/game.ts, which is the same beat measured on
+ * the game clock: the type has to be gone BEFORE the controls come back, so
+ * the HUD rises into an empty frame instead of arriving underneath a title.
  */
-const CARD_MS = 3000;
+export const ZONE_INTRO_MS = 3000;
 
 export interface ZoneTitleProps {
   arrival: HudArrival | null;
@@ -64,7 +67,7 @@ export function ZoneTitle({ arrival }: ZoneTitleProps) {
   useEffect(() => {
     if (!key) return;
     setShowing(key);
-    const timer = window.setTimeout(() => setShowing(null), CARD_MS);
+    const timer = window.setTimeout(() => setShowing(null), ZONE_INTRO_MS);
     return () => window.clearTimeout(timer);
   }, [key]);
 
@@ -76,10 +79,6 @@ export function ZoneTitle({ arrival }: ZoneTitleProps) {
       className="hud-layer inset-0 flex flex-col items-center justify-center"
       aria-hidden="true"
     >
-      {/* Legibility, from the edges in. The middle of the frame stays clear so
-          the character the camera is pushing onto is never behind a scrim. */}
-      <div className="animate-zone-wash absolute inset-0 bg-[linear-gradient(to_bottom,var(--surface)_0%,transparent_38%,transparent_62%,var(--surface)_100%)] opacity-0" />
-
       <div className="relative flex flex-col items-center gap-4">
         <div className="animate-zone-rule bg-panel-border h-px w-0" />
 

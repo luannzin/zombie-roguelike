@@ -228,6 +228,11 @@ SHOT_DAMAGE = 8
 
 # --- networking -------------------------------------------------------------
 SNAPSHOT_EVERY_N_TICKS = 1   # broadcast rate = TICK_RATE / this
+# A snapshot row carries only what MOVES. Names, colours and the score board
+# ride a roster attached every N ticks (and on any membership change) — they
+# are read by a HUD that republishes at 5 Hz, so paying for them thirty times a
+# second bought nothing. 6 ticks = 5 Hz, the same cadence.
+ROSTER_EVERY_N_TICKS = 6
 
 
 def xp_to_next(level: int) -> int:

@@ -27,7 +27,7 @@ import { projectionFor } from './projection';
 import { palette } from '../theme/palette';
 import { loadTerrain } from './terrain';
 import type { SpriteBook } from './sprites';
-import type { RenderState } from './types';
+import type { DrawableEntity, RenderState } from './types';
 
 export type { DrawableEntity, RenderState } from './types';
 
@@ -36,6 +36,8 @@ export class Renderer {
   private readonly terrain = new TerrainLayer();
   private readonly darkness = new DarknessLayer();
   private readonly atmosphere = new AtmosphereLayer();
+  /** Depth-sort scratch — see `draw`. */
+  private readonly ordered: DrawableEntity[] = [];
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
@@ -101,23 +103,31 @@ export class Renderer {
     this.useScreenSpace();
     drawCoinShadows(entity, state.coins);
     drawCoins(entity, state.coins, state.config.coinSprite);
-    const ordered = [...state.entities].sort((a, b) => a.y - b.y);
+
+    // Scratch array, reused every frame: this list is rebuilt and re-sorted
+    // 60 times a second and none of it outlives the call.
+    const ordered = this.ordered;
+    ordered.length = 0;
+    for (const target of state.entities) ordered.push(target);
+    ordered.sort((a, b) => a.y - b.y);
     for (const target of ordered) drawShadow(entity, target);
 
-    const standing: { y: number; draw: () => void }[] = ordered.map((target) => ({
-      y: target.y,
-      draw: () => drawEntity(entity, target),
-    }));
-    for (const fire of state.world.fires) {
-      // Sorted as if it were a body whose feet are at the base of the flame,
-      // since entity `y` is a box centre and the fire's is a contact point.
-      standing.push({
-        y: fire.y - state.config.playerHalfHeight,
-        draw: () => this.terrain.fire(ctx, view, fire, state.time),
-      });
+    // Fires are merged into the same depth order rather than sorted with it:
+    // a fire is sorted as if it were a body whose feet are at the base of the
+    // flame (entity `y` is a box centre, the fire's is a contact point), and
+    // both lists are already in ascending y.
+    const fires = state.world.fires;
+    let next = 0;
+    for (const target of ordered) {
+      while (next < fires.length && fires[next].y - state.config.playerHalfHeight <= target.y) {
+        this.terrain.fire(ctx, view, fires[next], state.time);
+        next++;
+      }
+      drawEntity(entity, target);
     }
-    if (state.world.fires.length > 0) standing.sort((a, b) => a.y - b.y);
-    for (const item of standing) item.draw();
+    for (; next < fires.length; next++) {
+      this.terrain.fire(ctx, view, fires[next], state.time);
+    }
 
     // World space again, and the order here IS the atmosphere:
     //   overgrowth  canopies and ferns close over whoever is standing behind

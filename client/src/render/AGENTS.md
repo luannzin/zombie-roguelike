@@ -34,6 +34,15 @@ mutation, no React.
   `fov.ts` produces two fields — `light` saturates at 1 (visibility), `heat`
   keeps climbing (warmth, drawn as additive amber). Shared vision is a `max()`
   across viewers whose snapshot `lantern` is on (plus the local lamp's output).
+- **`FovField.dirty` is the repaint contract.** Light only exists inside a
+  light's own radius, so the field publishes the tile box it touched, unioned
+  with the previous frame's (a tile that just fell dark changed too). Anything
+  caching pixels per tile — `layers/darkness` — rebuilds that box and leaves
+  the map alone; it must force a full pass whenever its own surfaces or its
+  colours are replaced. `explored` is committed inside `shine`, never in a pass
+  over the whole field.
+- The minimap repaints on its own cadence, not the render clock: `Minimap.draw`
+  is safe to call every frame and throttles itself.
 - A `LightSource` is a light the WORLD owns — a bonfire — and it is not a
   `Viewer` with the aim zeroed: it has no cone, no battery and no lag, and it
   is warmer than any lamp. It gets its own pass (`FovField.burn`) over the same

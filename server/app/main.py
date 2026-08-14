@@ -69,7 +69,7 @@ async def game_socket(ws: WebSocket, code: str, name: str | None = None):
     await ws.accept()
     room = rooms.get(code)
     if room is None:
-        await ws.send_text(json.dumps(protocol.error(protocol.ERR_ROOM_NOT_FOUND)))
+        await ws.send_text(protocol.dumps(protocol.error(protocol.ERR_ROOM_NOT_FOUND)))
         await ws.close()
         return
 
@@ -78,12 +78,12 @@ async def game_socket(ws: WebSocket, code: str, name: str | None = None):
         # `hello` carries the camp map: the lobby draws the real thing, so this
         # is the first and only time it has to travel for a player who never
         # leaves it.
-        await ws.send_text(json.dumps(room.hello_payload(player)))
+        await ws.send_text(protocol.dumps(room.hello_payload(player)))
         await room.broadcast_lobby()
         # Joining a run already in progress: skip the campfire and drop straight
         # into whatever zone the room is in.
         if room.phase == protocol.PHASE_PLAYING:
-            await ws.send_text(json.dumps(room.welcome_payload(player)))
+            await ws.send_text(protocol.dumps(room.welcome_payload(player)))
 
         while True:
             raw = await ws.receive_text()
@@ -96,7 +96,7 @@ async def game_socket(ws: WebSocket, code: str, name: str | None = None):
                 room.queue_input(player.id, msg)
             elif kind == protocol.MSG_PING:
                 await ws.send_text(
-                    json.dumps({"type": protocol.MSG_PONG, "t": msg.get("t")})
+                    protocol.dumps({"type": protocol.MSG_PONG, "t": msg.get("t")})
                 )
             elif kind == protocol.MSG_START and player.id == room.host_id:
                 await room.begin()

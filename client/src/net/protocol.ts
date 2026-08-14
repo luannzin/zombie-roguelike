@@ -145,10 +145,15 @@ export interface MapPayload {
   tiles: number[][];
 }
 
+/**
+ * One player, as a 30 Hz snapshot row: only what moves.
+ *
+ * Identity and the score board are NOT here — they live in `PlayerMeta`,
+ * arrive on the snapshot's `roster` a few times a second, and are cached by
+ * the client. Nothing on this side may assume a name is on a snapshot.
+ */
 export interface PlayerState {
   id: string;
-  name: string;
-  color: string;
   x: number;
   y: number;
   vx: number;
@@ -156,10 +161,28 @@ export interface PlayerState {
   /** normalized aim direction */
   ax: number;
   ay: number;
+  /**
+   * Last input sequence the server processed FOR THIS PLAYER. It rides on the
+   * row instead of the snapshot so the server serialises one payload for the
+   * whole room; only your own row's `seq` means anything to you.
+   */
+  seq: number;
   /** Whether this player's lantern switch is on. */
   lantern: boolean;
   hp: number;
   alive: boolean;
+  /** Camp only: standing at the fire and confirmed. */
+  ready?: boolean;
+}
+
+/**
+ * Who a player is and how they are doing — everything that does not change
+ * from tick to tick. Sent on `welcome.player` and on the snapshot `roster`.
+ */
+export interface PlayerMeta {
+  id: string;
+  name: string;
+  color: string;
   kills: number;
   deaths: number;
   /** Lifetime xp. The server also sends it pre-split into the level below. */
@@ -168,9 +191,10 @@ export interface PlayerState {
   level: number;
   xpInLevel: number;
   xpToLevel: number;
-  /** Camp only: standing at the fire and confirmed. */
-  ready?: boolean;
 }
+
+/** A player with everything known about them: `welcome` and roster rows. */
+export type PlayerFull = PlayerState & PlayerMeta;
 
 /**
  * A live enemy. Per-type constants are NOT repeated here — `t` keys into
@@ -190,13 +214,16 @@ export interface EnemyState {
   hp: number;
 }
 
-/** One world gold pickup. Value is always 1 — enemies drop one per gold point. */
+/**
+ * One world gold pickup. Value is always 1 — enemies drop one per gold point.
+ * Velocity is omitted while the coin is settled; absent means zero.
+ */
 export interface CoinState {
   id: string;
   x: number;
   y: number;
-  vx: number;
-  vy: number;
+  vx?: number;
+  vy?: number;
 }
 
 export interface ShotEvent {
@@ -300,7 +327,7 @@ export interface ErrorMessage {
 export interface WelcomeMessage {
   type: 'welcome';
   playerId: string;
-  player: PlayerState;
+  player: PlayerFull;
   config: GameConfig;
   map: MapPayload;
   /** Where the run now is. Entering it is what plays the zone intro. */
@@ -316,13 +343,17 @@ export interface WelcomeMessage {
 export interface SnapshotMessage {
   type: 'snapshot';
   tick: number;
-  /** last input sequence the server processed for THIS client */
-  ack: number;
   /** Camp walk-out: input is locked and bodies are puppeted toward the exit. */
   departing?: boolean;
   /** Drop the snapshot if this does not match `welcome.zone.key` — a stale camp tick after embark. */
   zoneKey?: string;
   players: PlayerState[];
+  /**
+   * Identity + score board for the same players. Present only every few ticks
+   * (and whenever somebody joins or leaves) — cache it; a snapshot without one
+   * is not a snapshot without players.
+   */
+  roster?: PlayerFull[];
   /** Live enemies only — an id that disappears is dead or despawned. */
   enemies: EnemyState[];
   /** Live gold pickups. */

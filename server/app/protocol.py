@@ -26,10 +26,10 @@ server -> client
   {"type":"error","code":"room_not_found"}  followed by a close
   {"type":"welcome","playerId":"...","player":{...},"config":{...},"map":{...},
    "zone":{...},"ack":<last processed input seq for you>}
-  {"type":"snapshot","tick":N,"ack":<last processed input seq for you>,
-   "departing":false,"zoneKey":"camp-1",
+  {"type":"snapshot","tick":N,"departing":false,"zoneKey":"camp-1",
    "players":[...],"enemies":[...],"coins":[...],
-   "shots":[...],"attacks":[...],"kills":[...],"pickups":[...]}
+   "shots":[...],"attacks":[...],"kills":[...],"pickups":[...],
+   "roster":[...]}                    only every ROSTER_EVERY_N_TICKS ticks
   {"type":"pong","t":<echoed>}
 
 `hello` exists because `lobby` is one payload broadcast to everybody: telling
@@ -43,8 +43,16 @@ the tile they start `preparation` on, so the lobby cannot invent its own layout.
 on all three messages because all three can be the first thing a client learns
 about a room it just joined.
 
+A snapshot is IDENTICAL for every socket in the room — it is serialised once a
+tick and the same string is written to all of them. That is why the per-player
+ack rides on each player's own row (`seq`) instead of at the top level: one
+field that differed per recipient would cost a re-serialisation each.
+
 Snapshot arrays:
-  players   full state, every tick
+  players   what moves, every tick; `seq` is that player's own input ack
+  roster    the same players with their name, colour and score board, sent
+            every ROSTER_EVERY_N_TICKS and on any membership change. A client
+            caches it: those fields feed a 5 Hz HUD and never change per tick
   enemies   live enemies only; `t` keys into welcome.config.enemyTypes
   coins     live gold pickups (one per gold point dropped)
   shots     hitscan tracers fired since the last snapshot
@@ -55,6 +63,8 @@ Snapshot arrays:
 """
 
 from __future__ import annotations
+
+import json
 
 MSG_INPUT = "input"
 MSG_PING = "ping"
@@ -125,9 +135,14 @@ def welcome(
     }
 
 
+def dumps(payload: dict) -> str:
+    """The only place a message becomes text. Compact separators, because at
+    30 Hz the default `", "` / `": "` padding is ~14% of every snapshot."""
+    return json.dumps(payload, separators=(",", ":"))
+
+
 def snapshot(
     tick: int,
-    ack: int,
     players: list[dict],
     enemies: list[dict],
     coins: list[dict],
@@ -137,11 +152,11 @@ def snapshot(
     pickups: list[dict],
     departing: bool = False,
     zone_key: str | None = None,
+    roster: list[dict] | None = None,
 ) -> dict:
-    return {
+    payload = {
         "type": MSG_SNAPSHOT,
         "tick": tick,
-        "ack": ack,
         "departing": departing,
         "zoneKey": zone_key,
         "players": players,
@@ -152,3 +167,7 @@ def snapshot(
         "kills": kills,
         "pickups": pickups,
     }
+    # Absent on most ticks — see ROSTER_EVERY_N_TICKS.
+    if roster is not None:
+        payload["roster"] = roster
+    return payload

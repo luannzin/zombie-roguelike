@@ -236,6 +236,21 @@ export class FovField {
   /** 1 once anyone has ever seen this tile. Never cleared. */
   readonly explored: Uint8Array;
 
+  /**
+   * The tile rectangle a consumer has to repaint, in tiles, inclusive.
+   *
+   * Light only exists within a light's own radius, so everything outside this
+   * box holds exactly the values it held last frame — including the fog, since
+   * `explored` can only flip somewhere that is currently lit. It is the union
+   * of this update's lit boxes with the PREVIOUS one, because a tile that just
+   * fell dark has changed too. Whoever caches pixels per tile (see
+   * `layers/darkness`) rebuilds this and leaves the rest of the map alone.
+   */
+  readonly dirty = { x0: 0, y0: 0, x1: 0, y1: 0 };
+  /** Lit box of the update in progress; empty until something shines. */
+  private readonly written = { x0: 0, y0: 0, x1: -1, y1: -1 };
+  private readonly previous = { x0: 0, y0: 0, x1: -1, y1: -1 };
+
   /** Per-player beam direction, trailing the aim it is chasing. */
   private readonly lag = new Map<string, Lag>();
 
@@ -245,6 +260,7 @@ export class FovField {
     this.light = new Float32Array(width * height);
     this.heat = new Float32Array(width * height);
     this.explored = new Uint8Array(width * height);
+    this.dirtyAll();
   }
 
   lightAt(tx: number, ty: number): number {
@@ -269,6 +285,7 @@ export class FovField {
     this.light.fill(0);
     this.heat.fill(0);
     this.pruneLag(viewers);
+    this.written.x1 = -1;
 
     const ts = world.tileSize;
     const cosHalf = Math.cos((config.coneDegrees * Math.PI) / 360);
@@ -361,6 +378,10 @@ export class FovField {
 
         const index = ty * this.width + tx;
         if (value > this.light[index]) this.light[index] = value;
+        // Committed here rather than in a pass over the whole field afterwards:
+        // final light is the max of every value written, so any single write
+        // over the threshold already means the tile was seen.
+        if (value >= EXPLORE_THRESHOLD) this.explored[index] = 1;
 
         // Warmth. `light` has already saturated at 1 by the time you are a
         // couple of tiles from the lamp, so without this second term walking
@@ -369,6 +390,7 @@ export class FovField {
         if (heat > this.heat[index]) this.heat[index] = heat;
       };
 
+      this.markLit(cx, cy, radius);
       shine(cx, cy);
       for (let octant = 0; octant < 8; octant++) {
         castLight(world, cx, cy, 1, 1, 0, radius, OCTANTS[octant], shine);
@@ -376,10 +398,7 @@ export class FovField {
     }
 
     this.burn(world, lights, time);
-
-    for (let i = 0; i < this.light.length; i++) {
-      if (this.light[i] >= EXPLORE_THRESHOLD) this.explored[i] = 1;
-    }
+    this.publishDirty();
   }
 
   /**
@@ -418,12 +437,14 @@ export class FovField {
 
         const index = ty * this.width + tx;
         if (value > this.light[index]) this.light[index] = value;
+        if (value >= EXPLORE_THRESHOLD) this.explored[index] = 1;
 
         const heat =
           value * FIRE_WARMTH * (HEAT_BASE + falloff(dist, hearth, 0) * HEAT_NEAR);
         if (heat > this.heat[index]) this.heat[index] = heat;
       };
 
+      this.markLit(cx, cy, radius);
       shine(cx, cy);
       for (let octant = 0; octant < 8; octant++) {
         castLight(world, cx, cy, 1, 1, 0, radius, OCTANTS[octant], shine);
@@ -437,6 +458,56 @@ export class FovField {
     this.heat.fill(0);
     this.explored.fill(0);
     this.lag.clear();
+    this.dirtyAll();
+  }
+
+  /** Grow this update's lit box to cover one light at (cx, cy). */
+  private markLit(cx: number, cy: number, radius: number): void {
+    const box = this.written;
+    if (box.x1 < box.x0) {
+      box.x0 = cx - radius;
+      box.y0 = cy - radius;
+      box.x1 = cx + radius;
+      box.y1 = cy + radius;
+      return;
+    }
+    if (cx - radius < box.x0) box.x0 = cx - radius;
+    if (cy - radius < box.y0) box.y0 = cy - radius;
+    if (cx + radius > box.x1) box.x1 = cx + radius;
+    if (cy + radius > box.y1) box.y1 = cy + radius;
+  }
+
+  /** Union this update's box with the last one, clamped to the map. */
+  private publishDirty(): void {
+    const now = this.written;
+    const before = this.previous;
+    const empty = now.x1 < now.x0;
+    const x0 = empty ? before.x0 : Math.min(now.x0, before.x0);
+    const y0 = empty ? before.y0 : Math.min(now.y0, before.y0);
+    const x1 = empty ? before.x1 : Math.max(now.x1, before.x1);
+    const y1 = empty ? before.y1 : Math.max(now.y1, before.y1);
+
+    this.dirty.x0 = Math.max(0, x0);
+    this.dirty.y0 = Math.max(0, y0);
+    this.dirty.x1 = Math.min(this.width - 1, x1);
+    this.dirty.y1 = Math.min(this.height - 1, y1);
+
+    before.x0 = now.x0;
+    before.y0 = now.y0;
+    before.x1 = now.x1;
+    before.y1 = now.y1;
+  }
+
+  /** Mark the whole field dirty — a new map, or a field nobody has drawn yet. */
+  private dirtyAll(): void {
+    this.dirty.x0 = 0;
+    this.dirty.y0 = 0;
+    this.dirty.x1 = this.width - 1;
+    this.dirty.y1 = this.height - 1;
+    this.previous.x0 = 0;
+    this.previous.y0 = 0;
+    this.previous.x1 = this.width - 1;
+    this.previous.y1 = this.height - 1;
   }
 
   /** Ease this viewer's beam toward its aim and return where it points now. */

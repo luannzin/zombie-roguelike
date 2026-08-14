@@ -106,25 +106,40 @@ class Player:
         """Head end of the vertical hit capsule (inset by radius)."""
         return self.y + PLAYER_HALF_HEIGHT - SPRITE_HEIGHT + self.radius
 
-    def to_payload(self) -> dict:
-        # Positions need ≥4 decimals: wall snaps use EPS=1e-4, and round(_, 2)
-        # pushes right/down snaps onto the tile boundary so box_blocked flips
-        # true. Client reconcile then blocks the other axis (strafe "lag"
-        # while sliding down a wall; up/left were fine because +EPS rounds away).
-        level, into_level, to_level = level_progress(self.xp)
+    def snapshot_payload(self) -> dict:
+        """What changes every tick. Everything else rides the roster.
+
+        Positions need ≥4 decimals: wall snaps use EPS=1e-4, and round(_, 2)
+        pushes right/down snaps onto the tile boundary so box_blocked flips
+        true. Client reconcile then blocks the other axis (strafe "lag"
+        while sliding down a wall; up/left were fine because +EPS rounds away).
+        """
         return {
             "id": self.id,
-            "name": self.name,
-            "color": self.color,
             "x": round(self.x, 4),
             "y": round(self.y, 4),
             "vx": round(self.vx, 2),
             "vy": round(self.vy, 2),
             "ax": round(self.aim_x, 3),
             "ay": round(self.aim_y, 3),
+            # This player's own input ack. It lives on the row rather than at
+            # the top of the snapshot so one serialisation serves every socket.
+            "seq": self.last_processed_seq,
             "lantern": self.last_input.lantern,
             "hp": self.hp,
             "alive": self.alive,
+            # Not identity, but it has to land the moment it flips: it is what
+            # the campfire's ready count is counting.
+            "ready": self.ready,
+        }
+
+    def to_payload(self) -> dict:
+        """The whole player: `welcome`, and the snapshot roster."""
+        level, into_level, to_level = level_progress(self.xp)
+        return {
+            **self.snapshot_payload(),
+            "name": self.name,
+            "color": self.color,
             "kills": self.kills,
             "deaths": self.deaths,
             "xp": self.xp,
@@ -133,7 +148,6 @@ class Player:
             "level": level,
             "xpInLevel": into_level,
             "xpToLevel": to_level,
-            "ready": self.ready,
         }
 
 

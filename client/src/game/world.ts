@@ -43,6 +43,12 @@ export class TileMap {
    * place any of them is written down.
    */
   readonly fires: readonly FirePlace[];
+  /**
+   * Mouth of the camp exit — west-most VOID tile centre — or null on a map
+   * without one (the forest). Resolved with the fires rather than on demand:
+   * the walk-out camera asks for it every frame, and it cannot move.
+   */
+  readonly exit: { x: number; y: number } | null;
 
   constructor(payload: MapPayload) {
     this.tiles = payload.tiles;
@@ -53,6 +59,7 @@ export class TileMap {
     this.pixelWidth = this.width * this.tileSize;
     this.pixelHeight = this.height * this.tileSize;
     this.fires = findFires(this.tiles, this.tileSize);
+    this.exit = findExitMouth(this.tiles, this.tileSize);
   }
 
   /**
@@ -241,21 +248,22 @@ export function hearthMask(
  * West-most VOID tile centre, in world pixels — the mouth of the camp exit.
  * Null when this map has no exit (the forest).
  */
-export function exitMouth(world: TileMap): { x: number; y: number } | null {
-  let minTx = world.width;
-  const ys: number[] = [];
-  for (let ty = 0; ty < world.height; ty++) {
-    const row = world.tiles[ty];
+function findExitMouth(tiles: number[][], tileSize: number): { x: number; y: number } | null {
+  let minTx = Infinity;
+  let sumTy = 0;
+  let count = 0;
+  for (let ty = 0; ty < tiles.length; ty++) {
+    const row = tiles[ty];
     for (let tx = 0; tx < row.length; tx++) {
       if (row[tx] !== VOID) continue;
-      minTx = Math.min(minTx, tx);
-      ys.push(ty);
+      if (tx < minTx) minTx = tx;
+      sumTy += ty;
+      count++;
     }
   }
-  if (ys.length === 0) return null;
-  const ts = world.tileSize;
+  if (count === 0) return null;
   return {
-    x: (minTx + 0.5) * ts,
-    y: (ys.reduce((a, b) => a + b, 0) / ys.length + 0.5) * ts,
+    x: (minTx + 0.5) * tileSize,
+    y: (sumTy / count + 0.5) * tileSize,
   };
 }

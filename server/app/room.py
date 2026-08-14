@@ -26,7 +26,6 @@ assumes it is the only one.
 from __future__ import annotations
 
 import asyncio
-import json
 import math
 import random
 import time
@@ -48,6 +47,7 @@ from .config import (
     PLAYER_HALF_WIDTH,
     RESPAWN_DELAY,
     RESPAWN_IMMUNITY,
+    ROSTER_EVERY_N_TICKS,
     SHOT_DAMAGE,
     SHOT_RANGE,
     SNAPSHOT_EVERY_N_TICKS,
@@ -115,6 +115,9 @@ class Room:
         self._depart_hold = 0.0
         self._slots: dict[str, tuple[float, float]] = {}
         self._pending_embark = False
+        #: Someone joined or left: attach the roster to the next snapshot
+        #: instead of making the party wait out the interval for a name.
+        self._roster_dirty = True
 
     # --- lifecycle ----------------------------------------------------------
     def start(self) -> None:
@@ -178,6 +181,7 @@ class Room:
         self.players[pid] = player
         self.sockets[pid] = socket
         self.seating.append(pid)
+        self._roster_dirty = True
         if self.host_id is None:
             self.host_id = pid
         if self.phase == protocol.PHASE_LOBBY:
@@ -195,6 +199,7 @@ class Room:
     def remove_player(self, pid: str) -> None:
         self.players.pop(pid, None)
         self.sockets.pop(pid, None)
+        self._roster_dirty = True
         if pid in self.seating:
             self.seating.remove(pid)
         # The host leaving must not lock the room out of ever starting.
@@ -255,7 +260,7 @@ class Room:
         for pid, socket in list(self.sockets.items()):
             player = self.players.get(pid)
             if player is not None:
-                await self._safe_send(pid, socket, json.dumps(self.welcome_payload(player)))
+                await self._safe_send(pid, socket, protocol.dumps(self.welcome_payload(player)))
         self.start()
 
     def toggle_ready(self, pid: str) -> None:
@@ -341,7 +346,7 @@ class Room:
             player = self.players.get(pid)
             if player is not None:
                 await self._safe_send(
-                    pid, socket, json.dumps(self.welcome_payload(player))
+                    pid, socket, protocol.dumps(self.welcome_payload(player))
                 )
 
     # --- input --------------------------------------------------------------
@@ -656,7 +661,7 @@ class Room:
         """Send one identical payload to every socket. Lobby state, not snapshots."""
         if not self.sockets:
             return
-        text = json.dumps(payload)
+        text = protocol.dumps(payload)
         await asyncio.gather(
             *(
                 self._safe_send(pid, socket, text)
@@ -669,35 +674,25 @@ class Room:
         await self.broadcast(self.lobby_payload())
 
     async def broadcast_snapshot(self) -> None:
-        if not self.sockets:
-            return
-        players = [p.to_payload() for p in self.players.values()]
-        enemies = [e.to_payload() for e in self.enemies.values()]
-        coin_payloads = [c.to_payload() for c in self.coins.values()]
-        shots = self.shot_events
-        attacks = self.attack_events
-        kills = self.kill_events
-        pickups = self.pickup_events
-
-        sends = []
-        for pid, socket in list(self.sockets.items()):
-            player = self.players.get(pid)
-            ack = player.last_processed_seq if player else 0
-            payload = protocol.snapshot(
+        """One payload, one dump, N writes — see the ack note in protocol.py."""
+        due = self.tick % ROSTER_EVERY_N_TICKS == 0 or self._roster_dirty
+        roster = [p.to_payload() for p in self.players.values()] if due else None
+        self._roster_dirty = False
+        await self.broadcast(
+            protocol.snapshot(
                 self.tick,
-                ack,
-                players,
-                enemies,
-                coin_payloads,
-                shots,
-                attacks,
-                kills,
-                pickups,
+                [p.snapshot_payload() for p in self.players.values()],
+                [e.to_payload() for e in self.enemies.values()],
+                [c.to_payload() for c in self.coins.values()],
+                self.shot_events,
+                self.attack_events,
+                self.kill_events,
+                self.pickup_events,
                 departing=self.departing,
                 zone_key=self.zone.key,
+                roster=roster,
             )
-            sends.append(self._safe_send(pid, socket, json.dumps(payload)))
-        await asyncio.gather(*sends, return_exceptions=True)
+        )
 
     async def _safe_send(self, pid: str, socket, text: str) -> None:
         try:

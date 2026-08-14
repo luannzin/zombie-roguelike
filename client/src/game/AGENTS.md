@@ -43,6 +43,11 @@ seam React is allowed to read.
   but it must resume the input sequence from `max(local.sequence, welcome.ack)`.
   Starting at 0 while the server still holds the camp's `last_processed_seq`
   drops every later packet as a replay, and you cannot walk off the spawn tile.
+- **A snapshot row is only what moves.** Identity and the score board arrive on
+  `snapshot.roster` a few times a second; `game.ts` caches it by id and every
+  name, colour and HUD number is read from that cache. Never expect a name on a
+  snapshot player, and reconcile against the row's own `seq` — the snapshot has
+  no `ack`.
 - `lobby-scene.ts` is decoration only: no input, no prediction, no socket. It
   draws through the arena's own `TerrainLayer`, so the lobby and the game
   cannot drift apart.

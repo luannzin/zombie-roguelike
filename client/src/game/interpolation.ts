@@ -38,13 +38,13 @@ interface Body {
   ay: number;
 }
 
-/** Coins have no facing — blend only position / velocity. */
+/** Coins have no facing — blend only position / velocity. Absent v = still. */
 interface MovingBody {
   id: string;
   x: number;
   y: number;
-  vx: number;
-  vy: number;
+  vx?: number;
+  vy?: number;
 }
 
 interface Frame {
@@ -236,7 +236,7 @@ function blendPlain<T extends MovingBody>(
       ...target,
       x: lerp(from.x, target.x, t),
       y: lerp(from.y, target.y, t),
-      moving: Math.hypot(target.vx, target.vy) > MOVING_SPEED,
+      moving: Math.hypot(target.vx ?? 0, target.vy ?? 0) > MOVING_SPEED,
     });
   }
   return out;
@@ -263,11 +263,13 @@ function extrapolate<T extends Body>(
 function extrapolatePlain<T extends MovingBody>(bodies: Map<string, T>, dtSec: number): Moving<T>[] {
   const out: Moving<T>[] = [];
   for (const [, body] of bodies) {
+    const vx = body.vx ?? 0;
+    const vy = body.vy ?? 0;
     out.push({
       ...body,
-      x: body.x + body.vx * dtSec,
-      y: body.y + body.vy * dtSec,
-      moving: Math.hypot(body.vx, body.vy) > MOVING_SPEED,
+      x: body.x + vx * dtSec,
+      y: body.y + vy * dtSec,
+      moving: Math.hypot(vx, vy) > MOVING_SPEED,
     });
   }
   return out;

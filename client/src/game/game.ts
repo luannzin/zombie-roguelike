@@ -24,7 +24,7 @@ import type {
   InputPacket,
   KillEvent,
   PickupEvent,
-  PlayerState,
+  PlayerMeta,
   ServerMessage,
   SnapshotMessage,
   WelcomeMessage,
@@ -48,7 +48,7 @@ import { InputController } from './input';
 import { Lantern } from './lantern';
 import { SnapshotBuffer, type RenderedEnemy, type RenderedPlayer } from './interpolation';
 import { LocalPlayer } from './prediction';
-import { hearthMask, TileMap, exitMouth } from './world';
+import { hearthMask, TileMap } from './world';
 import {
   clearTooltipAnchors,
   dropTooltipAnchor,
@@ -204,7 +204,18 @@ export class Game {
   private fov: FovField | null = null;
   private localId = '';
   private local: LocalPlayer | null = null;
-  private localMeta: PlayerState | null = null;
+  private localMeta: PlayerMeta | null = null;
+  /**
+   * Names, colours and score boards, keyed by player id. Snapshots carry only
+   * what moves; this is refreshed from the roster they attach a few times a
+   * second (see net/protocol).
+   */
+  private readonly roster = new Map<string, PlayerMeta>();
+  /**
+   * Local ready flag, flipped optimistically on keypress so the prompt answers
+   * instantly, and overwritten by the server's own row on the next snapshot.
+   */
+  private localReady = false;
 
   private accumulator = 0;
   private lastFrame = 0;
@@ -309,6 +320,7 @@ export class Game {
     this.lights = [];
     this.local = null;
     this.localMeta = null;
+    this.roster.clear();
 
     this.hud.set(EMPTY_HUD);
   }
@@ -329,6 +341,7 @@ export class Game {
       this.snapshots.clear();
       this.lantern.reset();
       this.lights = [];
+      this.roster.clear();
       this.patchHud({
         connection: status,
         status: 'disconnected — retrying…',
@@ -356,6 +369,10 @@ export class Game {
     this.fov = new FovField(this.world.width, this.world.height);
     this.localId = msg.playerId;
     this.localMeta = msg.player;
+    // Seeds the cache: the first snapshot may land before the first roster.
+    this.roster.clear();
+    this.roster.set(msg.player.id, msg.player);
+    this.localReady = msg.player.ready ?? false;
     // Keep numbering inputs above what the server already processed. The camp
     // walk-out alone can leave last_processed_seq in the hundreds; a fresh
     // LocalPlayer at 0 would have every later packet dropped as a replay, and
@@ -454,9 +471,15 @@ export class Game {
       this.patchHud({ cinematic: true, prompt: null, ready: null });
     }
 
+    if (msg.roster) {
+      for (const meta of msg.roster) this.roster.set(meta.id, meta);
+      const mine = this.roster.get(this.localId);
+      if (mine) this.localMeta = mine;
+    }
+
     for (const state of msg.players) {
       if (state.id === this.localId) {
-        this.localMeta = state;
+        this.localReady = state.ready ?? false;
         if (this.departing) {
           this.local.state.x = state.x;
           this.local.state.y = state.y;
@@ -465,9 +488,9 @@ export class Game {
           this.local.state.ax = state.ax;
           this.local.state.ay = state.ay;
           this.local.pending = [];
-          this.local.lastAck = msg.ack;
+          this.local.lastAck = state.seq;
         } else {
-          this.local.reconcile(state, msg.ack, this.world, this.config);
+          this.local.reconcile(state, state.seq, this.world, this.config);
         }
       }
       // Damage detection is authoritative: HP dropping between snapshots is
@@ -483,7 +506,7 @@ export class Game {
     // Own shots were already drawn locally at fire time.
     for (const shot of msg.shots) {
       if (shot.by === this.localId) continue;
-      const shooter = msg.players.find((p) => p.id === shot.by);
+      const shooter = this.roster.get(shot.by);
       const hit = shot.hit !== null;
       this.effects.spawnShot(
         shot.x,
@@ -733,8 +756,19 @@ export class Game {
     );
 
     for (const remote of sampled.players) {
+      const meta = this.roster.get(remote.id);
       entities.push(
-        this.toDrawablePlayer({ ...remote, isLocal: remote.id === this.localId }, dt),
+        this.toDrawablePlayer(
+          {
+            ...remote,
+            // A player who joined in the last few ticks has no roster row yet;
+            // they are drawn as a body without a label rather than skipped.
+            name: meta?.name ?? '',
+            color: meta?.color ?? palette().effects.fallbackShot,
+            isLocal: remote.id === this.localId,
+          },
+          dt,
+        ),
       );
     }
 
@@ -1050,7 +1084,7 @@ export class Game {
     if (this.zone?.kind !== 'camp') return;
     if (!this.nearFire()) return;
     this.connection.send({ type: 'ready' });
-    if (this.localMeta) this.localMeta.ready = !this.localMeta.ready;
+    this.localReady = !this.localReady;
   }
 
   private nearFire(): boolean {
@@ -1071,8 +1105,7 @@ export class Game {
     if (!latest || latest.players.size === 0) return { here: 0, total: 1 };
     let here = 0;
     for (const player of latest.players.values()) {
-      const ready =
-        player.id === this.localId ? (this.localMeta?.ready ?? player.ready) : player.ready;
+      const ready = player.id === this.localId ? this.localReady : player.ready;
       if (ready) here += 1;
     }
     return { here, total: latest.players.size };
@@ -1080,7 +1113,7 @@ export class Game {
 
   private readyPrompt(): 'ready' | null {
     if (this.zone?.kind !== 'camp' || this.departing || this.introLeft > 0) return null;
-    if (this.localMeta?.ready) return null;
+    if (this.localReady) return null;
     return this.nearFire() ? 'ready' : null;
   }
 
@@ -1125,7 +1158,7 @@ export class Game {
       cx /= latest.players.size;
       cy /= latest.players.size;
     }
-    const mouth = exitMouth(world);
+    const mouth = world.exit;
     const look = world.tileSize * 4;
     const targetX = mouth ? cx * 0.55 + (mouth.x + look) * 0.45 : cx + look;
     this.camera.follow(targetX, cy, world, dt);

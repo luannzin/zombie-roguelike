@@ -358,20 +358,26 @@ export class Effects {
 /**
  * Age every item by `dt`, drop the expired ones, and run `step` on survivors.
  * One loop serves tracers, flashes, particles, dust and damage floats.
+ *
+ * Compacts IN PLACE and hands the same array back: a death burst is 16
+ * particles and this runs on seven lists every frame, so building seven
+ * replacement arrays 60 times a second is pure garbage. The write index never
+ * overtakes the read index, so survivors can be shifted down as we go.
  */
 function advance<T extends { age: number; life: number }>(
   items: T[],
   dt: number,
   step?: (item: T) => void,
 ): T[] {
-  const out: T[] = [];
+  let kept = 0;
   for (const item of items) {
     item.age += dt;
     if (item.age >= item.life) continue;
     step?.(item);
-    out.push(item);
+    items[kept++] = item;
   }
-  return out;
+  items.length = kept;
+  return items;
 }
 
 function stepParticles(items: Particle[], dt: number, dragRate: number): Particle[] {

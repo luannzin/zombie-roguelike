@@ -43,13 +43,19 @@ class Coin:
     target_id: str | None = None
 
     def to_payload(self) -> dict:
-        return {
+        # Velocity is only there for the client's extrapolation, and a coin
+        # spends most of its life settled on the ground. Omitting it there is
+        # a third off the biggest array in the snapshot — a fight that drops
+        # sixty coins broadcasts all sixty of them, thirty times a second.
+        payload = {
             "id": self.id,
-            "x": round(self.x, 2),
-            "y": round(self.y, 2),
-            "vx": round(self.vx, 2),
-            "vy": round(self.vy, 2),
+            "x": round(self.x, 1),
+            "y": round(self.y, 1),
         }
+        if abs(self.vx) >= 0.5 or abs(self.vy) >= 0.5:
+            payload["vx"] = round(self.vx, 1)
+            payload["vy"] = round(self.vy, 1)
+        return payload
 
 
 @dataclass

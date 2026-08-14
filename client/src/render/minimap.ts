@@ -20,6 +20,12 @@ import { floorColor, palette } from '../theme/palette';
 import type { FovField } from './fov';
 
 const MAX_SIDE = 160;
+/**
+ * Minimum ms between repaints. The whole widget is at most 160px across and a
+ * dot on it moves a fraction of a pixel per frame, so redrawing it on the
+ * render clock spends a full-map fog pass and two blits to change nothing.
+ */
+const REPAINT_INTERVAL = 100;
 const DOT_R = 2.5;
 /** Enemies read as a smaller swarm so players stay the thing you look for. */
 const ENEMY_DOT_R = 1.6;
@@ -43,6 +49,7 @@ export class Minimap {
   private fog: HTMLCanvasElement | null = null;
   private fogCtx: CanvasRenderingContext2D | null = null;
   private fogData: ImageData | null = null;
+  private lastPaint = 0;
 
   constructor(private readonly canvas: HTMLCanvasElement) {
     this.ctx = get2d(canvas, 'minimap');
@@ -64,11 +71,16 @@ export class Minimap {
     this.fogCtx = fog.ctx;
     this.fogData = fog.ctx.createImageData(world.width, world.height);
     this.fitCanvas(world);
+    this.lastPaint = 0;
     this.paint([], '', null);
   }
 
+  /** Safe to call every frame — it repaints at its own cadence. */
   draw(players: MinimapPlayer[], localId: string, fov: FovField | null): void {
     if (!this.world || !this.cache) return;
+    const now = performance.now();
+    if (now - this.lastPaint < REPAINT_INTERVAL) return;
+    this.lastPaint = now;
     this.paint(players, localId, fov);
   }
 

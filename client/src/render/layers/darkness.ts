@@ -99,6 +99,10 @@ export class DarknessLayer {
   private warmData: ImageData | null = null;
   private width = 0;
   private height = 0;
+  /** Next draw rebuilds the whole mask: fresh surfaces, or a new palette. */
+  private stale = true;
+  /** Last shadow red channel drawn with — cheap "did the tokens change". */
+  private tone = -1;
   /** 0..1 falloff around VOID. Rebuilt when the map identity changes. */
   private pathCrush: Float32Array | null = null;
   private crushFor: TileMap | null = null;
@@ -184,30 +188,51 @@ export class DarknessLayer {
     const crush = this.ensurePathCrush(world);
     const onPath = crush.length === fov.light.length;
 
-    for (let i = 0; i < fov.light.length; i++) {
-      const lit = fov.light[i];
-      const path = onPath ? crush[i] : 0;
-      const fog = fov.explored[i] === 1 ? FOG_ALPHA : UNSEEN_ALPHA;
-      const base = fog + (VOID_NIGHT - fog) * path;
-      const leak = 1 - (1 - VOID_LIGHT_LEAK) * path;
-      const offset = i * 4;
+    // Only the tiles the fov says changed. Both surfaces are retained, so
+    // everything outside the box is already correct from an earlier frame —
+    // see `FovField.dirty`. A colour change (a token edited in dev) is the one
+    // thing the box cannot know about, so it forces a full pass.
+    if (shadowR !== this.tone) {
+      this.tone = shadowR;
+      this.stale = true;
+    }
+    const box = this.stale
+      ? { x0: 0, y0: 0, x1: fov.width - 1, y1: fov.height - 1 }
+      : fov.dirty;
+    this.stale = false;
 
-      nightPixels[offset] = shadowR;
-      nightPixels[offset + 1] = shadowG;
-      nightPixels[offset + 2] = shadowB;
-      nightPixels[offset + 3] = Math.round(base * (1 - lit * leak) * 255);
+    for (let ty = box.y0; ty <= box.y1; ty++) {
+      const row = ty * fov.width;
+      for (let tx = box.x0; tx <= box.x1; tx++) {
+        const i = row + tx;
+        const lit = fov.light[i];
+        const path = onPath ? crush[i] : 0;
+        const fog = fov.explored[i] === 1 ? FOG_ALPHA : UNSEEN_ALPHA;
+        const base = fog + (VOID_NIGHT - fog) * path;
+        const leak = 1 - (1 - VOID_LIGHT_LEAK) * path;
+        const offset = i * 4;
 
-      warmPixels[offset] = warmR;
-      warmPixels[offset + 1] = warmG;
-      warmPixels[offset + 2] = warmB;
-      warmPixels[offset + 3] = Math.min(
-        255,
-        Math.round(fov.heat[i] * WARM_GAIN * (1 - path) * 255),
-      );
+        nightPixels[offset] = shadowR;
+        nightPixels[offset + 1] = shadowG;
+        nightPixels[offset + 2] = shadowB;
+        nightPixels[offset + 3] = Math.round(base * (1 - lit * leak) * 255);
+
+        warmPixels[offset] = warmR;
+        warmPixels[offset + 1] = warmG;
+        warmPixels[offset + 2] = warmB;
+        warmPixels[offset + 3] = Math.min(
+          255,
+          Math.round(fov.heat[i] * WARM_GAIN * (1 - path) * 255),
+        );
+      }
     }
 
-    night.putImageData(this.nightData, 0, 0);
-    warm.putImageData(this.warmData, 0, 0);
+    const boxW = box.x1 - box.x0 + 1;
+    const boxH = box.y1 - box.y0 + 1;
+    if (boxW > 0 && boxH > 0) {
+      night.putImageData(this.nightData, 0, 0, box.x0, box.y0, boxW, boxH);
+      warm.putImageData(this.warmData, 0, 0, box.x0, box.y0, boxW, boxH);
+    }
 
     const smoothing = ctx.imageSmoothingEnabled;
     ctx.imageSmoothingEnabled = true;
@@ -228,6 +253,7 @@ export class DarknessLayer {
     this.pathCrush = null;
     this.crushFor = null;
     this.width = this.height = 0;
+    this.stale = true;
   }
 
   /**
@@ -296,5 +322,8 @@ export class DarknessLayer {
     this.warmData = warm.ctx.createImageData(width, height);
     this.width = width;
     this.height = height;
+    // Fresh surfaces are transparent, so nothing outside the fov's dirty box
+    // would ever be painted without this.
+    this.stale = true;
   }
 }

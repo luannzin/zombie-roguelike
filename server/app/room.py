@@ -55,6 +55,7 @@ from .config import (
     TILE_SIZE,
     client_config,
 )
+from .corpses import Corpse
 from .crates import Crate
 from .loot import Drop
 from .enemies import Enemy, EnemyType, dress
@@ -100,6 +101,7 @@ class Room:
         self.coins: dict[str, Coin] = {}
         self.drops: dict[str, Drop] = {}
         self.crates: dict[str, Crate] = {}
+        self.corpses: dict[str, Corpse] = {}
         self.sockets: dict[str, object] = {}
         self.director = EnemyDirector(self.spawn_points)
         self.navigator = Navigator(self.world)
@@ -132,6 +134,7 @@ class Room:
         self._loot_dirty = True
         self._loot_seq = 0
         self._crates_dirty = True
+        self._corpses_dirty = True
         self._load_drops()
         self._load_crates()
 
@@ -253,6 +256,7 @@ class Room:
             self.zone.to_payload(),
             ack=player.last_processed_seq,
             loot=[drop.to_payload() for drop in self.drops.values()],
+            corpses=[row.to_payload() for row in self.corpses.values()],
         )
 
     def hello_payload(self, player: Player) -> dict:
@@ -504,6 +508,8 @@ class Room:
         self.noises.clear()
         self._load_drops()
         self._load_crates()
+        self.corpses.clear()
+        self._corpses_dirty = True
         self.crate_break_events = []
         for player in self.players.values():
             player.ready = False
@@ -786,7 +792,7 @@ class Room:
         if crate is not None:
             self.smash_crate(crate, shooter)
         elif isinstance(victim, Enemy):
-            self.damage_enemy(victim, weapon.damage, shooter)
+            self.damage_enemy(victim, weapon.damage, shooter, dx, dy)
         elif victim is not None:
             self.damage_player(victim, weapon.damage, shooter)
 
@@ -814,8 +820,15 @@ class Room:
                 }
             )
 
-    def damage_enemy(self, target: Enemy, amount: int, source: Player | None) -> None:
-        """Hurt an enemy; on death pay xp and scatter gold as world coins."""
+    def damage_enemy(
+        self,
+        target: Enemy,
+        amount: int,
+        source: Player | None,
+        dx: float = 0.0,
+        dy: float = 0.0,
+    ) -> None:
+        """Hurt an enemy; on death pay xp, scatter gold, and leave a corpse."""
         if not target.alive:
             return
         target.hp -= amount
@@ -837,17 +850,44 @@ class Room:
         # out of this particular corpse, which does.
         dropped = coins.roll_drop(reward.gold)
         self.drop_coins(target.x, target.y, dropped)
-        self.kill_events.append(
-            {
-                "kind": "enemy",
-                "killer": source.id if source else None,
-                "victim": target.id,
-                "x": round(target.x, 2),
-                "y": round(target.y, 2),
-                "xp": reward.xp,
-                "gold": dropped,
-            }
+        length = math.hypot(dx, dy)
+        fall_x = dx / length if length > 0.001 else target.aim_x
+        fall_y = dy / length if length > 0.001 else target.aim_y
+        body = Corpse(
+            id=target.id,
+            x=target.x,
+            y=target.y,
+            t=reward.key,
+            variant=target.variant,
+            hat=target.hat,
+            cloth=target.cloth,
+            ax=target.aim_x,
+            ay=target.aim_y,
+            dx=fall_x,
+            dy=fall_y,
         )
+        self.corpses[body.id] = body
+        self._corpses_dirty = True
+        kill: dict = {
+            "kind": "enemy",
+            "killer": source.id if source else None,
+            "victim": target.id,
+            "x": round(target.x, 2),
+            "y": round(target.y, 2),
+            "xp": reward.xp,
+            "gold": dropped,
+            "t": reward.key,
+            "v": target.variant,
+            "ax": round(target.aim_x, 3),
+            "ay": round(target.aim_y, 3),
+            "dx": round(fall_x, 3),
+            "dy": round(fall_y, 3),
+        }
+        if target.hat >= 0:
+            kill["hat"] = target.hat
+        if target.cloth >= 0:
+            kill["cloth"] = target.cloth
+        self.kill_events.append(kill)
 
     def drop_coins(self, x: float, y: float, count: int) -> None:
         """Scatter `count` single-value coins from a death point."""
@@ -905,6 +945,10 @@ class Room:
             [crate.to_payload() for crate in self.crates.values()] if self._crates_dirty else None
         )
         self._crates_dirty = False
+        corpse_rows = (
+            [row.to_payload() for row in self.corpses.values()] if self._corpses_dirty else None
+        )
+        self._corpses_dirty = False
         await self.broadcast(
             protocol.snapshot(
                 self.tick,
@@ -922,6 +966,7 @@ class Room:
                 loot_pickups=self.loot_pickup_events or None,
                 crates=crate_rows,
                 crate_breaks=self.crate_break_events or None,
+                corpses=corpse_rows,
             )
         )
 

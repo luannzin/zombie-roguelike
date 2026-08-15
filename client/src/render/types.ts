@@ -133,6 +133,28 @@ export interface DrawableLoot {
   phase: number;
 }
 
+/**
+ * A dead enemy left on the floor. The fall is the first fraction of `age`;
+ * after that it is a prone sprite plus a growing blood pool. Hidden in the
+ * dark — a corpse you cannot see is not a free tracker.
+ */
+export interface DrawableCorpse {
+  id: string;
+  x: number;
+  y: number;
+  sheet: string;
+  gear: readonly string[];
+  ax: number;
+  ay: number;
+  /** Killing blow. The body falls along this. */
+  dx: number;
+  dy: number;
+  stains: readonly BloodStain[];
+  age: number;
+  visibility: number;
+  halfHeight: number;
+}
+
 export interface RenderState {
   world: TileMap;
   camera: Camera;
@@ -141,6 +163,9 @@ export interface RenderState {
   entities: DrawableEntity[];
   coins: DrawableCoin[];
   loot: DrawableLoot[];
+  corpses: DrawableCorpse[];
+  /** Night coat. Drives rain/fog in the atmosphere pass. */
+  weather: string;
   effects: Effects;
   /** Team light + explored memory. Null disables the darkness pass entirely. */
   fov: FovField | null;

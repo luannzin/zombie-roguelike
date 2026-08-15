@@ -10,10 +10,11 @@
  */
 
 import { get2d } from '../lib/canvas';
-import { drawCombatEffects, drawDust, drawTextFloats, drawWindPuffs } from './layers/effects';
+import { drawCombatEffects, drawDeathBursts, drawDust, drawTextFloats, drawWindPuffs } from './layers/effects';
 import {
   drawCoinShadows,
   drawCoins,
+  drawCorpseSprites,
   drawEntity,
   drawNameLabels,
   drawShadow,
@@ -24,6 +25,7 @@ import { DisturbanceField } from './disturbance';
 import { AtmosphereLayer } from './layers/atmosphere';
 import { DarknessLayer } from './layers/darkness';
 import { crateAnimFrame, drawFootprints, drawSceneryProp } from './layers/scenery';
+import { drawBloodPools } from './layers/corpses';
 import {
   drawLootAuras,
   drawLootBeams,
@@ -152,11 +154,14 @@ export class Renderer {
     // the undergrowth bends around whatever is standing in it this frame.
     this.disturbance.update(state.entities, state.dt);
 
-    // World space: floor, then what is painted ON the floor — boot prints
-    // and footstep dust.
+    // World space: floor, then what is painted ON the floor — boot prints,
+    // the blood pools under corpses, and footstep dust.
     this.useWorldSpace(view.zoom, view.offsetX, view.offsetY);
     this.terrain.ground(ctx, state.world, state.camera, state.time, this.disturbance);
-    if (this.scenery) drawFootprints(ctx, state.effects, this.scenery, state.camera);
+    if (this.scenery) {
+      drawFootprints(ctx, state.effects, this.scenery, state.camera);
+      drawBloodPools(ctx, state.corpses, this.scenery, state.camera);
+    }
     drawDust(ctx, state.effects);
 
     // Screen space: coins under characters, then everything that STANDS on the
@@ -170,6 +175,7 @@ export class Renderer {
     drawCoins(entity, state.coins, state.config.coinSprite);
     drawLootShadows(ctx, view, state.loot);
     drawLootSprites(ctx, view, this.lootAtlas, state.loot);
+    drawCorpseSprites(entity, state.corpses);
 
     // Scratch array, reused every frame: this list is rebuilt and re-sorted
     // 60 times a second and none of it outlives the call.
@@ -269,6 +275,7 @@ export class Renderer {
     //               muzzle flash is a light source, not a thing being lit
     this.useWorldSpace(view.zoom, view.offsetX, view.offsetY);
     this.terrain.overgrowth(ctx, state.world, state.camera, state.time, this.disturbance);
+    this.atmosphere.setWeather(state.weather);
     this.atmosphere.draw(ctx, state.camera, state.dt);
     if (state.fov) this.darkness.draw(ctx, state.world, state.fov);
     this.darkness.drawFires(
@@ -290,6 +297,7 @@ export class Renderer {
     drawLootMotes(ctx, state.loot, state.time, state.config.tileSize);
     drawLootBeams(ctx, this.vfx?.aura ?? null, state.loot, state.time);
     drawWindPuffs(ctx, this.vfx?.wind ?? null, state.effects.winds);
+    drawDeathBursts(ctx, this.vfx?.death ?? null, state.effects.deaths);
     // Hunt tell sits ON the night: a hunter you cannot see still wears the
     // diamond, so killing the lamp does not hide that it has you.
     drawAlertMarks(entity, state.entities, state.time);

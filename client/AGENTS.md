@@ -47,7 +47,8 @@ own the HUD and routing only. Talks to the server over one WebSocket.
   "click to enable audio" gate. M toggles mute anywhere; the setting is in
   `localStorage` under `zr:audio`.
 - **Ambience is declarative, and the SCREEN declares it.** Callers state what
-  the world sounds like (`setBeds({ wind: 1, night: 0.85 })`), never start/stop
+  the world sounds like (`setBeds({ wind: 1, night: 0.85 })`, or `{ rain: 1 }`
+  on a wet night), never start/stop
   beds. It is idempotent, safe to call before the buffers have decoded (it
   retries when they land), and no screen clears on unmount — whoever mounts next
   states its own mix. `HomeScreen` states silence (the title screen's fire is a

@@ -104,6 +104,11 @@ export interface Footprint {
   frame: number;
   /** 0..1 how well this ground holds a print. Scales the alpha. */
   depth: number;
+  /**
+   * 0..1 blood on this print. Set after walking through a pool, decaying
+   * each stride — a trail of red that dries out behind you.
+   */
+  blood: number;
   age: number;
   life: number;
 }
@@ -180,6 +185,14 @@ export interface WindPuff {
   life: number;
 }
 
+/** One-shot death burst. The greyscale sheet, tinted with blood at draw time. */
+export interface DeathBurst {
+  x: number;
+  y: number;
+  age: number;
+  life: number;
+}
+
 export class Effects {
   tracers: Tracer[] = [];
   flashes: Flash[] = [];
@@ -194,6 +207,7 @@ export class Effects {
   footprints: Footprint[] = [];
   crateSmashes: CrateSmash[] = [];
   winds: WindPuff[] = [];
+  deaths: DeathBurst[] = [];
 
   /**
    * Leave one print. `dx`/`dy` is the heading it was walking.
@@ -210,6 +224,7 @@ export class Effects {
     dy: number,
     depth: number,
     life: number,
+    blood = 0,
   ): void {
     if (depth <= 0.02) return;
     if (this.footprints.length >= FOOTPRINT_LIMIT) {
@@ -220,6 +235,7 @@ export class Effects {
       y,
       frame: trackFrame(dx, dy),
       depth,
+      blood,
       age: 0,
       life,
     });
@@ -558,37 +574,63 @@ export class Effects {
     this.winds.push({ x, y, age: 0, life });
   }
 
+  spawnDeathBurst(x: number, y: number, life: number): void {
+    this.deaths.push({ x, y, age: 0, life });
+  }
+
   /**
    * Something died here. `dx`/`dy` is the direction the last hit came from, so
    * the burst leans the way the shot was going.
    */
   spawnDeath(x: number, y: number, dx = 0, dy = 0): void {
     const fx = palette().effects;
-    for (let i = 0; i < 16; i++) {
+    let nx = 0;
+    let ny = 0;
+    if (dx !== 0 || dy !== 0) {
+      const len = Math.hypot(dx, dy) || 1;
+      nx = dx / len;
+      ny = dy / len;
+    }
+    for (let i = 0; i < 28; i++) {
       const angle = Math.random() * Math.PI * 2;
-      const speed = 30 + Math.random() * 55;
+      const speed = 28 + Math.random() * 70;
+      const along = 0.35 + Math.random() * 0.65;
       this.particles.push({
         x,
-        y,
-        vx: Math.cos(angle) * speed,
-        vy: Math.sin(angle) * speed * 0.7,
-        size: 1.2 + Math.random() * 2,
-        color: pick(fx.hitParticles),
+        y: y - 2,
+        vx: Math.cos(angle) * speed * (1 - along * 0.35) + nx * speed * along,
+        vy: Math.sin(angle) * speed * 0.65 * (1 - along * 0.35) + ny * speed * along * 0.55 - 12,
+        size: 1.1 + Math.random() * 2.4,
+        color: i % 3 === 0 ? pick(fx.blood) : pick(fx.hitParticles),
         age: 0,
-        life: 0.32 + Math.random() * 0.28,
-        gy: 40,
+        life: 0.38 + Math.random() * 0.42,
+        gy: 55 + Math.random() * 30,
       });
     }
-    // The body opens. Leans along the killing blow when the caller knows it,
-    // and throws in every direction when it does not.
+    // Chunks: heavier, fewer, they are the body coming apart.
+    for (let i = 0; i < 6; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 18 + Math.random() * 28;
+      this.particles.push({
+        x,
+        y: y - 3,
+        vx: Math.cos(angle) * speed + nx * 22,
+        vy: Math.sin(angle) * speed * 0.5 - 20,
+        size: 2.2 + Math.random() * 1.8,
+        color: pick(fx.blood),
+        age: 0,
+        life: 0.5 + Math.random() * 0.3,
+        gy: 90,
+      });
+    }
     if (dx !== 0 || dy !== 0) {
-      this.spawnBlood(x, y, dx, dy, 2);
+      this.spawnBlood(x, y, dx, dy, 3.2);
     } else {
       const angle = Math.random() * Math.PI * 2;
-      this.spawnBlood(x, y, Math.cos(angle), Math.sin(angle), 2);
+      this.spawnBlood(x, y, Math.cos(angle), Math.sin(angle), 3.2);
     }
-    this.spawnDust(x, y, 0, 1, 1);
-    this.spawnLight(x, y, 46, 0.55, fx.hitCore, 0.16);
+    this.spawnDust(x, y, 0, 1, 1, 1.2);
+    this.spawnLight(x, y, 62, 0.72, fx.hitCore, 0.22);
   }
 
   spawnDamage(x: number, y: number, value: number): void {
@@ -651,6 +693,7 @@ export class Effects {
     this.footprints = advance(this.footprints, dt);
     this.crateSmashes = advance(this.crateSmashes, dt);
     this.winds = advance(this.winds, dt);
+    this.deaths = advance(this.deaths, dt);
     this.particles = stepParticles(this.particles, dt, PARTICLE_DRAG);
     this.dust = stepParticles(this.dust, dt, DUST_DRAG);
     this.textFloats = advance(this.textFloats, dt, (d) => {
@@ -670,6 +713,7 @@ export class Effects {
     this.footprints.length = 0;
     this.crateSmashes.length = 0;
     this.winds.length = 0;
+    this.deaths.length = 0;
   }
 }
 

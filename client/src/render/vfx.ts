@@ -57,6 +57,8 @@ export interface VfxAtlas {
   aura: VfxSheet | null;
   /** One-shot gust when a crate breaks empty. */
   wind: VfxSheet | null;
+  /** A body hitting the floor: flash, shockwave, spat. Tinted with blood. */
+  death: VfxSheet | null;
 }
 
 interface EffectManifest {
@@ -76,6 +78,7 @@ interface VfxManifest {
     kindle?: EffectManifest;
     aura?: EffectManifest;
     wind?: EffectManifest;
+    death?: EffectManifest;
   };
 }
 
@@ -91,13 +94,14 @@ export function loadVfx(): Promise<VfxAtlas | null> {
 async function fetchVfx(): Promise<VfxAtlas | null> {
   try {
     const manifest = await loadJson<VfxManifest>(`${ROOT}/manifest.json`);
-    const [summon, kindle, aura, wind] = await Promise.all([
+    const [summon, kindle, aura, wind, death] = await Promise.all([
       manifest.effects.summon ? loadEffect(manifest.effects.summon) : null,
       manifest.effects.kindle ? loadEffect(manifest.effects.kindle) : null,
       manifest.effects.aura ? loadEffect(manifest.effects.aura) : null,
       manifest.effects.wind ? loadEffect(manifest.effects.wind) : null,
+      manifest.effects.death ? loadEffect(manifest.effects.death) : null,
     ]);
-    return { tile: manifest.tile, summon, kindle, aura, wind };
+    return { tile: manifest.tile, summon, kindle, aura, wind, death };
   } catch (err) {
     console.warn('[vfx] no effect atlas, effects disabled:', err);
     return null;

@@ -23,6 +23,10 @@ and they are deliberately not the same field:
 The client is told all of it in `welcome.zone` and never infers any of it from
 the map. A zone that reads as safe but simulates as hostile is the kind of bug
 that only shows up when somebody dies in the lobby.
+
+WEATHER is rolled with the clock. A rainy night is the same map in a
+different coat — no new generator, no new tiles — so day 2 can feel like
+somewhere else. Camp nights are always clear: the fire is the weather.
 """
 
 from __future__ import annotations
@@ -33,8 +37,20 @@ from dataclasses import dataclass
 KIND_CAMP = "camp"
 KIND_FOREST = "forest"
 
+WEATHER_CLEAR = "clear"
+WEATHER_RAIN = "rain"
+WEATHER_FOG = "fog"
+
 # 20:00 through 03:00 inclusive, in minutes from 20:00.
 _NIGHT_SPAN_MINUTES = 7 * 60 + 1
+
+# Most nights are dry. Rain is common enough that a second expedition often
+# feels like a different place; fog is the rarer coat.
+_WEATHER_TABLE: tuple[tuple[str, int], ...] = (
+    (WEATHER_CLEAR, 5),
+    (WEATHER_RAIN, 3),
+    (WEATHER_FOG, 2),
+)
 
 
 def night_clock() -> str:
@@ -50,6 +66,12 @@ def night_clock() -> str:
     return f"{hour}:{minute:02d} {period}"
 
 
+def roll_weather() -> str:
+    """A night's coat. Rolled with the clock so one expedition is one scene."""
+    names, weights = zip(*_WEATHER_TABLE)
+    return random.choices(names, weights=weights, k=1)[0]
+
+
 @dataclass(frozen=True)
 class Zone:
     #: Stable identity for this arrival. The client replays its intro when this
@@ -63,6 +85,8 @@ class Zone:
     hostile: bool
     #: The lantern switch works.
     lantern: bool
+    #: Night coat. `clear` / `rain` / `fog`. Camp is always clear.
+    weather: str = WEATHER_CLEAR
 
     def to_payload(self) -> dict:
         return {
@@ -73,6 +97,7 @@ class Zone:
             "subtitle": self.subtitle,
             "hostile": self.hostile,
             "lantern": self.lantern,
+            "weather": self.weather,
         }
 
 
@@ -86,11 +111,16 @@ def camp(day: int) -> Zone:
         subtitle=f"Dia {day}",
         hostile=False,
         lantern=False,
+        weather=WEATHER_CLEAR,
     )
 
 
-def forest(day: int, clock: str | None = None) -> Zone:
-    """An expedition. `clock` is the fiction; omit it and a night hour is rolled."""
+def forest(
+    day: int,
+    clock: str | None = None,
+    weather: str | None = None,
+) -> Zone:
+    """An expedition. Clock and weather are the fiction; omit them and both roll."""
     return Zone(
         key=f"forest-{day}",
         kind=KIND_FOREST,
@@ -99,4 +129,5 @@ def forest(day: int, clock: str | None = None) -> Zone:
         subtitle=clock if clock is not None else night_clock(),
         hostile=True,
         lantern=True,
+        weather=weather if weather is not None else roll_weather(),
     )

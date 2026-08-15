@@ -915,6 +915,79 @@ def bed_night(rng: random.Random) -> tuple[Buf, int]:
     return normalize(loopify(body, rate, cross), 0.42), rate
 
 
+def bed_rain(rng: random.Random) -> tuple[Buf, int]:
+    """Rain on a forest canopy. The night's other coat.
+
+    Three layers, because a hiss alone is static and a drop-only bed is a
+    leaky tap. The WASH is the weather — broadband, wandering, never quite
+    the same two seconds in a row. The BODY is rain hitting leaves, a
+    low wet weight that makes the hiss belong to a place. The DROPS are
+    the ones that land near you: sparse, close, and the reason you believe
+    the rest.
+
+    The gaps between close drops are the content, same as the night chirps.
+    A continuous patter says you are listening to a sound file.
+    """
+    rate = BED_RATE
+    cross = 1.4
+    n = dur(8.5 + cross, rate)
+
+    source = pink(n, rng)
+    # Two LFOs at unrelated rates so the hiss never pulses on a count.
+    drift = lfo(n, rate, 0.07, 2200.0, 3400.0)
+    gust = lfo(n, rate, 0.19, 900.0, 0.0)
+    cutoff = [max(1400.0, drift[i] + gust[i]) for i in range(n)]
+    wash = biquad(source, rate, "bandpass", lambda t: cutoff[min(int(t * (n - 1)), n - 1)], 0.85)
+    # A slower swell so the rain breathes like a front passing, not a fan.
+    swell = [0.62 + 0.38 * v for v in lfo(n, rate, 0.08, 1.0, 0.0)]
+    wash = mul(wash, swell)
+
+    canopy = biquad(brown(n, rng, 0.028), rate, "lowpass", 380, 0.65)
+    canopy = mul(canopy, [0.7 + 0.3 * v for v in lfo(n, rate, 0.11, 1.0, 0.0)])
+
+    def drop(local_rng: random.Random, index: int) -> Buf:
+        # Close rain: a short bright tick with a wet tail. Heavier ones are
+        # rarer and last a breath longer — a drop on a leaf, not a tap.
+        heavy = index % 7 == 0
+        m = dur((0.045 if heavy else 0.028) + local_rng.random() * 0.04, rate)
+        tick = biquad(
+            white(m, local_rng),
+            rate,
+            "bandpass",
+            2400 + local_rng.random() * (1800 if heavy else 2800),
+            1.6 if heavy else 2.4,
+        )
+        tick = mul(tick, env_perc(m, rate, 0.0008, 0.04 if heavy else 0.022, 2.8))
+        if heavy:
+            body = biquad(white(m, local_rng), rate, "lowpass", 700)
+            body = mul(body, env_perc(m, rate, 0.001, 0.05, 2.4))
+            tick = mix(gain(tick, 1.0), gain(body, 0.55))
+        return gain(tick, 0.28 + local_rng.random() * (0.55 if heavy else 0.35))
+
+    drops = scatter(n, rate, rng, 64, drop, spread=(0.04, 0.96))
+
+    def cluster(local_rng: random.Random, _index: int) -> Buf:
+        # A handful of drops arriving together — rain does that, a file does not.
+        span = dur(0.18 + local_rng.random() * 0.16, rate)
+        out = silence(span)
+        count = 3 + int(local_rng.random() * 3)
+        for i in range(count):
+            grain = drop(local_rng, i + 3)
+            offset = int(local_rng.random() * max(span - len(grain), 1))
+            out = at(out, grain, offset, 0.7 + local_rng.random() * 0.4)
+        return out
+
+    bursts = scatter(n, rate, rng, 7, cluster, spread=(0.08, 0.9))
+
+    body = mix(
+        gain(wash, 0.78),
+        gain(canopy, 0.55),
+        gain(drops, 0.85),
+        gain(bursts, 0.7),
+    )
+    return normalize(loopify(body, rate, cross), 0.52), rate
+
+
 def sfx_dread(rng: random.Random, variant: int) -> tuple[Buf, int]:
     """Something out there, once in a while. Never attached to a real enemy.
 
@@ -1369,9 +1442,14 @@ def sfx_zombie_hit(rng: random.Random, variant: int) -> tuple[Buf, int]:
 
 
 def sfx_zombie_death(rng: random.Random, variant: int) -> tuple[Buf, int]:
-    """The growl collapsing. Pitch falls through the floor, then a body lands."""
+    """The growl collapsing. Pitch falls through the floor, then a body lands.
+
+    The thud sits on the death sheet's impact (`DEATH_IMPACT` in make_vfx.py).
+    The sheet is 12 frames at 16 fps, so that flash is 0.36 s in — moving the
+    land here means the sound and the sprite hit the floor together.
+    """
     rate = SFX_RATE
-    n = dur(1.1, rate)
+    n = dur(0.95, rate)
     f0 = 100.0 + rng.random() * 26.0
     body = _throat(
         n,
@@ -1385,12 +1463,18 @@ def sfx_zombie_death(rng: random.Random, variant: int) -> tuple[Buf, int]:
         rough=0.3,
         sub=0.26,
     )
-    body = mul(body, env_from(n, [(0.0, 0.0), (0.06, 1.0), (0.45, 0.55), (0.75, 0.12), (1.0, 0.0)]))
-    fall = biquad(white(dur(0.2, rate), rng), rate, "lowpass", lambda t: 900 - 700 * t)
+    body = mul(body, env_from(n, [(0.0, 0.0), (0.05, 1.0), (0.32, 0.55), (0.55, 0.12), (0.82, 0.0)]))
+    fall = biquad(white(dur(0.22, rate), rng), rate, "lowpass", lambda t: 900 - 700 * t)
     fall = mul(fall, env_perc(len(fall), rate, 0.003, 0.18, 2.4))
-    drop = mul(tone(dur(0.3, rate), 58.0, rate, "sine"), env_perc(dur(0.3, rate), rate, 0.004, 0.26, 2.4))
+    drop = mul(tone(dur(0.28, rate), 58.0, rate, "sine"), env_perc(dur(0.28, rate), rate, 0.004, 0.24, 2.4))
+    # Wet slap: the body opening on the floor, not just a thud.
+    slap_n = dur(0.16, rate)
+    slap = biquad(white(slap_n, rng), rate, "bandpass", lambda t: 1100 - 700 * t, 1.4)
+    slap = mul(slap, env_perc(slap_n, rate, 0.001, 0.12, 2.6))
     out = at(silence(n), body, 0)
-    out = at(out, mix(gain(fall, 0.7), gain(drop, 0.8)), int(0.52 * rate))
+    # 0.36 s — DEATH_IMPACT * (DEATH_FRAMES / DEATH_FPS).
+    land = int(0.36 * rate)
+    out = at(out, mix(gain(fall, 0.7), gain(drop, 0.85), gain(slap, 0.65)), land)
     return normalize(softclip(out, 1.4), 0.82), rate
 
 
@@ -1547,6 +1631,7 @@ CATALOG: dict[str, tuple[object, int, float, str, bool]] = {
     "fire": (bed_fire, 1, -22.0, "ambient", True),
     "wind": (bed_wind, 1, -25.0, "ambient", True),
     "night": (bed_night, 1, -27.0, "ambient", True),
+    "rain": (bed_rain, 1, -23.0, "ambient", True),
     "heartbeat": (bed_heartbeat, 1, -20.0, "ambient", True),
     "void": (sfx_void, 1, -14.0, "ambient", False),
     # guns and zombies — the top of the ladder

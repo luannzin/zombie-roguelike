@@ -11,6 +11,7 @@ Output (assets/processed/vfx/):
     kindle.png    16 frames, 48x96 — the bonfire roaring when the match starts
     aura.png      8 frames, 16x48  — a small looping column over epic/legendary loot
     wind.png      8 frames, 32x32  — a one-shot gust when a crate breaks empty
+    death.png     12 frames, 32x32 — a body hitting the floor: flash, shockwave, spat
     manifest.json
 
 EFFECT SHEETS ARE GREYSCALE. An effect that belongs to somebody — a summon, a
@@ -110,6 +111,16 @@ AURA_FPS = 10
 # of air leaving, not a beam arriving.
 WIND_FRAMES = 8
 WIND_FPS = 14
+
+# A body hitting the floor. TIMELINE, empty at both ends. The flash is the
+# moment the corpse lands — `DEATH_IMPACT` is what the client and the death
+# sound both align to. Tinted with blood at draw time, same as kindle is
+# tinted with fire.
+DEATH_FRAMES = 12
+DEATH_FPS = 16
+DEATH_CHARGE = 0.04
+DEATH_IMPACT = 0.48
+DEATH_COLLAPSE = 0.68
 
 
 def _ease_out(t: float) -> float:
@@ -578,6 +589,106 @@ def make_wind_frame(
     return img
 
 
+def make_death_frame(
+    width: int, height: int, contact_y: int, index: int, total: int
+) -> Image.Image:
+    """A body hitting the floor: charge, flash, two shockwaves, spatters.
+
+    Empty at both ends so it can play from t=0 with no pop. The flash is the
+    landing — everything after is the pool the corpse is about to wear.
+    """
+    img = Image.new("RGBA", (width, height), TRANSPARENT)
+    field = [[0.0] * width for _ in range(height)]
+    cx = width * 0.5
+    t = index / max(total - 1, 1)
+    if t <= 0.02 or t >= 0.97:
+        return img
+
+    # --- CHARGE: the body gathering itself to fall --------------------------
+    if DEATH_CHARGE <= t < DEATH_IMPACT:
+        gather = (t - DEATH_CHARGE) / max(DEATH_IMPACT - DEATH_CHARGE, 1e-6)
+        pulse = _ease_in(gather)
+        _ellipse(
+            field,
+            cx,
+            contact_y,
+            width * (0.10 + pulse * 0.12),
+            height * (0.06 + pulse * 0.05),
+            0.55 + pulse * 0.7,
+        )
+        # A few specks kicking up as the weight hits.
+        for i in range(6):
+            seed = hash01(i, index, 41)
+            side = -1.0 if i % 2 == 0 else 1.0
+            mx = int(round(cx + side * pulse * width * (0.12 + seed * 0.18)))
+            my = int(round(contact_y - pulse * height * (0.08 + seed * 0.16)))
+            _add(field, mx, my, (0.4 + seed * 0.5) * pulse)
+
+    # --- IMPACT: the flash and the waves the body throws --------------------
+    if t >= DEATH_IMPACT:
+        since = (t - DEATH_IMPACT) / (1.0 - DEATH_IMPACT)
+        flash = max(0.0, 1.0 - since * 2.4)
+        if flash > 0.0:
+            _ellipse(
+                field,
+                cx,
+                contact_y,
+                width * (0.18 + flash * 0.22),
+                height * (0.08 + flash * 0.10),
+                2.4 * flash,
+            )
+        # Two rings, the second late and slower — a body landing rings twice.
+        for delay, span, weight in ((0.0, 0.48, 1.0), (0.12, 0.72, 0.62)):
+            wave = (since - delay) / span
+            if not 0.0 < wave < 1.0:
+                continue
+            radius = _ease_out(wave)
+            _ellipse(
+                field,
+                cx,
+                contact_y,
+                width * 0.14 + radius * width * 0.42,
+                height * 0.05 + radius * height * 0.16,
+                (1.0 - wave) * 1.65 * weight,
+                hollow=0.42,
+            )
+        # Spatters: short arcs out of the impact, falling back to the floor.
+        collapse = _ease_out(min(1.0, since / 0.7))
+        for i in range(14):
+            if hash01(i, index, 77) < 0.18:
+                continue
+            angle = hash01(i, 4, 19) * math.tau
+            travel = (0.18 + hash01(i, 11, 6) * 0.42) * collapse
+            fall = collapse * collapse * height * 0.12
+            mx = int(round(cx + math.cos(angle) * travel * width * 0.48))
+            my = int(round(contact_y - math.sin(angle) * travel * height * 0.22 + fall))
+            strength = (1.0 - collapse) * (0.7 + hash01(i, 3, 91) * 0.8)
+            _add(field, mx, my, strength)
+            _add(field, mx + int(math.cos(angle)), my, strength * 0.5)
+
+    # --- COLLAPSE: the pool that stays, fading the light --------------------
+    if t >= DEATH_COLLAPSE:
+        fade = _ease_out((t - DEATH_COLLAPSE) / max(1.0 - DEATH_COLLAPSE, 1e-6))
+        _ellipse(
+            field,
+            cx,
+            contact_y,
+            width * (0.22 + fade * 0.10),
+            height * (0.08 + fade * 0.04),
+            0.55 * (1.0 - fade),
+        )
+
+    px = img.load()
+    for y in range(height):
+        for x in range(width):
+            value = field[y][x]
+            if value <= 0.08:
+                continue
+            colour: RGBA = pick(BEAM, clamp01(value * 0.95), x, y)
+            px[x, y] = (colour[0], colour[1], colour[2], _quantize_alpha(value * 1.08))
+    return img
+
+
 def build(args) -> Path:
     tile = args.tile
     out_dir = PROCESSED_DIR / "vfx"
@@ -625,6 +736,15 @@ def build(args) -> Path:
     ]
     pack(wind_frames, wind_w, wind_h).save(out_dir / "wind.png")
 
+    death_w = tile * 2
+    death_h = tile * 2
+    death_contact = death_h - round(tile * 0.28)
+    death_frames = [
+        make_death_frame(death_w, death_h, death_contact, i, DEATH_FRAMES)
+        for i in range(DEATH_FRAMES)
+    ]
+    pack(death_frames, death_w, death_h).save(out_dir / "death.png")
+
     manifest = {
         "tile": tile,
         "effects": {
@@ -667,6 +787,15 @@ def build(args) -> Path:
                 "anchorY": wind_contact,
                 "loop": False,
             },
+            "death": {
+                "file": "death.png",
+                "frameWidth": death_w,
+                "frameHeight": death_h,
+                "frames": DEATH_FRAMES,
+                "fps": DEATH_FPS,
+                "anchorY": death_contact,
+                "loop": False,
+            },
         },
     }
     (out_dir / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
@@ -676,7 +805,8 @@ def build(args) -> Path:
         f"@ {SUMMON_FPS}fps, kindle {KINDLE_FRAMES}x{kindle_w}x{kindle_h} "
         f"@ {KINDLE_FPS}fps, aura {AURA_FRAMES}x{aura_w}x{aura_h} "
         f"@ {AURA_FPS}fps loop, wind {WIND_FRAMES}x{wind_w}x{wind_h} "
-        f"@ {WIND_FPS}fps, contact row {contact_y}/{kindle_contact}/{aura_contact}/{wind_contact}"
+        f"@ {WIND_FPS}fps, death {DEATH_FRAMES}x{death_w}x{death_h} "
+        f"@ {DEATH_FPS}fps, contact row {contact_y}/{kindle_contact}/{aura_contact}/{wind_contact}/{death_contact}"
     )
     return out_dir
 

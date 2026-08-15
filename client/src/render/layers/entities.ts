@@ -22,7 +22,8 @@ import type { GunAtlas } from '../guns';
 import { gunHand } from '../guns';
 import type { Projection } from '../projection';
 import { facingFromAim, frameIndex, type SpriteBook } from '../sprites';
-import type { DrawableCoin, DrawableEntity } from '../types';
+import type { DrawableCoin, DrawableCorpse, DrawableEntity } from '../types';
+import { DEATH_FALL } from './corpses';
 
 /** Player name label size, in screen px. One step of the font's pixel grid. */
 const NAME_LABEL_PX = HUD_GRID;
@@ -226,6 +227,137 @@ export function drawEntity(entity: EntityContext, target: DrawableEntity): void 
     drawHealthBar(entity, target, view.rawX(px), spriteTop);
   }
   ctx.globalAlpha = 1;
+}
+
+/**
+ * A dead enemy, collapsed onto the floor. Screen space, under living bodies.
+ *
+ * The first `DEATH_FALL` seconds are the animation: squash toward the feet,
+ * rotate away from the killing blow, a white flash on impact. After that the
+ * pose freezes and the sprite is the record that stays.
+ */
+export function drawCorpseSprites(
+  entity: EntityContext,
+  corpses: readonly DrawableCorpse[],
+): void {
+  if (corpses.length === 0) return;
+  for (const body of corpses) {
+    if (body.visibility <= 0.02) continue;
+    drawOneCorpse(entity, body);
+  }
+  entity.ctx.globalAlpha = 1;
+}
+
+function drawOneCorpse(entity: EntityContext, body: DrawableCorpse): void {
+  const { ctx, view, book } = entity;
+  const sheet = book.get(body.sheet);
+  const image = book.image(body.sheet, null);
+  if (!sheet || !image) return;
+
+  const facing = facingFromAim(body.ax, body.ay);
+  const row = sheet.rows[facing] ?? 0;
+  const col = sheet.idleFrame;
+  const w = sheet.frameWidth;
+  const h = sheet.frameHeight;
+  const feetX = view.x(body.x);
+  const feetY = view.y(body.y + body.halfHeight);
+  const dw = view.size(w);
+  const dh = view.size(h);
+
+  const fall = clamp01(body.age / DEATH_FALL);
+  const ease = 1 - (1 - fall) ** 3;
+  const squash = 1 - 0.62 * ease;
+  const spread = 1 + 0.42 * ease;
+  const dir = body.dx >= 0 ? 1 : -1;
+  const angle = dir * ease * 1.22;
+  const flash = fall < 1 ? Math.max(0, 1 - Math.abs(fall - 0.92) * 8) : 0;
+  const dim = 0.78 + 0.22 * (1 - ease);
+
+  ctx.save();
+  ctx.translate(feetX, feetY);
+  ctx.rotate(angle);
+  ctx.scale(spread, squash);
+  ctx.translate(-dw / 2, -dh);
+
+  ctx.globalAlpha = body.visibility * dim;
+  ctx.drawImage(image, col * w, row * h, w, h, 0, 0, dw, dh);
+  blitCorpseGear(entity, body, facing, col, 0, 0, dw, dh);
+  drawStains(entity, corpseAsTarget(body), image, col * w, row * h, w, h, 0, 0, dw, dh);
+
+  if (flash > 0.02) {
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = Math.min(1, flash * 0.9) * body.visibility;
+    ctx.drawImage(image, col * w, row * h, w, h, 0, 0, dw, dh);
+    ctx.globalCompositeOperation = 'source-over';
+  }
+  ctx.restore();
+}
+
+function blitCorpseGear(
+  { ctx, book }: EntityContext,
+  body: DrawableCorpse,
+  facing: string,
+  col: number,
+  dx: number,
+  dy: number,
+  dw: number,
+  dh: number,
+): void {
+  for (const name of body.gear) {
+    const sheet = book.get(name);
+    const image = book.image(name, null);
+    if (!sheet || !image) continue;
+    const row = sheet.rows[facing] ?? 0;
+    ctx.drawImage(
+      image,
+      col * sheet.frameWidth,
+      row * sheet.frameHeight,
+      sheet.frameWidth,
+      sheet.frameHeight,
+      dx,
+      dy,
+      dw,
+      dh,
+    );
+  }
+}
+
+function corpseAsTarget(body: DrawableCorpse): DrawableEntity {
+  return {
+    id: body.id,
+    kind: 'enemy',
+    sheet: body.sheet,
+    tint: null,
+    gear: body.gear,
+    color: '',
+    name: '',
+    ready: false,
+    x: body.x,
+    y: body.y,
+    ax: body.ax,
+    ay: body.ay,
+    hp: 0,
+    maxHp: 1,
+    alive: false,
+    moving: false,
+    animTime: 0,
+    isLocal: false,
+    hitFlash: 0,
+    stains: body.stains,
+    visibility: body.visibility,
+    awareness: 0,
+    alertKnown: false,
+    viewRange: 0,
+    viewDegrees: 0,
+    recoilX: 0,
+    recoilY: 0,
+    hitSpin: 0,
+    halfWidth: 0,
+    halfHeight: body.halfHeight,
+    weapon: null,
+    gunKick: 0,
+    gunPump: 0,
+  };
 }
 
 /**

@@ -23,6 +23,7 @@ game's scale.
 | `loot.py` | world collectables: catalog, scene-context scatter, E-to-collect |
 | `weapons.py` | gun catalog (glock/deagle/famas/ak47/awp), hotbar, per-shot stats |
 | `crates.py` | breakable boxes/barrels: extract from scenery, smash, drop roll |
+| `corpses.py` | dead enemies left on the floor: persist until the map swaps |
 | `inventory.py` | the pocket: slots, stacking, weight |
 | `world.py` | tile grid, tile alphabet, collision queries |
 | `maps.py` | hand-authored maps (`from_ascii`, `from_rects`) |
@@ -192,7 +193,10 @@ game's scale.
   over them. xp is the opposite and stays fixed: what the kill was worth does
   not vary, what fell out of it does. `kills[].gold` is what actually fell,
   `enemyTypes[*].goldMax` is the ceiling; the client displays neither as a
-  promise.
+  promise. The body STAYS: `corpses.py` keeps one row per kill, shipped like
+  crates (on welcome, and on a snapshot only when the list grew). The kill
+  event is the juice (fall direction, look, `dx`/`dy`); the list is the
+  record you walk back through. Camp maps have none; embark clears them.
 - **Loot is not a coin.** Coins magnetize off a corpse. A drop sits next to
   a scene, shows a tooltip, and is collected with `{type:"collect","id"}`.
   The catalog and rarity weights live in `loot.py`; the client never invents
@@ -276,7 +280,9 @@ game's scale.
   its safety and its lighting rules are all data; the client needs no change to
   announce or obey a new one. A forest's subtitle is `night_clock()` — a time
   between 20:00 and 03:00, "da noite" before midnight and "da manhã" after.
-  Do not hardcode one.
+  Weather (`clear` / `rain` / `fog`) is rolled with that clock so a second
+  night can feel like somewhere else without a new map. Camp is always
+  `clear`. Do not hardcode a clock or a coat.
 - The expedition hand-off IS the walk-out. In the camp, `{type:"ready"}` at
   the fire; when everyone is ready the room puppets two staggered files into
   the VOID corridor and `embark()` swaps the map for `mapgen.build_forest`,

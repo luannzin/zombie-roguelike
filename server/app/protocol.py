@@ -38,6 +38,7 @@ server -> client
    "shots":[...],"attacks":[...],"kills":[...],"pickups":[...],
    "loot":[...],"lootPickups":[...],
    "crates":[...],"crateBreaks":[...],
+   "corpses":[...],
    "roster":[...]}                    only every ROSTER_EVERY_N_TICKS ticks
   {"type":"pong","t":<echoed>}
 
@@ -48,9 +49,9 @@ the camp, drawn before anyone may walk on it. The roster rows carry real world
 positions for the same reason: the seat a player is standing on at the fire is
 the tile they start `preparation` on, so the lobby cannot invent its own layout.
 
-`zone` says where the room is and how that place behaves — see zones.py. It is
-on all three messages because all three can be the first thing a client learns
-about a room it just joined.
+`zone` says where the room is and how that place behaves — see zones.py
+(title, hostile, lantern, weather). It is on all three messages because all
+three can be the first thing a client learns about a room it just joined.
 
 The `map` payload is `{width, height, tileSize, seed, tiles, propKinds, props}`.
 `seed` is what the client hashes with a tile coordinate to scatter the FOREST —
@@ -92,7 +93,12 @@ Snapshot arrays:
             weapon key, `dmg` the damage dealt (0 on a miss / crate)
   attacks   enemy melee swings; `dmg` is 0 when the victim's i-frames ate it
   kills     deaths since the last snapshot, players and enemies alike
-            ({"kind":"enemy"} entries: xp paid now; gold = coins spawned)
+            ({"kind":"enemy"} entries: xp paid now; gold = coins spawned;
+            t/v/hat/cloth/ax/ay/dx/dy so the corpse can fall in the right
+            clothes, facing the killing blow)
+  corpses      remaining dead bodies; attached like crates — on welcome,
+               and again on a snapshot only when one was added. The kill
+               event is the juice; this list is the record that stays.
   pickups   coins collected since the last snapshot
   loot      remaining world drops; attached like the roster — on welcome,
             and again on a snapshot only when the ground list changed
@@ -170,6 +176,7 @@ def welcome(
     zone: dict,
     ack: int = 0,
     loot: list[dict] | None = None,
+    corpses: list[dict] | None = None,
 ) -> dict:
     return {
         "type": MSG_WELCOME,
@@ -182,6 +189,7 @@ def welcome(
         # above this, or queue_input drops every packet as a replay.
         "ack": ack,
         "loot": loot or [],
+        "corpses": corpses or [],
     }
 
 
@@ -207,6 +215,7 @@ def snapshot(
     loot_pickups: list[dict] | None = None,
     crates: list[dict] | None = None,
     crate_breaks: list[dict] | None = None,
+    corpses: list[dict] | None = None,
 ) -> dict:
     payload = {
         "type": MSG_SNAPSHOT,
@@ -232,4 +241,6 @@ def snapshot(
         payload["crates"] = crates
     if crate_breaks:
         payload["crateBreaks"] = crate_breaks
+    if corpses is not None:
+        payload["corpses"] = corpses
     return payload

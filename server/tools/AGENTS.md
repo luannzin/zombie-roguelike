@@ -14,12 +14,12 @@ imported by `app/` and never run at request time.
 | `make_coin.py` | generates final pixels | `assets/processed/coin/` (8-frame Y-spin, same disc as the HUD badge) |
 | `make_textures.py` | generates final pixels | `assets/processed/terrain/` (4 grounds, blend, patch, rock, tree, deadtree, stump, grass, bush, branch, leaves, fern, campfire) |
 | `make_scenery.py` | generates final pixels | `assets/processed/scenery/` (cabin, tent, fence, sign, logs, crate, firepit, blood, tracks, clothes, debris) |
-| `make_vfx.py` | generates final pixels | `assets/processed/vfx/` (summon, kindle, aura, wind) |
+| `make_vfx.py` | generates final pixels | `assets/processed/vfx/` (summon, kindle, aura, wind, death) |
 | `make_gore.py` | generates final pixels | `assets/processed/gore/` (6 wound decals worn by a hit body) |
 | `make_loot.py` | generates final pixels | `assets/processed/loot/` (one 16x16 frame per item, including gun icons) |
 | `make_guns.py` | generates final pixels | `assets/processed/guns/` (held side-view, one 18x8 frame per weapon) |
 | `make_hud_icons.py` | generates final pixels | `assets/processed/hud/` (battery, backpack, coin) |
-| `make_audio.py` | generates final samples | `assets/processed/audio/` (31 sounds, 58 wavs + manifest + loudness.json) |
+| `make_audio.py` | generates final samples | `assets/processed/audio/` (32 sounds, 59 wavs + manifest + loudness.json) |
 
 ## Local Contracts
 
@@ -98,9 +98,10 @@ imported by `app/` and never run at request time.
 - A VFX sheet's `frames / fps` is the effect's duration and the client times
   itself off it. Changing either means changing whatever the client aligns to
   it (`SUMMON_TIME` / `SUMMON_IMPACT`, `KINDLE_TIME` / `KINDLE_IMPACT` in
-  `client/src/game/lobby-scene.ts`; crate smash / wind life in
+  `client/src/game/lobby-scene.ts`; crate smash / wind life / death in
   `client/src/game/game.ts`). `wind` is the empty-crate gust — greyscale,
-  drawn without a player tint.
+  drawn without a player tint. `death` is a body hitting the floor, tinted
+  with blood at draw time; `sfx_zombie_death` puts its thud on `DEATH_IMPACT`.
 - Shared helpers (`pick`, `hash01`, `clamp01`, `pack`, `rgb`, the ramps) live in
   `make_textures.py` and are imported by the other generators, so every sheet
   keeps one shading vocabulary. Do not copy them.
@@ -121,9 +122,10 @@ imported by `app/` and never run at request time.
     a sine of the frame phase. `--only` re-renders one sound; the manifest is
     always rewritten whole.
   - **Timelines align to the sheet they play with.** `sfx_kindle` and
-    `sfx_summon` put their impact on the frame `make_vfx.py` flashes, and
-    `sfx_crate_break` fits inside the crate smash strip. Changing a sheet's
-    `frames / fps` means changing its sound.
+  `sfx_summon` put their impact on the frame `make_vfx.py` flashes, and
+  `sfx_crate_break` fits inside the crate smash strip. `sfx_zombie_death`
+  lands on `DEATH_IMPACT`. Changing a sheet's `frames / fps` means changing
+  its sound.
   - **The mix is MEASURED, not guessed.** `CATALOG` authors a `level_db` on one
     ladder; the generator renders the sound, measures its loudness with a
     BS.1770 K-weighted meter (`loudness_lufs`) and computes the manifest `gain`

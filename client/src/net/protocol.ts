@@ -228,6 +228,12 @@ export interface ZoneInfo {
   hostile: boolean;
   /** The lantern switch works. False in the camp: the bonfire is the light. */
   lantern: boolean;
+  /**
+   * Night coat, rolled with the clock. `clear` is a dry forest; `rain` and
+   * `fog` are the same map in a different coat, so day 2 can feel like
+   * somewhere else without a new generator. Camp is always `clear`.
+   */
+  weather?: 'clear' | 'rain' | 'fog' | string;
 }
 
 /**
@@ -523,6 +529,33 @@ export interface KillEvent {
    * next. Zero is a real outcome.
    */
   gold: number;
+  /** Enemy type key. Present on enemy kills so the corpse can wear the right sheet. */
+  t?: string;
+  /** Body variant index. */
+  v?: number;
+  hat?: number;
+  cloth?: number;
+  /** Last facing. */
+  ax?: number;
+  ay?: number;
+  /** Killing blow, so the body falls away from the shot. */
+  dx?: number;
+  dy?: number;
+}
+
+/** A dead enemy left on the floor. Does not move; the list only grows. */
+export interface CorpseState {
+  id: string;
+  x: number;
+  y: number;
+  t: string;
+  v: number;
+  hat?: number;
+  cloth?: number;
+  ax: number;
+  ay: number;
+  dx: number;
+  dy: number;
 }
 
 /** A coin that just entered a player's pocket. */
@@ -601,6 +634,8 @@ export interface WelcomeMessage {
   ack: number;
   /** Remaining world drops. Replaces the client's list on every welcome. */
   loot?: LootState[];
+  /** Dead bodies still on this map. Replaces the client's list on every welcome. */
+  corpses?: CorpseState[];
 }
 
 export interface SnapshotMessage {
@@ -636,6 +671,8 @@ export interface SnapshotMessage {
   crates?: CrateState[];
   /** Crates smashed since the last snapshot. */
   crateBreaks?: CrateBreakEvent[];
+  /** Remaining corpses. Present only when one was added. */
+  corpses?: CorpseState[];
 }
 
 export interface PongMessage {

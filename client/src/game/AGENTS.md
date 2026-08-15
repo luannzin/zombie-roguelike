@@ -18,7 +18,7 @@ seam React is allowed to read.
 | `input.ts` | keyboard/mouse sampling into an `InputPacket` (1/2/3 is the hotbar) |
 | `world.ts` | client tile map, collision + sight queries, fires, hearth mask, placed scenery, live crates |
 | `combat.ts` | client-side shot feel: capsules, tile DDA, crate sprite boxes |
-| `effects.ts` | tracers, dust, blood, floating text, event lights, boot prints, crate smash, wind |
+| `effects.ts` | tracers, dust, blood, floating text, event lights, boot prints, crate smash, wind, death burst |
 | `entity-visuals.ts` | per-entity flash, recoil, gun kick/pump, hit-stun tilt, anim, worn wounds; `HIT_FLASH_LIFE` is also the crate smash blink |
 | `lantern.ts` | four-cell battery, produces `output` 0..1 |
 | `hud-store.ts` | the only seam to React; `HUD_INTERVAL` = 0.2 s |
@@ -148,6 +148,15 @@ seam React is allowed to read.
   and that is the interesting half — fresh prints crossing yours that you did
   not make. The compass frame mirrors `track_frame` in `server/app/scenery.py`,
   so the map's abandoned trails and the player's own prints are the same mark.
+  Stepping in a corpse's pool tints the next prints red (`Footprint.blood`),
+  decaying each stride — a trail of what you walked through, drying out behind
+  you.
+- **Corpses stay.** `spawnDeath` is the juice (particles, light, the death
+  VFX sheet); the body is a persistent row (`welcome.corpses` / dirty
+  snapshot), drawn as a collapsing sprite then a prone one with a growing
+  pool from scenery `blood.png`. Hidden in the dark. Embark clears them.
+  `DEATH_TIME` / `DEATH_IMPACT` mirror `make_vfx.py`; the thud in
+  `zombie-death` sits on that flash.
 - `Game.lights` is bonfires read off the tiles PLUS whatever the map's scenes
   are still burning (`world.scenery.lights`), on one list. The lighting has no
   concept of a camp light versus a forest light and must not grow one.
@@ -189,7 +198,9 @@ seam React is allowed to read.
   party marching away from a fire that got louder would be wrong.
 - **The zone says what the place sounds like**, exactly as it already says the
   title card, whether guns fire and whether the lamp works. `applyZoneAmbience`
-  runs on arrival and nothing reads the map to infer it.
+  runs on arrival and nothing reads the map to infer it. Forest weather
+  (`zone.weather`) picks the mix: rain fades in the `rain` bed, fog quiets
+  the wind, clear is wind + night as before. Camp is always the fire.
 - **Ambience is declared by the SCREEN, and `lobby-scene` declares none.** The
   scene is decoration and draws the title screen's backdrop as well as a room's,
   so it cannot know whether it is a place you are standing in — the menu's fire

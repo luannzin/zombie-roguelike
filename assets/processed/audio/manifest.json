@@ -59,6 +59,14 @@
       "loop": true,
       "gain": 0.0377
     },
+    "rain": {
+      "files": [
+        "rain.wav"
+      ],
+      "bus": "ambient",
+      "loop": true,
+      "gain": 0.0585
+    },
     "heartbeat": {
       "files": [
         "heartbeat.wav"
@@ -134,7 +142,7 @@
         "zombie-death-2.wav"
       ],
       "bus": "sfx",
-      "gain": 0.3593
+      "gain": 0.375
     },
     "step-soft": {
       "files": [

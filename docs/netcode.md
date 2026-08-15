@@ -70,7 +70,7 @@ picks walkable tiles. The ground list and the roster both dirty.
   "config": { "tickRate": 30, "dt": 0.0333, "tileSize": 16, "...": "..." },
   "map": { "width": 60, "height": 40, "tileSize": 16, "seed": 8412, "tiles": [[2, 2, 0, "..."]] },
   "zone": { "key": "camp-1", "kind": "camp", "day": 1, "title": "Preparação",
-            "subtitle": "Dia 1", "hostile": false, "lantern": false }
+            "subtitle": "Dia 1", "hostile": false, "lantern": false, "weather": "clear" }
 }
 ```
 
@@ -78,7 +78,9 @@ The map is here rather than in `lobby` because the lobby is not a picture of
 the camp — it draws the real one, and `lobby` is re-broadcast on every
 membership change. `zone` says where the room is and how that place behaves:
 `hostile` gates enemy spawns and weapons, `lantern` gates the lamp, and both
-are enforced server-side as well as described here.
+are enforced server-side as well as described here. `weather` is the night's
+coat (`clear` / `rain` / `fog`), rolled with the forest clock so a second
+expedition can feel like somewhere else; camp is always `clear`.
 
 `lobby` (on every membership or phase change):
 
@@ -106,7 +108,8 @@ presses start.
   "map": { "width": 64, "height": 40, "tileSize": 16, "tiles": [[1, 1, 0, "..."]] },
   "zone": { "...": "..." },
   "ack": 183,
-  "loot": [{"id":"l1","k":"compass","x":412.5,"y":288.5}]
+  "loot": [{"id":"l1","k":"compass","x":412.5,"y":288.5}],
+  "corpses": []
 }
 ```
 
@@ -126,10 +129,11 @@ presses start.
   "enemies": [{ "id": "e12", "t": "zombie", "x": 0, "y": 0, "vx": 0, "vy": 0, "ax": 1, "ay": 0, "hp": 22, "v": 1, "hat": 0 }],
   "shots": [{ "id": 7, "by": "a1b2c3d4", "k": "glock18", "x": 0, "y": 0, "dx": 1, "dy": 0, "dist": 132.5, "hit": "b5c6", "dmg": 7 }],
   "attacks": [{ "by": "e12", "target": "a1b2c3d4", "x": 0, "y": 0, "dx": 1, "dy": 0, "dmg": 9, "blocked": false }],
-  "kills": [{ "kind": "enemy", "killer": "a1b2c3d4", "victim": "e12", "x": 0, "y": 0, "xp": 12, "gold": 3 }],
+  "kills": [{ "kind": "enemy", "killer": "a1b2c3d4", "victim": "e12", "x": 0, "y": 0, "xp": 12, "gold": 3, "t": "zombie", "v": 1, "dx": 1, "dy": 0 }],
   "loot": [{"id":"l1","k":"compass","x":412.5,"y":288.5}],
   "crates": [{"id":"k1","x":320,"y":240,"v":0,"flip":0}],
-  "crateBreaks": [{"id":"k2","x":352,"y":256,"v":2,"flip":1,"drop":"empty"}]
+  "crateBreaks": [{"id":"k2","x":352,"y":256,"v":2,"flip":1,"drop":"empty"}],
+  "corpses": [{"id":"e12","x":400,"y":288,"t":"zombie","v":1,"ax":1,"ay":0,"dx":1,"dy":0}]
 }
 ```
 

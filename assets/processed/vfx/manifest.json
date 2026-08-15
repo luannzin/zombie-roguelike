@@ -36,6 +36,15 @@
       "fps": 14,
       "anchorY": 28,
       "loop": false
+    },
+    "death": {
+      "file": "death.png",
+      "frameWidth": 32,
+      "frameHeight": 32,
+      "frames": 12,
+      "fps": 16,
+      "anchorY": 28,
+      "loop": false
     }
   }
 }

@@ -7,12 +7,12 @@
  * darkness, additive, greyscale — a gust of air, not a player-tinted beam.
  */
 
-import type { Effects, WindPuff } from '../../game/effects';
+import type { Effects, WindPuff, DeathBurst } from '../../game/effects';
 import { fadeOf } from '../../lib/math';
 import { hudFont } from '../../theme/fonts';
 import { palette } from '../../theme/palette';
 import type { Projection } from '../projection';
-import { effectFrame, type VfxSheet } from '../vfx';
+import { effectFrame, effectImage, type VfxSheet } from '../vfx';
 
 /** World space, under entities. */
 export function drawDust(ctx: CanvasRenderingContext2D, effects: Effects): void {
@@ -224,6 +224,40 @@ export function drawWindPuffs(
       sheet.frameHeight,
       Math.round(puff.x - sheet.frameWidth / 2),
       Math.round(puff.y - sheet.anchorY),
+      sheet.frameWidth,
+      sheet.frameHeight,
+    );
+  }
+  ctx.restore();
+}
+
+/**
+ * A body hitting the floor. World pixels, after darkness, additive, tinted
+ * with blood — the sheet is greyscale the way kindle is, and the hue is the
+ * same blood the spray already uses.
+ */
+export function drawDeathBursts(
+  ctx: CanvasRenderingContext2D,
+  sheet: VfxSheet | null,
+  deaths: DeathBurst[],
+): void {
+  if (!sheet || deaths.length === 0) return;
+  const tint = palette().effects.blood[3] ?? palette().effects.hitCore;
+  const image = effectImage(sheet, tint);
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  for (const burst of deaths) {
+    const fade = fadeOf(burst);
+    const frame = effectFrame(sheet, burst.age);
+    ctx.globalAlpha = 0.95 * fade;
+    ctx.drawImage(
+      image,
+      frame * sheet.frameWidth,
+      0,
+      sheet.frameWidth,
+      sheet.frameHeight,
+      Math.round(burst.x - sheet.frameWidth / 2),
+      Math.round(burst.y - sheet.anchorY),
       sheet.frameWidth,
       sheet.frameHeight,
     );

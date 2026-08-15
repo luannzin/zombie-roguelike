@@ -17,7 +17,7 @@ mutation, no React.
 | `sprites.ts` | sheet loading, `SpriteBook`, per-colour multiply tints |
 | `terrain.ts` | terrain atlas loading (4 grounds, blend stencils, props, flat decals, the animated campfire) |
 | `scenery.ts` | scenery atlas loading: standing props and flat decals of what people left |
-| `vfx.ts` | effect atlas loading: one-shot sheets (summon, kindle, wind) and the looping loot `aura` |
+| `vfx.ts` | effect atlas loading: one-shot sheets (summon, kindle, wind, death) and the looping loot `aura` |
 | `loot.ts` | loot atlas: one 16x16 frame per collectable item |
 | `guns.ts` | held-gun atlas and the shared muzzle/grip pose (`gunMuzzle`) |
 | `gore.ts` | gore atlas: small wound decals stamped on a body that has been hit |
@@ -25,7 +25,8 @@ mutation, no React.
 | `wind.ts` | the shared gust field every bending thing reads |
 | `disturbance.ts` | what bodies do to the plants they walk through |
 | `layers/vision.ts` | the ENEMY's hunt diamond — fill meter and bang over the head |
-| `layers/scenery.ts` | placed scenes: flat decals into the ground bake, standing props into the depth sort |
+| `layers/scenery.ts` | placed scenes: flat decals into the ground bake, standing props into the depth sort; live boot prints (including a blood tint) |
+| `layers/corpses.ts` | blood pools under dead enemies — scenery `blood.png`, growing, world space |
 | `minimap.ts` | the minimap canvas |
 | `layers/` | the actual drawing: terrain, entities, loot, vision, effects, atmosphere, darkness, vignette |
 
@@ -37,10 +38,12 @@ mutation, no React.
   `layers/`. **The pass order is the atmosphere** — ground (soil, litter, flat
   scenery) → dust → coins and loot sprites → entities, bonfires and standing
   scenery (one depth sort by `y`, including live crates and smash sheets) →
-  overgrowth → motes → darkness → combat effects → loot auras / motes /
-  epic-legendary beams / empty-crate wind → hunt diamond →
+  overgrowth → motes / rain / fog → darkness → combat effects → loot auras / motes /
+  epic-legendary beams / empty-crate wind / death burst → hunt diamond →
   labels → vignette. Effects and loot light go over the darkness because
   they are light, not things being lit. An unlit drop HIDES ITS SPRITE.
+  Corpses hide the same way. Blood pools sit on the floor with the boot
+  prints; the fallen sprite sits with the loot, under living bodies.
   Glow, motes and the epic/legendary column leak a whisper through the
   night (`lit(visibility, floor)`) so the player can feel a find before
   the lantern reaches it — never a full beam, never the item itself.

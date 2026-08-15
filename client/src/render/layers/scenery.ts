@@ -33,10 +33,11 @@
 
 import type { Effects } from '../../game/effects';
 import type { SceneryPiece, TileMap } from '../../game/world';
+import { createSurface } from '../../lib/canvas';
 import { palette } from '../../theme/palette';
 import type { Camera } from '../camera';
 import type { Projection } from '../projection';
-import type { SceneryAtlas } from '../scenery';
+import type { SceneryAtlas, SceneryDecal } from '../scenery';
 import * as wind from '../wind';
 
 /** Radians/second of the sway oscillation, before per-prop variation. */
@@ -145,17 +146,46 @@ export function drawFootprints(
     // trailing the player.
     const remaining = 1 - print.age / print.life;
     const fade = remaining > FOOTPRINT_HOLD ? 1 : remaining / FOOTPRINT_HOLD;
-    ctx.globalAlpha = print.depth * fade;
     const frame = print.frame % sheet.frames;
+    const dx = Math.round(print.x - sheet.frameWidth / 2);
+    const dy = Math.round(print.y - sheet.frameHeight / 2);
+    ctx.globalAlpha = print.depth * fade;
     ctx.drawImage(
       sheet.image,
       frame * sheet.frameWidth, 0, sheet.frameWidth, sheet.frameHeight,
-      Math.round(print.x - sheet.frameWidth / 2),
-      Math.round(print.y - sheet.frameHeight / 2),
-      sheet.frameWidth, sheet.frameHeight,
+      dx, dy, sheet.frameWidth, sheet.frameHeight,
     );
+    if (print.blood > 0.02) {
+      ctx.globalAlpha = print.depth * fade * print.blood * 0.9;
+      ctx.drawImage(
+        bloodTracks(sheet),
+        frame * sheet.frameWidth, 0, sheet.frameWidth, sheet.frameHeight,
+        dx, dy, sheet.frameWidth, sheet.frameHeight,
+      );
+    }
   }
   ctx.globalAlpha = 1;
+}
+
+let tracksBlood: HTMLCanvasElement | null = null;
+let tracksBloodSrc: HTMLImageElement | null = null;
+
+/** One multiply-tinted copy of the tracks sheet, in blood. */
+function bloodTracks(sheet: SceneryDecal): HTMLCanvasElement {
+  if (tracksBlood && tracksBloodSrc === sheet.image) return tracksBlood;
+  const { canvas, ctx } = createSurface(
+    sheet.image.width,
+    sheet.image.height,
+    'scenery/tracks-blood',
+  );
+  ctx.drawImage(sheet.image, 0, 0);
+  ctx.globalCompositeOperation = 'source-in';
+  ctx.fillStyle = palette().effects.blood[1] ?? palette().effects.blood[0];
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.globalCompositeOperation = 'source-over';
+  tracksBlood = canvas;
+  tracksBloodSrc = sheet.image;
+  return canvas;
 }
 
 /**

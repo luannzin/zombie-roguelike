@@ -36,6 +36,7 @@ import type {
   KillEvent,
   CrateBreakEvent,
   CrateState,
+  CorpseState,
   LootPickupEvent,
   LootRarity,
   LootState,
@@ -52,18 +53,20 @@ import { ARENA_ZOOM } from '../render/framing';
 import { gunMuzzle, loadGuns, type GunAtlas } from '../render/guns';
 import { projectionFor } from '../render/projection';
 import { FovField, type LightSource, type VisionConfig, type Viewer } from '../render/fov';
+import { DEATH_TIME, POOL_GROW, poolRadius, poolWetness } from '../render/layers/corpses';
 import { soilAt } from '../render/layers/terrain';
+import { setClimate } from '../render/wind';
 import { Minimap, type MinimapPlayer } from '../render/minimap';
 import { Renderer } from '../render/renderer';
 import { SpriteBook } from '../render/sprites';
 import { NOTICE_AT } from '../render/layers/vision';
 import { tileHash } from '../render/terrain';
-import type { DrawableCoin, DrawableEntity, DrawableLoot } from '../render/types';
+import type { DrawableCoin, DrawableCorpse, DrawableEntity, DrawableLoot } from '../render/types';
 import { whenFontsReady } from '../theme/fonts';
 import { palette } from '../theme/palette';
 import { crateAlongRay, hitscan, type RayTarget } from './combat';
 import { Effects, type ShotFeel } from './effects';
-import { EntityVisuals, hitPower } from './entity-visuals';
+import { EntityVisuals, hitPower, type BloodStain } from './entity-visuals';
 import {
   EMPTY_HUD,
   HUD_INTERVAL,
@@ -96,6 +99,10 @@ const HIT_TRAUMA = 0.12;
 const HURT_TRAUMA = 0.55;
 /** Tiny bump when a coin lands in the pocket. */
 const PICKUP_TRAUMA = 0.06;
+/** Camera punch when an enemy drops. */
+const DEATH_TRAUMA = 0.32;
+/** How much blood a print loses each stride after leaving a pool. */
+const BLOOD_STEP_KEEP = 0.72;
 /** HP ratio where vignette starts (above = none). */
 const DANGER_START = 0.45;
 /** HP ratio where vignette hits full crush. */
@@ -338,6 +345,10 @@ export class Game {
   private localReady = false;
   /** Remaining world drops. Replaced on welcome and on a dirty snapshot. */
   private readonly loot = new Map<string, LootState>();
+  /** Dead bodies on this map. Replaced on welcome; upserted from kills. */
+  private readonly corpses = new Map<string, LiveCorpse>();
+  /** 0..1 blood on each walker's boots, decaying per stride. */
+  private readonly bloodWet = new Map<string, number>();
   /** TAB. Client-local — the bag itself is authoritative, the drawer is not. */
   private inventoryOpen = false;
   /** Flies that have landed. HUD reads the count so a bump cannot collapse. */
@@ -440,6 +451,7 @@ export class Game {
       'zombie-death',
       'wind',
       'night',
+      'rain',
       'fire',
       'heartbeat',
       'arrive',
@@ -497,6 +509,8 @@ export class Game {
 
     this.visuals.clear();
     this.effects.clear();
+    this.corpses.clear();
+    this.bloodWet.clear();
     this.snapshots.clear();
     this.alertSeen.clear();
     this.alertHeard.clear();
@@ -505,6 +519,7 @@ export class Game {
     // in the air are left to finish; cutting them would click.
     stopBeds();
     resetSfxState();
+    setClimate('clear');
     this.lantern.reset();
     clearTooltipAnchors();
     clearInventoryAnchors();
@@ -538,6 +553,8 @@ export class Game {
       this.minimap.setWorld(null);
       this.visuals.clear();
       this.effects.clear();
+      this.corpses.clear();
+      this.bloodWet.clear();
       this.snapshots.clear();
       this.alertSeen.clear();
       this.lantern.reset();
@@ -641,6 +658,8 @@ export class Game {
 
     this.visuals.clear();
     this.effects.clear();
+    this.corpses.clear();
+    this.bloodWet.clear();
     this.snapshots.clear();
     this.alertSeen.clear();
     // A new world hands you a fresh battery, switched off: the first thing the
@@ -699,6 +718,7 @@ export class Game {
       hotbar: this.hotbarHud(),
     });
     this.replaceLoot(msg.loot ?? []);
+    this.replaceCorpses(msg.corpses ?? [], true);
   }
 
   private onSnapshot(msg: SnapshotMessage): void {
@@ -804,6 +824,7 @@ export class Game {
     for (const ev of msg.lootPickups ?? []) this.onLootPickup(ev);
     if (msg.crates) this.replaceCrates(msg.crates);
     for (const ev of msg.crateBreaks ?? []) this.onCrateBreak(ev);
+    if (msg.corpses) this.mergeCorpses(msg.corpses);
   }
 
   /**
@@ -827,8 +848,13 @@ export class Game {
 
   private onKill(kill: KillEvent): void {
     if (kill.kind !== 'enemy') return;
-    this.effects.spawnDeath(kill.x, kill.y);
+    const dx = kill.dx ?? 0;
+    const dy = kill.dy ?? 0;
+    this.effects.spawnDeath(kill.x, kill.y, dx, dy);
+    this.effects.spawnDeathBurst(kill.x, kill.y + 2, DEATH_TIME);
     playSfxAt('zombie-death', kill.x, kill.y);
+    this.camera.addTrauma(DEATH_TRAUMA);
+    this.upsertCorpse(kill, this.visuals.stainsOf(kill.victim).map(cloneStain), 0);
     // It stops growling the moment it dies, and re-arms if the id ever returns.
     this.alertHeard.delete(kill.victim);
     if (kill.killer === this.localId && kill.xp > 0) {
@@ -846,6 +872,121 @@ export class Game {
   private replaceLoot(rows: LootState[]): void {
     this.loot.clear();
     for (const row of rows) this.loot.set(row.id, row);
+  }
+
+  private replaceCorpses(rows: CorpseState[], landed: boolean): void {
+    this.corpses.clear();
+    this.bloodWet.clear();
+    const age = landed ? POOL_GROW : 0;
+    for (const row of rows) this.upsertFromState(row, age);
+  }
+
+  private mergeCorpses(rows: CorpseState[]): void {
+    for (const row of rows) {
+      if (!this.corpses.has(row.id)) this.upsertFromState(row, POOL_GROW);
+    }
+  }
+
+  private upsertCorpse(kill: KillEvent, stains: BloodStain[], age: number): void {
+    if (!kill.t) return;
+    this.upsertFromState(
+      {
+        id: kill.victim,
+        x: kill.x,
+        y: kill.y,
+        t: kill.t,
+        v: kill.v ?? 0,
+        hat: kill.hat,
+        cloth: kill.cloth,
+        ax: kill.ax ?? 0,
+        ay: kill.ay ?? 1,
+        dx: kill.dx ?? 0,
+        dy: kill.dy ?? 1,
+      },
+      age,
+      stains,
+    );
+  }
+
+  private upsertFromState(row: CorpseState, age: number, stains?: BloodStain[]): void {
+    const existing = this.corpses.get(row.id);
+    if (existing) {
+      if (stains && stains.length > 0) existing.stains = stains;
+      return;
+    }
+    const type = this.enemyType(row.t);
+    this.corpses.set(row.id, {
+      id: row.id,
+      x: row.x,
+      y: row.y,
+      t: row.t,
+      v: row.v,
+      hat: row.hat,
+      cloth: row.cloth,
+      ax: row.ax,
+      ay: row.ay,
+      dx: row.dx,
+      dy: row.dy,
+      stains: stains ?? [],
+      age,
+      halfHeight: type?.halfHeight ?? 4,
+    });
+  }
+
+  /**
+   * Dip the boots if this stride landed in a pool, then spend some of that
+   * blood on the print. Decays per step, so a trail of red dries out behind
+   * you instead of painting the rest of the map.
+   */
+  private stepBlood(id: string, x: number, footY: number): number {
+    let wet = this.bloodWet.get(id) ?? 0;
+    for (const body of this.corpses.values()) {
+      const px = body.x;
+      const py = body.y + body.halfHeight;
+      const radius = poolRadius(body.age);
+      const dx = x - px;
+      const dy = footY - py;
+      if (dx * dx + dy * dy > radius * radius) continue;
+      wet = Math.max(wet, poolWetness(body.age));
+    }
+    const print = wet;
+    wet *= BLOOD_STEP_KEEP;
+    if (wet < 0.04) this.bloodWet.delete(id);
+    else this.bloodWet.set(id, wet);
+    return print;
+  }
+
+  private drawableCorpses(dt: number): DrawableCorpse[] {
+    const fov = this.fov;
+    const ts = this.config?.tileSize ?? 16;
+    const out: DrawableCorpse[] = [];
+    for (const body of this.corpses.values()) {
+      body.age += dt;
+      const type = this.enemyType(body.t);
+      if (!type) continue;
+      const lit = fov
+        ? fov.lightAt(Math.floor(body.x / ts), Math.floor(body.y / ts))
+        : 1;
+      const visibility = clamp01(
+        (lit - ENEMY_HIDE_LIGHT) / (ENEMY_SHOW_LIGHT - ENEMY_HIDE_LIGHT),
+      );
+      out.push({
+        id: body.id,
+        x: body.x,
+        y: body.y,
+        sheet: type.variants?.[body.v] ?? type.sprite,
+        gear: corpseGear(type, body.cloth, body.hat),
+        ax: body.ax,
+        ay: body.ay,
+        dx: body.dx,
+        dy: body.dy,
+        stains: body.stains,
+        age: body.age,
+        visibility,
+        halfHeight: body.halfHeight,
+      });
+    }
+    return out;
   }
 
   private onLootPickup(ev: LootPickupEvent): void {
@@ -1158,6 +1299,8 @@ export class Game {
 
   /** What this place sounds like. Restated on every arrival, and only there. */
   private applyZoneAmbience(zone: ZoneInfo): void {
+    const weather = zone.weather ?? 'clear';
+    setClimate(weather);
     this.beds =
       zone.kind === 'camp'
         ? // The bonfire is the camp's whole bed. It is not positional — the
@@ -1165,7 +1308,11 @@ export class Game {
           // place you can stand, and a panning hearth would swing every time
           // the camera drifted.
           { fire: 1, wind: 0.22 }
-        : { wind: 1, night: 0.85 };
+        : weather === 'rain'
+          ? { wind: 0.55, night: 0.35, rain: 1 }
+          : weather === 'fog'
+            ? { wind: 0.4, night: 1 }
+            : { wind: 1, night: 0.85 };
     this.heartLevel = -1;
     this.pushBeds();
   }
@@ -1369,6 +1516,7 @@ export class Game {
     }));
 
     const loot = this.drawableLoot(dt);
+    const corpses = this.drawableCorpses(dt);
 
     // Everyone in this frame was touched above; anyone who left — a player who
     // disconnected, an enemy that died — is now unreferenced and gets dropped.
@@ -1394,6 +1542,8 @@ export class Game {
       entities,
       coins,
       loot,
+      corpses,
+      weather: this.zone?.weather ?? 'clear',
       effects: this.effects,
       fov: this.fov,
       danger: this.dangerLevel(),
@@ -1468,7 +1618,8 @@ export class Game {
           ? SOIL_PRINT_DEPTH[soilAt(tx, ty, world.seed)] ?? SOIL_PRINT_DEPTH[0]
           : SOIL_PRINT_DEPTH[0];
       const printDepth = depth * (1 + 0.75 * Math.min(1.2, burden));
-      this.effects.spawnFootprint(entity.x, footY, dx, dy, printDepth, FOOTPRINT_LIFE);
+      const blood = this.stepBlood(entity.id, entity.x, footY);
+      this.effects.spawnFootprint(entity.x, footY, dx, dy, printDepth, FOOTPRINT_LIFE, blood);
       // The step is played HERE because this loop is already the one place
       // that fires exactly once per stride, for every body, with the soil in
       // hand. A second timer keyed off velocity would drift out of sync with
@@ -2294,9 +2445,11 @@ export class Game {
 
 /** Clothes first so a hat draws on top. Missing or out-of-range indices skip. */
 function enemyGear(type: EnemyTypeConfig, enemy: RenderedEnemy): string[] {
+  return corpseGear(type, enemy.cloth, enemy.hat);
+}
+
+function corpseGear(type: EnemyTypeConfig, cloth?: number, hat?: number): string[] {
   const gear: string[] = [];
-  const cloth = enemy.cloth;
-  const hat = enemy.hat;
   if (cloth != null && cloth >= 0 && type.clothes?.[cloth]) {
     gear.push(type.clothes[cloth]);
   }
@@ -2304,6 +2457,27 @@ function enemyGear(type: EnemyTypeConfig, enemy: RenderedEnemy): string[] {
     gear.push(type.hats[hat]);
   }
   return gear;
+}
+
+interface LiveCorpse {
+  id: string;
+  x: number;
+  y: number;
+  t: string;
+  v: number;
+  hat?: number;
+  cloth?: number;
+  ax: number;
+  ay: number;
+  dx: number;
+  dy: number;
+  stains: BloodStain[];
+  age: number;
+  halfHeight: number;
+}
+
+function cloneStain(stain: BloodStain): BloodStain {
+  return { ...stain };
 }
 
 /** A vertical full-body hit capsule, the shape server/app/combat.py expects. */

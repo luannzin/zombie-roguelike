@@ -20,9 +20,9 @@
  * feel assembled; one clock under all of it is most of what makes it feel like
  * a place with air in it.
  *
- * Nothing here is stateful and nothing is random: it is a pure function of
- * position and time, so the lobby and the arena agree without passing anything
- * between them, and the same gust crosses every player's screen at once.
+ * The field is a pure function of position and time, plus one climate
+ * multiplier stated on zone arrival (`setClimate`). Rain pushes harder; fog
+ * sits still. Lobby and arena still agree because they share the zone's coat.
  */
 
 const TAU = Math.PI * 2;
@@ -52,6 +52,17 @@ const GUST_SHARPNESS = 2.6;
 const LULL_RATE = 0.043;
 const LULL_FLOOR = 0.3;
 
+/**
+ * Climate multiplier. 1 is a dry night. Rain pushes harder; fog sits still.
+ * Stated once on zone arrival — the lobby and the arena both get the same
+ * coat, so they still agree without passing a clock between them.
+ */
+let climate = 1;
+
+export function setClimate(kind: string): void {
+  climate = kind === 'rain' ? 1.55 : kind === 'fog' ? 0.55 : 1;
+}
+
 /** Prevailing direction at this moment, in radians. */
 export function angle(time: number): number {
   return BASE_ANGLE + Math.sin(time * ANGLE_RATE) * ANGLE_SWING;
@@ -72,7 +83,7 @@ export function gust(x: number, y: number, time: number): number {
   const wave = Math.sin((axis / GUST_LENGTH - time * GUST_RATE) * TAU);
   if (wave <= 0) return 0;
   const lull = LULL_FLOOR + (1 - LULL_FLOOR) * (0.5 + 0.5 * Math.sin(time * LULL_RATE * TAU));
-  return wave ** GUST_SHARPNESS * lull;
+  return wave ** GUST_SHARPNESS * lull * climate;
 }
 
 /**

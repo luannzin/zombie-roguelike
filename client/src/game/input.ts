@@ -34,8 +34,11 @@ export class InputController {
    * times a second. The resulting on/off rides the input packet from `Lantern`.
    */
   onToggleLantern: (() => void) | null = null;
-  /** Fired once per press of E — same edge contract as the lantern key. */
-  onReady: (() => void) | null = null;
+  /**
+   * Fired once per press of E — interact. Camp fire is ready; a nearby drop
+   * is collect. Same edge contract as the lantern key.
+   */
+  onInteract: (() => void) | null = null;
 
   constructor(private readonly canvas: HTMLCanvasElement) {
     window.addEventListener('keydown', this.onKeyDown);
@@ -80,7 +83,7 @@ export class InputController {
       return;
     }
     if (e.code === READY_KEY && !e.repeat) {
-      this.onReady?.();
+      this.onInteract?.();
       e.preventDefault();
     }
   };

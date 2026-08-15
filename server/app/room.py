@@ -31,12 +31,13 @@ import random
 import time
 import uuid
 
-from . import ai, camp, coins, combat, mapgen, protocol, zones
+from . import ai, camp, coins, combat, loot, mapgen, protocol, zones
 from .ai import EnemyDirector
 from .coins import Coin
 from .config import (
     DT,
     FIRE_COOLDOWN,
+    LOOT_COLLECT_DIST,
     MARCH_SPEED,
     MAX_HP,
     MAX_INPUT_QUEUE,
@@ -57,6 +58,7 @@ from .config import (
     TILE_SIZE,
     client_config,
 )
+from .loot import Drop
 from .enemies import Enemy, EnemyType
 from .entities import InputCmd, Player, clean_name, pick_color, random_name
 from .pathing import Navigator
@@ -97,6 +99,7 @@ class Room:
         self.players: dict[str, Player] = {}
         self.enemies: dict[str, Enemy] = {}
         self.coins: dict[str, Coin] = {}
+        self.drops: dict[str, Drop] = {}
         self.sockets: dict[str, object] = {}
         self.director = EnemyDirector(self.spawn_points)
         self.navigator = Navigator(self.world)
@@ -109,6 +112,7 @@ class Room:
         self.attack_events: list[dict] = []
         self.kill_events: list[dict] = []
         self.pickup_events: list[dict] = []
+        self.loot_pickup_events: list[dict] = []
         self._shot_id = 0
         self._enemy_id = 0
         self._coin_id = 0
@@ -123,6 +127,14 @@ class Room:
         #: Someone joined or left: attach the roster to the next snapshot
         #: instead of making the party wait out the interval for a name.
         self._roster_dirty = True
+        #: A drop was collected: attach the remaining loot list next tick.
+        self._loot_dirty = True
+        self._load_drops()
+
+    def _load_drops(self) -> None:
+        """Hydrate live drops from the map the generator left behind."""
+        self.drops = loot.from_payloads(self.world.loot)
+        self._loot_dirty = True
 
     # --- lifecycle ----------------------------------------------------------
     def start(self) -> None:
@@ -219,6 +231,7 @@ class Room:
             self.world.to_payload(),
             self.zone.to_payload(),
             ack=player.last_processed_seq,
+            loot=[drop.to_payload() for drop in self.drops.values()],
         )
 
     def hello_payload(self, player: Player) -> dict:
@@ -288,6 +301,33 @@ class Room:
         if living and all(p.ready for p in living):
             self.begin_depart()
 
+    def collect_loot(self, pid: str, drop_id: str) -> None:
+        """Pick up a drop if this player is standing on it.
+
+        Camp has none. Too late once the walk-out has started. Distance is
+        measured from the feet, the same way the ready prompt is.
+        """
+        if self.phase != protocol.PHASE_PLAYING or self.departing:
+            return
+        if self.zone.kind == zones.KIND_CAMP:
+            return
+        player = self.players.get(pid)
+        if player is None or not player.alive:
+            return
+        drop = self.drops.get(drop_id)
+        if drop is None:
+            return
+        feet_y = player.y + PLAYER_HALF_HEIGHT
+        if (drop.x - player.x) ** 2 + (drop.y - feet_y) ** 2 > LOOT_COLLECT_DIST * LOOT_COLLECT_DIST:
+            return
+        player.loot.append(drop.key)
+        del self.drops[drop_id]
+        self.loot_pickup_events.append(
+            loot.LootPickup(drop.id, player.id, drop.key, drop.x, drop.y).to_payload()
+        )
+        self._loot_dirty = True
+        self._roster_dirty = True
+
     def begin_depart(self) -> None:
         """Lock input and line the party up for the exit."""
         if self.departing or self.zone.kind != zones.KIND_CAMP:
@@ -337,6 +377,7 @@ class Room:
         self.enemies.clear()
         self.coins.clear()
         self.noises.clear()
+        self._load_drops()
         for player in self.players.values():
             player.ready = False
             player.x, player.y = self.pick_spawn()
@@ -702,6 +743,10 @@ class Room:
         due = self.tick % ROSTER_EVERY_N_TICKS == 0 or self._roster_dirty
         roster = [p.to_payload() for p in self.players.values()] if due else None
         self._roster_dirty = False
+        loot_rows = (
+            [drop.to_payload() for drop in self.drops.values()] if self._loot_dirty else None
+        )
+        self._loot_dirty = False
         await self.broadcast(
             protocol.snapshot(
                 self.tick,
@@ -715,6 +760,8 @@ class Room:
                 departing=self.departing,
                 zone_key=self.zone.key,
                 roster=roster,
+                loot=loot_rows,
+                loot_pickups=self.loot_pickup_events or None,
             )
         )
 
@@ -739,6 +786,7 @@ class Room:
                 self.attack_events = []
                 self.kill_events = []
                 self.pickup_events = []
+                self.loot_pickup_events = []
             delay = next_time - time.perf_counter()
             if delay > 0:
                 await asyncio.sleep(delay)

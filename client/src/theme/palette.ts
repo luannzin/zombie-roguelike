@@ -30,6 +30,21 @@ export interface Palette {
   inkMuted: string;
   inkAccent: string;
 
+  rarity: {
+    common: string;
+    uncommon: string;
+    rare: string;
+    epic: string;
+    legendary: string;
+  };
+  rarityGlow: {
+    common: Channels;
+    uncommon: Channels;
+    rare: Channels;
+    epic: Channels;
+    legendary: Channels;
+  };
+
   tiles: {
     floor: string[];
     floorSpeck: string;
@@ -135,6 +150,21 @@ function resolve(): Palette {
     ink: v('--ink'),
     inkMuted: v('--ink-muted'),
     inkAccent: v('--ink-accent'),
+
+    rarity: {
+      common: v('--rarity-common'),
+      uncommon: v('--rarity-uncommon'),
+      rare: v('--rarity-rare'),
+      epic: v('--rarity-epic'),
+      legendary: v('--rarity-legendary'),
+    },
+    rarityGlow: {
+      common: rgb('--rarity-common-rgb'),
+      uncommon: rgb('--rarity-uncommon-rgb'),
+      rare: rgb('--rarity-rare-rgb'),
+      epic: rgb('--rarity-epic-rgb'),
+      legendary: rgb('--rarity-legendary-rgb'),
+    },
 
     tiles: {
       floor: [v('--tile-floor-a'), v('--tile-floor-b'), v('--tile-floor-c')],

@@ -18,6 +18,15 @@
       "fps": 16,
       "anchorY": 84,
       "loop": false
+    },
+    "aura": {
+      "file": "aura.png",
+      "frameWidth": 16,
+      "frameHeight": 48,
+      "frames": 8,
+      "fps": 10,
+      "anchorY": 42,
+      "loop": true
     }
   }
 }

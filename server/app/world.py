@@ -69,13 +69,22 @@ _EPS = 1e-4
 
 
 class TileMap:
-    def __init__(self, tiles: list[list[int]], seed: int = 0, scenery: dict | None = None):
+    def __init__(
+        self,
+        tiles: list[list[int]],
+        seed: int = 0,
+        scenery: dict | None = None,
+        loot: list | None = None,
+    ):
         self.tiles = tiles
         # The story laid over this map: a legend plus one compact row per
         # drawable, straight from `scenery.to_payload`. Held as the payload
         # rather than as objects because nothing on the server reads it back —
         # it is placed once at generation time and forwarded verbatim.
         self.scenery = scenery or {"propKinds": [], "props": []}
+        # Initial loot rows from `loot.scatter`. The room hydrates live drops
+        # from this; collected items do not write back. Camp maps leave it empty.
+        self.loot = loot or []
         # Shipped to the client, which hashes it with tile coordinates to place
         # decoration (grass tufts, prop variants). Sending a seed instead of a
         # decoration layer keeps the map payload the size of the map.

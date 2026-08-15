@@ -46,7 +46,13 @@ export interface ReadyPacket {
   type: 'ready';
 }
 
-export type ClientMessage = InputPacket | PingPacket | StartPacket | ReadyPacket;
+/** Pick up a world drop. Server ignores it unless you are close enough. */
+export interface CollectPacket {
+  type: 'collect';
+  id: string;
+}
+
+export type ClientMessage = InputPacket | PingPacket | StartPacket | ReadyPacket | CollectPacket;
 
 /**
  * Canonical scale, decided server-side (see server/app/config.py):
@@ -91,6 +97,35 @@ export interface GameConfig {
   ringTilesY: number;
   /** How close to the fire (tiles, feet to flame) the ready prompt answers. */
   readyRangeTiles: number;
+  /** How close to a drop (tiles, feet to item) E will collect. */
+  lootCollectTiles?: number;
+  /** Catalog of world loot. Keyed by item key; `frame` indexes the loot atlas. */
+  loot?: Record<string, LootItemConfig>;
+}
+
+export type LootRarity = 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary';
+
+export interface LootItemConfig {
+  name: string;
+  rarity: LootRarity;
+  frame: number;
+}
+
+/** One world drop. `k` keys into `GameConfig.loot`. */
+export interface LootState {
+  id: string;
+  k: string;
+  x: number;
+  y: number;
+}
+
+/** A drop that just entered a player's pocket. */
+export interface LootPickupEvent {
+  id: string;
+  by: string;
+  k: string;
+  x: number;
+  y: number;
 }
 
 /**
@@ -254,6 +289,8 @@ export interface PlayerMeta {
   level: number;
   xpInLevel: number;
   xpToLevel: number;
+  /** Item keys collected this run. */
+  loot?: string[];
 }
 
 /** A player with everything known about them: `welcome` and roster rows. */
@@ -408,6 +445,8 @@ export interface WelcomeMessage {
    * this or `queue_input` drops every packet as a replay.
    */
   ack: number;
+  /** Remaining world drops. Replaces the client's list on every welcome. */
+  loot?: LootState[];
 }
 
 export interface SnapshotMessage {
@@ -432,6 +471,10 @@ export interface SnapshotMessage {
   attacks: AttackEvent[];
   kills: KillEvent[];
   pickups: PickupEvent[];
+  /** Remaining world drops. Present only when the set changed. */
+  loot?: LootState[];
+  /** Drops collected since the last snapshot. */
+  lootPickups?: LootPickupEvent[];
 }
 
 export interface PongMessage {

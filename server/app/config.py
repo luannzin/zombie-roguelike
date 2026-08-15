@@ -337,6 +337,12 @@ COIN_REPULSE_SPEED = TILE_SIZE * COIN_REPULSE_TILES_PER_SEC
 COIN_ATTRACT_ACCEL = TILE_SIZE * COIN_ATTRACT_ACCEL_TILES
 COIN_ATTRACT_MAX_SPEED = TILE_SIZE * COIN_ATTRACT_MAX_TILES_PER_SEC
 
+# --- loot (authored in tiles) -----------------------------------------------
+# How close the feet have to be for E to collect. Tight on purpose: the
+# tooltip is a reach, not a magnet.
+LOOT_COLLECT_TILES = 1.25
+LOOT_COLLECT_DIST = TILE_SIZE * LOOT_COLLECT_TILES
+
 # --- combat (authored in tiles) ---------------------------------------------
 SHOT_RANGE_TILES = 8.0
 MUZZLE_OFFSET_TILES = 0.25
@@ -379,6 +385,7 @@ def client_config() -> dict:
     # at module scope would be a cycle. Enemy stat blocks still reach the client
     # through this one function, which stays the single client-config contract.
     from .enemies import enemy_types_payload
+    from .loot import catalog_payload
 
     return {
         "tickRate": TICK_RATE,
@@ -409,4 +416,8 @@ def client_config() -> dict:
         "ringTilesY": CAMP_RING_TILES_Y,
         # How close to the fire the ready prompt answers, in tiles.
         "readyRangeTiles": CAMP_READY_RANGE_TILES,
+        # How close to a drop E will collect, in tiles.
+        "lootCollectTiles": LOOT_COLLECT_TILES,
+        # Catalog: name, rarity, atlas frame. The client never invents an item.
+        "loot": catalog_payload(),
     }

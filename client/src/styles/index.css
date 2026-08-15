@@ -49,6 +49,18 @@
   --ink-muted: #6f6f85;
   --ink-accent: #f2a541;
 
+  /* loot rarity — tooltip copy and the aura the canvas tints */
+  --rarity-common: #e8e8f0;
+  --rarity-uncommon: #5dce7a;
+  --rarity-rare: #5b8def;
+  --rarity-epic: #b46ee8;
+  --rarity-legendary: #f2c14b;
+  --rarity-common-rgb: 232 232 240;
+  --rarity-uncommon-rgb: 93 206 122;
+  --rarity-rare-rgb: 91 141 239;
+  --rarity-epic-rgb: 180 110 232;
+  --rarity-legendary-rgb: 242 193 75;
+
   /* meters */
   --hp-high: #7bd389;
   --hp-mid: #f2a541;
@@ -259,6 +271,12 @@
   --color-ink: var(--ink);
   --color-ink-muted: var(--ink-muted);
   --color-ink-accent: var(--ink-accent);
+
+  --color-rarity-common: var(--rarity-common);
+  --color-rarity-uncommon: var(--rarity-uncommon);
+  --color-rarity-rare: var(--rarity-rare);
+  --color-rarity-epic: var(--rarity-epic);
+  --color-rarity-legendary: var(--rarity-legendary);
 
   --color-hp-high: var(--hp-high);
   --color-hp-mid: var(--hp-mid);

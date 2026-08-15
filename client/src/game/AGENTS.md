@@ -199,9 +199,10 @@ seam React is allowed to read.
 - New per-frame state stays here or in `render/`; it must not reach React.
 - New HUD data means a field on the `hud-store` snapshot, published at 5 Hz —
   not a subscription from a component to the game. Camp ready uses `ready` and
-  `prompt`; the walk-out uses `cinematic`. A world `Tooltip` also needs an
-  `anchor` id written in `syncTooltipAnchors` each frame — show/hide is the
-  store, the pixels are the camera.
+  `prompt`; a nearby drop uses `lootPrompt`; the walk-out uses `cinematic`.
+  A world `Tooltip` also needs an `anchor` id written in `syncTooltipAnchors`
+  each frame — show/hide is the store, the pixels are the camera. E is
+  interact: ready at the fire, collect on a drop. The server validates range.
 - Anything long-lived created here gets a matching release in `Game.dispose()`
   in the same change.
 

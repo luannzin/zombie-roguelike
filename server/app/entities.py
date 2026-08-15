@@ -83,6 +83,9 @@ class Player:
     #: Lifetime xp; the level curve lives in config.level_progress.
     xp: int = 0
     gold: int = 0
+    #: Item keys collected this run. Extraction will spend them; until then
+    #: they just sit in the pocket.
+    loot: list[str] = field(default_factory=list)
 
     # server bookkeeping (never sent verbatim)
     inputs: deque = field(default_factory=deque)
@@ -148,6 +151,7 @@ class Player:
             "level": level,
             "xpInLevel": into_level,
             "xpToLevel": to_level,
+            "loot": list(self.loot),
         }
 
 

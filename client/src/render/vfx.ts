@@ -53,6 +53,8 @@ export interface VfxAtlas {
   summon: VfxSheet | null;
   /** The bonfire roaring when the match starts: charge, rise, impact, collapse. */
   kindle: VfxSheet | null;
+  /** Small looping column over epic/legendary loot. */
+  aura: VfxSheet | null;
 }
 
 interface EffectManifest {
@@ -67,19 +69,27 @@ interface EffectManifest {
 
 interface VfxManifest {
   tile: number;
-  effects: { summon?: EffectManifest; kindle?: EffectManifest };
+  effects: { summon?: EffectManifest; kindle?: EffectManifest; aura?: EffectManifest };
 }
 
 const ROOT = '/vfx';
 
-export async function loadVfx(): Promise<VfxAtlas | null> {
+let atlasPromise: Promise<VfxAtlas | null> | null = null;
+
+export function loadVfx(): Promise<VfxAtlas | null> {
+  atlasPromise ??= fetchVfx();
+  return atlasPromise;
+}
+
+async function fetchVfx(): Promise<VfxAtlas | null> {
   try {
     const manifest = await loadJson<VfxManifest>(`${ROOT}/manifest.json`);
-    const [summon, kindle] = await Promise.all([
+    const [summon, kindle, aura] = await Promise.all([
       manifest.effects.summon ? loadEffect(manifest.effects.summon) : null,
       manifest.effects.kindle ? loadEffect(manifest.effects.kindle) : null,
+      manifest.effects.aura ? loadEffect(manifest.effects.aura) : null,
     ]);
-    return { tile: manifest.tile, summon, kindle };
+    return { tile: manifest.tile, summon, kindle, aura };
   } catch (err) {
     console.warn('[vfx] no effect atlas, effects disabled:', err);
     return null;

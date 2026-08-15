@@ -142,6 +142,11 @@ subtree.
   pieces and a hash cannot agree on that. Anything decidable from
   `(tx, ty, seed)` belongs to the client; anything that means something belongs
   to a scene.
+- Collectable loot is placed by the server next to those scenes
+  (`server/app/loot.py`), not hashed from the seed. Five rarities (common
+  white, uncommon green, rare blue, epic purple, legendary gold). E collects
+  when close; the name in the tooltip takes the rarity colour. Epic and
+  legendary also get a small looping beam. Camp maps have none.
 
 ## Child DOX Index
 

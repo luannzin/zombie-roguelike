@@ -23,6 +23,9 @@ import type {
   GameConfig,
   InputPacket,
   KillEvent,
+  LootPickupEvent,
+  LootRarity,
+  LootState,
   PickupEvent,
   PlayerMeta,
   ServerMessage,
@@ -39,7 +42,7 @@ import { Renderer } from '../render/renderer';
 import { SpriteBook } from '../render/sprites';
 import { NOTICE_AT } from '../render/layers/vision';
 import { tileHash } from '../render/terrain';
-import type { DrawableCoin, DrawableEntity } from '../render/types';
+import type { DrawableCoin, DrawableEntity, DrawableLoot } from '../render/types';
 import { whenFontsReady } from '../theme/fonts';
 import { palette } from '../theme/palette';
 import { hitscan, type RayTarget } from './combat';
@@ -77,6 +80,8 @@ const MOVING_SPEED = 1;
  * campfire sprite is 1.75 tiles tall; this clears the flames by a bit.
  */
 const FIRE_TOOLTIP_LIFT_TILES = 2.5;
+/** How far above a drop the collect tooltip sits, in tiles. */
+const LOOT_TOOLTIP_LIFT_TILES = 1.1;
 /** Distance between boot prints, in tiles. One stride, not one frame. */
 const FOOTPRINT_STRIDE = 0.9;
 /**
@@ -252,6 +257,8 @@ export class Game {
    * instantly, and overwritten by the server's own row on the next snapshot.
    */
   private localReady = false;
+  /** Remaining world drops. Replaced on welcome and on a dirty snapshot. */
+  private readonly loot = new Map<string, LootState>();
 
   private accumulator = 0;
   private lastFrame = 0;
@@ -282,7 +289,7 @@ export class Game {
     // still has to ANSWER the key, or pressing F in the camp is indistinguishable
     // from a broken keybind. See `Lantern.toggle`.
     this.input.onToggleLantern = () => this.lantern.toggle();
-    this.input.onReady = () => this.sendReady();
+    this.input.onInteract = () => this.sendInteract();
     this.minimap = new Minimap(options.minimapCanvas);
   }
 
@@ -511,7 +518,9 @@ export class Game {
       cinematic: false,
       ready: null,
       prompt: null,
+      lootPrompt: null,
     });
+    this.replaceLoot(msg.loot ?? []);
   }
 
   private onSnapshot(msg: SnapshotMessage): void {
@@ -579,6 +588,8 @@ export class Game {
     for (const attack of msg.attacks) this.onAttack(attack);
     for (const kill of msg.kills) this.onKill(kill);
     for (const pickup of msg.pickups ?? []) this.onPickup(pickup);
+    if (msg.loot) this.replaceLoot(msg.loot);
+    for (const ev of msg.lootPickups ?? []) this.onLootPickup(ev);
   }
 
   /**
@@ -607,6 +618,19 @@ export class Game {
   private onPickup(pickup: PickupEvent): void {
     if (pickup.by !== this.localId) return;
     this.effects.spawnGoldPickup(pickup.x, pickup.y, pickup.gold);
+    this.camera.addTrauma(PICKUP_TRAUMA);
+  }
+
+  private replaceLoot(rows: LootState[]): void {
+    this.loot.clear();
+    for (const row of rows) this.loot.set(row.id, row);
+  }
+
+  private onLootPickup(ev: LootPickupEvent): void {
+    this.loot.delete(ev.id);
+    if (ev.by !== this.localId) return;
+    const def = this.config?.loot?.[ev.k];
+    this.effects.spawnReward(ev.x, ev.y, def?.name ?? ev.k);
     this.camera.addTrauma(PICKUP_TRAUMA);
   }
 
@@ -872,6 +896,8 @@ export class Game {
       animTime: this.visuals.advanceAnim(coin.id, true, dt),
     }));
 
+    const loot = this.drawableLoot(dt);
+
     // Everyone in this frame was touched above; anyone who left — a player who
     // disconnected, an enemy that died — is now unreferenced and gets dropped.
     this.visuals.prune();
@@ -892,6 +918,7 @@ export class Game {
       config: this.config,
       entities,
       coins,
+      loot,
       effects: this.effects,
       fov: this.fov,
       danger: this.dangerLevel(),
@@ -1259,6 +1286,7 @@ export class Game {
       cinematic: this.departing,
       ready: this.readyCount(),
       prompt: this.readyPrompt(),
+      lootPrompt: this.lootPromptInfo(),
       net: {
         players: this.snapshots.latest?.players.size ?? 0,
         enemies: this.snapshots.latest?.enemies.size ?? 0,
@@ -1270,12 +1298,15 @@ export class Game {
     });
   }
 
-  private sendReady(): void {
+  private sendInteract(): void {
     if (this.departing || this.introLeft > 0) return;
-    if (this.zone?.kind !== 'camp') return;
-    if (!this.nearFire()) return;
-    this.connection.send({ type: 'ready' });
-    this.localReady = !this.localReady;
+    if (this.readyPrompt() === 'ready') {
+      this.connection.send({ type: 'ready' });
+      this.localReady = !this.localReady;
+      return;
+    }
+    const near = this.nearLoot();
+    if (near) this.connection.send({ type: 'collect', id: near.id });
   }
 
   private nearFire(): boolean {
@@ -1308,6 +1339,64 @@ export class Game {
     return this.nearFire() ? 'ready' : null;
   }
 
+  private lootPromptInfo(): { id: string; name: string; rarity: LootRarity } | null {
+    if (this.zone?.kind === 'camp' || this.departing || this.introLeft > 0) return null;
+    const near = this.nearLoot();
+    if (!near || !this.config) return null;
+    const def = this.config.loot?.[near.k];
+    if (!def) return null;
+    return { id: near.id, name: def.name, rarity: def.rarity };
+  }
+
+  private nearLoot(): LootState | null {
+    const config = this.config;
+    const local = this.local;
+    if (!config || !local) return null;
+    const range = (config.lootCollectTiles ?? 1.25) * config.tileSize;
+    const feetY = local.state.y + config.playerHalfHeight;
+    let best: LootState | null = null;
+    let bestD2 = range * range;
+    for (const drop of this.loot.values()) {
+      const dx = drop.x - local.state.x;
+      const dy = drop.y - feetY;
+      const d2 = dx * dx + dy * dy;
+      if (d2 < bestD2) {
+        bestD2 = d2;
+        best = drop;
+      }
+    }
+    return best;
+  }
+
+  private drawableLoot(dt: number): DrawableLoot[] {
+    const config = this.config;
+    const fov = this.fov;
+    const ts = config?.tileSize ?? 16;
+    const catalog = config?.loot ?? {};
+    const out: DrawableLoot[] = [];
+    for (const drop of this.loot.values()) {
+      const def = catalog[drop.k];
+      if (!def) continue;
+      const lit = fov
+        ? fov.lightAt(Math.floor(drop.x / ts), Math.floor(drop.y / ts))
+        : 1;
+      const visibility = clamp01((lit - ENEMY_HIDE_LIGHT) / (ENEMY_SHOW_LIGHT - ENEMY_HIDE_LIGHT));
+      out.push({
+        id: drop.id,
+        key: drop.k,
+        x: drop.x,
+        y: drop.y,
+        frame: def.frame,
+        rarity: def.rarity,
+        beam: def.rarity === 'epic' || def.rarity === 'legendary',
+        visibility,
+        animTime: this.visuals.advanceAnim(drop.id, true, dt),
+        phase: hashLootId(drop.id),
+      });
+    }
+    return out;
+  }
+
   /**
    * Pin world tooltips to the same camera the canvas just used.
    *
@@ -1315,18 +1404,31 @@ export class Game {
    * the tooltip can sit on the fire without a React render.
    */
   private syncTooltipAnchors(): void {
-    if (this.readyPrompt() !== 'ready' || !this.world || !this.config) {
-      dropTooltipAnchor('ready');
-      return;
-    }
-    const fire = this.world.fires[0];
-    if (!fire) {
-      dropTooltipAnchor('ready');
-      return;
-    }
     const view = projectionFor(this.camera);
-    const lift = this.config.tileSize * FIRE_TOOLTIP_LIFT_TILES;
-    writeTooltipAnchor('ready', view.x(fire.x), view.y(fire.y - lift));
+    if (this.readyPrompt() === 'ready' && this.world && this.config) {
+      const fire = this.world.fires[0];
+      if (fire) {
+        const lift = this.config.tileSize * FIRE_TOOLTIP_LIFT_TILES;
+        writeTooltipAnchor('ready', view.x(fire.x), view.y(fire.y - lift));
+      } else {
+        dropTooltipAnchor('ready');
+      }
+    } else {
+      dropTooltipAnchor('ready');
+    }
+
+    const near = this.lootPromptInfo();
+    if (near && this.config) {
+      const drop = this.loot.get(near.id);
+      if (drop) {
+        const lift = this.config.tileSize * LOOT_TOOLTIP_LIFT_TILES;
+        writeTooltipAnchor('loot', view.x(drop.x), view.y(drop.y - lift));
+      } else {
+        dropTooltipAnchor('loot');
+      }
+    } else {
+      dropTooltipAnchor('loot');
+    }
   }
 
   /**
@@ -1375,6 +1477,12 @@ function capsule(
     radius,
     alive,
   };
+}
+
+function hashLootId(id: string): number {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) | 0;
+  return ((h & 0xffff) / 0xffff) * Math.PI * 2;
 }
 
 /** Dots for the minimap: same entities, only the fields it needs. */

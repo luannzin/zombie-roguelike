@@ -12,7 +12,7 @@
 
 import type { Effects } from '../game/effects';
 import type { TileMap } from '../game/world';
-import type { GameConfig } from '../net/protocol';
+import type { GameConfig, LootRarity } from '../net/protocol';
 import type { Camera } from './camera';
 import type { FovField } from './fov';
 
@@ -101,6 +101,22 @@ export interface DrawableCoin {
   animTime: number;
 }
 
+/** A collectable drop. Does not move; `visibility` hides it in the dark. */
+export interface DrawableLoot {
+  id: string;
+  key: string;
+  x: number;
+  y: number;
+  frame: number;
+  rarity: LootRarity;
+  /** Epic and legendary get the looping beam. */
+  beam: boolean;
+  visibility: number;
+  animTime: number;
+  /** Stable phase so neighbouring auras do not pulse together. */
+  phase: number;
+}
+
 export interface RenderState {
   world: TileMap;
   camera: Camera;
@@ -108,6 +124,7 @@ export interface RenderState {
   /** Players and enemies together; the renderer depth-sorts them. */
   entities: DrawableEntity[];
   coins: DrawableCoin[];
+  loot: DrawableLoot[];
   effects: Effects;
   /** Team light + explored memory. Null disables the darkness pass entirely. */
   fov: FovField | null;

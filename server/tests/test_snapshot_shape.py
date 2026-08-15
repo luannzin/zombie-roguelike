@@ -21,7 +21,7 @@ from app.coins import Coin  # noqa: E402
 from app.entities import Player  # noqa: E402
 
 MOVING = {"id", "x", "y", "vx", "vy", "ax", "ay", "seq", "lantern", "hp", "alive", "ready"}
-IDENTITY = {"name", "color", "kills", "deaths", "xp", "gold", "level", "xpInLevel", "xpToLevel"}
+IDENTITY = {"name", "color", "kills", "deaths", "xp", "gold", "level", "xpInLevel", "xpToLevel", "loot"}
 
 
 def main() -> None:

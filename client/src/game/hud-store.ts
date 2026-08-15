@@ -9,7 +9,7 @@
 import { Store } from '../lib/store';
 import type { LanternReading } from './lantern';
 import type { ConnectionStatus } from '../net/connection';
-import type { ZoneInfo } from '../net/protocol';
+import type { LootRarity, ZoneInfo } from '../net/protocol';
 
 /** How often the game republishes HUD state. 5 Hz is plenty for text. */
 export const HUD_INTERVAL = 0.2;
@@ -95,6 +95,8 @@ export interface HudSnapshot {
   ready: { here: number; total: number } | null;
   /** Proximity prompt at the fire. Null when it should not be on screen. */
   prompt: 'ready' | null;
+  /** Proximity prompt on a world drop. */
+  lootPrompt: { id: string; name: string; rarity: LootRarity } | null;
 }
 
 export const EMPTY_HUD: HudSnapshot = {
@@ -110,6 +112,7 @@ export const EMPTY_HUD: HudSnapshot = {
   cinematic: false,
   ready: null,
   prompt: null,
+  lootPrompt: null,
 };
 
 export type HudStore = Store<HudSnapshot>;

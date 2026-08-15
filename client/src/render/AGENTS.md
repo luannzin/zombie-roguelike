@@ -17,14 +17,15 @@ mutation, no React.
 | `sprites.ts` | sheet loading, `SpriteBook`, per-colour multiply tints |
 | `terrain.ts` | terrain atlas loading (4 grounds, blend stencils, props, flat decals, the animated campfire) |
 | `scenery.ts` | scenery atlas loading: standing props and flat decals of what people left |
-| `vfx.ts` | effect atlas loading: one-shot animation sheets (summon, kindle) |
+| `vfx.ts` | effect atlas loading: one-shot sheets (summon, kindle) and the looping loot `aura` |
+| `loot.ts` | loot atlas: one 16x16 frame per collectable item |
 | `fov.ts` | shared field of view — `light` and `heat` fields |
 | `wind.ts` | the shared gust field every bending thing reads |
 | `disturbance.ts` | what bodies do to the plants they walk through |
 | `layers/vision.ts` | the ENEMY's hunt diamond — fill meter and bang over the head |
 | `layers/scenery.ts` | placed scenes: flat decals into the ground bake, standing props into the depth sort |
 | `minimap.ts` | the minimap canvas |
-| `layers/` | the actual drawing: terrain, entities, vision, effects, atmosphere, darkness, vignette |
+| `layers/` | the actual drawing: terrain, entities, loot, vision, effects, atmosphere, darkness, vignette |
 
 ## Local Contracts
 
@@ -32,11 +33,12 @@ mutation, no React.
   in one `entities` list and are drawn by one path.
 - `renderer.ts` only sequences passes and switches spaces; drawing lives in
   `layers/`. **The pass order is the atmosphere** — ground (soil, litter, flat
-  scenery) → dust → entities, bonfires and standing scenery (one depth sort by
-  `y`) → overgrowth → motes → darkness → combat effects → hunt diamond →
-  labels → vignette. Effects go over the darkness because a muzzle flash is a
-  light source, not a thing being lit. The hunt diamond goes AFTER the
-  darkness on purpose, see below.
+  scenery) → dust → coins and loot sprites → entities, bonfires and standing
+  scenery (one depth sort by `y`) → overgrowth → motes → darkness → combat
+  effects → loot auras / epic-legendary beams → hunt diamond → labels →
+  vignette. Effects and loot auras go over the darkness because they are
+  light, not things being lit. An unlit drop is not drawn at all. The hunt
+  diamond goes AFTER the darkness on purpose, see below.
 - **`fov.ts` is what the PLAYERS can see; `layers/vision.ts` is the ENEMY hunt
   tell.** Unrelated systems: the first is a client-side tile field that decides
   what is drawn at all, the second fills a diamond from the `aw` meter on the

@@ -57,7 +57,7 @@ fire. On another device, use the Network URL Vite prints (`http://192.168.x.x:51
 the client talks to that same origin and Vite proxies `/ws` to the server.
 
 Controls: **WASD** move · **mouse** aim · **left click / hold** shoot · **F**
-lantern on/off · **E** ready (at the campfire).
+lantern on/off · **E** ready (at the campfire) / collect (a nearby drop).
 
 Point the client at another host with `VITE_SERVER_URL=http://192.168.0.10:8000 bun run dev`
 — an HTTP origin, not a socket URL; the client derives both from it. That host

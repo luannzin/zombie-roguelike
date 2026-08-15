@@ -13,7 +13,7 @@ output the game actually loads.
   (`sheet.png` + `manifest.json`), `terrain/`, `scenery/`, `vfx/`, `hud/`.
   Vite's `publicDir` points here, so these files are fetched as
   `/player/sheet.png`, `/backpack/sheet.png`, `/terrain/ground_loam.png`,
-  `/scenery/cabin.png`, ….
+  `/scenery/cabin.png`, `/loot/sheet.png`, ….
 - `terrain/` is the PLACE — soil, stone, wood that grew there — and the client
   scatters it off the map seed. `scenery/` was carried in by somebody, and it
   arrives placed in groups from `server/app/scenery.py`. Two folders because

@@ -9,6 +9,7 @@ imported from make_textures rather than copied.
 Output (assets/processed/vfx/):
     summon.png    14 frames, 32x96 — a player materialising at the campfire
     kindle.png    16 frames, 48x96 — the bonfire roaring when the match starts
+    aura.png      8 frames, 16x48  — a small looping column over epic/legendary loot
     manifest.json
 
 EFFECT SHEETS ARE GREYSCALE. An effect that belongs to somebody — a summon, a
@@ -97,6 +98,12 @@ KINDLE_CHARGE = 0.02
 KINDLE_RISE = 0.16
 KINDLE_IMPACT = 0.48
 KINDLE_COLLAPSE = 0.64
+
+# A thin column that sits on a dropped relic. LOOPING — sine of the frame
+# phase, so the last frame hands back to the first. Smaller than a summon:
+# this is a tell, not an arrival.
+AURA_FRAMES = 8
+AURA_FPS = 10
 
 
 def _ease_out(t: float) -> float:
@@ -479,6 +486,51 @@ def make_kindle_frame(
     return img
 
 
+def make_aura_frame(
+    width: int, height: int, contact_y: int, index: int, total: int
+) -> Image.Image:
+    """A small looping column. Phase is a sine of the frame so it wraps."""
+    img = Image.new("RGBA", (width, height), TRANSPARENT)
+    field = [[0.0] * width for _ in range(height)]
+    cx = width * 0.5
+    phase = (index / total) * math.tau
+    breathe = 0.82 + 0.18 * math.sin(phase)
+    sway = math.sin(phase * 2.0) * width * 0.06
+    reach = contact_y * (0.72 + 0.10 * math.sin(phase + 1.2))
+
+    # Thin thread, a little wider at the base.
+    for row in range(int(contact_y - reach), contact_y + 1):
+        if row < 0 or row >= height:
+            continue
+        t = (contact_y - row) / max(reach, 1.0)
+        half = (0.55 + (1.0 - t) * 0.85) * breathe
+        mid = cx + sway * t
+        for col in range(int(mid - half - 1), int(mid + half + 2)):
+            if 0 <= col < width:
+                dist = abs(col - mid) / max(half, 0.35)
+                _add(field, col, row, max(0.0, 1.15 - dist * 1.05) * (0.55 + t * 0.45))
+
+    # Ground bloom — the column is sitting on something, not hovering.
+    _ellipse(field, cx, contact_y, width * 0.28, height * 0.045, 0.85 * breathe)
+
+    # A few motes that rise and wrap with the phase.
+    for i in range(5):
+        spin = phase + i * 1.256
+        mx = int(round(cx + math.sin(spin) * width * 0.18))
+        my = int(round(contact_y - ((spin / math.tau) % 1.0) * reach * 0.9))
+        _add(field, mx, my, 0.55 + 0.25 * math.sin(spin * 2.0))
+
+    px = img.load()
+    for y in range(height):
+        for x in range(width):
+            value = field[y][x]
+            if value <= 0.08:
+                continue
+            colour: RGBA = pick(BEAM, clamp01(value * 0.95), x, y)
+            px[x, y] = (colour[0], colour[1], colour[2], _quantize_alpha(value * 1.05))
+    return img
+
+
 def build(args) -> Path:
     tile = args.tile
     out_dir = PROCESSED_DIR / "vfx"
@@ -506,6 +558,17 @@ def build(args) -> Path:
     ]
     pack(kindle_frames, kindle_w, kindle_h).save(out_dir / "kindle.png")
 
+    # A thin looping column for epic/legendary loot. One tile wide, three
+    # tall — a tell, not an arrival. Sine-phased so frame 0 and frame 7 meet.
+    aura_w = tile
+    aura_h = tile * 3
+    aura_contact = aura_h - round(tile * 0.35)
+    aura_frames = [
+        make_aura_frame(aura_w, aura_h, aura_contact, i, AURA_FRAMES)
+        for i in range(AURA_FRAMES)
+    ]
+    pack(aura_frames, aura_w, aura_h).save(out_dir / "aura.png")
+
     manifest = {
         "tile": tile,
         "effects": {
@@ -530,6 +593,15 @@ def build(args) -> Path:
                 "anchorY": kindle_contact,
                 "loop": False,
             },
+            "aura": {
+                "file": "aura.png",
+                "frameWidth": aura_w,
+                "frameHeight": aura_h,
+                "frames": AURA_FRAMES,
+                "fps": AURA_FPS,
+                "anchorY": aura_contact,
+                "loop": True,
+            },
         },
     }
     (out_dir / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
@@ -537,7 +609,8 @@ def build(args) -> Path:
     print(
         f"wrote {out_dir}: summon {SUMMON_FRAMES}x{width}x{height} "
         f"@ {SUMMON_FPS}fps, kindle {KINDLE_FRAMES}x{kindle_w}x{kindle_h} "
-        f"@ {KINDLE_FPS}fps, contact row {contact_y}/{kindle_contact}"
+        f"@ {KINDLE_FPS}fps, aura {AURA_FRAMES}x{aura_w}x{aura_h} "
+        f"@ {AURA_FPS}fps loop, contact row {contact_y}/{kindle_contact}/{aura_contact}"
     )
     return out_dir
 

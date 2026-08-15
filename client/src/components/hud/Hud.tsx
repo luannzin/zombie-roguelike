@@ -37,6 +37,7 @@ import { Vitals } from './Vitals';
 import { ZONE_INTRO_MS, ZoneTitle } from './ZoneTitle';
 import { ReadyCount } from './ReadyCount';
 import { InteractPrompt } from './InteractPrompt';
+import { LootPrompt } from './LootPrompt';
 
 export interface HudProps {
   snapshot: HudSnapshot;
@@ -126,6 +127,7 @@ export function Hud({ snapshot, minimapRef, error }: HudProps) {
         written by the game loop.
       */}
       <InteractPrompt prompt={snapshot.prompt} />
+      <LootPrompt prompt={snapshot.lootPrompt} />
     </>
   );
 }

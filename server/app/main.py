@@ -102,6 +102,10 @@ async def game_socket(ws: WebSocket, code: str, name: str | None = None):
                 await room.begin()
             elif kind == protocol.MSG_READY:
                 room.toggle_ready(player.id)
+            elif kind == protocol.MSG_COLLECT:
+                drop_id = msg.get("id")
+                if isinstance(drop_id, str):
+                    room.collect_loot(player.id, drop_id)
     except WebSocketDisconnect:
         pass
     except Exception:

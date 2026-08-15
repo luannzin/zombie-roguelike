@@ -1,0 +1,80 @@
+{
+  "tile": 16,
+  "frameWidth": 16,
+  "frameHeight": 16,
+  "frames": 24,
+  "items": {
+    "old_tools": {
+      "frame": 0
+    },
+    "empty_bottle": {
+      "frame": 1
+    },
+    "broken_toy": {
+      "frame": 2
+    },
+    "broken_clock": {
+      "frame": 3
+    },
+    "scrap": {
+      "frame": 4
+    },
+    "camera": {
+      "frame": 5
+    },
+    "old_headphone": {
+      "frame": 6
+    },
+    "portable_radio": {
+      "frame": 7
+    },
+    "compass": {
+      "frame": 8
+    },
+    "military_camera": {
+      "frame": 9
+    },
+    "gold_ring": {
+      "frame": 10
+    },
+    "binoculars": {
+      "frame": 11
+    },
+    "precious_gem": {
+      "frame": 12
+    },
+    "stone_idol": {
+      "frame": 13
+    },
+    "tribal_mask": {
+      "frame": 14
+    },
+    "ancient_amulet": {
+      "frame": 15
+    },
+    "gold_figurine": {
+      "frame": 16
+    },
+    "raw_diamond": {
+      "frame": 17
+    },
+    "black_pearl": {
+      "frame": 18
+    },
+    "black_diamond": {
+      "frame": 19
+    },
+    "lost_crown": {
+      "frame": 20
+    },
+    "sanctuary_relic": {
+      "frame": 21
+    },
+    "vault_key": {
+      "frame": 22
+    },
+    "royal_ring": {
+      "frame": 23
+    }
+  }
+}

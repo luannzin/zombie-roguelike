@@ -13,7 +13,8 @@ imported by `app/` and never run at request time.
 | `process_sprites.py` | raw → production | `assets/processed/<name>/` |
 | `make_textures.py` | generates final pixels | `assets/processed/terrain/` (4 grounds, blend, patch, rock, tree, deadtree, stump, grass, bush, branch, leaves, fern, campfire) |
 | `make_scenery.py` | generates final pixels | `assets/processed/scenery/` (cabin, tent, fence, sign, logs, crate, firepit, blood, tracks, clothes, debris) |
-| `make_vfx.py` | generates final pixels | `assets/processed/vfx/` (summon, kindle) |
+| `make_vfx.py` | generates final pixels | `assets/processed/vfx/` (summon, kindle, aura) |
+| `make_loot.py` | generates final pixels | `assets/processed/loot/` (one 16x16 frame per item) |
 | `make_hud_icons.py` | generates final pixels | `assets/processed/hud/` |
 
 ## Local Contracts
@@ -56,8 +57,10 @@ imported by `app/` and never run at request time.
   must LOOP: every wobble is a sine of the frame phase (or an integer multiple),
   so the last frame hands back to the first with no snap. Do not use `rng` per
   frame; it stutters at the wrap even when each frame looks right alone.
-- VFX sheets (`make_vfx.py`) are TIMELINES, not loops: played once per event,
+- VFX sheets (`make_vfx.py`) are TIMELINES, not loops — except `aura`, which
+  is a looping column over epic/legendary loot. One-shots play once per event,
   with frame 0 and the last frame near-empty so there is no pop at either end.
+  A looping sheet is a sine of the frame phase so the wrap does not snap.
   They are anchored on `anchorY` — the row the effect happens at, with spare
   rows BELOW it for an impact to spread into — not on the bottom edge.
 - VFX sheets are GREYSCALE. An effect belonging to a player is tinted with that
@@ -86,6 +89,7 @@ python tools/process_sprites.py --name backpack --tile 16 --exact --side-facing 
 python tools/make_textures.py
 python tools/make_scenery.py
 python tools/make_vfx.py
+python tools/make_loot.py
 python tools/make_hud_icons.py
 ```
 

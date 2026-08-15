@@ -26,7 +26,7 @@ from __future__ import annotations
 import math
 import random
 
-from . import scenery
+from . import loot, scenery
 from .maps import count_reachable
 from .world import FLOOR, ROCK, TREE, TileMap
 
@@ -316,4 +316,10 @@ def build_forest(
         )
     if floor < width * height * 0.35:
         raise ValueError(f"forest seed {used} is only {floor / (width * height):.0%} floor")
-    return TileMap(tiles, seed=used, scenery=scenery.to_payload(population))
+    drops = loot.scatter(tiles, population.scenes, random.Random(used ^ 0x1007))
+    return TileMap(
+        tiles,
+        seed=used,
+        scenery=scenery.to_payload(population),
+        loot=[drop.to_payload() for drop in drops],
+    )

@@ -17,6 +17,8 @@ export function ControlsHint({ zone }: ControlsHintProps) {
   const parts = ['WASD mover', 'mouse mirar'];
   if (zone?.hostile !== false) parts.push('clique para atirar');
   if (zone?.lantern !== false) parts.push('F lanterna');
+  if (zone?.kind === 'camp') parts.push('E pronto');
+  else if (zone?.hostile) parts.push('E coletar');
 
   return <div className="text-ink-muted text-[11px] leading-[11px]">{parts.join(' · ')}</div>;
 }

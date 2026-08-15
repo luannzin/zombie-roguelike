@@ -24,12 +24,15 @@ import { DisturbanceField } from './disturbance';
 import { AtmosphereLayer } from './layers/atmosphere';
 import { DarknessLayer } from './layers/darkness';
 import { drawFootprints, drawSceneryProp } from './layers/scenery';
+import { drawLootAuras, drawLootBeams, drawLootShadows, drawLootSprites } from './layers/loot';
 import { TerrainLayer, type DecorationMask } from './layers/terrain';
 import { drawVignette } from './layers/vignette';
 import { projectionFor } from './projection';
 import { palette } from '../theme/palette';
+import { loadLoot, type LootAtlas } from './loot';
 import { loadScenery, type SceneryAtlas } from './scenery';
 import { loadTerrain } from './terrain';
+import { loadVfx, type VfxAtlas } from './vfx';
 import type { SpriteBook } from './sprites';
 import type { DrawableEntity, RenderState } from './types';
 
@@ -49,6 +52,8 @@ export class Renderer {
    */
   private readonly disturbance = new DisturbanceField();
   private scenery: SceneryAtlas | null = null;
+  private lootAtlas: LootAtlas | null = null;
+  private vfx: VfxAtlas | null = null;
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
@@ -63,6 +68,12 @@ export class Renderer {
     void loadScenery().then((atlas) => {
       this.scenery = atlas;
       this.terrain.setSceneryAtlas(atlas);
+    });
+    void loadLoot().then((atlas) => {
+      this.lootAtlas = atlas;
+    });
+    void loadVfx().then((atlas) => {
+      this.vfx = atlas;
     });
   }
 
@@ -127,6 +138,8 @@ export class Renderer {
     this.useScreenSpace();
     drawCoinShadows(entity, state.coins);
     drawCoins(entity, state.coins, state.config.coinSprite);
+    drawLootShadows(ctx, view, state.loot);
+    drawLootSprites(ctx, view, this.lootAtlas, state.loot);
 
     // Scratch array, reused every frame: this list is rebuilt and re-sorted
     // 60 times a second and none of it outlives the call.
@@ -201,6 +214,8 @@ export class Renderer {
     );
     drawCombatEffects(ctx, state.effects, state.config.tileSize);
     this.darkness.drawLights(ctx, state.effects.lights);
+    drawLootAuras(ctx, view, state.loot, state.time);
+    drawLootBeams(ctx, view, this.vfx?.aura ?? null, state.loot, state.time);
     // Hunt tell sits ON the night: a hunter you cannot see still wears the
     // diamond, so killing the lamp does not hide that it has you.
     drawAlertMarks(entity, state.entities, state.time);

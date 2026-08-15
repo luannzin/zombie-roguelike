@@ -16,6 +16,7 @@ client -> server
   {"type":"ping","t":<client ms>}
   {"type":"start"}                      host only; ignored otherwise
   {"type":"ready"}                      toggle ready, camp only, near the fire
+  {"type":"collect","id":"l3"}          pick up a loot drop; ignored if too far
 
 server -> client
   {"type":"hello","playerId":"...","code":"ABC1234",
@@ -29,6 +30,7 @@ server -> client
   {"type":"snapshot","tick":N,"departing":false,"zoneKey":"camp-1",
    "players":[...],"enemies":[...],"coins":[...],
    "shots":[...],"attacks":[...],"kills":[...],"pickups":[...],
+   "loot":[...],"lootPickups":[...],
    "roster":[...]}                    only every ROSTER_EVERY_N_TICKS ticks
   {"type":"pong","t":<echoed>}
 
@@ -76,6 +78,9 @@ Snapshot arrays:
   kills     deaths since the last snapshot, players and enemies alike
             ({"kind":"enemy"} entries: xp paid now; gold = coins spawned)
   pickups   coins collected since the last snapshot
+  loot      remaining world drops; attached like the roster — on welcome,
+            and again on a snapshot only when someone collected
+  lootPickups  drops collected since the last snapshot (juice)
 """
 
 from __future__ import annotations
@@ -86,6 +91,7 @@ MSG_INPUT = "input"
 MSG_PING = "ping"
 MSG_START = "start"
 MSG_READY = "ready"
+MSG_COLLECT = "collect"
 
 MSG_HELLO = "hello"
 MSG_LOBBY = "lobby"
@@ -137,6 +143,7 @@ def welcome(
     map_payload: dict,
     zone: dict,
     ack: int = 0,
+    loot: list[dict] | None = None,
 ) -> dict:
     return {
         "type": MSG_WELCOME,
@@ -148,6 +155,7 @@ def welcome(
         # Same meaning as snapshot.ack: the client must keep issuing sequences
         # above this, or queue_input drops every packet as a replay.
         "ack": ack,
+        "loot": loot or [],
     }
 
 
@@ -169,6 +177,8 @@ def snapshot(
     departing: bool = False,
     zone_key: str | None = None,
     roster: list[dict] | None = None,
+    loot: list[dict] | None = None,
+    loot_pickups: list[dict] | None = None,
 ) -> dict:
     payload = {
         "type": MSG_SNAPSHOT,
@@ -186,4 +196,8 @@ def snapshot(
     # Absent on most ticks — see ROSTER_EVERY_N_TICKS.
     if roster is not None:
         payload["roster"] = roster
+    if loot is not None:
+        payload["loot"] = loot
+    if loot_pickups:
+        payload["lootPickups"] = loot_pickups
     return payload

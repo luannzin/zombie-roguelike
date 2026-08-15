@@ -33,6 +33,11 @@ are inside `readyRangeTiles` of the fire. When every living player is ready the
 snapshots flip `departing` and the server puppets the party through the VOID
 exit; a second `welcome` is the forest.
 
+`{"type":"collect","id":"l3"}` — pick up a world drop. The server ignores it
+unless the room is in a hostile zone, the player is alive, and their feet are
+inside `lootCollectTiles` of that drop. The remaining list rides `welcome.loot`
+and a dirty snapshot `loot`; `lootPickups` is the juice for that tick.
+
 ### server → client
 
 `hello` (once, first message — the lobby is built from this):
@@ -80,7 +85,8 @@ presses start.
               "playerHalfWidth": 4.8, "playerHalfHeight": 3.6, "...": "..." },
   "map": { "width": 64, "height": 40, "tileSize": 16, "tiles": [[1, 1, 0, "..."]] },
   "zone": { "...": "..." },
-  "ack": 183
+  "ack": 183,
+  "loot": [{"id":"l1","k":"compass","x":412.5,"y":288.5}]
 }
 ```
 
@@ -99,7 +105,8 @@ presses start.
   "enemies": [{ "id": "e12", "t": "zombie", "x": 0, "y": 0, "vx": 0, "vy": 0, "ax": 1, "ay": 0, "hp": 22 }],
   "shots": [{ "id": 7, "by": "a1b2c3d4", "x": 0, "y": 0, "dx": 1, "dy": 0, "dist": 132.5, "hit": "b5c6" }],
   "attacks": [{ "by": "e12", "target": "a1b2c3d4", "x": 0, "y": 0, "dx": 1, "dy": 0, "dmg": 9, "blocked": false }],
-  "kills": [{ "kind": "enemy", "killer": "a1b2c3d4", "victim": "e12", "x": 0, "y": 0, "xp": 12, "gold": 3 }]
+  "kills": [{ "kind": "enemy", "killer": "a1b2c3d4", "victim": "e12", "x": 0, "y": 0, "xp": 12, "gold": 3 }],
+  "loot": [{"id":"l1","k":"compass","x":412.5,"y":288.5}]
 }
 ```
 

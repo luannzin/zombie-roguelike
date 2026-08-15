@@ -151,6 +151,15 @@ class PlacedLight:
 
 
 @dataclass(frozen=True)
+class PlacedScene:
+    """A scene that landed, in TILES. Kind is what the place *is*."""
+
+    kind: str
+    x: float
+    y: float
+
+
+@dataclass(frozen=True)
 class Population:
     """Everything one call to `populate` put on a map.
 
@@ -161,12 +170,13 @@ class Population:
     standing in, and a direction that leads away from spawn. Placing extraction
     at or past `route[-1]` gives a run a shape — out along the story, back
     through it carrying something — where a uniformly random tile gives an
-    errand.
+    errand. Loot also reads `scenes`: a drop is a second pass over the
+    places that landed, not a third scatter.
     """
 
     props: list[Prop]
     lights: list[PlacedLight]
-    scenes: list[tuple[float, float]]
+    scenes: list[PlacedScene]
     route: list[tuple[float, float]]
 
 
@@ -528,12 +538,12 @@ def _dumpsite(rng: random.Random) -> Layout:
 #: of a forest has to be unremarkable, and `homestead` is rare because a
 #: landmark stops being one the moment there are three of them.
 SCENES = (
-    (_deadfall, 26),
-    (_campsite, 17),
-    (_boundary, 14),
-    (_trailhead, 14),
-    (_last_stand, 12),
-    (_dumpsite, 11),
+    ("deadfall", _deadfall, 26),
+    ("campsite", _campsite, 17),
+    ("boundary", _boundary, 14),
+    ("trailhead", _trailhead, 14),
+    ("last_stand", _last_stand, 12),
+    ("dumpsite", _dumpsite, 11),
 )
 
 def _woodpile(rng: random.Random) -> Layout:
@@ -573,10 +583,10 @@ def _marker(rng: random.Random) -> Layout:
 #: A last stand outside the tent you are about to sleep in is a promise the
 #: zone does not keep.
 CAMP_POOL = (
-    (_stores, 12),
-    (_woodpile, 12),
-    (_marker, 6),
-    (_deadfall, 4),
+    ("stores", _stores, 12),
+    ("woodpile", _woodpile, 12),
+    ("marker", _marker, 6),
+    ("deadfall", _deadfall, 4),
 )
 
 #: The one LANDMARK. Attempted first and on its own, before the weighted pool,
@@ -584,7 +594,7 @@ CAMP_POOL = (
 #: else it loses every anchor race to a 4x3 woodpile and a player can go three
 #: expeditions without seeing a building. One per map, never two — a second
 #: cabin turns the first one from a place into a prop.
-LANDMARK = _homestead
+LANDMARK = ("homestead", _homestead)
 
 #: Scenes per map, before rejections. A map that rolls badly gets fewer, which
 #: is fine — an empty stretch of woods is a legitimate outcome.
@@ -599,13 +609,13 @@ ATTEMPTS = 40
 
 
 def _pick(rng: random.Random, pool):
-    total = sum(weight for _, weight in pool)
+    total = sum(weight for _, _, weight in pool)
     roll = rng.uniform(0, total)
-    for builder, weight in pool:
+    for kind, builder, weight in pool:
         roll -= weight
         if roll <= 0:
-            return builder
-    return pool[0][0]
+            return kind, builder
+    return pool[0][0], pool[0][1]
 
 
 #: Share of a scene's box that may be scrub the placement is allowed to clear.
@@ -826,7 +836,7 @@ def populate(
     # Where the players will be standing. Everything a scene builds has to
     # leave this connected to itself — see `_stamp`.
     origin = anchor or (width // 2, height // 2)
-    placed: list[tuple[float, float]] = []
+    placed: list[PlacedScene] = []
     landmark_at: tuple[float, float] | None = None
     props: list[Prop] = []
     lights: list[PlacedLight] = []
@@ -837,7 +847,7 @@ def populate(
     # the whole map per attempt is most of what map generation costs.
     reach = _reachable(tiles, origin)
 
-    def attempt(layout: Layout, budget: int) -> bool:
+    def attempt(layout: Layout, budget: int, kind: str) -> bool:
         nonlocal reach
         for _ in range(budget):
             # The border stays untouched: it is the treeline that keeps the
@@ -850,7 +860,7 @@ def populate(
 
             if any(math.hypot(cx - ax, cy - ay) < radius for ax, ay, radius in avoid):
                 continue
-            if any(math.hypot(cx - px, cy - py) < separation for px, py in placed):
+            if any(math.hypot(cx - scene.x, cy - scene.y) < separation for scene in placed):
                 continue
             scrub = _plot(tiles, x0, y0, layout.width, layout.height)
             if scrub is None:
@@ -860,7 +870,7 @@ def populate(
                 continue
             reach = grown
 
-            placed.append((cx, cy))
+            placed.append(PlacedScene(kind, cx, cy))
             for light in layout.lights:
                 lights.append(
                     PlacedLight(
@@ -887,17 +897,21 @@ def populate(
     # The landmark goes down first, on an empty map and with a much bigger
     # budget: it is the only layout that needs a large box of open ground, and
     # every scene already standing is one more thing for it to collide with.
-    if landmark is not None and attempt(landmark(rng), tries * 6):
-        landmark_at = placed[-1]
+    if landmark is not None:
+        kind, builder = landmark
+        if attempt(builder(rng), tries * 6, kind):
+            landmark_at = (placed[-1].x, placed[-1].y)
 
     for _ in range(rng.randint(*count)):
-        attempt(_pick(rng, pool)(rng), tries)
+        kind, builder = _pick(rng, pool)
+        attempt(builder(rng), tries, kind)
 
     _seal(tiles, origin, cleared)
 
     route: list[tuple[float, float]] = []
     if thread:
-        route = _route(placed, landmark_at, (float(origin[0]), float(origin[1])), rng)
+        positions = [(scene.x, scene.y) for scene in placed]
+        route = _route(positions, landmark_at, (float(origin[0]), float(origin[1])), rng)
         props.extend(_thread(tiles, route, rng))
     return Population(props=props, lights=lights, scenes=placed, route=route)
 

@@ -20,6 +20,7 @@ game's scale.
 | `ai.py` | enemy senses, patrol/hunt/return, steering/attack, the director |
 | `pathing.py` | BFS flow field, one per player |
 | `coins.py` | dropped gold: burst, magnet, collection |
+| `loot.py` | world collectables: catalog, scene-context scatter, E-to-collect |
 | `world.py` | tile grid, tile alphabet, collision queries |
 | `maps.py` | hand-authored maps (`from_ascii`, `from_rects`) |
 | `mapgen.py` | procedural forest, seeded and connectivity-checked |
@@ -169,13 +170,17 @@ game's scale.
   loses every anchor race to a 4x3 woodpile; a second one turns the first from a
   place into a prop.
 - **`populate` returns a `Population`, and half of it is not on the wire.**
-  `props` and `lights` ship; `scenes` and `route` are where things ended up in
-  tiles and the order the thread walks them. They are kept because EXTRACTION
-  wants exactly that: a set of places worth standing in, and a direction
-  leading away from spawn. Dropping the extraction point at or past `route[-1]`
-  gives a run a shape — out along the story, back through it carrying something
-  — where a uniformly random tile gives an errand. Do not delete them for being
-  unused.
+  `props` and `lights` ship; `scenes` (now `PlacedScene` with a kind) and
+  `route` are where things ended up in tiles and the order the thread walks
+  them. They are kept because EXTRACTION wants exactly that: a set of places
+  worth standing in, and a direction leading away from spawn. Loot is a
+  second pass over `scenes` (`loot.scatter`) — a drop belongs to the place
+  it sits in, not to a hash. Do not delete them for being unused.
+- **Loot is not a coin.** Coins magnetize off a corpse. A drop sits next to
+  a scene, shows a tooltip, and is collected with `{type:"collect","id"}`.
+  The catalog and rarity weights live in `loot.py`; the client never invents
+  a name or a colour. Camp maps have none. Collected keys ride the roster
+  as `player.loot` so extraction can spend them later.
 - **The thread is what makes it one story instead of seven.** `_route` orders
   the placed scenes by distance from spawn so the narrative reads OUTWARD and
   ends at the landmark; `_thread` lays prints between them with blood

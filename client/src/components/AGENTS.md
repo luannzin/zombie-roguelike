@@ -101,13 +101,17 @@ and nowhere near the frame loop.
   Tailwind utilities. No literal colours in components.
 - coss semantic tokens are re-pointed at the game palette in the coss skin block
   at the bottom of `index.css`; do not add per-component overrides.
-- **`MenuButton` owns what a button sounds like**, not its twelve call sites:
-  hover and click are played there, composed with any handler the caller passed.
-  Hover is mouse-only — a touch fires enter and click together and would double
-  it on every tap — and the `quiet` variant takes the descending click, because
-  it is the way back out of somewhere. `ControlsHint` always lists `M som`,
-  unlike the rest of that line, because mute is the one control that works
-  everywhere and there is no settings screen yet.
+- **The menu and the lobby chrome are SILENT.** No hover tick, no click. Both
+  were built and cut: hover chattered at buttons the pointer was only crossing,
+  and the click marked a decision the screen was already announcing — over a
+  title screen whose backdrop is a crackling bonfire, it read as a synthetic
+  noise laid on top of the one thing selling the place. Audio still unlocks on
+  the first press, because that listener is `audio/engine.ts`'s and has nothing
+  to do with any button. The UI sounds that remain belong to the GAME, not to
+  the chrome: a refusal (`ui-error`, from `Game`) and the bag opening.
+  `ControlsHint` always lists `M som`, unlike the rest of that line, because
+  mute is the one control that works everywhere and there is no settings screen
+  yet.
 - `menu/` reimplements the button and the text field rather than restyling the
   coss ones: every visual decision in those primitives (radius, shadow, ring,
   sans face) is the opposite of the HUD's, and overriding them all at the call

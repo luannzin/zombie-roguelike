@@ -12,7 +12,9 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
+import { setBeds } from '@/audio';
 import { CampfireCanvas } from '@/components/lobby/CampfireCanvas';
+import { AudioOptions } from '@/components/menu/AudioOptions';
 import { HudInput } from '@/components/menu/HudInput';
 import { JoinRoomDialog } from '@/components/menu/JoinRoomDialog';
 import { MenuButton } from '@/components/menu/MenuButton';
@@ -29,7 +31,7 @@ const NOBODY = Object.freeze([]) as never[];
  */
 const CONFIRM_MS = 360;
 
-type Stage = 'menu' | 'play';
+type Stage = 'menu' | 'play' | 'options';
 
 interface MenuEntry {
   label: string;
@@ -48,7 +50,10 @@ export function HomeScreen() {
   // Memoised because the key handler below depends on it; a fresh array each
   // render would resubscribe the window listener on every keystroke.
   const entries = useMemo<MenuEntry[]>(
-    () => [{ label: 'Jogar', onSelect: () => setStage('play') }],
+    () => [
+      { label: 'Jogar', onSelect: () => setStage('play') },
+      { label: 'Opções', onSelect: () => setStage('options') },
+    ],
     [],
   );
   const [selected, setSelected] = useState(0);
@@ -135,15 +140,29 @@ export function HomeScreen() {
     return () => window.removeEventListener('keydown', onKey);
   }, [stage, selected, entries, select]);
 
-  // Escape backs out of the play panel — but not while the dialog owns it.
+  // Escape backs out of either panel — but not while the dialog owns it.
   useEffect(() => {
-    if (stage !== 'play' || joinOpen) return;
+    if (stage === 'menu' || joinOpen) return;
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') setStage('menu');
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [stage, joinOpen]);
+
+  /**
+   * THE TITLE SCREEN IS SILENT.
+   *
+   * The fire behind the menu is a picture, not a place you are standing in —
+   * it belongs to a camp you have not reached yet, and hearing it here spends
+   * the arrival before the player has gone anywhere. Stated on mount rather
+   * than left alone, because leaving a lobby comes back to this screen with
+   * the bonfire still burning (`LobbyScreen` deliberately does not clear it,
+   * so the hand-off into a run has no gap). Whoever mounts declares the mix.
+   */
+  useEffect(() => {
+    setBeds({});
+  }, []);
 
   useEffect(() => {
     if (stage === 'play') nameRef.current?.focus();
@@ -202,6 +221,23 @@ export function HomeScreen() {
               </button>
             ))}
           </nav>
+        ) : stage === 'options' ? (
+          <div className="animate-in fade-in slide-in-from-bottom-2 flex w-full max-w-sm flex-col gap-6 duration-200">
+            <h2 className="pixel-text text-[22px] leading-[26px] tracking-[0.16em] text-ink-accent uppercase">
+              Opções
+            </h2>
+
+            <section className="flex flex-col gap-4">
+              <h3 className="pixel-text text-[11px] leading-[17px] tracking-[0.2em] text-ink-muted uppercase">
+                Áudio
+              </h3>
+              <AudioOptions />
+            </section>
+
+            <MenuButton variant="quiet" onClick={() => setStage('menu')}>
+              ← Voltar (esc)
+            </MenuButton>
+          </div>
         ) : (
           <div className="animate-in fade-in slide-in-from-bottom-2 flex w-full max-w-sm flex-col gap-5 duration-200">
             <HudInput

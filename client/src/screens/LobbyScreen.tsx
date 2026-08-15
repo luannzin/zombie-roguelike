@@ -25,6 +25,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { setBeds } from '@/audio';
 import { CampfireCanvas } from '@/components/lobby/CampfireCanvas';
 import { PlayerRoster } from '@/components/lobby/PlayerRoster';
 import { RoomCode } from '@/components/lobby/RoomCode';
@@ -64,6 +65,20 @@ export function LobbyScreen({ code, session, onLeave, onLaunched }: LobbyScreenP
   // starts it when the phase flips. `beginLaunch` is idempotent, so a host
   // hitting both paths still gets one move.
   const playing = lobby?.phase === 'playing';
+  /**
+   * The camp sounds like a bonfire, and being on this screen is what says so.
+   *
+   * Ambience is declared by the SCREEN rather than by `CampfireCanvas`, because
+   * the scene is drawn on the title screen too and the menu must be silent —
+   * and because the fire has to survive this screen unmounting into the arena.
+   * There is deliberately no cleanup: whoever mounts next states its own mix
+   * (`HomeScreen` states silence, `Game` states the zone's), so the hand-off
+   * into a run has no gap while leaving for the menu still goes quiet.
+   */
+  useEffect(() => {
+    setBeds({ fire: 1 });
+  }, []);
+
   useEffect(() => {
     if (playing) setLaunching(true);
   }, [playing]);

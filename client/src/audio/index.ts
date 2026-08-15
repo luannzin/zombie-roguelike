@@ -15,10 +15,11 @@ export {
   installAudioUnlock,
   unlockAudio,
   getAudioSettings,
-  setMasterVolume,
+  setBusVolume,
   setMuted,
   toggleMuted,
   onAudioSettingsChange,
+  BUSES,
   type AudioSettings,
   type Bus,
 } from './engine';

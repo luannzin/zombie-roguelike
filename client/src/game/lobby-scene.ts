@@ -32,7 +32,7 @@
  * Lifecycle is explicit — `start()` / `dispose()`, same contract as `Game`.
  */
 
-import { playSfx, setBeds } from "../audio";
+import { playSfx } from "../audio";
 import { get2d } from "../lib/canvas";
 import { clamp01, lerp } from "../lib/math";
 import type { GameConfig, MapPayload } from "../net/protocol";
@@ -366,19 +366,6 @@ export class LobbyScene {
 			this.resizeDirty = true;
 		});
 		this.resizeObserver.observe(this.canvas);
-
-		// The fire is the camp's bed, and it starts HERE — on the title screen as
-		// much as in a room, because this scene is the backdrop for both and the
-		// two are one continuous shot of one clearing.
-		//
-		// Deliberately never stopped in `dispose()`, which is the one exception
-		// to this folder's release rule and the reason it is spelled out: the
-		// bed is HANDED OVER, not owned. Navigating title -> room disposes this
-		// scene and builds another one on the same fire, and starting a run
-		// hands it to `Game`, which is where it is finally released. Stopping it
-		// here would put a gap in the audio at exactly the seams the whole
-		// transition exists to hide.
-		setBeds({ fire: 1 });
 
 		this.lastFrame = performance.now();
 		this.rafId = requestAnimationFrame(this.frame);

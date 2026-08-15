@@ -10,6 +10,10 @@ output the game actually loads.
 - `raw/` — source art (`player.png`, `zombie.png`, `zombie-husk.png`,
   `zombie-brute.png`, `backpack.png`, `zhat-*.png`, `zcloth-*.png`)
   and font sources (`fonts/DepartureMono-Regular.otf`). **Never served.**
+- `inspiration/` — reference recordings a generator was tuned AGAINST, never
+  shipped and never decoded at runtime (`gun/*.mp3`). They are the measuring
+  stick for a synthesized sound, not a fallback for one: nothing in `client/`
+  or `server/app/` may read this folder.
 - `processed/` — production art: `player/`, `zombie/`, `zombie-husk/`,
   `zombie-brute/`, `zhat-*/`, `zcloth-*/`, `coin/`, `backpack/`
   (`sheet.png` + `manifest.json`), `terrain/`, `scenery/`, `vfx/`, `hud/`,

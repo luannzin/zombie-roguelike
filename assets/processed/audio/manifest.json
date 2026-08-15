@@ -1,19 +1,5 @@
 {
   "sounds": {
-    "ui-click": {
-      "files": [
-        "ui-click.wav"
-      ],
-      "gain": 0.7,
-      "bus": "ui"
-    },
-    "ui-back": {
-      "files": [
-        "ui-back.wav"
-      ],
-      "gain": 0.6,
-      "bus": "ui"
-    },
     "ui-error": {
       "files": [
         "ui-error.wav"
@@ -35,28 +21,6 @@
       "gain": 0.5,
       "bus": "ui"
     },
-    "fire": {
-      "files": [
-        "fire.wav"
-      ],
-      "gain": 0.5,
-      "bus": "ambient",
-      "loop": true
-    },
-    "kindle": {
-      "files": [
-        "kindle.wav"
-      ],
-      "gain": 0.85,
-      "bus": "sfx"
-    },
-    "summon": {
-      "files": [
-        "summon.wav"
-      ],
-      "gain": 0.45,
-      "bus": "sfx"
-    },
     "ready": {
       "files": [
         "ready.wav"
@@ -71,19 +35,13 @@
       "gain": 0.45,
       "bus": "ui"
     },
-    "void": {
+    "fire": {
       "files": [
-        "void.wav"
+        "fire.wav"
       ],
-      "gain": 0.7,
-      "bus": "ambient"
-    },
-    "arrive": {
-      "files": [
-        "arrive.wav"
-      ],
-      "gain": 0.8,
-      "bus": "sfx"
+      "gain": 0.5,
+      "bus": "ambient",
+      "loop": true
     },
     "wind": {
       "files": [
@@ -101,34 +59,20 @@
       "bus": "ambient",
       "loop": true
     },
-    "dread": {
+    "heartbeat": {
       "files": [
-        "dread-0.wav",
-        "dread-1.wav",
-        "dread-2.wav"
+        "heartbeat.wav"
       ],
-      "gain": 0.5,
-      "bus": "sfx"
+      "gain": 0.6,
+      "bus": "ambient",
+      "loop": true
     },
-    "step-soft": {
+    "void": {
       "files": [
-        "step-soft-0.wav",
-        "step-soft-1.wav",
-        "step-soft-2.wav",
-        "step-soft-3.wav"
+        "void.wav"
       ],
-      "gain": 0.4,
-      "bus": "sfx"
-    },
-    "step-litter": {
-      "files": [
-        "step-litter-0.wav",
-        "step-litter-1.wav",
-        "step-litter-2.wav",
-        "step-litter-3.wav"
-      ],
-      "gain": 0.42,
-      "bus": "sfx"
+      "gain": 0.7,
+      "bus": "ambient"
     },
     "shot": {
       "files": [
@@ -146,35 +90,6 @@
         "hurt-2.wav"
       ],
       "gain": 0.85,
-      "bus": "sfx"
-    },
-    "heartbeat": {
-      "files": [
-        "heartbeat.wav"
-      ],
-      "gain": 0.6,
-      "bus": "ambient",
-      "loop": true
-    },
-    "lantern-on": {
-      "files": [
-        "lantern-on.wav"
-      ],
-      "gain": 0.6,
-      "bus": "sfx"
-    },
-    "lantern-off": {
-      "files": [
-        "lantern-off.wav"
-      ],
-      "gain": 0.55,
-      "bus": "sfx"
-    },
-    "lantern-flicker": {
-      "files": [
-        "lantern-flicker.wav"
-      ],
-      "gain": 0.5,
       "bus": "sfx"
     },
     "zombie-idle": {
@@ -221,12 +136,83 @@
       "gain": 0.8,
       "bus": "sfx"
     },
+    "step-soft": {
+      "files": [
+        "step-soft-0.wav",
+        "step-soft-1.wav",
+        "step-soft-2.wav",
+        "step-soft-3.wav"
+      ],
+      "gain": 0.4,
+      "bus": "misc"
+    },
+    "step-litter": {
+      "files": [
+        "step-litter-0.wav",
+        "step-litter-1.wav",
+        "step-litter-2.wav",
+        "step-litter-3.wav"
+      ],
+      "gain": 0.42,
+      "bus": "misc"
+    },
+    "lantern-on": {
+      "files": [
+        "lantern-on.wav"
+      ],
+      "gain": 0.6,
+      "bus": "misc"
+    },
+    "lantern-off": {
+      "files": [
+        "lantern-off.wav"
+      ],
+      "gain": 0.55,
+      "bus": "misc"
+    },
+    "lantern-flicker": {
+      "files": [
+        "lantern-flicker.wav"
+      ],
+      "gain": 0.5,
+      "bus": "misc"
+    },
+    "kindle": {
+      "files": [
+        "kindle.wav"
+      ],
+      "gain": 0.85,
+      "bus": "misc"
+    },
+    "summon": {
+      "files": [
+        "summon.wav"
+      ],
+      "gain": 0.45,
+      "bus": "misc"
+    },
+    "arrive": {
+      "files": [
+        "arrive.wav"
+      ],
+      "gain": 0.8,
+      "bus": "misc"
+    },
+    "dread": {
+      "files": [
+        "dread-0.wav",
+        "dread-1.wav",
+        "dread-2.wav"
+      ],
+      "gain": 0.5,
+      "bus": "misc"
+    },
     "loot": {
       "files": [
         "loot.wav"
       ],
       "gain": 0.6,
-      "bus": "sfx"
+      "bus": "misc"
     },
     "rarity": {
       "files": [
@@ -237,14 +223,14 @@
         "rarity-4.wav"
       ],
       "gain": 0.7,
-      "bus": "sfx"
+      "bus": "misc"
     },
     "coin": {
       "files": [
         "coin.wav"
       ],
       "gain": 0.5,
-      "bus": "sfx"
+      "bus": "misc"
     },
     "crate-break": {
       "files": [
@@ -253,14 +239,14 @@
         "crate-break-2.wav"
       ],
       "gain": 0.85,
-      "bus": "sfx"
+      "bus": "misc"
     },
     "drop": {
       "files": [
         "drop.wav"
       ],
       "gain": 0.6,
-      "bus": "sfx"
+      "bus": "misc"
     }
   }
 }

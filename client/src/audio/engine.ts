@@ -26,13 +26,37 @@
 
 const STORAGE_KEY = 'zr:audio';
 
-/** Which fader a sound rides. Mirrors `bus` in the audio manifest. */
-export type Bus = 'sfx' | 'ambient' | 'ui';
+/**
+ * Which fader a sound rides. Mirrors `bus` in the audio manifest, and each one
+ * is a row in the options panel — so the split is a PLAYER-FACING taxonomy,
+ * not an engineering one:
+ *
+ *   ui       the interface answering you: a refusal, the bag
+ *   ambient  the loops that are always there: fire, wind, night, the heart
+ *   sfx      guns and zombies — the loud, violent half
+ *   misc     everything else that happens: footsteps, loot, crates, the lamp,
+ *            the transitions
+ *
+ * `sfx` is deliberately narrow. A player who wants to turn combat down without
+ * losing their own footsteps has to be able to, and that is only possible if
+ * the violent sounds are their own group.
+ */
+export const BUSES = ['ui', 'ambient', 'sfx', 'misc'] as const;
+export type Bus = (typeof BUSES)[number];
 
 export interface AudioSettings {
-  master: number;
+  /** 0..1 per bus. The options panel shows these as 0..100. */
+  volumes: Record<Bus, number>;
   muted: boolean;
 }
+
+/** Where a fresh install starts. */
+const DEFAULT_VOLUMES: Record<Bus, number> = {
+  ui: 0.5,
+  ambient: 0.5,
+  sfx: 0,
+  misc: 0.5,
+};
 
 /**
  * Shortest ramp that is still a ramp. Below about 5 ms the step is audible
@@ -58,17 +82,21 @@ function loadSettings(): AudioSettings {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
-      const parsed = JSON.parse(raw) as Partial<AudioSettings>;
-      return {
-        master: clamp01(parsed.master ?? 0.8),
-        muted: Boolean(parsed.muted),
-      };
+      const parsed = JSON.parse(raw) as { volumes?: Partial<Record<Bus, number>>; muted?: boolean };
+      const volumes = { ...DEFAULT_VOLUMES };
+      for (const bus of BUSES) {
+        const value = parsed.volumes?.[bus];
+        // Per bus, not wholesale: a stored blob written before this bus
+        // existed should keep the settings it does have and default the rest.
+        if (typeof value === 'number') volumes[bus] = clamp01(value);
+      }
+      return { volumes, muted: Boolean(parsed.muted) };
     }
   } catch {
     // Private mode, blocked storage, or a value from an older shape. Defaults
     // are a fine answer; audio is not worth a failed boot.
   }
-  return { master: 0.8, muted: false };
+  return { volumes: { ...DEFAULT_VOLUMES }, muted: false };
 }
 
 function saveSettings(): void {
@@ -84,16 +112,17 @@ function clamp01(value: number): number {
 }
 
 /**
- * Per-bus trim, applied under the master fader.
+ * The standing balance BETWEEN the buses, under the player's faders.
  *
- * These are the standing balance between the three groups and they are not
- * user-facing — the player gets one master control. UI sits low because it is
- * the only category that plays while nothing else is happening, which makes it
- * feel much louder than its numbers suggest.
+ * Not user-facing and not redundant with the sliders: this is what makes "50"
+ * mean the same loudness on every row. UI sits low because it is the only
+ * category that plays while nothing else is happening, which makes it feel far
+ * louder than its numbers suggest.
  */
 const BUS_TRIM: Record<Bus, number> = {
   sfx: 1.0,
   ambient: 0.85,
+  misc: 0.9,
   ui: 0.65,
 };
 
@@ -122,9 +151,9 @@ function build(): Graph {
   master.connect(ctx.destination);
 
   const buses = {} as Record<Bus, GainNode>;
-  for (const bus of ['sfx', 'ambient', 'ui'] as const) {
+  for (const bus of BUSES) {
     const node = ctx.createGain();
-    node.gain.value = BUS_TRIM[bus];
+    node.gain.value = busTarget(bus);
     node.connect(master);
     buses[bus] = node;
   }
@@ -132,20 +161,35 @@ function build(): Graph {
   return { ctx, master, buses };
 }
 
+/** Master carries mute and the hidden-tab duck only. Levels live on the buses. */
 function masterTarget(): number {
-  if (settings.muted || hidden) return 0;
-  // Perceptual, not linear: a fader at 0.5 that is half the SAMPLES is nearly
-  // as loud as full. Squaring puts the useful range under the player's hand.
-  return settings.master * settings.master;
+  return settings.muted || hidden ? 0 : 1;
 }
 
-function applyMaster(ramp: number): void {
+function busTarget(bus: Bus): number {
+  const volume = settings.volumes[bus];
+  // Perceptual, not linear: a fader at 0.5 that is half the SAMPLES is nearly
+  // as loud as full. Squaring puts the useful range under the player's hand,
+  // and — the reason it matters here — makes a slider at 0 actually silent
+  // rather than merely quiet.
+  return BUS_TRIM[bus] * volume * volume;
+}
+
+function ramp(param: AudioParam, target: number, seconds: number): void {
+  const now = graph?.ctx.currentTime ?? 0;
+  param.cancelScheduledValues(now);
+  param.setValueAtTime(param.value, now);
+  param.linearRampToValueAtTime(target, now + seconds);
+}
+
+function applyMaster(seconds: number): void {
   if (!graph) return;
-  const { ctx, master } = graph;
-  const now = ctx.currentTime;
-  master.gain.cancelScheduledValues(now);
-  master.gain.setValueAtTime(master.gain.value, now);
-  master.gain.linearRampToValueAtTime(masterTarget(), now + ramp);
+  ramp(graph.master.gain, masterTarget(), seconds);
+}
+
+function applyBus(bus: Bus, seconds: number): void {
+  if (!graph) return;
+  ramp(graph.buses[bus].gain, busTarget(bus), seconds);
 }
 
 let unlockedOnce: (() => void)[] = [];
@@ -207,10 +251,11 @@ export function getAudioSettings(): AudioSettings {
   return settings;
 }
 
-export function setMasterVolume(value: number): void {
-  settings = { ...settings, master: clamp01(value) };
+/** Set one bus, 0..1. The options panel divides its 0..100 by a hundred. */
+export function setBusVolume(bus: Bus, value: number): void {
+  settings = { ...settings, volumes: { ...settings.volumes, [bus]: clamp01(value) } };
   saveSettings();
-  applyMaster(RAMP);
+  applyBus(bus, RAMP);
   notify();
 }
 

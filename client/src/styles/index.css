@@ -1100,6 +1100,68 @@
   -moz-osx-font-smoothing: grayscale;
   font-family: var(--font-hud);
 }
+
+/*
+ * The options fader (`components/menu/HudSlider`).
+ *
+ * A native range input with its appearance removed, dressed as HUD chrome:
+ * a 6px inset track with a hairline border, a hard accent fill, and a solid
+ * block for a thumb. No radius anywhere and no shadow — a rounded pill and a
+ * white circle are the two things that would make this read as a web form
+ * sitting on top of the game instead of as part of it.
+ *
+ * The fill is a `linear-gradient` with a HARD stop driven by `--fill`, not a
+ * second element behind the track. One box, nothing to keep in sync, and the
+ * stop lands on a whole percentage so the edge stays crisp.
+ *
+ * The thumb has to be styled twice — `::-webkit-slider-thumb` and
+ * `::-moz-range-thumb` — and the two rules cannot be combined: browsers drop
+ * an entire selector list if any part of it is unknown, so one shared block
+ * would silently style neither.
+ */
+.hud-range {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 6px;
+  cursor: pointer;
+  background-color: var(--panel-inset);
+  background-image: linear-gradient(
+    to right,
+    var(--ink-accent) var(--fill, 0%),
+    transparent var(--fill, 0%)
+  );
+  border: 1px solid var(--panel-border);
+  outline: none;
+}
+
+.hud-range:focus-visible {
+  border-color: var(--ink-accent);
+}
+
+.hud-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 9px;
+  height: 16px;
+  background-color: var(--ink);
+  border: 1px solid var(--panel-inset);
+  cursor: pointer;
+}
+
+.hud-range::-moz-range-thumb {
+  width: 9px;
+  height: 16px;
+  background-color: var(--ink);
+  border: 1px solid var(--panel-inset);
+  border-radius: 0;
+  cursor: pointer;
+}
+
+/* Firefox paints its own track fill; ours is already on the background. */
+.hud-range::-moz-range-progress {
+  background-color: transparent;
+}
 /*
  ---break---
  */

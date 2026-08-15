@@ -17,7 +17,7 @@ imported by `app/` and never run at request time.
 | `make_vfx.py` | generates final pixels | `assets/processed/vfx/` (summon, kindle, aura, wind) |
 | `make_loot.py` | generates final pixels | `assets/processed/loot/` (one 16x16 frame per item) |
 | `make_hud_icons.py` | generates final pixels | `assets/processed/hud/` (battery, backpack, coin) |
-| `make_audio.py` | generates final samples | `assets/processed/audio/` (33 sounds, 60 wavs + manifest) |
+| `make_audio.py` | generates final samples | `assets/processed/audio/` (31 sounds, 58 wavs + manifest) |
 
 ## Local Contracts
 
@@ -117,8 +117,10 @@ imported by `app/` and never run at request time.
 - The bonfire at rest and the bonfire that roars on launch are built from the
   same two helpers (`_fire_roar`, `_fire_spit`). A kindle written as a generic
   whoosh-and-boom is an explosion, and reads as cutting to a different fire.
-- There is no UI hover sound: the pointer crosses buttons on the way to the one
-  it wants, so hover ticks chatter at decisions the player has not made.
+- The menu and lobby chrome have NO sounds — no hover, no click. Both existed
+  and were cut; do not re-add them as a convenience. The `ui` bus now carries
+  only the refusal and the bag, which belong to the game rather than to the
+  chrome.
 - One-shots are 22050 Hz, beds 16000 Hz, all 16-bit mono. The beds are the bulk
   of the ~2.3 MB output; if that ever needs to come down, encoding them is the
   lever, not shortening them.
@@ -171,3 +173,13 @@ python tools/make_audio.py
   a peak in range, no DC offset, both edges at zero, no samples pinned at the
   rail, and — for a bed — a wrap discontinuity small against its own local RMS.
   A loop that fails that last one clicks once per cycle forever.
+- **Tune a sound against references by measuring, not by adjective.** Reference
+  recordings live in `assets/inspiration/<sound>/`; the browser decodes mp3
+  natively, so an FFT in a page gives band energies, spectral centroid, 85%
+  rolloff and decay times for both the references and the generated wav on one
+  scale. `shot` was rebuilt this way after two blind passes overshot in
+  opposite directions — the number that found it was the 150 Hz - 1 kHz share,
+  which the references all put at 24-44% and the synthesized version had at
+  3.6%. Aim to land INSIDE the range the references span, not on their average:
+  four real gunshots disagree with each other far more than the remaining error
+  does, so an average is a sound nothing actually makes.

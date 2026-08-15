@@ -9,18 +9,17 @@ const container = document.getElementById('root');
 if (!container) throw new Error('#root is missing from index.html');
 
 /**
- * Sound the player meets before the game loop exists: the menu, the campfire,
- * and the walk out of it.
+ * Sound the player meets before the game loop exists: the campfire, and the
+ * walk out of it.
  *
  * Decoded on the first gesture rather than on load, because nothing can be
  * decoded before there is a context and there is no context before a gesture.
- * That first gesture is a menu click, which is minutes of lobby ahead of the
- * first arrival — so by the time the day names itself, the sting that names it
- * is in memory. `Game` primes the combat set on top of this.
+ * The menu itself is silent — that first gesture makes no sound of its own,
+ * it just unlocks the fire the title screen is already showing — and it is
+ * minutes of lobby ahead of the first arrival, so by the time the day names
+ * itself the sting that names it is in memory. `Game` primes combat on top.
  */
 const OPENING_SOUNDS = [
-  'ui-click',
-  'ui-back',
   'ui-error',
   'fire',
   'summon',

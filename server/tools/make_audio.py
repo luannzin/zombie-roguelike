@@ -503,32 +503,13 @@ def save_wav(path: Path, src: Buf, rate: int) -> int:
 
 # --- interface -------------------------------------------------------------
 #
-# The menu is the first thing anybody hears, and it sets the register the whole
-# game speaks in: wood, cloth and metal, never a synth blip. These are quiet on
-# purpose — UI that announces itself is UI you get tired of on the third click.
-
-
-def ui_click(rng: random.Random) -> tuple[Buf, int]:
-    rate = SFX_RATE
-    n = dur(0.14, rate)
-    # A body that drops a fifth, so the click has a floor under it.
-    body = mul(
-        tone(n, lambda t: 240.0 - 95.0 * t, rate, "sine"),
-        env_perc(n, rate, 0.001, 0.10, 3.2),
-    )
-    tick = biquad(white(dur(0.014, rate), rng), rate, "highpass", 2400)
-    tick = mul(tick, env_perc(len(tick), rate, 0.0005, 0.012, 2.0))
-    return normalize(softclip(mix(gain(body, 0.8), pad(gain(tick, 0.6), n)), 1.4), 0.62), rate
-
-
-def ui_back(rng: random.Random) -> tuple[Buf, int]:
-    rate = SFX_RATE
-    n = dur(0.16, rate)
-    body = mul(
-        tone(n, lambda t: 190.0 - 80.0 * t, rate, "tri"),
-        env_perc(n, rate, 0.002, 0.13, 2.6),
-    )
-    return normalize(softclip(body, 1.2), 0.50), rate
+# THE MENU AND THE LOBBY CHROME ARE SILENT. There is no hover tick and no click,
+# and both were tried and cut. Hover chattered at buttons the pointer was only
+# crossing; the click marked a decision the screen was already announcing, and
+# on a title screen that opens onto a crackling bonfire it was a synthetic
+# noise sitting on top of the one thing that sells the place. What is left here
+# is not interface decoration — it is the game refusing you (`ui-error`) and
+# the bag, which is a thing on your back rather than a panel.
 
 
 def ui_error(rng: random.Random) -> tuple[Buf, int]:
@@ -880,62 +861,100 @@ def sfx_step_litter(rng: random.Random, variant: int) -> tuple[Buf, int]:
 def sfx_shot(rng: random.Random, variant: int) -> tuple[Buf, int]:
     """The gun. The most-heard sound in the game, so it gets the most layers.
 
-    A GUNSHOT IS A HIGH-FREQUENCY EVENT. That is the thing this got wrong the
-    first time: the body's cutoff fell to 350 Hz and a sine swept down to 48,
-    so nearly all the energy ended up under 500 and it read as a dull thump in
-    a box. What the ear identifies as "gun" lives between about 1 and 5 kHz —
-    the crack — and the low end is only there to give it a floor. The balance
-    below is deliberately top-heavy, and the sub is a third of what it was.
+    THE BODY OF A GUNSHOT IS LOW-MID, NOT TREBLE. Both earlier versions got
+    this wrong from opposite directions — the first buried everything under
+    500 Hz and read as a thump in a box, the second answered that by pushing
+    the energy up to 2.5-5 kHz and read as a thin hiss with a disconnected
+    thud. Four reference recordings (`assets/inspiration/gun/`) analysed
+    through an FFT say both were wrong in the same place: real shots put
+    24-44% of their energy between 150 Hz and 1 kHz, and 85% of it below
+    ~2.5 kHz. The second version had 3.6% in that band and needed 4.9 kHz to
+    reach 85%. The hole in the middle was the whole problem.
 
-    Four layers, each doing a job the others cannot:
-      CRACK   a hot, bright snap. Longer than the old four milliseconds,
-              because two milliseconds of anything is a tick, not a report.
-      BODY    noise under a BANDPASS sweeping 4 kHz -> 1.1 kHz. Bandpass, not
-              lowpass: a lowpass leaves everything underneath it and the sound
-              silts up at the bottom as the sweep falls.
-      PUNCH   a short drop from 170 to 80 Hz. Weight, not a kick drum.
-      TAIL    the wood answering, as discrete slaps rather than reverb.
+    Target, averaged across the references and leaning on the two that are
+    single clean shots rather than long ambient ones:
+
+        <150  150-400  400-1k  1k-2.5k  2.5-5k  5-10k
+         ~28      ~18     ~22      ~15     ~10     ~5
+
+    Five layers:
+      CRACK   the transient. Short and QUIET — it is what makes the shot sound
+              close, not what makes it sound loud, and at the old level it was
+              half the spectrum.
+      BODY    the report itself: broad noise sweeping 1400 -> 380 Hz. This is
+              the layer that was missing.
+      BOOM    lowpassed noise under it, filling below 400.
+      PUNCH   a sine dropping 230 -> 95 Hz. Chest.
+      TAIL    slaps off trunks, LOWPASSED — air and foliage eat the top, so a
+              tail as bright as the direct sound reads as a tiled room.
     """
     rate = SFX_RATE
     n = dur(0.7, rate)
 
-    crack_n = dur(0.016, rate)
-    crack = biquad(white(crack_n, rng), rate, "highpass", 2200, 0.8)
-    crack = mix(crack, gain(biquad(white(crack_n, rng), rate, "bandpass", 3600, 1.1), 0.9))
-    crack = mul(crack, env_perc(crack_n, rate, 0.0002, 0.014, 2.2))
+    # EACH LAYER OWNS A DIFFERENT BAND. That is the discipline that took two
+    # attempts to find: when the punch, the boom and the body all had content
+    # around 200-400 Hz they summed into a 58% spike there and starved both the
+    # sub and the report. Every layer below is placed so its mass lands
+    # somewhere the others are not.
+    crack_n = dur(0.009, rate)
+    crack = biquad(white(crack_n, rng), rate, "highpass", 2600, 0.7)
+    crack = mul(crack, env_perc(crack_n, rate, 0.0002, 0.008, 2.0))
 
-    body_n = dur(0.12, rate)
-    body = biquad(white(body_n, rng), rate, "bandpass", lambda t: 4000 - 2900 * t**0.5, 0.7)
-    body = mul(body, env_perc(body_n, rate, 0.0006, 0.085, 2.6))
+    # The report — owns 400 Hz to 1 kHz. Broad Q on purpose: a narrow band here
+    # whistles, and the references show a wide shelf rather than a peak. The
+    # sweep is placed by where the ENERGY lands, not where it starts: the
+    # envelope is mostly spent in the first thirty milliseconds, so a sweep
+    # beginning at 2.2 kHz leaves this band empty however low it ends.
+    body_n = dur(0.13, rate)
+    body = biquad(white(body_n, rng), rate, "bandpass", lambda t: 1150 - 700 * t**0.5, 0.5)
+    body = mul(body, env_perc(body_n, rate, 0.0006, 0.095, 2.4))
 
-    # A separate mid band that holds on a touch longer, so the report has a
-    # centre instead of being a transient with a tail bolted on.
-    mid_n = dur(0.09, rate)
-    mid = biquad(white(mid_n, rng), rate, "bandpass", 1500, 1.4)
-    mid = mul(mid, env_perc(mid_n, rate, 0.001, 0.07, 2.2))
+    # Owns 150-400. Nothing was targeting this band, and the references all
+    # have real content in it.
+    low_n = dur(0.15, rate)
+    low = biquad(white(low_n, rng), rate, "bandpass", 265, 0.6)
+    low = mul(low, env_perc(low_n, rate, 0.0008, 0.11, 2.2))
 
-    punch_n = dur(0.1, rate)
+    # Under 150. Cut low enough that it does not crowd the report — and kept
+    # QUIET, because `normalize` scales by peak and the peak is set by the
+    # bass: every dB added down here shrinks everything else in the file.
+    boom_n = dur(0.18, rate)
+    boom = biquad(white(boom_n, rng), rate, "lowpass", lambda t: 190 - 95 * t, 0.8)
+    boom = mul(boom, env_perc(boom_n, rate, 0.0008, 0.13, 2.2))
+
+    # A thin band of definition up top. Small — this is seasoning, and it was
+    # the main course last time.
+    mid_n = dur(0.07, rate)
+    mid = biquad(white(mid_n, rng), rate, "bandpass", 2700, 1.0)
+    mid = mul(mid, env_perc(mid_n, rate, 0.001, 0.055, 2.4))
+
+    # Chest. Starts just above the sub and falls straight through it, so it
+    # crosses 150-400 rather than sitting in it.
+    punch_n = dur(0.12, rate)
     punch = mul(
-        tone(punch_n, lambda t: 170.0 - 90.0 * t**0.5, rate, "sine"),
-        env_perc(punch_n, rate, 0.001, 0.07, 2.6),
+        tone(punch_n, lambda t: 165.0 - 112.0 * t**0.45, rate, "sine"),
+        env_perc(punch_n, rate, 0.001, 0.09, 2.4),
     )
 
     dry = mix(
-        pad(gain(crack, 1.0), n),
-        pad(gain(body, 0.95), n),
-        pad(gain(mid, 0.5), n),
-        pad(gain(punch, 0.32), n),
+        pad(gain(crack, 0.55), n),
+        pad(gain(body, 1.0), n),
+        pad(gain(low, 0.95), n),
+        pad(gain(boom, 0.3), n),
+        pad(gain(mid, 0.24), n),
+        pad(gain(punch, 0.26), n),
     )
-    dry = softclip(dry, 2.4)
+    dry = softclip(dry, 2.2)
 
-    # Brighter slaps than before, and one very early: a close reflection is
-    # what puts the shooter among trees rather than in a field.
+    # Longer and darker than before: the references decay to -40 dB over
+    # 0.3-0.6 s, and their tails carry almost nothing above 2 kHz.
     wet = reflections(
         dry,
         rate,
-        [(0.011, 0.24), (0.026, 0.26), (0.052, 0.17), (0.091, 0.11), (0.147, 0.06)],
+        [(0.013, 0.26), (0.031, 0.22), (0.058, 0.16), (0.104, 0.11), (0.163, 0.07)],
     )
-    wet = mix(wet, gain(reverb(pad(dry, len(wet)), rate, room=0.7, damp=0.35, wet=1.0), 0.14))
+    wet = mix(wet, gain(reverb(pad(dry, len(wet)), rate, room=0.8, damp=0.55, wet=1.0), 0.2))
+    wet = biquad(wet, rate, "lowpass", 7800, 0.7)
     return normalize(pad(wet, n), 0.97), rate
 
 
@@ -1378,51 +1397,53 @@ def sfx_drop(rng: random.Random) -> tuple[Buf, int]:
 #:
 #: `gain` is the mix decision and it lives here rather than at the call site,
 #: so "why is the shot louder than a footstep" has one answer in one file.
-#: `bus` picks which volume slider the player controls it with.
+#:
+#: `bus` is the row in the player's options panel, so the grouping is a
+#: PLAYER-FACING taxonomy and not an engineering one:
+#:
+#:   ui       the interface answering: a refusal, the bag
+#:   ambient  the loops that are always there, plus the corridor drone
+#:   sfx      GUNS AND ZOMBIES ONLY — the loud, violent half. Deliberately
+#:            narrow, because somebody who wants combat quieter must not lose
+#:            their own footsteps to do it.
+#:   misc     everything else that happens: steps, loot, crates, the lamp, the
+#:            transitions
 CATALOG: dict[str, tuple[object, int, float, str, bool]] = {
-    # interface. There is no hover sound: the pointer crosses buttons on the
-    # way to the one it wants, so hover ticks chatter at moves the player has
-    # not decided on. A sound marks a decision.
-    "ui-click": (ui_click, 1, 0.7, "ui", False),
-    "ui-back": (ui_back, 1, 0.6, "ui", False),
+    # interface — see the banner above: no hover, no click. A refusal and a bag.
     "ui-error": (ui_error, 1, 0.6, "ui", False),
     "bag-open": (ui_bag_open, 1, 0.55, "ui", False),
     "bag-close": (ui_bag_close, 1, 0.5, "ui", False),
-    # camp
-    "fire": (bed_fire, 1, 0.5, "ambient", True),
-    "kindle": (sfx_kindle, 1, 0.85, "sfx", False),
-    "summon": (sfx_summon, 1, 0.45, "sfx", False),
     "ready": (sfx_ready, 1, 0.5, "ui", False),
     "unready": (sfx_unready, 1, 0.45, "ui", False),
-    # leaving and arriving
-    "void": (sfx_void, 1, 0.7, "ambient", False),
-    "arrive": (sfx_arrive, 1, 0.8, "sfx", False),
-    # the forest
+    # ambience — the loops, and the one drone that behaves like one
+    "fire": (bed_fire, 1, 0.5, "ambient", True),
     "wind": (bed_wind, 1, 0.45, "ambient", True),
     "night": (bed_night, 1, 0.5, "ambient", True),
-    "dread": (sfx_dread, 3, 0.5, "sfx", False),
-    # the player
-    "step-soft": (sfx_step_soft, 4, 0.4, "sfx", False),
-    "step-litter": (sfx_step_litter, 4, 0.42, "sfx", False),
+    "heartbeat": (bed_heartbeat, 1, 0.6, "ambient", True),
+    "void": (sfx_void, 1, 0.7, "ambient", False),
+    # guns and zombies
     "shot": (sfx_shot, 3, 0.9, "sfx", False),
     "hurt": (sfx_hurt, 3, 0.85, "sfx", False),
-    "heartbeat": (bed_heartbeat, 1, 0.6, "ambient", True),
-    # the lantern
-    "lantern-on": (sfx_lantern_on, 1, 0.6, "sfx", False),
-    "lantern-off": (sfx_lantern_off, 1, 0.55, "sfx", False),
-    "lantern-flicker": (sfx_lantern_flicker, 1, 0.5, "sfx", False),
-    # zombies
     "zombie-idle": (sfx_zombie_idle, 3, 0.75, "sfx", False),
     "zombie-alert": (sfx_zombie_alert, 2, 0.85, "sfx", False),
     "zombie-attack": (sfx_zombie_attack, 3, 0.8, "sfx", False),
     "zombie-hit": (sfx_zombie_hit, 3, 0.8, "sfx", False),
     "zombie-death": (sfx_zombie_death, 3, 0.8, "sfx", False),
-    # loot and crates
-    "loot": (sfx_loot, 1, 0.6, "sfx", False),
-    "rarity": (sfx_rarity, 5, 0.7, "sfx", False),
-    "coin": (sfx_coin, 1, 0.5, "sfx", False),
-    "crate-break": (sfx_crate_break, 3, 0.85, "sfx", False),
-    "drop": (sfx_drop, 1, 0.6, "sfx", False),
+    # everything else that happens
+    "step-soft": (sfx_step_soft, 4, 0.4, "misc", False),
+    "step-litter": (sfx_step_litter, 4, 0.42, "misc", False),
+    "lantern-on": (sfx_lantern_on, 1, 0.6, "misc", False),
+    "lantern-off": (sfx_lantern_off, 1, 0.55, "misc", False),
+    "lantern-flicker": (sfx_lantern_flicker, 1, 0.5, "misc", False),
+    "kindle": (sfx_kindle, 1, 0.85, "misc", False),
+    "summon": (sfx_summon, 1, 0.45, "misc", False),
+    "arrive": (sfx_arrive, 1, 0.8, "misc", False),
+    "dread": (sfx_dread, 3, 0.5, "misc", False),
+    "loot": (sfx_loot, 1, 0.6, "misc", False),
+    "rarity": (sfx_rarity, 5, 0.7, "misc", False),
+    "coin": (sfx_coin, 1, 0.5, "misc", False),
+    "crate-break": (sfx_crate_break, 3, 0.85, "misc", False),
+    "drop": (sfx_drop, 1, 0.6, "misc", False),
 }
 
 #: Base for every per-sound seed. Changing it reshuffles every variant in the

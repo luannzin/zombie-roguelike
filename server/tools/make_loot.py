@@ -369,13 +369,12 @@ ITEMS: list[tuple[str, Palette, Art]] = [
     ),
     (
         "glock18",
-        {"t": LEATHER, "m": METAL},
+        {"f": METAL, "s": METAL},
         [
-            "....mmmmmm.",
-            "...tmmmmmm.",
-            "...t.......",
-            "...t.......",
-            "...tt......",
+            "....ssssss.",
+            "...fssssss.",
+            "...f.......",
+            "...ff......",
         ],
     ),
     (
@@ -384,7 +383,6 @@ ITEMS: list[tuple[str, Palette, Art]] = [
         [
             ".....sssssss",
             "....ssssssss",
-            "...gg.......",
             "...gg.......",
             "...ggg......",
         ],

@@ -6,15 +6,15 @@
   "items": {
     "glock18": {
       "frame": 0,
-      "gripX": 2,
-      "gripY": 4,
+      "gripX": 4,
+      "gripY": 5,
       "muzzleX": 9,
       "muzzleY": 2
     },
     "deagle": {
       "frame": 1,
-      "gripX": 4,
-      "gripY": 4,
+      "gripX": 5,
+      "gripY": 5,
       "muzzleX": 11,
       "muzzleY": 2
     },

@@ -35,7 +35,8 @@ imported by `app/` and never run at request time.
   sheet is the same disc spun. Guns are the same: `make_guns.py` writes the
   held side-view; `make_loot.py` writes the 16x16 ground/HUD icons under the
   same keys. Do not fold them — a 16px isometric pistol rotated around a
-  grip is mush.
+  grip is mush. Pistol grips are a solid block — no heel hole, no selector.
+  At this size a 1px loop is eaten by the outline and reads as a circle.
 - Generation is deterministic: the same command must produce byte-identical
   PNGs. Do not introduce unseeded randomness.
 - `--tile` must match `TILE_SIZE` in `app/config.py`.

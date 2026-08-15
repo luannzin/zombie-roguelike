@@ -123,29 +123,32 @@ def _rightmost(art: Art, ch: str, ox: int, oy: int) -> tuple[int, int]:
 # Five authored rows, barrel on row 1, so every gun sits on the same line.
 # Marker letters used only for grip/muzzle lookup are still painted:
 #   g = grip pivot band, m = muzzle face
+# Pistol grips are a SOLID block — no magwell hole, no selector dial, no
+# trigger-guard loop. At this size a 1px hole is filled by the outline and
+# reads as a circle on the heel. The guard is a squared step under the slide.
 GUNS: list[tuple[str, Palette, Art, str, str]] = [
     (
         "glock18",
-        {"s": SLIDE, "t": TAN, "g": TAN, "m": SLIDE},
+        {"s": SLIDE, "f": POLY, "g": GRIP, "m": SLIDE},
         [
-            ".....sss.",
+            "....sssss",
             "....ssssm",
-            "..ttss...",
-            ".gt.t....",
-            "..ttt....",
+            "...ffsss.",
+            "...gf....",
+            "...gg....",
         ],
         "g",
         "m",
     ),
     (
         "deagle",
-        {"s": CHROME, "k": STEEL, "p": GRIP, "g": GRIP, "m": CHROME},
+        {"s": CHROME, "p": GRIP, "g": GRIP, "m": CHROME},
         [
-            ".......ssss",
-            "......skkkm",
-            "....ppsssk.",
-            "...gp.p....",
-            "....ppp....",
+            ".....ssssss",
+            ".....sssssm",
+            "....ppsss..",
+            "....gp.....",
+            "....gg.....",
         ],
         "g",
         "m",

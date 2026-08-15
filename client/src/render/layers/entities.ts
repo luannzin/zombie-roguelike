@@ -66,7 +66,7 @@ const LABEL_TICK_GAP = 3;
 /** Coin bob amplitude in world px — tiny so it still reads as grounded. */
 const COIN_BOB = 0.35;
 /** Draw scale vs the processed 16px frame. */
-const COIN_SCALE = 0.5;
+const COIN_SCALE = 0.375;
 
 export interface EntityContext {
   ctx: CanvasRenderingContext2D;
@@ -104,8 +104,8 @@ export function drawCoinShadows(entity: EntityContext, coins: DrawableCoin[]): v
     ctx.ellipse(
       view.x(coin.x),
       view.y(coin.y + 0.75),
-      view.size(0.8),
-      view.size(0.4),
+      view.size(0.6),
+      view.size(0.3),
       0,
       0,
       Math.PI * 2,

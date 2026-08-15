@@ -1,7 +1,8 @@
 /**
  * Client-side hitscan, used ONLY to draw the local player's own tracer
  * immediately instead of waiting a round trip. The server remains the sole
- * authority on damage; mirror of server/app/combat.py.
+ * authority on damage. Capsules and tile DDA mirror `server/app/combat.py`;
+ * crate sprite boxes mirror `server/app/crates.py` `along_ray`.
  */
 
 import type { TileMap } from './world';
@@ -97,6 +98,83 @@ export function rayCapsule(
     }
   }
 
+  return best;
+}
+
+/** Nearest t>=0 where the unit ray hits the axis-aligned box, else null. */
+export function rayAabb(
+  ox: number,
+  oy: number,
+  dx: number,
+  dy: number,
+  left: number,
+  top: number,
+  right: number,
+  bottom: number,
+): number | null {
+  let tmin = 0;
+  let tmax = Infinity;
+
+  if (Math.abs(dx) < 1e-12) {
+    if (ox < left || ox > right) return null;
+  } else {
+    let tx1 = (left - ox) / dx;
+    let tx2 = (right - ox) / dx;
+    if (tx1 > tx2) {
+      const swap = tx1;
+      tx1 = tx2;
+      tx2 = swap;
+    }
+    tmin = Math.max(tmin, tx1);
+    tmax = Math.min(tmax, tx2);
+  }
+
+  if (Math.abs(dy) < 1e-12) {
+    if (oy < top || oy > bottom) return null;
+  } else {
+    let ty1 = (top - oy) / dy;
+    let ty2 = (bottom - oy) / dy;
+    if (ty1 > ty2) {
+      const swap = ty1;
+      ty1 = ty2;
+      ty2 = swap;
+    }
+    tmin = Math.max(tmin, ty1);
+    tmax = Math.min(tmax, ty2);
+  }
+
+  if (tmax < tmin) return null;
+  return tmin;
+}
+
+/** Closest crate sprite box on the ray, at or before `maxDist`. */
+export function crateAlongRay(
+  crates: readonly { x: number; y: number }[],
+  ox: number,
+  oy: number,
+  dx: number,
+  dy: number,
+  maxDist: number,
+  width: number,
+  height: number,
+): number | null {
+  const half = width * 0.5;
+  let best: number | null = null;
+  for (const crate of crates) {
+    const dist = rayAabb(
+      ox,
+      oy,
+      dx,
+      dy,
+      crate.x - half,
+      crate.y - height,
+      crate.x + half,
+      crate.y,
+    );
+    if (dist !== null && dist <= maxDist && (best === null || dist < best)) {
+      best = dist;
+    }
+  }
   return best;
 }
 

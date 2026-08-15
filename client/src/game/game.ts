@@ -46,7 +46,7 @@ import { tileHash } from '../render/terrain';
 import type { DrawableCoin, DrawableEntity, DrawableLoot } from '../render/types';
 import { whenFontsReady } from '../theme/fonts';
 import { palette } from '../theme/palette';
-import { hitscan, type RayTarget } from './combat';
+import { crateAlongRay, hitscan, type RayTarget } from './combat';
 import { Effects } from './effects';
 import { EntityVisuals } from './entity-visuals';
 import {
@@ -859,20 +859,32 @@ export class Game {
       targets,
       this.localId,
     );
-    const hit = result.target !== null;
-    this.effects.spawnShot(
+    const crateDist = crateAlongRay(
+      world.crates,
       ox,
       oy,
       this.aimX,
       this.aimY,
       result.distance,
+      (config.crateHitWTiles ?? 1) * config.tileSize,
+      (config.crateHitHTiles ?? 2) * config.tileSize,
+    );
+    const crateHit = crateDist !== null;
+    const distance = crateHit ? crateDist : result.distance;
+    const hit = result.target !== null && !crateHit;
+    this.effects.spawnShot(
+      ox,
+      oy,
+      this.aimX,
+      this.aimY,
+      distance,
       this.localMeta?.color ?? palette().effects.fallbackShot,
-      hit,
+      hit || crateHit,
       hit ? config.shotDamage : undefined,
     );
-    this.camera.addTrauma(FIRE_TRAUMA + (hit ? HIT_TRAUMA : 0));
+    this.camera.addTrauma(FIRE_TRAUMA + (hit || crateHit ? HIT_TRAUMA : 0));
     this.visuals.kickRecoil(this.localId, this.aimX, this.aimY);
-    if (result.target) this.visuals.pulseHitFlash(result.target.id);
+    if (hit && result.target) this.visuals.pulseHitFlash(result.target.id);
   }
 
   // --- rendering -----------------------------------------------------------

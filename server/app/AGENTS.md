@@ -193,8 +193,10 @@ game's scale.
   world drop per unit.
 - **A crate is furniture you can break.** Scenery still places the pile;
   `crates.py` owns the live list. `{type:"break","id"}` smashes if the
-  feet are inside `crateBreakTiles`; a bullet that stops on the crate's
-  tile does the same. Walk-out refuses it; camp allows E (stores are
+  feet are inside `crateBreakTiles`; a bullet that hits the sprite box
+  (`crateHitWTiles` × `crateHitHTiles`, from the contact up) does the
+  same — the 1×1 foot tile is walking cover, not the aim target.
+  Walk-out refuses it; camp allows E (stores are
   furniture) but not guns. Three rolls: empty (client plays wind), 1–3
   coins, or one catalog item (`loot.roll_item`, no scene bias) on the
   crate's own tile — not `place_near`. Smash

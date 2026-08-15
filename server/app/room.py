@@ -742,8 +742,13 @@ class Room:
             targets,
             ignore_id=shooter.id,
         )
+        # The foot tile is only the contact. Aiming at the barrel has to
+        # count, so the sprite box is tested against the same ray — closer
+        # than the wall or the body the DDA already found.
+        crate, crate_dist = crates.along_ray(self.crates, ox, oy, dx, dy, hit.distance)
         self._shot_id += 1
-        victim = hit.target
+        victim = None if crate is not None else hit.target
+        dist = crate_dist if crate is not None else hit.distance
         self.shot_events.append(
             {
                 "id": self._shot_id,
@@ -752,21 +757,16 @@ class Room:
                 "y": round(oy, 2),
                 "dx": round(dx, 3),
                 "dy": round(dy, 3),
-                "dist": round(hit.distance, 2),
+                "dist": round(dist, 2),
                 "hit": victim.id if victim is not None else None,
             }
         )
-        if isinstance(victim, Enemy):
+        if crate is not None:
+            self.smash_crate(crate, shooter)
+        elif isinstance(victim, Enemy):
             self.damage_enemy(victim, SHOT_DAMAGE, shooter)
         elif victim is not None:
             self.damage_player(victim, SHOT_DAMAGE, shooter)
-        elif victim is None:
-            # The ray stopped on a tile. If that tile is a crate, the crate
-            # ate the bullet — cover until it is gone.
-            tx, ty = crates.hit_tile(ox, oy, dx, dy, hit.distance)
-            crate = crates.at_tile(self.crates, tx, ty)
-            if crate is not None:
-                self.smash_crate(crate, shooter)
 
     def damage_player(self, target: Player, amount: int, source: Player | None) -> None:
         if not target.alive:

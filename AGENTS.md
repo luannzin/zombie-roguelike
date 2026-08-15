@@ -168,7 +168,8 @@ subtree.
   (`server/app/crates.py`), not scenery. Scenery still places them; after
   the stamp they are pulled onto the map as crates so a smash can remove
   one. The sheet is kinds × break frames (idle is frame 0). Shoot the
-  tile or stand close and press E ("E para destruir"). A smash opens the
+  sprite (the full box, not just the foot tile) or stand close and press
+  E ("E para destruir"). A smash opens the
   LOW tile to floor and rolls empty (wind VFX), a few coins, or one
   catalog item on that same tile. E still works in camp; guns do not. Interact is loot,
   then crate, then ready.

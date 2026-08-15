@@ -348,6 +348,13 @@ CRATE_BREAK_DIST = TILE_SIZE * CRATE_BREAK_TILES
 # Quieter than a gunshot — wood giving way, not a muzzle.
 CRATE_NOISE_TILES = 5.5
 CRATE_NOISE_DIST = TILE_SIZE * CRATE_NOISE_TILES
+# Shot box. Walking still uses the 1×1 foot tile; a bullet has to hit the
+# wood you aim at. The sheet is 1 × 1.125 tiles — two tiles of height so
+# the barrel's body is not empty air.
+CRATE_HIT_W_TILES = 1.0
+CRATE_HIT_H_TILES = 2.0
+CRATE_HIT_W = TILE_SIZE * CRATE_HIT_W_TILES
+CRATE_HIT_H = TILE_SIZE * CRATE_HIT_H_TILES
 
 # --- inventory / carry ------------------------------------------------------
 # Starting pocket. A later upgrade grows the slot count; weight is independent
@@ -439,6 +446,9 @@ def client_config() -> dict:
         "lootCollectTiles": LOOT_COLLECT_TILES,
         # How close to a crate E will smash, in tiles.
         "crateBreakTiles": CRATE_BREAK_TILES,
+        # Shot box on a crate, in tiles. Bottom-anchored on the contact.
+        "crateHitWTiles": CRATE_HIT_W_TILES,
+        "crateHitHTiles": CRATE_HIT_H_TILES,
         # Catalog: name, rarity, atlas frame, weight, value. The client never
         # invents an item.
         "loot": catalog_payload(),

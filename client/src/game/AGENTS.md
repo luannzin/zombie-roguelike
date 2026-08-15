@@ -17,7 +17,7 @@ seam React is allowed to read.
 | `interpolation.ts` | remote entity smoothing |
 | `input.ts` | keyboard/mouse sampling into an `InputPacket` |
 | `world.ts` | client tile map, collision + sight queries, fires, hearth mask, placed scenery, live crates |
-| `combat.ts` | client-side shot feel and tracer bookkeeping |
+| `combat.ts` | client-side shot feel: capsules, tile DDA, crate sprite boxes |
 | `effects.ts` | tracers, dust, floating text, event lights, boot prints, crate smash, wind |
 | `entity-visuals.ts` | per-entity flash, recoil, anim; `HIT_FLASH_LIFE` is also the crate smash blink |
 | `lantern.ts` | four-cell battery, produces `output` 0..1 |

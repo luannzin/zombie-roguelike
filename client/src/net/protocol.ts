@@ -17,7 +17,7 @@
  * The server places it; the client never sends a position.
  *
  * `{type:"break","id"}` smashes a crate. The server validates range; a
- * shot that lands on the crate's tile does the same.
+ * shot that hits the crate's sprite box does the same.
  */
 
 export interface MovementInput {
@@ -126,6 +126,10 @@ export interface GameConfig {
   lootCollectTiles?: number;
   /** How close to a crate (tiles, feet to contact) E will smash. */
   crateBreakTiles?: number;
+  /** Crate shot box width, in tiles. Bottom-anchored on the contact. */
+  crateHitWTiles?: number;
+  /** Crate shot box height, in tiles. Covers the barrel, not just the foot. */
+  crateHitHTiles?: number;
   /** Catalog of world loot. Keyed by item key; `frame` indexes the loot atlas. */
   loot?: Record<string, LootItemConfig>;
   /** Starting bag size. A later upgrade grows it. */

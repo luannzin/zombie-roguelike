@@ -19,8 +19,8 @@ client -> server
   {"type":"collect","id":"l3"}          pick up a loot drop; ignored if too far
                                         or the bag has no slot for that key
   {"type":"break","id":"k3"}            smash a crate; ignored if too far.
-                                        A shot that lands on the crate's tile
-                                        does the same.
+                                        A shot that hits the crate's sprite
+                                        box does the same.
   {"type":"drop","slot":0}              pull a bag slot back onto the ground
                                         near the player's feet; ignored in camp
 

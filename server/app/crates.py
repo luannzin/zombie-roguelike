@@ -6,9 +6,9 @@ client draws them from this list, not from the scenery props, so a smash can
 remove one without rewriting the map payload.
 
 Smash is server-authoritative. E sends `{type:"break","id"}`; a bullet that
-stops on a crate's tile does the same. Three outcomes, rolled here: nothing
-  (the client plays wind), a few coins, or one catalog item on the crate's
-  own tile.
+hits the sprite box (not just the 1×1 foot tile) does the same. Three
+outcomes, rolled here: nothing (the client plays wind), a few coins, or
+one catalog item on the crate's own tile.
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ import math
 import random
 from dataclasses import dataclass
 
-from .config import TILE_SIZE
+from .config import CRATE_HIT_H, CRATE_HIT_W, TILE_SIZE
 from .loot import roll_item
 from .scenery import STANDING, Prop
 
@@ -158,18 +158,73 @@ def nearest(crates: dict[str, Crate], x: float, y: float, max_dist: float) -> Cr
     return best
 
 
-def at_tile(crates: dict[str, Crate], tx: int, ty: int) -> Crate | None:
+def hitbox(crate: Crate, width: float = CRATE_HIT_W, height: float = CRATE_HIT_H) -> tuple[float, float, float, float]:
+    """Sprite box, bottom-centred on the contact. Wider/taller than the foot tile."""
+    half = width * 0.5
+    return crate.x - half, crate.y - height, crate.x + half, crate.y
+
+
+def ray_aabb(
+    ox: float,
+    oy: float,
+    dx: float,
+    dy: float,
+    left: float,
+    top: float,
+    right: float,
+    bottom: float,
+) -> float | None:
+    """Nearest t>=0 where the unit ray hits the axis-aligned box, else None."""
+    tmin = 0.0
+    tmax = math.inf
+
+    if abs(dx) < 1e-12:
+        if ox < left or ox > right:
+            return None
+    else:
+        tx1 = (left - ox) / dx
+        tx2 = (right - ox) / dx
+        if tx1 > tx2:
+            tx1, tx2 = tx2, tx1
+        tmin = max(tmin, tx1)
+        tmax = min(tmax, tx2)
+
+    if abs(dy) < 1e-12:
+        if oy < top or oy > bottom:
+            return None
+    else:
+        ty1 = (top - oy) / dy
+        ty2 = (bottom - oy) / dy
+        if ty1 > ty2:
+            ty1, ty2 = ty2, ty1
+        tmin = max(tmin, ty1)
+        tmax = min(tmax, ty2)
+
+    if tmax < tmin:
+        return None
+    return tmin
+
+
+def along_ray(
+    crates: dict[str, Crate],
+    ox: float,
+    oy: float,
+    dx: float,
+    dy: float,
+    max_dist: float,
+    width: float = CRATE_HIT_W,
+    height: float = CRATE_HIT_H,
+) -> tuple[Crate | None, float]:
+    """Closest crate whose sprite box the ray hits, at or before `max_dist`."""
+    best: Crate | None = None
+    best_d = max_dist
     for crate in crates.values():
-        if crate.tx == tx and crate.ty == ty:
-            return crate
-    return None
-
-
-def hit_tile(ox: float, oy: float, dx: float, dy: float, distance: float) -> tuple[int, int]:
-    """The tile a wall-hit landed in. Step a hair past the face into the cell."""
-    px = ox + dx * (distance + 0.5)
-    py = oy + dy * (distance + 0.5)
-    return int(px // TILE_SIZE), int(py // TILE_SIZE)
+        left, top, right, bottom = hitbox(crate, width, height)
+        dist = ray_aabb(ox, oy, dx, dy, left, top, right, bottom)
+        if dist is not None and dist <= best_d:
+            best = crate
+            best_d = dist
+    return best, best_d
 
 
 def roll_drop(rng: random.Random) -> tuple[str, str | None, int]:

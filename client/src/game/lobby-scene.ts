@@ -32,6 +32,7 @@
  * Lifecycle is explicit — `start()` / `dispose()`, same contract as `Game`.
  */
 
+import { playSfx, setBeds } from "../audio";
 import { get2d } from "../lib/canvas";
 import { clamp01, lerp } from "../lib/math";
 import type { GameConfig, MapPayload } from "../net/protocol";
@@ -366,6 +367,19 @@ export class LobbyScene {
 		});
 		this.resizeObserver.observe(this.canvas);
 
+		// The fire is the camp's bed, and it starts HERE — on the title screen as
+		// much as in a room, because this scene is the backdrop for both and the
+		// two are one continuous shot of one clearing.
+		//
+		// Deliberately never stopped in `dispose()`, which is the one exception
+		// to this folder's release rule and the reason it is spelled out: the
+		// bed is HANDED OVER, not owned. Navigating title -> room disposes this
+		// scene and builds another one on the same fire, and starting a run
+		// hands it to `Game`, which is where it is finally released. Stopping it
+		// here would put a gap in the audio at exactly the seams the whole
+		// transition exists to hide.
+		setBeds({ fire: 1 });
+
 		this.lastFrame = performance.now();
 		this.rafId = requestAnimationFrame(this.frame);
 	}
@@ -441,6 +455,9 @@ export class LobbyScene {
 	private beginKindle(): void {
 		if (this.kindle) return;
 		this.kindle = { elapsed: 0 };
+		// The generator timed this against the same sheet the sprite plays, so
+		// the boom lands on the frame the column does. See `sfx_kindle`.
+		playSfx("kindle", { jitter: 0 });
 		this.spawnKindleCharge();
 	}
 
@@ -708,6 +725,10 @@ export class LobbyScene {
 		const { x, y } = seat;
 		const ts = this.tile;
 		const tone = palette().summon;
+		// Somebody arriving at the fire. Not spatialised: the lobby has no
+		// listener to place it against — the local player may not even have a
+		// seat yet — and everybody in the clearing is a few metres apart anyway.
+		playSfx("summon", { gain: seat.isLocal ? 1 : 0.6 });
 		for (let i = 0; i < 38; i++) {
 			const spread = (Math.random() * 2 - 1) * ts * 0.9;
 			const startY = y - ts * (7 + Math.random() * 11);

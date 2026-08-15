@@ -8,7 +8,8 @@
  * than the twenty lines below.
  */
 
-import type { ButtonHTMLAttributes, ReactNode } from 'react';
+import type { ButtonHTMLAttributes, PointerEvent, MouseEvent, ReactNode } from 'react';
+import { playSfx } from '@/audio';
 import { cn } from '@/lib/utils';
 
 export interface MenuButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
@@ -20,11 +21,30 @@ export function MenuButton({
   variant = 'default',
   className,
   children,
+  onClick,
+  onPointerEnter,
   ...props
 }: MenuButtonProps) {
+  // Sound belongs to the component, not to the twelve call sites: every menu
+  // button in the game goes through here, so this is the one place that has to
+  // agree about what a button sounds like. A `quiet` button is the way back
+  // out of somewhere and takes the descending click.
+  const handleClick = (event: MouseEvent<HTMLButtonElement>) => {
+    playSfx(variant === 'quiet' ? 'ui-back' : 'ui-click');
+    onClick?.(event);
+  };
+  const handleEnter = (event: PointerEvent<HTMLButtonElement>) => {
+    // Only a real pointer. A touch that lands on a button fires enter and
+    // click together, which doubles the sound on every phone tap.
+    if (event.pointerType === 'mouse' && !props.disabled) playSfx('ui-hover');
+    onPointerEnter?.(event);
+  };
+
   return (
     <button
       type="button"
+      onClick={handleClick}
+      onPointerEnter={handleEnter}
       className={cn(
         'pixel-text group relative inline-flex w-full cursor-pointer items-center justify-center',
         'border px-4 py-2.5 text-[11px] leading-[17px] tracking-[0.14em] uppercase',

@@ -20,6 +20,10 @@ export function ControlsHint({ zone }: ControlsHintProps) {
   if (zone?.kind === 'camp') parts.push('E pronto');
   else if (zone?.hostile) parts.push('E coletar');
   parts.push('TAB mochila');
+  // Always listed, unlike the rest: mute is the one control that works
+  // everywhere, and a player who wants the sound off needs to find it without
+  // reading a settings screen that does not exist yet.
+  parts.push('M som');
 
   return <div className="text-ink-muted text-[11px] leading-[11px]">{parts.join(' · ')}</div>;
 }

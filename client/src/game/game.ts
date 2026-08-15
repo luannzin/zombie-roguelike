@@ -15,6 +15,17 @@
  * (StrictMode, HMR, switching rooms) cannot leave a second loop running.
  */
 
+import {
+  playSfx,
+  playSfxAt,
+  primeAudio,
+  resetSfxState,
+  setAudioListener,
+  setBedRate,
+  setBeds,
+  stopBeds,
+  throttled,
+} from '../audio';
 import { clamp01 } from '../lib/math';
 import type { Connection, ConnectionStatus, Unsubscribe } from '../net/connection';
 import type {
@@ -26,6 +37,7 @@ import type {
   CrateBreakEvent,
   CrateState,
   LootPickupEvent,
+  LootRarity,
   LootState,
   PickupEvent,
   PlayerMeta,
@@ -116,11 +128,54 @@ const FOOTPRINT_LIFE = 75;
  */
 const FOOTPRINT_MIN_VISIBILITY = 0.25;
 /**
+ * Seconds between ambient zombie growls, before jitter.
+ *
+ * The growl is the game's main horror channel and it is spent carefully. Too
+ * often and a pack becomes a drone you stop hearing; this is roughly one every
+ * few seconds when creatures are near and nothing at all when they are not.
+ * Unlike the sprite, it is NOT gated on visibility — a thing you can hear and
+ * cannot see is the entire point, and the lantern is what converts one into
+ * the other.
+ */
+const GROWL_INTERVAL = 3.4;
+/** How far a growl can still reach the ear, in tiles. Past the lantern's throw. */
+const GROWL_TILES = 17;
+/** Minimum seconds between two growls anywhere. Stops a pack stacking. */
+const GROWL_SPACING = 0.9;
+/**
+ * Seconds between the forest's false alarms, before jitter.
+ *
+ * A branch going somewhere you are not looking, attached to nothing. It works
+ * because it is a lie: the player turns, and nothing is there. Rare enough
+ * that it never becomes a metronome.
+ */
+const DREAD_INTERVAL = 38;
+/** HP ratio at which the heartbeat bed is at full and running fastest. */
+const HEART_FLOOR = 0.15;
+/** Playback rate of the heartbeat at `HEART_FLOOR`. 1 = as recorded. */
+const HEART_MAX_RATE = 1.55;
+/**
  * How well each soil takes a print, indexed the way the terrain atlas orders
  * its grounds: loam, turf, mud, litter. Mud holds one, leaf litter shrugs it
  * off — the same ground the player can see themselves standing on.
  */
 const SOIL_PRINT_DEPTH = [0.55, 0.3, 0.85, 0.16];
+/** Index of leaf litter in that same order. The one soil that is loud underfoot. */
+const LITTER_SOIL = 3;
+/**
+ * Rarity -> chime variant in the `rarity` sound.
+ *
+ * The generator renders five tiers of the same instrument, each one more of
+ * itself than the last. Ordering it here rather than deriving it from the
+ * palette keeps the sound independent of what the colours happen to be.
+ */
+const RARITY_CHIME: Record<LootRarity, number> = {
+  common: 0,
+  uncommon: 1,
+  rare: 2,
+  epic: 3,
+  legendary: 4,
+};
 
 /** Sprite sheet for players. Enemy sheets are named by the server's config. */
 const PLAYER_SHEET = 'player';
@@ -302,6 +357,16 @@ export class Game {
   private fps = 0;
   /** Elapsed seconds for vignette heartbeat. */
   private time = 0;
+  /** The zone's own ambience, without the heartbeat laid over it. */
+  private beds: Record<string, number> = {};
+  /** Last published heartbeat level, quantized. -1 forces a republish. */
+  private heartLevel = -1;
+  /** Countdown to the next ambient growl — see `GROWL_INTERVAL`. */
+  private growlLeft = GROWL_INTERVAL;
+  /** Countdown to the next false alarm — see `DREAD_INTERVAL`. */
+  private dreadLeft = DREAD_INTERVAL;
+  /** Enemies already heard alerting, so one hunt makes one snarl. */
+  private alertHeard = new Set<string>();
 
   constructor(options: GameOptions) {
     this.canvas = options.canvas;
@@ -313,7 +378,16 @@ export class Game {
     // The lamp itself decides whether it may light — a zone that forbids it
     // still has to ANSWER the key, or pressing F in the camp is indistinguishable
     // from a broken keybind. See `Lantern.toggle`.
-    this.input.onToggleLantern = () => this.lantern.toggle();
+    // The lamp decides what happened; the sound reports it. Three outcomes and
+    // they must not share a sound: it lit, it went out, or the zone said no.
+    // The refusal counter is how the third one is detectable at all.
+    this.input.onToggleLantern = () => {
+      const before = this.lantern.reading();
+      this.lantern.toggle();
+      const after = this.lantern.reading();
+      if (after.on !== before.on) playSfx(after.on ? 'lantern-on' : 'lantern-off');
+      else if (after.refusals !== before.refusals) playSfx('ui-error');
+    };
     this.input.onInteract = () => this.sendInteract();
     this.input.onToggleInventory = () => this.toggleInventory();
     bindInventoryDrop((slot) => this.requestDrop(slot));
@@ -331,6 +405,31 @@ export class Game {
     await Promise.all([this.sprites.load([PLAYER_SHEET, BACKPACK_SHEET]), whenFontsReady()]);
     // dispose() can land while these are loading.
     if (this.disposed) return;
+
+    // Audio is NOT awaited. A slow decode must never hold the first frame, and
+    // the alternative to a sound arriving a moment late is the whole arena
+    // arriving a moment late. The list is what must not be silent the first
+    // time it happens — the rest decodes on first use.
+    void primeAudio([
+      'shot',
+      'step-soft',
+      'step-litter',
+      'hurt',
+      'zombie-idle',
+      'zombie-alert',
+      'zombie-attack',
+      'zombie-hit',
+      'zombie-death',
+      'wind',
+      'night',
+      'fire',
+      'heartbeat',
+      'arrive',
+      'loot',
+      'rarity',
+      'coin',
+      'crate-break',
+    ]);
 
     this.renderer = new Renderer(this.canvas, this.sprites);
 
@@ -382,6 +481,12 @@ export class Game {
     this.effects.clear();
     this.snapshots.clear();
     this.alertSeen.clear();
+    this.alertHeard.clear();
+    // The beds are the one part of the audio graph that outlives a single
+    // sound, so they are the one part with a release here. One-shots already
+    // in the air are left to finish; cutting them would click.
+    stopBeds();
+    resetSfxState();
     this.lantern.reset();
     clearTooltipAnchors();
     clearInventoryAnchors();
@@ -530,6 +635,18 @@ export class Game {
     this.smoothX = msg.player.x;
     this.smoothY = msg.player.y;
     this.departing = false;
+    this.alertHeard.clear();
+    this.growlLeft = GROWL_INTERVAL;
+    this.dreadLeft = DREAD_INTERVAL;
+    // The zone decides what the place sounds like, exactly the way it already
+    // decides the title card, whether guns fire and whether the lamp works.
+    // Nothing here reads the map to find out where it is.
+    this.applyZoneAmbience(msg.zone);
+    // The hit the title card lands on. Delayed to sit under the type rather
+    // than under the cut: `ZoneTitle` draws its rules first and the word after,
+    // and a sting on the first frame would be answering the screen change
+    // instead of the name.
+    playSfx('arrive', { delay: 0.18, jitter: 0 });
     // Held still, facing the camera, while the zone names itself.
     this.introLeft = INTRO_TIME;
     this.aimX = INTRO_AIM_X;
@@ -572,6 +689,14 @@ export class Game {
     this.departing = Boolean(msg.departing) && this.zone?.kind === 'camp';
     if (this.departing && !wasDeparting) {
       this.patchHud({ cinematic: true, prompt: null, ready: null, cratePrompt: false });
+      // The walk-out, in one gesture: the bonfire is pulled down to a memory
+      // of itself while the corridor's drone comes up under the march. The
+      // point of leaving the camp is that the warmth stops, so the fire has to
+      // audibly go — but not to nothing, because it is still behind you and
+      // the forest `welcome` a few seconds later is what finally cuts it.
+      this.beds = { fire: 0.18, wind: 0.5 };
+      this.pushBeds();
+      playSfx('void', { jitter: 0 });
     }
 
     if (msg.roster) {
@@ -603,6 +728,7 @@ export class Game {
       // the only signal that works for local and remote players alike.
       if (this.visuals.noteHp(state.id, state.hp) && state.id === this.localId) {
         this.camera.addTrauma(HURT_TRAUMA);
+        playSfx('hurt');
       }
     }
 
@@ -626,6 +752,11 @@ export class Game {
       );
       this.visuals.kickRecoil(shot.by, shot.dx, shot.dy);
       if (shot.hit) this.visuals.pulseHitFlash(shot.hit);
+      // A teammate's gun is heard from where they are standing. Same sample as
+      // your own; the distance falloff is the whole difference, and it is
+      // enough to tell "beside me" from "somewhere over there".
+      playSfxAt('shot', shot.x, shot.y, { gain: 0.85 });
+      if (hit) playSfxAt('zombie-hit', shot.x + shot.dx * shot.dist, shot.y + shot.dy * shot.dist);
     }
 
     for (const attack of msg.attacks) this.onAttack(attack);
@@ -648,6 +779,7 @@ export class Game {
     // A pack in contact throws several absorbed swings a second; drawing all
     // of them turns the victim into a strobe.
     if (attack.blocked && !this.visuals.allowBlockedVfx(attack.target)) return;
+    playSfxAt('zombie-attack', attack.x, attack.y, { gain: attack.blocked ? 0.55 : 1 });
 
     this.effects.spawnMelee(attack.x, attack.y, attack.dx, attack.dy, attack.dmg, attack.blocked);
   }
@@ -655,6 +787,9 @@ export class Game {
   private onKill(kill: KillEvent): void {
     if (kill.kind !== 'enemy') return;
     this.effects.spawnDeath(kill.x, kill.y);
+    playSfxAt('zombie-death', kill.x, kill.y);
+    // It stops growling the moment it dies, and re-arms if the id ever returns.
+    this.alertHeard.delete(kill.victim);
     if (kill.killer === this.localId && kill.xp > 0) {
       this.effects.spawnReward(kill.x, kill.y, `+${kill.xp} xp`);
     }
@@ -664,6 +799,7 @@ export class Game {
     if (pickup.by !== this.localId) return;
     this.effects.spawnGoldPickup(pickup.x, pickup.y, pickup.gold);
     this.camera.addTrauma(PICKUP_TRAUMA);
+    playSfx('coin', { gain: 0.9 });
   }
 
   private replaceLoot(rows: LootState[]): void {
@@ -673,9 +809,22 @@ export class Game {
 
   private onLootPickup(ev: LootPickupEvent): void {
     this.loot.delete(ev.id);
-    if (ev.by !== this.localId) return;
+    if (ev.by !== this.localId) {
+      // Somebody else got it. Heard, not celebrated: the thunk carries across
+      // the clearing so the party knows a drop was taken, and the chime that
+      // says WHAT it was belongs to whoever is holding it.
+      playSfxAt('loot', ev.x, ev.y, { gain: 0.5 });
+      return;
+    }
     const def = this.config?.loot?.[ev.k];
     if (def) {
+      // Two sounds, and the order is the point: the physical one lands on the
+      // frame the item leaves the ground, and the chime that names its rarity
+      // comes a beat later, on the fly. The player learns the five tiers in
+      // one session and after that knows what they picked up before the
+      // tooltip has drawn.
+      playSfx('loot');
+      playSfx('rarity', { variant: RARITY_CHIME[def.rarity], jitter: 0, delay: 0.07 });
       // Open now so the slots exist before the hold ends and the sprite flies.
       // Spawn first so inventoryHud can hide that cell and hold the weight.
       this.inventoryOpen = true;
@@ -889,7 +1038,194 @@ export class Game {
     );
     this.camera.addTrauma(FIRE_TRAUMA + (hit || crateHit ? HIT_TRAUMA : 0));
     this.visuals.kickRecoil(this.localId, this.aimX, this.aimY);
-    if (hit && result.target) this.visuals.pulseHitFlash(result.target.id);
+    // Fired locally on the predicted frame, not when the server confirms —
+    // the whole reason `predictShot` exists is that a trigger has to answer
+    // now, and a shot you hear an RTT after you pulled it is worse than one
+    // you never hear. The server's echo of your own shot is skipped upstream.
+    playSfx('shot');
+    if (hit && result.target) {
+      this.visuals.pulseHitFlash(result.target.id);
+      playSfxAt('zombie-hit', ox + this.aimX * distance, oy + this.aimY * distance);
+    }
+  }
+
+  // --- sound ---------------------------------------------------------------
+  //
+  // Two kinds of sound and they are driven from two different places. EVENTS
+  // (a shot, a hit, a crate) are played by the handler that already knows the
+  // event happened, right next to the visual effect it belongs with — one
+  // thing occurred, so it is fired once, in one place. STATE (which ambience
+  // is playing, how fast the heart is going, whether anything is growling out
+  // there) is reconciled every frame from what is on screen, because it is a
+  // continuous property of the world rather than a thing that happened.
+  //
+  // Nothing here reads the map to decide where it is: the zone says.
+
+  /**
+   * One footfall, coloured by what is under it and how loaded the walker is.
+   *
+   * Called from `trackFootsteps`, which means it inherits that loop's
+   * visibility gate: a body the light does not reach makes no sound. For
+   * prints that rule exists so a trail cannot appear out of the dark; here it
+   * means the unlit half of the forest speaks through GROWLS instead of
+   * footsteps, which keeps the two channels saying different things. Moving
+   * the call outside the gate is the one-line version of the other choice.
+   */
+  private playStep(entity: DrawableEntity, tx: number, ty: number, burden: number): void {
+    const world = this.world;
+    if (!world) return;
+    const inside = tx >= 0 && ty >= 0 && tx < world.width && ty < world.height;
+    const soil = inside ? soilAt(tx, ty, world.seed) : 0;
+    const load = Math.min(1, burden);
+    playSfxAt(
+      soil === LITTER_SOIL ? 'step-litter' : 'step-soft',
+      entity.x,
+      entity.y + entity.halfHeight,
+      {
+        // Enemies tread quieter than the party: the growl is their channel,
+        // and a pack of six all crunching leaves buries everything else.
+        gain: (entity.kind === 'enemy' ? 0.5 : 0.95) * (1 + load * 0.3),
+        // A full pack lands lower and slower.
+        rate: 1 - load * 0.12,
+      },
+    );
+  }
+
+  /** What this place sounds like. Restated on every arrival, and only there. */
+  private applyZoneAmbience(zone: ZoneInfo): void {
+    this.beds =
+      zone.kind === 'camp'
+        ? // The bonfire is the camp's whole bed. It is not positional — the
+          // clearing is small enough that being "away from the fire" is not a
+          // place you can stand, and a panning hearth would swing every time
+          // the camera drifted.
+          { fire: 1, wind: 0.22 }
+        : { wind: 1, night: 0.85 };
+    this.heartLevel = -1;
+    this.pushBeds();
+  }
+
+  /** Send the current bed mix. The heartbeat rides on top of the zone's own. */
+  private pushBeds(): void {
+    setBeds(this.heartLevel > 0 ? { ...this.beds, heartbeat: this.heartLevel } : this.beds);
+  }
+
+  /**
+   * Per-frame audio state. Called from `render` with the entities it just
+   * built, so awareness and visibility are already resolved on them.
+   */
+  private updateAudio(dt: number, entities: DrawableEntity[]): void {
+    const world = this.world;
+    if (!world) return;
+
+    // Everything spatial is measured from the ear, and the ear is the player.
+    // Not the camera: during the walk-out the camera looks ahead at the VOID
+    // mouth, and a party marching away from a fire that got LOUDER would be
+    // the wrong story told very precisely.
+    setAudioListener(this.smoothX, this.smoothY, world.tileSize);
+
+    this.updateHeartbeat();
+    if (this.zone?.hostile !== true || this.introLeft > 0) return;
+
+    this.updateGrowls(dt, entities);
+
+    this.dreadLeft -= dt;
+    if (this.dreadLeft <= 0) {
+      this.dreadLeft = DREAD_INTERVAL * (0.6 + Math.random() * 0.8);
+      // Placed off to one side at a plausible distance rather than at a real
+      // point in the world, because there is nothing there. It only has to
+      // arrive from a direction.
+      const angle = Math.random() * Math.PI * 2;
+      const reach = world.tileSize * (9 + Math.random() * 7);
+      playSfxAt(
+        'dread',
+        this.smoothX + Math.cos(angle) * reach,
+        this.smoothY + Math.sin(angle) * reach,
+      );
+    }
+  }
+
+  /**
+   * The heart, as one looping buffer played faster and louder as HP falls.
+   *
+   * It shares its threshold with the danger vignette on purpose: the screen
+   * closing in and the pulse coming up are one effect delivered on two
+   * channels, and a player who has the sound off still gets the whole message.
+   */
+  private updateHeartbeat(): void {
+    const local = this.local;
+    const config = this.config;
+    let level = 0;
+    let rate = 1;
+    if (local?.alive && config) {
+      const ratio = clamp01(local.hp / config.maxHp);
+      if (ratio < DANGER_START) {
+        const t = clamp01((DANGER_START - ratio) / (DANGER_START - HEART_FLOOR));
+        level = t;
+        rate = 1 + (HEART_MAX_RATE - 1) * t;
+      }
+    }
+    // Quantized so a hp bar drifting by a point does not re-ramp every frame.
+    const stepped = Math.round(level * 8) / 8;
+    if (stepped !== this.heartLevel) {
+      this.heartLevel = stepped;
+      this.pushBeds();
+    }
+    if (stepped > 0) setBedRate('heartbeat', rate);
+  }
+
+  /**
+   * The growls, and the snarl when something commits.
+   *
+   * The ambient growl is picked from creatures near the ear WITHOUT checking
+   * whether they can be seen — the sound is what tells you a thing is there,
+   * and pointing the lantern at it is what tells you where. Gating it on
+   * visibility would mean you only ever hear what you are already looking at,
+   * which is the one arrangement that makes it useless.
+   *
+   * The alert snarl is the opposite: it fires ONCE per hunt, latched by id, so
+   * a creature that has committed announces it and then shuts up rather than
+   * re-snarling every frame it stays angry.
+   */
+  private updateGrowls(dt: number, entities: DrawableEntity[]): void {
+    const world = this.world;
+    if (!world) return;
+    const reach = GROWL_TILES * world.tileSize;
+    const near: DrawableEntity[] = [];
+    const live = new Set<string>();
+
+    for (const entity of entities) {
+      if (entity.kind !== 'enemy' || !entity.alive) continue;
+      if (Math.hypot(entity.x - this.smoothX, entity.y - this.smoothY) > reach) continue;
+      near.push(entity);
+
+      if (entity.awareness >= NOTICE_AT) {
+        live.add(entity.id);
+        if (!this.alertHeard.has(entity.id)) {
+          this.alertHeard.add(entity.id);
+          playSfxAt('zombie-alert', entity.x, entity.y);
+        }
+      }
+    }
+    // Calming down re-arms the snarl, the same way it drops the hunt diamond.
+    for (const id of this.alertHeard) {
+      if (!live.has(id)) this.alertHeard.delete(id);
+    }
+
+    if (near.length === 0) {
+      this.growlLeft = GROWL_INTERVAL;
+      return;
+    }
+
+    // A crowd talks more often, but sublinearly — six of them are not six
+    // times as many growls, they are roughly twice as many.
+    this.growlLeft -= dt * (1 + Math.sqrt(near.length - 1) * 0.6);
+    if (this.growlLeft > 0) return;
+    this.growlLeft = GROWL_INTERVAL * (0.55 + Math.random() * 0.9);
+
+    if (!throttled('growl', GROWL_SPACING, this.time)) return;
+    const speaker = near[(Math.random() * near.length) | 0];
+    playSfxAt('zombie-idle', speaker.x, speaker.y, { gain: 0.9 });
   }
 
   // --- rendering -----------------------------------------------------------
@@ -981,6 +1317,9 @@ export class Game {
     // diamond is the one exception, and only for enemies this client already
     // saw while they were alerting — see `latchAlertMarks`.
     this.trackFootsteps(entities);
+    // After visibility and the alert latch, so it reads the same resolved
+    // state the renderer is about to draw.
+    this.updateAudio(dt, entities);
     this.syncTooltipAnchors();
 
     this.renderer.draw({
@@ -1065,6 +1404,12 @@ export class Game {
           : SOIL_PRINT_DEPTH[0];
       const printDepth = depth * (1 + 0.75 * Math.min(1.2, burden));
       this.effects.spawnFootprint(entity.x, footY, dx, dy, printDepth, FOOTPRINT_LIFE);
+      // The step is played HERE because this loop is already the one place
+      // that fires exactly once per stride, for every body, with the soil in
+      // hand. A second timer keyed off velocity would drift out of sync with
+      // the print and you would see a boot mark land a beat after you heard it.
+      // Loose litter reads dry and loud; everything else is a soft thud.
+      this.playStep(entity, tx, ty, burden);
       last.x = entity.x;
       last.y = footY;
     }
@@ -1381,6 +1726,10 @@ export class Game {
     if (nearLoot) {
       if (!this.canStow(nearLoot.k)) {
         this.bagRefusals += 1;
+        // A refused key has to answer, for the same reason the panel kicks:
+        // a control that silently does nothing reads as a broken keybind
+        // rather than as a rule.
+        playSfx('ui-error');
         const inventory = this.inventoryHud();
         if (inventory) this.patchHud({ inventory });
         return;
@@ -1396,12 +1745,16 @@ export class Game {
     if (this.readyPrompt() === 'ready') {
       this.connection.send({ type: 'ready' });
       this.localReady = !this.localReady;
+      // Optimistic, like the nameplate tick: the server decides whether it
+      // counted, but the key has to answer on the frame it was pressed.
+      playSfx(this.localReady ? 'ready' : 'unready');
     }
   }
 
   private toggleInventory(): void {
     if (this.departing || this.introLeft > 0) return;
     this.inventoryOpen = !this.inventoryOpen;
+    playSfx(this.inventoryOpen ? 'bag-open' : 'bag-close');
     const inventory = this.inventoryHud();
     if (inventory) this.patchHud({ inventory });
   }
@@ -1413,6 +1766,7 @@ export class Game {
     if (!meta?.inv) return;
     const row = meta.inv.bag[slot];
     if (!row) return;
+    playSfx('drop');
     this.connection.send({ type: 'drop', slot });
     meta.inv.bag[slot] = null;
     const catalog = this.config?.loot ?? {};
@@ -1599,6 +1953,7 @@ export class Game {
     this.world.setTile(tx, ty, FLOOR);
     const empty = ev.drop === 'empty';
     this.effects.spawnCrateSmash(ev.x, ev.y, ev.v, ev.flip !== 0, empty, CRATE_BREAK_LIFE);
+    playSfxAt('crate-break', ev.x, ev.y);
     if (empty) this.effects.spawnWind(ev.x, ev.y, WIND_LIFE);
   }
 

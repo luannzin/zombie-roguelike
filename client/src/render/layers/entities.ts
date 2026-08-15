@@ -169,7 +169,8 @@ export function drawEntity(entity: EntityContext, target: DrawableEntity): void 
   // Art still loading (or missing): draw nothing rather than a wrong sprite.
   if (!sheet || !image) return;
 
-  const row = sheet.rows[facingFromAim(target.ax, target.ay)] ?? 0;
+  const facing = facingFromAim(target.ax, target.ay);
+  const row = sheet.rows[facing] ?? 0;
   const col = frameIndex(sheet, target.animTime, target.moving);
 
   const w = sheet.frameWidth;
@@ -186,11 +187,13 @@ export function drawEntity(entity: EntityContext, target: DrawableEntity): void 
 
   ctx.globalAlpha = target.visibility;
   ctx.drawImage(image, col * w, row * h, w, h, dx, dy, dw, dh);
+  blitGear(entity, target, facing, dx, dy, dw, dh);
 
   if (target.hitFlash > 0) {
     ctx.globalCompositeOperation = 'lighter';
     ctx.globalAlpha = Math.min(1, target.hitFlash * 0.95) * target.visibility;
     ctx.drawImage(image, col * w, row * h, w, h, dx, dy, dw, dh);
+    blitGear(entity, target, facing, dx, dy, dw, dh);
     ctx.globalCompositeOperation = 'source-over';
     ctx.globalAlpha = target.visibility;
   }
@@ -202,6 +205,39 @@ export function drawEntity(entity: EntityContext, target: DrawableEntity): void 
     drawHealthBar(entity, target, view.rawX(px), spriteTop);
   }
   ctx.globalAlpha = 1;
+}
+
+/**
+ * Equipped overlay, registered to the same 16x16 grid as the body. Same
+ * facing and walk column, same multiply tint — a hue on the pack would be
+ * a second identity.
+ */
+function blitGear(
+  { ctx, book }: EntityContext,
+  target: DrawableEntity,
+  facing: string,
+  dx: number,
+  dy: number,
+  dw: number,
+  dh: number,
+): void {
+  if (!target.gear) return;
+  const sheet = book.get(target.gear);
+  const image = book.image(target.gear, target.tint);
+  if (!sheet || !image) return;
+  const row = sheet.rows[facing] ?? 0;
+  const col = frameIndex(sheet, target.animTime, target.moving);
+  ctx.drawImage(
+    image,
+    col * sheet.frameWidth,
+    row * sheet.frameHeight,
+    sheet.frameWidth,
+    sheet.frameHeight,
+    dx,
+    dy,
+    dw,
+    dh,
+  );
 }
 
 function drawAimIndicator(

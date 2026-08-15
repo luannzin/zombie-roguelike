@@ -68,7 +68,7 @@ own the HUD and routing only. Talks to the server over one WebSocket.
   released in `Game.dispose()`. StrictMode and HMR both remount, and a leaked
   loop is silent until the frame rate collapses.
 - `publicDir` is `../assets/processed`, so art is fetched from `/player/...`,
-  `/terrain/...`, `/scenery/...`. `assets/raw` is never served.
+  `/backpack/...`, `/terrain/...`, `/scenery/...`. `assets/raw` is never served.
 - The app is permanently `<html class="dark">`.
 - Imports may use the `@` alias for `src/`.
 

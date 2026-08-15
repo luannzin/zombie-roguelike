@@ -397,6 +397,7 @@ def client_config() -> dict:
         "muzzleOffset": MUZZLE_OFFSET,
         "enemyTypes": enemy_types_payload(),
         "coinSprite": "coin",
+        "backpackSprite": "backpack",
         "visionAmbientTiles": VISION_AMBIENT_TILES,
         "visionLanternTiles": VISION_LANTERN_TILES,
         "visionConeDegrees": VISION_CONE_DEGREES,

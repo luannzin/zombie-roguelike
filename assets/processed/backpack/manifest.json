@@ -1,0 +1,25 @@
+{
+  "name": "backpack",
+  "sheet": "sheet.png",
+  "frameWidth": 16,
+  "frameHeight": 16,
+  "frames": 3,
+  "rows": {
+    "down": 0,
+    "left": 1,
+    "right": 2,
+    "up": 3
+  },
+  "idleFrame": 1,
+  "walkFrameOrder": [
+    0,
+    1,
+    2,
+    1
+  ],
+  "fps": 8,
+  "anchor": {
+    "x": 0.5,
+    "y": 1.0
+  }
+}

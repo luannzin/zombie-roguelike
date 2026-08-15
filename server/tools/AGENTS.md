@@ -9,7 +9,7 @@ imported by `app/` and never run at request time.
 
 | script | stage | output |
 | --- | --- | --- |
-| `make_placeholder_sheet.py` | generates raw art | `assets/raw/<name>.png` |
+| `make_placeholder_sheet.py` | generates raw art | `assets/raw/<name>.png` (player, zombie, coin, backpack) |
 | `process_sprites.py` | raw → production | `assets/processed/<name>/` |
 | `make_textures.py` | generates final pixels | `assets/processed/terrain/` (4 grounds, blend, patch, rock, tree, deadtree, stump, grass, bush, branch, leaves, fern, campfire) |
 | `make_scenery.py` | generates final pixels | `assets/processed/scenery/` (cabin, tent, fence, sign, logs, crate, firepit, blood, tracks, clothes, debris) |
@@ -21,7 +21,8 @@ imported by `app/` and never run at request time.
 - Raw sprite input is a 3x3 grid of frames on solid magenta (`#FF00FF`); rows
   are down/side/up, col 1 is idle. `process_sprites.py` keys, crops, normalizes,
   mirrors the side row and writes `sheet.png` + `manifest.json` with rows
-  down/left/right/up.
+  down/left/right/up. Gear overlays (backpack) skip the crop: they are
+  authored on the processed 16x16 player grid and processed with `--exact`.
 - Terrain and HUD icons have **no raw stage** — they are generated straight into
   `assets/processed/`.
 - Generation is deterministic: the same command must produce byte-identical
@@ -80,6 +81,8 @@ Run from `server/` with the venv python:
 ```bash
 python tools/make_placeholder_sheet.py --name player
 python tools/process_sprites.py --name player --tile 16
+python tools/make_placeholder_sheet.py --name backpack
+python tools/process_sprites.py --name backpack --tile 16 --exact --side-facing right
 python tools/make_textures.py
 python tools/make_scenery.py
 python tools/make_vfx.py
@@ -87,7 +90,11 @@ python tools/make_hud_icons.py
 ```
 
 - A new character or item is `--name` (plus `--height` for taller entities); art
-  sets live in `ENTITIES` in `make_placeholder_sheet.py`.
+  sets live in `ENTITIES` / `ITEMS` / `GEAR` in `make_placeholder_sheet.py`.
+- Gear overlays (backpack) are authored on the processed 16x16 player grid and
+  processed with `--exact --side-facing right`, so they composite on the body
+  with no extra offset. They are GREYSCALE: the client multiply-tints them
+  with the wearer's colour.
 - Detail finer than 2 raw pixels does not survive the downscale to a 16x16
   frame — read features need luminance contrast, not hue.
 

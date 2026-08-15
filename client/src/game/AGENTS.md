@@ -152,6 +152,10 @@ seam React is allowed to read.
   is a whole multiple of one design pixel so it stays on the font's grid.
 - `dispose()` releases every timer, listener, observer and rAF handle created in
   this folder.
+- **Every player wears the backpack.** `toDrawablePlayer` sets `gear` to
+  `welcome.config.backpackSprite` and the lobby draws the same overlay on
+  every seat. It is always on for now — unequip is a later field, not a
+  missing sprite. The sheet is greyscale and tinted with the player's colour.
 - Tuning comes from `welcome.config`; the lantern's drain/recharge constants
   are the exception, because the battery is client-local. The switch is not:
   `on` is on the input packet and every player snapshot so remotes go dark.

@@ -12,8 +12,15 @@ Items (coin, …):
   rows: same art repeated (no facing)
   cols: spin / idle frames
 
-One art set per run. `--entity` picks it (defaults to `--name`). Creatures and
-items are both data tables, so adding either is not a code change.
+Gear (backpack, …):
+  rows: down / side / up, same as a character
+  cols: walk frames (col 1 idle)
+  Art is authored on the processed 16x16 player grid so an overlay composites
+  without a second transform. Neutral greys — the client multiply-tints them
+  with the wearer's colour.
+
+One art set per run. `--entity` picks it (defaults to `--name`). Creatures,
+items and gear are all data tables, so adding any of them is not a code change.
 
 Output: assets/raw/<name>.png  (consumed by tools/process_sprites.py)
 
@@ -247,6 +254,106 @@ COIN = Item(
 ITEMS = {"coin": COIN}
 
 
+# ---------------------------------------------------------------------------
+# Gear — equipment overlays. Same 3x3 raw grid as a character (down / side /
+# up), but the art is a 16x16 frame registered to the processed player sheet
+# so it composites on the body with no extra offset. Side faces RIGHT; the
+# processor mirrors it to produce left.
+#
+# GREYSCALE ON PURPOSE. The client multiply-tints the sheet with the wearer's
+# colour, the same way it tints the player's own body. A hue baked in here
+# would be one pack per roster swatch, and would not match.
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class Gear:
+    """One overlay: palette + three view poses on the processed player grid."""
+
+    palette: Palette
+    views: dict[str, Art]
+
+
+# Cool neutrals, a step darker than the player's shirt (`b` = e8e8f0) so the
+# pack still reads after the same multiply. Outline matches the player so the
+# two silhouettes share a keyline.
+BACKPACK_PALETTE: Palette = {
+    "o": (28, 26, 38, 255),      # outline
+    "d": (84, 86, 98, 255),      # shade
+    "b": (176, 178, 190, 255),   # body — the tint target
+    "h": (214, 216, 226, 255),   # flap / highlight
+    "k": (130, 132, 144, 255),   # buckle
+}
+
+# 16 columns, one char per processed pixel. Empty rows pad to the frame so
+# `--exact` keeps this placement against the player's torso (rows 6–11).
+BACKPACK_DOWN: Art = [
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "......o..o......",
+    ".....od..do.....",
+    "......o..o......",
+    "......o..o......",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+]
+
+# Facing right: the pack sits on the LEFT (their back) and sticks out 2px.
+BACKPACK_SIDE: Art = [
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "....o...........",
+    "...ooo..........",
+    "..obbbo.........",
+    "..ohhbo.........",
+    "..obkbo.........",
+    "..oddbo.........",
+    "...ooo..........",
+    "................",
+    "................",
+    "................",
+    "................",
+]
+
+# Facing away: the pack is the thing you see. Centred on the torso.
+BACKPACK_UP: Art = [
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    ".....oooooo.....",
+    "....obbbbbbo....",
+    "....ohhhhhho....",
+    "....obbkkbbo....",
+    "....odbbbbdo....",
+    ".....oooooo.....",
+    "................",
+    "................",
+    "................",
+    "................",
+]
+
+BACKPACK = Gear(
+    palette=BACKPACK_PALETTE,
+    views={"down": BACKPACK_DOWN, "side": BACKPACK_SIDE, "up": BACKPACK_UP},
+)
+
+GEAR = {"backpack": BACKPACK}
+
+
 def render_cell(
     palette: Palette, rows: Art, cell: int, scale: int, *, center: bool = False
 ) -> Image.Image:
@@ -268,6 +375,25 @@ def render_cell(
     return img
 
 
+def write_gear(gear: Gear, path: Path) -> None:
+    """3x3 raw sheet, one processed-pixel per char, top-left of a 16x16 cell."""
+    cell = 16
+    sheet = Image.new("RGBA", (cell * 3, cell * 3), MAGENTA)
+    for row, view in enumerate(VIEWS):
+        cell_img = Image.new("RGBA", (cell, cell), MAGENTA)
+        px = cell_img.load()
+        for y, line in enumerate(gear.views[view]):
+            for x, ch in enumerate(line):
+                if ch == ".":
+                    continue
+                px[x, y] = gear.palette[ch]
+        for col in range(3):
+            sheet.paste(cell_img, (col * cell, row * cell))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    sheet.convert("RGB").save(path)
+    print(f"wrote {path} ({sheet.width}x{sheet.height})")
+
+
 def write_sheet(frames: list[Art], palette: Palette, cell: int, scale: int, path: Path) -> None:
     sheet = Image.new("RGBA", (cell * 3, cell * 3), MAGENTA)
     for row in range(3):
@@ -284,7 +410,7 @@ def write_sheet(frames: list[Art], palette: Palette, cell: int, scale: int, path
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--name", default="player")
-    keys = (*ENTITIES, *ITEMS)
+    keys = (*ENTITIES, *ITEMS, *GEAR)
     ap.add_argument("--entity", choices=keys, default=None,
                     help="art set to draw (defaults to --name)")
     ap.add_argument("--cell", type=int, default=32, help="raw cell size in px")
@@ -301,6 +427,12 @@ def main() -> None:
     if key in ITEMS:
         item = ITEMS[key]
         write_sheet(item.frames, item.palette, args.cell, args.scale, out)
+        return
+
+    if key in GEAR:
+        # Gear is authored on the processed 16x16 grid. Forcing the cell here
+        # means `--exact` in process_sprites.py keeps that registration.
+        write_gear(GEAR[key], out)
         return
 
     if key not in ENTITIES:

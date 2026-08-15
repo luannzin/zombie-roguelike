@@ -58,6 +58,8 @@ import { FIRE, FLOOR, hearthMask, ROCK, TileMap, TREE, VOID } from "./world";
 const TAU = Math.PI * 2;
 /** Sprite sheet every seated player is drawn from. */
 const PLAYER_SHEET = "player";
+/** Pack on every seat — always equipped, for now. */
+const BACKPACK_SHEET = "backpack";
 /** Art scale if the terrain manifest is missing; it is the authority normally. */
 const FALLBACK_TILE = 16;
 
@@ -338,7 +340,7 @@ export class LobbyScene {
 		// The webfont too: names drawn in the fallback face and then swapped is the
 		// one flicker in this scene that is not on purpose.
 		const [, atlas, scenery, vfx] = await Promise.all([
-			this.sprites.load([PLAYER_SHEET]),
+			this.sprites.load([PLAYER_SHEET, BACKPACK_SHEET]),
 			loadTerrain(),
 			loadScenery(),
 			loadVfx(),
@@ -1248,6 +1250,23 @@ export class LobbyScene {
 				sheet.frameWidth,
 				sheet.frameHeight,
 			);
+			const packName = this.camp?.config.backpackSprite ?? BACKPACK_SHEET;
+			const pack = this.sprites.get(packName);
+			const packImage = this.sprites.image(packName, seat.color);
+			if (pack && packImage) {
+				const packRow = pack.rows.down ?? 0;
+				ctx.drawImage(
+					packImage,
+					column * pack.frameWidth,
+					packRow * pack.frameHeight,
+					pack.frameWidth,
+					pack.frameHeight,
+					drawX,
+					drawY,
+					sheet.frameWidth,
+					sheet.frameHeight,
+				);
+			}
 			// Firelight on the body: a warm wash that breathes, masked to the sprite
 			// so it lands on the character and not on the ground behind it. Weaker
 			// the further round the ring you are.
@@ -1270,6 +1289,20 @@ export class LobbyScene {
 				sheet.frameWidth,
 				sheet.frameHeight,
 			);
+			if (pack && packImage) {
+				const packRow = pack.rows.down ?? 0;
+				ctx.drawImage(
+					this.sprites.image(packName, palette().fire.core) ?? packImage,
+					column * pack.frameWidth,
+					packRow * pack.frameHeight,
+					pack.frameWidth,
+					pack.frameHeight,
+					drawX,
+					drawY,
+					sheet.frameWidth,
+					sheet.frameHeight,
+				);
+			}
 			ctx.globalCompositeOperation = "source-over";
 		}
 

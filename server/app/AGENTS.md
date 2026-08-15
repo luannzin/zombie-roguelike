@@ -233,7 +233,8 @@ game's scale.
 - Keep the tick O(entities). Anything that scales with map size belongs in a
   cached structure (see `pathing.py`, one field per player shared by the horde).
 - New tuning goes in `config.py` in tiles/seconds, plus a `client_config()` key
-  if prediction or rendering needs it.
+  if prediction or rendering needs it. Asset folder names the client loads
+  (`coinSprite`, `backpackSprite`, `enemyTypes[*].sprite`) live here too.
 
 ## Verification
 

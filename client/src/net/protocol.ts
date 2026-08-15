@@ -74,6 +74,8 @@ export interface GameConfig {
   enemyTypes: Record<string, EnemyTypeConfig>;
   /** Processed asset folder for world gold pickups. */
   coinSprite: string;
+  /** Processed asset folder for the pack worn on a player's back. */
+  backpackSprite: string;
   /** Omnidirectional glow every player carries, in tiles. */
   visionAmbientTiles: number;
   /** Reach of the directional lantern cone, in tiles. */

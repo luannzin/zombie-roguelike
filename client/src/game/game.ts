@@ -102,6 +102,8 @@ const SOIL_PRINT_DEPTH = [0.55, 0.3, 0.85, 0.16];
 const PLAYER_SHEET = 'player';
 /** Fallback if welcome.config.coinSprite is missing (older server). */
 const COIN_SHEET = 'coin';
+/** Fallback if welcome.config.backpackSprite is missing (older server). */
+const BACKPACK_SHEET = 'backpack';
 /**
  * Only used against a server too old to send vision numbers. A missing value
  * would otherwise put NaN through the light field and black out the screen.
@@ -292,7 +294,7 @@ export class Game {
     // the fallback face and then visibly swapped. Enemy sheets are NOT loaded
     // here: which ones exist is the server's answer, and it arrives with
     // `welcome` — long before the first zombie does.
-    await Promise.all([this.sprites.load([PLAYER_SHEET]), whenFontsReady()]);
+    await Promise.all([this.sprites.load([PLAYER_SHEET, BACKPACK_SHEET]), whenFontsReady()]);
     // dispose() can land while these are loading.
     if (this.disposed) return;
 
@@ -462,6 +464,7 @@ export class Game {
     const sheets = [
       ...Object.values(msg.config.enemyTypes).map((t) => t.sprite),
       msg.config.coinSprite || COIN_SHEET,
+      msg.config.backpackSprite || BACKPACK_SHEET,
     ];
     void this.sprites.load(sheets);
 
@@ -1090,6 +1093,9 @@ export class Game {
       kind: 'player',
       sheet: PLAYER_SHEET,
       tint: source.color,
+      // Always on for now — the overlay is what "equipped" means, and every
+      // player walks out of camp wearing one.
+      gear: this.config?.backpackSprite || BACKPACK_SHEET,
       color: source.color,
       name: source.name,
       ready: source.ready,
@@ -1147,6 +1153,7 @@ export class Game {
       sheet: type.sprite,
       // The art carries its own palette; tinting it would flatten the pixels.
       tint: null,
+      gear: null,
       color: palette().minimap.enemy,
       name: '',
       ready: false,

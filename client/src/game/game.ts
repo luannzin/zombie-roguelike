@@ -24,7 +24,6 @@ import type {
   InputPacket,
   KillEvent,
   LootPickupEvent,
-  LootRarity,
   LootState,
   PickupEvent,
   PlayerMeta,
@@ -48,7 +47,14 @@ import { palette } from '../theme/palette';
 import { hitscan, type RayTarget } from './combat';
 import { Effects } from './effects';
 import { EntityVisuals } from './entity-visuals';
-import { EMPTY_HUD, HUD_INTERVAL, type HudInventory, type HudSnapshot, type HudStore } from './hud-store';
+import {
+  EMPTY_HUD,
+  HUD_INTERVAL,
+  type HudInventory,
+  type HudLootPrompt,
+  type HudSnapshot,
+  type HudStore,
+} from './hud-store';
 import { InputController } from './input';
 import { readInventoryAnchor, clearInventoryAnchors } from './inventory-anchors';
 import { Lantern } from './lantern';
@@ -651,6 +657,10 @@ export class Game {
     if (ev.by !== this.localId) return;
     const def = this.config?.loot?.[ev.k];
     if (def) {
+      // Open now so the slots exist before the hold ends and the sprite flies.
+      this.inventoryOpen = true;
+      const inventory = this.inventoryHud();
+      if (inventory) this.patchHud({ inventory });
       spawnLootFly({
         id: ev.id,
         key: ev.k,
@@ -1412,10 +1422,8 @@ export class Game {
       this.smoothY + config.playerHalfHeight - config.spriteHeight - config.tileSize * 0.35,
     );
     const landed = stepLootFlies(dt, (fly) => {
-      const target = this.inventoryOpen
-        ? readInventoryAnchor(`slot-${fly.slot}`)
-        : readInventoryAnchor('pack');
-      const to = target ?? readInventoryAnchor('pack');
+      const to =
+        readInventoryAnchor(`slot-${fly.slot}`) ?? readInventoryAnchor('pack');
       if (!to) return null;
       return { from: { x: headX, y: headY }, to };
     });
@@ -1461,13 +1469,18 @@ export class Game {
     return this.nearFire() ? 'ready' : null;
   }
 
-  private lootPromptInfo(): { id: string; name: string; rarity: LootRarity } | null {
+  private lootPromptInfo(): HudLootPrompt | null {
     if (this.zone?.kind === 'camp' || this.departing || this.introLeft > 0) return null;
     const near = this.nearLoot();
     if (!near || !this.config) return null;
     const def = this.config.loot?.[near.k];
     if (!def) return null;
-    return { id: near.id, name: def.name, rarity: def.rarity };
+    return {
+      id: near.id,
+      name: def.name,
+      rarity: def.rarity,
+      full: !this.canStow(near.k),
+    };
   }
 
   private nearLoot(): LootState | null {

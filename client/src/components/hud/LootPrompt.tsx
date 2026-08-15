@@ -1,19 +1,16 @@
 /**
  * Collect prompt on a world drop. One use of `Tooltip`. Mounted only while
- * E will collect, so the enter animation is the approach, not a 5 Hz flicker.
+ * a drop is in reach, so the enter animation is the approach, not a 5 Hz
+ * flicker. A full bag keeps the pin and changes the copy — hiding it would
+ * look like the drop vanished.
  */
 
+import type { HudLootPrompt } from '../../game/hud-store';
 import type { LootRarity } from '../../net/protocol';
 import { Tooltip, TooltipKey } from './Tooltip';
 
-export interface LootPromptInfo {
-  id: string;
-  name: string;
-  rarity: LootRarity;
-}
-
 export interface LootPromptProps {
-  prompt: LootPromptInfo | null;
+  prompt: HudLootPrompt | null;
 }
 
 const RARITY_CLASS: Record<LootRarity, string> = {
@@ -26,6 +23,14 @@ const RARITY_CLASS: Record<LootRarity, string> = {
 
 export function LootPrompt({ prompt }: LootPromptProps) {
   if (!prompt) return null;
+
+  if (prompt.full) {
+    return (
+      <Tooltip anchor="loot">
+        <span className="text-hp-low">Inventário Cheio</span>
+      </Tooltip>
+    );
+  }
 
   return (
     <Tooltip anchor="loot">

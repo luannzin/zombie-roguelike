@@ -1,5 +1,5 @@
 /**
- * Collect flies: an item lifts off the head and lands in the bag.
+ * Collect flies: hold the item over the head, then send it into the bag.
  *
  * Membership (spawn / land) is a store React may subscribe to. Pose is
  * written every frame and read in rAF — never component state.
@@ -8,7 +8,11 @@
 import type { LootRarity } from '../net/protocol';
 import type { Unsubscribe } from '../lib/store';
 
-export const LOOT_FLY_LIFE = 0.72;
+/** How long the item sits over the head before it travels. */
+export const LOOT_FLY_HOLD = 0.55;
+/** Head → slot. The bag is already open by the time this starts. */
+export const LOOT_FLY_TRAVEL = 0.62;
+export const LOOT_FLY_LIFE = LOOT_FLY_HOLD + LOOT_FLY_TRAVEL;
 
 export interface LootFlySpec {
   id: string;
@@ -71,18 +75,33 @@ export function stepLootFlies(
     ages.set(fly.id, age);
     const ends = locate(fly);
     if (!ends) continue;
-    const t = age / LOOT_FLY_LIFE;
-    const ease = 1 - (1 - t) ** 3;
-    poses.set(fly.id, {
-      x: ends.from.x + (ends.to.x - ends.from.x) * ease,
-      y: ends.from.y + (ends.to.y - ends.from.y) * ease,
-      scale: 1.55 - 0.7 * ease,
-      rotate: ease * 420,
-      alpha: t < 0.07 ? t / 0.07 : t > 0.9 ? (1 - t) / 0.1 : 1,
-    });
+    poses.set(fly.id, poseAt(age, ends));
   }
   if (landed > 0) notify();
   return landed;
+}
+
+function poseAt(age: number, ends: LootFlyEnds): LootFlyPose {
+  if (age < LOOT_FLY_HOLD) {
+    const pop = Math.min(1, age / 0.12);
+    const bob = Math.sin(age * 7.5) * 3;
+    return {
+      x: ends.from.x,
+      y: ends.from.y + bob,
+      scale: 1.2 + 0.4 * pop,
+      rotate: 0,
+      alpha: pop,
+    };
+  }
+  const t = (age - LOOT_FLY_HOLD) / LOOT_FLY_TRAVEL;
+  const ease = 1 - (1 - t) ** 3;
+  return {
+    x: ends.from.x + (ends.to.x - ends.from.x) * ease,
+    y: ends.from.y + (ends.to.y - ends.from.y) * ease,
+    scale: 1.6 - 0.75 * ease,
+    rotate: ease * 420,
+    alpha: t > 0.88 ? (1 - t) / 0.12 : 1,
+  };
 }
 
 export function listLootFlies(): readonly LootFlySpec[] {

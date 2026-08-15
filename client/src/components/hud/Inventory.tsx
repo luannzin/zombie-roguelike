@@ -73,7 +73,7 @@ export function Inventory({ inventory }: InventoryProps) {
       </div>
 
       <div
-        className="grid transition-[grid-template-rows] duration-200 ease-out motion-reduce:transition-none"
+        className="grid transition-[grid-template-rows] duration-300 ease-out motion-reduce:transition-none"
         style={{ gridTemplateRows: inventory.open ? '1fr' : '0fr' }}
       >
         <div className="overflow-hidden">

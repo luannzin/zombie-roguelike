@@ -33,6 +33,14 @@ export interface HudInventory {
   refusals: number;
 }
 
+export interface HudLootPrompt {
+  id: string;
+  name: string;
+  rarity: LootRarity;
+  /** No empty slot and no stack of this key. The tooltip turns red. */
+  full: boolean;
+}
+
 /** How often the game republishes HUD state. 5 Hz is plenty for text. */
 export const HUD_INTERVAL = 0.2;
 
@@ -117,8 +125,8 @@ export interface HudSnapshot {
   ready: { here: number; total: number } | null;
   /** Proximity prompt at the fire. Null when it should not be on screen. */
   prompt: 'ready' | null;
-  /** Proximity prompt on a world drop. */
-  lootPrompt: { id: string; name: string; rarity: LootRarity } | null;
+  /** Proximity prompt on a world drop. `full` is a bag that cannot take it. */
+  lootPrompt: HudLootPrompt | null;
   /** The pocket. Null before welcome. Open/close is client-local (TAB). */
   inventory: HudInventory | null;
 }

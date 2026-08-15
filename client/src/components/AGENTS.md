@@ -59,12 +59,15 @@ and nowhere near the frame loop.
   is an `anchor` id the game loop writes every frame (`tooltip-anchors`).
   Do not `setState` from that rAF — it is a transform, same idea as the
   glass burst. `InteractPrompt` is ready at the fire; `LootPrompt` is a
-  nearby drop. New items get a new caller, not a fork of the chrome.
+  nearby drop. A full bag keeps the pin and says "Inventário Cheio" in
+  the danger tone — hiding it would look like the drop vanished. New
+  items get a new caller, not a fork of the chrome.
 - `Inventory` is the left-side pocket. Collapsed it is the backpack sprite
-  and a TAB hint; TAB expands the slots in place, not a dialog. Slot
+  and a TAB hint; TAB expands the slots in place, not a dialog. A collect
+  opens it so the slot is on screen before the fly leaves the head. Slot
   centres are written to `inventory-anchors` from layout. `LootFly` sits
-  outside the glass and flies a sprite from the head onto a cell — pose
-  is rAF, membership is `loot-flies`.
+  outside the glass — hold, then travel — pose is rAF, membership is
+  `loot-flies`.
 - A control a zone forbids is shown DISABLED, never hidden. `BatteryGauge` in
   the camp still answers "how much light am I carrying into the night"; only
   its readout changes, and a refused keypress kicks the panel instead of doing

@@ -150,8 +150,10 @@ subtree.
   rarity-coloured motes. Camp maps have none. The pocket is
   `server/app/inventory.py`: a few slots (upgradeable), stacking by key,
   and a weight that may go past max. Past 20% of max carry the walk slows
-  and the footsteps read heavier. TAB expands the bag on the left HUD;
-  a collected item flies from above the head into its slot.
+  and the footsteps read heavier.   TAB expands the bag on the left HUD. A collected item is held over the
+  head, the bag opens so the slot is visible, then the sprite flies in.
+  A full bag (no slot and no stack) keeps the drop tooltip and reads
+  "Inventário Cheio".
 
 ## Child DOX Index
 

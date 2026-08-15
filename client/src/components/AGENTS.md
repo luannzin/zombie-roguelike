@@ -33,8 +33,10 @@ and nowhere near the frame loop.
   moment. It plays into a deliberately EMPTY frame: `Hud` drops its four
   corners to zero opacity while `snapshot.introducing` is set, and the game is
   holding the player still at the same time. `ZONE_INTRO_MS`, the `zone-*`
-  keyframes and INTRO_TIME in `game/game.ts` are one timeline — the card has to
-  clear before the corners come back.
+  keyframes (including the slash that crosses the title after it focuses) and
+  INTRO_TIME in `game/game.ts` are one timeline — the card has to clear before
+  the corners come back. The slash is a CSS keyframe on mount, not per-frame
+  state; reduced motion drops it.
 - **Anything that must exist on the arena's FIRST painted frame is driven by
   `introducing`, not by `arrival`.** The store's initial snapshot has
   `introducing: true`, so those elements are up before the game has said

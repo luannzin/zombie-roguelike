@@ -19,9 +19,11 @@
  * is not a caption over gameplay, it is the moment the player is told where
  * they are before they are allowed to go anywhere.
  *
- * Everything FADES. An earlier version wiped and flickered the type in, which
+ * The type FADES. An earlier version wiped and flickered the letters in, which
  * read as a title sequence rather than as arriving somewhere quiet — the camp
- * is the calm before the night, and the card should feel like it.
+ * is the calm before the night, and the card should feel like it. The slash
+ * is the exception: it crosses a word that is already there, it does not
+ * bring the word on.
  *
  * The BARS are not here. They start in the lobby, under the push-in, and are
  * already at full when the arena takes the screen — see `Hud`, which owns them
@@ -29,12 +31,14 @@
  * in a few frames AFTER the arena's first paint, which is a flash of bright
  * scene followed by a dim, right at the seam.
  *
- * Three parts, and each one is doing a job:
+ * Four parts, and each one is doing a job:
  *
  *   RULES     hairlines that draw out from the centre, one above and one below.
  *             They are what make the title arrive rather than appear.
  *   TITLE     big, wide-tracked, rising a few pixels as it fades up,
  *             coming into focus from a soft blur at 0.95 scale.
+ *   SLASH     a thin skewed rectangle that crosses the word once it is sharp —
+ *             one hard beat of light, then gone, before the hold ends.
  *   SUBTITLE  the smaller line, held back a beat so the two are read in order,
  *             its tracking closing as it settles.
  *
@@ -84,10 +88,13 @@ export function ZoneTitle({ arrival }: ZoneTitleProps) {
       <div className="relative flex flex-col items-center gap-4">
         <div className="animate-zone-rule bg-panel-border h-px w-0" />
 
-        <div className="animate-zone-title opacity-0">
+        <div className="animate-zone-title relative opacity-0">
           <h2 className="pixel-text text-ink text-[44px] leading-[48px] tracking-[0.22em] uppercase drop-shadow-[0_3px_0_var(--hud-text-shadow)]">
             {arrival.zone.title}
           </h2>
+          <span aria-hidden="true" className="zone-title-slash">
+            <span className="zone-title-slash-track animate-zone-title-slash" />
+          </span>
         </div>
 
         <p className="animate-zone-subtitle pixel-text text-ink-accent text-[22px] leading-[26px] tracking-[0.34em] uppercase opacity-0">

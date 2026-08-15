@@ -323,18 +323,22 @@
   /*
    * Arriving in a zone. The bars, then two rules drawing out of nothing, then
    * the title materialising (fade, 0.95 → 1 scale, blur coming into focus),
-   * then the subtitle a beat later with its tracking closing.
+   * then one skewed slash across the word once it is sharp, then the subtitle
+   * a beat later with its tracking closing.
    *
-   * Everything fades — nothing wipes, snaps or flickers. Arriving at the camp
-   * is the calm before the night, and a title sequence would say the opposite.
+   * The type still fades — arriving at the camp is the calm before the night.
+   * The slash is the one hard beat after that settle, not a wipe that brings
+   * the letters on.
    *
    * The durations are cut to ZONE_INTRO_MS in components/hud/ZoneTitle.tsx and
    * to INTRO_TIME in game/game.ts. All three move together, or the card
-   * outlives the hold it plays inside and lands under the HUD.
+   * outlives the hold it plays inside and lands under the HUD. The slash is
+   * shorter and delayed so it lives inside the title's hold, not on its own clock.
    */
   --animate-zone-rule: zone-rule 3s cubic-bezier(0.22, 1, 0.36, 1) 1 forwards;
   --animate-zone-title: zone-title 3s cubic-bezier(0.22, 1, 0.36, 1) 1 forwards;
   --animate-zone-subtitle: zone-subtitle 3s cubic-bezier(0.22, 1, 0.36, 1) 1 forwards;
+  --animate-zone-title-slash: zone-title-slash 0.52s cubic-bezier(0.65, 0, 0.35, 1) 1.05s 1 both;
 
   /*
    * The letterbox, in its two halves. It is ONE continuous element across two
@@ -614,6 +618,29 @@
     filter: blur(4px);
     }
   }
+  /*
+   * A thin parallelogram crossing the title after it has come into focus.
+   * Percentages are of the TRACK (the title's own width), so the bar travels
+   * the word rather than a fixed pixel run. Opacity ramps at the ends so it
+   * is already moving when it enters the clip, and already leaving when it
+   * exits — a bar that pops on at the left edge is a wipe, not a slash.
+   */
+  @keyframes zone-title-slash {
+  0% {
+    translate: -118% 0;
+    opacity: 0;
+    }
+  14% {
+    opacity: 1;
+    }
+  86% {
+    opacity: 1;
+    }
+  100% {
+    translate: 118% 0;
+    opacity: 0;
+    }
+  }
   @keyframes zone-subtitle {
   0%, 14% {
     opacity: 0;
@@ -735,7 +762,7 @@
 
 /*
  * Reduced motion keeps the title readable as a fade, and drops the rise,
- * scale and blur — those are vestibular, the opacity change is not.
+ * scale, blur and the slash — those are vestibular, the opacity change is not.
  */
 @keyframes zone-title-fade {
   0% {
@@ -754,6 +781,57 @@
   .animate-zone-title {
     animation-name: zone-title-fade;
   }
+
+  .zone-title-slash {
+    display: none;
+  }
+}
+
+/*
+ * The slash that crosses the zone title after it focuses. The outer box is
+ * the clip — sized to the word, overflow hidden — so the parallelogram is
+ * cut by the title and never paints over the drop-shadow sitting on the h2
+ * beside it. The inner track is as wide as the word; translating it moves
+ * the bar the length of the title, whatever the string is.
+ *
+ * Two hard rectangles, not a glow: a bright core and a stepped trail. Soft
+ * blur would read as a CSS shine on a pixel face. plus-lighter adds light
+ * to the letters and to the dark between them as it passes.
+ */
+.zone-title-slash {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.zone-title-slash-track {
+  position: absolute;
+  inset-block: -55%;
+  left: 0;
+  width: 100%;
+}
+
+.zone-title-slash-track::before,
+.zone-title-slash-track::after {
+  content: '';
+  position: absolute;
+  inset-block: 0;
+  skew: -16deg 0;
+  mix-blend-mode: plus-lighter;
+}
+
+.zone-title-slash-track::before {
+  left: -11px;
+  width: 18px;
+  background-color: color-mix(in srgb, var(--ink) 22%, transparent);
+  box-shadow: -8px 0 0 0 color-mix(in srgb, var(--ink) 10%, transparent);
+}
+
+.zone-title-slash-track::after {
+  left: 0;
+  width: 8px;
+  background-color: color-mix(in srgb, var(--ink) 40%, white);
 }
 
 @layer base {

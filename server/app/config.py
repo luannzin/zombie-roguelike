@@ -338,9 +338,8 @@ COIN_ATTRACT_ACCEL = TILE_SIZE * COIN_ATTRACT_ACCEL_TILES
 COIN_ATTRACT_MAX_SPEED = TILE_SIZE * COIN_ATTRACT_MAX_TILES_PER_SEC
 
 # --- loot (authored in tiles) -----------------------------------------------
-# How close the feet have to be for E to collect. Tight on purpose: the
-# tooltip is a reach, not a magnet.
-LOOT_COLLECT_TILES = 1.25
+# How close the feet have to be for E to collect. A reach, not a magnet.
+LOOT_COLLECT_TILES = 2.25
 LOOT_COLLECT_DIST = TILE_SIZE * LOOT_COLLECT_TILES
 
 # --- combat (authored in tiles) ---------------------------------------------

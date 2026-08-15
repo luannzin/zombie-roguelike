@@ -1352,7 +1352,7 @@ export class Game {
     const config = this.config;
     const local = this.local;
     if (!config || !local) return null;
-    const range = (config.lootCollectTiles ?? 1.25) * config.tileSize;
+    const range = (config.lootCollectTiles ?? 2.25) * config.tileSize;
     const feetY = local.state.y + config.playerHalfHeight;
     let best: LootState | null = null;
     let bestD2 = range * range;

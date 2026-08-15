@@ -154,7 +154,9 @@ subtree.
   head, the bag opens so the slot is visible, then the sprite flies into
   that cell — the slot stays empty until the fly lands, so the roster
   cannot pop a second copy. Hovering a filled cell is a pointer and
-  opens a card tooltip (name, rarity, weight, value). Dragging a cell
+  opens a card tooltip (name, rarity, weight, value) that flips or
+  shifts to stay on screen; name and rarity both take the rarity
+  colour. Slot value is the static coin plus the number. Dragging a cell
   off the panel sends `{type:"drop","slot"}`; the server places the
   stack on walkable floor near the player's feet. A full bag (no slot
   and no stack) keeps the drop tooltip and reads "Inventário Cheio".

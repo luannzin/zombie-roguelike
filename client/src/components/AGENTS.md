@@ -12,8 +12,8 @@ and nowhere near the frame loop.
 - `hud/` — ours: `Hud`, `HudScreen`, `Panel`, `Vitals`, `BatteryGauge`,
   `ProgressBar`, `StatusLine`, `NetStats`, `ControlsHint`, `ZoneTitle`,
   `ReadyCount`, `InteractPrompt`, `LootPrompt`, `Inventory`, `InventorySlot`,
-  `WeightBar`, `LootIcon`, `LootFly`, `LootCard`, `LootCardRow`,
-  `TooltipCard`, `InventoryGhost`, `Tooltip`, `TooltipKey`.
+  `WeightBar`, `LootIcon`, `CoinIcon`, `SlotValue`, `LootFly`, `LootCard`,
+  `LootCardRow`, `TooltipCard`, `InventoryGhost`, `Tooltip`, `TooltipKey`.
 - `lobby/` — `CampfireCanvas` (mounts `LobbyScene`; owns the rest-shot fire
   position via `campFireAnchor`, not via per-screen props), `RoomCode`,
   `PlayerRoster`.
@@ -72,8 +72,12 @@ and nowhere near the frame loop.
   outside the glass — hold, then travel — pose is rAF, membership is
   `loot-flies`. A fly targeting a cell hides that cell's icon until it
   lands. Hovering a filled cell is a pointer and opens `LootCard`
-  (`TooltipCard` chrome: same fill, bar, staircase arrow). Dragging a
-  cell off the panel tosses it; `InventoryGhost` follows the cursor.
+  (`TooltipCard` chrome: same fill, bar, staircase arrow). The card
+  measures and flips or shifts so a left-edge slot cannot push it off
+  the screen; the arrow slides with it. Name and rarity both take the
+  rarity colour. Slot value is the static coin (`CoinIcon`, idle frame)
+  plus the number. Dragging a cell off the panel tosses it;
+  `InventoryGhost` follows the cursor.
   Both the card and the ghost portal to `document.body` so the glass
   does not warp them off the pointer. Drop goes through
   `inventory-actions`, never a socket from React.

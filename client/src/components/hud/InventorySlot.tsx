@@ -13,13 +13,14 @@ import { incomingHas, subscribeLootFlies } from '../../game/loot-flies';
 import type { LootRarity } from '../../net/protocol';
 import { cn } from '@/lib/utils';
 import { LootIcon } from './LootIcon';
+import { SlotValue } from './SlotValue';
 
 export interface InventorySlotProps {
   index: number;
   item: HudInventorySlot | null;
   lootFrames: number;
   dragging?: boolean;
-  onHover?: (item: HudInventorySlot, x: number, y: number) => void;
+  onHover?: (item: HudInventorySlot, anchor: { x: number; top: number; bottom: number }) => void;
   onLeave?: () => void;
   onGrip?: (index: number, item: HudInventorySlot, event: PointerEvent<HTMLDivElement>) => void;
   onDrag?: (event: PointerEvent<HTMLDivElement>) => void;
@@ -87,7 +88,11 @@ export function InventorySlot({
         const el = ref.current;
         if (!el) return;
         const box = el.getBoundingClientRect();
-        onHover?.(item, box.left + box.width / 2, box.top);
+        onHover?.(item, {
+          x: box.left + box.width / 2,
+          top: box.top,
+          bottom: box.bottom,
+        });
       }}
       onPointerLeave={() => onLeave?.()}
       onPointerDown={(event) => {
@@ -105,9 +110,7 @@ export function InventorySlot({
             frames={lootFrames}
             className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2"
           />
-          <span className="text-ink-accent absolute top-px right-0.5 text-[11px] leading-[11px] tabular-nums">
-            {item.value}
-          </span>
+          <SlotValue value={item.value} />
           <span className="text-ink absolute right-0.5 bottom-px text-[11px] leading-[11px] tabular-nums">
             {item.qty}
           </span>

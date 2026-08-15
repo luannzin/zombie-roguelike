@@ -30,7 +30,8 @@ const DRAG_SLOP = 5;
 interface HoverState {
   item: HudInventorySlot;
   x: number;
-  y: number;
+  top: number;
+  bottom: number;
 }
 
 interface DragState {
@@ -176,9 +177,9 @@ export function Inventory({ inventory }: InventoryProps) {
                     item={item}
                     lootFrames={inventory.lootFrames}
                     dragging={drag?.index === index}
-                    onHover={(next, x, y) => {
+                    onHover={(next, box) => {
                       if (drag) return;
-                      setHover({ item: next, x, y });
+                      setHover({ item: next, x: box.x, top: box.top, bottom: box.bottom });
                     }}
                     onLeave={() => setHover(null)}
                     onGrip={onGrip}
@@ -193,7 +194,12 @@ export function Inventory({ inventory }: InventoryProps) {
         </div>
       </div>
 
-      {hover && !drag ? <LootCard item={hover.item} x={hover.x} y={hover.y} /> : null}
+      {hover && !drag ? (
+        <LootCard
+          item={hover.item}
+          anchor={{ x: hover.x, top: hover.top, bottom: hover.bottom }}
+        />
+      ) : null}
       {drag ? (
         <InventoryGhost
           item={drag.item}

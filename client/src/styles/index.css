@@ -1004,7 +1004,9 @@
  * absolute child resolve against the padding box), so the first step sits ON
  * the border and the two merge instead of leaving a seam. The -3px pulls it
  * back to the centre of the BORDER box, which the 2px bar would otherwise
- * shift it off.
+ * shift it off. `--tooltip-arrow-x` slides that centre when a card has
+ * been shifted to stay on screen; `data-placement="bottom"` flips the
+ * staircase so the card can sit below its target.
  */
 .world-tooltip-card {
   display: flex;
@@ -1018,7 +1020,7 @@
   content: '';
   position: absolute;
   top: 100%;
-  left: 50%;
+  left: var(--tooltip-arrow-x, 50%);
   margin-left: -3px;
   width: 5px;
   height: 3px;
@@ -1036,6 +1038,25 @@
     1px 2px,
     1px 1px,
     0 1px
+  );
+}
+
+.world-tooltip[data-placement='bottom']::after {
+  top: auto;
+  bottom: 100%;
+  clip-path: polygon(
+    2px 0,
+    3px 0,
+    3px 1px,
+    4px 1px,
+    4px 2px,
+    5px 2px,
+    5px 3px,
+    0 3px,
+    0 2px,
+    1px 2px,
+    1px 1px,
+    2px 1px
   );
 }
 

@@ -362,6 +362,13 @@ LOOT_COLLECT_DIST = TILE_SIZE * LOOT_COLLECT_TILES
 # How close the feet have to be for E to smash a crate. Same reach as loot.
 CRATE_BREAK_TILES = 2.25
 CRATE_BREAK_DIST = TILE_SIZE * CRATE_BREAK_TILES
+
+# How close to the extraction console E answers. Wider than a crate: the
+# console is the one interactive thing on the map you are meant to be able to
+# find while something is chasing you, and a tight radius turns that into
+# pixel-hunting at the worst possible moment.
+RIFT_ACTIVATE_TILES = 2.75
+RIFT_ACTIVATE_DIST = TILE_SIZE * RIFT_ACTIVATE_TILES
 # Quieter than a gunshot — wood giving way, not a muzzle.
 CRATE_NOISE_TILES = 5.5
 CRATE_NOISE_DIST = TILE_SIZE * CRATE_NOISE_TILES
@@ -427,6 +434,7 @@ def client_config() -> dict:
     # Local import: enemies.py reads TILE_SIZE from this module, so importing it
     # at module scope would be a cycle. Enemy stat blocks still reach the client
     # through this one function, which stays the single client-config contract.
+    from . import rift
     from .enemies import enemy_types_payload
     from .loot import catalog_payload
     from .weapons import HOTBAR_SLOTS, catalog_payload as weapons_payload
@@ -464,6 +472,22 @@ def client_config() -> dict:
         "lootCollectTiles": LOOT_COLLECT_TILES,
         # How close to a crate E will smash, in tiles.
         "crateBreakTiles": CRATE_BREAK_TILES,
+        # How close to the extraction console E will activate, in tiles.
+        "riftActivateTiles": RIFT_ACTIVATE_TILES,
+        # The activation ceremony, in seconds. ONE clock: the client plays the
+        # sheets off these numbers and the server ends the sequence on them, so
+        # the stone that lights on screen is the stone the server thinks lit.
+        # See server/app/rift.py — the sheet durations come from make_rift.py.
+        "rift": {
+            "consoleLag": rift.CONSOLE_LAG,
+            "pillarStagger": rift.PILLAR_STAGGER,
+            "chargeTime": rift.CHARGE_TIME,
+            "settle": rift.SETTLE,
+            "emergeAt": rift.EMERGE_AT,
+            "emergeTime": rift.EMERGE_TIME,
+            "openAt": rift.OPEN_AT,
+            "lightTiles": rift.LIGHT_TILES,
+        },
         # Shot box on a crate, in tiles. Bottom-anchored on the contact.
         "crateHitWTiles": CRATE_HIT_W_TILES,
         "crateHitHTiles": CRATE_HIT_H_TILES,

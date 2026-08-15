@@ -211,6 +211,117 @@ def pick(ramp: Ramp, value: float, x: int, y: int) -> RGBA:
     return ramp[low + 1] if (scaled - low) > threshold else ramp[low]
 
 
+# --- the effect field -------------------------------------------------------
+# The second drawing vocabulary in this file, and it lives here for the same
+# reason the ramps do: an effect is not painted pixel by pixel, it is SUMMED
+# into a float field of intensity and resolved once at the end. Overlapping
+# shapes then add up — the crossing of two flame tongues is the hot core, a
+# shockwave riding over a ground flash is brighter where they meet — which is
+# how light actually behaves and is impossible to fake by drawing shapes in
+# order.
+#
+# Written for make_vfx.py and shared with make_rift.py. Two generators drawing
+# light out of the same primitives is what keeps the extraction rift lit in the
+# same steps as the summon column instead of becoming a second kind of glow.
+
+
+def ease_in(t: float) -> float:
+    return t * t
+
+
+def ease_out(t: float) -> float:
+    return 1.0 - (1.0 - t) ** 3
+
+
+# NEUTRAL ON PURPOSE — the hue is the client's to decide.
+#
+# Effect sheets are greyscale so they can be multiplied by whoever the effect
+# belongs to: an arriving player's roster colour, the fire's core, the
+# extraction beacon's cold mint. Ramp the steps here and every tint gets the
+# same shape for free.
+#
+# The top step is pure white: the core of a strike has to be the brightest
+# pixel on screen at the moment it lands, or it has no punch — and under a
+# multiply it is the step that comes out as the colour itself.
+BEAM: Ramp = [
+    rgb(c) for c in ("#232329", "#4a4a55", "#7d7d8c", "#b4b4c0", "#e2e2e8", "#ffffff")
+]
+
+
+def quantize_alpha(value: float) -> int:
+    """Snap coverage to five steps.
+
+    Smooth alpha on a pixel-art sprite reads as a soft PNG overlay laid on the
+    scene; five hard steps read as light with an edge, which is what everything
+    else in this game is made of.
+    """
+    steps = (0, 56, 118, 186, 255)
+    return steps[int(clamp01(value) * (len(steps) - 1) + 0.5)]
+
+
+def add(field: list[list[float]], x: int, y: int, amount: float) -> None:
+    if 0 <= y < len(field) and 0 <= x < len(field[0]):
+        field[y][x] += amount
+
+
+def ellipse(
+    field: list[list[float]],
+    cx: float,
+    cy: float,
+    rx: float,
+    ry: float,
+    strength: float,
+    hollow: float = 0.0,
+) -> None:
+    """Fill (or ring) a flattened ellipse into the intensity field.
+
+    `hollow` > 0 turns it into a shockwave: intensity peaks at the rim and
+    falls away on both sides, which is what a travelling wave looks like from
+    above. A filled ellipse with a dark centre would just look like a hole.
+    """
+    if rx <= 0.2 or ry <= 0.2:
+        return
+    for y in range(int(cy - ry) - 1, int(cy + ry) + 2):
+        for x in range(int(cx - rx) - 1, int(cx + rx) + 2):
+            dx = (x - cx) / rx
+            dy = (y - cy) / ry
+            dist = math.sqrt(dx * dx + dy * dy)
+            if dist > 1.0:
+                continue
+            if hollow > 0.0:
+                edge = 1.0 - abs(dist - 1.0) / max(hollow, 1e-3)
+                if edge <= 0.0:
+                    continue
+                add(field, x, y, strength * edge)
+            else:
+                add(field, x, y, strength * (1.0 - dist) ** 1.4)
+
+
+def resolve(
+    field: list[list[float]],
+    image: Image.Image,
+    ramp: Ramp = BEAM,
+    floor: float = 0.07,
+    tone: float = 0.92,
+    gain: float = 1.1,
+) -> None:
+    """Paint an intensity field into an image through a ramp.
+
+    The last step of every effect frame. `floor` is what counts as nothing —
+    without it the quantizer's lowest step paints a haze over the whole frame.
+    """
+    px = image.load()
+    height = len(field)
+    width = len(field[0]) if height else 0
+    for y in range(height):
+        for x in range(width):
+            value = field[y][x]
+            if value <= floor:
+                continue
+            colour: RGBA = pick(ramp, clamp01(value * tone), x, y)
+            px[x, y] = (colour[0], colour[1], colour[2], quantize_alpha(value * gain))
+
+
 # --- periodic value noise ---------------------------------------------------
 # Lattice indices wrap with `% cells`, which is what makes the field tileable
 # over `size` pixels. Nothing here is fast; it runs on a 64x64 image once.

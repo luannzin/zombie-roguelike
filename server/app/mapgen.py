@@ -26,7 +26,7 @@ from __future__ import annotations
 import math
 import random
 
-from . import crates, loot, scenery
+from . import crates, loot, rift, scenery
 from .maps import count_reachable
 from .world import FLOOR, ROCK, TREE, TileMap
 
@@ -316,6 +316,20 @@ def build_forest(
         )
     if floor < width * height * 0.35:
         raise ValueError(f"forest seed {used} is only {floor / (width * height):.0%} floor")
+    # The extraction point goes in LAST and it is the only thing here allowed
+    # to open ground back up. It clears its own plot, so it has to run after
+    # the connectivity check above has already proved the forest is sound —
+    # `_plot_open` then keeps it on ground that was mostly clearing anyway, and
+    # the floor it adds is contiguous with the tile it is centred on.
+    placed = rift.place(
+        tiles,
+        population.route,
+        (width / 2.0, height / 2.0),
+        random.Random(used ^ 0x21F7),
+    )
+    if placed is not None and count_reachable(tiles) != sum(row.count(FLOOR) for row in tiles):
+        raise ValueError(f"forest seed {used} lost reachability placing the extraction point")
+
     drops = loot.scatter(tiles, population.scenes, random.Random(used ^ 0x1007))
     crate_rows = crates.attach(population)
     return TileMap(
@@ -324,4 +338,5 @@ def build_forest(
         scenery=scenery.to_payload(population),
         loot=[drop.to_payload() for drop in drops],
         crates=crate_rows,
+        rift=placed.geometry_payload() if placed is not None else None,
     )

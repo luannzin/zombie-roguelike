@@ -42,6 +42,7 @@ import type {
   LootState,
   PickupEvent,
   PlayerMeta,
+  RiftStateRow,
   ServerMessage,
   SnapshotMessage,
   WelcomeMessage,
@@ -122,6 +123,19 @@ const CRATE_TOOLTIP_LIFT_TILES = 1.4;
 const CRATE_BREAK_LIFE = 8 / 12;
 /** Empty-crate gust. Matches `make_vfx.py` wind (8 frames @ 14 fps). */
 const WIND_LIFE = 8 / 14;
+/** How far above the console the activate tooltip sits, in tiles. */
+const RIFT_TOOLTIP_LIFT_TILES = 1.9;
+/**
+ * Where inside its own timeline each rift sheet actually LANDS — `crownAt` and
+ * `burstAt` in `assets/processed/rift/manifest.json`. The effects fired here
+ * have to sit on the frame the sprite flashes, or the light arrives beside the
+ * flash instead of with it.
+ */
+const RIFT_CROWN_FRACTION = 0.55;
+const RIFT_BURST_FRACTION = 0.4;
+/** Capstone height and sphere height above their contact points, in world px. */
+const RIFT_CROWN_LIFT = 42;
+const RIFT_BURST_LIFT = 34;
 /** Distance between boot prints, in tiles. One stride, not one frame. */
 const FOOTPRINT_STRIDE = 0.9;
 /**
@@ -826,6 +840,7 @@ export class Game {
     for (const ev of msg.lootPickups ?? []) this.onLootPickup(ev);
     if (msg.crates) this.replaceCrates(msg.crates);
     for (const ev of msg.crateBreaks ?? []) this.onCrateBreak(ev);
+    if (msg.rift) this.onRiftState(msg.rift);
     if (msg.corpses) this.mergeCorpses(msg.corpses);
   }
 
@@ -1535,6 +1550,10 @@ export class Game {
     // After visibility and the alert latch, so it reads the same resolved
     // state the renderer is about to draw.
     this.updateAudio(dt, entities);
+    // The ceremony runs on the render clock, not the tick: it is four seconds
+    // of pure presentation between two snapshots, and stepping it at 30 Hz
+    // would make the light walk around the ring in visible increments.
+    this.stepRift(dt);
     this.syncTooltipAnchors();
 
     this.renderer.draw({
@@ -1937,6 +1956,7 @@ export class Game {
       prompt: this.readyPrompt(),
       lootPrompt: this.lootPromptInfo(),
       cratePrompt: this.cratePromptInfo(),
+      riftPrompt: this.riftPrompt(),
       inventory: this.inventoryHud(),
       hotbar: this.hotbarHud(),
       net: {
@@ -1965,6 +1985,12 @@ export class Game {
         return;
       }
       this.connection.send({ type: 'collect', id: nearLoot.id });
+      return;
+    }
+    // Before the crate, and before the fire. If you are standing at the
+    // console with a box at your elbow, you did not walk here for the box.
+    if (this.riftPrompt()) {
+      this.connection.send({ type: 'activate' });
       return;
     }
     const nearCrate = this.nearCrate();
@@ -2265,7 +2291,119 @@ export class Game {
   private cratePromptInfo(): boolean {
     if (this.departing || this.introLeft > 0) return false;
     if (this.nearLoot()) return false;
+    if (this.riftPrompt()) return false;
     return this.nearCrate() !== null;
+  }
+
+  /**
+   * Whether E is offering the extraction console right now.
+   *
+   * Only while it is DORMANT. Once the sequence starts there is nothing left
+   * to press, and leaving a prompt on a structure that is already answering
+   * would read as the first press not having registered.
+   *
+   * Measured feet-to-console, mirroring `Room.activate_rift`, so the prompt on
+   * screen and the check on the server agree about what "close enough" means.
+   */
+  private riftPrompt(): boolean {
+    if (this.departing || this.introLeft > 0) return false;
+    const config = this.config;
+    const local = this.local;
+    const rift = this.world?.rift;
+    if (!config || !local || !rift || rift.state !== 'dormant') return false;
+    const range = (config.riftActivateTiles ?? 2.75) * config.tileSize;
+    const dx = rift.consoleX - local.state.x;
+    const dy = rift.consoleY - (local.state.y + config.playerHalfHeight);
+    return dx * dx + dy * dy <= range * range;
+  }
+
+  /**
+   * The server changed the rift's state. Adopt its clock and answer with juice.
+   *
+   * The visuals are all client-side and deliberately so: the server says WHAT
+   * happened, this decides what that feels like. `elapsed` is taken from the
+   * server rather than zeroed, so a player who joins mid-sequence picks it up
+   * in progress instead of watching it replay.
+   */
+  private onRiftState(row: RiftStateRow): void {
+    const world = this.world;
+    if (!world?.rift) return;
+    const was = world.rift.state;
+    world.setRiftState(row.state, row.t);
+    if (was === row.state) return;
+    if (row.state === 'charging') {
+      // A switch being thrown. The console answering on the frame it was
+      // pressed is what makes the button feel connected to the structure.
+      playSfx('lantern-on');
+    }
+  }
+
+  /**
+   * Run the ceremony's clock and fire the beats that need an effect.
+   *
+   * The four seconds between the server's two snapshots are entirely local, so
+   * this is where the light and the shove come from.
+   *
+   * Each beat fires on the frame `elapsed` CROSSES it — the `before < at &&
+   * after >= at` window is what makes it happen exactly once even if a frame
+   * runs long enough to step over two stones, and what stops a late joiner
+   * (who starts at the server's `t`) replaying the beats it already missed.
+   */
+  private stepRift(dt: number): void {
+    const rift = this.world?.rift;
+    if (!rift || rift.state !== 'charging' || !this.config) return;
+    const before = rift.elapsed;
+    this.world?.stepRift(dt);
+    const after = rift.elapsed;
+    const timing = this.config.rift ?? null;
+    if (!timing) return;
+    const fx = palette().effects;
+    const beacon = palette().scene.beacon;
+    const beaconCss = `rgb(${beacon[0]} ${beacon[1]} ${beacon[2]})`;
+
+    // A stone catching. One light and a small shove each, so the four of them
+    // walking around the ring are four separate events rather than one long
+    // brightening — the punctuation is what sells the stagger.
+    for (let i = 0; i < rift.pillars.length; i++) {
+      const at = timing.consoleLag + i * timing.pillarStagger
+        + timing.chargeTime * RIFT_CROWN_FRACTION;
+      if (before < at && after >= at) {
+        const pillar = rift.pillars[i];
+        this.effects.spawnLight(pillar.x, pillar.y - RIFT_CROWN_LIFT, 78, 0.7, beaconCss, 0.34);
+        this.camera.addTrauma(0.08);
+        // Four of these in a row is a rising figure, which is the whole reason
+        // the stones are staggered. Borrowed from the loot-reveal chime for
+        // now — the rift has no voice of its own in `make_audio.py` yet.
+        playSfx('rarity');
+      }
+    }
+
+    // The tear. The largest thing that happens on this map, and the only one
+    // that earns a real shove.
+    if (before < timing.emergeAt && after >= timing.emergeAt) {
+      playSfx('summon');
+    }
+    const burst = timing.emergeAt + timing.emergeTime * RIFT_BURST_FRACTION;
+    if (before < burst && after >= burst) {
+      this.effects.spawnLight(rift.anomalyX, rift.anomalyY, 210, 1, beaconCss, 0.5);
+      this.camera.addTrauma(0.42);
+      playSfx('kindle');
+      for (let i = 0; i < 22; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const speed = 40 + Math.random() * 90;
+        this.effects.particles.push({
+          x: rift.anomalyX,
+          y: rift.anomalyY - RIFT_BURST_LIFT,
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed * 0.7,
+          size: 1 + Math.random() * 2,
+          color: i % 3 === 0 ? fx.goldCore : beaconCss,
+          age: 0,
+          life: 0.35 + Math.random() * 0.4,
+          gy: 30,
+        });
+      }
+    }
   }
 
   private nearCrate() {
@@ -2407,6 +2545,14 @@ export class Game {
       }
     } else {
       dropTooltipAnchor('loot');
+    }
+
+    const rift = this.world?.rift;
+    if (rift && this.riftPrompt() && this.config) {
+      const lift = this.config.tileSize * RIFT_TOOLTIP_LIFT_TILES;
+      writeTooltipAnchor('rift', view.x(rift.consoleX), view.y(rift.consoleY - lift));
+    } else {
+      dropTooltipAnchor('rift');
     }
 
     const crate = this.cratePromptInfo() ? this.nearCrate() : null;

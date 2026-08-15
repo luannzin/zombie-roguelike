@@ -124,6 +124,7 @@ MSG_READY = "ready"
 MSG_COLLECT = "collect"
 MSG_BREAK = "break"
 MSG_DROP = "drop"
+MSG_ACTIVATE = "activate"
 
 MSG_HELLO = "hello"
 MSG_LOBBY = "lobby"
@@ -216,6 +217,7 @@ def snapshot(
     crates: list[dict] | None = None,
     crate_breaks: list[dict] | None = None,
     corpses: list[dict] | None = None,
+    rift: dict | None = None,
 ) -> dict:
     payload = {
         "type": MSG_SNAPSHOT,
@@ -243,4 +245,10 @@ def snapshot(
         payload["crateBreaks"] = crate_breaks
     if corpses is not None:
         payload["corpses"] = corpses
+    # Two rows a run: one when the console is pressed, one when the sequence
+    # finishes. The client runs the four seconds in between off its own clock —
+    # `t` is there so somebody joining mid-sequence picks it up in progress
+    # instead of watching a structure snap to finished.
+    if rift is not None:
+        payload["rift"] = rift
     return payload

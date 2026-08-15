@@ -72,6 +72,16 @@ export interface BreakPacket {
   id: string;
 }
 
+/**
+ * Press the extraction console. No id: there is exactly one rift on a map.
+ *
+ * Server ignores it unless you are close enough, alive, and the rift is still
+ * dormant. There is no packet to switch it back off — see `Room.activate_rift`.
+ */
+export interface ActivatePacket {
+  type: 'activate';
+}
+
 export type ClientMessage =
   | InputPacket
   | PingPacket
@@ -79,6 +89,7 @@ export type ClientMessage =
   | ReadyPacket
   | CollectPacket
   | BreakPacket
+  | ActivatePacket
   | DropPacket;
 
 /**
@@ -132,6 +143,10 @@ export interface GameConfig {
   crateHitWTiles?: number;
   /** Crate shot box height, in tiles. Covers the barrel, not just the foot. */
   crateHitHTiles?: number;
+  /** How close to the extraction console (tiles, feet to contact) E activates. */
+  riftActivateTiles?: number;
+  /** The activation ceremony's clock. One source: `server/app/rift.py`. */
+  rift?: RiftTimingConfig;
   /** Catalog of world loot. Keyed by item key; `frame` indexes the loot atlas. */
   loot?: Record<string, LootItemConfig>;
   /** Combat stats for guns. Keyed by the same keys as loot rows with pocket `hotbar`. */
@@ -340,6 +355,56 @@ export interface MapPayload {
    * ones leave this list and play their sheet, then the tile becomes floor.
    */
   crates?: CrateState[];
+  /**
+   * The extraction point. Absent (or null) on a map without one — every camp,
+   * and any forest the generator could not fit a 7x7 plot into.
+   */
+  rift?: RiftPayload | null;
+}
+
+/**
+ * The extraction point's geometry plus its state at the moment the map was
+ * sent. Placed by `server/app/rift.py`, which ships ABSOLUTE world positions
+ * rather than the plot offsets — the client never re-derives the arrangement,
+ * for the same reason it never re-derives where a cabin's door is.
+ */
+export interface RiftPayload {
+  tx: number;
+  ty: number;
+  plot: number;
+  x: number;
+  y: number;
+  /** Contact point the anomaly hovers over. */
+  anomaly: [number, number];
+  /** The console you press. */
+  console: [number, number];
+  /** `[x, y, shape]` per stone. `shape` indexes the pillar sheet's four cuts. */
+  pillars: [number, number, number][];
+  lightTiles: number;
+  /** Scene-light kind. 2 is `beacon` — see `theme/palette.ts`. */
+  lightKind: number;
+  state: 'dormant' | 'charging' | 'open';
+  /** Seconds into the activation sequence. */
+  t: number;
+}
+
+/**
+ * The activation ceremony, in seconds, straight off `server/app/rift.py`.
+ *
+ * The sheet durations inside it (`chargeTime`, `emergeTime`) come from
+ * `frames / fps` in `server/tools/make_rift.py`, so the sprite the client plays
+ * and the sequence the server ends are timed by one set of numbers. The gaps
+ * are the ceremony: the console answers, then the stones catch ONE AT A TIME.
+ */
+export interface RiftTimingConfig {
+  consoleLag: number;
+  pillarStagger: number;
+  chargeTime: number;
+  settle: number;
+  emergeAt: number;
+  emergeTime: number;
+  openAt: number;
+  lightTiles: number;
 }
 
 /** One live crate. `v` is the kind row on the crate sheet (box, barrel, …). */
@@ -673,6 +738,19 @@ export interface SnapshotMessage {
   crateBreaks?: CrateBreakEvent[];
   /** Remaining corpses. Present only when one was added. */
   corpses?: CorpseState[];
+  /**
+   * The extraction point changed state. TWO rows a run — one when the console
+   * is pressed, one when the sequence finishes — because the four seconds in
+   * between are the client's own clock, not something worth 30 Hz of wire.
+   */
+  rift?: RiftStateRow;
+}
+
+/** The live half of the extraction point. */
+export interface RiftStateRow {
+  state: 'dormant' | 'charging' | 'open';
+  /** Seconds into the sequence, so a late joiner picks it up in progress. */
+  t: number;
 }
 
 export interface PongMessage {

@@ -15,6 +15,7 @@ imported by `app/` and never run at request time.
 | `make_textures.py` | generates final pixels | `assets/processed/terrain/` (4 grounds, blend, patch, rock, tree, deadtree, stump, grass, bush, branch, leaves, fern, campfire) |
 | `make_scenery.py` | generates final pixels | `assets/processed/scenery/` (cabin, tent, fence, sign, logs, crate, firepit, blood, tracks, clothes, debris) |
 | `make_vfx.py` | generates final pixels | `assets/processed/vfx/` (summon, kindle, aura, wind, death) |
+| `make_rift.py` | generates final pixels | `assets/processed/rift/` (the extraction structure: scar, pillar, console, charge, crown, emerge, rift) |
 | `make_gore.py` | generates final pixels | `assets/processed/gore/` (6 wound decals worn by a hit body) |
 | `make_loot.py` | generates final pixels | `assets/processed/loot/` (one 16x16 frame per item, including gun icons) |
 | `make_guns.py` | generates final pixels | `assets/processed/guns/` (held side-view, one 18x8 frame per weapon) |
@@ -107,9 +108,57 @@ imported by `app/` and never run at request time.
   drawn without a player tint. `death` is the same family: dirt and air
   kicked when a body hits the floor. `sfx_zombie_death` puts its thud on
   `DEATH_IMPACT`.
+- **`make_rift.py` is the EXTRACTION STRUCTURE, and it is the one generator that
+  writes into all three shapes at once**, because the thing it draws is made of
+  three kinds of object: `scar` is a flat DECAL baked into the ground, `pillar`
+  and `console` are bottom-anchored PROPS in the depth sort, and `charge` /
+  `crown` / `emerge` / `rift` are greyscale VFX drawn additively over the
+  darkness. That split is the design, not an accident of filing. Painting the
+  awake pillar's glow into its prop frame would put the beacon UNDER the night
+  multiply, and a beacon you can only see once you are standing next to it is
+  not a beacon.
+  - Its hue is `--scene-beacon` (118 255 196) in `client/src/styles/index.css`,
+    already reserved for this and nothing else. The `BEACON` ramp bakes it into
+    the two prop sheets, because a prop's colour is its material; the VFX sheets
+    stay greyscale and the client tints them, exactly as the kindle roar does
+    with `fire.core`. Move the CSS variable and this ramp moves with it, or the
+    structure grows two greens.
+  - The prop frames are STATES, not variants. `pillar` is
+    `shape * states + state` packed shape-major (four cuts, one per corner,
+    dormant then awake); `console` is idle then armed. The index is
+    authoritative — nothing here may be rolled, unlike a crate kind.
+  - **`crownAt` / `burstAt` are where the prop underneath changes state**, as
+    well as where a sound puts its impact. The stone flips dormant → awake on
+    the frame `charge` whites out the capstone, because the flash is what hides
+    the swap; a frame early or late is a visible cut to a different stone.
+  - **A one-shot's last frame IS its loop's frame 0** (`handsOffTo`), and the
+    convergence is structural rather than eyeballed: `charge` ends by calling
+    the same `_crown_paint` that draws `crown` at phase 0, `emerge` ends by
+    calling the same `_anomaly` that draws `rift` with `_rift_state(0.0)`, and
+    the one-shot's own debris reaches zero before t=1. `build` measures both
+    seams and refuses to write if either is non-zero.
+  - The anomaly is drawn as ABSENCE. Additive light cannot subtract, so the dark
+    shell is never drawn — only the cell-shaped openings on an implied sphere
+    are, and the body is the negative space between them. Cells are spread by
+    the GOLDEN ANGLE, not rolled: random points on a sphere clump, the field
+    saturates where they pile up, and the lattice comes out as one white blob
+    with bald patches beside it.
+  - `layout` in the manifest is the arrangement in TILE offsets, in the same
+    coordinate language as `scenery.Piece` (a standing piece's `dy` is its
+    contact row, a decal's is its centre). It ships with the art so nobody
+    re-derives where a corner is. The `light` entry is `kind: 2` — `BEACON` in
+    `server/app/scenery.py`, which reserved that value for exactly this.
 - Shared helpers (`pick`, `hash01`, `clamp01`, `pack`, `rgb`, the ramps) live in
   `make_textures.py` and are imported by the other generators, so every sheet
   keeps one shading vocabulary. Do not copy them.
+- **There is a second vocabulary in `make_textures.py` and it is for LIGHT**:
+  `BEAM`, `ellipse`, `add`, `ease_in`, `ease_out`, `quantize_alpha`, `resolve`.
+  An effect is not painted shape by shape, it is SUMMED into a float field and
+  resolved once — so overlapping shapes add up and the crossing of two tongues
+  is the hot core, which is impossible to fake by drawing in order.
+  `make_vfx.py` and `make_rift.py` both build their sheets out of these, which
+  is what keeps the extraction rift lit in the same steps as the summon column
+  instead of becoming a second kind of glow.
 - Shared drawing helpers live in `make_textures.py` and are imported, not
   copied, so all generated art keeps one shading vocabulary.
 - **`make_audio.py` is the same idea for sound.** The helpers above its RECIPES
@@ -201,6 +250,7 @@ python tools/process_sprites.py --name zhat-cap-death --tile 16 --exact --side-f
 python tools/make_textures.py
 python tools/make_scenery.py
 python tools/make_vfx.py
+python tools/make_rift.py
 python tools/make_gore.py
 python tools/make_loot.py
 python tools/make_guns.py
@@ -228,7 +278,13 @@ python tools/make_audio.py
 ## Verification
 
 - Re-run the generator and check `git status`: a script that has not changed
-  must leave `assets/processed/` byte-identical.
+  must leave `assets/processed/` byte-identical. That is also how a refactor of
+  the shared helpers is proved safe — move a ramp or a field primitive, re-run
+  every generator, and nothing under `assets/processed/` may move.
+- `make_rift.py` checks its own seams: it prints the worst channel difference
+  between each one-shot's last frame and its loop's first, and exits non-zero
+  if either is anything but 0. A handoff that pops is the one artifact that
+  gives away that the rift is a sprite.
 - Audio has no eyes to check it with, so check it with numbers: a wav must have
   a peak in range, no DC offset, both edges at zero, no samples pinned at the
   rail, and — for a bed — a wrap discontinuity small against its own local RMS.

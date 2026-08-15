@@ -27,6 +27,17 @@ import { DarknessLayer } from './layers/darkness';
 import { crateAnimFrame, drawFootprints, drawSceneryProp } from './layers/scenery';
 import { drawBloodPools } from './layers/corpses';
 import {
+  chargeHandoff,
+  drawRiftGlow,
+  drawRiftProp,
+  drawRiftScar,
+  riftPhase,
+  riftStanding,
+  RIFT_FALLBACK,
+  type RiftStanding,
+} from './layers/rift';
+import { loadRift, type RiftAtlas } from './rift';
+import {
   drawLootAuras,
   drawLootBeams,
   drawLootMotes,
@@ -65,7 +76,14 @@ export class Renderer {
     y: number;
     anim: number;
     hitFlash: number;
-    piece: SceneryPiece;
+    /**
+     * Exactly one of these is set. Scenery and the rift come out of different
+     * atlases and are drawn by different code, but they share one depth order
+     * because they share one requirement: a body walking behind either has to
+     * disappear behind it.
+     */
+    piece: SceneryPiece | null;
+    rift: RiftStanding | null;
   }[] = [];
   /**
    * What the bodies on screen are doing to the plants around them. Owned here
@@ -78,6 +96,7 @@ export class Renderer {
   private gunAtlas: GunAtlas | null = null;
   private vfx: VfxAtlas | null = null;
   private gore: GoreAtlas | null = null;
+  private riftAtlas: RiftAtlas | null = null;
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
@@ -104,6 +123,9 @@ export class Renderer {
     });
     void loadGuns().then((atlas) => {
       this.gunAtlas = atlas;
+    });
+    void loadRift().then((atlas) => {
+      this.riftAtlas = atlas;
     });
   }
 
@@ -162,6 +184,11 @@ export class Renderer {
       drawFootprints(ctx, state.effects, this.scenery, state.camera);
       drawBloodPools(ctx, state.corpses, this.scenery, state.camera);
     }
+    // The sigil goes on the floor with them: flat, under everybody, and the
+    // only part of the structure that is there before anything happens.
+    if (state.world.rift) {
+      drawRiftScar(ctx, this.riftAtlas, state.world.rift, state.camera);
+    }
     drawDust(ctx, state.effects);
 
     // Screen space: coins under characters, then everything that STANDS on the
@@ -195,13 +222,23 @@ export class Renderer {
     const depthProps = this.depthProps;
     depthProps.length = 0;
     for (const piece of state.world.scenery.standing) {
-      depthProps.push({ y: piece.y, anim: 0, hitFlash: 0, piece });
+      depthProps.push({ y: piece.y, anim: 0, hitFlash: 0, piece, rift: null });
+    }
+    const rift = state.world.rift;
+    const phase = rift
+      ? riftPhase(rift, state.config.rift ?? RIFT_FALLBACK, chargeHandoff(this.riftAtlas))
+      : null;
+    if (rift && phase) {
+      for (const piece of riftStanding(rift, phase)) {
+        depthProps.push({ y: piece.y, anim: 0, hitFlash: 0, piece: null, rift: piece });
+      }
     }
     for (const crate of state.world.crates) {
       depthProps.push({
         y: crate.y,
         anim: 0,
         hitFlash: 0,
+        rift: null,
         piece: {
           kind: 'crate',
           x: crate.x,
@@ -219,6 +256,7 @@ export class Renderer {
         y: smash.y,
         anim: crateSheet ? crateAnimFrame(crateSheet, smash.age) : 0,
         hitFlash: flash,
+        rift: null,
         piece: {
           kind: 'crate',
           x: smash.x,
@@ -249,7 +287,9 @@ export class Renderer {
           fire++;
         } else {
           const row = depthProps[prop];
-          if (scenery) {
+          if (row.rift) {
+            if (this.riftAtlas) drawRiftProp(ctx, this.riftAtlas, row.rift);
+          } else if (scenery && row.piece) {
             drawSceneryProp(
               ctx, view, scenery, row.piece, state.time, row.anim, row.hitFlash,
             );
@@ -298,6 +338,18 @@ export class Renderer {
     drawLootBeams(ctx, this.vfx?.aura ?? null, state.loot, state.time);
     drawWindPuffs(ctx, this.vfx?.wind ?? null, state.effects.winds);
     drawDeathBursts(ctx, this.vfx?.death ?? null, state.effects.deaths);
+    // The structure's own light, last of the additive passes: the stones'
+    // crowns and the anomaly are the brightest things on the map once they are
+    // lit, and nothing after this may be drawn under them.
+    if (rift && phase) {
+      // `scene.beacon` is raw channels — the same triple `drawSceneLights`
+      // joins for its gradients. The tint cache wants a CSS colour.
+      const beacon = palette().scene.beacon;
+      drawRiftGlow(
+        ctx, this.riftAtlas, rift, phase, state.time,
+        `rgb(${beacon[0]} ${beacon[1]} ${beacon[2]})`,
+      );
+    }
     // Hunt tell sits ON the night: a hunter you cannot see still wears the
     // diamond, so killing the lamp does not hide that it has you.
     drawAlertMarks(entity, state.entities, state.time);

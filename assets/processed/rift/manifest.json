@@ -1,0 +1,123 @@
+{
+  "tile": 16,
+  "seed": 1337,
+  "plot": {
+    "widthTiles": 7,
+    "heightTiles": 7
+  },
+  "props": {
+    "pillar": {
+      "file": "pillar.png",
+      "frameWidth": 16,
+      "frameHeight": 48,
+      "frames": 8,
+      "sway": 0,
+      "shapes": 4,
+      "states": 2
+    },
+    "console": {
+      "file": "console.png",
+      "frameWidth": 20,
+      "frameHeight": 24,
+      "frames": 2,
+      "sway": 0,
+      "states": 2
+    }
+  },
+  "decals": {
+    "scar": {
+      "file": "scar.png",
+      "frameWidth": 64,
+      "frameHeight": 64,
+      "frames": 1
+    }
+  },
+  "effects": {
+    "charge": {
+      "file": "charge.png",
+      "frameWidth": 32,
+      "frameHeight": 56,
+      "frames": 14,
+      "fps": 14,
+      "anchorY": 48,
+      "loop": false,
+      "crownAt": 0.55,
+      "handsOffTo": "crown",
+      "tinted": true
+    },
+    "crown": {
+      "file": "crown.png",
+      "frameWidth": 32,
+      "frameHeight": 56,
+      "frames": 8,
+      "fps": 10,
+      "anchorY": 48,
+      "loop": true,
+      "tinted": true
+    },
+    "emerge": {
+      "file": "emerge.png",
+      "frameWidth": 64,
+      "frameHeight": 80,
+      "frames": 20,
+      "fps": 16,
+      "anchorY": 68,
+      "loop": false,
+      "burstAt": 0.4,
+      "handsOffTo": "rift",
+      "tinted": false
+    },
+    "rift": {
+      "file": "rift.png",
+      "frameWidth": 64,
+      "frameHeight": 80,
+      "frames": 16,
+      "fps": 12,
+      "anchorY": 68,
+      "loop": true,
+      "tinted": false
+    }
+  },
+  "layout": {
+    "pillars": [
+      {
+        "dx": 0.5,
+        "dy": 1.0,
+        "shape": 0
+      },
+      {
+        "dx": 6.5,
+        "dy": 1.0,
+        "shape": 1
+      },
+      {
+        "dx": 0.5,
+        "dy": 7.0,
+        "shape": 2
+      },
+      {
+        "dx": 6.5,
+        "dy": 7.0,
+        "shape": 3
+      }
+    ],
+    "scar": {
+      "dx": 3.5,
+      "dy": 3.5
+    },
+    "anomaly": {
+      "dx": 3.5,
+      "dy": 4.0
+    },
+    "console": {
+      "dx": 3.5,
+      "dy": 7.0
+    },
+    "light": {
+      "dx": 3.5,
+      "dy": 3.5,
+      "radiusTiles": 3.5,
+      "kind": 2
+    }
+  }
+}

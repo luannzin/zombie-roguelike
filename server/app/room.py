@@ -31,7 +31,7 @@ import random
 import time
 import uuid
 
-from . import ai, camp, coins, combat, crates, loot, mapgen, protocol, weapons, zones
+from . import ai, camp, coins, combat, crates, loot, mapgen, protocol, rift, weapons, zones
 from .ai import EnemyDirector
 from .coins import Coin
 from .config import (
@@ -40,6 +40,7 @@ from .config import (
     DT,
     LOOT_COLLECT_DIST,
     MARCH_SPEED,
+    RIFT_ACTIVATE_DIST,
     MAX_HP,
     MAX_INPUT_QUEUE,
     MAX_INPUTS_PER_TICK,
@@ -57,6 +58,7 @@ from .config import (
 )
 from .corpses import Corpse
 from .crates import Crate
+from .rift import Rift
 from .loot import Drop
 from .enemies import Enemy, EnemyType, dress
 from .world import FLOOR
@@ -101,6 +103,9 @@ class Room:
         self.coins: dict[str, Coin] = {}
         self.drops: dict[str, Drop] = {}
         self.crates: dict[str, Crate] = {}
+        #: The extraction point, or None on a map without one (every camp, and
+        #: any forest the generator could not fit a plot into).
+        self.rift: Rift | None = None
         self.corpses: dict[str, Corpse] = {}
         self.sockets: dict[str, object] = {}
         self.director = EnemyDirector(self.spawn_points)
@@ -135,8 +140,12 @@ class Room:
         self._loot_seq = 0
         self._crates_dirty = True
         self._corpses_dirty = True
+        #: Set on the two ticks the rift changes state, not every tick — the
+        #: four seconds in between are the client's own clock.
+        self._rift_dirty = False
         self._load_drops()
         self._load_crates()
+        self._load_rift()
 
     def _load_drops(self) -> None:
         """Hydrate live drops from the map the generator left behind."""
@@ -159,6 +168,11 @@ class Room:
         """Hydrate live crates from the map the generator left behind."""
         self.crates = crates.from_payloads(self.world.crates)
         self._crates_dirty = True
+
+    def _load_rift(self) -> None:
+        """Hydrate the extraction point from the map the generator left behind."""
+        self.rift = rift.from_payload(self.world.rift)
+        self._rift_dirty = False
 
     # --- lifecycle ----------------------------------------------------------
     def start(self) -> None:
@@ -423,6 +437,44 @@ class Room:
             ).to_payload()
         )
 
+    def activate_rift(self, pid: str) -> None:
+        """Press the console, if this player is standing at it.
+
+        Once only. The sequence is not interruptible and not reversible —
+        there is no second state to go back to, and a rift you could switch off
+        would turn the one irreversible decision on the map into a toggle.
+
+        Measured from the FEET, the same way collect and smash are, so the
+        prompt the player is reading and the check the server runs agree.
+        """
+        if self.phase != protocol.PHASE_PLAYING or self.departing:
+            return
+        if self.rift is None or self.rift.state != rift.DORMANT:
+            return
+        player = self.players.get(pid)
+        if player is None or not player.alive:
+            return
+        feet_y = player.y + PLAYER_HALF_HEIGHT
+        dx = self.rift.console_x - player.x
+        dy = self.rift.console_y - feet_y
+        if dx * dx + dy * dy > RIFT_ACTIVATE_DIST * RIFT_ACTIVATE_DIST:
+            return
+        self.rift.state = rift.CHARGING
+        self.rift.elapsed = 0.0
+        self._rift_dirty = True
+        # It is LOUD. Four stones lighting up in the dark is the largest thing
+        # that has happened on this map, and every creature that could hear a
+        # crate come apart can hear this — which is the cost of calling for a
+        # ride, and the reason the walk to the console is a decision.
+        self.noises.append(
+            ai.Noise(
+                x=self.rift.x,
+                y=self.rift.y,
+                radius=RIFT_ACTIVATE_DIST * 6.0,
+                source_id=player.id,
+            )
+        )
+
     def drop_loot(self, pid: str, slot: int) -> None:
         """Toss a bag slot onto the ground near this player's feet.
 
@@ -508,6 +560,7 @@ class Room:
         self.noises.clear()
         self._load_drops()
         self._load_crates()
+        self._load_rift()
         self.corpses.clear()
         self._corpses_dirty = True
         self.crate_break_events = []
@@ -549,6 +602,12 @@ class Room:
         self.step_players(dt)
         self.step_enemies(dt)
         self.step_coins(dt)
+        self.step_rift(dt)
+
+    def step_rift(self, dt: float) -> None:
+        """Run the activation sequence. Marks dirty only on the transition."""
+        if self.rift is not None and self.rift.step(dt):
+            self._rift_dirty = True
 
     def step_players(self, dt: float) -> None:
         if self.departing:
@@ -950,6 +1009,8 @@ class Room:
             [row.to_payload() for row in self.corpses.values()] if self._corpses_dirty else None
         )
         self._corpses_dirty = False
+        rift_row = self.rift.state_payload() if (self.rift and self._rift_dirty) else None
+        self._rift_dirty = False
         await self.broadcast(
             protocol.snapshot(
                 self.tick,
@@ -968,6 +1029,7 @@ class Room:
                 crates=crate_rows,
                 crate_breaks=self.crate_break_events or None,
                 corpses=corpse_rows,
+                rift=rift_row,
             )
         )
 

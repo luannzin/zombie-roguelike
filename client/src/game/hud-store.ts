@@ -148,6 +148,11 @@ export interface HudSnapshot {
   lootPrompt: HudLootPrompt | null;
   /** Proximity prompt on a crate. */
   cratePrompt: boolean;
+  /**
+   * Proximity prompt on the extraction console. Only while the rift is still
+   * dormant — once it is answering there is nothing left to press.
+   */
+  riftPrompt: boolean;
   /** The pocket. Null before welcome. Open/close is client-local (TAB). */
   inventory: HudInventory | null;
   /** The gun belt. Always on screen; 1/2/3 selects. */
@@ -169,6 +174,7 @@ export const EMPTY_HUD: HudSnapshot = {
   prompt: null,
   lootPrompt: null,
   cratePrompt: false,
+  riftPrompt: false,
   inventory: null,
   hotbar: null,
 };

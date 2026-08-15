@@ -57,29 +57,16 @@ from PIL import Image
 from make_textures import (
     DEFAULT_TILE,
     PROCESSED_DIR,
-    RGBA,
-    Ramp,
     TRANSPARENT,
+    add,
     clamp01,
+    ease_in,
+    ease_out,
+    ellipse,
     hash01,
     pack,
-    pick,
-    rgb,
+    resolve,
 )
-
-# NEUTRAL ON PURPOSE — the hue is the client's to decide.
-#
-# The sheet is greyscale so it can be multiplied by whoever is arriving: their
-# roster colour lands on the beam and the column becomes theirs, which is a
-# thing a baked-in blue can never be. Ramp the steps here and every tint gets
-# the same shape for free.
-#
-# The top step is pure white: the core of the column has to be the brightest
-# pixel on screen at the moment of impact, or the strike has no punch — and
-# under a multiply it is the step that comes out as the colour itself.
-BEAM: Ramp = [
-    rgb(c) for c in ("#232329", "#4a4a55", "#7d7d8c", "#b4b4c0", "#e2e2e8", "#ffffff")
-]
 
 SUMMON_FRAMES = 14
 SUMMON_FPS = 14
@@ -121,63 +108,6 @@ DEATH_CHARGE = 0.04
 DEATH_IMPACT = 0.48
 
 
-def _ease_out(t: float) -> float:
-    return 1.0 - (1.0 - t) ** 3
-
-
-def _ease_in(t: float) -> float:
-    return t * t
-
-
-def _quantize_alpha(value: float) -> int:
-    """Snap coverage to five steps.
-
-    Smooth alpha on a pixel-art sprite reads as a soft PNG overlay laid on the
-    scene; five hard steps read as light with an edge, which is what everything
-    else in this game is made of.
-    """
-    steps = (0, 56, 118, 186, 255)
-    return steps[int(clamp01(value) * (len(steps) - 1) + 0.5)]
-
-
-def _add(field: list[list[float]], x: int, y: int, amount: float) -> None:
-    if 0 <= y < len(field) and 0 <= x < len(field[0]):
-        field[y][x] += amount
-
-
-def _ellipse(
-    field: list[list[float]],
-    cx: float,
-    cy: float,
-    rx: float,
-    ry: float,
-    strength: float,
-    hollow: float = 0.0,
-) -> None:
-    """Fill (or ring) a flattened ellipse into the intensity field.
-
-    `hollow` > 0 turns it into a shockwave: intensity peaks at the rim and
-    falls away on both sides, which is what a travelling wave looks like from
-    above. A filled ellipse with a dark centre would just look like a hole.
-    """
-    if rx <= 0.2 or ry <= 0.2:
-        return
-    for y in range(int(cy - ry) - 1, int(cy + ry) + 2):
-        for x in range(int(cx - rx) - 1, int(cx + rx) + 2):
-            dx = (x - cx) / rx
-            dy = (y - cy) / ry
-            dist = math.sqrt(dx * dx + dy * dy)
-            if dist > 1.0:
-                continue
-            if hollow > 0.0:
-                edge = 1.0 - abs(dist - 1.0) / max(hollow, 1e-3)
-                if edge <= 0.0:
-                    continue
-                _add(field, x, y, strength * edge)
-            else:
-                _add(field, x, y, strength * (1.0 - dist) ** 1.4)
-
-
 def _column(
     field: list[list[float]],
     width: int,
@@ -216,7 +146,7 @@ def _column(
             # look of the beam: too high and it is a thread with a halo.
             core = (1.0 - offset) ** 1.5
             grain = 0.9 + hash01(x, y, frame * 31 + 7) * 0.2
-            _add(field, x, y, strength * core * band * grain * row_gain)
+            add(field, x, y, strength * core * band * grain * row_gain)
 
 
 def make_summon_frame(
@@ -234,7 +164,7 @@ def make_summon_frame(
         # A pool of light gathering on the ground, plus a rim on it, so the
         # charge is legible from the first frame rather than a faint smudge
         # nobody notices until the beam is already falling.
-        _ellipse(
+        ellipse(
             field,
             cx,
             contact_y,
@@ -242,7 +172,7 @@ def make_summon_frame(
             height * 0.024 + grow * height * 0.032,
             0.55 + grow * 0.75,
         )
-        _ellipse(
+        ellipse(
             field,
             cx,
             contact_y,
@@ -256,12 +186,12 @@ def make_summon_frame(
             phase = (index * 0.75 + i * 1.7) % 4.0
             mx = int(round(cx + math.sin(i * 2.3 + index * 0.4) * width * 0.28))
             my = int(round(contact_y - phase * height * 0.045))
-            _add(field, mx, my, (0.5 + grow * 0.6) * (1.0 - phase / 4.0))
+            add(field, mx, my, (0.5 + grow * 0.6) * (1.0 - phase / 4.0))
 
     # --- STRIKE: the front descends ------------------------------------------
     if STRIKE_START <= t:
         if t < IMPACT_AT:
-            drop = _ease_in((t - STRIKE_START) / (IMPACT_AT - STRIKE_START))
+            drop = ease_in((t - STRIKE_START) / (IMPACT_AT - STRIKE_START))
             front = drop * contact_y
             strength = 0.7 + drop * 0.55
             half = width * (0.17 + drop * 0.09)
@@ -270,7 +200,7 @@ def make_summon_frame(
             strength = 1.45
             half = width * 0.30
         else:
-            fade = _ease_out((t - COLLAPSE_START) / (1.0 - COLLAPSE_START))
+            fade = ease_out((t - COLLAPSE_START) / (1.0 - COLLAPSE_START))
             front = contact_y
             strength = 1.3 * (1.0 - fade)
             # Narrows as it dies: the column is drawn back up, not switched off.
@@ -282,7 +212,7 @@ def make_summon_frame(
         since = (t - IMPACT_AT) / (1.0 - IMPACT_AT)
         flash = max(0.0, 1.0 - since * 2.2)
         if flash > 0.0:
-            _ellipse(
+            ellipse(
                 field,
                 cx,
                 contact_y,
@@ -295,8 +225,8 @@ def make_summon_frame(
             wave = (since - delay) / span
             if not 0.0 < wave < 1.0:
                 continue
-            radius = _ease_out(wave)
-            _ellipse(
+            radius = ease_out(wave)
+            ellipse(
                 field,
                 cx,
                 contact_y,
@@ -315,17 +245,10 @@ def make_summon_frame(
             travel = since * width * (0.30 + hash01(i, 9, 5) * 0.34)
             sx = int(round(cx + math.cos(angle) * travel))
             sy = int(round(contact_y + math.sin(angle) * travel * 0.34 - since * height * 0.05))
-            _add(field, sx, sy, max(0.0, 0.95 - since * 1.4))
+            add(field, sx, sy, max(0.0, 0.95 - since * 1.4))
 
     # --- resolve -------------------------------------------------------------
-    px = img.load()
-    for y in range(height):
-        for x in range(width):
-            value = field[y][x]
-            if value <= 0.07:
-                continue
-            colour: RGBA = pick(BEAM, clamp01(value * 0.92), x, y)
-            px[x, y] = (colour[0], colour[1], colour[2], _quantize_alpha(value * 1.1))
+    resolve(field, img)
     return img
 
 
@@ -382,7 +305,7 @@ def _kindle_flames(
                 # Hottest at the root, cooler at the tip — same rule as the
                 # campfire sprite, or the column reads as a white slab.
                 cool = 1.0 - t * 0.30
-                _add(field, x, y, strength * core * band * grain * cool)
+                add(field, x, y, strength * core * band * grain * cool)
 
 
 def make_kindle_frame(
@@ -399,7 +322,7 @@ def make_kindle_frame(
         grow = clamp01((t - KINDLE_CHARGE) / (KINDLE_IMPACT - KINDLE_CHARGE))
         # A pool of heat on the coals, plus a rim, so the charge is a thing
         # you see — not a smudge that only makes sense once the column is up.
-        _ellipse(
+        ellipse(
             field,
             cx,
             contact_y,
@@ -407,7 +330,7 @@ def make_kindle_frame(
             height * 0.022 + grow * height * 0.036,
             0.65 + grow * 0.85,
         )
-        _ellipse(
+        ellipse(
             field,
             cx,
             contact_y,
@@ -421,19 +344,19 @@ def make_kindle_frame(
             phase = (index * 0.85 + i * 1.6) % 5.0
             mx = int(round(cx + math.sin(i * 2.1 + index * 0.45) * width * 0.26))
             my = int(round(contact_y - phase * height * 0.055))
-            _add(field, mx, my, (0.55 + grow * 0.7) * (1.0 - phase / 5.0))
+            add(field, mx, my, (0.55 + grow * 0.7) * (1.0 - phase / 5.0))
 
     # --- RISE: the column climbs out of the pit ------------------------------
     if KINDLE_RISE <= t:
         if t < KINDLE_IMPACT:
-            climb = _ease_out((t - KINDLE_RISE) / (KINDLE_IMPACT - KINDLE_RISE))
+            climb = ease_out((t - KINDLE_RISE) / (KINDLE_IMPACT - KINDLE_RISE))
             reach = climb * contact_y * 0.96
             strength = 0.95 + climb * 0.85
         elif t < KINDLE_COLLAPSE:
             reach = contact_y * 0.96
             strength = 1.85
         else:
-            fade = _ease_out((t - KINDLE_COLLAPSE) / (1.0 - KINDLE_COLLAPSE))
+            fade = ease_out((t - KINDLE_COLLAPSE) / (1.0 - KINDLE_COLLAPSE))
             # Drawn back INTO the pit, not switched off — the fire keeps the
             # heat and lets the column go.
             reach = contact_y * (0.96 - fade * 0.70)
@@ -443,7 +366,7 @@ def make_kindle_frame(
         # sitting IN the fire rather than hovering a thread above it.
         if reach > 2.0:
             bloom = min(1.0, strength / 1.85)
-            _ellipse(
+            ellipse(
                 field,
                 cx,
                 contact_y,
@@ -457,7 +380,7 @@ def make_kindle_frame(
         since = (t - KINDLE_IMPACT) / (1.0 - KINDLE_IMPACT)
         flash = max(0.0, 1.0 - since * 2.0)
         if flash > 0.0:
-            _ellipse(
+            ellipse(
                 field,
                 cx,
                 contact_y,
@@ -471,8 +394,8 @@ def make_kindle_frame(
             wave = (since - delay) / span
             if not 0.0 < wave < 1.0:
                 continue
-            radius = _ease_out(wave)
-            _ellipse(
+            radius = ease_out(wave)
+            ellipse(
                 field,
                 cx,
                 contact_y,
@@ -488,16 +411,9 @@ def make_kindle_frame(
             travel = since * width * (0.28 + hash01(i, 11, 6) * 0.38)
             sx = int(round(cx + math.cos(angle) * travel))
             sy = int(round(contact_y + math.sin(angle) * travel * 0.32 - since * height * 0.08))
-            _add(field, sx, sy, max(0.0, 1.0 - since * 1.35))
+            add(field, sx, sy, max(0.0, 1.0 - since * 1.35))
 
-    px = img.load()
-    for y in range(height):
-        for x in range(width):
-            value = field[y][x]
-            if value <= 0.07:
-                continue
-            colour: RGBA = pick(BEAM, clamp01(value * 0.92), x, y)
-            px[x, y] = (colour[0], colour[1], colour[2], _quantize_alpha(value * 1.1))
+    resolve(field, img)
     return img
 
 
@@ -523,26 +439,19 @@ def make_aura_frame(
         for col in range(int(mid - half - 1), int(mid + half + 2)):
             if 0 <= col < width:
                 dist = abs(col - mid) / max(half, 0.35)
-                _add(field, col, row, max(0.0, 1.15 - dist * 1.05) * (0.55 + t * 0.45))
+                add(field, col, row, max(0.0, 1.15 - dist * 1.05) * (0.55 + t * 0.45))
 
     # Ground bloom — the column is sitting on something, not hovering.
-    _ellipse(field, cx, contact_y, width * 0.28, height * 0.045, 0.85 * breathe)
+    ellipse(field, cx, contact_y, width * 0.28, height * 0.045, 0.85 * breathe)
 
     # A few motes that rise and wrap with the phase.
     for i in range(5):
         spin = phase + i * 1.256
         mx = int(round(cx + math.sin(spin) * width * 0.18))
         my = int(round(contact_y - ((spin / math.tau) % 1.0) * reach * 0.9))
-        _add(field, mx, my, 0.55 + 0.25 * math.sin(spin * 2.0))
+        add(field, mx, my, 0.55 + 0.25 * math.sin(spin * 2.0))
 
-    px = img.load()
-    for y in range(height):
-        for x in range(width):
-            value = field[y][x]
-            if value <= 0.08:
-                continue
-            colour: RGBA = pick(BEAM, clamp01(value * 0.95), x, y)
-            px[x, y] = (colour[0], colour[1], colour[2], _quantize_alpha(value * 1.05))
+    resolve(field, img, floor=0.08, tone=0.95, gain=1.05)
     return img
 
 
@@ -559,7 +468,7 @@ def make_wind_frame(
 
     # Rise fast, fade slow — a puff, not a beam.
     envelope = min(1.0, t / 0.22) * (1.0 - t) ** 1.15
-    travel = _ease_out(t)
+    travel = ease_out(t)
 
     for i in range(14):
         side = -1.0 if i % 2 == 0 else 1.0
@@ -569,21 +478,14 @@ def make_wind_frame(
         mx = int(round(cx + side * spread * width * 0.48))
         my = int(round(contact_y - lift * height * 0.7))
         strength = envelope * (0.55 + seed * 0.7)
-        _add(field, mx, my, strength)
-        _add(field, mx + int(side), my, strength * 0.55)
-        _add(field, mx, my - 1, strength * 0.4)
+        add(field, mx, my, strength)
+        add(field, mx + int(side), my, strength * 0.55)
+        add(field, mx, my - 1, strength * 0.4)
 
     # A thin ground smear so the gust sits on the floor, not in the air.
-    _ellipse(field, cx, contact_y, width * (0.16 + travel * 0.28), height * 0.06, 0.7 * envelope)
+    ellipse(field, cx, contact_y, width * (0.16 + travel * 0.28), height * 0.06, 0.7 * envelope)
 
-    px = img.load()
-    for y in range(height):
-        for x in range(width):
-            value = field[y][x]
-            if value <= 0.08:
-                continue
-            colour: RGBA = pick(BEAM, clamp01(value * 0.9), x, y)
-            px[x, y] = (colour[0], colour[1], colour[2], _quantize_alpha(value * 1.05))
+    resolve(field, img, floor=0.08, tone=0.9, gain=1.05)
     return img
 
 
@@ -605,12 +507,12 @@ def make_death_frame(
 
     if t < DEATH_IMPACT:
         gather = clamp01((t - DEATH_CHARGE) / max(DEATH_IMPACT - DEATH_CHARGE, 1e-6))
-        envelope = _ease_in(gather) * 0.55
-        travel = _ease_out(gather) * 0.35
+        envelope = ease_in(gather) * 0.55
+        travel = ease_out(gather) * 0.35
     else:
         since = (t - DEATH_IMPACT) / max(1.0 - DEATH_IMPACT, 1e-6)
         envelope = (1.0 - since) ** 1.25
-        travel = 0.35 + _ease_out(min(1.0, since / 0.85)) * 0.65
+        travel = 0.35 + ease_out(min(1.0, since / 0.85)) * 0.65
 
     punch = max(0.0, 1.0 - abs(t - DEATH_IMPACT) * 9.0)
     weight = max(envelope, punch * 0.85)
@@ -625,14 +527,14 @@ def make_death_frame(
         mx = int(round(cx + side * spread * width * 0.50))
         my = int(round(contact_y - hop * height))
         strength = weight * (0.45 + seed * 0.75)
-        _add(field, mx, my, strength)
-        _add(field, mx + int(side), my, strength * 0.55)
-        _add(field, mx, my - 1, strength * 0.35)
+        add(field, mx, my, strength)
+        add(field, mx + int(side), my, strength * 0.55)
+        add(field, mx, my - 1, strength * 0.35)
         if punch > 0.4 and seed > 0.45:
-            _add(field, mx + int(side * 2), my + 1, strength * 0.4 * punch)
+            add(field, mx + int(side * 2), my + 1, strength * 0.4 * punch)
 
     # Ground smear: the dirt the body pressed. Wide, flat, sits on the floor.
-    _ellipse(
+    ellipse(
         field,
         cx,
         contact_y,
@@ -641,16 +543,9 @@ def make_death_frame(
         0.75 * weight,
     )
     if punch > 0.0:
-        _ellipse(field, cx, contact_y, width * 0.16, height * 0.05, 1.05 * punch)
+        ellipse(field, cx, contact_y, width * 0.16, height * 0.05, 1.05 * punch)
 
-    px = img.load()
-    for y in range(height):
-        for x in range(width):
-            value = field[y][x]
-            if value <= 0.08:
-                continue
-            colour: RGBA = pick(BEAM, clamp01(value * 0.9), x, y)
-            px[x, y] = (colour[0], colour[1], colour[2], _quantize_alpha(value * 1.05))
+    resolve(field, img, floor=0.08, tone=0.9, gain=1.05)
     return img
 
 

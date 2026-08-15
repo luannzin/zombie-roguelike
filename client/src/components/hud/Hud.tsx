@@ -41,6 +41,7 @@ import { InteractPrompt } from './InteractPrompt';
 import { Inventory } from './Inventory';
 import { LootFly } from './LootFly';
 import { CratePrompt } from './CratePrompt';
+import { RiftPrompt } from './RiftPrompt';
 import { LootPrompt } from './LootPrompt';
 
 export interface HudProps {
@@ -140,6 +141,7 @@ export function Hud({ snapshot, minimapRef, error }: HudProps) {
       <InteractPrompt prompt={snapshot.prompt} />
       <LootPrompt prompt={snapshot.lootPrompt} />
       <CratePrompt prompt={snapshot.cratePrompt} />
+      <RiftPrompt prompt={snapshot.riftPrompt} />
       <LootFly lootFrames={snapshot.inventory?.lootFrames ?? 1} />
     </>
   );

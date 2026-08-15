@@ -68,6 +68,40 @@ export interface CratePiece {
   flip: boolean;
 }
 
+/**
+ * The extraction point, placed by `server/app/rift.py`.
+ *
+ * Geometry arrives once on the map payload and never moves; `state` and
+ * `elapsed` are the live half. The client runs `elapsed` on its OWN clock
+ * between the two snapshots the server sends (pressed, and open), because a
+ * four-second ceremony resolved at 6 Hz would step rather than play.
+ */
+export type RiftState = 'dormant' | 'charging' | 'open';
+
+export interface RiftPillar {
+  x: number;
+  y: number;
+  /** Which of the four cuts. The index is authoritative — never rolled. */
+  shape: number;
+}
+
+export interface Rift {
+  x: number;
+  y: number;
+  /** Contact point the anomaly hovers over. */
+  anomalyX: number;
+  anomalyY: number;
+  /** The console you press. Distance is measured from a player's FEET to this. */
+  consoleX: number;
+  consoleY: number;
+  pillars: readonly RiftPillar[];
+  lightTiles: number;
+  lightKind: number;
+  state: RiftState;
+  /** Seconds since the console was pressed. Only meaningful while charging. */
+  elapsed: number;
+}
+
 /** A light the map owns, at the point it burns from, in world pixels. */
 export interface SceneryLight {
   x: number;
@@ -122,6 +156,11 @@ export class TileMap {
    * Sorted by `y` so the renderer can merge them into the standing pass.
    */
   crates: CratePiece[];
+  /**
+   * The extraction point, or null on a map without one (every camp). Mutable:
+   * activating it is the one thing on this map that changes what the map IS.
+   */
+  rift: Rift | null;
 
   constructor(payload: MapPayload) {
     this.tiles = payload.tiles;
@@ -135,6 +174,48 @@ export class TileMap {
     this.exit = findExitMouth(this.tiles, this.tileSize);
     this.scenery = unpackScenery(payload);
     this.crates = unpackCrates(payload);
+    this.rift = unpackRift(payload);
+    if (this.rift?.state === 'open') this.lightRift();
+  }
+
+  /**
+   * Adopt the server's word on what the rift is doing.
+   *
+   * `elapsed` is taken from the server on every update, including the one that
+   * starts the sequence — a client that joins mid-charge picks it up in
+   * progress rather than replaying it from zero.
+   */
+  setRiftState(state: RiftState, elapsed: number): void {
+    if (!this.rift) return;
+    this.rift.state = state;
+    this.rift.elapsed = elapsed;
+    if (state === 'open') this.lightRift();
+  }
+
+  /** Advance the local ceremony clock. Called once per frame while charging. */
+  stepRift(dt: number): void {
+    if (this.rift?.state === 'charging') this.rift.elapsed += dt;
+  }
+
+  /**
+   * Put the beacon on the ONE scene-light list.
+   *
+   * Deliberately not a second list the lighting has to know about: the fov
+   * field and the glow pass have no concept of a camp light versus a forest
+   * light versus this, and must not grow one. An open rift is simply another
+   * thing on the map that is burning.
+   */
+  private lightRift(): void {
+    const rift = this.rift;
+    if (!rift) return;
+    const lights = this.scenery.lights as SceneryLight[];
+    if (lights.some((light) => light.x === rift.x && light.y === rift.y)) return;
+    lights.push({
+      x: rift.x,
+      y: rift.y,
+      radiusTiles: rift.lightTiles,
+      kind: rift.lightKind,
+    });
   }
 
   setTile(tx: number, ty: number, kind: number): void {
@@ -305,6 +386,24 @@ function unpackScenery(payload: MapPayload): Scenery {
     ([x, y, radiusTiles, kind]) => ({ x, y, radiusTiles, kind }),
   );
   return { flat, standing, lights };
+}
+
+function unpackRift(payload: MapPayload): Rift | null {
+  const row = payload.rift;
+  if (!row) return null;
+  return {
+    x: row.x,
+    y: row.y,
+    anomalyX: row.anomaly[0],
+    anomalyY: row.anomaly[1],
+    consoleX: row.console[0],
+    consoleY: row.console[1],
+    pillars: row.pillars.map(([x, y, shape]) => ({ x, y, shape })),
+    lightTiles: row.lightTiles,
+    lightKind: row.lightKind,
+    state: row.state,
+    elapsed: row.t,
+  };
 }
 
 function unpackCrates(payload: MapPayload): CratePiece[] {

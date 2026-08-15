@@ -35,7 +35,7 @@ const ALERT_AT = 0.999;
  * then scaled by MARK_SCALE. Half-widths per row from the top: a 5-wide,
  * 7-tall lozenge at scale 1.
  */
-const MARK_SCALE = 0.25;
+const MARK_SCALE = 0.5;
 const DIA_ROWS = [0, 1, 2, 2, 2, 1, 0] as const;
 /** How far above the top of the sprite it floats, same unscaled units. */
 const DIA_LIFT = 3;

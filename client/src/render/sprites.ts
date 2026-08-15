@@ -13,7 +13,10 @@
  * clothes) are drawn untinted — their art carries its own palette.
  *
  * Sheet layout (produced by server/tools/process_sprites.py):
- *   rows = down, left, right, up   cols = 3 animation frames
+ *   rows = down, left, right, up
+ *   walk sheets: 3 columns; death sheets (`*-death`): a one-shot timeline
+ *   whose last column is the prone rest. Never rotate a walk frame to fake
+ *   a corpse — 16px through a canvas transform is mush.
  */
 
 import { createSurface, sourceSize } from '../lib/canvas';
@@ -30,6 +33,8 @@ export interface SpriteSheet {
   idleFrame: number;
   walkFrameOrder: number[];
   fps: number;
+  /** False on one-shot timelines (death). Walk sheets loop. */
+  loop: boolean;
 }
 
 interface Manifest {
@@ -41,13 +46,14 @@ interface Manifest {
   idleFrame: number;
   walkFrameOrder: number[];
   fps: number;
+  loop?: boolean;
 }
 
 /** Matches the canonical processed frame: 1 x 1 tile at TILE_SIZE 16. */
 const FALLBACK_W = 16;
 const FALLBACK_H = 16;
 
-export async function loadCharacterSheet(name: string): Promise<SpriteSheet> {
+export async function loadCharacterSheet(name: string): Promise<SpriteSheet | null> {
   try {
     const manifest = (await fetch(`/${name}/manifest.json`).then((r) => {
       if (!r.ok) throw new Error(`manifest ${r.status}`);
@@ -64,8 +70,13 @@ export async function loadCharacterSheet(name: string): Promise<SpriteSheet> {
       idleFrame: manifest.idleFrame,
       walkFrameOrder: manifest.walkFrameOrder,
       fps: manifest.fps,
+      loop: manifest.loop !== false,
     };
   } catch (err) {
+    if (name.endsWith('-death')) {
+      console.warn(`[sprites] no death sheet "${name}"`);
+      return null;
+    }
     console.warn(`[sprites] falling back to generated art for "${name}":`, err);
     return fallbackSheet();
   }
@@ -109,6 +120,7 @@ function fallbackSheet(): SpriteSheet {
     idleFrame: 1,
     walkFrameOrder: [0, 1, 2, 1],
     fps: 8,
+    loop: true,
   };
 }
 
@@ -133,6 +145,7 @@ export class SpriteBook {
       if (this.sheets.has(name)) return Promise.resolve();
 
       const task = loadCharacterSheet(name).then((sheet) => {
+        if (!sheet) return;
         this.sheets.set(name, sheet);
         this.tints.set(name, new TintCache(sheet));
       });
@@ -197,8 +210,15 @@ export function facingFromAim(ax: number, ay: number): Facing {
   return ay >= 0 ? 'down' : 'up';
 }
 
+/** Walk cycle column. Death sheets use `timelineFrame`. */
 export function frameIndex(sheet: SpriteSheet, animTime: number, moving: boolean): number {
   if (!moving) return sheet.idleFrame;
   const order = sheet.walkFrameOrder;
   return order[Math.floor(animTime * sheet.fps) % order.length];
+}
+
+/** One-shot timeline column. Holds the last frame. */
+export function timelineFrame(sheet: SpriteSheet, age: number): number {
+  if (sheet.frames <= 1) return 0;
+  return Math.min(sheet.frames - 1, Math.max(0, Math.floor(age * sheet.fps)));
 }

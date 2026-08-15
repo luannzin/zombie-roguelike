@@ -1,11 +1,11 @@
 /**
  * Blood pools under persistent corpses.
  *
- * The fallen BODY is drawn with the entities (same sheet, collapsed). This
- * file is the STAIN it leaves: scenery `blood.png`, the same frames a scene
- * already uses for a pool somebody else left. Growing one under a kill turns
- * the map into a record of the fight, and walking through it tints the next
- * few boot prints — see `spawnFootprint`'s `blood`.
+ * The fallen BODY is drawn from a death sheet (pixel poses, not a rotated
+ * walk frame). This file is the STAIN it leaves: scenery `blood.png`, the
+ * same frames a scene already uses for a pool somebody else left. Growing
+ * one under a kill turns the map into a record of the fight, and walking
+ * through it tints the next few boot prints — see `spawnFootprint`'s `blood`.
  *
  * Flat, no outline, world space, under entities. Same contract as the
  * scenery blood baked into the ground, except these appear during play so
@@ -19,10 +19,10 @@ import type { SceneryAtlas } from '../scenery';
 
 /** Matches `DEATH_FRAMES / DEATH_FPS` in make_vfx.py. */
 export const DEATH_TIME = 12 / 16;
-/** Matches `DEATH_IMPACT` in make_vfx.py. The body hits the floor here. */
+/** Matches `DEATH_IMPACT` in make_vfx.py. The VFX flash; the body sheet lands near here. */
 export const DEATH_IMPACT = 0.48;
-/** Seconds the standing sprite takes to become a prone corpse. */
-export const DEATH_FALL = DEATH_TIME * DEATH_IMPACT;
+/** Seconds the death-sheet timeline takes to reach its prone rest (5 frames at 12 fps). */
+export const DEATH_FALL = 4 / 12;
 /** Seconds the pool takes to finish spreading. */
 export const POOL_GROW = 1.55;
 /** `make_scenery.py` blood kinds: 0 spray, 1 pool. */

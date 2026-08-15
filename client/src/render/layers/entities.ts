@@ -21,9 +21,8 @@ import type { GoreAtlas } from '../gore';
 import type { GunAtlas } from '../guns';
 import { gunHand } from '../guns';
 import type { Projection } from '../projection';
-import { facingFromAim, frameIndex, type SpriteBook } from '../sprites';
+import { facingFromAim, frameIndex, timelineFrame, type SpriteBook } from '../sprites';
 import type { DrawableCoin, DrawableCorpse, DrawableEntity } from '../types';
-import { DEATH_FALL } from './corpses';
 
 /** Player name label size, in screen px. One step of the font's pixel grid. */
 const NAME_LABEL_PX = HUD_GRID;
@@ -232,9 +231,11 @@ export function drawEntity(entity: EntityContext, target: DrawableEntity): void 
 /**
  * A dead enemy, collapsed onto the floor. Screen space, under living bodies.
  *
- * The first `DEATH_FALL` seconds are the animation: squash toward the feet,
- * rotate away from the killing blow, a white flash on impact. After that the
- * pose freezes and the sprite is the record that stays.
+ * The body is a real death sheet (`<name>-death`): a one-shot timeline that
+ * holds the last frame. Never rotate or squash a walk sprite — 16px through
+ * a canvas transform is the mush this sheet exists to replace. The row is
+ * the killing blow, not the last walk facing. Gear uses matching `-death`
+ * overlays so a hat stays on the head as it falls.
  */
 export function drawCorpseSprites(
   entity: EntityContext,
@@ -248,49 +249,47 @@ export function drawCorpseSprites(
   entity.ctx.globalAlpha = 1;
 }
 
+function deathSheetName(name: string): string {
+  return `${name}-death`;
+}
+
 function drawOneCorpse(entity: EntityContext, body: DrawableCorpse): void {
   const { ctx, view, book } = entity;
-  const sheet = book.get(body.sheet);
-  const image = book.image(body.sheet, null);
+  const deathName = deathSheetName(body.sheet);
+  const death = book.get(deathName);
+  const sheet = death ?? book.get(body.sheet);
+  const image = death ? book.image(deathName, null) : book.image(body.sheet, null);
   if (!sheet || !image) return;
 
-  const facing = facingFromAim(body.ax, body.ay);
+  const fallX = body.dx !== 0 ? body.dx : body.ax;
+  const fallY = body.dy !== 0 ? body.dy : body.ay;
+  const facing = facingFromAim(fallX, fallY);
   const row = sheet.rows[facing] ?? 0;
-  const col = sheet.idleFrame;
+  const col = death ? timelineFrame(sheet, body.age) : sheet.idleFrame;
   const w = sheet.frameWidth;
   const h = sheet.frameHeight;
-  const feetX = view.x(body.x);
-  const feetY = view.y(body.y + body.halfHeight);
+  const spriteTop = body.y + body.halfHeight - h;
+  const dx = view.x(body.x - w / 2);
+  const dy = view.y(spriteTop);
   const dw = view.size(w);
   const dh = view.size(h);
 
-  const fall = clamp01(body.age / DEATH_FALL);
-  const ease = 1 - (1 - fall) ** 3;
-  const squash = 1 - 0.62 * ease;
-  const spread = 1 + 0.42 * ease;
-  const dir = body.dx >= 0 ? 1 : -1;
-  const angle = dir * ease * 1.22;
-  const flash = fall < 1 ? Math.max(0, 1 - Math.abs(fall - 0.92) * 8) : 0;
-  const dim = 0.78 + 0.22 * (1 - ease);
-
-  ctx.save();
-  ctx.translate(feetX, feetY);
-  ctx.rotate(angle);
-  ctx.scale(spread, squash);
-  ctx.translate(-dw / 2, -dh);
+  const impactAt = death ? Math.max(0, sheet.frames - 2) / sheet.fps : 0;
+  const flash = death ? Math.max(0, 1 - Math.abs(body.age - impactAt) * 14) : 0;
+  const settled = !death || col >= sheet.frames - 1;
+  const dim = settled ? 0.88 : 1;
 
   ctx.globalAlpha = body.visibility * dim;
-  ctx.drawImage(image, col * w, row * h, w, h, 0, 0, dw, dh);
-  blitCorpseGear(entity, body, facing, col, 0, 0, dw, dh);
-  drawStains(entity, corpseAsTarget(body), image, col * w, row * h, w, h, 0, 0, dw, dh);
+  ctx.drawImage(image, col * w, row * h, w, h, dx, dy, dw, dh);
+  blitCorpseGear(entity, body, facing, col, dx, dy, dw, dh, !!death);
+  drawStains(entity, corpseAsTarget(body), image, col * w, row * h, w, h, dx, dy, dw, dh);
 
-  if (flash > 0.02) {
+  if (flash > 0.04) {
     ctx.globalCompositeOperation = 'lighter';
-    ctx.globalAlpha = Math.min(1, flash * 0.9) * body.visibility;
-    ctx.drawImage(image, col * w, row * h, w, h, 0, 0, dw, dh);
+    ctx.globalAlpha = Math.min(1, flash * 0.85) * body.visibility;
+    ctx.drawImage(image, col * w, row * h, w, h, dx, dy, dw, dh);
     ctx.globalCompositeOperation = 'source-over';
   }
-  ctx.restore();
 }
 
 function blitCorpseGear(
@@ -302,15 +301,18 @@ function blitCorpseGear(
   dy: number,
   dw: number,
   dh: number,
+  useDeath: boolean,
 ): void {
   for (const name of body.gear) {
-    const sheet = book.get(name);
-    const image = book.image(name, null);
+    const sheetName = useDeath ? deathSheetName(name) : name;
+    const sheet = book.get(sheetName);
+    const image = book.image(sheetName, null);
     if (!sheet || !image) continue;
     const row = sheet.rows[facing] ?? 0;
+    const frame = Math.min(col, sheet.frames - 1);
     ctx.drawImage(
       image,
-      col * sheet.frameWidth,
+      frame * sheet.frameWidth,
       row * sheet.frameHeight,
       sheet.frameWidth,
       sheet.frameHeight,

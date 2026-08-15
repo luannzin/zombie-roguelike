@@ -17,13 +17,17 @@ Gear (backpack, zhat-*, zcloth-*, …):
   their colour; enemies are drawn untinted.
 
 Exact creatures (zombie, zombie-husk, zombie-brute) use that same 16x16
-grid so accessories register. Process them with `--exact`.
+grid so accessories register. Process them with `--exact`. A creature (and
+its hats / clothes) also writes `<name>-death.png`: an Nx3 collapse
+timeline, last column the prone rest. Never rotate a 16px walk frame to
+fake a corpse — that is grey mush.
 
 One art set per run. `--entity` picks it (defaults to `--name`). Creatures
 and gear are data tables, so adding either is not a code change. The world
 coin is `make_coin.py` — generated, no raw stage.
 
-Output: assets/raw/<name>.png  (consumed by tools/process_sprites.py)
+Output: assets/raw/<name>.png  (consumed by tools/process_sprites.py).
+Exact creatures and zhat-* / zcloth-* also write `<name>-death.png`.
 
 Usage:
     python tools/make_placeholder_sheet.py --name player
@@ -890,6 +894,127 @@ GEAR = {
 }
 
 
+# ---------------------------------------------------------------------------
+# Death — a collapse TIMELINE, not a rotated walk frame.
+#
+# Same 16x16 grid as the walk sheet so hats and clothes still lock. Rows are
+# down / side / up (side faces right; process_sprites mirrors left). Columns
+# are the fall: standing hit, stagger, buckle, crumple, prone rest. The last
+# column is what stays on the floor. fps lives on the processed manifest.
+#
+# Parts are STAMPED, not scaled. A canvas rotate of these pixels is the
+# thing this sheet exists to make unnecessary.
+# ---------------------------------------------------------------------------
+
+DEATH_COLS = 5
+# Standing origins of head / torso / legs inside the 16x16 (PAD + 6 + 5 + 3).
+_HEAD_AT = (0, 1)
+_TORSO_AT = (0, 7)
+
+# Per view, one (head, torso, legs) stamp origin per death column.
+_DEATH_STAMPS: dict[str, list[tuple[tuple[int, int], tuple[int, int], tuple[int, int]]]] = {
+    "down": [
+        ((0, 1), (0, 7), (0, 12)),
+        ((0, 2), (0, 7), (0, 12)),
+        ((1, 3), (0, 8), (-1, 12)),
+        ((0, 5), (0, 8), (1, 11)),
+        ((0, 7), (0, 3), (0, 1)),
+    ],
+    "side": [
+        ((0, 1), (0, 7), (0, 12)),
+        ((1, 2), (0, 8), (0, 12)),
+        ((2, 4), (1, 9), (-1, 12)),
+        ((3, 6), (1, 10), (-2, 11)),
+        ((3, 7), (0, 8), (-3, 9)),
+    ],
+    "up": [
+        ((0, 1), (0, 7), (0, 12)),
+        ((0, 1), (0, 6), (0, 11)),
+        ((0, 1), (0, 5), (0, 10)),
+        ((0, 1), (0, 4), (0, 8)),
+        ((0, 1), (0, 5), (0, 10)),
+    ],
+}
+
+# A small chest mark on the last two frames — the wound that made the corpse.
+_WOUND = ["rr", "r."]
+_WOUND_AT = {
+    "down": (7, 5),
+    "side": (6, 9),
+    "up": (7, 7),
+}
+
+
+def _blank() -> list[list[str]]:
+    return [["."] * EXACT_W for _ in range(EXACT_W)]
+
+
+def _stamp(grid: list[list[str]], art: Art, ox: int, oy: int) -> None:
+    for y, line in enumerate(art):
+        gy = oy + y
+        if gy < 0 or gy >= EXACT_W:
+            continue
+        for x, ch in enumerate(line):
+            if ch == ".":
+                continue
+            gx = ox + x
+            if 0 <= gx < EXACT_W:
+                grid[gy][gx] = ch
+
+
+def _freeze(grid: list[list[str]]) -> Art:
+    return ["".join(row) for row in grid]
+
+
+def _overlay_delta(kind: str, view: str, frame: int) -> tuple[int, int]:
+    """How far a standing overlay moves to stay on the collapsing body."""
+    head, torso, _legs = _DEATH_STAMPS[view][frame]
+    if kind == "hat":
+        return (head[0] - _HEAD_AT[0], head[1] - _HEAD_AT[1])
+    return (torso[0] - _TORSO_AT[0], torso[1] - _TORSO_AT[1])
+
+
+def _gear_kind(name: str) -> str | None:
+    if name.startswith("zhat-"):
+        return "hat"
+    if name.startswith("zcloth-"):
+        return "cloth"
+    return None
+
+
+def creature_death_columns(creature: ExactCreature) -> list[dict[str, Art]]:
+    columns: list[dict[str, Art]] = []
+    idle_legs = creature.legs[1]
+    rest_legs = creature.legs[2]
+    for frame in range(DEATH_COLS):
+        views: dict[str, Art] = {}
+        legs = rest_legs if frame == DEATH_COLS - 1 else idle_legs
+        for view in VIEWS:
+            head_at, torso_at, legs_at = _DEATH_STAMPS[view][frame]
+            grid = _blank()
+            _stamp(grid, legs, *legs_at)
+            _stamp(grid, creature.torso[view], *torso_at)
+            _stamp(grid, creature.head[view], *head_at)
+            if frame >= DEATH_COLS - 2:
+                _stamp(grid, _WOUND, *_WOUND_AT[view])
+            views[view] = _freeze(grid)
+        columns.append(views)
+    return columns
+
+
+def gear_death_columns(gear: Gear, kind: str) -> list[dict[str, Art]]:
+    columns: list[dict[str, Art]] = []
+    for frame in range(DEATH_COLS):
+        views: dict[str, Art] = {}
+        for view in VIEWS:
+            dx, dy = _overlay_delta(kind, view, frame)
+            grid = _blank()
+            _stamp(grid, gear.views[view], dx, dy)
+            views[view] = _freeze(grid)
+        columns.append(views)
+    return columns
+
+
 def render_cell(
     palette: Palette, rows: Art, cell: int, scale: int, *, center: bool = False
 ) -> Image.Image:
@@ -924,8 +1049,9 @@ def paint_exact(palette: Palette, rows: Art) -> Image.Image:
 
 
 def write_exact_sheet(columns: list[dict[str, Art]], palette: Palette, path: Path) -> None:
-    """3x3 raw sheet on the processed grid. `columns` is the three walk cells."""
-    sheet = Image.new("RGBA", (EXACT_W * 3, EXACT_W * 3), MAGENTA)
+    """Raw sheet on the processed grid. Walk is 3 columns; death is a timeline."""
+    n = len(columns)
+    sheet = Image.new("RGBA", (EXACT_W * n, EXACT_W * 3), MAGENTA)
     for row, view in enumerate(VIEWS):
         for col, frames in enumerate(columns):
             sheet.paste(paint_exact(palette, frames[view]), (col * EXACT_W, row * EXACT_W))
@@ -968,10 +1094,22 @@ def main() -> None:
         # Gear is authored on the processed 16x16 grid. Forcing the cell here
         # means `--exact` in process_sprites.py keeps that registration.
         write_gear(GEAR[key], out)
+        kind = _gear_kind(key)
+        if kind is not None:
+            write_exact_sheet(
+                gear_death_columns(GEAR[key], kind),
+                GEAR[key].palette,
+                Path(args.out_dir) / f"{args.name}-death.png",
+            )
         return
 
     if key in EXACT:
         write_exact_creature(EXACT[key], out)
+        write_exact_sheet(
+            creature_death_columns(EXACT[key]),
+            EXACT[key].palette,
+            Path(args.out_dir) / f"{args.name}-death.png",
+        )
         return
 
     if key not in ENTITIES:

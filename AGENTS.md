@@ -217,10 +217,11 @@ subtree.
   so the usual zombie drops 0 to 3 coins with both ends rare, and none of it is
   credited: the coins land on the ground and somebody has to walk over them.
   xp does not vary, because what a kill is WORTH is a rule and what fell out
-  of it is luck. The body is the other half: a death burst, a collapsing
-  sprite, then a prone corpse with a growing blood pool (scenery `blood.png`).
-  Walking back through your dead is how an extraction run reads the map you
-  made. Stepping in a pool tints the next boot prints, decaying each stride.
+  of it is luck. The body is the other half: a death burst, a collapse
+  timeline on `<sheet>-death`, then a prone rest with a growing blood pool
+  (scenery `blood.png`). Walking back through your dead is how an extraction
+  run reads the map you made. Stepping in a pool tints the next boot prints,
+  decaying each stride.
 - **A forest night has a coat.** `night_clock()` rolls the hour; weather
   (`clear` / `rain` / `fog`) rolls with it so day 2 can feel like somewhere
   else without a new map. Rain is a looping bed plus streaks in the lantern.

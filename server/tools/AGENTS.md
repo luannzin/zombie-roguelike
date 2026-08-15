@@ -9,7 +9,7 @@ imported by `app/` and never run at request time.
 
 | script | stage | output |
 | --- | --- | --- |
-| `make_placeholder_sheet.py` | generates raw art | `assets/raw/<name>.png` (player, zombie variants, backpack, zhat-*, zcloth-*) |
+| `make_placeholder_sheet.py` | generates raw art | `assets/raw/<name>.png` (player, zombie variants, backpack, zhat-*, zcloth-*) plus `<name>-death.png` for exact creatures and their overlays |
 | `process_sprites.py` | raw → production | `assets/processed/<name>/` |
 | `make_coin.py` | generates final pixels | `assets/processed/coin/` (8-frame Y-spin, same disc as the HUD badge) |
 | `make_textures.py` | generates final pixels | `assets/processed/terrain/` (4 grounds, blend, patch, rock, tree, deadtree, stump, grass, bush, branch, leaves, fern, campfire) |
@@ -23,12 +23,16 @@ imported by `app/` and never run at request time.
 
 ## Local Contracts
 
-- Raw sprite input is a 3x3 grid of frames on solid magenta (`#FF00FF`); rows
-  are down/side/up, col 1 is idle. `process_sprites.py` keys, crops, normalizes,
-  mirrors the side row and writes `sheet.png` + `manifest.json` with rows
-  down/left/right/up. Gear overlays (backpack, zhat-*, zcloth-*) and exact
-  creatures (zombie variants) skip the crop: they are authored on the
-  processed 16x16 player grid and processed with `--exact`.
+- Raw sprite input is a grid of frames on solid magenta (`#FF00FF`); rows
+  are down/side/up, col 1 is idle. Walk sheets are 3 columns.
+  `process_sprites.py` keys, crops, normalizes, mirrors the side row and
+  writes `sheet.png` + `manifest.json` with rows down/left/right/up. Gear
+  overlays (backpack, zhat-*, zcloth-*) and exact creatures (zombie variants)
+  skip the crop: they are authored on the processed 16x16 player grid and
+  processed with `--exact`. A creature (and each zhat-* / zcloth-*) also
+  writes `<name>-death.png`: an N-column collapse timeline, last column the
+  prone rest. Process that with the same `--exact --side-facing right`
+  command. Never rotate a 16px walk frame to fake a corpse.
 - Terrain, HUD icons and the world coin have **no raw stage** — they are
   generated straight into `assets/processed/`. The coin disc is `paint_coin`
   in `make_textures.py`; the HUD badge is that disc face-on, the pickup
@@ -183,12 +187,16 @@ python tools/make_placeholder_sheet.py --name backpack
 python tools/process_sprites.py --name backpack --tile 16 --exact --side-facing right
 python tools/make_placeholder_sheet.py --name zombie
 python tools/process_sprites.py --name zombie --tile 16 --exact --side-facing right
+python tools/process_sprites.py --name zombie-death --tile 16 --exact --side-facing right
 python tools/make_placeholder_sheet.py --name zombie-husk
 python tools/process_sprites.py --name zombie-husk --tile 16 --exact --side-facing right
+python tools/process_sprites.py --name zombie-husk-death --tile 16 --exact --side-facing right
 python tools/make_placeholder_sheet.py --name zombie-brute
 python tools/process_sprites.py --name zombie-brute --tile 16 --exact --side-facing right
+python tools/process_sprites.py --name zombie-brute-death --tile 16 --exact --side-facing right
 python tools/make_placeholder_sheet.py --name zhat-cap
 python tools/process_sprites.py --name zhat-cap --tile 16 --exact --side-facing right
+python tools/process_sprites.py --name zhat-cap-death --tile 16 --exact --side-facing right
 python tools/make_textures.py
 python tools/make_scenery.py
 python tools/make_vfx.py
@@ -210,7 +218,9 @@ python tools/make_audio.py
 - Zombie variants are `EXACT` creatures on that same grid, processed
   `--exact`, so a hat or vest registers on every body. Hats are `zhat-*`
   (`cap`, `beanie`, `hardhat`), clothes are `zcloth-*` (`vest`, `jacket`,
-  `tie`) — same `--exact --side-facing right` command as `zhat-cap`.
+  `tie`) — same `--exact --side-facing right` command as `zhat-cap`. Each
+  of those also ships a `<name>-death` sheet (collapse timeline, last
+  frame the prone rest). Process the death raw the same way.
 - Detail finer than 2 raw pixels does not survive the downscale to a 16x16
   frame — read features need luminance contrast, not hue.
 

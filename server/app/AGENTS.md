@@ -199,8 +199,9 @@ game's scale.
   `enemyTypes[*].goldMax` is the ceiling; the client displays neither as a
   promise. The body STAYS: `corpses.py` keeps one row per kill, shipped like
   crates (on welcome, and on a snapshot only when the list grew). The kill
-  event is the juice (fall direction, look, `dx`/`dy`); the list is the
-  record you walk back through. Camp maps have none; embark clears them.
+  event is the juice (fall direction, look, `dx`/`dy`); the client plays
+  `<sheet>-death` along that vector. The list is the record you walk back
+  through. Camp maps have none; embark clears them.
 - **Loot is not a coin.** Coins magnetize off a corpse. A drop sits next to
   a scene, shows a tooltip, and is collected with `{type:"collect","id"}`.
   The catalog and rarity weights live in `loot.py`; the client never invents

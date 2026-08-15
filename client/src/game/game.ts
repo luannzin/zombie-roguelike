@@ -644,13 +644,15 @@ export class Game {
     // Enemy + coin art are named by the server's config, so a new creature or
     // pickup ships without a client change. Loading is fire-and-forget: the
     // renderer skips any entity whose sheet is not in yet.
+    const names = Object.values(msg.config.enemyTypes).flatMap((t) => [
+      t.sprite,
+      ...(t.variants ?? []),
+      ...(t.hats ?? []),
+      ...(t.clothes ?? []),
+    ]);
     const sheets = [
-      ...Object.values(msg.config.enemyTypes).flatMap((t) => [
-        t.sprite,
-        ...(t.variants ?? []),
-        ...(t.hats ?? []),
-        ...(t.clothes ?? []),
-      ]),
+      ...names,
+      ...names.map((name) => `${name}-death`),
       msg.config.coinSprite || COIN_SHEET,
       msg.config.backpackSprite || BACKPACK_SHEET,
     ];

@@ -111,8 +111,9 @@ mutation, no React.
   picture of the same clearing instead of continuing the shot.
 - Sprites are keyed by asset name; which enemy sheets to load comes from
   `welcome.config.enemyTypes[*].sprite` plus that type's `variants` / `hats`
-  / `clothes`, never a hardcoded list. The backpack overlay is
-  `welcome.config.backpackSprite`.
+  / `clothes`, never a hardcoded list. Each of those also loads `<name>-death`
+  (optional: missing death art falls back to the idle walk frame, never a
+  rotate). The backpack overlay is `welcome.config.backpackSprite`.
 - **Wounds sit on the body too, and they are the OPPOSITE of a vfx sheet.**
   `DrawableEntity.stains` are frames of the gore atlas: baked colour, no tint,
   no additive, drawn in the entity pass and multiplied by the same

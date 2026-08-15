@@ -2,9 +2,10 @@
 """Asset pipeline: raw AI-generated sprite sheet -> production sprite sheet.
 
 Input contract (assets/raw/<name>.png):
-    3x3 grid of frames on a solid magenta (#FF00FF) background
+    Nx3 grid of frames on a solid magenta (#FF00FF) background
     rows: down, side, up
-    cols: 3 animation frames, col 1 = idle/neutral
+    cols: walk sheets are 3 (col 1 = idle); death sheets (`<name>-death`)
+    are a one-shot timeline, last column = the prone rest that stays.
 
 Steps:
     1. load the source PNG
@@ -75,12 +76,16 @@ FILTERS = {
 }
 
 
-def split_grid(sheet: Image.Image) -> list[list[Image.Image]]:
-    cw = sheet.width // GRID_COLS
-    ch = sheet.height // GRID_ROWS
+def split_grid(sheet: Image.Image, cols: int, rows: int) -> list[list[Image.Image]]:
+    cw = sheet.width // cols
+    ch = sheet.height // rows
+    if cw < 1 or ch < 1:
+        raise SystemExit(
+            f"sheet {sheet.width}x{sheet.height} is too small for a {cols}x{rows} grid"
+        )
     return [
-        [sheet.crop((c * cw, r * ch, (c + 1) * cw, (r + 1) * ch)) for c in range(GRID_COLS)]
-        for r in range(GRID_ROWS)
+        [sheet.crop((c * cw, r * ch, (c + 1) * cw, (r + 1) * ch)) for c in range(cols)]
+        for r in range(rows)
     ]
 
 
@@ -174,7 +179,22 @@ def process(args) -> Path:
     width = args.width or round(args.tile * SPRITE_TILES_W)
     height = args.height or round(args.tile * SPRITE_TILES_H)
 
-    grid = split_grid(Image.open(src))
+    src_img = Image.open(src)
+    if args.exact:
+        # Exact sheets are authored in target pixels, so the grid is the sheet
+        # divided by the frame. Walk is 3x3; death is Nx3 (a timeline).
+        cols = src_img.width // width
+        rows = src_img.height // height
+        if cols < 1 or rows != len(SOURCE_ROWS):
+            raise SystemExit(
+                f"exact sheet {src_img.width}x{src_img.height} must be "
+                f"{width} wide by {height * len(SOURCE_ROWS)} tall "
+                f"(got {cols}x{rows} cells)"
+            )
+    else:
+        cols, rows = GRID_COLS, GRID_ROWS
+
+    grid = split_grid(src_img, cols, rows)
     keyed = [
         [key_out(cell, args.tolerance, not args.no_hue_key) for cell in row]
         for row in grid
@@ -214,29 +234,40 @@ def process(args) -> Path:
     out_dir = PROCESSED_DIR / args.name
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    sheet = Image.new("RGBA", (width * GRID_COLS, height * len(OUTPUT_ROWS)), (0, 0, 0, 0))
+    sheet = Image.new("RGBA", (width * cols, height * len(OUTPUT_ROWS)), (0, 0, 0, 0))
     for row_index, view in enumerate(OUTPUT_ROWS):
         for col, frame in enumerate(frames[view]):
             sheet.paste(frame, (col * width, row_index * height))
     sheet_path = out_dir / "sheet.png"
     sheet.save(sheet_path)
 
-    # Walk cycle. `--uniform` used to mean a 3-frame ping-pong; the world
-    # coin now lives in make_coin.py and owns its own order.
-    walk_order = [0, 1, 2, 1]
-    idle = 0 if args.uniform else 1
-    fps = 12 if args.uniform else 8
+    # Walk cycle vs one-shot timeline. Death sheets (`*-death`) are N frames
+    # that play once and hold the last — a prone rest, not a ping-pong.
+    # `--uniform` used to mean a 3-frame ping-pong; the world coin now lives
+    # in make_coin.py and owns its own order.
+    timeline = cols != GRID_COLS or args.name.endswith("-death")
+    if timeline:
+        walk_order = list(range(cols))
+        idle = cols - 1
+        fps = 12
+        loop = False
+    else:
+        walk_order = [0, 1, 2, 1]
+        idle = 0 if args.uniform else 1
+        fps = 12 if args.uniform else 8
+        loop = True
 
     manifest = {
         "name": args.name,
         "sheet": "sheet.png",
         "frameWidth": width,
         "frameHeight": height,
-        "frames": GRID_COLS,
+        "frames": cols,
         "rows": {view: i for i, view in enumerate(OUTPUT_ROWS)},
         "idleFrame": idle,
         "walkFrameOrder": walk_order,
         "fps": fps,
+        "loop": loop,
         "anchor": {"x": 0.5, "y": 1.0},
     }
     (out_dir / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")

@@ -134,7 +134,7 @@ export interface DrawableLoot {
 }
 
 /**
- * A dead enemy left on the floor. The fall is the first fraction of `age`;
+ * A dead enemy left on the floor. The fall is a real death-sheet timeline;
  * after that it is a prone sprite plus a growing blood pool. Hidden in the
  * dark — a corpse you cannot see is not a free tracker.
  */

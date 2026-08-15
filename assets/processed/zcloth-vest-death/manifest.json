@@ -1,24 +1,25 @@
 {
-  "name": "zcloth-vest",
+  "name": "zcloth-vest-death",
   "sheet": "sheet.png",
   "frameWidth": 16,
   "frameHeight": 16,
-  "frames": 3,
+  "frames": 5,
   "rows": {
     "down": 0,
     "left": 1,
     "right": 2,
     "up": 3
   },
-  "idleFrame": 1,
+  "idleFrame": 4,
   "walkFrameOrder": [
     0,
     1,
     2,
-    1
+    3,
+    4
   ],
-  "fps": 8,
-  "loop": true,
+  "fps": 12,
+  "loop": false,
   "anchor": {
     "x": 0.5,
     "y": 1.0

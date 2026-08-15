@@ -9,11 +9,12 @@
  *   working you   fill climbs
  *   hunting       full, and it stays that way
  *
- * Hidden while idle. Drawn OVER the darkness and not scaled by visibility:
- * a hunter in the dark still wears the tell, so killing the lamp does not
- * hide that it has you. The body itself still vanishes; only this mark
- * remains. Painted as world-pixel rectangles, not as type — it lives in
- * the forest, not on the HUD.
+ * Hidden while idle. Drawn OVER the darkness only when this client has
+ * already seen the creature while it was alerting (`alertKnown`): killing
+ * the lamp then does not hide that it has you. A hunter that committed in
+ * the dark, never seen, wears nothing — that would be a free tracker.
+ * The body itself still vanishes. Painted as world-pixel rectangles, not
+ * as type — it lives in the forest, not on the HUD.
  */
 
 import { clamp01 } from '../../lib/math';
@@ -25,7 +26,7 @@ import type { DrawableEntity } from '../types';
  * Awareness at which the diamond appears. Below this the creature is
  * wandering and the woods stay quiet.
  */
-const NOTICE_AT = 0.05;
+export const NOTICE_AT = 0.05;
 /** Awareness at or above which an enemy is hunting, and the diamond is full. */
 const ALERT_AT = 0.999;
 
@@ -49,11 +50,11 @@ const PULSE_DEPTH = 0.14;
 const PULSE_RATE = 7;
 
 /**
- * The hunt diamond over every enemy that has started to notice the party.
+ * The hunt diamond over every enemy this client has already seen alerting.
  *
- * WORLD space, drawn AFTER the darkness pass on purpose: this is the one
- * tell that must survive the lamp going out. A mark swallowed by the night
- * would hide the very fact the player needs — that the thing has them.
+ * WORLD space, drawn AFTER the darkness pass on purpose: once latched, this
+ * is the one tell that must survive the lamp going out. A mark on a hunter
+ * you never saw would be a free tracker.
  */
 export function drawAlertMarks(
   entity: EntityContext,
@@ -68,7 +69,7 @@ export function drawAlertMarks(
   const mid = (rows - 1) / 2;
 
   for (const target of entities) {
-    if (target.kind !== 'enemy' || !target.alive) continue;
+    if (target.kind !== 'enemy' || !target.alive || !target.alertKnown) continue;
     const awareness = clamp01(target.awareness);
     if (awareness < NOTICE_AT) continue;
 

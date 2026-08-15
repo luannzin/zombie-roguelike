@@ -42,12 +42,13 @@ mutation, no React.
   what is drawn at all, the second fills a diamond from the `aw` meter on the
   creature's snapshot row. The server still tests a sight cone (`ai.look`);
   that wedge is not drawn. Do not re-derive a floor cone here.
-- **The hunt diamond is the one tell that sits ON the night.** It is not
-  scaled by `visibility` and it is drawn after the darkness pass. A hunter
-  in the dark still wears it, so killing the lamp does not hide that it has
-  you. The body itself still vanishes. Idle creatures (`aw` below
-  `NOTICE_AT`) show nothing. The mark is drawn as world-pixel rectangles, not
-  as type: it lives in the forest, not on the HUD.
+- **The hunt diamond sits ON the night only if this client has already seen
+  the body while it was alerting** (`alertKnown`, latched in `Game`). Killing
+  the lamp then does not hide that it has you. A hunter that committed in
+  the dark, never seen, wears nothing — that would be a free tracker. The
+  body itself still vanishes. Idle creatures (`aw` below `NOTICE_AT`) show
+  nothing. The mark is drawn as world-pixel rectangles, not as type: it
+  lives in the forest, not on the HUD.
 - **A diamond is a REACTION, not furniture.** Below `NOTICE_AT` nothing is
   drawn at all; from there an empty lozenge appears and fills — yellow, amber,
   red — and at 1 it is hunting and stays full. Drawing one over every idle

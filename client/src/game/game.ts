@@ -37,6 +37,7 @@ import { soilAt } from '../render/layers/terrain';
 import { Minimap, type MinimapPlayer } from '../render/minimap';
 import { Renderer } from '../render/renderer';
 import { SpriteBook } from '../render/sprites';
+import { NOTICE_AT } from '../render/layers/vision';
 import { tileHash } from '../render/terrain';
 import type { DrawableCoin, DrawableEntity } from '../render/types';
 import { whenFontsReady } from '../theme/fonts';
@@ -228,6 +229,11 @@ export class Game {
   private lights: LightSource[] = [];
   /** Where each body last put a foot down — see `trackFootsteps`. */
   private readonly strides = new Map<string, { x: number; y: number }>();
+  /**
+   * Enemies this client has seen while they were already alerting. The hunt
+   * diamond may follow them into the dark only then — see `latchAlertMarks`.
+   */
+  private readonly alertSeen = new Set<string>();
   /** Team light + explored memory. Rebuilt per map, updated per frame. */
   private fov: FovField | null = null;
   private localId = '';
@@ -339,6 +345,7 @@ export class Game {
     this.visuals.clear();
     this.effects.clear();
     this.snapshots.clear();
+    this.alertSeen.clear();
     this.lantern.reset();
     clearTooltipAnchors();
     this.world = null;
@@ -367,6 +374,7 @@ export class Game {
       this.visuals.clear();
       this.effects.clear();
       this.snapshots.clear();
+      this.alertSeen.clear();
       this.lantern.reset();
       this.lights = [];
       this.roster.clear();
@@ -460,6 +468,7 @@ export class Game {
     this.visuals.clear();
     this.effects.clear();
     this.snapshots.clear();
+    this.alertSeen.clear();
     // A new world hands you a fresh battery, switched off: the first thing the
     // player does in the dark is press F, which is how the mechanic teaches.
     // A zone that forbids the lamp is a zone where that press has to fail
@@ -866,9 +875,11 @@ export class Game {
 
     this.updateVision(sampled.players, dt);
     this.applyVisibility(entities);
+    this.latchAlertMarks(entities);
     // After `applyVisibility`, so a body the team cannot see leaves no prints.
     // A trail appearing out of the dark would be a free tracker. The hunt
-    // diamond is the one exception — see layers/vision.ts.
+    // diamond is the one exception, and only for enemies this client already
+    // saw while they were alerting — see `latchAlertMarks`.
     this.trackFootsteps(entities);
     this.syncTooltipAnchors();
 
@@ -1029,6 +1040,33 @@ export class Game {
     }
   }
 
+  /**
+   * The hunt diamond may sit on the night only if this client has already
+   * seen the body while it was alerting. A hunter that committed in the
+   * dark, never seen, wears nothing — that would be a free tracker.
+   *
+   * Latch when the body is visible and `aw` is past NOTICE_AT; drop it when
+   * the creature calms down or leaves the snapshot.
+   */
+  private latchAlertMarks(entities: DrawableEntity[]): void {
+    const live = new Set<string>();
+    for (const entity of entities) {
+      if (entity.kind !== 'enemy') continue;
+      const alerting = entity.awareness >= NOTICE_AT;
+      if (!alerting) {
+        this.alertSeen.delete(entity.id);
+        entity.alertKnown = false;
+        continue;
+      }
+      live.add(entity.id);
+      if (entity.visibility > 0.01) this.alertSeen.add(entity.id);
+      entity.alertKnown = this.alertSeen.has(entity.id);
+    }
+    for (const id of this.alertSeen) {
+      if (!live.has(id)) this.alertSeen.delete(id);
+    }
+  }
+
   /** Build one renderable player and advance its per-entity visual state. */
   private toDrawablePlayer(source: PlayerSource, dt: number): DrawableEntity {
     const config = this.config!;
@@ -1069,6 +1107,7 @@ export class Game {
       visibility: 1,
       // Players notice nothing — that is their own fov field.
       awareness: 0,
+      alertKnown: false,
       viewRange: 0,
       viewDegrees: 0,
       hitFlash: this.visuals.hitFlashAmount(id),
@@ -1126,6 +1165,8 @@ export class Game {
       // The detection meter that fills the hunt diamond. A server too old
       // to send it leaves the mark off rather than inventing one.
       awareness: enemy.aw ?? 0,
+      // Overwritten by latchAlertMarks once visibility is current.
+      alertKnown: false,
       viewRange: this.sightReach(type),
       viewDegrees: type.viewDegrees ?? 0,
       hitFlash: this.visuals.hitFlashAmount(id),

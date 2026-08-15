@@ -10,7 +10,7 @@ seam React is allowed to read.
 
 | file | owns |
 | --- | --- |
-| `game.ts` | orchestrator: two clocks, render loop, `start()`/`dispose()` |
+| `game.ts` | orchestrator: two clocks, render loop, `start()`/`dispose()`, hunt-diamond latch |
 | `lobby-scene.ts` | the camp, drawn before the simulation is allowed to run |
 | `simulation.ts` | movement — mirror of `server/app/simulation.py` |
 | `prediction.ts` | apply-locally, replay-on-ack reconciliation |
@@ -105,6 +105,13 @@ seam React is allowed to read.
   sight would throw a hard shadow; one that was walkable would not be cover.
   Standing collision is one tile tall at the contact — a tree's canopy and a
   sign's board are drawn on the tiles above and are not walls.
+- **The hunt diamond is the one tell that may outlive the light, and only
+  after you earned it.** `Game.latchAlertMarks` records an enemy the team
+  can already see while its `aw` is past `NOTICE_AT`. That latch is what
+  lets the mark sit on the night after the lamp goes out. A hunter that
+  committed in the dark, never seen, is not latched — painting its diamond
+  would be a free tracker. The latch dies when the creature calms down,
+  despawns, or the map is replaced.
 - **Footprints are the one effect that is not short-lived, and the exception is
   the feature.** `Game.trackFootsteps` lays one per stride for every body on
   visible ground, with the depth coming from the SOIL under it (`soilAt`), and
@@ -157,7 +164,8 @@ seam React is allowed to read.
   them. The server decides the real thing on the boolean switch — including
   while a creature hunts, so killing the lamp shortens a hunter too. The
   few frames of fade where they disagree cost nothing. The tell is the hunt
-  diamond (`layers/vision.ts`), not a floor cone.
+  diamond (`layers/vision.ts`), not a floor cone, and only after this client
+  has seen the body while it was already alerting (`alertSeen` / `alertKnown`).
 - `lantern.allowed` comes from `welcome.zone.lantern` and is a property of the
   LAMP, not a check at the call site, so every route to switching on goes
   through one refusal. A refused press is COUNTED, not ignored: the HUD reads

@@ -65,6 +65,12 @@ export interface DrawableEntity {
    */
   awareness: number;
   /**
+   * This client has seen this enemy while it was already alerting or hunting.
+   * The hunt diamond may sit on the night only then — a hunter you never
+   * laid eyes on stays a free unknown. Always false for players.
+   */
+  alertKnown: boolean;
+  /**
    * Sight reach the server tests against, in world px, and the cone's full
    * width in degrees. Not drawn — the diamond is the tell. 0 for players.
    */

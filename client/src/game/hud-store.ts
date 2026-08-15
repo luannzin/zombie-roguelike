@@ -27,6 +27,8 @@ export interface HudInventory {
   slots: Array<HudInventorySlot | null>;
   weight: number;
   maxWeight: number;
+  /** Pocket gold. Same number as vitals; shown on the open bag. */
+  gold: number;
   lootFrames: number;
   /** Bumps the pack when a fly lands. Count, not a boolean — 5 Hz. */
   catches: number;

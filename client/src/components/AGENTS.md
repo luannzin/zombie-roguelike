@@ -12,7 +12,7 @@ and nowhere near the frame loop.
 - `hud/` — ours: `Hud`, `HudScreen`, `Panel`, `Vitals`, `BatteryGauge`,
   `ProgressBar`, `StatusLine`, `NetStats`, `ControlsHint`, `ZoneTitle`,
   `ReadyCount`, `InteractPrompt`, `LootPrompt`, `CratePrompt`, `Inventory`, `InventorySlot`,
-  `WeightBar`, `LootIcon`, `CoinIcon`, `SlotValue`, `LootFly`, `LootCard`,
+  `InventoryGold`, `WeightBar`, `LootIcon`, `CoinIcon`, `SlotValue`, `LootFly`, `LootCard`,
   `LootCardRow`, `TooltipCard`, `InventoryGhost`, `Tooltip`, `TooltipKey`.
 - `lobby/` — `CampfireCanvas` (mounts `LobbyScene`; owns the rest-shot fire
   position via `campFireAnchor`, not via per-screen props), `RoomCode`,
@@ -81,6 +81,8 @@ and nowhere near the frame loop.
   rarity colour. Slot value is the small HUD coin (`/hud/coin.png`)
   plus the number. Dragging a cell off the panel tosses it;
   `InventoryGhost` follows the cursor.
+  The open bag shows pocket gold (`InventoryGold`) and weight as
+  `0.2 / 10kg`. The hover card's PESO is the same unit.
   Both the card and the ghost portal to `document.body` so the glass
   does not warp them off the pointer. The card's `fixed` layer is a
   wrapper — `.world-tooltip` is `position: relative` and cannot be the

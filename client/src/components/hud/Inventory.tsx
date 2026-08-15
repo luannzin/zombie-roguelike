@@ -17,6 +17,7 @@ import { InventorySlot } from './InventorySlot';
 import { LootCard } from './LootCard';
 import { Panel } from './Panel';
 import { TooltipKey } from './Tooltip';
+import { InventoryGold } from './InventoryGold';
 import { WeightBar } from './WeightBar';
 
 export interface InventoryProps {
@@ -189,6 +190,7 @@ export function Inventory({ inventory }: InventoryProps) {
                   />
                 ))}
               </div>
+              <InventoryGold gold={inventory.gold} />
               <WeightBar inventory={inventory} />
             </Panel>
           </div>

@@ -1459,6 +1459,7 @@ export class Game {
       slots,
       weight: Math.round(weight * 100) / 100,
       maxWeight: config.carryMaxWeight ?? 10,
+      gold: this.localMeta?.gold ?? 0,
       lootFrames: Math.max(1, frames),
       catches: this.bagCatches,
       refusals: this.bagRefusals,

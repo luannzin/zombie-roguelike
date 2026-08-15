@@ -1,5 +1,5 @@
 /**
- * How much of the bag is filled. White when light, red when heavy.
+ * How much of the bag is filled, in kg. White when light, red when heavy.
  * The fill caps at the track; the numbers may go past max — overweight
  * is allowed, and the colour is how you feel it.
  */
@@ -25,7 +25,7 @@ export function WeightBar({ inventory }: WeightBarProps) {
       <div className="mb-1 flex items-baseline justify-between gap-2 text-[11px] leading-[11px] tracking-[0.05em]">
         <span className="text-ink-muted">PESO</span>
         <span className="tabular-nums" style={{ color }}>
-          {formatWeight(inventory.weight)} / {formatWeight(max)}
+          {formatWeight(inventory.weight)} / {formatWeight(max)}kg
         </span>
       </div>
       <div className="border-track-border bg-track relative h-2 overflow-hidden border shadow-[inset_0_0_0_1px_var(--surface)]">
@@ -38,7 +38,7 @@ export function WeightBar({ inventory }: WeightBarProps) {
   );
 }
 
-function formatWeight(value: number): string {
+export function formatWeight(value: number): string {
   const rounded = Math.round(value * 10) / 10;
   return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
 }

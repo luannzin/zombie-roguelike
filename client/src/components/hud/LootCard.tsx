@@ -10,6 +10,7 @@ import { createPortal } from 'react-dom';
 import type { HudInventorySlot } from '../../game/hud-store';
 import type { LootRarity } from '../../net/protocol';
 import { LootCardRow } from './LootCardRow';
+import { formatWeight } from './WeightBar';
 import { TooltipCard, type TooltipPlacement } from './TooltipCard';
 
 export interface LootCardAnchor {
@@ -83,7 +84,7 @@ export function LootCard({ item, anchor }: LootCardProps) {
       <TooltipCard placement={pose?.placement ?? 'top'} arrowX={pose?.arrowX}>
         <p className={RARITY_CLASS[item.rarity]}>{item.name}</p>
         <p className={RARITY_CLASS[item.rarity]}>{RARITY_LABEL[item.rarity]}</p>
-        <LootCardRow label="PESO" value={String(item.weight)} />
+        <LootCardRow label="PESO" value={`${formatWeight(item.weight)}kg`} />
         <LootCardRow label="VALOR" value={String(item.value)} />
         {item.qty > 1 ? <LootCardRow label="QTD" value={String(item.qty)} /> : null}
       </TooltipCard>

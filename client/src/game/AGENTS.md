@@ -19,7 +19,7 @@ seam React is allowed to read.
 | `world.ts` | client tile map, collision + sight queries, fires, hearth mask, placed scenery, live crates |
 | `combat.ts` | client-side shot feel: capsules, tile DDA, crate sprite boxes |
 | `effects.ts` | tracers, dust, blood, floating text, event lights, boot prints, crate smash, wind |
-| `entity-visuals.ts` | per-entity flash, recoil, gun kick/pump, anim, worn wounds; `HIT_FLASH_LIFE` is also the crate smash blink |
+| `entity-visuals.ts` | per-entity flash, recoil, gun kick/pump, hit-stun tilt, anim, worn wounds; `HIT_FLASH_LIFE` is also the crate smash blink |
 | `lantern.ts` | four-cell battery, produces `output` 0..1 |
 | `hud-store.ts` | the only seam to React; `HUD_INTERVAL` = 0.2 s |
 | `tooltip-anchors.ts` | screen-space points for world `Tooltip`s, written every frame |
@@ -119,7 +119,12 @@ seam React is allowed to read.
   despawns, or the map is replaced.
 - **A hit answers in two timescales and it needs both.** The IMPACT is the
   frame it landed on — white flash, debris kicking back along the ray, a spray
-  of blood carrying forward out the far side (`Effects.spawnBlood`), a number.
+  of blood carrying forward out the far side (`Effects.spawnBlood`), a number,
+  and — if the round was heavy — a knockback along the shot with a tilt
+  around the feet (`EntityVisuals.takeHit`). `hitPower(damage)` is the
+  scale: a Glock flinches, a Deagle plants them, an AWP throws them. Blood
+  volume and impact debris use the same number. The freeze is visual only;
+  the server still walks the body.
   The WOUND is what is still there ten seconds later: one frame of the gore
   sheet pinned to the sprite by `EntityVisuals.splatter`, riding the body
   through its walk cycle and its facings until it dries. Without the second a

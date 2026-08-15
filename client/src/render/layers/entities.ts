@@ -191,6 +191,14 @@ export function drawEntity(entity: EntityContext, target: DrawableEntity): void 
   const dy = view.y(spriteTop);
   const dw = view.size(w);
   const dh = view.size(h);
+  const spin = target.hitSpin;
+  const spun = Math.abs(spin) > 0.01;
+  if (spun) {
+    ctx.save();
+    ctx.translate(dx + dw / 2, dy + dh);
+    ctx.rotate(spin);
+    ctx.translate(-(dx + dw / 2), -(dy + dh));
+  }
 
   ctx.globalAlpha = target.visibility;
   ctx.drawImage(image, col * w, row * h, w, h, dx, dy, dw, dh);
@@ -209,6 +217,7 @@ export function drawEntity(entity: EntityContext, target: DrawableEntity): void 
   // lands, the wound is what the hit left, and the second has to outlast the
   // first on screen or it never registers as damage.
   drawStains(entity, target, image, col * w, row * h, w, h, dx, dy, dw, dh);
+  if (spun) ctx.restore();
 
   if (target.kind === 'player') {
     drawHeldGun(entity, target, px, py);

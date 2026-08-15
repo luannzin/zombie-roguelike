@@ -63,7 +63,7 @@ import { whenFontsReady } from '../theme/fonts';
 import { palette } from '../theme/palette';
 import { crateAlongRay, hitscan, type RayTarget } from './combat';
 import { Effects, type ShotFeel } from './effects';
-import { EntityVisuals } from './entity-visuals';
+import { EntityVisuals, hitPower } from './entity-visuals';
 import {
   EMPTY_HUD,
   HUD_INTERVAL,
@@ -787,8 +787,8 @@ export class Game {
       this.visuals.kickRecoil(shot.by, shot.dx, shot.dy, weapon?.kick);
       if (weapon) this.visuals.kickGun(shot.by, weapon.gunKick, weapon.gunPump);
       if (shot.hit) {
-        this.visuals.pulseHitFlash(shot.hit);
-        this.visuals.splatter(shot.hit, shot.dx, shot.dy);
+        const dmg = shot.dmg ?? weapon?.damage ?? this.config.shotDamage;
+        this.feelVictim(shot.hit, shot.dx, shot.dy, dmg);
       }
       // A teammate's gun is heard from where they are standing. Same sample as
       // your own; the distance falloff is the whole difference, and it is
@@ -1109,8 +1109,7 @@ export class Game {
     this.visuals.kickGun(this.localId, weapon.gunKick, weapon.gunPump);
     playSfx('shot');
     if (hit && result.target) {
-      this.visuals.pulseHitFlash(result.target.id);
-      this.visuals.splatter(result.target.id, this.aimX, this.aimY);
+      this.feelVictim(result.target.id, this.aimX, this.aimY, weapon.damage);
       playSfxAt('zombie-hit', ox + this.aimX * distance, oy + this.aimY * distance);
     }
   }
@@ -1638,6 +1637,7 @@ export class Game {
       weapon: weaponKey,
       gunKick: gun.kick,
       gunPump: gun.pump,
+      hitSpin: 0,
     };
   }
 
@@ -1651,13 +1651,14 @@ export class Game {
     if (!type) return null;
 
     const { id, x, y, vx, vy, moving } = enemy;
+    const planted = this.visuals.planted(id);
     this.visuals.emitFootsteps(
       id,
       x,
       y,
       vx,
       vy,
-      moving,
+      moving && !planted,
       this.effects,
       type.halfHeight,
       this.config!.moveSpeed,
@@ -1681,8 +1682,8 @@ export class Game {
       hp: enemy.hp,
       maxHp: type.maxHp,
       alive: true,
-      moving,
-      animTime: this.visuals.advanceAnim(id, moving, dt),
+      moving: moving && !planted,
+      animTime: this.visuals.advanceAnim(id, moving && !planted, dt),
       isLocal: false,
       // Overwritten by applyVisibility once the light field is current.
       visibility: 0,
@@ -1702,6 +1703,7 @@ export class Game {
       weapon: null,
       gunKick: 0,
       gunPump: 0,
+      hitSpin: this.visuals.hitSpinOf(id),
     };
   }
 
@@ -2010,6 +2012,22 @@ export class Game {
     const index = held ?? guns?.held ?? -1;
     if (index < 0 || !guns) return null;
     return guns.slots[index] ?? null;
+  }
+
+  /**
+   * Body that just ate a round. Enemies take the knockback/tilt/freeze;
+   * a player only flashes and stains — shoving a teammate would fight
+   * their prediction.
+   */
+  private feelVictim(id: string, dx: number, dy: number, damage: number): void {
+    if (id === this.localId || this.roster.has(id)) {
+      this.visuals.pulseHitFlash(id);
+      this.visuals.splatter(id, dx, dy);
+      return;
+    }
+    const power = hitPower(damage);
+    this.visuals.takeHit(id, dx, dy, power);
+    if (power > 1.6) this.camera.addTrauma(0.06 + (power - 1.6) * 0.05);
   }
 
   /** Visual barrel tip. Hitscan still uses the server origin; the tracer does not. */

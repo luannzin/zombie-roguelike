@@ -28,6 +28,17 @@ const RECOIL_KICK = 1.2;
 const LUNGE_KICK = 3.5;
 /** How fast recoil and lunges spring back (higher = snappier). */
 const RECOIL_RECOVER = 16;
+/** How fast a hit-stun tilt springs back after the freeze. */
+const SPIN_RECOVER = 11;
+/**
+ * Gun damage → juice scale. Glock (~7) sits under 1, Deagle (~24) around 2.4,
+ * AWP (55) caps at 3.2. One number drives blood, knockback, tilt and freeze.
+ */
+export function hitPower(damage: number): number {
+  return clamp(damage / 10, 0.5, 3.2);
+}
+/** Freeze the walk cycle only when the stun is long enough to read as planted. */
+const PLANT_STUN = 0.08;
 /** World px travelled between footfall dust puffs. */
 const FOOTSTEP_SPACING = 7;
 /**
@@ -98,6 +109,10 @@ interface VisualState {
   gunKick: number;
   /** Slide back along aim, world px. */
   gunPump: number;
+  /** Radians of hit tilt around the feet. Springs back after stun. */
+  hitSpin: number;
+  /** Seconds the body stays planted before the knockback springs back. */
+  stunLeft: number;
 }
 
 function blank(): VisualState {
@@ -116,6 +131,8 @@ function blank(): VisualState {
     seen: true,
     gunKick: 0,
     gunPump: 0,
+    hitSpin: 0,
+    stunLeft: 0,
   };
 }
 
@@ -156,8 +173,15 @@ export class EntityVisuals {
   /** Advance and return the walk-cycle clock. Idle resets to frame 0. */
   advanceAnim(id: string, moving: boolean, dt: number): number {
     const state = this.state(id);
-    state.animTime = moving ? state.animTime + dt : 0;
+    const planted = state.stunLeft > PLANT_STUN;
+    state.animTime = moving && !planted ? state.animTime + dt : 0;
     return state.animTime;
+  }
+
+  /** True while a heavy hit has the body frozen on idle. */
+  planted(id: string): boolean {
+    const state = this.states.get(id);
+    return !!state && state.stunLeft > PLANT_STUN;
   }
 
   // --- damage feedback -----------------------------------------------------
@@ -170,7 +194,7 @@ export class EntityVisuals {
     const previous = state.lastHp;
     state.lastHp = hp;
     if (previous === null || hp >= previous) return false;
-    state.hitFlash = HIT_FLASH_LIFE;
+    state.hitFlash = Math.max(state.hitFlash, HIT_FLASH_LIFE);
     return true;
   }
 
@@ -248,6 +272,30 @@ export class EntityVisuals {
     state.gunPump = pump;
   }
 
+  /**
+   * A gunshot landing on a body. Knockback is ALONG the shot (they go
+   * backwards), with a tilt around the feet and a freeze so a heavy round
+   * plants them for a beat. `power` is `hitPower(damage)`.
+   */
+  takeHit(id: string, dirX: number, dirY: number, power: number): void {
+    const state = this.state(id);
+    const { x: nx, y: ny } = normalize(dirX, dirY);
+    const kick = 1.5 + power * 4.4;
+    state.recoilX = nx * kick;
+    state.recoilY = ny * kick;
+    const twist = (0.07 + power * 0.15) * (nx >= 0 ? 1 : -1);
+    state.hitSpin = twist;
+    state.stunLeft = 0.035 + power * 0.085;
+    state.hitFlash = HIT_FLASH_LIFE * (0.8 + power * 0.45);
+    const wounds = power > 1.7 ? 2 : 1;
+    for (let i = 0; i < wounds; i++) this.splatter(id, dirX, dirY);
+  }
+
+  hitSpinOf(id: string): number {
+    const state = this.states.get(id);
+    return state?.hitSpin ?? 0;
+  }
+
   gunFeelOf(id: string): { kick: number; pump: number } {
     const state = this.states.get(id);
     if (!state) return { kick: 0, pump: 0 };
@@ -270,15 +318,22 @@ export class EntityVisuals {
   /** Decay flashes and recoil springs. Call once per rendered frame. */
   update(dt: number): void {
     const damp = expDamp(RECOIL_RECOVER, dt);
+    const spinDamp = expDamp(SPIN_RECOVER, dt);
     for (const state of this.states.values()) {
       if (state.hitFlash > 0) state.hitFlash = Math.max(0, state.hitFlash - dt);
       if (state.blockedCooldown > 0) {
         state.blockedCooldown = Math.max(0, state.blockedCooldown - dt);
       }
-      state.recoilX *= damp;
-      state.recoilY *= damp;
-      if (Math.abs(state.recoilX) < 0.01) state.recoilX = 0;
-      if (Math.abs(state.recoilY) < 0.01) state.recoilY = 0;
+      if (state.stunLeft > 0) {
+        state.stunLeft = Math.max(0, state.stunLeft - dt);
+      } else {
+        state.recoilX *= damp;
+        state.recoilY *= damp;
+        if (Math.abs(state.recoilX) < 0.01) state.recoilX = 0;
+        if (Math.abs(state.recoilY) < 0.01) state.recoilY = 0;
+        state.hitSpin *= spinDamp;
+        if (Math.abs(state.hitSpin) < 0.004) state.hitSpin = 0;
+      }
       state.gunKick *= damp;
       state.gunPump *= damp;
       if (Math.abs(state.gunKick) < 0.002) state.gunKick = 0;

@@ -155,6 +155,12 @@ function pick(colors: readonly string[]): string {
   return colors[(Math.random() * colors.length) | 0];
 }
 
+/** Same ladder as `hitPower` in entity-visuals — Glock under 1, AWP at the cap. */
+function shotPower(damage?: number): number {
+  if (damage == null || damage <= 0) return 1;
+  return Math.min(3.2, Math.max(0.5, damage / 10));
+}
+
 /** A crate playing its smash sheet. Gone from the live list; this is the juice. */
 export interface CrateSmash {
   x: number;
@@ -275,9 +281,10 @@ export class Effects {
 
     const ix = x + dx * dist;
     const iy = y + dy * dist;
-    this.spawnImpact(ix, iy, dx, dy, hit);
-    if (hit) this.spawnLight(ix, iy, 30, 0.5, fx.hitCore, 0.08);
-    if (flesh) this.spawnBlood(ix, iy, dx, dy, 1);
+    const power = shotPower(damage);
+    this.spawnImpact(ix, iy, dx, dy, hit, power);
+    if (hit) this.spawnLight(ix, iy, 26 + power * 10, 0.42 + power * 0.12, fx.hitCore, 0.07 + power * 0.03);
+    if (flesh) this.spawnBlood(ix, iy, dx, dy, 0.5 + power * 0.95);
 
     if (hit && damage !== undefined && damage > 0) {
       this.spawnDamage(ix, iy, damage);
@@ -314,8 +321,8 @@ export class Effects {
 
   /**
    * Blood off a body that was just hit at `(x, y)` by something travelling
-   * along `(dx, dy)`. `amount` scales the volume — 1 for a shot, more for a
-   * death.
+   * along `(dx, dy)`. `amount` scales the volume — a Glock is ~1, a Deagle
+   * more, a death more still.
    *
    * It sprays with the bullet, not back at the shooter. The debris in
    * `spawnImpact` already kicks BACK along the ray, which is what a round does
@@ -339,7 +346,7 @@ export class Effects {
       const sign = back ? -1 : 1;
       const bx = (dx * cos - dy * sin) * sign;
       const by = (dy * cos + dx * sin) * sign;
-      const speed = (back ? 34 : 70) * (0.5 + Math.random() * 0.9);
+      const speed = (back ? 34 : 70) * (0.5 + Math.random() * 0.9) * (0.88 + 0.1 * amount);
       this.particles.push({
         x,
         y,
@@ -360,19 +367,44 @@ export class Effects {
       y,
       vx: dx * 6,
       vy: dy * 6,
-      size: 2.6 + Math.random() * 1.2,
+      size: 2.6 + Math.random() * 1.2 + amount * 0.55,
       color: fx.bloodMist,
       age: 0,
-      life: 0.16,
+      life: 0.16 + amount * 0.04,
       gy: 40,
     });
+
+    // Heavy rounds throw a few fat drops that hang and fall. A Glock spray
+    // without these is a sting; a Deagle without them is the same sting louder.
+    if (amount > 1.6) {
+      const chunks = 1 + Math.round((amount - 1.6) * 1.4);
+      for (let i = 0; i < chunks; i++) {
+        const spread = (Math.random() - 0.5) * 0.9;
+        const cos = Math.cos(spread);
+        const sin = Math.sin(spread);
+        const bx = dx * cos - dy * sin;
+        const by = dy * cos + dx * sin;
+        const speed = 38 + Math.random() * 28;
+        this.particles.push({
+          x,
+          y,
+          vx: bx * speed,
+          vy: by * speed - 8,
+          size: 2.4 + Math.random() * 1.8,
+          color: pick(fx.blood),
+          age: 0,
+          life: 0.42 + Math.random() * 0.18,
+          gy: 240,
+        });
+      }
+    }
   }
 
-  spawnImpact(x: number, y: number, dx: number, dy: number, hit: boolean): void {
+  spawnImpact(x: number, y: number, dx: number, dy: number, hit: boolean, power = 1): void {
     const fx = palette().effects;
-    const count = hit ? 10 : 5;
+    const count = Math.round((hit ? 10 : 5) * (0.7 + 0.45 * power));
     const colors = hit ? fx.hitParticles : fx.missParticles;
-    const speedBase = hit ? 55 : 28;
+    const speedBase = (hit ? 55 : 28) * (0.85 + 0.2 * power);
     const lifeBase = hit ? 0.28 : 0.18;
 
     for (let i = 0; i < count; i++) {
@@ -388,7 +420,7 @@ export class Effects {
         y,
         vx: bx * speed,
         vy: by * speed,
-        size: hit ? 1.2 + Math.random() * 1.6 : 0.8 + Math.random() * 1.1,
+        size: (hit ? 1.2 + Math.random() * 1.6 : 0.8 + Math.random() * 1.1) * (0.85 + 0.12 * power),
         color: pick(colors),
         age: 0,
         life: lifeBase * (0.7 + Math.random() * 0.5),

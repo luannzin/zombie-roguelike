@@ -10,7 +10,7 @@ mutation, no React.
 | file | owns |
 | --- | --- |
 | `renderer.ts` | pass sequencing and the world/screen transform |
-| `types.ts` | `RenderState`, `DrawableEntity` — the renderer's input contract (`gear` overlays, `weapon` the held gun) |
+| `types.ts` | `RenderState`, `DrawableEntity` — the renderer's input contract (`gear` overlays, `weapon` the held gun, `hitSpin` the hit tilt) |
 | `camera.ts` | follow, clamp to map bounds, the arrival push-in |
 | `framing.ts` | the wide shot of the camp — zoom and rest-shot fire position |
 | `projection.ts` | zoom + offset between world and screen space |
@@ -141,6 +141,10 @@ mutation, no React.
   registered to the processed 16x16 grid and blitted at the same dest rect.
   Players wear `[backpack]`; enemies wear the clothes-then-hat list the
   server rolled, or nothing.
+- **A heavy hit TILTS the body.** `DrawableEntity.hitSpin` is radians around
+  the feet, applied in the entity pass, health bar left upright. Knockback
+  is `recoilX/Y` along the shot — the same spring a lunge uses, held for
+  the stun then released. Do not rotate the shadow.
 - **A gun is IN HAND, not gear.** `DrawableEntity.weapon` is a catalog key
   into the guns atlas (`make_guns.py`): side-view, pointing right, rotated
   around the grip and flipped when aim is left. An empty hand draws nothing.

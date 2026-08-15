@@ -90,9 +90,11 @@ export interface DrawableEntity {
    */
   viewRange: number;
   viewDegrees: number;
-  /** Visual kick (world px). Recoil for players, attack lunge for enemies. */
+  /** Visual kick (world px). Recoil for players, attack lunge / hit shove for enemies. */
   recoilX: number;
   recoilY: number;
+  /** Radians of hit tilt around the feet. 0 unless a heavy round just landed. */
+  hitSpin: number;
   /**
    * Collision-box half extents. The sprite's bottom edge sits at
    * `y + halfHeight`, so entities of any size anchor with no special casing.

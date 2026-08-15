@@ -81,9 +81,9 @@ When the user requests a durable behavior change, record it here or in the relev
 - Guns are a 3-slot hotbar above the battery (keys 1/2/3, same key holsters).
   They collect onto the belt, not the pocket. The held sprite follows the
   mouse and flips when aiming left. No laser sight. The AWP zooms the camera
-  out while holding to shoot. Tracers start at the barrel. Each gun has its
-  own weight (slows the walk) and feel. Ammo types are named; magazines are
-  not built yet.
+  out while holding to shoot. Tracers start at the barrel. Hit juice (blood,
+  knockback, tilt) scales with the gun's damage. Each gun has its own weight
+  (slows the walk) and feel. Ammo types are named; magazines are not built yet.
 
 ## Project
 
@@ -205,8 +205,10 @@ subtree.
   sprite and masked to its silhouette, so the mark is ON the creature and
   carried through the walk cycle until it dries. Damage the player
   can only read off a health bar is a number; damage they can see on the
-  creature is damage. Only flesh bleeds: wood takes splinters and a swing the
-  i-frames ate takes nothing.
+  creature is damage. Volume of spray and debris follows the gun's damage.
+  A heavy round also knocks the body BACK along the shot with a tilt around
+  the feet, and plants the walk for a beat — visual only. Only flesh bleeds:
+  wood takes splinters and a swing the i-frames ate takes nothing.
 - **A corpse pays a ROLL.** A creature's `gold` is the ceiling, not the
   payout — each point is flipped on its own (`COIN_DROP_CHANCE`), so the
   usual zombie drops 0 to 3 coins with both ends rare, and none of it is

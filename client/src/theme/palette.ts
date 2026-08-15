@@ -85,6 +85,12 @@ export interface Palette {
    */
   night: { shadow: Channels; lantern: Channels };
 
+  /**
+   * Lights the MAP owns out in the forest. Bare channels: the layer computes
+   * alpha from its own flicker. `beacon` is reserved for the extraction point.
+   */
+  scene: { lamp: Channels; ember: Channels; beacon: Channels };
+
   /** The lobby campfire — the only light in that scene. */
   fire: {
     stone: string;
@@ -191,6 +197,12 @@ function resolve(): Palette {
     },
 
     night: { shadow: rgb('--night-shadow'), lantern: rgb('--night-lantern') },
+
+    scene: {
+      lamp: rgb('--scene-lamp'),
+      ember: rgb('--scene-ember'),
+      beacon: rgb('--scene-beacon'),
+    },
 
     fire: {
       stone: v('--fire-stone'),

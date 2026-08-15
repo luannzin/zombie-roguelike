@@ -41,8 +41,10 @@ import { createSurface } from '../../lib/canvas';
 import { floorColor, hasFloorSpeck, palette } from '../../theme/palette';
 import type { Camera } from '../camera';
 import type { Projection } from '../projection';
+import type { DisturbanceField } from '../disturbance';
 import type { SceneryAtlas } from '../scenery';
 import { tileHash, type DecalSheet, type PropSheet, type TerrainAtlas } from '../terrain';
+import * as wind from '../wind';
 import { bakeSceneryDecals } from './scenery';
 
 /** Above this a map is drawn per-tile instead of cached. */
@@ -72,6 +74,16 @@ const SWAY_BUSH = 1.1;
 const SWAY_FERN = 1.4;
 /** Radians/second of the sway oscillation, before per-plant variation. */
 const SWAY_RATE = 1.5;
+
+/**
+ * How hard a passing body pushes each plant, as a multiple of the shared
+ * disturbance field. A tuft underfoot is trodden; a bush is shouldered aside;
+ * a fern is drawn in FRONT of the character, so it is the one the player
+ * actually watches part, and it gets the most.
+ */
+const GRASS_PUSH = 1;
+const BUSH_PUSH = 0.8;
+const FERN_PUSH = 1.25;
 
 /** Contact shadow under a prop, as a fraction of the tile. */
 const SHADOW_WIDTH = 0.78;
@@ -170,13 +182,19 @@ export class TerrainLayer {
    * Floor and everything standing in it. Two blits when cached.
    * Caller must have applied the world-space transform.
    */
-  ground(ctx: CanvasRenderingContext2D, world: TileMap, camera: Camera, time: number): void {
+  ground(
+    ctx: CanvasRenderingContext2D,
+    world: TileMap,
+    camera: Camera,
+    time: number,
+    bodies: DisturbanceField | null = null,
+  ): void {
     if (this.cachedFor !== world) this.rebuild(world);
     const window = visibleTiles(world, camera);
 
     if (this.groundCache) {
       blit(ctx, this.groundCache, world, camera);
-      this.undergrowth(ctx, world, window, time);
+      this.undergrowth(ctx, world, window, time, bodies);
       if (this.propCache) blit(ctx, this.propCache, world, camera);
       return;
     }
@@ -184,7 +202,7 @@ export class TerrainLayer {
     // Uncached (very large map): paint the visible window in the same order.
     if (this.atlas) {
       this.paintGround(ctx, world, this.atlas, window, true);
-      this.undergrowth(ctx, world, window, time);
+      this.undergrowth(ctx, world, window, time, bodies);
       paintProps(ctx, world, this.atlas, window);
     } else {
       paintFlat(ctx, world, window);
@@ -230,7 +248,13 @@ export class TerrainLayer {
    * Foliage that closes over the player: tree canopies and ferns.
    * Drawn after the entity pass, still in world space.
    */
-  overgrowth(ctx: CanvasRenderingContext2D, world: TileMap, camera: Camera, time: number): void {
+  overgrowth(
+    ctx: CanvasRenderingContext2D,
+    world: TileMap,
+    camera: Camera,
+    time: number,
+    bodies: DisturbanceField | null = null,
+  ): void {
     const atlas = this.atlas;
     if (!atlas) return;
 
@@ -270,7 +294,12 @@ export class TerrainLayer {
         if (this.decorationMask && !this.decorationMask(tx, ty)) continue;
         if (tileHash(tx, ty, seed, 51) >= FERN_CHANCE) continue;
         const frame = variant(fern, tx, ty, seed, 52);
-        const lean = sway(tx, ty, seed, time, SWAY_FERN, 53);
+        // Ferns are the ones the player pushes through face-first: they are
+        // drawn in FRONT of a body, so their bend is the most visible reaction
+        // in the frame and it is worth the extra reach.
+        const lean =
+          sway(tx, ty, seed, time, SWAY_FERN, 53, world.tileSize) +
+          bendOf(bodies, tx, ty, world.tileSize) * FERN_PUSH;
         ctx.drawImage(
           fern.image,
           frame * fern.frameWidth,
@@ -299,6 +328,7 @@ export class TerrainLayer {
     world: TileMap,
     { x0, y0, x1, y1 }: TileWindow,
     time: number,
+    bodies: DisturbanceField | null,
   ): void {
     const atlas = this.atlas;
     if (!atlas) return;
@@ -310,14 +340,14 @@ export class TerrainLayer {
         if (this.decorationMask && !this.decorationMask(tx, ty)) continue;
 
         if (tileHash(tx, ty, seed, 13) < BUSH_CHANCE) {
-          drawPlant(ctx, atlas.bush, world, tx, ty, time, SWAY_BUSH, 14);
+          drawPlant(ctx, atlas.bush, world, tx, ty, time, SWAY_BUSH, 14, bodies);
           // A bush and a tuft on the same tile is a pile, not undergrowth.
           continue;
         }
         if (tileHash(tx, ty, seed, 11) >= GRASS_CHANCE) continue;
-        drawTuft(ctx, atlas.grass, world, tx, ty, 0, time);
+        drawTuft(ctx, atlas.grass, world, tx, ty, 0, time, bodies);
         if (tileHash(tx, ty, seed, 12) < GRASS_DOUBLE_CHANCE) {
-          drawTuft(ctx, atlas.grass, world, tx, ty, 1, time);
+          drawTuft(ctx, atlas.grass, world, tx, ty, 1, time, bodies);
         }
       }
     }
@@ -505,6 +535,19 @@ function fade(t: number): number {
   return t * t * t * (t * (t * 6 - 15) + 10);
 }
 
+/**
+ * Which soil a tile is made of, as an index into the atlas's `grounds`.
+ *
+ * Exported because the floor is not only a texture any more: how well ground
+ * takes a boot print, and how much dust a footstep kicks up, are properties of
+ * what you are standing on. Reading the same field the floor is painted from
+ * is what keeps those honest — a print that sinks into mud has to be on a tile
+ * the player can SEE is mud.
+ */
+export function soilAt(tx: number, ty: number, seed: number): number {
+  return materialAt(tx, ty, seed, MATERIAL_EDGES.length - 1).index;
+}
+
 interface Material {
   /** Soil this tile is made of. */
   index: number;
@@ -600,9 +643,13 @@ function trunkSheet(atlas: TerrainAtlas, tx: number, ty: number, seed: number): 
 /**
  * Horizontal lean of one plant, in world px.
  *
- * Phase and rate both come from the tile hash. That per-plant variation is the
- * whole point: a synchronised field looks like the screen is wobbling, while a
- * desynchronised one looks like air moving through leaves.
+ * Phase and rate come from the tile hash and the GUST comes from `wind.ts`.
+ * Both halves are needed and they fail in opposite ways: a purely per-plant
+ * field looks like air moving through leaves but never like weather, and a
+ * purely shared one looks like the screen wobbling. `wind.lean` mixes them,
+ * and every other bending thing in the game — including the scenery's signs
+ * and tent canvas — reads the same function, so a gust crossing a clearing
+ * moves the weeds and the signpost on one beat.
  */
 function sway(
   tx: number,
@@ -611,10 +658,27 @@ function sway(
   time: number,
   amount: number,
   salt: number,
+  tileSize: number,
 ): number {
   const phase = tileHash(tx, ty, seed, salt) * Math.PI * 2;
   const rate = SWAY_RATE * (0.7 + tileHash(tx, ty, seed, salt + 1) * 0.6);
-  return Math.sin(time * rate + phase) * amount;
+  // Sampled at the plant's own world position: the gust is a travelling front,
+  // so where it is matters as much as when.
+  return wind.lean((tx + 0.5) * tileSize, (ty + 0.5) * tileSize, time, amount, phase, rate);
+}
+
+/** Displacement from nearby bodies for a plant on this tile, in world px. */
+function bendOf(
+  bodies: DisturbanceField | null,
+  tx: number,
+  ty: number,
+  tileSize: number,
+): number {
+  if (!bodies || bodies.idle) return 0;
+  // Measured at the plant's ROOT, not its centre: a body standing on the tile
+  // below a tuft is touching its base, and pushing from the middle of the
+  // sprite would have tall plants react a tile early.
+  return bodies.bendAt((tx + 0.5) * tileSize, (ty + 1) * tileSize);
 }
 
 /** Ground stains — "manchas". Sampled coarsely; they are 2 tiles across. */
@@ -754,12 +818,13 @@ function drawPlant(
   time: number,
   amount: number,
   salt: number,
+  bodies: DisturbanceField | null,
 ): void {
   const ts = world.tileSize;
   const seed = world.seed;
   const frame = variant(sheet, tx, ty, seed, salt);
   const jx = (tileHash(tx, ty, seed, salt + 3) - 0.5) * ts * 0.4;
-  const lean = sway(tx, ty, seed, time, amount, salt + 5);
+  const lean = sway(tx, ty, seed, time, amount, salt + 5, ts) + bendOf(bodies, tx, ty, ts) * BUSH_PUSH;
   ctx.drawImage(
     sheet.image,
     frame * sheet.frameWidth,
@@ -781,6 +846,7 @@ function drawTuft(
   ty: number,
   index: number,
   time: number,
+  bodies: DisturbanceField | null,
 ): void {
   const ts = world.tileSize;
   const seed = world.seed;
@@ -788,7 +854,9 @@ function drawTuft(
   // Jitter inside the tile so tufts do not line up on a lattice.
   const jx = (tileHash(tx, ty, seed, 30 + index) - 0.5) * (ts - grass.frameWidth);
   const jy = (tileHash(tx, ty, seed, 40 + index) - 0.5) * ts * 0.5;
-  const lean = sway(tx, ty, seed, time, SWAY_GRASS, 60 + index * 2);
+  const lean =
+    sway(tx, ty, seed, time, SWAY_GRASS, 60 + index * 2, ts) +
+    bendOf(bodies, tx, ty, ts) * GRASS_PUSH;
   ctx.drawImage(
     grass.image,
     frame * grass.frameWidth,

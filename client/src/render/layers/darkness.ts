@@ -41,9 +41,12 @@
 import { createSurface } from '../../lib/canvas';
 import { palette } from '../../theme/palette';
 import type { PointLight } from '../../game/effects';
-import { VOID, type FirePlace, type TileMap } from '../../game/world';
+import { VOID, type FirePlace, type SceneryLight, type TileMap } from '../../game/world';
 import { fireFlicker } from '../fov';
 import type { FovField } from '../fov';
+
+/** Kind index of a steady lamp — see `server/app/scenery.py`. */
+const LIGHT_LAMP = 0;
 
 /** Darkness over ground nobody has ever seen. */
 const UNSEEN_ALPHA = 0.9;
@@ -169,6 +172,50 @@ export class DarknessLayer {
       gradient.addColorStop(1, `rgb(${glow} / 0)`);
       ctx.fillStyle = gradient;
       ctx.fillRect(fire.x - radius, cy - radius, radius * 2, radius * 2);
+    }
+    ctx.globalCompositeOperation = 'source-over';
+  }
+
+  /**
+   * The glow around lights the MAP owns — a lamp left burning at a cabin door,
+   * embers in a camp that has only just gone out.
+   *
+   * Same pass and same rules as `drawFires`, and deliberately so: a light is a
+   * light, and the moment the forest's lights are drawn by different code from
+   * the camp's they start looking like a different kind of object. What differs
+   * is only the TONE and the beat — a lamp is pale and nearly steady, embers
+   * are deep and breathe slowly, and neither may look as warm as a bonfire,
+   * because the camp's fire is the warmest thing in the game and everything
+   * out in the woods is a colder imitation of it.
+   *
+   * Caller must have applied the world-space transform.
+   */
+  drawSceneLights(
+    ctx: CanvasRenderingContext2D,
+    lights: readonly SceneryLight[],
+    tileSize: number,
+    time: number,
+  ): void {
+    if (lights.length === 0) return;
+    const tones = palette().scene;
+    const table = [tones.lamp, tones.ember, tones.beacon];
+
+    ctx.globalCompositeOperation = 'lighter';
+    for (let i = 0; i < lights.length; i++) {
+      const light = lights[i];
+      const tone = (table[light.kind] ?? tones.lamp).join(' ');
+      // A lamp barely moves; embers pulse. Phase is per-light so two of them on
+      // screen never breathe together.
+      const steady = light.kind === LIGHT_LAMP;
+      const beat = 0.5 + 0.5 * Math.sin(time * (steady ? 1.7 : 0.9) + i * 2.4);
+      const pulse = steady ? 0.9 + beat * 0.1 : 0.62 + beat * 0.38;
+      const radius = tileSize * light.radiusTiles * (0.62 + pulse * 0.14);
+      const gradient = ctx.createRadialGradient(light.x, light.y, 1, light.x, light.y, radius);
+      gradient.addColorStop(0, `rgb(${tone} / ${(0.26 * pulse).toFixed(3)})`);
+      gradient.addColorStop(0.4, `rgb(${tone} / ${(0.09 * pulse).toFixed(3)})`);
+      gradient.addColorStop(1, `rgb(${tone} / 0)`);
+      ctx.fillStyle = gradient;
+      ctx.fillRect(light.x - radius, light.y - radius, radius * 2, radius * 2);
     }
     ctx.globalCompositeOperation = 'source-over';
   }

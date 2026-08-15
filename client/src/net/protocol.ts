@@ -165,6 +165,16 @@ export type PropRow = [
   layer: number,
 ];
 
+/**
+ * One light the MAP owns: `[x, y, radiusTiles, kind]` in world pixels.
+ *
+ * `kind` indexes a tone table on the client (0 lamp, 1 ember, 2 beacon). It is
+ * a NUMBER rather than a colour because the point is that the server decides
+ * what a light MEANS and the client decides what that looks like — the
+ * extraction beacon is going to arrive through this same row.
+ */
+export type LightRow = [x: number, y: number, radiusTiles: number, kind: number];
+
 export interface MapPayload {
   width: number;
   height: number;
@@ -186,6 +196,13 @@ export interface MapPayload {
    */
   propKinds?: string[];
   props?: PropRow[];
+  /**
+   * Anything on this map that is still burning: a lamp at a cabin door, embers
+   * in a camp that has only just gone out. These feed the same light field the
+   * bonfires do, so a scene with one is visible from across the dark — which
+   * is what turns it from decoration into a place you decide to walk to.
+   */
+  lights?: LightRow[];
 }
 
 /**

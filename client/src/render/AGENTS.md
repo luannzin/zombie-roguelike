@@ -19,6 +19,8 @@ mutation, no React.
 | `scenery.ts` | scenery atlas loading: standing props and flat decals of what people left |
 | `vfx.ts` | effect atlas loading: one-shot animation sheets |
 | `fov.ts` | shared field of view — `light` and `heat` fields |
+| `wind.ts` | the shared gust field every bending thing reads |
+| `disturbance.ts` | what bodies do to the plants they walk through |
 | `layers/vision.ts` | the ENEMY's sight cone and its alert mark |
 | `layers/scenery.ts` | placed scenes: flat decals into the ground bake, standing props into the depth sort |
 | `minimap.ts` | the minimap canvas |
@@ -137,6 +139,35 @@ mutation, no React.
   routine with `WORLD_SPACE` after applying its own transform. The camp is
   dressed too (`server/app/camp.py`); a crate the lobby drew flat behind the
   party would jump into the depth sort the instant the run started.
+- **`wind.ts` is the only shared clock, and sharing it is the point.** Every
+  plant keeps its own phase — a synchronised field reads as the screen
+  wobbling — but the GUST is one travelling front sampled at each thing's own
+  position, so a wave of foliage leans together and lets go. Grass, bushes,
+  ferns AND the scenery that sways (a sign on its post, tent canvas) all read
+  `wind.lean`. A sign bending on its own clock while the weeds at its base bend
+  on another is the clearest tell that a scene was assembled out of parts.
+- **`disturbance.ts` is the world noticing the player, and its visibility gate
+  is a RULE.** A body contributes two pushes — one at its feet, one at a lagged
+  wake that chases it — because without the wake the grass snaps back the
+  instant you clear it and reads as a bubble stuck to your shoes. A body the
+  fov says you cannot see contributes NOTHING: foliage parting around an
+  invisible creature is a free tracker that undoes the lantern, exactly as a
+  sight cone drawn over an unlit thing would be. Inside your light it is a fair
+  tell and a good one.
+- The field is owned by `Renderer` and takes the entity list DIRECTLY —
+  `Disturber` is structurally a subset of `DrawableEntity` so there is no
+  per-frame projection array.
+- **Boot prints are drawn live, not baked, and they are the one long-lived
+  effect.** Everything else flat is baked into the ground canvas; prints fade,
+  and a map that accumulated them forever would end as a mat carrying no
+  information. They are `Effects`-owned (see `game/AGENTS.md`) and culled
+  against the camera here, because the list outlives the walk that made it on
+  purpose — the trail is navigation for the way back.
+- **A light is a light.** `drawSceneLights` is `drawFires` with a different
+  tone and beat, and must stay that way: the moment a lamp out in the woods is
+  drawn by different code from the camp's bonfire they start reading as
+  different kinds of object. Tones come from `--scene-*`; `beacon` is unused
+  and reserved so the extraction point is a data change, not a render change.
 - A `FIRE` tile is drawn in the ENTITY sort, not with the terrain: baked it
   could not animate, and drawn as scenery it would be covered by whoever is
   standing behind it — a ring of players around a picture of a fire. Its glow

@@ -588,6 +588,19 @@ export class LobbyScene {
 			y: place.y - this.tile * 0.5,
 			radiusTiles: camp?.config.campfireLightTiles ?? FALLBACK_FIRE_TILES,
 		}));
+		// Anything the camp's own scenes are burning, on the same list and with
+		// ids continuing past the fires — exactly what the arena does. The camp
+		// pool has nothing lit in it today, but the lobby and the arena are two
+		// renders of ONE place, and a light that only existed in one of them
+		// would be a difference the player sees at the handover.
+		for (const [index, light] of this.world.scenery.lights.entries()) {
+			this.lights.push({
+				id: this.world.fires.length + index,
+				x: light.x,
+				y: light.y,
+				radiusTiles: light.radiusTiles,
+			});
+		}
 
 		// Grass and ferns are placed by the terrain layer from the tile hash, so
 		// keeping them out of the hearth has to be told to it — the map itself
@@ -974,6 +987,7 @@ export class LobbyScene {
 			this.camp?.config.campfireLightTiles ?? FALLBACK_FIRE_TILES,
 			this.time,
 		);
+		this.darkness.drawSceneLights(ctx, world.scenery.lights, this.tile, this.time);
 
 		// Everything below is LIGHT, so it goes over the darkness rather than
 		// under it — the same rule the arena's renderer follows for muzzle

@@ -32,13 +32,19 @@
  * the wind can push.
  */
 
+import type { Effects } from '../../game/effects';
 import type { SceneryPiece, TileMap } from '../../game/world';
 import { palette } from '../../theme/palette';
+import type { Camera } from '../camera';
 import type { Projection } from '../projection';
 import type { SceneryAtlas } from '../scenery';
+import * as wind from '../wind';
 
 /** Radians/second of the sway oscillation, before per-prop variation. */
 const SWAY_RATE = 1.1;
+
+/** Share of a print's life spent at full strength before it starts to fade. */
+const FOOTPRINT_HOLD = 0.35;
 
 /** Contact shadow, matching the one baked under the terrain's own props. */
 const SHADOW_WIDTH = 0.7;
@@ -104,6 +110,53 @@ export function bakeSceneryDecals(
     const y = Math.round(piece.y - sheet.frameHeight / 2);
     drawFrame(ctx, sheet.image, frame, sheet.frameWidth, sheet.frameHeight, x, y, piece.flip);
   }
+}
+
+/**
+ * Boot prints, in world space, over the floor and under everything else.
+ *
+ * Drawn LIVE rather than baked, unlike every other flat thing, because these
+ * fade — and they have to fade, or a map turns into a solid mat of prints after
+ * five minutes and stops carrying any information at all. The fade is also
+ * what makes them readable as AGE: on an extraction run the freshest prints
+ * are the ones going the way you last went, and a trail that got fainter as it
+ * receded is a direction as much as a path.
+ *
+ * Culled against the camera, because the list is intentionally long-lived and
+ * most of it is behind you.
+ */
+export function drawFootprints(
+  ctx: CanvasRenderingContext2D,
+  effects: Effects,
+  atlas: SceneryAtlas,
+  camera: Camera,
+): void {
+  const sheet = atlas.decals.tracks;
+  if (!sheet || effects.footprints.length === 0) return;
+
+  const left = camera.renderX - sheet.frameWidth;
+  const top = camera.renderY - sheet.frameHeight;
+  const right = camera.renderX + camera.viewWidth + sheet.frameWidth;
+  const bottom = camera.renderY + camera.viewHeight + sheet.frameHeight;
+
+  for (const print of effects.footprints) {
+    if (print.x < left || print.x > right || print.y < top || print.y > bottom) continue;
+    // Flat for most of its life and then fades. A print that started
+    // disappearing immediately would never read as a trail, only as a smear
+    // trailing the player.
+    const remaining = 1 - print.age / print.life;
+    const fade = remaining > FOOTPRINT_HOLD ? 1 : remaining / FOOTPRINT_HOLD;
+    ctx.globalAlpha = print.depth * fade;
+    const frame = print.frame % sheet.frames;
+    ctx.drawImage(
+      sheet.image,
+      frame * sheet.frameWidth, 0, sheet.frameWidth, sheet.frameHeight,
+      Math.round(print.x - sheet.frameWidth / 2),
+      Math.round(print.y - sheet.frameHeight / 2),
+      sheet.frameWidth, sheet.frameHeight,
+    );
+  }
+  ctx.globalAlpha = 1;
 }
 
 /**
@@ -212,10 +265,18 @@ function drawSmoke(
   ctx.globalAlpha = 1;
 }
 
-/** -1..1 lean, with a phase and rate of this prop's own. */
+/**
+ * -1..1 lean, on the same wind the undergrowth is bending in.
+ *
+ * Reading `wind.lean` rather than a local sine is the entire reason this looks
+ * like weather: when a gust crosses a homestead, the signpost swings on the
+ * same front as the weeds around its base. A sign on its own clock is the
+ * single clearest tell that a scene was assembled out of parts.
+ */
 function swayOf(piece: SceneryPiece, time: number): number {
   const phase = piece.x * 0.11 + piece.y * 0.07;
-  return Math.sin(time * SWAY_RATE * (0.8 + (phase % 1) * 0.4) + phase);
+  const rate = SWAY_RATE * (0.8 + ((phase % 1) + 1) % 1 * 0.4);
+  return wind.lean(piece.x, piece.y, time, 1, phase, rate);
 }
 
 function drawFrame(

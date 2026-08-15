@@ -132,7 +132,7 @@ def build_camp(seed: int) -> TileMap:
     return TileMap(tiles, seed=seed, scenery=scenery.to_payload(_dress_camp(tiles, cx, cy, seed)))
 
 
-def _dress_camp(tiles: list[list[int]], cx: float, cy: float, seed: int) -> list[scenery.Prop]:
+def _dress_camp(tiles: list[list[int]], cx: float, cy: float, seed: int) -> scenery.Population:
     """A couple of scenes out at the edge of the clearing. Mutates `tiles`.
 
     The camp is a place the party owns, so it gets stores and firewood and

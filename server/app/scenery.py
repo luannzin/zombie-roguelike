@@ -84,6 +84,37 @@ class Piece:
     flip: bool = False
 
 
+#: Light kinds. The client maps these to tones; the numbers are the contract.
+LAMP = 0
+EMBER = 1
+#: Reserved. The EXTRACTION point will be a light like any other — that is the
+#: whole reason this is a list on the map payload and not a field on the cabin.
+#: When extraction lands, the room drops one `SceneLight(BEACON, ...)` at the
+#: chosen tile and the client already knows how to burn it, feed the fov with
+#: it and draw its glow. Nothing about that is a rendering change.
+BEACON = 2
+
+
+@dataclass(frozen=True)
+class SceneLight:
+    """Something in a scene that is still burning, in TILE offsets.
+
+    Scenes are invisible until a lantern reaches them, which means a map full
+    of stories nobody walks past. A light turns a scene into a DESTINATION: you
+    see a dot of warmth across the dark and you choose to go to it, and the
+    choice is the whole point — it is the cheapest navigation the game has, and
+    it makes a landmark out of a pile of props.
+
+    Small radii. These are not areas of safety; they are things you can see
+    from far away and read from close up.
+    """
+
+    dx: float
+    dy: float
+    radius_tiles: float
+    kind: int = LAMP
+
+
 @dataclass(frozen=True)
 class Prop:
     """A placed piece, in world pixels. This is the wire row."""
@@ -108,6 +139,39 @@ class Prop:
 
 
 @dataclass(frozen=True)
+class PlacedLight:
+    """A scene light anchored on the map, in world pixels."""
+
+    x: float
+    y: float
+    radius_tiles: float
+    kind: int
+
+    def to_row(self) -> list:
+        return [round(self.x), round(self.y), round(self.radius_tiles, 2), self.kind]
+
+
+@dataclass(frozen=True)
+class Population:
+    """Everything one call to `populate` put on a map.
+
+    `props` and `lights` go on the wire. `scenes` and `route` do not, yet —
+    they are where the scenes ended up, in TILES, and the order the thread
+    walks them. They are returned rather than thrown away because the
+    EXTRACTION point is going to want exactly this: a set of places worth
+    standing in, and a direction that leads away from spawn. Placing extraction
+    at or past `route[-1]` gives a run a shape — out along the story, back
+    through it carrying something — where a uniformly random tile gives an
+    errand.
+    """
+
+    props: list[Prop]
+    lights: list[PlacedLight]
+    scenes: list[tuple[float, float]]
+    route: list[tuple[float, float]]
+
+
+@dataclass(frozen=True)
 class Layout:
     """A scene resolved into local tile space, before it is anchored."""
 
@@ -116,6 +180,8 @@ class Layout:
     #: Tile offsets that become PROP. Only buildings claim tiles — see below.
     solid: tuple[tuple[int, int], ...]
     pieces: tuple[Piece, ...]
+    #: Anything in this scene that is still lit. Usually empty.
+    lights: tuple[SceneLight, ...] = ()
 
 
 #: Compass points in the tracks sheet. Mirrors TRACK_DIRECTIONS in
@@ -233,7 +299,15 @@ def _homestead(rng: random.Random) -> Layout:
     if rng.random() < 0.7:
         pieces.append(Piece("blood", DECAL, door_x + rng.uniform(-0.5, 0.5),
                             door_y + 0.4, rng.choice((1, 2, 5))))
-    return Layout(width, height, solid, tuple(pieces))
+
+    # A lamp still lit over the door, most of the time. It is the only warm
+    # point on a dark map that is not a player, and it does two jobs at once:
+    # it makes the landmark FINDABLE from across the woods, and it asks the
+    # question the rest of the scene refuses to answer — somebody lit that.
+    lights: tuple[SceneLight, ...] = ()
+    if rng.random() < 0.75:
+        lights = (SceneLight(door_x + (0.9 if flip else -0.9), door_y - 0.4, 3.4, LAMP),)
+    return Layout(width, height, solid, tuple(pieces), lights)
 
 
 def _campsite(rng: random.Random) -> Layout:
@@ -272,7 +346,14 @@ def _campsite(rng: random.Random) -> Layout:
     # And they left in a hurry, in one direction, all at once.
     angle = rng.uniform(0, math.tau)
     pieces += _trail(cx, cy + 1.6, cx + math.cos(angle) * 4.2, cy + math.sin(angle) * 3.4, rng)
-    return Layout(width, height, solid, tuple(pieces))
+
+    # Sometimes the fire is only just out, and that changes what the scene
+    # says: cold ash is history, live embers are a WARNING. Rare enough that
+    # finding one means something.
+    lights: tuple[SceneLight, ...] = ()
+    if rng.random() < 0.3:
+        lights = (SceneLight(cx, cy + 1.0, 2.2, EMBER),)
+    return Layout(width, height, solid, tuple(pieces), lights)
 
 
 def _last_stand(rng: random.Random) -> Layout:
@@ -566,18 +647,23 @@ def populate(
     separation: float = MIN_SEPARATION,
     landmark=None,
     tries: int = ATTEMPTS,
-) -> list[Prop]:
-    """Place scenes on a finished map. Mutates `tiles`; returns the drawables.
+    thread: bool = False,
+) -> Population:
+    """Place scenes on a finished map. Mutates `tiles`; returns what was placed.
 
     `avoid` is a list of (tile x, tile y, radius in tiles) the scenes must keep
     out of — the spawn clearing, the camp hearth, the mouth of the exit. Those
     are places the game needs legible and empty, and a story told on top of
     them is a story nobody can walk around.
+
+    `thread` links what was placed into ONE story — see `_thread`.
     """
     height = len(tiles)
     width = len(tiles[0]) if tiles else 0
     placed: list[tuple[float, float]] = []
+    landmark_at: tuple[float, float] | None = None
     props: list[Prop] = []
+    lights: list[PlacedLight] = []
 
     def attempt(layout: Layout, budget: int) -> bool:
         for _ in range(budget):
@@ -600,6 +686,15 @@ def populate(
                 continue
 
             placed.append((cx, cy))
+            for light in layout.lights:
+                lights.append(
+                    PlacedLight(
+                        x=(x0 + light.dx) * TILE_SIZE,
+                        y=(y0 + light.dy) * TILE_SIZE,
+                        radius_tiles=light.radius_tiles,
+                        kind=light.kind,
+                    )
+                )
             for piece in layout.pieces:
                 props.append(
                     Prop(
@@ -617,15 +712,115 @@ def populate(
     # The landmark goes down first, on an empty map and with a much bigger
     # budget: it is the only layout that needs a large box of open ground, and
     # every scene already standing is one more thing for it to collide with.
-    if landmark is not None:
-        attempt(landmark(rng), tries * 6)
+    if landmark is not None and attempt(landmark(rng), tries * 6):
+        landmark_at = placed[-1]
 
     for _ in range(rng.randint(*count)):
         attempt(_pick(rng, pool)(rng), tries)
+
+    route: list[tuple[float, float]] = []
+    if thread:
+        route = _route(placed, landmark_at, (width / 2, height / 2), rng)
+        props.extend(_thread(tiles, route, rng))
+    return Population(props=props, lights=lights, scenes=placed, route=route)
+
+
+def _route(
+    placed: list[tuple[float, float]],
+    landmark_at: tuple[float, float] | None,
+    origin: tuple[float, float],
+    rng: random.Random,
+) -> list[tuple[float, float]]:
+    """Pick the scenes the thread runs through, in the order it visits them.
+
+    Ordered by distance from the spawn clearing, so the story reads OUTWARD:
+    the first thing you find is the least conclusive and the last is the
+    landmark. That direction matters more than which scenes get picked — a
+    trail that starts at the cabin and peters out is the same props in the
+    same places telling you nothing.
+
+    This is also the structure an EXTRACTION point wants. The route is a walk
+    from the spawn to the far end of the map through places worth stopping at;
+    dropping the extraction at or beyond `route[-1]` gives a run with a shape
+    (out along the story, back through it with your pockets full) instead of a
+    randomly placed errand.
+    """
+    if len(placed) < 3:
+        return []
+    ranked = sorted(placed, key=lambda p: math.hypot(p[0] - origin[0], p[1] - origin[1]))
+    # Skip the nearest: a trail that starts on the spawn clearing's doorstep
+    # reads as a tutorial arrow rather than as something you came across.
+    candidates = [p for p in ranked[1:] if p != landmark_at]
+    if not candidates:
+        return []
+    span = min(len(candidates), rng.randint(2, 3))
+    route = candidates[:span]
+    if landmark_at is not None:
+        route.append(landmark_at)
+    return route
+
+
+def _thread(
+    tiles: list[list[int]],
+    route: list[tuple[float, float]],
+    rng: random.Random,
+) -> list[Prop]:
+    """One trail linking the route's scenes, escalating as it goes.
+
+    THIS IS THE DIFFERENCE BETWEEN A MAP WITH STORIES ON IT AND A MAP WITH A
+    STORY. Seven independent tableaux are seven things you walk past. The same
+    seven with prints running between them are a route somebody took, and the
+    player can follow it — which turns reading the scenery from something they
+    might do into something they choose to do.
+
+    It escalates: blood gets more frequent along the way and the last leg ends
+    in a drag. The order is what carries that, and the order came from `_route`.
+
+    Prints that land on anything but open floor are DROPPED rather than moved.
+    A trail that breaks where it crosses a thicket and picks up on the far side
+    is what a real one does; one that bends around every trunk to stay visible
+    reads as a drawn line.
+    """
+    if len(route) < 2:
+        return []
+    height = len(tiles)
+    width = len(tiles[0]) if tiles else 0
+    props: list[Prop] = []
+
+    for leg, (start, end) in enumerate(zip(route, route[1:])):
+        last = leg == len(route) - 2
+        # Long legs get sparser prints: a full-density trail across a third of
+        # the map is thousands of decals and reads as a paved path.
+        pieces = _trail(*start, *end, rng, step=1.6, wander=0.5)
+        # Blood frequency climbs along the thread — whoever this was, it was
+        # getting worse.
+        bleed = 0.04 + leg * 0.05
+        for piece in pieces:
+            tx, ty = int(piece.dx), int(piece.dy)
+            if not (0 <= tx < width and 0 <= ty < height) or tiles[ty][tx] != FLOOR:
+                continue
+            props.append(
+                Prop(piece.kind, piece.dx * TILE_SIZE, piece.dy * TILE_SIZE,
+                     piece.variant, piece.flip, piece.layer)
+            )
+            if rng.random() < bleed:
+                props.append(
+                    Prop("blood", piece.dx * TILE_SIZE, piece.dy * TILE_SIZE,
+                         rng.choice((0, 3)), False, DECAL)
+                )
+        if last:
+            # The last few metres are a drag, not a walk.
+            for step in range(3):
+                t = 0.7 + step * 0.1
+                x = start[0] + (end[0] - start[0]) * t
+                y = start[1] + (end[1] - start[1]) * t
+                tx, ty = int(x), int(y)
+                if 0 <= tx < width and 0 <= ty < height and tiles[ty][tx] == FLOOR:
+                    props.append(Prop("blood", x * TILE_SIZE, y * TILE_SIZE, 2, False, DECAL))
     return props
 
 
-def to_payload(props: list[Prop]) -> dict:
+def to_payload(population: Population) -> dict:
     """The map payload's scenery half: a legend plus compact rows.
 
     Kinds are interned into a legend because the same seven strings would
@@ -633,7 +828,11 @@ def to_payload(props: list[Prop]) -> dict:
     largest one the server sends.
     """
     kinds: list[str] = []
-    for prop in props:
+    for prop in population.props:
         if prop.kind not in kinds:
             kinds.append(prop.kind)
-    return {"propKinds": kinds, "props": [prop.to_row(kinds) for prop in props]}
+    return {
+        "propKinds": kinds,
+        "props": [prop.to_row(kinds) for prop in population.props],
+        "lights": [light.to_row() for light in population.lights],
+    }

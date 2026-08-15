@@ -272,7 +272,7 @@ def generate_forest(
 def populate_forest(
     tiles: list[list[int]],
     seed: int,
-) -> list[scenery.Prop]:
+) -> scenery.Population:
     """Lay the story over a finished forest. Mutates `tiles`.
 
     Runs AFTER connectivity, never before: a scene needs a box of open ground
@@ -291,6 +291,11 @@ def populate_forest(
         tiles,
         random.Random(seed ^ 0x5CE7E),
         landmark=scenery.LANDMARK,
+        # One thread linking the scenes into a single route outward from the
+        # spawn clearing. The camp does not get one: it is four scenes of
+        # firewood around a fire, and a blood trail through it would be the
+        # wrong promise.
+        thread=True,
         avoid=((width / 2, height / 2, CENTRE_CLEARING_TILES + 6.0),),
     )
 
@@ -302,7 +307,7 @@ def build_forest(
 ) -> TileMap:
     """Generate, populate and validate. Raises rather than shipping a broken map."""
     tiles, used = generate_forest(width, height, seed)
-    props = populate_forest(tiles, used)
+    population = populate_forest(tiles, used)
     floor = sum(row.count(FLOOR) for row in tiles)
     reachable = count_reachable(tiles)
     if reachable != floor:
@@ -311,4 +316,4 @@ def build_forest(
         )
     if floor < width * height * 0.35:
         raise ValueError(f"forest seed {used} is only {floor / (width * height):.0%} floor")
-    return TileMap(tiles, seed=used, scenery=scenery.to_payload(props))
+    return TileMap(tiles, seed=used, scenery=scenery.to_payload(population))

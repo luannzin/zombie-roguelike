@@ -23,7 +23,7 @@ game's scale.
 | `world.py` | tile grid, tile alphabet, collision queries |
 | `maps.py` | hand-authored maps (`from_ascii`, `from_rects`) |
 | `mapgen.py` | procedural forest, seeded and connectivity-checked |
-| `scenery.py` | story SCENES: the layouts, where they may stand, the wire rows |
+| `scenery.py` | story SCENES: the layouts, the thread linking them, their lights, the wire rows |
 | `camp.py` | the camp clearing, its bonfire, the seat ring, the VOID exit, and the walk-out formation |
 | `zones.py` | where a run is: title card, `hostile`, `lantern` |
 | `protocol.py` | wire message shapes — source of truth |
@@ -149,6 +149,30 @@ game's scale.
   budget, and there is at most one per map. Rolled in with the weighted pool it
   loses every anchor race to a 4x3 woodpile; a second one turns the first from a
   place into a prop.
+- **`populate` returns a `Population`, and half of it is not on the wire.**
+  `props` and `lights` ship; `scenes` and `route` are where things ended up in
+  tiles and the order the thread walks them. They are kept because EXTRACTION
+  wants exactly that: a set of places worth standing in, and a direction
+  leading away from spawn. Dropping the extraction point at or past `route[-1]`
+  gives a run a shape — out along the story, back through it carrying something
+  — where a uniformly random tile gives an errand. Do not delete them for being
+  unused.
+- **The thread is what makes it one story instead of seven.** `_route` orders
+  the placed scenes by distance from spawn so the narrative reads OUTWARD and
+  ends at the landmark; `_thread` lays prints between them with blood
+  escalating leg by leg and a drag on the last one. Prints that land on
+  anything but floor are DROPPED, not moved: a trail that breaks at a thicket
+  and resumes on the far side is what a real one does, and one that bends
+  around every trunk to stay visible reads as a drawn line. The camp gets no
+  thread — it is firewood around a fire, and a blood trail through it is the
+  wrong promise.
+- **A `SceneLight` turns a scene into a destination.** Scenes are invisible
+  until a lantern reaches them, which means a map full of stories nobody walks
+  past; one lit lamp at a cabin door is visible from across the dark and the
+  player CHOOSES to go to it. Radii stay small — these are things you can see
+  from far away, not areas of safety. `BEACON` is defined and unused on
+  purpose: the extraction point will be one more row on this list, and the
+  client already burns it, feeds the fov with it and draws its glow.
 - The camp draws from `CAMP_POOL`, not `SCENES`: stores and firewood, nothing
   that bled. It is the one non-hostile zone, and a last stand outside the tent
   the party is about to leave from is a promise the zone does not keep. Camp

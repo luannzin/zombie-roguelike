@@ -89,10 +89,17 @@ subtree.
   at the campfire, start. One socket (`/ws/{code}`) carries the lobby and the
   run; rooms live in memory and die with their last player.
 - A run is an **expedition loop**: prepare at the camp, go out to a level,
-  extract with what you found, spend it, and go again. The first lap's
-  hand-off exists: in `Preparação` the party readies at the fire, files
-  through the black exit, and a second `welcome` drops them in the forest.
-  Extract and return are not built.
+  extract with what you found, spend it, and go again. The first lap's hand-off
+  exists — in `Preparação` the party readies at the fire, files through the
+  black exit, and a second `welcome` drops them in the forest.
+- **EXTRACTION is the core loop and it is not built.** The shape it will take:
+  a point appears somewhere in the level, the party carries what they collected
+  to it, and then they come back. The world is already laid out for it and new
+  work must keep it that way — `server/app/scenery.py` returns the ROUTE its
+  scenes are strung along (a walk outward from spawn ending at the landmark),
+  `SceneLight`/`BEACON` is the channel a beacon arrives on, and the boot prints
+  players leave behind are navigation for the trip back. Adding extraction
+  should be placement and rules, never a rendering change.
 - The room's ZONE (`server/app/zones.py`) says where the run is and how that
   place behaves: its title card, whether enemies spawn and guns fire
   (`hostile`), and whether the lantern may be switched on (`lantern`). The

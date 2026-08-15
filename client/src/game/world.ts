@@ -52,11 +52,26 @@ export interface SceneryPiece {
   flip: boolean;
 }
 
+/** A light the map owns, at the point it burns from, in world pixels. */
+export interface SceneryLight {
+  x: number;
+  y: number;
+  radiusTiles: number;
+  /** 0 lamp, 1 ember, 2 beacon — see `theme/palette.ts` `scene`. */
+  kind: number;
+}
+
 export interface Scenery {
   /** Flat on the floor, baked into the ground canvas. */
   flat: readonly SceneryPiece[];
   /** Stands up, depth-sorted with the party. Sorted by `y` at parse time. */
   standing: readonly SceneryPiece[];
+  /**
+   * Still burning. Fed to `FovField` exactly like a bonfire is — the map does
+   * not distinguish between a light the camp owns and a light a dead
+   * homestead owns, and neither should the lighting.
+   */
+  lights: readonly SceneryLight[];
 }
 
 export class TileMap {
@@ -229,7 +244,11 @@ function unpackScenery(payload: MapPayload): Scenery {
     (layer === 0 ? flat : standing).push({ kind: name, x, y, variant, flip: flip !== 0 });
   }
   standing.sort((a, b) => a.y - b.y);
-  return { flat, standing };
+
+  const lights: SceneryLight[] = (payload.lights ?? []).map(
+    ([x, y, radiusTiles, kind]) => ({ x, y, radiusTiles, kind }),
+  );
+  return { flat, standing, lights };
 }
 
 /**

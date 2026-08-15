@@ -154,6 +154,24 @@
   --fire-ember-c: #ffe6b0;
   --fire-glow: 255 168 78;
 
+  /*
+   * Lights the MAP owns, out in the forest — a lamp somebody left burning at a
+   * cabin door, embers in a camp that has only just gone out. Bare `R G B`,
+   * like every other light, because the layer computes its own alpha.
+   *
+   * These read against the fire, not with it: the camp bonfire is the warmest
+   * thing in the game and nothing out in the woods may compete with it. A lamp
+   * is paler and thinner, embers are deeper and dimmer.
+   *
+   * `--scene-beacon` is unused today and deliberately the odd one out: cold,
+   * green, unmistakably not fire. It is reserved for the EXTRACTION point, so
+   * that when it lands it is already the one light in the world that could not
+   * be something somebody left behind.
+   */
+  --scene-lamp: 255 214 150;
+  --scene-ember: 226 108 44;
+  --scene-beacon: 118 255 196;
+
   /* summoning — a player materialising into a seat at the fire.
      The column itself has no token: the sheet is greyscale and takes the
      arriving player's own colour. These are the motes falling around it. */

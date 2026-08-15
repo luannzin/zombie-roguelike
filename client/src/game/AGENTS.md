@@ -18,7 +18,7 @@ seam React is allowed to read.
 | `input.ts` | keyboard/mouse sampling into an `InputPacket` |
 | `world.ts` | client tile map, collision + sight queries, fires, hearth mask, placed scenery |
 | `combat.ts` | client-side shot feel and tracer bookkeeping |
-| `effects.ts` | tracers, dust, floating text, event lights |
+| `effects.ts` | tracers, dust, floating text, event lights, boot prints |
 | `entity-visuals.ts` | per-player colour/name visual state |
 | `lantern.ts` | four-cell battery, produces `output` 0..1 |
 | `hud-store.ts` | the only seam to React; `HUD_INTERVAL` = 0.2 s |
@@ -100,6 +100,19 @@ seam React is allowed to read.
   every frame and that merge walks two ascending lists). `PROP` is the tile kind
   a building's footprint claims: solid, sight-blocking, painted as ground, and
   drawn by nothing — the sprite in `scenery.standing` covers it.
+- **Footprints are the one effect that is not short-lived, and the exception is
+  the feature.** `Game.trackFootsteps` lays one per stride for every body on
+  visible ground, with the depth coming from the SOIL under it (`soilAt`), and
+  they last long enough to be navigation rather than flavour — on an extraction
+  run the trail you left walking out is how you find the way back. They are
+  laid AFTER `applyVisibility`, so nothing unlit ever marks the ground: a trail
+  appearing out of the dark would be a free tracker. Enemies leave them too,
+  and that is the interesting half — fresh prints crossing yours that you did
+  not make. The compass frame mirrors `track_frame` in `server/app/scenery.py`,
+  so the map's abandoned trails and the player's own prints are the same mark.
+- `Game.lights` is bonfires read off the tiles PLUS whatever the map's scenes
+  are still burning (`world.scenery.lights`), on one list. The lighting has no
+  concept of a camp light versus a forest light and must not grow one.
 - VOID is a winding gap in the treeline, not a missing floor and not a
   rectangle: solid, painted as ground, crushed by a darkness falloff.
   `blocksSight` lets light fall into it so the trees do not close into a

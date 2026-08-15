@@ -72,6 +72,30 @@ export interface PointLight {
   life: number;
 }
 
+/**
+ * A boot print left in the ground.
+ *
+ * The one effect here that is not short-lived, and the exception is on
+ * purpose. Prints last long enough to be NAVIGATION: on an extraction run the
+ * dangerous half is the walk back with your pockets full, and the trail you
+ * laid on the way out is how you find the way you came. That also closes a
+ * loop with the map's own storytelling — the abandoned trails the generator
+ * lays down (`server/app/scenery.py`) are drawn from the same sheet, so the
+ * marks you read and the marks you make are the same kind of mark.
+ *
+ * `depth` is the soil talking: mud takes a print, leaf litter barely does.
+ */
+export interface Footprint {
+  x: number;
+  y: number;
+  /** Compass frame in the tracks sheet — mirrors `track_frame` on the server. */
+  frame: number;
+  /** 0..1 how well this ground holds a print. Scales the alpha. */
+  depth: number;
+  age: number;
+  life: number;
+}
+
 /** Damage numbers and pickup/reward text share one rising-float list. */
 export type FloatTone = 'damage' | 'reward' | 'gold';
 
@@ -82,6 +106,31 @@ export interface TextFloat {
   tone: FloatTone;
   age: number;
   life: number;
+}
+
+/**
+ * Prints alive at once, across everybody.
+ *
+ * Generous, because the point is that a trail outlives the walk that made it.
+ * At a stride of ~0.9 tiles and player speed this is a couple of minutes for
+ * one player and correspondingly less for a party — which is the right way for
+ * it to degrade, since a crowded map is one where you have teammates to
+ * navigate by instead.
+ */
+const FOOTPRINT_LIMIT = 420;
+
+/**
+ * Compass frames in the tracks sheet. Mirrors `TRACK_DIRECTIONS` in
+ * server/app/scenery.py and server/tools/make_scenery.py — the sheet has one
+ * baked frame per direction, so this has to land on the frame that actually
+ * points that way, and the server's abandoned trails and the player's own
+ * prints have to agree or they will read as two different kinds of mark.
+ */
+const TRACK_DIRECTIONS = 8;
+
+function trackFrame(dx: number, dy: number): number {
+  const step = Math.round((Math.atan2(dx, dy) / (Math.PI * 2)) * TRACK_DIRECTIONS);
+  return ((step % TRACK_DIRECTIONS) + TRACK_DIRECTIONS) % TRACK_DIRECTIONS;
 }
 
 /** Air drag rate for impact debris vs. the heavier, slower footstep dust. */
@@ -104,6 +153,38 @@ export class Effects {
   textFloats: TextFloat[] = [];
   /** Transient world lights — see PointLight. */
   lights: PointLight[] = [];
+  /** Boot prints. Long-lived; see Footprint. */
+  footprints: Footprint[] = [];
+
+  /**
+   * Leave one print. `dx`/`dy` is the heading it was walking.
+   *
+   * Capped by dropping the OLDEST, not by refusing new ones: a trail that
+   * stopped being extended because a budget filled up would point the player
+   * back the way they came and then simply end, which is worse than a trail
+   * that fades from the far end like a real one.
+   */
+  spawnFootprint(
+    x: number,
+    y: number,
+    dx: number,
+    dy: number,
+    depth: number,
+    life: number,
+  ): void {
+    if (depth <= 0.02) return;
+    if (this.footprints.length >= FOOTPRINT_LIMIT) {
+      this.footprints.splice(0, this.footprints.length - FOOTPRINT_LIMIT + 1);
+    }
+    this.footprints.push({
+      x,
+      y,
+      frame: trackFrame(dx, dy),
+      depth,
+      age: 0,
+      life,
+    });
+  }
 
   spawnLight(
     x: number,
@@ -336,6 +417,7 @@ export class Effects {
     this.flashes = advance(this.flashes, dt);
     this.slashes = advance(this.slashes, dt);
     this.lights = advance(this.lights, dt);
+    this.footprints = advance(this.footprints, dt);
     this.particles = stepParticles(this.particles, dt, PARTICLE_DRAG);
     this.dust = stepParticles(this.dust, dt, DUST_DRAG);
     this.textFloats = advance(this.textFloats, dt, (d) => {
@@ -352,6 +434,7 @@ export class Effects {
     this.dust.length = 0;
     this.textFloats.length = 0;
     this.lights.length = 0;
+    this.footprints.length = 0;
   }
 }
 

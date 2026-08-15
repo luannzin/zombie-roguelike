@@ -20,9 +20,10 @@ import {
   type EntityContext,
 } from './layers/entities';
 import { drawAlertMarks, drawVisionCones } from './layers/vision';
+import { DisturbanceField } from './disturbance';
 import { AtmosphereLayer } from './layers/atmosphere';
 import { DarknessLayer } from './layers/darkness';
-import { drawSceneryProp } from './layers/scenery';
+import { drawFootprints, drawSceneryProp } from './layers/scenery';
 import { TerrainLayer, type DecorationMask } from './layers/terrain';
 import { drawVignette } from './layers/vignette';
 import { projectionFor } from './projection';
@@ -41,6 +42,12 @@ export class Renderer {
   private readonly atmosphere = new AtmosphereLayer();
   /** Depth-sort scratch — see `draw`. */
   private readonly ordered: DrawableEntity[] = [];
+  /**
+   * What the bodies on screen are doing to the plants around them. Owned here
+   * rather than passed in: it is a per-frame consequence of `state.entities`,
+   * which the renderer already has, and nothing outside drawing reads it.
+   */
+  private readonly disturbance = new DisturbanceField();
   private scenery: SceneryAtlas | null = null;
 
   constructor(
@@ -84,6 +91,7 @@ export class Renderer {
     this.terrain.reset();
     this.darkness.reset();
     this.atmosphere.reset();
+    this.disturbance.clear();
     this.book.clearTints();
   }
 
@@ -99,12 +107,17 @@ export class Renderer {
 
     this.clear();
 
-    // World space: floor, then what is painted ON the floor — enemy sight
-    // cones and footstep dust. The cones go under the bodies and under the
-    // darkness on purpose: a cone reaching into the dark has to fade out with
-    // the ground it is lying on.
+    // Rebuilt before anything is drawn, because the very first pass reads it:
+    // the undergrowth bends around whatever is standing in it this frame.
+    this.disturbance.update(state.entities, state.dt);
+
+    // World space: floor, then what is painted ON the floor — boot prints,
+    // enemy sight cones and footstep dust. The cones go under the bodies and
+    // under the darkness on purpose: a cone reaching into the dark has to fade
+    // out with the ground it is lying on.
     this.useWorldSpace(view.zoom, view.offsetX, view.offsetY);
-    this.terrain.ground(ctx, state.world, state.camera, state.time);
+    this.terrain.ground(ctx, state.world, state.camera, state.time, this.disturbance);
+    if (this.scenery) drawFootprints(ctx, state.effects, this.scenery, state.camera);
     drawVisionCones(ctx, state.entities, state.time, view.zoom);
     drawDust(ctx, state.effects);
 
@@ -173,7 +186,7 @@ export class Renderer {
     //   effects     tracers, slashes and event lights go OVER the darkness: a
     //               muzzle flash is a light source, not a thing being lit
     this.useWorldSpace(view.zoom, view.offsetX, view.offsetY);
-    this.terrain.overgrowth(ctx, state.world, state.camera, state.time);
+    this.terrain.overgrowth(ctx, state.world, state.camera, state.time, this.disturbance);
     // Over the ferns so a frond cannot hide it, under the darkness so the night
     // swallows it exactly as hard as the creature wearing it.
     drawAlertMarks(entity, state.entities, state.time);
@@ -184,6 +197,12 @@ export class Renderer {
       state.world.fires,
       state.world.tileSize,
       state.config.campfireLightTiles,
+      state.time,
+    );
+    this.darkness.drawSceneLights(
+      ctx,
+      state.world.scenery.lights,
+      state.world.tileSize,
       state.time,
     );
     drawCombatEffects(ctx, state.effects, state.config.tileSize);

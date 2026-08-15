@@ -33,6 +33,7 @@ import type {
 import { Camera } from '../render/camera';
 import { projectionFor } from '../render/projection';
 import { FovField, type LightSource, type VisionConfig, type Viewer } from '../render/fov';
+import { soilAt } from '../render/layers/terrain';
 import { Minimap, type MinimapPlayer } from '../render/minimap';
 import { Renderer } from '../render/renderer';
 import { SpriteBook } from '../render/sprites';
@@ -75,6 +76,27 @@ const MOVING_SPEED = 1;
  * campfire sprite is 1.75 tiles tall; this clears the flames by a bit.
  */
 const FIRE_TOOLTIP_LIFT_TILES = 2.5;
+/** Distance between boot prints, in tiles. One stride, not one frame. */
+const FOOTPRINT_STRIDE = 0.9;
+/**
+ * Seconds a print survives. Long, and deliberately so: on an extraction run
+ * the trail you laid walking out is how you find your way back, so it has to
+ * outlive the trip that made it.
+ */
+const FOOTPRINT_LIFE = 75;
+/**
+ * How lit a body has to be before it marks the ground. Above zero so a
+ * creature at the very edge of the beam does not leave a dotted line pointing
+ * at itself out in the dark.
+ */
+const FOOTPRINT_MIN_VISIBILITY = 0.25;
+/**
+ * How well each soil takes a print, indexed the way the terrain atlas orders
+ * its grounds: loam, turf, mud, litter. Mud holds one, leaf litter shrugs it
+ * off — the same ground the player can see themselves standing on.
+ */
+const SOIL_PRINT_DEPTH = [0.55, 0.3, 0.85, 0.16];
+
 /** Sprite sheet for players. Enemy sheets are named by the server's config. */
 const PLAYER_SHEET = 'player';
 /** Fallback if welcome.config.coinSprite is missing (older server). */
@@ -199,8 +221,13 @@ export class Game {
   private config: GameConfig | null = null;
   /** Where the run is and how it behaves. Rebuilt from every `welcome`. */
   private zone: ZoneInfo | null = null;
-  /** The world's own lights — bonfires. Derived from the map, never a message. */
+  /**
+   * The world's own lights: bonfires read off the tiles, plus whatever the
+   * map's placed scenes are burning. Derived from the map, never a message.
+   */
   private lights: LightSource[] = [];
+  /** Where each body last put a foot down — see `trackFootsteps`. */
+  private readonly strides = new Map<string, { x: number; y: number }>();
   /** Team light + explored memory. Rebuilt per map, updated per frame. */
   private fov: FovField | null = null;
   private localId = '';
@@ -395,6 +422,20 @@ export class Game {
       y: fire.y - msg.config.tileSize * 0.5,
       radiusTiles: msg.config.campfireLightTiles,
     }));
+    // Whatever the map's own scenes are still burning, on the same list. The
+    // lighting has no concept of "a camp light" versus "a light out in the
+    // woods" and must not grow one: a lamp at a dead homestead throws real
+    // light, casts real shadows through the trees around it, and is the reason
+    // a player crosses half a map to find out what is under it. Ids continue
+    // past the fires so a flicker never walks when the list changes length.
+    for (const [index, light] of this.world.scenery.lights.entries()) {
+      this.lights.push({
+        id: this.world.fires.length + index,
+        x: light.x,
+        y: light.y,
+        radiusTiles: light.radiusTiles,
+      });
+    }
     // Nothing grows in the hearth: a fern in front of a player hides the
     // character somebody is looking for. Cleared here rather than left over
     // from a previous zone, since a forest wants undergrowth everywhere.
@@ -825,6 +866,10 @@ export class Game {
 
     this.updateVision(sampled.players, dt);
     this.applyVisibility(entities);
+    // After `applyVisibility`, so a body the team cannot see leaves no prints.
+    // A trail appearing out of the dark would be a free tracker, the same way
+    // a sight cone drawn over an unlit creature would be.
+    this.trackFootsteps(entities);
     this.syncTooltipAnchors();
 
     this.renderer.draw({
@@ -861,6 +906,64 @@ export class Game {
    * ones there are: lanterns are off by rule, and the bonfire is what lets the
    * party see each other.
    */
+  /**
+   * Lay boot prints for everything walking on visible ground.
+   *
+   * Purely a client-side reading of positions the server already broadcast —
+   * nothing here is authoritative and nothing is sent. A print goes down every
+   * `FOOTPRINT_STRIDE` tiles travelled, so the spacing is a stride rather than
+   * a frame rate, and the ground decides how well it takes: mud holds a print,
+   * leaf litter barely does (`soilAt`).
+   *
+   * Enemies leave them too, and that is the interesting half. Fresh prints
+   * crossing yours that you did not make are the cheapest piece of information
+   * an extraction run can hand a player, and it costs nothing to produce
+   * because the tracks are already being drawn for the map's own trails.
+   */
+  private trackFootsteps(entities: DrawableEntity[]): void {
+    const world = this.world;
+    if (!world) return;
+    const stride = world.tileSize * FOOTPRINT_STRIDE;
+
+    for (const entity of entities) {
+      if (!entity.alive || entity.visibility <= FOOTPRINT_MIN_VISIBILITY) {
+        this.strides.delete(entity.id);
+        continue;
+      }
+      const footY = entity.y + entity.halfHeight;
+      const last = this.strides.get(entity.id);
+      if (!last) {
+        // First sighting lays nothing: with no previous point there is no
+        // heading, and a print pointing the wrong way is worse than a gap.
+        this.strides.set(entity.id, { x: entity.x, y: footY });
+        continue;
+      }
+
+      const dx = entity.x - last.x;
+      const dy = footY - last.y;
+      if (dx * dx + dy * dy < stride * stride) continue;
+
+      const tx = Math.floor(entity.x / world.tileSize);
+      const ty = Math.floor(footY / world.tileSize);
+      const depth =
+        tx >= 0 && ty >= 0 && tx < world.width && ty < world.height
+          ? SOIL_PRINT_DEPTH[soilAt(tx, ty, world.seed)] ?? SOIL_PRINT_DEPTH[0]
+          : SOIL_PRINT_DEPTH[0];
+      this.effects.spawnFootprint(entity.x, footY, dx, dy, depth, FOOTPRINT_LIFE);
+      last.x = entity.x;
+      last.y = footY;
+    }
+
+    // Anything that stopped being drawn stops being tracked, or the map keeps
+    // one stride marker per entity that has ever walked past.
+    if (this.strides.size > entities.length) {
+      const live = new Set(entities.map((entity) => entity.id));
+      for (const id of this.strides.keys()) {
+        if (!live.has(id)) this.strides.delete(id);
+      }
+    }
+  }
+
   private updateVision(remotes: RenderedPlayer[], dt: number): void {
     const fov = this.fov;
     const world = this.world;

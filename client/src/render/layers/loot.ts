@@ -3,10 +3,10 @@
  *
  * Sprites sit with the coins, under the party, in screen space via
  * `Projection`. Light (glow, motes, beam) goes AFTER the darkness pass in
- * world space — the context already has the camera. An unlit drop is not
- * drawn at all: a legendary column in the dark would be a free tracker.
- * Epic and legendary own the column; the other three rarities get a few
- * rising specks in the rarity colour instead.
+ * world space — the context already has the camera. The SPRITE stays dark
+ * with the night. The VFX do not: a whisper of motes and aura leaks
+ * through so a drop can be felt before the lantern reaches it. Fully lit
+ * they run at full strength (`lit(1, floor) === 1`).
  */
 
 import type { LootRarity } from '../../net/protocol';
@@ -32,22 +32,31 @@ const GLOW_ALPHA: Record<LootRarity, number> = {
   legendary: 0.5,
 };
 
-/** Specks around a drop that has no beam. Count is the whole tell. */
+/** Specks around every drop. Epic / legendary keep the column AND a few motes. */
 const MOTE_COUNT: Record<LootRarity, number> = {
-  common: 3,
-  uncommon: 4,
-  rare: 5,
-  epic: 0,
-  legendary: 0,
+  common: 4,
+  uncommon: 5,
+  rare: 6,
+  epic: 3,
+  legendary: 4,
 };
 
 const MOTE_ALPHA: Record<LootRarity, number> = {
-  common: 0.28,
-  uncommon: 0.36,
-  rare: 0.44,
-  epic: 0,
-  legendary: 0,
+  common: 0.32,
+  uncommon: 0.4,
+  rare: 0.48,
+  epic: 0.36,
+  legendary: 0.42,
 };
+
+/** How much of the VFX remains when the sprite is fully dark. */
+const DARK_GLOW = 0.28;
+const DARK_MOTE = 0.4;
+const DARK_BEAM = 0.16;
+
+function lit(visibility: number, floor: number): number {
+  return visibility * (1 - floor) + floor;
+}
 
 export function drawLootShadows(
   ctx: CanvasRenderingContext2D,
@@ -107,19 +116,18 @@ export function drawLootAuras(
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
   for (const drop of drops) {
-    if (drop.visibility <= 0.01) continue;
-    const pulse = 0.82 + 0.18 * Math.sin(time * 3.4 + drop.phase);
+    const pulse = 0.78 + 0.22 * Math.sin(time * 2.6 + drop.phase);
     const [r, g, b] = glow[drop.rarity];
-    const alpha = GLOW_ALPHA[drop.rarity] * drop.visibility * pulse;
+    const alpha = GLOW_ALPHA[drop.rarity] * lit(drop.visibility, DARK_GLOW) * pulse;
     fillGlow(ctx, drop.x, drop.y + 0.4, GLOW_RADIUS[drop.rarity], [r, g, b], alpha);
   }
   ctx.restore();
 }
 
 /**
- * Slow rising specks for common / uncommon / rare. Same world-space pass as
- * the glow. Deterministic from `time` and the drop's phase — no pool, no
- * spawn, so two clients looking at the same drop see the same motes.
+ * Rising specks. Same world-space pass as the glow. Deterministic from
+ * `time` and the drop's phase — no pool, no spawn, so two clients looking
+ * at the same drop see the same motes. A few still rise in the dark.
  */
 export function drawLootMotes(
   ctx: CanvasRenderingContext2D,
@@ -128,34 +136,41 @@ export function drawLootMotes(
   tileSize: number,
 ): void {
   const glow = palette().rarityGlow;
-  const unit = tileSize / 16;
+  const unit = Math.max(1, Math.round(tileSize / 16));
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
   for (const drop of drops) {
     const count = MOTE_COUNT[drop.rarity];
-    if (count === 0 || drop.beam || drop.visibility <= 0.01) continue;
+    if (count === 0) continue;
     const bob = Math.sin(drop.animTime * 3.2 + drop.phase) * 0.6;
     const [r, g, b] = glow[drop.rarity];
-    const peak = MOTE_ALPHA[drop.rarity] * drop.visibility;
+    const peak = MOTE_ALPHA[drop.rarity] * lit(drop.visibility, DARK_MOTE);
     ctx.fillStyle = `rgb(${r},${g},${b})`;
     for (let i = 0; i < count; i++) {
       const seed = drop.phase * 1.37 + i * 2.399;
       const frac = seed - Math.floor(seed);
-      const period = 2.4 + frac * 1.2;
+      const period = 2.1 + frac * 1.4;
       const cycle = ((time + seed * 4) / period) % 1;
-      const angle = seed * Math.PI * 2 + time * (0.28 + (i % 3) * 0.1);
-      const orbit = tileSize * (0.2 + 0.1 * frac);
-      const lift = cycle * tileSize * 0.5;
+      const angle = seed * Math.PI * 2 + time * (0.34 + (i % 3) * 0.12);
+      const orbit = tileSize * (0.18 + 0.16 * frac);
+      const lift = cycle * tileSize * 0.62;
       const x = drop.x + Math.cos(angle) * orbit;
       const y =
         drop.y +
         bob -
         tileSize * 0.35 -
         lift +
-        Math.sin(angle * 1.7) * tileSize * 0.05;
+        Math.sin(angle * 1.7) * tileSize * 0.06;
       const fade = Math.sin(cycle * Math.PI);
-      ctx.globalAlpha = peak * fade * fade;
-      ctx.fillRect(Math.round(x - unit / 2), Math.round(y - unit / 2), unit, unit);
+      const twinkle = 0.65 + 0.35 * Math.abs(Math.sin(time * 8.2 + seed * 6));
+      const alpha = peak * fade * fade * twinkle;
+      const px = Math.round(x);
+      const py = Math.round(y);
+      ctx.globalAlpha = alpha * 0.35;
+      ctx.fillRect(px, py + unit, unit, unit);
+      ctx.globalAlpha = alpha;
+      const spark = fade > 0.72 ? unit + 1 : unit;
+      ctx.fillRect(px, py, spark, spark);
     }
   }
   ctx.restore();
@@ -164,7 +179,7 @@ export function drawLootMotes(
 /**
  * Exclusive looping column for epic and legendary. Tint is the rarity colour.
  * Same space as `drawLootAuras` and as combat flashes: world pixels, not
- * `view.x` / `view.size`.
+ * `view.x` / `view.size`. A ghost of it remains in the dark.
  */
 export function drawLootBeams(
   ctx: CanvasRenderingContext2D,
@@ -177,10 +192,10 @@ export function drawLootBeams(
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
   for (const drop of drops) {
-    if (!drop.beam || drop.visibility <= 0.01) continue;
+    if (!drop.beam) continue;
     const frame = effectFrame(sheet, time + drop.phase);
     const image = effectImage(sheet, colors[drop.rarity]);
-    ctx.globalAlpha = drop.visibility * 0.85;
+    ctx.globalAlpha = lit(drop.visibility, DARK_BEAM) * 0.85;
     ctx.drawImage(
       image,
       frame * sheet.frameWidth,

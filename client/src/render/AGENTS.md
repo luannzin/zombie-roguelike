@@ -37,12 +37,15 @@ mutation, no React.
   scenery (one depth sort by `y`) → overgrowth → motes → darkness → combat
   effects → loot auras / motes / epic-legendary beams → hunt diamond →
   labels → vignette. Effects and loot light go over the darkness because
-  they are light, not things being lit. An unlit drop is not drawn at all.
+  they are light, not things being lit. An unlit drop HIDES ITS SPRITE.
+  Glow, motes and the epic/legendary column leak a whisper through the
+  night (`lit(visibility, floor)`) so the player can feel a find before
+  the lantern reaches it — never a full beam, never the item itself.
   Loot sprites use `Projection` in the screen-space pass with the coins;
   glow, motes and beams sit in the world-space pass after darkness and
   take raw world pixels — `view.x` there would project them a second time,
-  off the map. Common / uncommon / rare get a few rising specks in the
-  rarity colour; epic and legendary keep the looping column.
+  off the map. Every rarity throws specks; epic and legendary keep the
+  looping column as well.
   The hunt diamond goes AFTER the darkness on purpose, see below.
 - **`fov.ts` is what the PLAYERS can see; `layers/vision.ts` is the ENEMY hunt
   tell.** Unrelated systems: the first is a client-side tile field that decides

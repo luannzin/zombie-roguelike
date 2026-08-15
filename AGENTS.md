@@ -146,8 +146,10 @@ subtree.
   (`server/app/loot.py`), not hashed from the seed. Five rarities (common
   white, uncommon green, rare blue, epic purple, legendary gold). E collects
   when close; the name in the tooltip takes the rarity colour. Epic and
-  legendary get a small looping beam; the other three rarities get a few
-  rarity-coloured motes. Camp maps have none. The pocket is
+  legendary get a small looping beam; every rarity also throws a few
+  rarity-coloured motes. The sprite hides in the dark; the motes and
+  aura leak a whisper so a drop can be felt before the lantern reaches
+  it. Camp maps have none. The pocket is
   `server/app/inventory.py`: a few slots (upgradeable), stacking by key,
   and a weight that may go past max. Past 20% of max carry the walk slows
   and the footsteps read heavier.   TAB expands the bag on the left HUD. A collected item is held over the

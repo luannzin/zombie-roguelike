@@ -503,7 +503,12 @@ export class Game {
     // pickup ships without a client change. Loading is fire-and-forget: the
     // renderer skips any entity whose sheet is not in yet.
     const sheets = [
-      ...Object.values(msg.config.enemyTypes).map((t) => t.sprite),
+      ...Object.values(msg.config.enemyTypes).flatMap((t) => [
+        t.sprite,
+        ...(t.variants ?? []),
+        ...(t.hats ?? []),
+        ...(t.clothes ?? []),
+      ]),
       msg.config.coinSprite || COIN_SHEET,
       msg.config.backpackSprite || BACKPACK_SHEET,
     ];
@@ -1192,7 +1197,7 @@ export class Game {
       tint: source.color,
       // Always on for now — the overlay is what "equipped" means, and every
       // player walks out of camp wearing one.
-      gear: this.config?.backpackSprite || BACKPACK_SHEET,
+      gear: [this.config?.backpackSprite || BACKPACK_SHEET],
       color: source.color,
       name: source.name,
       ready: source.ready,
@@ -1247,10 +1252,10 @@ export class Game {
     return {
       id,
       kind: 'enemy',
-      sheet: type.sprite,
+      sheet: type.variants?.[enemy.v ?? 0] ?? type.sprite,
       // The art carries its own palette; tinting it would flatten the pixels.
       tint: null,
-      gear: null,
+      gear: enemyGear(type, enemy),
       color: palette().minimap.enemy,
       name: '',
       ready: false,
@@ -1720,6 +1725,20 @@ export class Game {
     const targetX = mouth ? cx * 0.55 + (mouth.x + look) * 0.45 : cx + look;
     this.camera.follow(targetX, cy, world, dt);
   }
+}
+
+/** Clothes first so a hat draws on top. Missing or out-of-range indices skip. */
+function enemyGear(type: EnemyTypeConfig, enemy: RenderedEnemy): string[] {
+  const gear: string[] = [];
+  const cloth = enemy.cloth;
+  const hat = enemy.hat;
+  if (cloth != null && cloth >= 0 && type.clothes?.[cloth]) {
+    gear.push(type.clothes[cloth]);
+  }
+  if (hat != null && hat >= 0 && type.hats?.[hat]) {
+    gear.push(type.hats[hat]);
+  }
+  return gear;
 }
 
 /** A vertical full-body hit capsule, the shape server/app/combat.py expects. */

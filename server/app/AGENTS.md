@@ -16,7 +16,7 @@ game's scale.
 | `simulation.py` | movement + tile collision — mirrored by the client |
 | `combat.py` | hitscan raycast, entity-agnostic |
 | `entities.py` | `Player`, `InputCmd` (includes the lantern switch, relayed not simulated) |
-| `enemies.py` | `EnemyType` stat blocks (incl. the sight cone), live `Enemy` |
+| `enemies.py` | `EnemyType` stat blocks (incl. the sight cone, visual variants and accessory pools), live `Enemy`, `dress` |
 | `ai.py` | enemy senses, patrol/hunt/return, steering/attack, the director |
 | `pathing.py` | BFS flow field, one per player |
 | `coins.py` | dropped gold: burst, magnet, collection |
@@ -109,7 +109,10 @@ game's scale.
   director places an occupied patch of forest, not a wave aimed at the party.
 - Only what moves goes on the tick row, and `aw` earns its place: the client
   fills the hunt diamond from it every frame. Cone geometry is per-type and
-  rides `welcome.config.enemyTypes`; it is tested, not drawn.
+  rides `welcome.config.enemyTypes`; it is tested, not drawn. A zombie's
+  look (`v`, `hat`, `cloth`) is identity and never changes, but enemies
+  have no roster, so those indices ride the tick row — omit `hat` / `cloth`
+  when the slot is empty.
 - `rooms.py` owns every live `Room`. Nothing else may hold one past the request
   that fetched it — a reference kept elsewhere outlives `rooms.drop()` and keeps
   a tick task alive after the last player left.
@@ -243,7 +246,11 @@ game's scale.
 - Adding a creature = one `EnemyType`, a `SPAWN_TABLE` weight, and a processed
   sprite folder of the same name. It must require no client change — its sight
   cone is two more fields on the same stat block, and the hunt diamond
-  fills from `aw` regardless.
+  fills from `aw` regardless. Visual variants and accessories are lists on
+  that type (`variants`, `hats`, `clothes`); `dress` rolls them at spawn
+  and the snapshot carries `v` / `hat` / `cloth`. Same stats, different
+  sheets. A new overlay is a `GEAR` entry processed `--exact`, then a name
+  on the pool.
 - Adding a zone = one `zones.Zone` and whatever builds its map. Its title card,
   its safety and its lighting rules are all data; the client needs no change to
   announce or obey a new one. A forest's subtitle is `night_clock()` — a time
@@ -261,7 +268,8 @@ game's scale.
   cached structure (see `pathing.py`, one field per player shared by the horde).
 - New tuning goes in `config.py` in tiles/seconds, plus a `client_config()` key
   if prediction or rendering needs it. Asset folder names the client loads
-  (`coinSprite`, `backpackSprite`, `enemyTypes[*].sprite`) live here too.
+  (`coinSprite`, `backpackSprite`, `enemyTypes[*].sprite` / `variants` /
+  `hats` / `clothes`) live here too.
 
 ## Verification
 

@@ -7,12 +7,15 @@ output the game actually loads.
 
 ## Ownership
 
-- `raw/` — source art (`player.png`, `zombie.png`, `backpack.png`)
+- `raw/` — source art (`player.png`, `zombie.png`, `zombie-husk.png`,
+  `zombie-brute.png`, `backpack.png`, `zhat-*.png`, `zcloth-*.png`)
   and font sources (`fonts/DepartureMono-Regular.otf`). **Never served.**
-- `processed/` — production art: `player/`, `zombie/`, `coin/`, `backpack/`
+- `processed/` — production art: `player/`, `zombie/`, `zombie-husk/`,
+  `zombie-brute/`, `zhat-*/`, `zcloth-*/`, `coin/`, `backpack/`
   (`sheet.png` + `manifest.json`), `terrain/`, `scenery/`, `vfx/`, `hud/`.
   Vite's `publicDir` points here, so these files are fetched as
-  `/player/sheet.png`, `/backpack/sheet.png`, `/terrain/ground_loam.png`,
+  `/player/sheet.png`, `/backpack/sheet.png`, `/zombie-husk/sheet.png`,
+  `/zhat-cap/sheet.png`, `/terrain/ground_loam.png`,
   `/scenery/cabin.png`, `/loot/sheet.png`, `/hud/backpack.png`,
   `/hud/coin.png`, ….
 - `terrain/` is the PLACE — soil, stone, wood that grew there — and the client
@@ -34,11 +37,17 @@ output the game actually loads.
   atlas, a bottom-anchored PROP silhouette with an outline, and a flat DECAL
   with neither. See `server/tools/AGENTS.md`.
 - A folder name here is the asset key the server ships in
-  `welcome.config` (`enemyTypes[*].sprite`, `coinSprite`, `backpackSprite`) —
-  renaming a folder is a protocol-visible change.
+  `welcome.config` (`enemyTypes[*].sprite`, `enemyTypes[*].variants`,
+  `hats`, `clothes`, `coinSprite`, `backpackSprite`) — renaming a folder
+  is a protocol-visible change.
 - `backpack/` is a gear overlay: same 4×3 character grid as `player/`,
   greyscale, registered to the processed player frame so it composites on
   the back. The client multiply-tints it with the wearer's colour.
+- Zombie bodies (`zombie/`, `zombie-husk/`, `zombie-brute/`) are authored
+  on that same 16×16 grid and processed `--exact`, so hats (`zhat-*`) and
+  clothes (`zcloth-*`) lock to the head and torso the way the backpack
+  locks to the player. Accessory sheets bake their own colour — enemies
+  are drawn untinted.
 - The client reads `processed/` only. Nothing may import from `raw/`; the font
   is bundled from `client/src/assets/fonts/` instead.
 

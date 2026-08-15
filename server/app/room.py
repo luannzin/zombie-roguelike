@@ -62,7 +62,7 @@ from .config import (
 )
 from .crates import Crate
 from .loot import Drop
-from .enemies import Enemy, EnemyType
+from .enemies import Enemy, EnemyType, dress
 from .world import FLOOR
 from .entities import InputCmd, Player, clean_name, pick_color, random_name
 from .pathing import Navigator
@@ -678,6 +678,7 @@ class Room:
     def spawn_enemy(self, enemy_type: EnemyType, x: float, y: float) -> Enemy:
         self._enemy_id += 1
         enemy = Enemy(id=f"e{self._enemy_id}", type=enemy_type, x=x, y=y)
+        dress(enemy)
         self.enemies[enemy.id] = enemy
         return enemy
 

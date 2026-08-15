@@ -81,7 +81,9 @@ Snapshot arrays:
             in the creature's sight cone and is pinned at 1 while it hunts.
             The client fills the hunt diamond with it; the cone's own reach
             and width are per-type and ride the config, not the tick, and
-            are not drawn
+            are not drawn. `v` is the body-variant index into
+            `enemyTypes[t].variants`. `hat` / `cloth` are optional indices
+            into those overlay pools — omitted when the zombie wears none.
   coins     live gold pickups (one per gold point dropped)
   shots     hitscan tracers fired since the last snapshot
   attacks   enemy melee swings; `dmg` is 0 when the victim's i-frames ate it

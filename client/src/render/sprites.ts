@@ -8,9 +8,9 @@
  *
  * Player colours are a multiply tint over the base sheet, cached per colour, so
  * adding a colour costs nothing and no per-colour art is ever generated.
- * Equipped gear (the backpack) is the same contract: a greyscale overlay
- * multiplied by the wearer's colour. Enemies are drawn untinted — their art
- * carries its own palette.
+ * Equipped gear is the same contract: a greyscale overlay multiplied by the
+ * wearer's colour when `tint` is set (the backpack). Enemy overlays (hats,
+ * clothes) are drawn untinted — their art carries its own palette.
  *
  * Sheet layout (produced by server/tools/process_sprites.py):
  *   rows = down, left, right, up   cols = 3 animation frames

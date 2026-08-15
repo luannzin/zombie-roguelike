@@ -10,7 +10,7 @@ mutation, no React.
 | file | owns |
 | --- | --- |
 | `renderer.ts` | pass sequencing and the world/screen transform |
-| `types.ts` | `RenderState`, `DrawableEntity` — the renderer's input contract (`gear` is the equipped overlay) |
+| `types.ts` | `RenderState`, `DrawableEntity` — the renderer's input contract (`gear` is the overlay list) |
 | `camera.ts` | follow, clamp to map bounds, the arrival push-in |
 | `framing.ts` | the wide shot of the camp — zoom and rest-shot fire position |
 | `projection.ts` | zoom + offset between world and screen space |
@@ -103,14 +103,17 @@ mutation, no React.
   `Camera`'s resting zoom; if they diverge, starting a run cuts to a different
   picture of the same clearing instead of continuing the shot.
 - Sprites are keyed by asset name; which enemy sheets to load comes from
-  `welcome.config.enemyTypes[*].sprite`, never a hardcoded list. The backpack
-  overlay is `welcome.config.backpackSprite`.
-- **Gear sits on the body.** `DrawableEntity.gear` is an overlay sheet drawn
-  in the same facing and walk frame, multiply-tinted with the wearer's
-  colour. It is registered to the processed player grid, so it is blitted at
-  the same dest rect. Always the backpack for players right now; null for
-  enemies. Facing down shows straps (the pack is behind); facing up and
-  side show the pack on the back.
+  `welcome.config.enemyTypes[*].sprite` plus that type's `variants` / `hats`
+  / `clothes`, never a hardcoded list. The backpack overlay is
+  `welcome.config.backpackSprite`.
+- **Gear sits on the body.** `DrawableEntity.gear` is a back-to-front list of
+  overlay sheets drawn in the same facing and walk frame. A tinted target
+  (the player) multiply-tints every layer — the backpack follows the wearer.
+  An untinted target (a zombie) keeps the art's own colours, so hats and
+  clothes can be a cap or a vest without a second identity. Overlays are
+  registered to the processed 16x16 grid and blitted at the same dest rect.
+  Players wear `[backpack]`; enemies wear the clothes-then-hat list the
+  server rolled, or nothing.
 - Colours come from `theme/palette.ts` only. Never write a literal colour here.
 - Frames are bottom-anchored, so any frame height works with no extra code.
 - A prop sheet's frames are VARIANTS unless its manifest entry carries `fps`

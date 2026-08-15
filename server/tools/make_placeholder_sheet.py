@@ -8,12 +8,16 @@ Characters:
   rows: 0 = facing down, 1 = facing side (right), 2 = facing up
   cols: 0 = step A, 1 = idle/stand, 2 = step B
 
-Gear (backpack, …):
+Gear (backpack, zhat-*, zcloth-*, …):
   rows: down / side / up, same as a character
   cols: walk frames (col 1 idle)
   Art is authored on the processed 16x16 player grid so an overlay composites
-  without a second transform. Neutral greys — the client multiply-tints them
-  with the wearer's colour.
+  without a second transform. The backpack is greyscale — the client
+  multiply-tints it with the wearer's colour. Zombie hats and clothes bake
+  their colour; enemies are drawn untinted.
+
+Exact creatures (zombie, zombie-husk, zombie-brute) use that same 16x16
+grid so accessories register. Process them with `--exact`.
 
 One art set per run. `--entity` picks it (defaults to `--name`). Creatures
 and gear are data tables, so adding either is not a code change. The world
@@ -24,6 +28,8 @@ Output: assets/raw/<name>.png  (consumed by tools/process_sprites.py)
 Usage:
     python tools/make_placeholder_sheet.py --name player
     python tools/make_placeholder_sheet.py --name zombie
+    python tools/make_placeholder_sheet.py --name zombie-husk
+    python tools/make_placeholder_sheet.py --name zhat-cap
 """
 
 from __future__ import annotations
@@ -113,79 +119,262 @@ PLAYER = Entity(
     ],
 )
 
-ZOMBIE_PALETTE: Palette = {
-    "o": (22, 30, 26, 255),     # outline
-    "d": (54, 72, 50, 255),     # matted hair / dark shade
-    "b": (118, 122, 96, 255),   # body (torn shirt)
-    "s": (138, 176, 106, 255),  # rotten skin
-    "e": (30, 38, 26, 255),     # sunken eye socket
-    "r": (150, 44, 52, 255),    # wound / open jaw
+ENTITIES = {"player": PLAYER}
+
+# ---------------------------------------------------------------------------
+# Exact creatures — authored on the processed 16x16 player grid so overlays
+# (hats, clothes) composite the way the backpack does: no crop, no rescale.
+# One pad row, 6 head, 5 torso, 3 legs, one pad row. Hats own rows 0–4;
+# clothes own rows 7–11. Variants share the silhouette and differ in paint
+# and pose, so one accessory sheet fits all three.
+# ---------------------------------------------------------------------------
+
+EXACT_W = 16
+PAD = ["." * EXACT_W]
+
+
+@dataclass(frozen=True)
+class ExactCreature:
+    """One 16x16-authored creature: palette + head / torso / walk legs."""
+
+    palette: Palette
+    head: dict[str, Art]
+    torso: dict[str, Art]
+    legs: list[Art]
+
+    def frame(self, view: str, index: int) -> Art:
+        return PAD + self.head[view] + self.torso[view] + self.legs[index] + PAD
+
+
+def _rows(*lines: str) -> Art:
+    for line in lines:
+        if len(line) != EXACT_W:
+            raise ValueError(f"row width {len(line)} != {EXACT_W}: {line!r}")
+    return list(lines)
+
+
+# Walker — classic rot. Green skin, torn shirt, hanging jaw, a slight reach.
+WALKER_PALETTE: Palette = {
+    "o": (22, 30, 26, 255),
+    "d": (46, 60, 42, 255),
+    "b": (108, 112, 90, 255),
+    "k": (84, 88, 70, 255),
+    "s": (134, 170, 104, 255),
+    "h": (158, 186, 122, 255),
+    "e": (28, 36, 24, 255),
+    "r": (148, 42, 50, 255),
 }
 
-ZOMBIE_HEAD = {
-    # Lolling head: bug eyes and a hanging jaw.
-    "down": [
-        "....oooo....",
-        "...odddddo..",
-        "...osssssso.",
-        "...oeesseeo.",  # 2px eyes: 1px washes out in the downscale to 16x16
-        "...osrrrsso.",
-        "....ooooo...",
-    ],
-    "side": [
-        "....oooo....",
-        "...oddddddo.",
-        "...osssssso.",
-        "...osssseeo.",
-        "...ossrrrro.",
-        "....ooooo...",
-    ],
-    "up": [
-        "....oooo....",
-        "...odddddo..",
-        "...oddddddo.",
-        "...oddrdddo.",  # exposed wound on the back of the skull
-        "...oddddddo.",
-        "....ooooo...",
-    ],
+WALKER_HEAD = {
+    "down": _rows(
+        "......oooo......",
+        "....oddddddo....",
+        "....osssssso....",
+        "....oeesseeo....",
+        "....osrrrrso....",
+        ".....oooooo.....",
+    ),
+    "side": _rows(
+        ".......oooo.....",
+        ".....odddddo....",
+        ".....ossssso....",
+        ".....osseseo....",
+        ".....ossrrro....",
+        "......ooooo.....",
+    ),
+    "up": _rows(
+        "......oooo......",
+        "....oddddddo....",
+        "....oddddddo....",
+        "....oddrdddo....",
+        "....oddddddo....",
+        ".....oooooo.....",
+    ),
 }
 
-ZOMBIE = Entity(
-    palette=ZOMBIE_PALETTE,
-    head=ZOMBIE_HEAD,
-    torso={
-        # Arms reach out towards whatever the zombie is facing.
-        "down": [
-            "...obbbbo...",
-            "..obbbbbbo..",
-            ".osbbbbbbso.",
-            ".osobbbboso.",
-            "...obbbbo...",
-        ],
-        "side": [
-            "...obbbbo...",
-            "..obbbbbbo..",
-            "..obbbbbosso",
-            "..obbbbbbo..",
-            "...obbbbo...",
-        ],
-        "up": [
-            "...obbbbo...",
-            "..obbbbbbo..",
-            ".oobbbbbboo.",
-            "..obbbbbbo..",
-            "...obbbbo...",
-        ],
-    },
-    # Shamble: one leg steps, the other drags (wider foot) behind it.
-    legs=[
-        ["..obb.bbo...", "..od...do...", "..ooo..oo..."],
-        ["...ob..bbo..", "...od..ddo..", "...oo..ooo.."],
-        ["..obb..bo...", "..od...do...", "..oo..ooo..."],
-    ],
+WALKER_TORSO = {
+    "down": _rows(
+        ".....obbbbo.....",
+        "....obkbbbbo....",
+        "...osbbbbbbso...",
+        "...osobbbboso...",
+        ".....obbbbo.....",
+    ),
+    "side": _rows(
+        ".....obbbbo.....",
+        "....obbbbbbo....",
+        "....obbbbosso...",
+        "....obkbbbbo....",
+        ".....obbbbo.....",
+    ),
+    "up": _rows(
+        ".....obbbbo.....",
+        "....obbbbbbo....",
+        "....obkbbbbo....",
+        "....obbbbbbo....",
+        ".....obbbbo.....",
+    ),
+}
+
+# Shared shamble: one foot steps, the other drags a wider print.
+SHAMBLE_LEGS = [
+    _rows("....obb..bo.....", "....od...do.....", "....ooo..oo....."),
+    _rows(".....ob..bo.....", ".....od..do.....", ".....oo..oo....."),
+    _rows(".....ob..bbo....", ".....od...do....", ".....oo..ooo...."),
+]
+
+WALKER = ExactCreature(
+    palette=WALKER_PALETTE,
+    head=WALKER_HEAD,
+    torso=WALKER_TORSO,
+    legs=SHAMBLE_LEGS,
 )
 
-ENTITIES = {"player": PLAYER, "zombie": ZOMBIE}
+# Husk — spent. Ashen skin, almost no shirt, skull showing, arms hang.
+HUSK_PALETTE: Palette = {
+    "o": (28, 28, 30, 255),
+    "d": (58, 56, 54, 255),
+    "b": (98, 96, 88, 255),
+    "k": (76, 74, 68, 255),
+    "s": (154, 156, 132, 255),
+    "h": (176, 178, 154, 255),
+    "e": (36, 34, 32, 255),
+    "r": (120, 48, 52, 255),
+}
+
+HUSK_HEAD = {
+    "down": _rows(
+        "......oooo......",
+        "....oddddddo....",
+        "....osssssso....",
+        "....oessoeso....",
+        "....os.rr.so....",
+        ".....oooooo.....",
+    ),
+    "side": _rows(
+        ".......oooo.....",
+        ".....odddddo....",
+        ".....ossssso....",
+        ".....os.sseo....",
+        ".....os.rrro....",
+        "......ooooo.....",
+    ),
+    "up": _rows(
+        "......oooo......",
+        "....oddddddo....",
+        "....oddddddo....",
+        "....odd.dddo....",
+        "....oddddddo....",
+        ".....oooooo.....",
+    ),
+}
+
+HUSK_TORSO = {
+    "down": _rows(
+        ".....osssso.....",
+        "....osbbbso.....",
+        "....osssssso....",
+        "....oskkkso.....",
+        ".....osssso.....",
+    ),
+    "side": _rows(
+        ".....osssso.....",
+        "....osbbbso.....",
+        "....osssssso....",
+        "....oskkkso.....",
+        ".....osssso.....",
+    ),
+    "up": _rows(
+        ".....osssso.....",
+        "....osbbbso.....",
+        "....oskkkso.....",
+        "....osbbbso.....",
+        ".....osssso.....",
+    ),
+}
+
+HUSK = ExactCreature(
+    palette=HUSK_PALETTE,
+    head=HUSK_HEAD,
+    torso=HUSK_TORSO,
+    legs=SHAMBLE_LEGS,
+)
+
+# Brute — heavier. Jaundiced skin, stained shirt, thick brow, arms out.
+BRUTE_PALETTE: Palette = {
+    "o": (32, 28, 22, 255),
+    "d": (62, 52, 36, 255),
+    "b": (88, 78, 58, 255),
+    "k": (68, 60, 44, 255),
+    "s": (168, 164, 88, 255),
+    "h": (188, 180, 110, 255),
+    "e": (36, 30, 22, 255),
+    "r": (140, 40, 44, 255),
+}
+
+BRUTE_HEAD = {
+    "down": _rows(
+        "......oooo......",
+        "....oddddddo....",
+        "....odssssdo....",
+        "....oesesseo....",
+        "....osrrrrso....",
+        ".....oooooo.....",
+    ),
+    "side": _rows(
+        ".......oooo.....",
+        ".....odddddo....",
+        ".....odsssdo....",
+        ".....osseseo....",
+        ".....osrrrro....",
+        "......ooooo.....",
+    ),
+    "up": _rows(
+        "......oooo......",
+        "....oddddddo....",
+        "....oddddddo....",
+        "....oddddddo....",
+        "....oddddddo....",
+        ".....oooooo.....",
+    ),
+}
+
+BRUTE_TORSO = {
+    "down": _rows(
+        ".....obbbbo.....",
+        "....obkbbbbo....",
+        "...osbbbbbbso...",
+        "...osbbbbbbso...",
+        ".....obbbbo.....",
+    ),
+    "side": _rows(
+        ".....obbbbo.....",
+        "....obbbbbbo....",
+        "....obbbbosso...",
+        "....obkbbbbo....",
+        ".....obbbbo.....",
+    ),
+    "up": _rows(
+        ".....obbbbo.....",
+        "....obbbbbbo....",
+        "....obkbbbbo....",
+        "....obbbbbbo....",
+        ".....obbbbo.....",
+    ),
+}
+
+BRUTE = ExactCreature(
+    palette=BRUTE_PALETTE,
+    head=BRUTE_HEAD,
+    torso=BRUTE_TORSO,
+    legs=SHAMBLE_LEGS,
+)
+
+EXACT = {
+    "zombie": WALKER,
+    "zombie-husk": HUSK,
+    "zombie-brute": BRUTE,
+}
 
 # ---------------------------------------------------------------------------
 # Gear — equipment overlays. Same 3x3 raw grid as a character (down / side /
@@ -284,7 +473,421 @@ BACKPACK = Gear(
     views={"down": BACKPACK_DOWN, "side": BACKPACK_SIDE, "up": BACKPACK_UP},
 )
 
-GEAR = {"backpack": BACKPACK}
+# Zombie accessories — same 16x16 registration as the backpack. Baked colour:
+# enemies are drawn untinted, so a hue here is the only identity a hat has.
+# Hats sit on the head band (rows 0–4); clothes sit on the torso (rows 7–11).
+
+HAT_CAP_PALETTE: Palette = {
+    "o": (28, 26, 22, 255),
+    "d": (72, 64, 44, 255),
+    "b": (118, 102, 64, 255),
+    "h": (148, 128, 78, 255),
+}
+
+HAT_CAP = Gear(
+    palette=HAT_CAP_PALETTE,
+    views={
+        "down": _rows(
+            ".....oooooo.....",
+            "....obbbbbbo....",
+            "....ohbbbbbo....",
+            "...oooooooooo...",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+        ),
+        "side": _rows(
+            ".......oooo.....",
+            ".....obbbbbo....",
+            ".....ohbbbbo....",
+            ".....oooooooo...",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+        ),
+        "up": _rows(
+            ".....oooooo.....",
+            "....obbbbbbo....",
+            "....obbbbbbo....",
+            ".....oooooo.....",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+        ),
+    },
+)
+
+HAT_BEANIE_PALETTE: Palette = {
+    "o": (32, 22, 24, 255),
+    "d": (88, 40, 46, 255),
+    "b": (132, 58, 64, 255),
+    "h": (160, 84, 88, 255),
+}
+
+HAT_BEANIE = Gear(
+    palette=HAT_BEANIE_PALETTE,
+    views={
+        "down": _rows(
+            "......oo........",
+            ".....obbbo......",
+            "....obbbbbbo....",
+            ".....oooooo.....",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+        ),
+        "side": _rows(
+            "........oo......",
+            "......obbbo.....",
+            ".....obbbbbo....",
+            "......ooooo.....",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+        ),
+        "up": _rows(
+            "......oo........",
+            ".....obbbo......",
+            "....obbbbbbo....",
+            ".....oooooo.....",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+        ),
+    },
+)
+
+HAT_HARDHAT_PALETTE: Palette = {
+    "o": (36, 32, 18, 255),
+    "d": (120, 96, 32, 255),
+    "b": (176, 148, 48, 255),
+    "h": (204, 180, 72, 255),
+    "k": (80, 72, 36, 255),
+}
+
+HAT_HARDHAT = Gear(
+    palette=HAT_HARDHAT_PALETTE,
+    views={
+        "down": _rows(
+            ".....oooooo.....",
+            "....obhhhhbo....",
+            "....obbbbbbo....",
+            "...ookooooooo...",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+        ),
+        "side": _rows(
+            ".......oooo.....",
+            ".....obhhhbo....",
+            ".....obbbbbo....",
+            ".....okooooooo..",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+        ),
+        "up": _rows(
+            ".....oooooo.....",
+            "....obhhhhbo....",
+            "....obbbbbbo....",
+            ".....oooooo.....",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+        ),
+    },
+)
+
+CLOTH_VEST_PALETTE: Palette = {
+    "o": (24, 26, 22, 255),
+    "d": (48, 52, 40, 255),
+    "b": (72, 78, 56, 255),
+    "h": (96, 100, 74, 255),
+}
+
+CLOTH_VEST = Gear(
+    palette=CLOTH_VEST_PALETTE,
+    views={
+        "down": _rows(
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            ".....o....o.....",
+            "....ob....bo....",
+            "....ob....bo....",
+            "....obbbbbbo....",
+            ".....obbbo......",
+            "................",
+            "................",
+            "................",
+            "................",
+        ),
+        "side": _rows(
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            ".....o..........",
+            "....obbo........",
+            "....obbo...o....",
+            "....obbbo..bo...",
+            ".....obbo.......",
+            "................",
+            "................",
+            "................",
+            "................",
+        ),
+        "up": _rows(
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            ".....oooooo.....",
+            "....obbbbbbo....",
+            "....obbbbbbo....",
+            "....obhbbbbo....",
+            ".....obbbo......",
+            "................",
+            "................",
+            "................",
+            "................",
+        ),
+    },
+)
+
+CLOTH_JACKET_PALETTE: Palette = {
+    "o": (30, 24, 20, 255),
+    "d": (64, 48, 38, 255),
+    "b": (102, 78, 58, 255),
+    "h": (128, 100, 74, 255),
+}
+
+CLOTH_JACKET = Gear(
+    palette=CLOTH_JACKET_PALETTE,
+    views={
+        "down": _rows(
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "....o......o....",
+            "...ob......bo...",
+            "...ob......bo...",
+            "...obb....bbo...",
+            "....ob....bo....",
+            "................",
+            "................",
+            "................",
+            "................",
+        ),
+        "side": _rows(
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "...o............",
+            "..obbo..........",
+            "..obbbo.........",
+            "..odbbbo........",
+            "...obbbo........",
+            "................",
+            "................",
+            "................",
+            "................",
+        ),
+        "up": _rows(
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "....oooooooo....",
+            "...obbbbbbbbo...",
+            "...obhhhhhhbo...",
+            "...obbbbbbbbo...",
+            "....odbbbbdo....",
+            "................",
+            "................",
+            "................",
+            "................",
+        ),
+    },
+)
+
+CLOTH_TIE_PALETTE: Palette = {
+    "o": (28, 22, 24, 255),
+    "d": (72, 32, 40, 255),
+    "b": (112, 44, 52, 255),
+}
+
+CLOTH_TIE = Gear(
+    palette=CLOTH_TIE_PALETTE,
+    views={
+        "down": _rows(
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "......oo........",
+            "......obbo......",
+            "......obbo......",
+            ".......oo.......",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+        ),
+        "side": _rows(
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "........o.......",
+            "........bo......",
+            "........bo......",
+            "........o.......",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+        ),
+        "up": _rows(
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+        ),
+    },
+)
+
+GEAR = {
+    "backpack": BACKPACK,
+    "zhat-cap": HAT_CAP,
+    "zhat-beanie": HAT_BEANIE,
+    "zhat-hardhat": HAT_HARDHAT,
+    "zcloth-vest": CLOTH_VEST,
+    "zcloth-jacket": CLOTH_JACKET,
+    "zcloth-tie": CLOTH_TIE,
+}
 
 
 def render_cell(
@@ -308,29 +911,46 @@ def render_cell(
     return img
 
 
-def write_gear(gear: Gear, path: Path) -> None:
-    """3x3 raw sheet, one processed-pixel per char, top-left of a 16x16 cell."""
-    cell = 16
-    sheet = Image.new("RGBA", (cell * 3, cell * 3), MAGENTA)
+def paint_exact(palette: Palette, rows: Art) -> Image.Image:
+    """One 16x16 cell, one source char per pixel, top-left origin."""
+    img = Image.new("RGBA", (EXACT_W, EXACT_W), MAGENTA)
+    px = img.load()
+    for y, line in enumerate(rows):
+        for x, ch in enumerate(line):
+            if ch == ".":
+                continue
+            px[x, y] = palette[ch]
+    return img
+
+
+def write_exact_sheet(columns: list[dict[str, Art]], palette: Palette, path: Path) -> None:
+    """3x3 raw sheet on the processed grid. `columns` is the three walk cells."""
+    sheet = Image.new("RGBA", (EXACT_W * 3, EXACT_W * 3), MAGENTA)
     for row, view in enumerate(VIEWS):
-        cell_img = Image.new("RGBA", (cell, cell), MAGENTA)
-        px = cell_img.load()
-        for y, line in enumerate(gear.views[view]):
-            for x, ch in enumerate(line):
-                if ch == ".":
-                    continue
-                px[x, y] = gear.palette[ch]
-        for col in range(3):
-            sheet.paste(cell_img, (col * cell, row * cell))
+        for col, frames in enumerate(columns):
+            sheet.paste(paint_exact(palette, frames[view]), (col * EXACT_W, row * EXACT_W))
     path.parent.mkdir(parents=True, exist_ok=True)
     sheet.convert("RGB").save(path)
     print(f"wrote {path} ({sheet.width}x{sheet.height})")
 
 
+def write_gear(gear: Gear, path: Path) -> None:
+    """3x3 raw sheet; walk columns share one pose (overlays do not animate)."""
+    write_exact_sheet([gear.views, gear.views, gear.views], gear.palette, path)
+
+
+def write_exact_creature(creature: ExactCreature, path: Path) -> None:
+    columns = [
+        {view: creature.frame(view, col) for view in VIEWS}
+        for col in range(3)
+    ]
+    write_exact_sheet(columns, creature.palette, path)
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--name", default="player")
-    keys = (*ENTITIES, *GEAR)
+    keys = (*ENTITIES, *EXACT, *GEAR)
     ap.add_argument("--entity", choices=keys, default=None,
                     help="art set to draw (defaults to --name)")
     ap.add_argument("--cell", type=int, default=32, help="raw cell size in px")
@@ -348,6 +968,10 @@ def main() -> None:
         # Gear is authored on the processed 16x16 grid. Forcing the cell here
         # means `--exact` in process_sprites.py keeps that registration.
         write_gear(GEAR[key], out)
+        return
+
+    if key in EXACT:
+        write_exact_creature(EXACT[key], out)
         return
 
     if key not in ENTITIES:

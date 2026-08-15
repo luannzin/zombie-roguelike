@@ -227,6 +227,12 @@ export interface EnemyTypeConfig {
   viewRange: number;
   viewRangeLit: number;
   viewDegrees: number;
+  /** Body sheets rolled on spawn. `EnemyState.v` indexes this. */
+  variants?: string[];
+  /** Hat overlay sheets. `EnemyState.hat` indexes this. */
+  hats?: string[];
+  /** Clothes overlay sheets. `EnemyState.cloth` indexes this. */
+  clothes?: string[];
 }
 
 /**
@@ -404,6 +410,12 @@ export interface EnemyState {
    * works you out, full once it has committed.
    */
   aw: number;
+  /** Body variant index into `enemyTypes[t].variants`. 0 when omitted. */
+  v?: number;
+  /** Hat overlay index into `enemyTypes[t].hats`. Absent means none. */
+  hat?: number;
+  /** Clothes overlay index into `enemyTypes[t].clothes`. Absent means none. */
+  cloth?: number;
 }
 
 /**
@@ -548,7 +560,10 @@ export interface SnapshotMessage {
    * is not a snapshot without players.
    */
   roster?: PlayerFull[];
-  /** Live enemies only — an id that disappears is dead or despawned. */
+  /**
+   * Live enemies only — an id that disappears is dead or despawned.
+   * `v` / `hat` / `cloth` are the look rolled at spawn; see `EnemyState`.
+   */
   enemies: EnemyState[];
   /** Live gold pickups. */
   coins: CoinState[];

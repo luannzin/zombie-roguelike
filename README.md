@@ -102,7 +102,9 @@ snapshot: the wire carries a type key, and the client looks it up in
 `welcome.config.enemyTypes`.
 
 Adding a creature is a stat block, a spawn weight, and a sprite sheet of the
-same name. No client change, no new draw path, no protocol change.
+same name. No client change, no new draw path, no protocol change. A zombie
+also rolls a body variant and optional hat / clothes at spawn — same stats,
+different sheets, indices on the snapshot row.
 
 | | zombie |
 | --- | --- |
@@ -175,7 +177,7 @@ cd server
 ./.venv/bin/python tools/process_sprites.py --name player --tile 16 --side-facing left --exact
 
 ./.venv/bin/python tools/make_placeholder_sheet.py --name zombie
-./.venv/bin/python tools/process_sprites.py --name zombie --tile 16
+./.venv/bin/python tools/process_sprites.py --name zombie --tile 16 --exact --side-facing right
 ```
 
 Terrain, effects and HUD icons have no raw stage — they are generated straight
@@ -197,11 +199,13 @@ its `frames / fps` is what the lobby times the whole materialisation against.
 zombies and NPCs — only `--name` changes (plus `--height` for taller entities). Player colours are a runtime multiply tint over the single base sheet;
 no per-colour art exists.
 
-Placeholder art sets live in `ENTITIES` in `make_placeholder_sheet.py` (`player`,
-`zombie`) as 12-column ASCII art over a per-entity palette; `--entity` picks one
-and defaults to `--name`. Detail finer than 2 raw pixels does not survive the
-downscale to a 16x16 frame, so read features (eyes, wounds) need luminance
-contrast, not just hue.
+Placeholder art sets live in `make_placeholder_sheet.py`: `ENTITIES` (`player`)
+as 12-column ASCII that is cropped down, `EXACT` (zombie variants) and `GEAR`
+(backpack, hats, clothes) as 16×16 ASCII registered to the processed player
+grid. `--entity` picks one and defaults to `--name`. Exact sheets skip the
+crop so overlays lock to the body. Detail finer than 2 raw pixels does not
+survive a downscale, so read features (eyes, wounds) need luminance contrast,
+not just hue.
 
 ## Layout
 

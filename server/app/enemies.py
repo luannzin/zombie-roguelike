@@ -23,6 +23,8 @@ Adding a creature:
     1. draw it:  tools/make_placeholder_sheet.py --name <n> (or real art)
     2. process:  tools/process_sprites.py --name <n> --tile 16
     3. add an EnemyType to ENEMY_TYPES and a weight to SPAWN_TABLE
+    Visual variants and accessories are lists on that type; spawn rolls them
+    and the snapshot carries the indices. Same stats, different sheets.
 """
 
 from __future__ import annotations
@@ -48,6 +50,7 @@ class EnemyType:
 
     key: str
     #: Processed asset folder name — assets/processed/<sprite>/sheet.png.
+    #: Fallback when `variants` is empty or an index is out of range.
     sprite: str
     max_hp: int
     #: Damage per landed melee hit (before the victim's i-frames are checked).
@@ -80,6 +83,12 @@ class EnemyType:
     view_tiles: float = ENEMY_VIEW_DARK_TILES
     view_lit_tiles: float = ENEMY_VIEW_LIT_TILES
     view_degrees: float = 75.0
+    #: Body sheets rolled on spawn. Index rides the snapshot as `v`.
+    variants: tuple[str, ...] = ()
+    #: Hat overlay sheets. Spawn may pick one, or none. Snapshot `hat`.
+    hats: tuple[str, ...] = ()
+    #: Clothes overlay sheets. Spawn may pick one, or none. Snapshot `cloth`.
+    clothes: tuple[str, ...] = ()
 
     hit_tiles_r: float = PLAYER_HIT_TILES_R
     sprite_tiles_h: float = SPRITE_TILES_H
@@ -150,12 +159,22 @@ class EnemyType:
             "viewRange": self.view_range,
             "viewRangeLit": self.view_lit_range,
             "viewDegrees": self.view_degrees,
+            "variants": list(self.variants),
+            "hats": list(self.hats),
+            "clothes": list(self.clothes),
         }
 
+
+#: Chance a spawned zombie wears a hat / a piece of clothing. Independent.
+ZOMBIE_HAT_CHANCE = 0.55
+ZOMBIE_CLOTH_CHANCE = 0.45
 
 ZOMBIE = EnemyType(
     key="zombie",
     sprite="zombie",
+    variants=("zombie", "zombie-husk", "zombie-brute"),
+    hats=("zhat-cap", "zhat-beanie", "zhat-hardhat"),
+    clothes=("zcloth-vest", "zcloth-jacket", "zcloth-tie"),
     max_hp=30,          # 4 hits at SHOT_DAMAGE 8
     damage=9,           # ~15 dps against a swarm, given MELEE_IMMUNITY
     xp=12,
@@ -236,6 +255,12 @@ class Enemy:
     last_seen_x: float = 0.0
     last_seen_y: float = 0.0
 
+    #: Visual look, rolled once at spawn. `variant` indexes `type.variants`;
+    #: `hat` / `cloth` index those pools, or -1 for none. Never change after.
+    variant: int = 0
+    hat: int = -1
+    cloth: int = -1
+
     def __post_init__(self) -> None:
         if self.hp <= 0:
             self.hp = self.type.max_hp
@@ -267,7 +292,7 @@ class Enemy:
     def to_payload(self) -> dict:
         # `t` (type key) is the client's lookup into welcome.config.enemyTypes,
         # so per-type constants are never repeated in a 30 Hz snapshot.
-        return {
+        row = {
             "id": self.id,
             "t": self.type.key,
             "x": round(self.x, 4),
@@ -280,4 +305,22 @@ class Enemy:
             # The hunt diamond's fill. Two decimals is under a percent of
             # the meter — finer than the client can paint.
             "aw": round(self.awareness, 2),
+            "v": self.variant,
         }
+        # Omit empty slots so a bare zombie stays a short row.
+        if self.hat >= 0:
+            row["hat"] = self.hat
+        if self.cloth >= 0:
+            row["cloth"] = self.cloth
+        return row
+
+
+def dress(enemy: Enemy) -> None:
+    """Pick a body variant and optional hat / clothes. Call once at spawn."""
+    kind = enemy.type
+    if kind.variants:
+        enemy.variant = random.randrange(len(kind.variants))
+    if kind.hats and random.random() < ZOMBIE_HAT_CHANCE:
+        enemy.hat = random.randrange(len(kind.hats))
+    if kind.clothes and random.random() < ZOMBIE_CLOTH_CHANCE:
+        enemy.cloth = random.randrange(len(kind.clothes))

@@ -206,9 +206,9 @@ export function drawEntity(entity: EntityContext, target: DrawableEntity): void 
 }
 
 /**
- * Equipped overlay, registered to the same 16x16 grid as the body. Same
- * facing and walk column, same multiply tint — a hue on the pack would be
- * a second identity.
+ * Equipped overlays, registered to the same 16x16 grid as the body. Same
+ * facing and walk column. A tinted target (the player) multiply-tints
+ * every layer; an untinted one (a zombie) keeps the art's own colours.
  */
 function blitGear(
   { ctx, book }: EntityContext,
@@ -219,23 +219,24 @@ function blitGear(
   dw: number,
   dh: number,
 ): void {
-  if (!target.gear) return;
-  const sheet = book.get(target.gear);
-  const image = book.image(target.gear, target.tint);
-  if (!sheet || !image) return;
-  const row = sheet.rows[facing] ?? 0;
-  const col = frameIndex(sheet, target.animTime, target.moving);
-  ctx.drawImage(
-    image,
-    col * sheet.frameWidth,
-    row * sheet.frameHeight,
-    sheet.frameWidth,
-    sheet.frameHeight,
-    dx,
-    dy,
-    dw,
-    dh,
-  );
+  for (const name of target.gear) {
+    const sheet = book.get(name);
+    const image = book.image(name, target.tint);
+    if (!sheet || !image) continue;
+    const row = sheet.rows[facing] ?? 0;
+    const col = frameIndex(sheet, target.animTime, target.moving);
+    ctx.drawImage(
+      image,
+      col * sheet.frameWidth,
+      row * sheet.frameHeight,
+      sheet.frameWidth,
+      sheet.frameHeight,
+      dx,
+      dy,
+      dw,
+      dh,
+    );
+  }
 }
 
 function drawAimIndicator(

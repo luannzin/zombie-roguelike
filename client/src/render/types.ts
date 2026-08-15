@@ -26,11 +26,12 @@ export interface DrawableEntity {
   /** Multiply tint over the sheet, or null to keep the art's own colours. */
   tint: string | null;
   /**
-   * Equipped overlay sheet, or null. Drawn on the body in the same facing
-   * and walk frame, multiply-tinted with `tint` so it follows the wearer.
-   * Always the backpack for players right now; enemies never wear one.
+   * Overlay sheets, back-to-front. Drawn on the body in the same facing
+   * and walk frame. Multiply-tinted with `tint` when one is set — the
+   * backpack follows the wearer; enemy hats and clothes bake their own
+   * colour and ride an untinted enemy (`tint` is null).
    */
-  gear: string | null;
+  gear: readonly string[];
   /** Identity colour — name label and minimap dot. */
   color: string;
   /** Display name. Empty for enemies, which are never labelled. */

@@ -158,9 +158,14 @@ seam React is allowed to read.
 - `dispose()` releases every timer, listener, observer and rAF handle created in
   this folder.
 - **Every player wears the backpack.** `toDrawablePlayer` sets `gear` to
-  `welcome.config.backpackSprite` and the lobby draws the same overlay on
+  `[welcome.config.backpackSprite]` and the lobby draws the same overlay on
   every seat. It is always on for now — unequip is a later field, not a
   missing sprite. The sheet is greyscale and tinted with the player's colour.
+- **A zombie is dressed at spawn.** `toDrawableEnemy` picks the body sheet
+  from `enemyTypes[t].variants[v]` and builds `gear` as clothes then hat
+  from the optional snapshot indices. The look is identity, not motion —
+  interpolation copies the indices, it does not blend them. Sheets are
+  loaded from the type's `variants` / `hats` / `clothes` lists on welcome.
 - Tuning comes from `welcome.config`; the lantern's drain/recharge constants
   are the exception, because the battery is client-local. The switch is not:
   `on` is on the input packet and every player snapshot so remotes go dark.

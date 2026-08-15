@@ -119,7 +119,7 @@ presses start.
   "players": [{ "id": "...", "x": 0, "y": 0, "vx": 0, "vy": 0, "ax": 1, "ay": 0, "lantern": true,
                 "hp": 100, "alive": true, "xp": 24, "gold": 6, "level": 1, "xpInLevel": 24, "xpToLevel": 40,
                 "ready": false }],
-  "enemies": [{ "id": "e12", "t": "zombie", "x": 0, "y": 0, "vx": 0, "vy": 0, "ax": 1, "ay": 0, "hp": 22 }],
+  "enemies": [{ "id": "e12", "t": "zombie", "x": 0, "y": 0, "vx": 0, "vy": 0, "ax": 1, "ay": 0, "hp": 22, "v": 1, "hat": 0 }],
   "shots": [{ "id": 7, "by": "a1b2c3d4", "x": 0, "y": 0, "dx": 1, "dy": 0, "dist": 132.5, "hit": "b5c6" }],
   "attacks": [{ "by": "e12", "target": "a1b2c3d4", "x": 0, "y": 0, "dx": 1, "dy": 0, "dmg": 9, "blocked": false }],
   "kills": [{ "kind": "enemy", "killer": "a1b2c3d4", "victim": "e12", "x": 0, "y": 0, "xp": 12, "gold": 3 }],
@@ -143,7 +143,10 @@ the spawn tile.
 
 Enemies carry no per-type constants: `t` keys into `welcome.config.enemyTypes`,
 which is the stat block table from `server/app/enemies.py`. Only live enemies
-are listed — an id that stops appearing is dead or despawned.
+are listed — an id that stops appearing is dead or despawned. `v` indexes
+`enemyTypes[t].variants` (the body sheet). `hat` and `cloth` are optional
+indices into those overlay pools; omitted means the zombie wears none. The
+look is rolled once at spawn and never changes.
 
 `attacks` is enemy melee. `dmg` is 0 and `blocked` true when the victim's
 i-frames absorbed the swing (see below); the event is still broadcast so the

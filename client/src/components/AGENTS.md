@@ -82,7 +82,9 @@ and nowhere near the frame loop.
   plus the number. Dragging a cell off the panel tosses it;
   `InventoryGhost` follows the cursor.
   Both the card and the ghost portal to `document.body` so the glass
-  does not warp them off the pointer. Drop goes through
+  does not warp them off the pointer. The card's `fixed` layer is a
+  wrapper — `.world-tooltip` is `position: relative` and cannot be the
+  positioned node. Drop goes through
   `inventory-actions`, never a socket from React.
 - A control a zone forbids is shown DISABLED, never hidden. `BatteryGauge` in
   the camp still answers "how much light am I carrying into the night"; only

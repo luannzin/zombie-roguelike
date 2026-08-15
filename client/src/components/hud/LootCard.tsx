@@ -1,7 +1,8 @@
 /**
  * Hover card for a bag item. Lives in a portal so the glass does not warp
- * it off the slot it is pointing at. Measures itself and flips / shifts
- * so a left-edge slot cannot push it off the screen.
+ * it off the slot it is pointing at. The chrome (`.world-tooltip`) is
+ * `position: relative` — this wrapper is the `fixed` layer, or the card
+ * would lay out at the end of `document.body` and never show on the slot.
  */
 
 import { useLayoutEffect, useRef, useState } from 'react';
@@ -59,6 +60,7 @@ export function LootCard({ item, anchor }: LootCardProps) {
 
     const place = () => {
       const box = el.getBoundingClientRect();
+      if (box.width < 1 || box.height < 1) return;
       const next = fitCard(anchor, box.width, box.height, el);
       setPose((prev) => (samePose(prev, next) ? prev : next));
     };
@@ -69,23 +71,23 @@ export function LootCard({ item, anchor }: LootCardProps) {
   }, [item.key, item.qty, item.rarity, anchor.x, anchor.top, anchor.bottom]);
 
   return createPortal(
-    <TooltipCard
+    <div
       ref={ref}
-      placement={pose?.placement ?? 'top'}
-      arrowX={pose?.arrowX}
-      className="pointer-events-none fixed top-0 left-0 z-40"
+      className="pointer-events-none fixed top-0 left-0 z-50 w-max"
       style={{
         visibility: pose ? 'visible' : 'hidden',
         left: pose?.left ?? 0,
         top: pose?.top ?? 0,
       }}
     >
-      <p className={RARITY_CLASS[item.rarity]}>{item.name}</p>
-      <p className={RARITY_CLASS[item.rarity]}>{RARITY_LABEL[item.rarity]}</p>
-      <LootCardRow label="PESO" value={String(item.weight)} />
-      <LootCardRow label="VALOR" value={String(item.value)} />
-      {item.qty > 1 ? <LootCardRow label="QTD" value={String(item.qty)} /> : null}
-    </TooltipCard>,
+      <TooltipCard placement={pose?.placement ?? 'top'} arrowX={pose?.arrowX}>
+        <p className={RARITY_CLASS[item.rarity]}>{item.name}</p>
+        <p className={RARITY_CLASS[item.rarity]}>{RARITY_LABEL[item.rarity]}</p>
+        <LootCardRow label="PESO" value={String(item.weight)} />
+        <LootCardRow label="VALOR" value={String(item.value)} />
+        {item.qty > 1 ? <LootCardRow label="QTD" value={String(item.qty)} /> : null}
+      </TooltipCard>
+    </div>,
     document.body,
   );
 }
@@ -113,7 +115,10 @@ function fitCard(
   let left = anchor.x - width / 2;
   left = Math.min(Math.max(left, PAD), maxLeft);
 
-  const borderLeft = parseFloat(getComputedStyle(el).borderLeftWidth) || 0;
+  const chrome = el.firstElementChild;
+  const borderLeft = chrome
+    ? parseFloat(getComputedStyle(chrome).borderLeftWidth) || 0
+    : 2;
   const raw = anchor.x - left - borderLeft;
   const arrowX = Math.min(Math.max(raw, ARROW_INSET), width - borderLeft - ARROW_INSET);
 

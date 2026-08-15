@@ -17,7 +17,7 @@ imported by `app/` and never run at request time.
 | `make_vfx.py` | generates final pixels | `assets/processed/vfx/` (summon, kindle, aura, wind) |
 | `make_loot.py` | generates final pixels | `assets/processed/loot/` (one 16x16 frame per item) |
 | `make_hud_icons.py` | generates final pixels | `assets/processed/hud/` (battery, backpack, coin) |
-| `make_audio.py` | generates final samples | `assets/processed/audio/` (31 sounds, 58 wavs + manifest) |
+| `make_audio.py` | generates final samples | `assets/processed/audio/` (31 sounds, 58 wavs + manifest + loudness.json) |
 
 ## Local Contracts
 
@@ -103,9 +103,27 @@ imported by `app/` and never run at request time.
     `sfx_summon` put their impact on the frame `make_vfx.py` flashes, and
     `sfx_crate_break` fits inside the crate smash strip. Changing a sheet's
     `frames / fps` means changing its sound.
-  - **The mix lives in the manifest**, not at the call site: `gain` and `bus`
-    are authored in `CATALOG`, so "why is the shot louder than a footstep" has
-    one answer in one file.
+  - **The mix is MEASURED, not guessed.** `CATALOG` authors a `level_db` on one
+    ladder; the generator renders the sound, measures its loudness with a
+    BS.1770 K-weighted meter (`loudness_lufs`) and computes the manifest `gain`
+    that lands it there. So two sounds written at the same level are the same
+    loudness, and the client needs no per-bus trim — which is what makes 50 on
+    one of the game's volume sliders match 50 on another. Hand-picked gains were
+    wrong by up to 22 dB, and every one of those errors was inaudible until it
+    was next to the sound it clashed with.
+  - Loudness is the loudest **150 ms window**, not the integrated file. The
+    window is the ear's own integration time: integrated loudness divides by
+    duration, so it calls a 40 ms tick quiet and boosts it into a bang while
+    rating a long soft chime as loud.
+  - One gain per SOUND, from the mean of its variants — never per file, or the
+    levelling irons out the variation the variants exist to provide.
+  - `loudness.json` is **committed output**, not a scratch cache: the manifest's
+    gains are derived from it, so `--only` on a tree without it cannot produce a
+    correct manifest. The generator says so loudly rather than shipping unity
+    gains.
+  - Every one-shot is DC-blocked and faded on the way out (`build`), so no
+    recipe has to remember. Beds are exempt from both: a filter's settling
+    transient at the head would re-open the seam `loopify` just crossfaded shut.
   - **`bus` is a player-facing grouping**, because each one is a fader in the
     game's Opções panel: `ui` (the interface answering), `ambient` (the loops),
     `sfx` (**guns and zombies only**) and `misc` (everything else that happens —
@@ -179,6 +197,11 @@ python tools/make_audio.py
   a peak in range, no DC offset, both edges at zero, no samples pinned at the
   rail, and — for a bed — a wrap discontinuity small against its own local RMS.
   A loop that fails that last one clicks once per cycle forever.
+- After changing a level or a recipe, confirm the ladder still holds: for each
+  sound, `measured LUFS + 20*log10(gain)` must equal `REFERENCE_LUFS +
+  level_db`. It lands within hundredths of a dB, so anything larger means a
+  sound was re-rendered without its measurement being refreshed. Check no
+  `0.97 * gain` exceeds 1.0 while you are there.
 - **Tune a sound against references by measuring, not by adjective.** Reference
   recordings live in `assets/inspiration/<sound>/`; the browser decodes mp3
   natively, so an FFT in a page gives band energies, spectral centroid, 85%

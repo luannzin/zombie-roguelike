@@ -59,6 +59,11 @@ own the HUD and routing only. Talks to the server over one WebSocket.
   ramped, persisted in `zr:audio`. `sfx` is deliberately narrow so somebody can
   turn combat down without losing their own footsteps. Which bus a sound rides
   is authored in `server/tools/make_audio.py` and travels on the manifest.
+- **There is no per-bus trim, and none may be added.** Every sound is loudness-
+  normalized at generation time against a measured ladder, so a bus needs no
+  correction and 50 means the same loudness on every row. A trim here would
+  make that ladder lie and give the next person two places to look. Balance
+  problems are fixed by moving a `level_db` in `make_audio.py`.
 - **React never renders per frame.** `Game` publishes to `hud-store` at 5 Hz and
   components read it via `useSyncExternalStore`. Per-frame state must not become
   component state.

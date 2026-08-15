@@ -57,6 +57,10 @@ class EnemyType:
     damage: int
     #: Paid to whoever lands the killing blow.
     xp: int
+    #: The MOST this creature can drop, in coins — not what it does drop. Each
+    #: point is rolled on its own when it dies (`coins.roll_drop`), so the
+    #: payout is a spread with both ends rare. Nothing is credited: the coins
+    #: land on the ground and somebody has to walk over them.
     gold: int
 
     speed_tiles: float
@@ -147,7 +151,9 @@ class EnemyType:
             "maxHp": self.max_hp,
             "damage": self.damage,
             "xp": self.xp,
-            "gold": self.gold,
+            # The ceiling, not the payout — what actually fell is on the kill
+            # event, because it is rolled per corpse.
+            "goldMax": self.gold,
             # Geometry for local hitscan prediction and sprite anchoring.
             "hitRadius": self.hit_radius,
             "spriteHeight": self.sprite_height,

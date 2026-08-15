@@ -206,7 +206,8 @@ export interface EnemyTypeConfig {
   maxHp: number;
   damage: number;
   xp: number;
-  gold: number;
+  /** Most coins this creature can drop. The roll happens server-side per kill. */
+  goldMax: number;
   hitRadius: number;
   spriteHeight: number;
   halfWidth: number;
@@ -464,7 +465,11 @@ export interface KillEvent {
   y: number;
   /** Paid to the killer immediately. Zero for player kills. */
   xp: number;
-  /** Coins scattered at the corpse — not auto-credited. */
+  /**
+   * Coins actually scattered at the corpse — not auto-credited, and rolled
+   * per kill out of the creature's `goldMax`, so it varies from one to the
+   * next. Zero is a real outcome.
+   */
   gold: number;
 }
 

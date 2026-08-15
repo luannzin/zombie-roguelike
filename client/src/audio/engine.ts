@@ -112,19 +112,20 @@ function clamp01(value: number): number {
 }
 
 /**
- * The standing balance BETWEEN the buses, under the player's faders.
+ * THERE IS NO PER-BUS TRIM, AND THAT IS THE POINT.
  *
- * Not user-facing and not redundant with the sliders: this is what makes "50"
- * mean the same loudness on every row. UI sits low because it is the only
- * category that plays while nothing else is happening, which makes it feel far
- * louder than its numbers suggest.
+ * There used to be one — hand-picked constants that pulled ambient and UI down
+ * so the groups felt balanced. It is gone because the balance now lives where
+ * it can be measured: every sound is rendered, its loudness measured with a
+ * BS.1770 K-weighted meter, and its manifest gain computed to land it on an
+ * explicit ladder (`server/tools/make_audio.py`). Two sounds authored at the
+ * same level really are the same loudness, so a bus needs no correction and a
+ * slider at 50 means the same thing on every row.
+ *
+ * Adding a trim back here would silently undo that: it would make the ladder
+ * lie, and the next person to wonder why a footstep is too loud would have two
+ * places to look instead of one.
  */
-const BUS_TRIM: Record<Bus, number> = {
-  sfx: 1.0,
-  ambient: 0.85,
-  misc: 0.9,
-  ui: 0.65,
-};
 
 /** The live context, or null if nothing has unlocked it yet. */
 export function audioGraph(): Graph | null {
@@ -172,7 +173,7 @@ function busTarget(bus: Bus): number {
   // as loud as full. Squaring puts the useful range under the player's hand,
   // and — the reason it matters here — makes a slider at 0 actually silent
   // rather than merely quiet.
-  return BUS_TRIM[bus] * volume * volume;
+  return volume * volume;
 }
 
 function ramp(param: AudioParam, target: number, seconds: number): void {

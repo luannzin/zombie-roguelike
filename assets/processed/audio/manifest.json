@@ -4,75 +4,75 @@
       "files": [
         "ui-error.wav"
       ],
-      "gain": 0.6,
-      "bus": "ui"
+      "bus": "ui",
+      "gain": 0.1188
     },
     "bag-open": {
       "files": [
         "bag-open.wav"
       ],
-      "gain": 0.55,
-      "bus": "ui"
+      "bus": "ui",
+      "gain": 0.117
     },
     "bag-close": {
       "files": [
         "bag-close.wav"
       ],
-      "gain": 0.5,
-      "bus": "ui"
+      "bus": "ui",
+      "gain": 0.1645
     },
     "ready": {
       "files": [
         "ready.wav"
       ],
-      "gain": 0.5,
-      "bus": "ui"
+      "bus": "ui",
+      "gain": 0.1164
     },
     "unready": {
       "files": [
         "unready.wav"
       ],
-      "gain": 0.45,
-      "bus": "ui"
+      "bus": "ui",
+      "gain": 0.1044
     },
     "fire": {
       "files": [
         "fire.wav"
       ],
-      "gain": 0.5,
       "bus": "ambient",
-      "loop": true
+      "loop": true,
+      "gain": 0.0914
     },
     "wind": {
       "files": [
         "wind.wav"
       ],
-      "gain": 0.45,
       "bus": "ambient",
-      "loop": true
+      "loop": true,
+      "gain": 0.0396
     },
     "night": {
       "files": [
         "night.wav"
       ],
-      "gain": 0.5,
       "bus": "ambient",
-      "loop": true
+      "loop": true,
+      "gain": 0.0377
     },
     "heartbeat": {
       "files": [
         "heartbeat.wav"
       ],
-      "gain": 0.6,
       "bus": "ambient",
-      "loop": true
+      "loop": true,
+      "gain": 0.0852
     },
     "void": {
       "files": [
         "void.wav"
       ],
-      "gain": 0.7,
-      "bus": "ambient"
+      "bus": "ambient",
+      "gain": 0.1274
     },
     "shot": {
       "files": [
@@ -80,8 +80,8 @@
         "shot-1.wav",
         "shot-2.wav"
       ],
-      "gain": 0.9,
-      "bus": "sfx"
+      "bus": "sfx",
+      "gain": 0.7652
     },
     "hurt": {
       "files": [
@@ -89,8 +89,8 @@
         "hurt-1.wav",
         "hurt-2.wav"
       ],
-      "gain": 0.85,
-      "bus": "sfx"
+      "bus": "sfx",
+      "gain": 0.4396
     },
     "zombie-idle": {
       "files": [
@@ -98,16 +98,16 @@
         "zombie-idle-1.wav",
         "zombie-idle-2.wav"
       ],
-      "gain": 0.75,
-      "bus": "sfx"
+      "bus": "sfx",
+      "gain": 0.2217
     },
     "zombie-alert": {
       "files": [
         "zombie-alert-0.wav",
         "zombie-alert-1.wav"
       ],
-      "gain": 0.85,
-      "bus": "sfx"
+      "bus": "sfx",
+      "gain": 0.3368
     },
     "zombie-attack": {
       "files": [
@@ -115,8 +115,8 @@
         "zombie-attack-1.wav",
         "zombie-attack-2.wav"
       ],
-      "gain": 0.8,
-      "bus": "sfx"
+      "bus": "sfx",
+      "gain": 0.2327
     },
     "zombie-hit": {
       "files": [
@@ -124,8 +124,8 @@
         "zombie-hit-1.wav",
         "zombie-hit-2.wav"
       ],
-      "gain": 0.8,
-      "bus": "sfx"
+      "bus": "sfx",
+      "gain": 0.3931
     },
     "zombie-death": {
       "files": [
@@ -133,8 +133,8 @@
         "zombie-death-1.wav",
         "zombie-death-2.wav"
       ],
-      "gain": 0.8,
-      "bus": "sfx"
+      "bus": "sfx",
+      "gain": 0.3593
     },
     "step-soft": {
       "files": [
@@ -143,8 +143,8 @@
         "step-soft-2.wav",
         "step-soft-3.wav"
       ],
-      "gain": 0.4,
-      "bus": "misc"
+      "bus": "misc",
+      "gain": 0.1746
     },
     "step-litter": {
       "files": [
@@ -153,50 +153,50 @@
         "step-litter-2.wav",
         "step-litter-3.wav"
       ],
-      "gain": 0.42,
-      "bus": "misc"
+      "bus": "misc",
+      "gain": 0.1217
     },
     "lantern-on": {
       "files": [
         "lantern-on.wav"
       ],
-      "gain": 0.6,
-      "bus": "misc"
+      "bus": "misc",
+      "gain": 0.3714
     },
     "lantern-off": {
       "files": [
         "lantern-off.wav"
       ],
-      "gain": 0.55,
-      "bus": "misc"
+      "bus": "misc",
+      "gain": 0.351
     },
     "lantern-flicker": {
       "files": [
         "lantern-flicker.wav"
       ],
-      "gain": 0.5,
-      "bus": "misc"
+      "bus": "misc",
+      "gain": 0.086
     },
     "kindle": {
       "files": [
         "kindle.wav"
       ],
-      "gain": 0.85,
-      "bus": "misc"
+      "bus": "misc",
+      "gain": 0.3488
     },
     "summon": {
       "files": [
         "summon.wav"
       ],
-      "gain": 0.45,
-      "bus": "misc"
+      "bus": "misc",
+      "gain": 0.0666
     },
     "arrive": {
       "files": [
         "arrive.wav"
       ],
-      "gain": 0.8,
-      "bus": "misc"
+      "bus": "misc",
+      "gain": 0.2256
     },
     "dread": {
       "files": [
@@ -204,15 +204,15 @@
         "dread-1.wav",
         "dread-2.wav"
       ],
-      "gain": 0.5,
-      "bus": "misc"
+      "bus": "misc",
+      "gain": 0.2505
     },
     "loot": {
       "files": [
         "loot.wav"
       ],
-      "gain": 0.6,
-      "bus": "misc"
+      "bus": "misc",
+      "gain": 0.2219
     },
     "rarity": {
       "files": [
@@ -222,15 +222,15 @@
         "rarity-3.wav",
         "rarity-4.wav"
       ],
-      "gain": 0.7,
-      "bus": "misc"
+      "bus": "misc",
+      "gain": 0.1892
     },
     "coin": {
       "files": [
         "coin.wav"
       ],
-      "gain": 0.5,
-      "bus": "misc"
+      "bus": "misc",
+      "gain": 0.1726
     },
     "crate-break": {
       "files": [
@@ -238,15 +238,15 @@
         "crate-break-1.wav",
         "crate-break-2.wav"
       ],
-      "gain": 0.85,
-      "bus": "misc"
+      "bus": "misc",
+      "gain": 0.3657
     },
     "drop": {
       "files": [
         "drop.wav"
       ],
-      "gain": 0.6,
-      "bus": "misc"
+      "bus": "misc",
+      "gain": 0.2032
     }
   }
 }

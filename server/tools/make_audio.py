@@ -294,6 +294,26 @@ def biquad(
     return out
 
 
+def dc_block(src: Buf, rate: int) -> Buf:
+    """Remove any constant offset. A one-pole high-pass just above audible.
+
+    Applied to every one-shot on the way out rather than fixed per recipe,
+    because DC arrives from too many directions to audit: an asymmetric square
+    wave has a non-zero mean by construction, an envelope can bias a burst, and
+    a filter can leave a tail. Offset costs headroom, thumps on trigger, and —
+    since levels are now set by measurement — quietly corrupts the loudness
+    reading of everything it touches.
+    """
+    coeff = 1.0 - (math.tau * 8.0 / rate)
+    out = silence(len(src))
+    last_in = last_out = 0.0
+    for i, x0 in enumerate(src):
+        last_out = x0 - last_in + coeff * last_out
+        last_in = x0
+        out[i] = last_out
+    return out
+
+
 def onepole_lp(src: Buf, rate: int, freq: float) -> Buf:
     """A gentle 6 dB/oct tilt. For taking the glare off something, not shaping it."""
     a = math.exp(-math.tau * max(20.0, freq) / rate)
@@ -476,6 +496,97 @@ def scatter(
 # ---------------------------------------------------------------------------
 # OUTPUT
 # ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# LOUDNESS
+#
+# Peak normalization is not loudness. Two files that both touch 0.97 can be
+# ten decibels apart to the ear, because loudness is energy over time weighted
+# by how the ear responds to frequency — which is why every hand-picked `gain`
+# in this file used to be a guess that only sounded right next to whatever it
+# was last compared against.
+#
+# So the levels are MEASURED. K-weighting from ITU-R BS.1770 (a high shelf for
+# the head's response plus a high-pass that discounts sub-bass the ear barely
+# registers as loudness), then the loudest 150 ms window — not the whole file.
+# The window is the important choice: integrated loudness divides by duration,
+# so it would call a 40 ms switch tick "quiet" and boost it into a bang, while
+# rating a long quiet chime as loud. 150 ms is roughly the ear's own
+# integration time, so a short sharp sound and a long soft one land where they
+# actually sit.
+# ---------------------------------------------------------------------------
+
+
+def _k_weight(src: Buf, rate: int) -> Buf:
+    """BS.1770 pre-filter, derived for any sample rate rather than tabulated."""
+    # Stage 1: high shelf, +4 dB above ~1.7 kHz.
+    f0, gain_db, q = 1681.974450955533, 3.999843853973347, 0.7071752369554196
+    k = math.tan(math.pi * f0 / rate)
+    vh = 10.0 ** (gain_db / 20.0)
+    vb = vh**0.4996667741545416
+    denom = 1.0 + k / q + k * k
+    shelf = (
+        (vh + vb * k / q + k * k) / denom,
+        2.0 * (k * k - vh) / denom,
+        (vh - vb * k / q + k * k) / denom,
+        2.0 * (k * k - 1.0) / denom,
+        (1.0 - k / q + k * k) / denom,
+    )
+
+    # Stage 2: RLB high-pass at ~38 Hz.
+    f0, q = 38.13547087602444, 0.5003270373238773
+    k = math.tan(math.pi * f0 / rate)
+    denom = 1.0 + k / q + k * k
+    highpass = (
+        1.0,
+        -2.0,
+        1.0,
+        2.0 * (k * k - 1.0) / denom,
+        (1.0 - k / q + k * k) / denom,
+    )
+
+    out = src
+    for b0, b1, b2, a1, a2 in (shelf, highpass):
+        filtered = silence(len(out))
+        x1 = x2 = y1 = y2 = 0.0
+        for i, x0 in enumerate(out):
+            y0 = b0 * x0 + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2
+            x2, x1 = x1, x0
+            y2, y1 = y1, y0
+            filtered[i] = y0
+        out = filtered
+    return out
+
+
+#: Ear integration window for the loudness measurement, in seconds.
+LOUDNESS_WINDOW = 0.15
+
+
+def loudness_lufs(src: Buf, rate: int) -> float:
+    """Loudest 150 ms of `src`, K-weighted, in LUFS. -inf for silence."""
+    weighted = _k_weight(src, rate)
+    window = max(1, int(LOUDNESS_WINDOW * rate))
+    squares = [v * v for v in weighted]
+
+    if len(squares) <= window:
+        # Shorter than the window: still divide by the FULL window, so a very
+        # short sound is correctly measured as carrying less energy than a
+        # sustained one rather than being judged on its peak alone.
+        total = sum(squares)
+        best = total / window
+    else:
+        total = sum(squares[:window])
+        best = total
+        for i in range(window, len(squares)):
+            total += squares[i] - squares[i - window]
+            if total > best:
+                best = total
+        best /= window
+
+    if best <= 1e-12:
+        return float("-inf")
+    return -0.691 + 10.0 * math.log10(best)
 
 
 def save_wav(path: Path, src: Buf, rate: int) -> int:
@@ -1393,10 +1504,22 @@ def sfx_drop(rng: random.Random) -> tuple[Buf, int]:
 # BUILD
 # ===========================================================================
 
-#: name -> (recipe, variants, gain, bus, loop)
+#: Absolute loudness the reference level lands on. Everything in `CATALOG` is
+#: an offset from this, so moving it moves the whole game at once.
+REFERENCE_LUFS = -15.0
+
+#: name -> (recipe, variants, level_db, bus, loop)
 #:
-#: `gain` is the mix decision and it lives here rather than at the call site,
-#: so "why is the shot louder than a footstep" has one answer in one file.
+#: `level_db` IS THE MIX, and it is a measured quantity rather than a guess.
+#: The generator renders the sound, measures what it actually came out at
+#: (`loudness_lufs`), and computes the manifest gain needed to land it here —
+#: so 0 dB and -18 dB really are eighteen decibels apart to the ear, and the
+#: same number on two different sounds means the same loudness. That is what
+#: makes 50 on one of the game's volume sliders match 50 on another.
+#:
+#: The ladder is therefore the ONLY artistic decision left in the mix, and it
+#: reads as one: a gunshot at the top, footsteps eighteen down, beds far below
+#: everything because they never stop.
 #:
 #: `bus` is the row in the player's options panel, so the grouping is a
 #: PLAYER-FACING taxonomy and not an engineering one:
@@ -1410,40 +1533,45 @@ def sfx_drop(rng: random.Random) -> tuple[Buf, int]:
 #:            transitions
 CATALOG: dict[str, tuple[object, int, float, str, bool]] = {
     # interface — see the banner above: no hover, no click. A refusal and a bag.
-    "ui-error": (ui_error, 1, 0.6, "ui", False),
-    "bag-open": (ui_bag_open, 1, 0.55, "ui", False),
-    "bag-close": (ui_bag_close, 1, 0.5, "ui", False),
-    "ready": (sfx_ready, 1, 0.5, "ui", False),
-    "unready": (sfx_unready, 1, 0.45, "ui", False),
-    # ambience — the loops, and the one drone that behaves like one
-    "fire": (bed_fire, 1, 0.5, "ambient", True),
-    "wind": (bed_wind, 1, 0.45, "ambient", True),
-    "night": (bed_night, 1, 0.5, "ambient", True),
-    "heartbeat": (bed_heartbeat, 1, 0.6, "ambient", True),
-    "void": (sfx_void, 1, 0.7, "ambient", False),
-    # guns and zombies
-    "shot": (sfx_shot, 3, 0.9, "sfx", False),
-    "hurt": (sfx_hurt, 3, 0.85, "sfx", False),
-    "zombie-idle": (sfx_zombie_idle, 3, 0.75, "sfx", False),
-    "zombie-alert": (sfx_zombie_alert, 2, 0.85, "sfx", False),
-    "zombie-attack": (sfx_zombie_attack, 3, 0.8, "sfx", False),
-    "zombie-hit": (sfx_zombie_hit, 3, 0.8, "sfx", False),
-    "zombie-death": (sfx_zombie_death, 3, 0.8, "sfx", False),
+    # Low: these play when nothing else is happening, which makes them feel
+    # louder than their numbers.
+    "ui-error": (ui_error, 1, -12.0, "ui", False),
+    "bag-open": (ui_bag_open, 1, -14.0, "ui", False),
+    "bag-close": (ui_bag_close, 1, -15.0, "ui", False),
+    "ready": (sfx_ready, 1, -13.0, "ui", False),
+    "unready": (sfx_unready, 1, -14.0, "ui", False),
+    # ambience — the loops, and the one drone that behaves like one.
+    # FAR down the ladder, and that is not timidity: a bed never stops, so it
+    # accumulates over a whole run in a way a one-shot never does. A bed at
+    # footstep level is exhausting inside two minutes.
+    "fire": (bed_fire, 1, -22.0, "ambient", True),
+    "wind": (bed_wind, 1, -25.0, "ambient", True),
+    "night": (bed_night, 1, -27.0, "ambient", True),
+    "heartbeat": (bed_heartbeat, 1, -20.0, "ambient", True),
+    "void": (sfx_void, 1, -14.0, "ambient", False),
+    # guns and zombies — the top of the ladder
+    "shot": (sfx_shot, 3, 0.0, "sfx", False),
+    "hurt": (sfx_hurt, 3, -3.0, "sfx", False),
+    "zombie-idle": (sfx_zombie_idle, 3, -9.0, "sfx", False),
+    "zombie-alert": (sfx_zombie_alert, 2, -5.0, "sfx", False),
+    "zombie-attack": (sfx_zombie_attack, 3, -4.0, "sfx", False),
+    "zombie-hit": (sfx_zombie_hit, 3, -6.0, "sfx", False),
+    "zombie-death": (sfx_zombie_death, 3, -5.0, "sfx", False),
     # everything else that happens
-    "step-soft": (sfx_step_soft, 4, 0.4, "misc", False),
-    "step-litter": (sfx_step_litter, 4, 0.42, "misc", False),
-    "lantern-on": (sfx_lantern_on, 1, 0.6, "misc", False),
-    "lantern-off": (sfx_lantern_off, 1, 0.55, "misc", False),
-    "lantern-flicker": (sfx_lantern_flicker, 1, 0.5, "misc", False),
-    "kindle": (sfx_kindle, 1, 0.85, "misc", False),
-    "summon": (sfx_summon, 1, 0.45, "misc", False),
-    "arrive": (sfx_arrive, 1, 0.8, "misc", False),
-    "dread": (sfx_dread, 3, 0.5, "misc", False),
-    "loot": (sfx_loot, 1, 0.6, "misc", False),
-    "rarity": (sfx_rarity, 5, 0.7, "misc", False),
-    "coin": (sfx_coin, 1, 0.5, "misc", False),
-    "crate-break": (sfx_crate_break, 3, 0.85, "misc", False),
-    "drop": (sfx_drop, 1, 0.6, "misc", False),
+    "step-soft": (sfx_step_soft, 4, -18.0, "misc", False),
+    "step-litter": (sfx_step_litter, 4, -18.0, "misc", False),
+    "lantern-on": (sfx_lantern_on, 1, -15.0, "misc", False),
+    "lantern-off": (sfx_lantern_off, 1, -15.0, "misc", False),
+    "lantern-flicker": (sfx_lantern_flicker, 1, -17.0, "misc", False),
+    "kindle": (sfx_kindle, 1, -4.0, "misc", False),
+    "summon": (sfx_summon, 1, -16.0, "misc", False),
+    "arrive": (sfx_arrive, 1, -3.0, "misc", False),
+    "dread": (sfx_dread, 3, -11.0, "misc", False),
+    "loot": (sfx_loot, 1, -11.0, "misc", False),
+    "rarity": (sfx_rarity, 5, -9.0, "misc", False),
+    "coin": (sfx_coin, 1, -12.0, "misc", False),
+    "crate-break": (sfx_crate_break, 3, -4.0, "misc", False),
+    "drop": (sfx_drop, 1, -13.0, "misc", False),
 }
 
 #: Base for every per-sound seed. Changing it reshuffles every variant in the
@@ -1459,43 +1587,112 @@ def _seed_for(name: str, variant: int) -> int:
     return (acc * 31 + variant * 7919) & 0xFFFFFFFF
 
 
+#: Peak every file is written at. Uniform, so the samples always use the full
+#: word and the loudness correction below has a known amount of room above it.
+WRITE_PEAK = 0.97
+
+#: A computed gain is never allowed to push a file past this at playback. The
+#: clamp is reported, because hitting it means the ladder is asking for a
+#: loudness that sound cannot reach without clipping — which is a signal to fix
+#: the recipe, not to quietly accept a wrong level.
+PLAY_CEILING = 0.99
+
+
 def build(only: set[str] | None = None) -> Path:
     out_dir = PROCESSED_DIR / "audio"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     manifest: dict[str, dict] = {}
     total_bytes = 0
+    clamped: list[str] = []
+    unmeasured: list[str] = []
+    # Measured loudness per file, kept so `--only` can rewrite the manifest in
+    # full without re-rendering everything. It is COMMITTED OUTPUT, not a
+    # scratch cache: the manifest's gains are derived from it, so a checkout
+    # without it cannot produce a correct manifest from a partial run.
+    cache_path = out_dir / "loudness.json"
+    try:
+        measured: dict[str, float] = json.loads(cache_path.read_text())
+    except (OSError, ValueError):
+        measured = {}
 
     for name, (recipe, variants, level, bus, loop) in CATALOG.items():
-        entry: dict = {"files": [], "gain": level, "bus": bus}
+        entry: dict = {"files": [], "bus": bus}
         if loop:
             entry["loop"] = True
 
+        levels: list[float] = []
         for variant in range(variants):
             filename = f"{name}.wav" if variants == 1 else f"{name}-{variant}.wav"
             entry["files"].append(filename)
 
             if only is not None and name not in only:
+                if filename in measured:
+                    levels.append(measured[filename])
                 continue
 
             rng = random.Random(_seed_for(name, variant))
             samples, rate = (
                 recipe(rng) if variants == 1 else recipe(rng, variant)  # type: ignore[operator]
             )
-            # Every buffer gets its ends taken to zero regardless of what the
-            # recipe did. One sample of DC at an edge is an audible tick, and
-            # it is not worth auditing thirty recipes for it.
-            samples = fade(samples, rate, 0.002, 0.006) if not loop else samples
+            # Every one-shot gets its offset removed and its ends taken to
+            # zero regardless of what the recipe did. One sample of DC at an
+            # edge is an audible tick, and it is not worth auditing thirty
+            # recipes for it.
+            #
+            # Loops are exempt from BOTH. A filter with memory has a settling
+            # transient at the head, which is exactly the sample `loopify` just
+            # crossfaded to meet the tail — running it here would re-open the
+            # seam the bed exists to hide. Beds are checked for offset instead.
+            if not loop:
+                samples = fade(dc_block(samples, rate), rate, 0.002, 0.006)
+            # Uniform peak, so what the recipe happened to normalize to stops
+            # mattering — loudness is set by the manifest gain, not by the file.
+            samples = normalize(samples, WRITE_PEAK)
+
+            lufs = loudness_lufs(samples, rate)
+            measured[filename] = lufs
+            levels.append(lufs)
+
             written = save_wav(out_dir / filename, samples, rate)
             total_bytes += written
-            print(f"  {filename:24s} {len(samples) / rate:5.2f}s  {written // 1024:4d} KB")
+            print(
+                f"  {filename:24s} {len(samples) / rate:5.2f}s "
+                f"{written // 1024:4d} KB  {lufs:7.1f} LUFS"
+            )
+
+        # One gain per SOUND, from the mean of its variants — never per file.
+        # Variants are meant to differ slightly; levelling each one individually
+        # would iron out exactly the variation they exist to provide.
+        if levels:
+            mean = sum(levels) / len(levels)
+            wanted = 10.0 ** ((REFERENCE_LUFS + level - mean) / 20.0)
+            ceiling = PLAY_CEILING / WRITE_PEAK
+            if wanted > ceiling:
+                clamped.append(f"{name} (wanted {20 * math.log10(wanted / ceiling):+.1f} dB more)")
+                wanted = ceiling
+            entry["gain"] = round(wanted, 4)
+        else:
+            # No measurement and not re-rendered: `--only` on a tree with no
+            # loudness.json. Unity is the only safe answer and it is the WRONG
+            # level, so say so loudly rather than shipping a silent mix bug.
+            unmeasured.append(name)
+            entry["gain"] = 1.0
 
         manifest[name] = entry
 
-    (out_dir / "manifest.json").write_text(
-        json.dumps({"sounds": manifest}, indent=2) + "\n"
-    )
+    (out_dir / "manifest.json").write_text(json.dumps({"sounds": manifest}, indent=2) + "\n")
+    cache_path.write_text(json.dumps(measured, indent=2, sort_keys=True) + "\n")
+
     print(f"wrote {out_dir}: {len(CATALOG)} sounds, {total_bytes // 1024} KB total")
+    if clamped:
+        print("  !! level unreachable without clipping: " + ", ".join(clamped))
+    if unmeasured:
+        print(
+            "  !! NO LOUDNESS MEASUREMENT for "
+            + ", ".join(unmeasured)
+            + " — their gains are unity and WRONG. Run without --only."
+        )
     return out_dir
 
 

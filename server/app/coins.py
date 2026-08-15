@@ -1,9 +1,11 @@
 """World gold pickups.
 
-Enemies no longer credit gold on death — they scatter one `Coin` per gold
-point. A nearby living player triggers a short outward kick (repulse), then the
-coin accelerates in (attract) until collected. Server-authoritative; the client
-only draws and juicing the pickup event.
+Enemies no longer credit gold on death — they scatter `Coin`s at the corpse. A
+nearby living player triggers a short outward kick (repulse), then the coin
+accelerates in (attract) until collected. Server-authoritative; the client only
+draws and juices the pickup event.
+
+How MANY fall is a roll, not a table: see `roll_drop`.
 """
 
 from __future__ import annotations
@@ -19,6 +21,7 @@ from .config import (
     COIN_BURST_SPEED,
     COIN_COLLECT_DIST,
     COIN_DRAG,
+    COIN_DROP_CHANCE,
     COIN_MAGNET_DIST,
     COIN_ORBIT_DAMP,
     COIN_REPULSE_DURATION,
@@ -79,6 +82,17 @@ class PickupEvent:
 @dataclass
 class CoinStepResult:
     collected: list[PickupEvent] = field(default_factory=list)
+
+
+def roll_drop(points: int) -> int:
+    """How many coins a corpse actually pays, out of `points` it could pay.
+
+    Each point is its own coin-flip at COIN_DROP_CHANCE, so a 3-gold zombie
+    lands on 0..3 with the ends rare (~9% for three, ~17% for none) and the
+    middle common. Rolled per point rather than picked from a weight table so
+    the shape holds for a creature worth one coin or worth ten.
+    """
+    return sum(1 for _ in range(max(0, points)) if random.random() < COIN_DROP_CHANCE)
 
 
 def spawn_burst(coin_id: str, x: float, y: float, index: int, total: int) -> Coin:

@@ -811,7 +811,10 @@ class Room:
         if source is not None:
             source.kills += 1
             source.xp += reward.xp
-        self.drop_coins(target.x, target.y, reward.gold)
+        # xp is what the kill is worth and never varies; coins are what fell
+        # out of this particular corpse, which does.
+        dropped = coins.roll_drop(reward.gold)
+        self.drop_coins(target.x, target.y, dropped)
         self.kill_events.append(
             {
                 "kind": "enemy",
@@ -820,7 +823,7 @@ class Room:
                 "x": round(target.x, 2),
                 "y": round(target.y, 2),
                 "xp": reward.xp,
-                "gold": reward.gold,
+                "gold": dropped,
             }
         )
 

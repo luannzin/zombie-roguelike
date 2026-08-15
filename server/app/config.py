@@ -317,8 +317,11 @@ XP_GROWTH = 1.4              # each level costs this much more than the last
 MAX_LEVEL = 30
 
 # --- coins (authored in tiles) ----------------------------------------------
-# Enemies drop one world coin per gold point. Magnet: short outward kick, then
-# suck in. Attract bleeds sideways speed so coins cannot orbit forever.
+# A creature's gold is how many coins it CAN drop, not how many it does: each
+# point is rolled on its own at COIN_DROP_CHANCE, so a 3-gold zombie pays 0..3
+# on a curve with both ends rare and one or two in the middle. A fixed payout
+# makes every corpse the same corpse; a roll makes a good one worth noticing.
+COIN_DROP_CHANCE = 0.45
 COIN_MAGNET_TILES = 2.4
 COIN_COLLECT_TILES = 0.4
 COIN_BURST_TILES_PER_SEC = 5.5    # pop off the corpse

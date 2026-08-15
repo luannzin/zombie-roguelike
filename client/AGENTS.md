@@ -11,6 +11,10 @@ own the HUD and routing only. Talks to the server over one WebSocket.
 - `src/render/` — canvas renderer and its layers (child doc)
 - `src/components/` — React components, ours and generated (child doc)
 - Owned directly here:
+  - `src/audio/` — `engine.ts` (context, the three buses, gesture unlock, mute),
+    `library.ts` (the generated catalog and its decoded buffers), `sfx.ts`
+    (one-shots: variant, detune, world position), `beds.ts` (looping ambience
+    and the crossfades between places)
   - `src/net/` — `connection.ts` (socket, reconnect, RTT, multicast delivery),
     `protocol.ts` (wire types, mirror of `server/app/protocol.py`),
     `endpoints.ts` (where the server is) and `rooms.ts` (the room REST pair)
@@ -31,7 +35,21 @@ own the HUD and routing only. Talks to the server over one WebSocket.
 ## Local Contracts
 
 - **Layering:** rendering knows nothing about the network; networking knows
-  nothing about rendering.
+  nothing about rendering. **Audio knows about a listener at a point and sounds
+  at other points, and nothing about players, zombies or zones** — sound names,
+  per-sound gain and bus routing all come off the generated manifest, so adding
+  a sound is a recipe in `server/tools/make_audio.py` plus a call site.
+- **A page may not make noise until it has been touched.** `src/audio/engine.ts`
+  installs its own gesture listeners and builds the `AudioContext` on the first
+  one; `main.tsx` calls `installAudioUnlock` once, outside React, and preloads
+  the opening set on that same beat, since decoding cannot start earlier. Before
+  that, `playSfx` is a no-op rather than an error, and there is deliberately no
+  "click to enable audio" gate. M toggles mute anywhere; the setting is in
+  `localStorage` under `zr:audio`.
+- **Ambience is declarative.** Callers state what the world sounds like
+  (`setBeds({ wind: 1, night: 0.85 })`), never start/stop beds. It is
+  idempotent, safe to call before the buffers have decoded (it retries when they
+  land), and it is what makes the camp → forest hand-off one call in one place.
 - **React never renders per frame.** `Game` publishes to `hud-store` at 5 Hz and
   components read it via `useSyncExternalStore`. Per-frame state must not become
   component state.

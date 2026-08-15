@@ -129,6 +129,16 @@ subtree.
   `TILE_SIZE`. No raw pixel numbers.
 - All colours and type live in `client/src/styles/index.css`, read by the canvas
   through `client/src/theme/`.
+- **Sound is generated art, like every pixel.** `server/tools/make_audio.py`
+  synthesises the whole catalog into `assets/processed/audio/` — deterministic,
+  stdlib only, one DSP vocabulary at the top that every recipe is written in —
+  and the manifest carries each sound's gain and bus, so the mix is generated
+  output rather than numbers scattered through the client. The client half is
+  `client/src/audio/`: it knows about a listener at a point and sounds at other
+  points, and nothing about players, zombies or zones. Sounds are SPATIAL,
+  which is what makes the lantern pay off — a creature you cannot see but can
+  place is the difference between tension and ambush. Ambience is stated, never
+  started: a zone declares what it sounds like and the beds crossfade to it.
 - Rendering knows nothing about the network; networking knows nothing about
   rendering; the server simulation knows nothing about either.
 - `assets/processed/` is generated output. Edit the generator in

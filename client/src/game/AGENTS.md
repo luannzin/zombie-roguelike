@@ -157,6 +157,38 @@ seam React is allowed to read.
   is a whole multiple of one design pixel so it stays on the font's grid.
 - `dispose()` releases every timer, listener, observer and rAF handle created in
   this folder.
+- **Sound is driven from two places and the split is deliberate.** EVENTS (a
+  shot, a hit, a crate, a pickup) are played by the handler that already knows
+  the event happened, next to the visual effect they belong with. STATE (which
+  ambience is playing, how fast the heart is going, whether anything is growling
+  out there) is reconciled every frame in `updateAudio`, called from `render`
+  after `applyVisibility` and `latchAlertMarks` so it reads the same resolved
+  entities the renderer is about to draw. The listener is the PLAYER, not the
+  camera — during the walk-out the camera looks ahead at the VOID mouth, and a
+  party marching away from a fire that got louder would be wrong.
+- **The zone says what the place sounds like**, exactly as it already says the
+  title card, whether guns fire and whether the lamp works. `applyZoneAmbience`
+  runs on arrival and nothing reads the map to infer it.
+- **The fire bed is handed over, not owned.** `lobby-scene` starts it in
+  `start()` and deliberately does NOT stop it in `dispose()` — the one exception
+  to the release rule above. Title screen and lobby are one continuous shot of
+  one clearing, and `Game.dispose()` is where the beds are finally released
+  (`stopBeds`). Stopping it in the scene would put a gap in the audio at exactly
+  the seams the transition exists to hide.
+- **Footsteps are played from `trackFootsteps`**, because that loop is already
+  the one place that fires exactly once per stride, for every body, with the
+  soil in hand — a separate timer keyed off velocity would drift out of sync
+  with the print. It inherits that loop's visibility gate, so the unlit half of
+  the forest speaks through GROWLS instead of footsteps and the two channels say
+  different things.
+- **The ambient growl is NOT gated on visibility, and that is the point.** The
+  sound is what tells you something is there; the lantern is what tells you
+  where. The alert snarl is latched per enemy id so a hunt announces itself once
+  and then shuts up, and it re-arms when the creature calms — same lifetime as
+  the hunt diamond.
+- Sounds timed against a sprite sheet are aligned in the GENERATOR, not here:
+  `kindle` and `summon` put their impact on the frame the sheet flashes. Moving
+  a sheet's `frames / fps` means re-timing its sound in `make_audio.py`.
 - **Every player wears the backpack.** `toDrawablePlayer` sets `gear` to
   `[welcome.config.backpackSprite]` and the lobby draws the same overlay on
   every seat. It is always on for now — unequip is a later field, not a

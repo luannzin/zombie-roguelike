@@ -17,6 +17,7 @@ imported by `app/` and never run at request time.
 | `make_vfx.py` | generates final pixels | `assets/processed/vfx/` (summon, kindle, aura, wind) |
 | `make_loot.py` | generates final pixels | `assets/processed/loot/` (one 16x16 frame per item) |
 | `make_hud_icons.py` | generates final pixels | `assets/processed/hud/` (battery, backpack, coin) |
+| `make_audio.py` | generates final samples | `assets/processed/audio/` (34 sounds, 62 wavs + manifest) |
 
 ## Local Contracts
 
@@ -84,6 +85,30 @@ imported by `app/` and never run at request time.
   keeps one shading vocabulary. Do not copy them.
 - Shared drawing helpers live in `make_textures.py` and are imported, not
   copied, so all generated art keeps one shading vocabulary.
+- **`make_audio.py` is the same idea for sound.** The helpers above its RECIPES
+  banner are the synthesis vocabulary — sources, envelopes, biquads, space,
+  arrangement — and a sound is a short paragraph written in them. It is stdlib
+  only (`wave`, `math`, `random`, `array`): no numpy, so regenerating the
+  game's assets never needs a compiled dependency.
+- Sound obeys the sheet rules restated for samples:
+  - **Variants, not one file.** Anything that fires more than about once a
+    second (steps, shots, impacts, growls) renders several from different seeds;
+    the client picks one and detunes it. One sample replayed is the audible twin
+    of `rng` per frame in a looping sheet.
+  - **Beds must loop.** They are rendered longer than they ship and `loopify`
+    crossfades the tail over the head — same discipline as a looping sheet being
+    a sine of the frame phase. `--only` re-renders one sound; the manifest is
+    always rewritten whole.
+  - **Timelines align to the sheet they play with.** `sfx_kindle` and
+    `sfx_summon` put their impact on the frame `make_vfx.py` flashes, and
+    `sfx_crate_break` fits inside the crate smash strip. Changing a sheet's
+    `frames / fps` means changing its sound.
+  - **The mix lives in the manifest**, not at the call site: `gain` and `bus`
+    (`sfx` / `ambient` / `ui`) are authored in `CATALOG`, so "why is the shot
+    louder than a footstep" has one answer in one file.
+- One-shots are 22050 Hz, beds 16000 Hz, all 16-bit mono. The beds are the bulk
+  of the ~2.3 MB output; if that ever needs to come down, encoding them is the
+  lever, not shortening them.
 
 ## Work Guidance
 
@@ -108,6 +133,7 @@ python tools/make_vfx.py
 python tools/make_loot.py
 python tools/make_hud_icons.py
 python tools/make_coin.py
+python tools/make_audio.py
 ```
 
 - A new character or item is `--name` (plus `--height` for taller entities); art
@@ -128,3 +154,7 @@ python tools/make_coin.py
 
 - Re-run the generator and check `git status`: a script that has not changed
   must leave `assets/processed/` byte-identical.
+- Audio has no eyes to check it with, so check it with numbers: a wav must have
+  a peak in range, no DC offset, both edges at zero, no samples pinned at the
+  rail, and — for a bed — a wrap discontinuity small against its own local RMS.
+  A loop that fails that last one clicks once per cycle forever.

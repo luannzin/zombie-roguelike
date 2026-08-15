@@ -12,7 +12,9 @@ output the game actually loads.
   and font sources (`fonts/DepartureMono-Regular.otf`). **Never served.**
 - `processed/` — production art: `player/`, `zombie/`, `zombie-husk/`,
   `zombie-brute/`, `zhat-*/`, `zcloth-*/`, `coin/`, `backpack/`
-  (`sheet.png` + `manifest.json`), `terrain/`, `scenery/`, `vfx/`, `hud/`.
+  (`sheet.png` + `manifest.json`), `terrain/`, `scenery/`, `vfx/`, `hud/`,
+  and `audio/` (16-bit mono wavs + `manifest.json`) — the folder is art too,
+  generated the same way, and `/audio/shot-0.wav` is served like any sprite.
   Vite's `publicDir` points here, so these files are fetched as
   `/player/sheet.png`, `/backpack/sheet.png`, `/zombie-husk/sheet.png`,
   `/zhat-cap/sheet.png`, `/terrain/ground_loam.png`,
@@ -36,6 +38,10 @@ output the game actually loads.
 - Three shapes of art, and the shape decides how it is drawn: a seamless GROUND
   atlas, a bottom-anchored PROP silhouette with an outline, and a flat DECAL
   with neither. See `server/tools/AGENTS.md`.
+- Sound has two shapes and the manifest says which: a ONE-SHOT, rendered in
+  several seeded variants so repeats do not surface, and a looping BED whose
+  ends were crossfaded to meet. `audio/manifest.json` also carries each sound's
+  `gain` and `bus` — the mix is generated output, not client code.
 - A folder name here is the asset key the server ships in
   `welcome.config` (`enemyTypes[*].sprite`, `enemyTypes[*].variants`,
   `hats`, `clothes`, `coinSprite`, `backpackSprite`) — renaming a folder

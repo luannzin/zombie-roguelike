@@ -29,7 +29,7 @@ from __future__ import annotations
 import math
 import random
 
-from . import crates, scenery
+from . import scenery
 from .config import (
     CAMP_CLEARING_TILES,
     CAMP_EXIT_HALF_TILES,
@@ -130,38 +130,36 @@ def build_camp(seed: int) -> TileMap:
     tiles[fy][fx] = FIRE
     _carve_exit(tiles, cx, cy, seed)
     population = _dress_camp(tiles, cx, cy, seed)
-    crate_rows = crates.attach(population)
     return TileMap(
         tiles,
         seed=seed,
         scenery=scenery.to_payload(population),
-        crates=crate_rows,
     )
 
 
 def _dress_camp(tiles: list[list[int]], cx: float, cy: float, seed: int) -> scenery.Population:
     """A couple of scenes out at the edge of the clearing. Mutates `tiles`.
 
-    The camp is a place the party owns, so it gets stores and firewood and
-    nothing that bled. It also gets a lighter hand than the forest: the whole
-    clearing is barely wider than one forest scene, and everything standing in
-    it competes with the one thing the lobby is actually about, which is four
-    characters around a fire.
+    The camp is a place the party owns, so it gets firewood and a sign and
+    nothing that bled, and no crates. It also gets a lighter hand than the
+    forest: the whole clearing is barely wider than one forest scene, and
+    everything standing in it competes with the one thing the lobby is actually
+    about, which is four characters around a fire.
 
-    Two exclusions, and they are both hard. The HEARTH, because a crate
+    Two exclusions, and they are both hard. The HEARTH, because a woodpile
     standing where a player is sitting hides the character the roster is
     pointing at — the same rule the decoration mask enforces for grass. And the
     EXIT, because the walk-out marches the party through it on rails and a prop
     in the mouth would have bodies sliding through solid wood.
     """
-    return scenery.populate(
+    population = scenery.populate(
         tiles,
         random.Random(seed ^ 0xCA47),
         count=scenery.CAMP_SCENES,
         pool=scenery.CAMP_POOL,
         # The fire, not the first floor tile in scan order. The camp's treeline
         # is full of two-tile pockets; a flood that starts in one of those
-        # answers "is the map connected?" with no before a crate has landed.
+        # answers "is the map connected?" with no before a scene has landed.
         anchor=(int(cx), int(cy)),
         # Tight, because the clearing has room for maybe three anchors and the
         # forest's spacing would reject all but one of them.
@@ -175,6 +173,9 @@ def _dress_camp(tiles: list[list[int]], cx: float, cy: float, seed: int) -> scen
             (cx + CAMP_CLEARING_TILES, cy, 6.0),
         ),
     )
+    if any(prop.kind == "crate" for prop in population.props):
+        raise ValueError("camp scenes must not place crates")
+    return population
 
 
 def _carve_exit(tiles: list[list[int]], cx: float, cy: float, seed: int) -> None:

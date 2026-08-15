@@ -88,7 +88,7 @@ class TileMap:
         self.loot = loot or []
         # Live crates pulled out of scenery. The stamp already claimed their
         # LOW tiles; this list is what the room smashes and what the client
-        # draws. Camp and forest both carry it.
+        # draws. Forest carries it; camp maps leave it empty.
         self.crates = crates or []
         # Shipped to the client, which hashes it with tile coordinates to place
         # decoration (grass tufts, prop variants). Sending a seed instead of a

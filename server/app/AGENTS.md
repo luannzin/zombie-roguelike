@@ -199,8 +199,7 @@ game's scale.
   feet are inside `crateBreakTiles`; a bullet that hits the sprite box
   (`crateHitWTiles` × `crateHitHTiles`, from the contact up) does the
   same — the 1×1 foot tile is walking cover, not the aim target.
-  Walk-out refuses it; camp allows E (stores are
-  furniture) but not guns. Three rolls: empty (client plays wind), 1–3
+  Walk-out refuses it; camp maps have none. Three rolls: empty (client plays wind), 1–3
   coins, or one catalog item (`loot.roll_item`, no scene bias) on the
   crate's own tile — not `place_near`. Smash
   makes a quieter `ai.Noise` than a gunshot (`CRATE_NOISE_TILES`). The
@@ -222,11 +221,11 @@ game's scale.
   from far away, not areas of safety. `BEACON` is defined and unused on
   purpose: the extraction point will be one more row on this list, and the
   client already burns it, feeds the fov with it and draws its glow.
-- The camp draws from `CAMP_POOL`, not `SCENES`: stores and firewood, nothing
-  that bled. It is the one non-hostile zone, and a last stand outside the tent
-  the party is about to leave from is a promise the zone does not keep. Camp
-  scenes also keep clear of the hearth and the exit mouth — the same two places
-  the decoration mask and the walk-out already own.
+- The camp draws from `CAMP_POOL`, not `SCENES`: firewood and a sign, nothing
+  that bled, and no crate pieces. It is the one non-hostile zone, and a last
+  stand outside the tent the party is about to leave from is a promise the
+  zone does not keep. Camp scenes also keep clear of the hearth and the exit
+  mouth — the same two places the decoration mask and the walk-out already own.
 - VOID (`world.VOID`) is a winding path of solid forest floor between trees.
   Players bounce off it. Only the walk-out may place a body on it. The carve
   wanders and frays; the client paints ground and crushes a darkness falloff

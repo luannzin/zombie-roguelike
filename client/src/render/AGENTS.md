@@ -161,7 +161,7 @@ mutation, no React.
   body gets when a shot lands — without it the wood just starts playing.
 - Scenery props are drawn through `Projection`, so the lobby can reuse the same
   routine with `WORLD_SPACE` after applying its own transform. The camp is
-  dressed too (`server/app/camp.py`); a crate the lobby drew flat behind the
+  dressed too (`server/app/camp.py`); a woodpile the lobby drew flat behind the
   party would jump into the depth sort the instant the run started.
 - **`wind.ts` is the only shared clock, and sharing it is the point.** Every
   plant keeps its own phase — a synchronised field reads as the screen

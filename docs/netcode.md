@@ -43,7 +43,7 @@ onto that HUD cell. The pocket itself rides the roster as `inv`.
 
 `{"type":"break","id":"k1"}` — smash a crate. The server ignores it unless
 the player is alive, the walk-out has not started, and their feet are
-inside `crateBreakTiles` of that crate. Camp allows it; a bullet that
+inside `crateBreakTiles` of that crate. Camp maps have none; a bullet that
 hits the crate's sprite box (`crateHitWTiles` × `crateHitHTiles`) does
 the same work. The remaining list rides
 `map.crates` and a dirty snapshot `crates`; `crateBreaks` is the juice

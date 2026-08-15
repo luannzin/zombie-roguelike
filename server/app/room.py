@@ -362,9 +362,8 @@ class Room:
         """Smash a crate if this player is standing on it.
 
         Walk-out is too late. Distance is measured from the feet, the same
-        way collect is. Camp allows it — the stores are furniture, not scenery
-        you cannot touch. A shot that lands on the tile does the same work
-        through `smash_crate`.
+        way collect is. Camp maps have none. A shot that lands on the sprite
+        box does the same work through `smash_crate`.
         """
         if self.phase != protocol.PHASE_PLAYING or self.departing:
             return

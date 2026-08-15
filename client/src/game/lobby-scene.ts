@@ -283,7 +283,7 @@ export class LobbyScene {
 
 	private atlas: TerrainAtlas | null = null;
 	/** The camp is dressed too — see `server/app/camp.py`. Same atlas the
-	 *  arena uses, so the stores and the woodpiles do not change at the swap. */
+	 *  arena uses, so the woodpiles and signs do not change at the swap. */
 	private scenery: SceneryAtlas | null = null;
 	private vfx: VfxAtlas | null = null;
 	private world: TileMap | null = null;
@@ -1119,9 +1119,9 @@ export class LobbyScene {
 				draw: () => this.drawSeat(seat),
 			});
 		}
-		// The camp's own stores and woodpiles, in the same sort as the party —
+		// The camp's own woodpiles and signs, in the same sort as the party —
 		// the arena merges them into its entity order for exactly this reason,
-		// and a crate the lobby drew flat behind everyone would jump the moment
+		// and a log the lobby drew flat behind everyone would jump the moment
 		// the run started. Drawn through the identity projection because this
 		// scene has already applied the world transform.
 		const scenery = this.scenery;

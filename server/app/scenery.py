@@ -547,25 +547,16 @@ SCENES = (
 )
 
 def _woodpile(rng: random.Random) -> Layout:
-    """Firewood, stacked. Camp furniture — it says somebody keeps this place."""
+    """Firewood, stacked. Camp furniture — it says somebody keeps this place.
+
+    No crates. Those are forest loot you smash; a sack by the fire would
+    be a shop in the one zone that is not supposed to have one.
+    """
     width, height = 4, 3
     pieces = [
         Piece("logs", STANDING, rng.uniform(1.0, 2.2), rng.uniform(1.4, 2.4),
               rng.randrange(4), rng.random() < 0.5)
         for _ in range(rng.randint(2, 3))
-    ]
-    if rng.random() < 0.5:
-        pieces.append(Piece("crate", STANDING, rng.uniform(0.8, 3.2), rng.uniform(1.6, 2.6), 3))
-    return Layout(width, height, tuple(pieces))
-
-
-def _stores(rng: random.Random) -> Layout:
-    """Crates and sacks against the treeline. Supplies, not wreckage."""
-    width, height = 4, 3
-    pieces = [
-        Piece("crate", STANDING, rng.uniform(0.7, 3.3), rng.uniform(1.4, 2.6),
-              rng.choice((0, 2, 3, 4)))
-        for _ in range(rng.randint(2, 4))
     ]
     return Layout(width, height, tuple(pieces))
 
@@ -581,11 +572,11 @@ def _marker(rng: random.Random) -> Layout:
 #: place in the game that is not hostile, so it gets the scenes that read as
 #: "people live here" and none of the ones that read as "people died here".
 #: A last stand outside the tent you are about to sleep in is a promise the
-#: zone does not keep.
+#: zone does not keep. No crate pieces either — those become live smashables
+#: and the camp is not a loot zone.
 CAMP_POOL = (
-    ("stores", _stores, 12),
-    ("woodpile", _woodpile, 12),
-    ("marker", _marker, 6),
+    ("woodpile", _woodpile, 18),
+    ("marker", _marker, 8),
     ("deadfall", _deadfall, 4),
 )
 

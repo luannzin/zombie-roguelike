@@ -30,11 +30,13 @@ const NOTICE_AT = 0.05;
 const ALERT_AT = 0.999;
 
 /**
- * The diamond, in WORLD pixels of the art's own grid (1 unit = tileSize/16).
- * Half-widths per row from the top: a 5-wide, 7-tall lozenge.
+ * The diamond, in WORLD pixels of the art's own grid (1 unit = tileSize/16),
+ * then scaled by MARK_SCALE. Half-widths per row from the top: a 5-wide,
+ * 7-tall lozenge at scale 1.
  */
+const MARK_SCALE = 0.25;
 const DIA_ROWS = [0, 1, 2, 2, 2, 1, 0] as const;
-/** How far above the top of the sprite it floats, same units. */
+/** How far above the top of the sprite it floats, same unscaled units. */
 const DIA_LIFT = 3;
 
 /** The bang inside: a two-tall bar, a one-tall gap, a one-tall dot. */
@@ -61,7 +63,7 @@ export function drawAlertMarks(
   const { ctx, config, book } = entity;
   const tone = palette().enemyView;
   const shadow = palette().entity.labelShadow;
-  const unit = config.tileSize / 16;
+  const unit = (config.tileSize / 16) * MARK_SCALE;
   const rows = DIA_ROWS.length;
   const mid = (rows - 1) / 2;
 

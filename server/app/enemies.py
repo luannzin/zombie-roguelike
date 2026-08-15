@@ -79,7 +79,7 @@ class EnemyType:
     #: models in the client's fov — see ENEMY_VIEW_*_TILES in config.py.
     view_tiles: float = ENEMY_VIEW_DARK_TILES
     view_lit_tiles: float = ENEMY_VIEW_LIT_TILES
-    view_degrees: float = 100.0
+    view_degrees: float = 75.0
 
     hit_tiles_r: float = PLAYER_HIT_TILES_R
     sprite_tiles_h: float = SPRITE_TILES_H
@@ -165,9 +165,10 @@ ZOMBIE = EnemyType(
     attack_range_tiles=0.85,
     attack_cooldown=1.1,
     # Reaches left at the defaults: a zombie sees exactly as far as you do, and
-    # exactly as far as your lamp lets it. Wide, though — you can spot one
-    # before it spots you, but only by looking at it.
-    view_degrees=100.0,
+    # exactly as far as your lamp lets it. The cone is three-quarters of a
+    # right angle — you can spot one before it spots you, but only by looking
+    # at it.
+    view_degrees=75.0,
 )
 
 ENEMY_TYPES: dict[str, EnemyType] = {ZOMBIE.key: ZOMBIE}

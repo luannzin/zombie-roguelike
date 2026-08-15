@@ -19,7 +19,7 @@ mutation, no React.
 | `scenery.ts` | scenery atlas loading: standing props and flat decals of what people left |
 | `vfx.ts` | effect atlas loading: one-shot sheets (summon, kindle, wind) and the looping loot `aura` |
 | `loot.ts` | loot atlas: one 16x16 frame per collectable item |
-| `guns.ts` | held-gun atlas: side-view, one frame per weapon, grip/muzzle in the manifest |
+| `guns.ts` | held-gun atlas and the shared muzzle/grip pose (`gunMuzzle`) |
 | `gore.ts` | gore atlas: small wound decals stamped on a body that has been hit |
 | `fov.ts` | shared field of view — `light` and `heat` fields |
 | `wind.ts` | the shared gust field every bending thing reads |
@@ -37,9 +37,9 @@ mutation, no React.
   `layers/`. **The pass order is the atmosphere** — ground (soil, litter, flat
   scenery) → dust → coins and loot sprites → entities, bonfires and standing
   scenery (one depth sort by `y`, including live crates and smash sheets) →
-  overgrowth → motes → darkness → combat effects → weapon lasers → loot auras / motes /
+  overgrowth → motes → darkness → combat effects → loot auras / motes /
   epic-legendary beams / empty-crate wind → hunt diamond →
-  labels → vignette. Effects, lasers and loot light go over the darkness because
+  labels → vignette. Effects and loot light go over the darkness because
   they are light, not things being lit. An unlit drop HIDES ITS SPRITE.
   Glow, motes and the epic/legendary column leak a whisper through the
   night (`lit(visibility, floor)`) so the player can feel a find before
@@ -144,10 +144,9 @@ mutation, no React.
 - **A gun is IN HAND, not gear.** `DrawableEntity.weapon` is a catalog key
   into the guns atlas (`make_guns.py`): side-view, pointing right, rotated
   around the grip and flipped when aim is left. An empty hand draws nothing.
-  The laser is a separate stroke AFTER darkness (`drawWeaponLasers`) —
-  pistols and rifles always, AWP only while `laserAlpha` is up. Reach is
-  precomputed (tile DDA) so the pass is a line. Do not rotate a loot-atlas
-  icon; that sheet is the ground/HUD face.
+  `gunMuzzle` in `guns.ts` is the barrel tip — tracers start there, not at
+  the body. Do not rotate a loot-atlas icon; that sheet is the ground/HUD
+  face. There is no laser sight.
 - Colours come from `theme/palette.ts` only. Never write a literal colour here.
 - Frames are bottom-anchored, so any frame height works with no extra code.
 - A prop sheet's frames are VARIANTS unless its manifest entry carries `fps`

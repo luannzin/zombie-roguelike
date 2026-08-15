@@ -216,8 +216,9 @@ seam React is allowed to read.
   itself is roster `guns`; a collect with `dest: "hotbar"` flies to
   `hotbar-N`. Prediction fires with that weapon's cadence / damage / range
   from `welcome.config.weapons`. AWP `aimDelay` waits on the held trigger
-  (`adsHold`); `stepScope` eases `Camera.zoom` toward `scopeZoom` and
-  `stepLaser` fades the sight in. Holstered draws nothing — no white line.
+  (`adsHold`); `stepScope` eases `Camera.zoom` toward `scopeZoom`. Predicted
+  tracers start at `gunMuzzle` so the streak leaves the barrel. Holstered
+  draws nothing — no white line.
 - **A zombie is dressed at spawn.** `toDrawableEnemy` picks the body sheet
   from `enemyTypes[t].variants[v]` and builds `gear` as clothes then hat
   from the optional snapshot indices. The look is identity, not motion —
@@ -288,7 +289,7 @@ seam React is allowed to read.
   lantern, always visible. 1/2/3 selects (same key holsters) and is patched
   immediately, like TAB. A gun fly uses dest `hotbar` and anchor `hotbar-N`.
   `held` rides the input packet. AWP hold-to-aim zooms the camera toward
-  `scopeZoom` and fades the laser in; ammo is named and unused.
+  `scopeZoom`; ammo is named and unused.
 - Anything long-lived created here gets a matching release in `Game.dispose()`
   in the same change.
 

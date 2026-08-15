@@ -74,7 +74,7 @@ field that differed per recipient would cost a re-serialisation each.
 Snapshot arrays:
   players   what moves, every tick; `seq` is that player's own input ack.
             `held` is the hotbar slot in hand (-1 holstered); `ads` is the
-            trigger held (AWP laser / scope for remotes).
+            trigger held (AWP spends `aimDelay` from this).
   roster    the same players with their name, colour, score board and
             `guns` (3-slot belt), sent every ROSTER_EVERY_N_TICKS and on
             any membership change. A client caches it: those fields feed a

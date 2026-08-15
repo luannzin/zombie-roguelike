@@ -17,7 +17,6 @@ import {
   drawEntity,
   drawNameLabels,
   drawShadow,
-  drawWeaponLasers,
   type EntityContext,
 } from './layers/entities';
 import { drawAlertMarks } from './layers/vision';
@@ -287,7 +286,6 @@ export class Renderer {
     );
     drawCombatEffects(ctx, state.effects, state.config.tileSize);
     this.darkness.drawLights(ctx, state.effects.lights);
-    drawWeaponLasers(ctx, this.gunAtlas, state.entities);
     drawLootAuras(ctx, state.loot, state.time);
     drawLootMotes(ctx, state.loot, state.time, state.config.tileSize);
     drawLootBeams(ctx, this.vfx?.aura ?? null, state.loot, state.time);

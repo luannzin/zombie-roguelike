@@ -105,10 +105,6 @@ export interface DrawableEntity {
   gunKick: number;
   /** Pixels of slide back along aim. */
   gunPump: number;
-  /** How far the laser travels this frame, world px. 0 = hidden. */
-  laserReach: number;
-  /** 0..1. AWP fades this in while holding. */
-  laserAlpha: number;
 }
 
 /** World gold pickup — drawn under entities, spins forever. */

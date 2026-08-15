@@ -205,7 +205,7 @@ game's scale.
   `loot.place_near`); camp and the walk-out refuse it. A stack is one
   world drop per unit. Guns are not tossed from the belt yet.
 - **A gun is a catalog row AND a shot.** `weapons.py` owns damage, cadence,
-  reach, muzzle, noise, laser, AWP hold-to-aim (`aim_delay`) and the
+  reach, muzzle, noise, AWP hold-to-aim (`aim_delay`) and the
   3-slot hotbar. Everyone spawns with a Glock 18 in slot 0. Input `held`
   is the slot in hand (-1 holstered), like the lantern switch; an empty
   hand does not fire. Per-shot numbers ride `welcome.config.weapons`; the
@@ -270,7 +270,7 @@ game's scale.
   on the pool.
 - Adding a gun = one `WeaponDef` in `weapons.py`, the same key on `loot.py`
   with `pocket="hotbar"`, a held frame in `make_guns.py` and a 16x16 icon
-  in `make_loot.py`. Combat, laser, weight and the hotbar HUD all read the
+  in `make_loot.py`. Combat, weight and the hotbar HUD all read the
   catalog — the client needs no branch. Ammo is named and unused.
 - Adding a zone = one `zones.Zone` and whatever builds its map. Its title card,
   its safety and its lighting rules are all data; the client needs no change to

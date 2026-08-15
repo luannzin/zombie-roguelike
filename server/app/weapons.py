@@ -1,9 +1,9 @@
 """Guns: catalog, hotbar, and the stats that make each one a different shot.
 
 Loot on the ground is still `loot.py`. This is what a collected gun *is* —
-damage, cadence, reach, weight, the laser, the AWP's hold-to-aim. Ammo
-types are named here so the catalog is honest; magazines are a later
-pass and nothing here spends a round.
+damage, cadence, reach, weight, the AWP's hold-to-aim. Ammo types are
+named here so the catalog is honest; magazines are a later pass and
+nothing here spends a round.
 
 The pocket (`inventory.py`) holds valuables. Guns live on a 3-slot
 HOTBAR. They do not stack. 1/2/3 selects a slot; selecting the held
@@ -24,9 +24,6 @@ AMMO_PISTOL = "pistol"
 AMMO_RIFLE = "rifle"
 AMMO_AWP = "awp"
 
-LASER_ALWAYS = "always"
-LASER_ADS = "ads"
-
 
 @dataclass(frozen=True)
 class WeaponDef:
@@ -45,7 +42,6 @@ class WeaponDef:
     noise_tiles: float
     #: Seconds the trigger must be held before the first shot. 0 = instant.
     aim_delay: float
-    laser: str
     #: Absolute camera zoom while holding to shoot. 0 = do not change zoom.
     scope_zoom: float
     #: Body kick, world px, opposite aim.
@@ -86,7 +82,6 @@ class WeaponDef:
             "muzzle": self.muzzle,
             "noise": self.noise,
             "aimDelay": self.aim_delay,
-            "laser": self.laser,
             "scopeZoom": self.scope_zoom,
             "kick": self.kick,
             "trauma": self.trauma,
@@ -113,10 +108,9 @@ WEAPONS: tuple[WeaponDef, ...] = (
         damage=7,
         fire_cooldown=0.16,
         range_tiles=7.5,
-        muzzle_tiles=0.85,
+        muzzle_tiles=0.62,
         noise_tiles=12.0,
         aim_delay=0.0,
-        laser=LASER_ALWAYS,
         scope_zoom=0.0,
         kick=1.1,
         trauma=0.10,
@@ -137,10 +131,9 @@ WEAPONS: tuple[WeaponDef, ...] = (
         damage=24,
         fire_cooldown=0.72,
         range_tiles=9.5,
-        muzzle_tiles=1.05,
+        muzzle_tiles=0.75,
         noise_tiles=18.0,
         aim_delay=0.0,
-        laser=LASER_ALWAYS,
         scope_zoom=0.0,
         kick=3.2,
         trauma=0.28,
@@ -161,10 +154,9 @@ WEAPONS: tuple[WeaponDef, ...] = (
         damage=9,
         fire_cooldown=0.11,
         range_tiles=11.0,
-        muzzle_tiles=1.15,
+        muzzle_tiles=0.88,
         noise_tiles=16.0,
         aim_delay=0.0,
-        laser=LASER_ALWAYS,
         scope_zoom=0.0,
         kick=1.6,
         trauma=0.13,
@@ -185,10 +177,9 @@ WEAPONS: tuple[WeaponDef, ...] = (
         damage=12,
         fire_cooldown=0.13,
         range_tiles=12.0,
-        muzzle_tiles=1.25,
+        muzzle_tiles=0.88,
         noise_tiles=17.0,
         aim_delay=0.0,
-        laser=LASER_ALWAYS,
         scope_zoom=0.0,
         kick=2.2,
         trauma=0.17,
@@ -209,10 +200,9 @@ WEAPONS: tuple[WeaponDef, ...] = (
         damage=55,
         fire_cooldown=1.55,
         range_tiles=22.0,
-        muzzle_tiles=1.55,
+        muzzle_tiles=1.06,
         noise_tiles=24.0,
         aim_delay=0.38,
-        laser=LASER_ADS,
         # Integer step below arena zoom — see client/src/render/framing.ts.
         scope_zoom=3.0,
         kick=4.8,

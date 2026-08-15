@@ -85,8 +85,6 @@ export interface Palette {
     barBackdrop: string;
     aimLocal: string;
     aimRemote: string;
-    laserLocal: string;
-    laserRemote: string;
     labelShadow: string;
   };
 
@@ -217,8 +215,6 @@ function resolve(): Palette {
       barBackdrop: v('--entity-bar-backdrop'),
       aimLocal: v('--entity-aim-local'),
       aimRemote: v('--entity-aim-remote'),
-      laserLocal: v('--entity-laser-local'),
-      laserRemote: v('--entity-laser-remote'),
       labelShadow: v('--entity-label-shadow'),
     },
 

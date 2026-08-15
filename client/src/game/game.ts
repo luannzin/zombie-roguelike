@@ -49,6 +49,7 @@ import type {
 } from '../net/protocol';
 import { Camera } from '../render/camera';
 import { ARENA_ZOOM } from '../render/framing';
+import { gunMuzzle, loadGuns, type GunAtlas } from '../render/guns';
 import { projectionFor } from '../render/projection';
 import { FovField, type LightSource, type VisionConfig, type Viewer } from '../render/fov';
 import { soilAt } from '../render/layers/terrain';
@@ -287,6 +288,7 @@ export class Game {
   private readonly snapshots = new SnapshotBuffer();
   private readonly visuals = new EntityVisuals();
   private readonly sprites = new SpriteBook();
+  private guns: GunAtlas | null = null;
   /** The local player's lamp. Remotes use the `lantern` flag on their snapshot. */
   private readonly lantern = new Lantern();
 
@@ -357,8 +359,6 @@ export class Game {
   private heldSlot = 0;
   /** Seconds the trigger has been down. AWP spends this before it fires. */
   private adsHold = 0;
-  /** 0..1 laser fade, render-clock. */
-  private adsAlpha = 0;
   /** Selection punches. Same counter contract as lantern refusals. */
   private hotbarPicks = 0;
   /** local player position interpolated between fixed ticks (see prediction.ts) */
@@ -414,7 +414,13 @@ export class Game {
     // the fallback face and then visibly swapped. Enemy sheets are NOT loaded
     // here: which ones exist is the server's answer, and it arrives with
     // `welcome` — long before the first zombie does.
-    await Promise.all([this.sprites.load([PLAYER_SHEET, BACKPACK_SHEET]), whenFontsReady()]);
+    await Promise.all([
+      this.sprites.load([PLAYER_SHEET, BACKPACK_SHEET]),
+      whenFontsReady(),
+      loadGuns().then((atlas) => {
+        this.guns = atlas;
+      }),
+    ]);
     // dispose() can land while these are loading.
     if (this.disposed) return;
 
@@ -756,12 +762,22 @@ export class Game {
       const shooter = this.roster.get(shot.by);
       const hit = shot.hit !== null;
       const weapon = shot.k ? this.config.weapons?.[shot.k] : undefined;
-      this.effects.spawnShot(
-        shot.x,
-        shot.y,
+      const body = msg.players.find((p) => p.id === shot.by);
+      const origin = this.shotOrigin(
+        shot.by,
+        shot.k,
+        body?.x ?? shot.x,
+        body?.y ?? shot.y,
         shot.dx,
         shot.dy,
-        shot.dist,
+      );
+      const tracer = aimTracer(origin.x, origin.y, shot.x, shot.y, shot.dx, shot.dy, shot.dist);
+      this.effects.spawnShot(
+        tracer.x,
+        tracer.y,
+        tracer.dx,
+        tracer.dy,
+        tracer.dist,
         shooter?.color ?? palette().effects.fallbackShot,
         hit,
         hit ? (shot.dmg ?? weapon?.damage ?? this.config.shotDamage) : undefined,
@@ -901,7 +917,6 @@ export class Game {
       // across the window would spin them the moment the frame opened.
       if (this.introLeft === 0 && !this.departing) this.updateAim();
       this.stepScope(dt);
-      this.stepLaser(dt);
 
       this.accumulator += dt;
       const step = this.config.dt;
@@ -1024,9 +1039,20 @@ export class Game {
   private predictShot(weapon: WeaponConfig): void {
     const world = this.world!;
     const config = this.config!;
-
-    const ox = this.smoothX + this.aimX * weapon.muzzle;
-    const oy = this.smoothY + this.aimY * weapon.muzzle;
+    const recoil = this.visuals.recoilOf(this.localId);
+    const gun = this.visuals.gunFeelOf(this.localId);
+    const origin = gunMuzzle({
+      x: this.smoothX + recoil.x,
+      y: this.smoothY + recoil.y,
+      ax: this.aimX,
+      ay: this.aimY,
+      weapon: this.weaponKeyOf(this.localId, this.heldSlot),
+      guns: this.guns,
+      pump: gun.pump,
+      kick: gun.kick,
+    });
+    const ox = origin.x;
+    const oy = origin.y;
     const world_ = this.snapshots.sample(performance.now(), this.localId, this.connection.rtt);
 
     const hitR = config.playerHitRadius;
@@ -1576,8 +1602,6 @@ export class Game {
     const recoil = this.visuals.recoilOf(id);
     const gun = this.visuals.gunFeelOf(id);
     const weaponKey = this.weaponKeyOf(id, source.isLocal ? this.heldSlot : source.held);
-    const weapon = weaponKey ? this.config?.weapons?.[weaponKey] : undefined;
-    const laser = this.laserFor(source, weapon);
 
     return {
       id,
@@ -1614,8 +1638,6 @@ export class Game {
       weapon: weaponKey,
       gunKick: gun.kick,
       gunPump: gun.pump,
-      laserReach: laser.reach,
-      laserAlpha: laser.alpha,
     };
   }
 
@@ -1680,8 +1702,6 @@ export class Game {
       weapon: null,
       gunKick: 0,
       gunPump: 0,
-      laserReach: 0,
-      laserAlpha: 0,
     };
   }
 
@@ -1992,29 +2012,27 @@ export class Game {
     return guns.slots[index] ?? null;
   }
 
-  private laserFor(
-    source: PlayerSource,
-    weapon: WeaponConfig | undefined,
-  ): { reach: number; alpha: number } {
-    if (!weapon || !this.world) return { reach: 0, alpha: 0 };
-    const ads = source.isLocal
-      ? this.input.shooting && this.zone?.hostile !== false && this.introLeft === 0
-      : Boolean(source.ads);
-    const show = weapon.laser === 'always' || (weapon.laser === 'ads' && ads);
-    if (!show) return { reach: 0, alpha: 0 };
-    const ox = source.x + source.ax * weapon.muzzle;
-    const oy = source.y + source.ay * weapon.muzzle;
-    const reach = this.world.raycastTiles(ox, oy, source.ax, source.ay, weapon.range);
-    const alpha = source.isLocal
-      ? weapon.laser === 'ads'
-        ? this.adsAlpha
-        : 1
-      : weapon.laser === 'ads'
-        ? ads
-          ? 1
-          : 0
-        : 0.7;
-    return { reach, alpha };
+  /** Visual barrel tip. Hitscan still uses the server origin; the tracer does not. */
+  private shotOrigin(
+    id: string,
+    weapon: string | undefined,
+    x: number,
+    y: number,
+    ax: number,
+    ay: number,
+  ): { x: number; y: number } {
+    const recoil = this.visuals.recoilOf(id);
+    const gun = this.visuals.gunFeelOf(id);
+    return gunMuzzle({
+      x: x + recoil.x,
+      y: y + recoil.y,
+      ax,
+      ay,
+      weapon,
+      guns: this.guns,
+      pump: gun.pump,
+      kick: gun.kick,
+    });
   }
 
   private stepScope(dt: number): void {
@@ -2031,23 +2049,6 @@ export class Game {
     this.camera.zoom += (want - this.camera.zoom) * k;
     if (Math.abs(this.camera.zoom - want) < 0.02) this.camera.zoom = want;
     this.camera.resize(this.canvas.width, this.canvas.height);
-  }
-
-  private stepLaser(dt: number): void {
-    const weapon = this.heldWeapon();
-    const want =
-      weapon?.laser === 'ads' &&
-      this.input.shooting &&
-      this.zone?.hostile !== false &&
-      this.introLeft === 0
-        ? 1
-        : weapon?.laser === 'always'
-          ? 1
-          : 0;
-    const k = 1 - expDamp(14, dt);
-    this.adsAlpha += (want - this.adsAlpha) * k;
-    if (this.adsAlpha < 0.01 && want === 0) this.adsAlpha = 0;
-    if (this.adsAlpha > 0.99 && want === 1) this.adsAlpha = 1;
   }
 
   private carryBurdenOf(id: string): number {
@@ -2323,6 +2324,27 @@ function shotFeel(weapon: WeaponConfig): ShotFeel {
     lightRadius: weapon.lightRadius,
     lightLife: weapon.lightLife,
   };
+}
+
+/** Keep the impact where the server put it; start the streak at the barrel. */
+function aimTracer(
+  muzzleX: number,
+  muzzleY: number,
+  originX: number,
+  originY: number,
+  dx: number,
+  dy: number,
+  dist: number,
+): { x: number; y: number; dx: number; dy: number; dist: number } {
+  const hitX = originX + dx * dist;
+  const hitY = originY + dy * dist;
+  const vx = hitX - muzzleX;
+  const vy = hitY - muzzleY;
+  const len = Math.hypot(vx, vy);
+  if (len < 1e-3) {
+    return { x: muzzleX, y: muzzleY, dx, dy, dist };
+  }
+  return { x: muzzleX, y: muzzleY, dx: vx / len, dy: vy / len, dist: len };
 }
 
 /** Dots for the minimap: same entities, only the fields it needs. */

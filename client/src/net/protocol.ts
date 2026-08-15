@@ -163,7 +163,6 @@ export interface LootItemConfig {
 }
 
 export type WeaponKind = 'pistol' | 'rifle' | 'sniper' | string;
-export type WeaponLaser = 'always' | 'ads' | 'none' | string;
 
 /** Combat block for one gun. Mirrors server/app/weapons.py. */
 export interface WeaponConfig {
@@ -176,7 +175,6 @@ export interface WeaponConfig {
   muzzle: number;
   noise: number;
   aimDelay: number;
-  laser: WeaponLaser;
   scopeZoom: number;
   kick: number;
   trauma: number;

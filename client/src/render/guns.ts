@@ -4,6 +4,10 @@
  * Produced by server/tools/make_guns.py and served from /guns/.
  * The client rotates around `grip` and flips when aim is left.
  * Ground / HUD icons stay on the loot atlas — this sheet is IN HAND.
+ *
+ * Hand and muzzle math live here so the drawn barrel and the tracer
+ * share one origin. Duplicating it in the entity layer is how a shot
+ * used to leave the hip.
  */
 
 import { loadImage, loadJson } from '../lib/image';
@@ -22,6 +26,22 @@ export interface GunAtlas {
   frameHeight: number;
   frames: number;
   items: Record<string, GunFrame>;
+}
+
+/** World px along aim from body centre to the grip. */
+export const GUN_HAND_ALONG = 3.0;
+/** World px up from body centre to the chest / grip line. */
+export const GUN_HAND_LIFT = 4.5;
+
+export interface GunMuzzleArgs {
+  x: number;
+  y: number;
+  ax: number;
+  ay: number;
+  weapon?: string | null;
+  guns?: GunAtlas | null;
+  pump?: number;
+  kick?: number;
 }
 
 interface GunManifest {
@@ -56,4 +76,35 @@ async function fetchGuns(): Promise<GunAtlas | null> {
     console.warn('[guns] no gun atlas, weapons draw as the old aim line:', err);
     return null;
   }
+}
+
+/** Grip in world pixels — the sprite rotates around this. */
+export function gunHand(args: GunMuzzleArgs): { x: number; y: number } {
+  const pump = args.pump ?? 0;
+  const along = GUN_HAND_ALONG + pump;
+  return {
+    x: args.x + args.ax * along,
+    y: args.y - GUN_HAND_LIFT + args.ay * along,
+  };
+}
+
+/** Barrel tip in world pixels. Tracers and flashes start here. */
+export function gunMuzzle(args: GunMuzzleArgs): { x: number; y: number } {
+  const hand = gunHand(args);
+  const spec = args.weapon && args.guns ? args.guns.items[args.weapon] : undefined;
+  if (!spec) {
+    return { x: hand.x + args.ax * 6, y: hand.y + args.ay * 6 };
+  }
+  const angle = Math.atan2(args.ay, args.ax);
+  const flip = args.ax < 0 ? -1 : 1;
+  const kick = flip < 0 ? -(args.kick ?? 0) : (args.kick ?? 0);
+  const theta = angle + kick;
+  const dx = spec.muzzleX - spec.gripX;
+  const dy = (spec.muzzleY - spec.gripY) * flip;
+  const cos = Math.cos(theta);
+  const sin = Math.sin(theta);
+  return {
+    x: hand.x + dx * cos - dy * sin,
+    y: hand.y + dx * sin + dy * cos,
+  };
 }

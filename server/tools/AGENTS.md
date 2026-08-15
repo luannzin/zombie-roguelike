@@ -17,7 +17,7 @@ imported by `app/` and never run at request time.
 | `make_vfx.py` | generates final pixels | `assets/processed/vfx/` (summon, kindle, aura, wind) |
 | `make_gore.py` | generates final pixels | `assets/processed/gore/` (6 wound decals worn by a hit body) |
 | `make_loot.py` | generates final pixels | `assets/processed/loot/` (one 16x16 frame per item, including gun icons) |
-| `make_guns.py` | generates final pixels | `assets/processed/guns/` (held side-view, one 26x12 frame per weapon) |
+| `make_guns.py` | generates final pixels | `assets/processed/guns/` (held side-view, one 18x8 frame per weapon) |
 | `make_hud_icons.py` | generates final pixels | `assets/processed/hud/` (battery, backpack, coin) |
 | `make_audio.py` | generates final samples | `assets/processed/audio/` (31 sounds, 58 wavs + manifest + loudness.json) |
 

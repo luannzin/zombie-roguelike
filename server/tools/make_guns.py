@@ -11,12 +11,17 @@ the 16x16 loot atlas. Do not fold the two together: a 16px isometric
 pistol rotated around a grip is mush, and a side-view rifle planted on
 a tile reads as a signpost.
 
+Every gun is the same pixel SCALE and the same silhouette HEIGHT
+(5 authored rows, barrel on row 1). Length is the class: pistols short,
+rifles longer, AWP longest. A mixed scale next to a 16px body reads as
+five different toys.
+
 Output (assets/processed/guns/):
-    sheet.png      one row, 24x12 frames, catalog order
+    sheet.png      one row, 18x8 frames, catalog order
     manifest.json  frame, grip, muzzle per key
 
-The grip is the pivot (hand). The muzzle is where the laser and the
-tracer start. Both are pixel coordinates inside the frame.
+The grip is the pivot (hand). The muzzle is where the tracer starts.
+Both are pixel coordinates inside the frame.
 
 Usage:
     python tools/make_guns.py
@@ -34,7 +39,6 @@ from PIL import Image
 from make_textures import (
     DEFAULT_TILE,
     PROCESSED_DIR,
-    RGBA,
     Ramp,
     TRANSPARENT,
     outline,
@@ -43,8 +47,8 @@ from make_textures import (
     rgb,
 )
 
-FRAME_W = 26
-FRAME_H = 12
+FRAME_W = 18
+FRAME_H = 8
 
 # Materials against the night. Bright enough to read at 4x, dark enough
 # not to glow like a HUD icon on a body.
@@ -91,8 +95,22 @@ def _blit(art: Art, ramps: Palette, width: int, height: int) -> Image.Image:
     return img
 
 
-def _find(art: Art, ch: str, ox: int, oy: int) -> tuple[int, int]:
-    """Last (rightmost, then lowest) pixel of `ch`, in frame space."""
+def _centroid(art: Art, ch: str, ox: int, oy: int) -> tuple[int, int]:
+    """Mean of every `ch` pixel — the grip pivot, not a corner of the band."""
+    xs: list[int] = []
+    ys: list[int] = []
+    for y, row in enumerate(art):
+        for x, cell in enumerate(row):
+            if cell == ch:
+                xs.append(ox + x)
+                ys.append(oy + y)
+    if not xs:
+        return (ox, oy + len(art) // 2)
+    return (round(sum(xs) / len(xs)), round(sum(ys) / len(ys)))
+
+
+def _rightmost(art: Art, ch: str, ox: int, oy: int) -> tuple[int, int]:
+    """Muzzle face: furthest right, then lowest."""
     found = (ox, oy + len(art) // 2)
     for y, row in enumerate(art):
         for x, cell in enumerate(row):
@@ -102,20 +120,19 @@ def _find(art: Art, ch: str, ox: int, oy: int) -> tuple[int, int]:
 
 
 # Catalog order matches server/app/weapons.py and the loot keys.
+# Five authored rows, barrel on row 1, so every gun sits on the same line.
 # Marker letters used only for grip/muzzle lookup are still painted:
 #   g = grip pivot band, m = muzzle face
 GUNS: list[tuple[str, Palette, Art, str, str]] = [
     (
         "glock18",
-        {"s": SLIDE, "t": TAN, "e": STEEL, "g": TAN, "m": SLIDE},
+        {"s": SLIDE, "t": TAN, "g": TAN, "m": SLIDE},
         [
-            ".......sssssss.",
-            "......ssssssss.",
-            "....tttssssssm.",
-            "...gt..t.......",
-            "...gt..t.......",
-            "....tttt.......",
-            ".....tt........",
+            ".....sss.",
+            "....ssssm",
+            "..ttss...",
+            ".gt.t....",
+            "..ttt....",
         ],
         "g",
         "m",
@@ -124,43 +141,37 @@ GUNS: list[tuple[str, Palette, Art, str, str]] = [
         "deagle",
         {"s": CHROME, "k": STEEL, "p": GRIP, "g": GRIP, "m": CHROME},
         [
-            "........ssssssss",
-            ".......skkkkkkks",
-            "......sskkkkkkkm",
-            "....ppssssssssk.",
-            "...gp..p........",
-            "...gp..p........",
-            "....pppp........",
-            ".....pp.........",
+            ".......ssss",
+            "......skkkm",
+            "....ppsssk.",
+            "...gp.p....",
+            "....ppp....",
         ],
         "g",
         "m",
     ),
     (
         "famas",
-        {"b": POLY, "h": STEEL, "c": CHROME, "n": SLIDE, "g": GRIP, "m": STEEL},
+        {"b": POLY, "h": STEEL, "n": SLIDE, "g": GRIP, "m": STEEL},
         [
-            ".....hhhhhhhh.....",
-            ".....h..cc..h.nnn.",
-            "bbbbbbbbbbbbbbnnnm",
-            "b....b........nnn.",
-            "bg...b...nn.......",
-            ".bbbbb...nn.......",
+            "...hhhhhh...",
+            "bbbbbbbbbnnm",
+            "bg..b...nn..",
+            ".bbbbb..nn..",
+            "......nn....",
         ],
         "g",
         "m",
     ),
     (
         "ak47",
-        {"w": WOOD, "s": STEEL, "k": SLIDE, "n": STEEL, "g": WOOD, "m": STEEL},
+        {"w": WOOD, "k": SLIDE, "n": STEEL, "g": WOOD, "m": STEEL},
         [
-            "...............n.",
-            "........kkkkkkkkn",
-            "wwwwwkkkkkkkkkkkm",
-            "w...wnnnnkkkkkkk.",
-            "wg..w.nnn........",
-            ".wwww.nn.........",
-            "......nn.........",
+            "...........n",
+            "wwwwwkkkkkkm",
+            "wg..wnnkkkk.",
+            ".wwww.nn....",
+            "......nn....",
         ],
         "g",
         "m",
@@ -169,12 +180,11 @@ GUNS: list[tuple[str, Palette, Art, str, str]] = [
         "awp",
         {"o": OLIVE, "s": SLIDE, "k": STEEL, "c": SCOPE, "g": OLIVE, "m": STEEL},
         [
-            "..........ccc.........",
-            ".........cooc.........",
-            "oooooooosssssssssssssm",
-            "o....o.skkkkkkkkkkkks.",
-            "og...o.s..............",
-            ".ooooo.s..............",
+            ".............cc",
+            "oooooooossssssm",
+            "og....oskkkkkks",
+            ".oooooo.s......",
+            "........s......",
         ],
         "g",
         "m",
@@ -196,8 +206,8 @@ def build(args) -> Path:
         art_h = len(art)
         ox = 1
         oy = (height - art_h) // 2
-        grip = _find(art, grip_ch, ox, oy)
-        muzzle = _find(art, muzzle_ch, ox, oy)
+        grip = _centroid(art, grip_ch, ox, oy)
+        muzzle = _rightmost(art, muzzle_ch, ox, oy)
         items[key] = {
             "frame": index,
             "gripX": grip[0],

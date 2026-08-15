@@ -60,9 +60,11 @@ output the game actually loads.
   clothes (`zcloth-*`) lock to the head and torso the way the backpack
   locks to the player. Accessory sheets bake their own colour — enemies
   are drawn untinted.
-- `guns/` is the held side-view: one 26×12 frame per weapon, pointing right,
-  grip and muzzle in the manifest. The same keys have 16×16 icons on `loot/`
-  for the ground and the hotbar. Do not rotate a loot icon in the hand.
+- `guns/` is the held side-view: one 18×8 frame per weapon, pointing right,
+  grip and muzzle in the manifest. Same pixel scale and silhouette height
+  for every gun; length is the class. The same keys have 16×16 icons on
+  `loot/` for the ground and the hotbar. Do not rotate a loot icon in the
+  hand.
 - The client reads `processed/` only. Nothing may import from `raw/`; the font
   is bundled from `client/src/assets/fonts/` instead.
 

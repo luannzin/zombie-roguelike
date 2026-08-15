@@ -163,6 +163,14 @@ subtree.
   off the panel sends `{type:"drop","slot"}`; the server places the
   stack on walkable floor near the player's feet. A full bag (no slot
   and no stack) keeps the drop tooltip and reads "Inventário Cheio".
+- Boxes, barrels and the other wood on the crate sheet are live objects
+  (`server/app/crates.py`), not scenery. Scenery still places them; after
+  the stamp they are pulled onto the map as crates so a smash can remove
+  one. The sheet is kinds × break frames (idle is frame 0). Shoot the
+  tile or stand close and press E ("E para destruir"). A smash opens the
+  LOW tile to floor and rolls empty (wind VFX), a few coins, or one
+  catalog item. E still works in camp; guns do not. Interact is loot,
+  then crate, then ready.
 
 ## Child DOX Index
 

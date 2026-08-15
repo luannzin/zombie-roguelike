@@ -10,7 +10,7 @@
  */
 
 import { get2d } from '../lib/canvas';
-import { drawCombatEffects, drawDust, drawTextFloats } from './layers/effects';
+import { drawCombatEffects, drawDust, drawTextFloats, drawWindPuffs } from './layers/effects';
 import {
   drawCoinShadows,
   drawCoins,
@@ -23,7 +23,7 @@ import { drawAlertMarks } from './layers/vision';
 import { DisturbanceField } from './disturbance';
 import { AtmosphereLayer } from './layers/atmosphere';
 import { DarknessLayer } from './layers/darkness';
-import { drawFootprints, drawSceneryProp } from './layers/scenery';
+import { crateAnimFrame, drawFootprints, drawSceneryProp } from './layers/scenery';
 import {
   drawLootAuras,
   drawLootBeams,
@@ -41,6 +41,7 @@ import { loadTerrain } from './terrain';
 import { loadVfx, type VfxAtlas } from './vfx';
 import type { SpriteBook } from './sprites';
 import type { DrawableEntity, RenderState } from './types';
+import type { SceneryPiece } from '../game/world';
 
 export type { DrawableEntity, RenderState } from './types';
 
@@ -51,6 +52,11 @@ export class Renderer {
   private readonly atmosphere = new AtmosphereLayer();
   /** Depth-sort scratch — see `draw`. */
   private readonly ordered: DrawableEntity[] = [];
+  /**
+   * Standing scenery + live crates + smash sheets. Rebuilt every frame so a
+   * crate can leave the live list and keep playing its break in the same sort.
+   */
+  private readonly depthProps: { y: number; anim: number; piece: SceneryPiece }[] = [];
   /**
    * What the bodies on screen are doing to the plants around them. Owned here
    * rather than passed in: it is a per-frame consequence of `state.entities`,
@@ -162,7 +168,40 @@ export class Renderer {
     // has to hide whoever walks behind it and be hidden by whoever walks in
     // front, which is the same requirement the fire has and the same answer.
     const fires = state.world.fires;
-    const standing = state.world.scenery.standing;
+    const depthProps = this.depthProps;
+    depthProps.length = 0;
+    for (const piece of state.world.scenery.standing) {
+      depthProps.push({ y: piece.y, anim: 0, piece });
+    }
+    for (const crate of state.world.crates) {
+      depthProps.push({
+        y: crate.y,
+        anim: 0,
+        piece: {
+          kind: 'crate',
+          x: crate.x,
+          y: crate.y,
+          variant: crate.variant,
+          flip: crate.flip,
+        },
+      });
+    }
+    const crateSheet = this.scenery?.props.crate;
+    for (const smash of state.effects.crateSmashes) {
+      depthProps.push({
+        y: smash.y,
+        anim: crateSheet ? crateAnimFrame(crateSheet, smash.age) : 0,
+        piece: {
+          kind: 'crate',
+          x: smash.x,
+          y: smash.y,
+          variant: smash.variant,
+          flip: smash.flip,
+        },
+      });
+    }
+    depthProps.sort((a, b) => a.y - b.y);
+
     const foot = state.config.playerHalfHeight;
     let fire = 0;
     let prop = 0;
@@ -171,7 +210,7 @@ export class Renderer {
     const flushTo = (limit: number): void => {
       for (;;) {
         const fireY = fire < fires.length ? fires[fire].y - foot : Infinity;
-        const propY = prop < standing.length ? standing[prop].y - foot : Infinity;
+        const propY = prop < depthProps.length ? depthProps[prop].y - foot : Infinity;
         const nextY = Math.min(fireY, propY);
         // Both exhausted. Checked before the limit compare because the final
         // flush passes Infinity, and `Infinity > Infinity` is false.
@@ -181,7 +220,10 @@ export class Renderer {
           this.terrain.fire(ctx, view, fires[fire], state.time);
           fire++;
         } else {
-          if (scenery) drawSceneryProp(ctx, view, scenery, standing[prop], state.time);
+          const row = depthProps[prop];
+          if (scenery) {
+            drawSceneryProp(ctx, view, scenery, row.piece, state.time, row.anim);
+          }
           prop++;
         }
       }
@@ -223,6 +265,7 @@ export class Renderer {
     drawLootAuras(ctx, state.loot, state.time);
     drawLootMotes(ctx, state.loot, state.time, state.config.tileSize);
     drawLootBeams(ctx, this.vfx?.aura ?? null, state.loot, state.time);
+    drawWindPuffs(ctx, this.vfx?.wind ?? null, state.effects.winds);
     // Hunt tell sits ON the night: a hunter you cannot see still wears the
     // diamond, so killing the lamp does not hide that it has you.
     drawAlertMarks(entity, state.entities, state.time);

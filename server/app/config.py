@@ -342,6 +342,13 @@ COIN_ATTRACT_MAX_SPEED = TILE_SIZE * COIN_ATTRACT_MAX_TILES_PER_SEC
 LOOT_COLLECT_TILES = 2.25
 LOOT_COLLECT_DIST = TILE_SIZE * LOOT_COLLECT_TILES
 
+# How close the feet have to be for E to smash a crate. Same reach as loot.
+CRATE_BREAK_TILES = 2.25
+CRATE_BREAK_DIST = TILE_SIZE * CRATE_BREAK_TILES
+# Quieter than a gunshot — wood giving way, not a muzzle.
+CRATE_NOISE_TILES = 5.5
+CRATE_NOISE_DIST = TILE_SIZE * CRATE_NOISE_TILES
+
 # --- inventory / carry ------------------------------------------------------
 # Starting pocket. A later upgrade grows the slot count; weight is independent
 # of that and can go PAST the max — the bag never refuses for being heavy.
@@ -430,6 +437,8 @@ def client_config() -> dict:
         "readyRangeTiles": CAMP_READY_RANGE_TILES,
         # How close to a drop E will collect, in tiles.
         "lootCollectTiles": LOOT_COLLECT_TILES,
+        # How close to a crate E will smash, in tiles.
+        "crateBreakTiles": CRATE_BREAK_TILES,
         # Catalog: name, rarity, atlas frame, weight, value. The client never
         # invents an item.
         "loot": catalog_payload(),

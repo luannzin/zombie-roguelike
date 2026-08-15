@@ -21,6 +21,7 @@ game's scale.
 | `pathing.py` | BFS flow field, one per player |
 | `coins.py` | dropped gold: burst, magnet, collection |
 | `loot.py` | world collectables: catalog, scene-context scatter, E-to-collect |
+| `crates.py` | breakable boxes/barrels: extract from scenery, smash, drop roll |
 | `inventory.py` | the pocket: slots, stacking, weight |
 | `world.py` | tile grid, tile alphabet, collision queries |
 | `maps.py` | hand-authored maps (`from_ascii`, `from_rects`) |
@@ -157,10 +158,13 @@ game's scale.
   map per try is most of what generation costs.
 - Scene placement never touches the `BORDER` treeline, which is what keeps the
   camera from framing the end of the world.
-- BUILDINGS claim `world.PROP` (solid, sight-blocking). Waist-high cover —
+-   BUILDINGS claim `world.PROP` (solid, sight-blocking). Waist-high cover —
   fences, signs, crates, logs — claims `world.LOW`: solid to bodies and
   bullets, transparent to light. Making those PROP puts a shadow wedge behind
   every crate and turns a fence into a wall of black. Firepits stay walkable.
+  Crates are then pulled off the scenery list (`crates.attach`) so a smash
+  can delete one and `set_tile` that LOW cell back to FLOOR. `Navigator`
+  must `invalidate()` when a tile opens.
 - **A standing thing is solid on one tile of height, at its feet.** Trees,
   signs, tents, cabins — the canopy, the board, the roof are drawn, not
   walked into. `FOOTPRINTS` depth is 1 and `_cells` sits on the contact
@@ -187,6 +191,15 @@ game's scale.
   pulls a cell back onto the ground near the feet (`inventory.take`,
   `loot.place_near`); camp and the walk-out refuse it. A stack is one
   world drop per unit.
+- **A crate is furniture you can break.** Scenery still places the pile;
+  `crates.py` owns the live list. `{type:"break","id"}` smashes if the
+  feet are inside `crateBreakTiles`; a bullet that stops on the crate's
+  tile does the same. Walk-out refuses it; camp allows E (stores are
+  furniture) but not guns. Three rolls: empty (client plays wind), 1–3
+  coins, or one catalog item (`loot.roll_item`, no scene bias). Smash
+  makes a quieter `ai.Noise` than a gunshot (`CRATE_NOISE_TILES`). The
+  remaining list rides `welcome`/`map.crates` and a dirty snapshot
+  `crates`; `crateBreaks` is the juice for that tick.
 - **The thread is what makes it one story instead of seven.** `_route` orders
   the placed scenes by distance from spawn so the narrative reads OUTWARD and
   ends at the landmark; `_thread` lays prints between them with blood

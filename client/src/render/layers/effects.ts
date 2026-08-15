@@ -1,16 +1,18 @@
 /**
  * Transient combat visuals: footstep dust, tracers, muzzle flashes, impact
- * debris, melee slashes and floating text.
+ * debris, melee slashes, floating text, and the empty-crate wind puff.
  *
  * Dust draws under entities; the rest draws over them. Floating text is
- * screen-space so it stays legible at any zoom.
+ * screen-space so it stays legible at any zoom. Wind is world-space after
+ * darkness, additive, greyscale — a gust of air, not a player-tinted beam.
  */
 
-import type { Effects } from '../../game/effects';
+import type { Effects, WindPuff } from '../../game/effects';
 import { fadeOf } from '../../lib/math';
 import { hudFont } from '../../theme/fonts';
 import { palette } from '../../theme/palette';
 import type { Projection } from '../projection';
+import { effectFrame, type VfxSheet } from '../vfx';
 
 /** World space, under entities. */
 export function drawDust(ctx: CanvasRenderingContext2D, effects: Effects): void {
@@ -177,4 +179,35 @@ export function drawCenteredText(
   ctx.fillText(text, left + 1, top + 1);
   ctx.fillStyle = color;
   ctx.fillText(text, left, top);
+}
+
+/**
+ * One-shot gust when a crate broke empty. World pixels, after darkness,
+ * additive, no player tint — the sheet is already the colour of air.
+ */
+export function drawWindPuffs(
+  ctx: CanvasRenderingContext2D,
+  sheet: VfxSheet | null,
+  winds: WindPuff[],
+): void {
+  if (!sheet || winds.length === 0) return;
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  for (const puff of winds) {
+    const fade = fadeOf(puff);
+    const frame = effectFrame(sheet, puff.age);
+    ctx.globalAlpha = 0.85 * fade;
+    ctx.drawImage(
+      sheet.image,
+      frame * sheet.frameWidth,
+      0,
+      sheet.frameWidth,
+      sheet.frameHeight,
+      Math.round(puff.x - sheet.frameWidth / 2),
+      Math.round(puff.y - sheet.anchorY),
+      sheet.frameWidth,
+      sheet.frameHeight,
+    );
+  }
+  ctx.restore();
 }

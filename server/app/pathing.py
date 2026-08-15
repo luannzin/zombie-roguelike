@@ -156,6 +156,11 @@ class Navigator:
             field.rebuild(*goal)
             self.cooldowns[pid] = REBUILD_INTERVAL
 
+    def invalidate(self) -> None:
+        """Drop every field. A smashed crate opens a tile the last flood missed."""
+        self.fields.clear()
+        self.cooldowns.clear()
+
     def steer(self, x: float, y: float, target_id: str) -> tuple[float, float] | None:
         """Unit direction from (x, y) towards `target_id`, following the field.
 

@@ -11,7 +11,7 @@ and nowhere near the frame loop.
   `Game`; React never touches those pixels again.
 - `hud/` — ours: `Hud`, `HudScreen`, `Panel`, `Vitals`, `BatteryGauge`,
   `ProgressBar`, `StatusLine`, `NetStats`, `ControlsHint`, `ZoneTitle`,
-  `ReadyCount`, `InteractPrompt`, `LootPrompt`, `Inventory`, `InventorySlot`,
+  `ReadyCount`, `InteractPrompt`, `LootPrompt`, `CratePrompt`, `Inventory`, `InventorySlot`,
   `WeightBar`, `LootIcon`, `CoinIcon`, `SlotValue`, `LootFly`, `LootCard`,
   `LootCardRow`, `TooltipCard`, `InventoryGhost`, `Tooltip`, `TooltipKey`.
 - `lobby/` — `CampfireCanvas` (mounts `LobbyScene`; owns the rest-shot fire
@@ -62,7 +62,7 @@ and nowhere near the frame loop.
   is an `anchor` id the game loop writes every frame (`tooltip-anchors`).
   Do not `setState` from that rAF — it is a transform, same idea as the
   glass burst. `InteractPrompt` is ready at the fire; `LootPrompt` is a
-  nearby drop. A full bag keeps the pin and says "Inventário Cheio" in
+  nearby drop; `CratePrompt` is smash ("E para destruir"). A full bag keeps the pin and says "Inventário Cheio" in
   the danger tone — hiding it would look like the drop vanished. New
   items get a new caller, not a fork of the chrome.
 - `Inventory` is the left-side pocket. Collapsed it is the backpack sprite

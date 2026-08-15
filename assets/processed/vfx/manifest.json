@@ -27,6 +27,15 @@
       "fps": 10,
       "anchorY": 42,
       "loop": true
+    },
+    "wind": {
+      "file": "wind.png",
+      "frameWidth": 32,
+      "frameHeight": 32,
+      "frames": 8,
+      "fps": 14,
+      "anchorY": 28,
+      "loop": false
     }
   }
 }

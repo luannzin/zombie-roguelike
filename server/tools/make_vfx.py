@@ -10,6 +10,7 @@ Output (assets/processed/vfx/):
     summon.png    14 frames, 32x96 — a player materialising at the campfire
     kindle.png    16 frames, 48x96 — the bonfire roaring when the match starts
     aura.png      8 frames, 16x48  — a small looping column over epic/legendary loot
+    wind.png      8 frames, 32x32  — a one-shot gust when a crate breaks empty
     manifest.json
 
 EFFECT SHEETS ARE GREYSCALE. An effect that belongs to somebody — a summon, a
@@ -104,6 +105,11 @@ KINDLE_COLLAPSE = 0.64
 # this is a tell, not an arrival.
 AURA_FRAMES = 8
 AURA_FPS = 10
+
+# A crate that held nothing. Short, low, and empty at both ends — a puff
+# of air leaving, not a beam arriving.
+WIND_FRAMES = 8
+WIND_FPS = 14
 
 
 def _ease_out(t: float) -> float:
@@ -531,6 +537,47 @@ def make_aura_frame(
     return img
 
 
+def make_wind_frame(
+    width: int, height: int, contact_y: int, index: int, total: int
+) -> Image.Image:
+    """A short gust leaving a crate. Empty at both ends, no loop."""
+    img = Image.new("RGBA", (width, height), TRANSPARENT)
+    field = [[0.0] * width for _ in range(height)]
+    cx = width * 0.5
+    t = index / max(total - 1, 1)
+    if t <= 0.04 or t >= 0.96:
+        return img
+
+    # Rise fast, fade slow — a puff, not a beam.
+    envelope = min(1.0, t / 0.22) * (1.0 - t) ** 1.15
+    travel = _ease_out(t)
+
+    for i in range(14):
+        side = -1.0 if i % 2 == 0 else 1.0
+        seed = hash01(i, 3, 91)
+        spread = (0.18 + seed * 0.55) * travel
+        lift = (0.08 + hash01(i, 7, 19) * 0.35) * travel
+        mx = int(round(cx + side * spread * width * 0.48))
+        my = int(round(contact_y - lift * height * 0.7))
+        strength = envelope * (0.55 + seed * 0.7)
+        _add(field, mx, my, strength)
+        _add(field, mx + int(side), my, strength * 0.55)
+        _add(field, mx, my - 1, strength * 0.4)
+
+    # A thin ground smear so the gust sits on the floor, not in the air.
+    _ellipse(field, cx, contact_y, width * (0.16 + travel * 0.28), height * 0.06, 0.7 * envelope)
+
+    px = img.load()
+    for y in range(height):
+        for x in range(width):
+            value = field[y][x]
+            if value <= 0.08:
+                continue
+            colour: RGBA = pick(BEAM, clamp01(value * 0.9), x, y)
+            px[x, y] = (colour[0], colour[1], colour[2], _quantize_alpha(value * 1.05))
+    return img
+
+
 def build(args) -> Path:
     tile = args.tile
     out_dir = PROCESSED_DIR / "vfx"
@@ -569,6 +616,15 @@ def build(args) -> Path:
     ]
     pack(aura_frames, aura_w, aura_h).save(out_dir / "aura.png")
 
+    wind_w = tile * 2
+    wind_h = tile * 2
+    wind_contact = wind_h - round(tile * 0.25)
+    wind_frames = [
+        make_wind_frame(wind_w, wind_h, wind_contact, i, WIND_FRAMES)
+        for i in range(WIND_FRAMES)
+    ]
+    pack(wind_frames, wind_w, wind_h).save(out_dir / "wind.png")
+
     manifest = {
         "tile": tile,
         "effects": {
@@ -602,6 +658,15 @@ def build(args) -> Path:
                 "anchorY": aura_contact,
                 "loop": True,
             },
+            "wind": {
+                "file": "wind.png",
+                "frameWidth": wind_w,
+                "frameHeight": wind_h,
+                "frames": WIND_FRAMES,
+                "fps": WIND_FPS,
+                "anchorY": wind_contact,
+                "loop": False,
+            },
         },
     }
     (out_dir / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
@@ -610,7 +675,8 @@ def build(args) -> Path:
         f"wrote {out_dir}: summon {SUMMON_FRAMES}x{width}x{height} "
         f"@ {SUMMON_FPS}fps, kindle {KINDLE_FRAMES}x{kindle_w}x{kindle_h} "
         f"@ {KINDLE_FPS}fps, aura {AURA_FRAMES}x{aura_w}x{aura_h} "
-        f"@ {AURA_FPS}fps loop, contact row {contact_y}/{kindle_contact}/{aura_contact}"
+        f"@ {AURA_FPS}fps loop, wind {WIND_FRAMES}x{wind_w}x{wind_h} "
+        f"@ {WIND_FPS}fps, contact row {contact_y}/{kindle_contact}/{aura_contact}/{wind_contact}"
     )
     return out_dir
 

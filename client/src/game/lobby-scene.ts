@@ -1133,6 +1133,25 @@ export class LobbyScene {
 						drawSceneryProp(this.ctx, WORLD_SPACE, scenery, piece, this.time),
 				});
 			}
+			for (const crate of this.world.crates) {
+				entries.push({
+					y: crate.y,
+					draw: () =>
+						drawSceneryProp(
+							this.ctx,
+							WORLD_SPACE,
+							scenery,
+							{
+								kind: "crate",
+								x: crate.x,
+								y: crate.y,
+								variant: crate.variant,
+								flip: crate.flip,
+							},
+							this.time,
+						),
+				});
+			}
 		}
 		entries.sort((a, b) => a.y - b.y);
 		for (const entry of entries) entry.draw();

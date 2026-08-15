@@ -75,6 +75,7 @@ class TileMap:
         seed: int = 0,
         scenery: dict | None = None,
         loot: list | None = None,
+        crates: list | None = None,
     ):
         self.tiles = tiles
         # The story laid over this map: a legend plus one compact row per
@@ -85,6 +86,10 @@ class TileMap:
         # Initial loot rows from `loot.scatter`. The room hydrates live drops
         # from this; collected items do not write back. Camp maps leave it empty.
         self.loot = loot or []
+        # Live crates pulled out of scenery. The stamp already claimed their
+        # LOW tiles; this list is what the room smashes and what the client
+        # draws. Camp and forest both carry it.
+        self.crates = crates or []
         # Shipped to the client, which hashes it with tile coordinates to place
         # decoration (grass tufts, prop variants). Sending a seed instead of a
         # decoration layer keeps the map payload the size of the map.
@@ -188,6 +193,12 @@ class TileMap:
         row = int((ny - hh) // TILE_SIZE)
         return (row + 1) * TILE_SIZE + hh + _EPS
 
+    def set_tile(self, tx: int, ty: int, kind: int) -> None:
+        """Rewrite one cell. A smashed crate turns its LOW tile back to FLOOR."""
+        if tx < 0 or ty < 0 or tx >= self.width or ty >= self.height:
+            return
+        self.tiles[ty][tx] = kind
+
     def to_payload(self) -> dict:
         return {
             "width": self.width,
@@ -196,4 +207,5 @@ class TileMap:
             "seed": self.seed,
             "tiles": self.tiles,
             **self.scenery,
+            "crates": list(self.crates),
         }

@@ -143,6 +143,25 @@ function pick(colors: readonly string[]): string {
   return colors[(Math.random() * colors.length) | 0];
 }
 
+/** A crate playing its smash sheet. Gone from the live list; this is the juice. */
+export interface CrateSmash {
+  x: number;
+  y: number;
+  variant: number;
+  flip: boolean;
+  age: number;
+  life: number;
+  empty: boolean;
+}
+
+/** One-shot wind puff. Played when a crate held nothing. */
+export interface WindPuff {
+  x: number;
+  y: number;
+  age: number;
+  life: number;
+}
+
 export class Effects {
   tracers: Tracer[] = [];
   flashes: Flash[] = [];
@@ -155,6 +174,8 @@ export class Effects {
   lights: PointLight[] = [];
   /** Boot prints. Long-lived; see Footprint. */
   footprints: Footprint[] = [];
+  crateSmashes: CrateSmash[] = [];
+  winds: WindPuff[] = [];
 
   /**
    * Leave one print. `dx`/`dy` is the heading it was walking.
@@ -347,6 +368,38 @@ export class Effects {
   }
 
   /** Gore burst where something died. */
+  spawnCrateSmash(
+    x: number,
+    y: number,
+    variant: number,
+    flip: boolean,
+    empty: boolean,
+    life: number,
+  ): void {
+    this.crateSmashes.push({ x, y, variant, flip, age: 0, life, empty });
+    const fx = palette().effects;
+    for (let i = 0; i < 10; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 18 + Math.random() * 36;
+      this.particles.push({
+        x,
+        y: y - 4,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed * 0.55 - 8,
+        size: 0.9 + Math.random() * 1.6,
+        color: pick(fx.hitParticles),
+        age: 0,
+        life: 0.28 + Math.random() * 0.22,
+        gy: 50,
+      });
+    }
+    this.spawnDust(x, y, 0, 1, 1);
+  }
+
+  spawnWind(x: number, y: number, life: number): void {
+    this.winds.push({ x, y, age: 0, life });
+  }
+
   spawnDeath(x: number, y: number): void {
     const fx = palette().effects;
     for (let i = 0; i < 16; i++) {
@@ -426,6 +479,8 @@ export class Effects {
     this.slashes = advance(this.slashes, dt);
     this.lights = advance(this.lights, dt);
     this.footprints = advance(this.footprints, dt);
+    this.crateSmashes = advance(this.crateSmashes, dt);
+    this.winds = advance(this.winds, dt);
     this.particles = stepParticles(this.particles, dt, PARTICLE_DRAG);
     this.dust = stepParticles(this.dust, dt, DUST_DRAG);
     this.textFloats = advance(this.textFloats, dt, (d) => {
@@ -443,6 +498,8 @@ export class Effects {
     this.textFloats.length = 0;
     this.lights.length = 0;
     this.footprints.length = 0;
+    this.crateSmashes.length = 0;
+    this.winds.length = 0;
   }
 }
 

@@ -25,11 +25,10 @@
  * and once they are there, animating a few of them is free.
  *
  * WHAT MOVES, AND WHY SO LITTLE. A sign on a post swings; canvas breathes; a
- * dead fire still smokes. Nothing else moves at all. These props are the
- * things in the forest that have STOPPED — an animated cabin or a shuffling
- * crate would undo the one thing they are there to say. The sway comes off the
- * sheet's own `sway` field rather than a table here, so the art decides what
- * the wind can push.
+ * dead fire still smokes. Crates are not scenery any more — they live on
+ * `world.crates` and play a one-shot smash when they break. Everything else
+ * here has STOPPED. The sway comes off the sheet's own `sway` field rather
+ * than a table here, so the art decides what the wind can push.
  */
 
 import type { Effects } from '../../game/effects';
@@ -169,11 +168,12 @@ export function drawSceneryProp(
   atlas: SceneryAtlas,
   piece: SceneryPiece,
   time: number,
+  anim = 0,
 ): void {
   const sheet = atlas.props[piece.kind];
   if (!sheet) return;
 
-  const frame = ((piece.variant % sheet.frames) + sheet.frames) % sheet.frames;
+  const frame = sheetFrame(sheet, piece.variant, anim);
   const width = sheet.frameWidth * view.zoom;
   const height = sheet.frameHeight * view.zoom;
 
@@ -277,6 +277,43 @@ function swayOf(piece: SceneryPiece, time: number): number {
   const phase = piece.x * 0.11 + piece.y * 0.07;
   const rate = SWAY_RATE * (0.8 + ((phase % 1) + 1) % 1 * 0.4);
   return wind.lean(piece.x, piece.y, time, 1, phase, rate);
+}
+
+/**
+ * Frame index on a prop sheet. Variant sheets are a single strip; a crate
+ * sheet is kinds × breakFrames, packed kind-major, and `anim` walks the smash.
+ */
+export function sheetFrame(
+  sheet: { frames: number; kinds?: number; breakFrames?: number },
+  variant: number,
+  anim: number,
+): number {
+  const kinds = sheet.kinds ?? 0;
+  const breakFrames = sheet.breakFrames ?? 0;
+  if (kinds > 0 && breakFrames > 0) {
+    const kind = ((variant % kinds) + kinds) % kinds;
+    const frame = Math.max(0, Math.min(breakFrames - 1, anim));
+    return kind * breakFrames + frame;
+  }
+  return ((variant % sheet.frames) + sheet.frames) % sheet.frames;
+}
+
+export function crateAnimFrame(
+  sheet: { breakFrames?: number; fps?: number },
+  age: number,
+): number {
+  const frames = sheet.breakFrames ?? 1;
+  const fps = sheet.fps ?? 12;
+  return Math.max(0, Math.min(frames - 1, Math.floor(age * fps)));
+}
+
+export function crateBreakDone(
+  sheet: { breakFrames?: number; fps?: number },
+  age: number,
+): boolean {
+  const frames = sheet.breakFrames ?? 1;
+  const fps = sheet.fps ?? 12;
+  return age >= frames / fps;
 }
 
 function drawFrame(

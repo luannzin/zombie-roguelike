@@ -36,6 +36,14 @@ export interface SceneryProp {
   sway: number;
   /** Whether a thin column of smoke still rises off it. */
   smokes: boolean;
+  /**
+   * Crate sheet only. Kinds are packed kind-major: idle is frame 0 of that
+   * kind's strip, and the rest is the one-shot break. Absent on every other
+   * prop — those frames are still variants.
+   */
+  kinds?: number;
+  breakFrames?: number;
+  fps?: number;
 }
 
 export interface SceneryDecal {
@@ -57,6 +65,9 @@ interface SheetManifest {
   frames: number;
   sway?: number;
   smokes?: boolean;
+  kinds?: number;
+  breakFrames?: number;
+  fps?: number;
 }
 
 interface SceneryManifest {
@@ -97,6 +108,9 @@ async function fetchScenery(): Promise<SceneryAtlas | null> {
           frames: sheet.frames,
           sway: sheet.sway ?? 0,
           smokes: sheet.smokes ?? false,
+          kinds: sheet.kinds,
+          breakFrames: sheet.breakFrames,
+          fps: sheet.fps,
         };
       }),
       ...Object.entries(manifest.decals).map(async ([name, sheet]) => {

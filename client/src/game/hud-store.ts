@@ -128,6 +128,8 @@ export interface HudSnapshot {
   prompt: 'ready' | null;
   /** Proximity prompt on a world drop. `full` is a bag that cannot take it. */
   lootPrompt: HudLootPrompt | null;
+  /** Proximity prompt on a crate. */
+  cratePrompt: boolean;
   /** The pocket. Null before welcome. Open/close is client-local (TAB). */
   inventory: HudInventory | null;
 }
@@ -146,6 +148,7 @@ export const EMPTY_HUD: HudSnapshot = {
   ready: null,
   prompt: null,
   lootPrompt: null,
+  cratePrompt: false,
   inventory: null,
 };
 

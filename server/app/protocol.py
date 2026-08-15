@@ -18,6 +18,9 @@ client -> server
   {"type":"ready"}                      toggle ready, camp only, near the fire
   {"type":"collect","id":"l3"}          pick up a loot drop; ignored if too far
                                         or the bag has no slot for that key
+  {"type":"break","id":"k3"}            smash a crate; ignored if too far.
+                                        A shot that lands on the crate's tile
+                                        does the same.
   {"type":"drop","slot":0}              pull a bag slot back onto the ground
                                         near the player's feet; ignored in camp
 
@@ -34,6 +37,7 @@ server -> client
    "players":[...],"enemies":[...],"coins":[...],
    "shots":[...],"attacks":[...],"kills":[...],"pickups":[...],
    "loot":[...],"lootPickups":[...],
+   "crates":[...],"crateBreaks":[...],
    "roster":[...]}                    only every ROSTER_EVERY_N_TICKS ticks
   {"type":"pong","t":<echoed>}
 
@@ -58,6 +62,9 @@ value is that the pieces know about each other. Each row is
 x/y in world pixels — a contact point for a standing prop, a centre for a flat
 one — and `layer` 0 flat / 1 standing. `variant` is taken modulo the sheet's
 frame count client-side, except for `tracks`, where it is a compass point.
+Standing crates are pulled out of `props` into `crates` (`{id,x,y,v,flip}`)
+so a smash can remove one without rewriting the scenery list. Their LOW tiles
+stay on `tiles` until they break, then become FLOOR.
 
 A snapshot is IDENTICAL for every socket in the room — it is serialised once a
 tick and the same string is written to all of them. That is why the per-player
@@ -87,6 +94,10 @@ Snapshot arrays:
   lootPickups  drops collected since the last snapshot (juice). `slot` is
                the bag index it landed in, so the client can fly the sprite
                from the world onto that HUD cell.
+  crates       remaining breakable crates; attached like loot — on the map
+               payload, and again on a snapshot only when one was smashed
+  crateBreaks  crates smashed since the last snapshot (juice). `drop` is
+               empty / coin / item; `k` is the catalog key when it is an item
 """
 
 from __future__ import annotations
@@ -98,6 +109,7 @@ MSG_PING = "ping"
 MSG_START = "start"
 MSG_READY = "ready"
 MSG_COLLECT = "collect"
+MSG_BREAK = "break"
 MSG_DROP = "drop"
 
 MSG_HELLO = "hello"
@@ -186,6 +198,8 @@ def snapshot(
     roster: list[dict] | None = None,
     loot: list[dict] | None = None,
     loot_pickups: list[dict] | None = None,
+    crates: list[dict] | None = None,
+    crate_breaks: list[dict] | None = None,
 ) -> dict:
     payload = {
         "type": MSG_SNAPSHOT,
@@ -207,4 +221,8 @@ def snapshot(
         payload["loot"] = loot
     if loot_pickups:
         payload["lootPickups"] = loot_pickups
+    if crates is not None:
+        payload["crates"] = crates
+    if crate_breaks:
+        payload["crateBreaks"] = crate_breaks
     return payload

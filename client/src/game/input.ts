@@ -37,8 +37,9 @@ export class InputController {
    */
   onToggleLantern: (() => void) | null = null;
   /**
-   * Fired once per press of E — interact. Camp fire is ready; a nearby drop
-   * is collect. Same edge contract as the lantern key.
+   * Fired once per press of E — interact. A nearby drop is collect; a crate
+   * in reach is smash; the camp fire is ready. Same edge contract as the
+   * lantern key.
    */
   onInteract: (() => void) | null = null;
   /** Fired once per Tab. Edge, not held — same contract as E and F. */

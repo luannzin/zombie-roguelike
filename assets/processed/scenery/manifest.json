@@ -41,8 +41,11 @@
       "file": "crate.png",
       "frameWidth": 16,
       "frameHeight": 18,
-      "frames": 5,
-      "sway": 0
+      "frames": 40,
+      "sway": 0,
+      "kinds": 5,
+      "breakFrames": 8,
+      "fps": 12
     },
     "firepit": {
       "file": "firepit.png",

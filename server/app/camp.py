@@ -29,7 +29,7 @@ from __future__ import annotations
 import math
 import random
 
-from . import scenery
+from . import crates, scenery
 from .config import (
     CAMP_CLEARING_TILES,
     CAMP_EXIT_HALF_TILES,
@@ -129,7 +129,14 @@ def build_camp(seed: int) -> TileMap:
     ]
     tiles[fy][fx] = FIRE
     _carve_exit(tiles, cx, cy, seed)
-    return TileMap(tiles, seed=seed, scenery=scenery.to_payload(_dress_camp(tiles, cx, cy, seed)))
+    population = _dress_camp(tiles, cx, cy, seed)
+    crate_rows = crates.attach(population)
+    return TileMap(
+        tiles,
+        seed=seed,
+        scenery=scenery.to_payload(population),
+        crates=crate_rows,
+    )
 
 
 def _dress_camp(tiles: list[list[int]], cx: float, cy: float, seed: int) -> scenery.Population:

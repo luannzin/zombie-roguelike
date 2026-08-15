@@ -59,6 +59,15 @@ export interface SceneryPiece {
   flip: boolean;
 }
 
+/** A live crate. Drawn like standing scenery; removed when it breaks. */
+export interface CratePiece {
+  id: string;
+  x: number;
+  y: number;
+  variant: number;
+  flip: boolean;
+}
+
 /** A light the map owns, at the point it burns from, in world pixels. */
 export interface SceneryLight {
   x: number;
@@ -108,6 +117,11 @@ export class TileMap {
    * story in it, because nobody is standing in it to read one.
    */
   readonly scenery: Scenery;
+  /**
+   * Breakable crates. Mutable — a smash removes one and opens its LOW tile.
+   * Sorted by `y` so the renderer can merge them into the standing pass.
+   */
+  crates: CratePiece[];
 
   constructor(payload: MapPayload) {
     this.tiles = payload.tiles;
@@ -120,6 +134,23 @@ export class TileMap {
     this.fires = findFires(this.tiles, this.tileSize);
     this.exit = findExitMouth(this.tiles, this.tileSize);
     this.scenery = unpackScenery(payload);
+    this.crates = unpackCrates(payload);
+  }
+
+  setTile(tx: number, ty: number, kind: number): void {
+    if (tx < 0 || ty < 0 || tx >= this.width || ty >= this.height) return;
+    this.tiles[ty][tx] = kind;
+  }
+
+  replaceCrates(rows: CratePiece[]): void {
+    this.crates = rows.slice().sort((a, b) => a.y - b.y);
+  }
+
+  removeCrate(id: string): CratePiece | null {
+    const index = this.crates.findIndex((crate) => crate.id === id);
+    if (index < 0) return null;
+    const [removed] = this.crates.splice(index, 1);
+    return removed ?? null;
   }
 
   /**
@@ -276,6 +307,19 @@ function unpackScenery(payload: MapPayload): Scenery {
   return { flat, standing, lights };
 }
 
+function unpackCrates(payload: MapPayload): CratePiece[] {
+  const rows = payload.crates ?? [];
+  const crates = rows.map((row) => ({
+    id: row.id,
+    x: row.x,
+    y: row.y,
+    variant: row.v,
+    flip: row.flip !== 0,
+  }));
+  crates.sort((a, b) => a.y - b.y);
+  return crates;
+}
+
 /**
  * Bottom-centre of every FIRE tile, in world pixels.
  *
@@ -303,6 +347,18 @@ function findFires(tiles: number[][], tileSize: number): FirePlace[] {
  * at the top and bottom of it standing in scrub while the ones at the sides had
  * room.
  */
+/** The LOW tile a crate claims. Mirrors `crates.footprint` on the server. */
+export function crateFootprint(
+  x: number,
+  y: number,
+  tileSize: number,
+): { tx: number; ty: number } {
+  return {
+    tx: Math.floor(x / tileSize),
+    ty: Math.floor(y / tileSize - 1e-6),
+  };
+}
+
 export function hearthDistance(
   tx: number,
   ty: number,

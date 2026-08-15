@@ -14,7 +14,10 @@ Output (assets/processed/scenery/):
     fence.png      6 frames, 16x22   post-and-rail, whole through to splintered
     sign.png       3 frames, 16x28   a board on a post. SWAYS.
     logs.png       4 frames, 32x14   a felled trunk lying across the ground
-    crate.png      5 frames, 16x18   crate, smashed crate, barrel, sack, pail
+    crate.png      5 kinds × 8 frames, 16x18
+                                 box / smashed / barrel / sack / pail.
+                                 Frame 0 of each kind is intact; 1..7 is
+                                 the one-shot break. Packed kind-major.
     firepit.png    3 frames, 20x12   cold stones and burnt wood. SMOKES.
 
   decals — flat, no outline, baked into the client's ground canvas
@@ -123,6 +126,13 @@ OUTLINE_COLD = rgb("#0a0b0d")
 # tent's canvas breathes about a third as far.
 SWAY_SIGN = 1.6
 SWAY_TENT = 0.5
+
+# One-shot smash. Frame 0 is the idle pose; the last frames are near-empty
+# so the sprite can vanish without a pop. Not a loop — do not use rng per
+# frame; hash the pixel and the frame index.
+CRATE_BREAK_FRAMES = 8
+CRATE_BREAK_FPS = 12
+CRATE_KINDS = 5
 
 
 # --- shared drawing ---------------------------------------------------------
@@ -536,6 +546,68 @@ def make_crate(width: int, height: int, kind: int, rng: random.Random) -> Image.
                 px[ix, iy] = pick(METAL, 0.8, ix, iy)
 
     outline(img, OUTLINE_WOOD)
+    return img
+
+
+def make_crate_break(intact: Image.Image, frame: int, frames: int, kind: int) -> Image.Image:
+    """One smash frame of a crate kind. Frame 0 is the idle pose, unchanged.
+
+    Later frames throw the silhouette apart: pixels that leave fly out and
+    down from the centre, the ones that stay crack, and the last two are
+    almost gone so the client can hide the sprite on the last frame without
+    a pop. Deterministic — `hash01` of (x, y, kind, frame), never rng.
+    """
+    if frame <= 0:
+        return intact.copy()
+
+    width, height = intact.size
+    src = intact.load()
+    img = Image.new("RGBA", (width, height), TRANSPARENT)
+    px = img.load()
+    t = frame / max(frames - 1, 1)
+    cx = (width - 1) / 2.0
+    ground = height - 1
+
+    for y in range(height):
+        for x in range(width):
+            pixel = src[x, y]
+            if pixel[3] < 20:
+                continue
+            seed = hash01(x, y, kind * 31 + 17)
+            # Early: a few cracks. Mid: most of the body leaves. Late: dust.
+            leave = seed < (t * 0.55 + 0.12)
+            if t < 0.18:
+                leave = seed < 0.08
+            if leave:
+                angle = seed * math.tau
+                dist = t * (3.2 + seed * 7.5)
+                nx = int(round(x + math.cos(angle) * dist))
+                ny = int(round(y + math.sin(angle) * dist * 0.7 + t * 4.5))
+                if ny > ground:
+                    ny = ground
+                    nx = int(round(cx + (nx - cx) * 0.4))
+                fade = 1.0 - t * 0.85
+                if 0 <= nx < width and 0 <= ny < height and fade > 0.12:
+                    a = int(pixel[3] * fade)
+                    if a > 20:
+                        px[nx, ny] = (pixel[0], pixel[1], pixel[2], a)
+            elif t < 0.72:
+                # Still standing, but the top opens first.
+                if y < height * (0.28 + t * 0.55) and seed > 0.35:
+                    continue
+                px[x, y] = pixel
+
+    if t > 0.55:
+        # A few splinters on the floor so the last frames still read as wood.
+        for i in range(3):
+            sx = int(cx + (hash01(kind, i, 41) - 0.5) * width * 0.7)
+            sy = int(ground - hash01(kind, i, 43) * 2)
+            if 0 <= sx < width and 0 <= sy < height:
+                shade = 0.7 - t * 0.3
+                a = int(200 * (1.0 - t))
+                if a > 30:
+                    px[sx, sy] = (*pick(PLANK, shade, sx, sy)[:3], a)
+
     return img
 
 
@@ -1009,8 +1081,12 @@ def build(args) -> Path:
 
     crate_w, crate_h = tile, round(tile * 1.125)
     rng = random.Random(args.seed + 66)
-    crates = [make_crate(crate_w, crate_h, kind, rng) for kind in range(5)]
-    pack(crates, crate_w, crate_h).save(out_dir / "crate.png")
+    crate_strip: list[Image.Image] = []
+    for kind in range(CRATE_KINDS):
+        intact = make_crate(crate_w, crate_h, kind, rng)
+        for frame in range(CRATE_BREAK_FRAMES):
+            crate_strip.append(make_crate_break(intact, frame, CRATE_BREAK_FRAMES, kind))
+    pack(crate_strip, crate_w, crate_h).save(out_dir / "crate.png")
 
     pit_w, pit_h = round(tile * 1.25), round(tile * 0.75)
     rng = random.Random(args.seed + 77)
@@ -1050,7 +1126,16 @@ def build(args) -> Path:
             "fence": sheet("fence.png", fence_w, fence_h, fences, sway=0),
             "sign": sheet("sign.png", sign_w, sign_h, signs, sway=SWAY_SIGN),
             "logs": sheet("logs.png", log_w, log_h, logs, sway=0),
-            "crate": sheet("crate.png", crate_w, crate_h, crates, sway=0),
+            "crate": sheet(
+                "crate.png",
+                crate_w,
+                crate_h,
+                crate_strip,
+                sway=0,
+                kinds=CRATE_KINDS,
+                breakFrames=CRATE_BREAK_FRAMES,
+                fps=CRATE_BREAK_FPS,
+            ),
             "firepit": sheet("firepit.png", pit_w, pit_h, pits, sway=0, smokes=True),
         },
         # DECALS: flat, centred on their point, baked into the ground canvas.
@@ -1070,7 +1155,7 @@ def build(args) -> Path:
         f"fence {len(fences)}x{fence_w}x{fence_h}, "
         f"sign {len(signs)}x{sign_w}x{sign_h}, "
         f"logs {len(logs)}x{log_w}x{log_h}, "
-        f"crate {len(crates)}x{crate_w}x{crate_h}, "
+        f"crate {CRATE_KINDS}x{CRATE_BREAK_FRAMES}x{crate_w}x{crate_h} @{CRATE_BREAK_FPS}fps, "
         f"firepit {len(pits)}x{pit_w}x{pit_h}, "
         f"blood {len(bloods)}x{blood_size}x{blood_size}, "
         f"tracks {len(tracks)}x{tile}x{tile}, "

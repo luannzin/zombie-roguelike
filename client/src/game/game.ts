@@ -23,6 +23,8 @@ import type {
   GameConfig,
   InputPacket,
   KillEvent,
+  CrateBreakEvent,
+  CrateState,
   LootPickupEvent,
   LootState,
   PickupEvent,
@@ -64,7 +66,7 @@ import { clearLootFlies, listLootFlies, spawnLootFly, stepLootFlies } from './lo
 import { warpHudPoint } from '../lib/lens';
 import { LocalPlayer } from './prediction';
 import { carryBurden } from './simulation';
-import { hearthMask, TileMap } from './world';
+import { crateFootprint, FLOOR, hearthMask, TileMap } from './world';
 import {
   clearTooltipAnchors,
   dropTooltipAnchor,
@@ -93,6 +95,12 @@ const MOVING_SPEED = 1;
 const FIRE_TOOLTIP_LIFT_TILES = 2.5;
 /** How far above a drop the collect tooltip sits, in tiles. */
 const LOOT_TOOLTIP_LIFT_TILES = 1.1;
+/** How far above a crate's contact the smash tooltip sits, in tiles. */
+const CRATE_TOOLTIP_LIFT_TILES = 1.4;
+/** Smash sheet duration. Matches `make_scenery.py` crate break (8 frames @ 12 fps). */
+const CRATE_BREAK_LIFE = 8 / 12;
+/** Empty-crate gust. Matches `make_vfx.py` wind (8 frames @ 14 fps). */
+const WIND_LIFE = 8 / 14;
 /** Distance between boot prints, in tiles. One stride, not one frame. */
 const FOOTPRINT_STRIDE = 0.9;
 /**
@@ -558,7 +566,7 @@ export class Game {
     const wasDeparting = this.departing;
     this.departing = Boolean(msg.departing) && this.zone?.kind === 'camp';
     if (this.departing && !wasDeparting) {
-      this.patchHud({ cinematic: true, prompt: null, ready: null });
+      this.patchHud({ cinematic: true, prompt: null, ready: null, cratePrompt: false });
     }
 
     if (msg.roster) {
@@ -620,6 +628,8 @@ export class Game {
     for (const pickup of msg.pickups ?? []) this.onPickup(pickup);
     if (msg.loot) this.replaceLoot(msg.loot);
     for (const ev of msg.lootPickups ?? []) this.onLootPickup(ev);
+    if (msg.crates) this.replaceCrates(msg.crates);
+    for (const ev of msg.crateBreaks ?? []) this.onCrateBreak(ev);
   }
 
   /**
@@ -1335,6 +1345,7 @@ export class Game {
       ready: this.readyCount(),
       prompt: this.readyPrompt(),
       lootPrompt: this.lootPromptInfo(),
+      cratePrompt: this.cratePromptInfo(),
       inventory: this.inventoryHud(),
       net: {
         players: this.snapshots.latest?.players.size ?? 0,
@@ -1349,20 +1360,26 @@ export class Game {
 
   private sendInteract(): void {
     if (this.departing || this.introLeft > 0) return;
+    const nearLoot = this.nearLoot();
+    if (nearLoot) {
+      if (!this.canStow(nearLoot.k)) {
+        this.bagRefusals += 1;
+        const inventory = this.inventoryHud();
+        if (inventory) this.patchHud({ inventory });
+        return;
+      }
+      this.connection.send({ type: 'collect', id: nearLoot.id });
+      return;
+    }
+    const nearCrate = this.nearCrate();
+    if (nearCrate) {
+      this.connection.send({ type: 'break', id: nearCrate.id });
+      return;
+    }
     if (this.readyPrompt() === 'ready') {
       this.connection.send({ type: 'ready' });
       this.localReady = !this.localReady;
-      return;
     }
-    const near = this.nearLoot();
-    if (!near) return;
-    if (!this.canStow(near.k)) {
-      this.bagRefusals += 1;
-      const inventory = this.inventoryHud();
-      if (inventory) this.patchHud({ inventory });
-      return;
-    }
-    this.connection.send({ type: 'collect', id: near.id });
   }
 
   private toggleInventory(): void {
@@ -1506,7 +1523,58 @@ export class Game {
   private readyPrompt(): 'ready' | null {
     if (this.zone?.kind !== 'camp' || this.departing || this.introLeft > 0) return null;
     if (this.localReady) return null;
+    if (this.nearCrate()) return null;
     return this.nearFire() ? 'ready' : null;
+  }
+
+  private cratePromptInfo(): boolean {
+    if (this.departing || this.introLeft > 0) return false;
+    if (this.nearLoot()) return false;
+    return this.nearCrate() !== null;
+  }
+
+  private nearCrate() {
+    const config = this.config;
+    const local = this.local;
+    const world = this.world;
+    if (!config || !local || !world) return null;
+    const range = (config.crateBreakTiles ?? 2.25) * config.tileSize;
+    const feetY = local.state.y + config.playerHalfHeight;
+    let best = null;
+    let bestD2 = range * range;
+    for (const crate of world.crates) {
+      const dx = crate.x - local.state.x;
+      const dy = crate.y - feetY;
+      const d2 = dx * dx + dy * dy;
+      if (d2 < bestD2) {
+        bestD2 = d2;
+        best = crate;
+      }
+    }
+    return best;
+  }
+
+  private replaceCrates(rows: CrateState[]): void {
+    if (!this.world) return;
+    this.world.replaceCrates(
+      rows.map((row) => ({
+        id: row.id,
+        x: row.x,
+        y: row.y,
+        variant: row.v,
+        flip: row.flip !== 0,
+      })),
+    );
+  }
+
+  private onCrateBreak(ev: CrateBreakEvent): void {
+    if (!this.world) return;
+    this.world.removeCrate(ev.id);
+    const { tx, ty } = crateFootprint(ev.x, ev.y, this.world.tileSize);
+    this.world.setTile(tx, ty, FLOOR);
+    const empty = ev.drop === 'empty';
+    this.effects.spawnCrateSmash(ev.x, ev.y, ev.v, ev.flip !== 0, empty, CRATE_BREAK_LIFE);
+    if (empty) this.effects.spawnWind(ev.x, ev.y, WIND_LIFE);
   }
 
   private lootPromptInfo(): HudLootPrompt | null {
@@ -1603,6 +1671,14 @@ export class Game {
       }
     } else {
       dropTooltipAnchor('loot');
+    }
+
+    const crate = this.cratePromptInfo() ? this.nearCrate() : null;
+    if (crate && this.config) {
+      const lift = this.config.tileSize * CRATE_TOOLTIP_LIFT_TILES;
+      writeTooltipAnchor('crate', view.x(crate.x), view.y(crate.y - lift));
+    } else {
+      dropTooltipAnchor('crate');
     }
   }
 

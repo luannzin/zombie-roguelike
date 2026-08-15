@@ -41,6 +41,14 @@ list rides `welcome.loot` and a dirty snapshot `loot`; `lootPickups` is the
 juice for that tick and carries `slot` so the client can fly the sprite
 onto that HUD cell. The pocket itself rides the roster as `inv`.
 
+`{"type":"break","id":"k1"}` — smash a crate. The server ignores it unless
+the player is alive, the walk-out has not started, and their feet are
+inside `crateBreakTiles` of that crate. Camp allows it; a bullet that
+stops on the crate's tile does the same work. The remaining list rides
+`map.crates` and a dirty snapshot `crates`; `crateBreaks` is the juice
+for that tick (`drop` is `empty` / `coin` / `item`, plus `k` when an
+item fell out). The smash opens the LOW tile to floor.
+
 `{"type":"drop","slot":0}` — toss a bag slot onto the ground near the
 player's feet. The server ignores it in camp, during the walk-out, or if
 that cell is empty. A stack becomes one world drop per unit; the server
@@ -114,7 +122,9 @@ presses start.
   "shots": [{ "id": 7, "by": "a1b2c3d4", "x": 0, "y": 0, "dx": 1, "dy": 0, "dist": 132.5, "hit": "b5c6" }],
   "attacks": [{ "by": "e12", "target": "a1b2c3d4", "x": 0, "y": 0, "dx": 1, "dy": 0, "dmg": 9, "blocked": false }],
   "kills": [{ "kind": "enemy", "killer": "a1b2c3d4", "victim": "e12", "x": 0, "y": 0, "xp": 12, "gold": 3 }],
-  "loot": [{"id":"l1","k":"compass","x":412.5,"y":288.5}]
+  "loot": [{"id":"l1","k":"compass","x":412.5,"y":288.5}],
+  "crates": [{"id":"k1","x":320,"y":240,"v":0,"flip":0}],
+  "crateBreaks": [{"id":"k2","x":352,"y":256,"v":2,"flip":1,"drop":"empty"}]
 }
 ```
 

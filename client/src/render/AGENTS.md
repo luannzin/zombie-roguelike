@@ -17,7 +17,7 @@ mutation, no React.
 | `sprites.ts` | sheet loading, `SpriteBook`, per-colour multiply tints |
 | `terrain.ts` | terrain atlas loading (4 grounds, blend stencils, props, flat decals, the animated campfire) |
 | `scenery.ts` | scenery atlas loading: standing props and flat decals of what people left |
-| `vfx.ts` | effect atlas loading: one-shot sheets (summon, kindle) and the looping loot `aura` |
+| `vfx.ts` | effect atlas loading: one-shot sheets (summon, kindle, wind) and the looping loot `aura` |
 | `loot.ts` | loot atlas: one 16x16 frame per collectable item |
 | `fov.ts` | shared field of view — `light` and `heat` fields |
 | `wind.ts` | the shared gust field every bending thing reads |
@@ -34,8 +34,9 @@ mutation, no React.
 - `renderer.ts` only sequences passes and switches spaces; drawing lives in
   `layers/`. **The pass order is the atmosphere** — ground (soil, litter, flat
   scenery) → dust → coins and loot sprites → entities, bonfires and standing
-  scenery (one depth sort by `y`) → overgrowth → motes → darkness → combat
-  effects → loot auras / motes / epic-legendary beams → hunt diamond →
+  scenery (one depth sort by `y`, including live crates and smash sheets) →
+  overgrowth → motes → darkness → combat effects → loot auras / motes /
+  epic-legendary beams / empty-crate wind → hunt diamond →
   labels → vignette. Effects and loot light go over the darkness because
   they are light, not things being lit. An unlit drop HIDES ITS SPRITE.
   Glow, motes and the epic/legendary column leak a whisper through the
@@ -139,9 +140,11 @@ mutation, no React.
 - **Flat decals are baked, standing props are sorted.** Litter, stains, blood,
   boot prints and dropped clothing go into the ground canvas — no silhouette, no
   per-frame cost, and they can never occlude a body. Cabins, tents, fences,
-  signs, crates and cold firepits go into the entity depth sort next to the
+  signs and cold firepits go into the entity depth sort next to the
   bonfires, because a player walking behind a cabin has to disappear behind it.
   That one requirement is the whole reason they are not in the prop bake.
+  Live crates and their smash sheets join that same sort from `world.crates`
+  / `effects.crateSmashes` — they are no longer scenery props.
 - The bake order inside the ground canvas is a stack of things resting on each
   other: soil, stains that soaked in, litter that fell on top, then what people
   left last. A blood stain under a drift of leaves is older than the leaves,
@@ -149,7 +152,8 @@ mutation, no React.
 - Almost nothing in `layers/scenery.ts` moves, and that is deliberate: these are
   the things in the forest that have STOPPED. A sign swings, canvas breathes, a
   dead fire smokes — all three off the sheet's own `sway`/`smokes` fields, so
-  the art decides what the wind can push, not a table in the layer.
+  the art decides what the wind can push, not a table in the layer. A crate
+  smash is a one-shot on the crate sheet (`kinds` × `breakFrames`), not sway.
 - Scenery props are drawn through `Projection`, so the lobby can reuse the same
   routine with `WORLD_SPACE` after applying its own transform. The camp is
   dressed too (`server/app/camp.py`); a crate the lobby drew flat behind the
@@ -199,7 +203,8 @@ mutation, no React.
   kindle roar carries `fire.core`. That tint is not `sprites.TintCache`: a
   straight multiply is right for a material and turns a white-hot core into
   flat paint, so `EffectTintCache` adds the neutral art back over it. Never
-  bake a hue into a sheet in `make_vfx.py`.
+  bake a hue into a sheet in `make_vfx.py`. `wind` is the exception that
+  stays greyscale at draw time — a gust of air, not a player-coloured beam.
 - `terrain.ts` and `layers/terrain.ts` are also used by `game/lobby-scene.ts`
   over a locally generated map. Nothing in them may assume a server sent the
   `TileMap`.

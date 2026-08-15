@@ -15,6 +15,9 @@
  *
  * `{type:"drop","slot"}` tosses a bag cell onto the ground near the feet.
  * The server places it; the client never sends a position.
+ *
+ * `{type:"break","id"}` smashes a crate. The server validates range; a
+ * shot that lands on the crate's tile does the same.
  */
 
 export interface MovementInput {
@@ -61,12 +64,19 @@ export interface DropPacket {
   slot: number;
 }
 
+/** Smash a crate. Server ignores it unless you are close enough. */
+export interface BreakPacket {
+  type: 'break';
+  id: string;
+}
+
 export type ClientMessage =
   | InputPacket
   | PingPacket
   | StartPacket
   | ReadyPacket
   | CollectPacket
+  | BreakPacket
   | DropPacket;
 
 /**
@@ -114,6 +124,8 @@ export interface GameConfig {
   readyRangeTiles: number;
   /** How close to a drop (tiles, feet to item) E will collect. */
   lootCollectTiles?: number;
+  /** How close to a crate (tiles, feet to contact) E will smash. */
+  crateBreakTiles?: number;
   /** Catalog of world loot. Keyed by item key; `frame` indexes the loot atlas. */
   loot?: Record<string, LootItemConfig>;
   /** Starting bag size. A later upgrade grows it. */
@@ -270,6 +282,34 @@ export interface MapPayload {
    * is what turns it from decoration into a place you decide to walk to.
    */
   lights?: LightRow[];
+  /**
+   * Breakable crates pulled out of scenery. Drawn as standing props; smashed
+   * ones leave this list and play their sheet, then the tile becomes floor.
+   */
+  crates?: CrateState[];
+}
+
+/** One live crate. `v` is the kind row on the crate sheet (box, barrel, …). */
+export interface CrateState {
+  id: string;
+  x: number;
+  y: number;
+  v: number;
+  flip: number;
+}
+
+export type CrateDrop = 'empty' | 'coin' | 'item';
+
+/** A crate that just broke. Juice for the smash sheet and the empty-wind puff. */
+export interface CrateBreakEvent {
+  id: string;
+  x: number;
+  y: number;
+  v: number;
+  flip: number;
+  drop: CrateDrop;
+  /** Catalog key when `drop` is `item`. */
+  k?: string;
 }
 
 /**
@@ -516,6 +556,10 @@ export interface SnapshotMessage {
   loot?: LootState[];
   /** Drops collected since the last snapshot. */
   lootPickups?: LootPickupEvent[];
+  /** Remaining crates. Present only when the set changed. */
+  crates?: CrateState[];
+  /** Crates smashed since the last snapshot. */
+  crateBreaks?: CrateBreakEvent[];
 }
 
 export interface PongMessage {

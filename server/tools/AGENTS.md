@@ -14,7 +14,7 @@ imported by `app/` and never run at request time.
 | `make_coin.py` | generates final pixels | `assets/processed/coin/` (8-frame Y-spin, same disc as the HUD badge) |
 | `make_textures.py` | generates final pixels | `assets/processed/terrain/` (4 grounds, blend, patch, rock, tree, deadtree, stump, grass, bush, branch, leaves, fern, campfire) |
 | `make_scenery.py` | generates final pixels | `assets/processed/scenery/` (cabin, tent, fence, sign, logs, crate, firepit, blood, tracks, clothes, debris) |
-| `make_vfx.py` | generates final pixels | `assets/processed/vfx/` (summon, kindle, aura) |
+| `make_vfx.py` | generates final pixels | `assets/processed/vfx/` (summon, kindle, aura, wind) |
 | `make_loot.py` | generates final pixels | `assets/processed/loot/` (one 16x16 frame per item) |
 | `make_hud_icons.py` | generates final pixels | `assets/processed/hud/` (battery, backpack, coin) |
 
@@ -55,11 +55,13 @@ imported by `app/` and never run at request time.
   draw time. A 16px print through a canvas rotate is grey mush, and heel-vs-toe
   is the whole value of a footprint. `TRACK_DIRECTIONS` here and in
   `app/scenery.py` are one number.
-- Prop frames are VARIANTS, except the campfire's, which are an ANIMATION —
-  flagged with `animated` + `fps` in the manifest. An animated sheet's frames
-  must LOOP: every wobble is a sine of the frame phase (or an integer multiple),
-  so the last frame hands back to the first with no snap. Do not use `rng` per
-  frame; it stutters at the wrap even when each frame looks right alone.
+- Prop frames are VARIANTS, except the campfire's (a LOOP) and the crate
+  sheet (kinds × one-shot break, packed kind-major, idle is frame 0 of
+  each kind). A looping sheet's frames must LOOP: every wobble is a sine
+  of the frame phase (or an integer multiple), so the last frame hands
+  back to the first with no snap. A break strip is a TIMELINE: last
+  frames near-empty, no wrap. Do not use `rng` per frame; it stutters
+  at the wrap even when each frame looks right alone.
 - VFX sheets (`make_vfx.py`) are TIMELINES, not loops — except `aura`, which
   is a looping column over epic/legendary loot. One-shots play once per event,
   with frame 0 and the last frame near-empty so there is no pop at either end.
@@ -73,7 +75,9 @@ imported by `app/` and never run at request time.
 - A VFX sheet's `frames / fps` is the effect's duration and the client times
   itself off it. Changing either means changing whatever the client aligns to
   it (`SUMMON_TIME` / `SUMMON_IMPACT`, `KINDLE_TIME` / `KINDLE_IMPACT` in
-  `client/src/game/lobby-scene.ts`).
+  `client/src/game/lobby-scene.ts`; crate smash / wind life in
+  `client/src/game/game.ts`). `wind` is the empty-crate gust — greyscale,
+  drawn without a player tint.
 - Shared helpers (`pick`, `hash01`, `clamp01`, `pack`, `rgb`, the ramps) live in
   `make_textures.py` and are imported by the other generators, so every sheet
   keeps one shading vocabulary. Do not copy them.

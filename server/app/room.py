@@ -31,10 +31,12 @@ import random
 import time
 import uuid
 
-from . import ai, camp, coins, combat, loot, mapgen, protocol, zones
+from . import ai, camp, coins, combat, crates, loot, mapgen, protocol, zones
 from .ai import EnemyDirector
 from .coins import Coin
 from .config import (
+    CRATE_BREAK_DIST,
+    CRATE_NOISE_DIST,
     DT,
     FIRE_COOLDOWN,
     LOOT_COLLECT_DIST,
@@ -58,8 +60,10 @@ from .config import (
     TILE_SIZE,
     client_config,
 )
+from .crates import Crate
 from .loot import Drop
 from .enemies import Enemy, EnemyType
+from .world import FLOOR
 from .entities import InputCmd, Player, clean_name, pick_color, random_name
 from .pathing import Navigator
 from .simulation import apply_input
@@ -100,6 +104,7 @@ class Room:
         self.enemies: dict[str, Enemy] = {}
         self.coins: dict[str, Coin] = {}
         self.drops: dict[str, Drop] = {}
+        self.crates: dict[str, Crate] = {}
         self.sockets: dict[str, object] = {}
         self.director = EnemyDirector(self.spawn_points)
         self.navigator = Navigator(self.world)
@@ -113,6 +118,7 @@ class Room:
         self.kill_events: list[dict] = []
         self.pickup_events: list[dict] = []
         self.loot_pickup_events: list[dict] = []
+        self.crate_break_events: list[dict] = []
         self._shot_id = 0
         self._enemy_id = 0
         self._coin_id = 0
@@ -130,7 +136,9 @@ class Room:
         #: A drop was collected or tossed: attach the remaining loot list next tick.
         self._loot_dirty = True
         self._loot_seq = 0
+        self._crates_dirty = True
         self._load_drops()
+        self._load_crates()
 
     def _load_drops(self) -> None:
         """Hydrate live drops from the map the generator left behind."""
@@ -148,6 +156,11 @@ class Room:
     def _next_drop_id(self) -> str:
         self._loot_seq += 1
         return f"l{self._loot_seq}"
+
+    def _load_crates(self) -> None:
+        """Hydrate live crates from the map the generator left behind."""
+        self.crates = crates.from_payloads(self.world.crates)
+        self._crates_dirty = True
 
     # --- lifecycle ----------------------------------------------------------
     def start(self) -> None:
@@ -345,6 +358,64 @@ class Room:
         self._loot_dirty = True
         self._roster_dirty = True
 
+    def break_crate(self, pid: str, crate_id: str) -> None:
+        """Smash a crate if this player is standing on it.
+
+        Walk-out is too late. Distance is measured from the feet, the same
+        way collect is. Camp allows it — the stores are furniture, not scenery
+        you cannot touch. A shot that lands on the tile does the same work
+        through `smash_crate`.
+        """
+        if self.phase != protocol.PHASE_PLAYING or self.departing:
+            return
+        player = self.players.get(pid)
+        if player is None or not player.alive:
+            return
+        crate = self.crates.get(crate_id)
+        if crate is None:
+            return
+        feet_y = player.y + PLAYER_HALF_HEIGHT
+        if (crate.x - player.x) ** 2 + (crate.y - feet_y) ** 2 > CRATE_BREAK_DIST * CRATE_BREAK_DIST:
+            return
+        self.smash_crate(crate, player)
+
+    def smash_crate(self, crate: Crate, source: Player | None) -> None:
+        """Remove a crate, open its tile, and roll what falls out."""
+        if crate.id not in self.crates:
+            return
+        del self.crates[crate.id]
+        self.world.set_tile(crate.tx, crate.ty, FLOOR)
+        self.world.crates = [row.to_payload() for row in self.crates.values()]
+        self.navigator.invalidate()
+        self._crates_dirty = True
+
+        if source is not None:
+            self.noises.append(
+                ai.Noise(x=crate.x, y=crate.y, radius=CRATE_NOISE_DIST, source_id=source.id)
+            )
+
+        rng = random.Random()
+        kind, item_key, coin_count = crates.roll_drop(rng)
+        if kind == crates.DROP_COIN:
+            self.drop_coins(crate.x, crate.y, coin_count)
+        elif kind == crates.DROP_ITEM and item_key:
+            occupied = [
+                (drop.x / TILE_SIZE - 0.5, drop.y / TILE_SIZE - 0.5)
+                for drop in self.drops.values()
+            ]
+            pos = loot.place_near(self.world.tiles, crate.x, crate.y, occupied, rng)
+            if pos is None:
+                pos = (crate.x, crate.y)
+            drop_id = self._next_drop_id()
+            self.drops[drop_id] = Drop(id=drop_id, key=item_key, x=pos[0], y=pos[1])
+            self._loot_dirty = True
+
+        self.crate_break_events.append(
+            crates.CrateBreak(
+                crate.id, crate.x, crate.y, crate.variant, crate.flip, kind, item_key
+            ).to_payload()
+        )
+
     def drop_loot(self, pid: str, slot: int) -> None:
         """Toss a bag slot onto the ground near this player's feet.
 
@@ -429,6 +500,8 @@ class Room:
         self.coins.clear()
         self.noises.clear()
         self._load_drops()
+        self._load_crates()
+        self.crate_break_events = []
         for player in self.players.values():
             player.ready = False
             player.x, player.y = self.pick_spawn()
@@ -689,6 +762,13 @@ class Room:
             self.damage_enemy(victim, SHOT_DAMAGE, shooter)
         elif victim is not None:
             self.damage_player(victim, SHOT_DAMAGE, shooter)
+        elif victim is None:
+            # The ray stopped on a tile. If that tile is a crate, the crate
+            # ate the bullet — cover until it is gone.
+            tx, ty = crates.hit_tile(ox, oy, dx, dy, hit.distance)
+            crate = crates.at_tile(self.crates, tx, ty)
+            if crate is not None:
+                self.smash_crate(crate, shooter)
 
     def damage_player(self, target: Player, amount: int, source: Player | None) -> None:
         if not target.alive:
@@ -798,6 +878,10 @@ class Room:
             [drop.to_payload() for drop in self.drops.values()] if self._loot_dirty else None
         )
         self._loot_dirty = False
+        crate_rows = (
+            [crate.to_payload() for crate in self.crates.values()] if self._crates_dirty else None
+        )
+        self._crates_dirty = False
         await self.broadcast(
             protocol.snapshot(
                 self.tick,
@@ -813,6 +897,8 @@ class Room:
                 roster=roster,
                 loot=loot_rows,
                 loot_pickups=self.loot_pickup_events or None,
+                crates=crate_rows,
+                crate_breaks=self.crate_break_events or None,
             )
         )
 
@@ -838,6 +924,7 @@ class Room:
                 self.kill_events = []
                 self.pickup_events = []
                 self.loot_pickup_events = []
+                self.crate_break_events = []
             delay = next_time - time.perf_counter()
             if delay > 0:
                 await asyncio.sleep(delay)

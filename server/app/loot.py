@@ -253,6 +253,12 @@ def place_near(
     return None
 
 
+def roll_item(rng: random.Random, tags: tuple[str, ...] = ()) -> ItemDef | None:
+    """One catalog roll. No scene bias — a crate does not know where it sat."""
+    rarity = _roll_rarity(rng, RARITY_WEIGHTS)
+    return _pick_item(rng, rarity, tags)
+
+
 def nearest(drops: dict[str, Drop], x: float, y: float, max_dist: float) -> Drop | None:
     best: Drop | None = None
     best_d2 = max_dist * max_dist

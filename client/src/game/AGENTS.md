@@ -16,9 +16,9 @@ seam React is allowed to read.
 | `prediction.ts` | apply-locally, replay-on-ack reconciliation |
 | `interpolation.ts` | remote entity smoothing |
 | `input.ts` | keyboard/mouse sampling into an `InputPacket` |
-| `world.ts` | client tile map, collision + sight queries, fires, hearth mask, placed scenery |
+| `world.ts` | client tile map, collision + sight queries, fires, hearth mask, placed scenery, live crates |
 | `combat.ts` | client-side shot feel and tracer bookkeeping |
-| `effects.ts` | tracers, dust, floating text, event lights, boot prints |
+| `effects.ts` | tracers, dust, floating text, event lights, boot prints, crate smash, wind |
 | `entity-visuals.ts` | per-player colour/name visual state |
 | `lantern.ts` | four-cell battery, produces `output` 0..1 |
 | `hud-store.ts` | the only seam to React; `HUD_INTERVAL` = 0.2 s |
@@ -205,10 +205,11 @@ seam React is allowed to read.
 - New HUD data means a field on the `hud-store` snapshot, published at 5 Hz —
   not a subscription from a component to the game. Camp ready uses `ready` and
   `prompt`; a nearby drop uses `lootPrompt`; the pocket uses `inventory`;
-  the walk-out uses `cinematic`.
+  the walk-out uses `cinematic`; a crate in reach uses `cratePrompt`.
   A world `Tooltip` also needs an `anchor` id written in `syncTooltipAnchors`
   each frame — show/hide is the store, the pixels are the camera. E is
-  interact: ready at the fire, collect on a drop. The server validates range.
+  interact: collect on a drop, smash a crate, ready at the fire. The
+  server validates range.
   TAB toggles `inventory.open` locally and is patched immediately so the
   drawer does not wait for the 5 Hz tick. A collect fly is
   `loot-flies` + `inventory-anchors`, not a React render: hold over the

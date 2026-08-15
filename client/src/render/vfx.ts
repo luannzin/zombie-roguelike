@@ -55,6 +55,8 @@ export interface VfxAtlas {
   kindle: VfxSheet | null;
   /** Small looping column over epic/legendary loot. */
   aura: VfxSheet | null;
+  /** One-shot gust when a crate breaks empty. */
+  wind: VfxSheet | null;
 }
 
 interface EffectManifest {
@@ -69,7 +71,12 @@ interface EffectManifest {
 
 interface VfxManifest {
   tile: number;
-  effects: { summon?: EffectManifest; kindle?: EffectManifest; aura?: EffectManifest };
+  effects: {
+    summon?: EffectManifest;
+    kindle?: EffectManifest;
+    aura?: EffectManifest;
+    wind?: EffectManifest;
+  };
 }
 
 const ROOT = '/vfx';
@@ -84,12 +91,13 @@ export function loadVfx(): Promise<VfxAtlas | null> {
 async function fetchVfx(): Promise<VfxAtlas | null> {
   try {
     const manifest = await loadJson<VfxManifest>(`${ROOT}/manifest.json`);
-    const [summon, kindle, aura] = await Promise.all([
+    const [summon, kindle, aura, wind] = await Promise.all([
       manifest.effects.summon ? loadEffect(manifest.effects.summon) : null,
       manifest.effects.kindle ? loadEffect(manifest.effects.kindle) : null,
       manifest.effects.aura ? loadEffect(manifest.effects.aura) : null,
+      manifest.effects.wind ? loadEffect(manifest.effects.wind) : null,
     ]);
-    return { tile: manifest.tile, summon, kindle, aura };
+    return { tile: manifest.tile, summon, kindle, aura, wind };
   } catch (err) {
     console.warn('[vfx] no effect atlas, effects disabled:', err);
     return null;

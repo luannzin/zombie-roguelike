@@ -7,7 +7,8 @@ remove one without rewriting the map payload.
 
 Smash is server-authoritative. E sends `{type:"break","id"}`; a bullet that
 stops on a crate's tile does the same. Three outcomes, rolled here: nothing
-(the client plays wind), a few coins, or one catalog item on the floor.
+  (the client plays wind), a few coins, or one catalog item on the crate's
+  own tile.
 """
 
 from __future__ import annotations

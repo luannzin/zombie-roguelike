@@ -196,7 +196,8 @@ game's scale.
   feet are inside `crateBreakTiles`; a bullet that stops on the crate's
   tile does the same. Walk-out refuses it; camp allows E (stores are
   furniture) but not guns. Three rolls: empty (client plays wind), 1–3
-  coins, or one catalog item (`loot.roll_item`, no scene bias). Smash
+  coins, or one catalog item (`loot.roll_item`, no scene bias) on the
+  crate's own tile — not `place_near`. Smash
   makes a quieter `ai.Noise` than a gunshot (`CRATE_NOISE_TILES`). The
   remaining list rides `welcome`/`map.crates` and a dirty snapshot
   `crates`; `crateBreaks` is the juice for that tick.

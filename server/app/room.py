@@ -399,15 +399,13 @@ class Room:
         if kind == crates.DROP_COIN:
             self.drop_coins(crate.x, crate.y, coin_count)
         elif kind == crates.DROP_ITEM and item_key:
-            occupied = [
-                (drop.x / TILE_SIZE - 0.5, drop.y / TILE_SIZE - 0.5)
-                for drop in self.drops.values()
-            ]
-            pos = loot.place_near(self.world.tiles, crate.x, crate.y, occupied, rng)
-            if pos is None:
-                pos = (crate.x, crate.y)
             drop_id = self._next_drop_id()
-            self.drops[drop_id] = Drop(id=drop_id, key=item_key, x=pos[0], y=pos[1])
+            self.drops[drop_id] = Drop(
+                id=drop_id,
+                key=item_key,
+                x=(crate.tx + 0.5) * TILE_SIZE,
+                y=(crate.ty + 0.5) * TILE_SIZE,
+            )
             self._loot_dirty = True
 
         self.crate_break_events.append(

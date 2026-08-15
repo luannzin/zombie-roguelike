@@ -169,7 +169,7 @@ subtree.
   one. The sheet is kinds × break frames (idle is frame 0). Shoot the
   tile or stand close and press E ("E para destruir"). A smash opens the
   LOW tile to floor and rolls empty (wind VFX), a few coins, or one
-  catalog item. E still works in camp; guns do not. Interact is loot,
+  catalog item on that same tile. E still works in camp; guns do not. Interact is loot,
   then crate, then ready.
 
 ## Child DOX Index

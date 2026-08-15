@@ -67,6 +67,7 @@ from pathlib import Path
 from PIL import Image
 
 from make_textures import (
+    BLOOD,
     DEFAULT_TILE,
     PROCESSED_DIR,
     RGBA,
@@ -97,11 +98,8 @@ CHAR: Ramp = [rgb(c) for c in ("#0a0908", "#131110", "#1e1a17", "#2b2420", "#3a2
 BONE: Ramp = [rgb(c) for c in ("#38362e", "#49463c", "#5c584b", "#726d5c", "#8a8471")]
 ROPE: Ramp = [rgb(c) for c in ("#2b2418", "#3a3120", "#4a3f29", "#5b4e33")]
 
-# The only near-red in the game. It has to survive the darkness multiply, so
-# the top steps go brighter than anything else on the forest floor — but the
-# mass of a stain sits in the bottom two, which are almost black. A pool that
-# is bright all the way through reads as paint.
-BLOOD: Ramp = [rgb(c) for c in ("#1a0507", "#2e070a", "#460c0f", "#5f1216", "#7d1c20", "#a02a26")]
+# BLOOD is imported from make_textures: the stain on the floor here and the
+# wound on a body in make_gore.py are the same material.
 
 # Abandoned clothing. Four washed-out dye lots — the point is that a person
 # chose these, so they are the one place in the forest with arbitrary hue.

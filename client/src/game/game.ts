@@ -749,9 +749,15 @@ export class Game {
         shooter?.color ?? palette().effects.fallbackShot,
         hit,
         hit ? this.config.shotDamage : undefined,
+        // `shot.hit` is a body or nothing — a crate arrives as its own break
+        // event, so this never bleeds wood.
+        hit,
       );
       this.visuals.kickRecoil(shot.by, shot.dx, shot.dy);
-      if (shot.hit) this.visuals.pulseHitFlash(shot.hit);
+      if (shot.hit) {
+        this.visuals.pulseHitFlash(shot.hit);
+        this.visuals.splatter(shot.hit, shot.dx, shot.dy);
+      }
       // A teammate's gun is heard from where they are standing. Same sample as
       // your own; the distance falloff is the whole difference, and it is
       // enough to tell "beside me" from "somewhere over there".
@@ -782,6 +788,9 @@ export class Game {
     playSfxAt('zombie-attack', attack.x, attack.y, { gain: attack.blocked ? 0.55 : 1 });
 
     this.effects.spawnMelee(attack.x, attack.y, attack.dx, attack.dy, attack.dmg, attack.blocked);
+    // A swing the i-frames ate drew nothing but a deflect arc, and it must not
+    // leave a wound either.
+    if (!attack.blocked) this.visuals.splatter(attack.target, attack.dx, attack.dy);
   }
 
   private onKill(kill: KillEvent): void {
@@ -1035,6 +1044,8 @@ export class Game {
       this.localMeta?.color ?? palette().effects.fallbackShot,
       hit || crateHit,
       hit ? config.shotDamage : undefined,
+      // A crate is an impact, not a wound: `hit` already excludes one.
+      hit,
     );
     this.camera.addTrauma(FIRE_TRAUMA + (hit || crateHit ? HIT_TRAUMA : 0));
     this.visuals.kickRecoil(this.localId, this.aimX, this.aimY);
@@ -1045,6 +1056,7 @@ export class Game {
     playSfx('shot');
     if (hit && result.target) {
       this.visuals.pulseHitFlash(result.target.id);
+      this.visuals.splatter(result.target.id, this.aimX, this.aimY);
       playSfxAt('zombie-hit', ox + this.aimX * distance, oy + this.aimY * distance);
     }
   }
@@ -1564,6 +1576,7 @@ export class Game {
       viewRange: 0,
       viewDegrees: 0,
       hitFlash: this.visuals.hitFlashAmount(id),
+      stains: this.visuals.stainsOf(id),
       recoilX: recoil.x,
       recoilY: recoil.y,
       halfWidth: config.playerHalfWidth,
@@ -1624,6 +1637,7 @@ export class Game {
       viewRange: this.sightReach(type),
       viewDegrees: type.viewDegrees ?? 0,
       hitFlash: this.visuals.hitFlashAmount(id),
+      stains: this.visuals.stainsOf(id),
       recoilX: recoil.x,
       recoilY: recoil.y,
       halfWidth: type.halfWidth,

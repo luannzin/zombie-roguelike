@@ -19,6 +19,7 @@ mutation, no React.
 | `scenery.ts` | scenery atlas loading: standing props and flat decals of what people left |
 | `vfx.ts` | effect atlas loading: one-shot sheets (summon, kindle, wind) and the looping loot `aura` |
 | `loot.ts` | loot atlas: one 16x16 frame per collectable item |
+| `gore.ts` | gore atlas: small wound decals stamped on a body that has been hit |
 | `fov.ts` | shared field of view — `light` and `heat` fields |
 | `wind.ts` | the shared gust field every bending thing reads |
 | `disturbance.ts` | what bodies do to the plants they walk through |
@@ -106,6 +107,15 @@ mutation, no React.
   `welcome.config.enemyTypes[*].sprite` plus that type's `variants` / `hats`
   / `clothes`, never a hardcoded list. The backpack overlay is
   `welcome.config.backpackSprite`.
+- **Wounds sit on the body too, and they are the OPPOSITE of a vfx sheet.**
+  `DrawableEntity.stains` are frames of the gore atlas stamped inside the
+  sprite's own dest rect: baked colour, no tint, no additive, drawn in the
+  entity pass and multiplied by the same `visibility` as the body — a wound on
+  a creature outside the lantern is as invisible as the creature, or blood
+  becomes a free tracker. They go AFTER the hit flash, because the blink is
+  the moment and the wound is the record, and the record has to outlast it.
+  Offsets are normalised (`u` -1..1 across the frame, `v` 0..1 up from the
+  feet), so the same stain lands correctly on a creature of any size.
 - **Gear sits on the body.** `DrawableEntity.gear` is a back-to-front list of
   overlay sheets drawn in the same facing and walk frame. A tinted target
   (the player) multiply-tints every layer — the backpack follows the wearer.

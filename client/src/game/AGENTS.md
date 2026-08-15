@@ -18,8 +18,8 @@ seam React is allowed to read.
 | `input.ts` | keyboard/mouse sampling into an `InputPacket` |
 | `world.ts` | client tile map, collision + sight queries, fires, hearth mask, placed scenery, live crates |
 | `combat.ts` | client-side shot feel: capsules, tile DDA, crate sprite boxes |
-| `effects.ts` | tracers, dust, floating text, event lights, boot prints, crate smash, wind |
-| `entity-visuals.ts` | per-entity flash, recoil, anim; `HIT_FLASH_LIFE` is also the crate smash blink |
+| `effects.ts` | tracers, dust, blood, floating text, event lights, boot prints, crate smash, wind |
+| `entity-visuals.ts` | per-entity flash, recoil, anim, worn wounds; `HIT_FLASH_LIFE` is also the crate smash blink |
 | `lantern.ts` | four-cell battery, produces `output` 0..1 |
 | `hud-store.ts` | the only seam to React; `HUD_INTERVAL` = 0.2 s |
 | `tooltip-anchors.ts` | screen-space points for world `Tooltip`s, written every frame |
@@ -117,6 +117,19 @@ seam React is allowed to read.
   committed in the dark, never seen, is not latched — painting its diamond
   would be a free tracker. The latch dies when the creature calms down,
   despawns, or the map is replaced.
+- **A hit answers in two timescales and it needs both.** The IMPACT is the
+  frame it landed on — white flash, debris kicking back along the ray, a spray
+  of blood carrying forward out the far side (`Effects.spawnBlood`), a number.
+  The WOUND is what is still there ten seconds later: one frame of the gore
+  sheet pinned to the sprite by `EntityVisuals.splatter`, riding the body
+  through its walk cycle and its facings until it dries. Without the second a
+  zombie at 1 HP looks exactly like one at full, because the health bar is a
+  number and a number is not damage. Only flesh bleeds — a crate hit is an
+  impact and a blocked swing is neither, so `spawnShot` takes `flesh`
+  separately from `hit` and `onAttack` splatters only when the swing got
+  through. Wounds are normalised to the sprite (`u`/`v`), never world pixels:
+  this folder does not know how big anything is, and the renderer scales them
+  by whatever sheet it is drawing.
 - **Footprints are the one effect that is not short-lived, and the exception is
   the feature.** `Game.trackFootsteps` lays one per stride for every body on
   visible ground, with the depth coming from the SOIL under it (`soilAt`), and

@@ -183,6 +183,20 @@ subtree.
   LOW tile to floor and rolls empty (wind VFX), a few coins, or one
   catalog item on that same tile. Camp maps have none. Interact is loot,
   then crate, then ready.
+- **A hit shows on the body, and it keeps showing.** A landed shot throws
+  debris BACK along the ray and blood FORWARD out the far side, so the two
+  read as a round passing through something rather than stopping on it, and
+  it leaves a WOUND — one frame of `assets/processed/gore/` pinned to the
+  sprite, carried through the walk cycle until it dries. Damage the player
+  can only read off a health bar is a number; damage they can see on the
+  creature is damage. Only flesh bleeds: wood takes splinters and a swing the
+  i-frames ate takes nothing.
+- **A corpse pays a ROLL.** A creature's `gold` is the ceiling, not the
+  payout — each point is flipped on its own (`COIN_DROP_CHANCE`), so the
+  usual zombie drops 0 to 3 coins with both ends rare, and none of it is
+  credited: the coins land on the ground and somebody has to walk over them.
+  xp does not vary, because what a kill is WORTH is a rule and what fell out
+  of it is luck.
 
 ## Child DOX Index
 

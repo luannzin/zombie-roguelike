@@ -58,6 +58,10 @@ export interface Palette {
   effects: {
     hitParticles: string[];
     missParticles: string[];
+    /** Blood thrown out of a body a shot went through. */
+    blood: string[];
+    /** The dark low step, used for the drips that settle on the ground. */
+    bloodMist: string;
     dust: string[];
     dustSmear: string;
     hitCore: string;
@@ -179,6 +183,8 @@ function resolve(): Palette {
     effects: {
       hitParticles: [v('--fx-hit-a'), v('--fx-hit-b'), v('--fx-hit-c'), v('--fx-hit-d')],
       missParticles: [v('--fx-miss-a'), v('--fx-miss-b'), v('--fx-miss-c')],
+      blood: [v('--fx-blood-a'), v('--fx-blood-b'), v('--fx-blood-c'), v('--fx-blood-d')],
+      bloodMist: v('--fx-blood-mist'),
       dust: [
         v('--fx-dust-a'),
         v('--fx-dust-b'),

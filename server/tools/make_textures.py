@@ -111,6 +111,15 @@ def rgb(hex_code: str) -> RGBA:
 COIN_RAMP: Ramp = [rgb(c) for c in ("#a05a1c", "#f2a541", "#ffd678", "#fff1c2")]
 COIN_OUTLINE = rgb("#482a12")
 
+# The only near-red in the game, and shared for the same reason as the coin:
+# the stain a scene left on the floor (make_scenery) and the wound a bullet
+# just opened on a body (make_gore) have to be one material, or the forest has
+# two kinds of blood in it. It has to survive the darkness multiply, so the top
+# steps go brighter than anything else on the ground — but the mass of a stain
+# sits in the bottom two, which are almost black. Bright all the way through
+# reads as paint.
+BLOOD: Ramp = [rgb(c) for c in ("#1a0507", "#2e070a", "#460c0f", "#5f1216", "#7d1c20", "#a02a26")]
+
 EARTH: Ramp = [rgb(c) for c in ("#1d1a15", "#26221a", "#2f2a20", "#383026", "#43392d")]
 MOSS: Ramp = [rgb(c) for c in ("#22291d", "#2b3524", "#33402b", "#3c4c32")]
 GRIT: Ramp = [rgb(c) for c in ("#4b4034", "#554839", "#3a3228")]

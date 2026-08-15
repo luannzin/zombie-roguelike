@@ -1,9 +1,10 @@
 /**
  * Per-entity transient VISUAL state — animation phase, hit flash, recoil or
- * attack lunge, footstep cadence and the last seen HP used to detect damage.
+ * attack lunge, footstep cadence, the wounds it is wearing, and the last seen
+ * HP used to detect damage.
  *
  * Keyed by entity id, so players and enemies share it: a zombie animates,
- * flashes when shot and kicks up dust exactly the way a player does, and
+ * flashes when shot, bleeds and kicks up dust exactly the way a player does, and
  * `prune()` reclaims a record the moment its owner stops appearing in
  * snapshots — which for enemies is every death and despawn.
  *
@@ -17,7 +18,7 @@
  */
 
 import type { Effects } from './effects';
-import { clamp01, expDamp } from '../lib/math';
+import { clamp01, expDamp, normalize } from '../lib/math';
 
 /** Seconds of white flash after taking a hit. Shared with crate smash. */
 export const HIT_FLASH_LIFE = 0.18;
@@ -36,6 +37,43 @@ const FOOTSTEP_SPACING = 7;
  */
 const BLOCKED_VFX_GAP = 0.2;
 
+/**
+ * A wound worn on a body: one frame of the gore sheet, pinned to a spot on the
+ * sprite and carried around until it dries.
+ *
+ * The offsets are NORMALISED rather than in world pixels, because this module
+ * knows nothing about how big anything is: `u` is -1..1 across the sprite's
+ * width and `v` is 0..1 up from its feet, and the renderer multiplies by the
+ * sheet it is about to draw. A creature twice the size wears its wounds in the
+ * same places with no code here.
+ */
+export interface BloodStain {
+  u: number;
+  v: number;
+  /** Frame in the gore sheet — a wound kind, not an animation step. */
+  frame: number;
+  flip: boolean;
+  age: number;
+  life: number;
+}
+
+/**
+ * How long a wound stays on a body, and how much of the end of that is spent
+ * fading. Long enough that a zombie you have shot twice LOOKS like a zombie
+ * you have shot twice — that is the whole point, since a health bar only
+ * appears once you have hurt something and reads as a number rather than as
+ * damage — and short enough that a survivor of a long fight is not solid red.
+ */
+const STAIN_LIFE = 7;
+const STAIN_FADE = 2;
+/**
+ * Wounds worn at once. Past a few they stop being wounds and start being a
+ * red silhouette, which hides the creature the lantern just found.
+ */
+const STAIN_LIMIT = 4;
+/** Frames in the gore sheet. Mirrors `KINDS` in server/tools/make_gore.py. */
+const STAIN_FRAMES = 6;
+
 interface VisualState {
   animTime: number;
   /** Remaining hit-flash time in seconds. */
@@ -52,6 +90,8 @@ interface VisualState {
   stepSide: number;
   /** Seconds until this entity may show another blocked-hit visual. */
   blockedCooldown: number;
+  /** Wounds worn on the sprite. Oldest first; see BloodStain. */
+  stains: BloodStain[];
   /** Set every frame the entity appears; drives prune(). */
   seen: boolean;
 }
@@ -68,9 +108,13 @@ function blank(): VisualState {
     stepPrevY: Number.NaN,
     stepSide: 1,
     blockedCooldown: 0,
+    stains: [],
     seen: true,
   };
 }
+
+/** Nothing is wearing a wound — shared so the common case allocates nothing. */
+const NO_STAINS: readonly BloodStain[] = [];
 
 export class EntityVisuals {
   private readonly states = new Map<string, VisualState>();
@@ -135,6 +179,38 @@ export class EntityVisuals {
     return clamp01(state.hitFlash / HIT_FLASH_LIFE);
   }
 
+  // --- wounds --------------------------------------------------------------
+  /**
+   * Mark `id` with a wound from a hit that came in along `(dirX, dirY)`.
+   *
+   * The mark lands on the side the hit came FROM, so a creature shot from the
+   * left wears it on its left — the sprite has one body and four facings, and
+   * a wound placed on the exit side would be on the wrong half of the sprite
+   * as soon as the thing turned around. Height is the torso, biased upward:
+   * the legs are two pixels wide at this scale and a stain on them reads as
+   * mud.
+   */
+  splatter(id: string, dirX: number, dirY: number): void {
+    const state = this.state(id);
+    if (state.stains.length >= STAIN_LIMIT) state.stains.shift();
+    const { x: nx } = normalize(dirX, dirY);
+    state.stains.push({
+      u: clamp(-nx * 0.42 + (Math.random() - 0.5) * 0.5, -0.72, 0.72),
+      v: 0.34 + Math.random() * 0.42,
+      frame: (Math.random() * STAIN_FRAMES) | 0,
+      flip: Math.random() < 0.5,
+      age: 0,
+      life: STAIN_LIFE * (0.8 + Math.random() * 0.4),
+    });
+  }
+
+  /** Wounds `id` is currently wearing. Empty for anything unhurt. */
+  stainsOf(id: string): readonly BloodStain[] {
+    const state = this.states.get(id);
+    if (!state || state.stains.length === 0) return NO_STAINS;
+    return state.stains;
+  }
+
   /**
    * Claim the right to draw a blocked-hit visual on `id`, at most one per
    * BLOCKED_VFX_GAP. Returns false when the last one is still too recent.
@@ -178,6 +254,7 @@ export class EntityVisuals {
       state.recoilY *= damp;
       if (Math.abs(state.recoilX) < 0.01) state.recoilX = 0;
       if (Math.abs(state.recoilY) < 0.01) state.recoilY = 0;
+      if (state.stains.length > 0) ageStains(state.stains, dt);
     }
   }
 
@@ -235,4 +312,25 @@ export class EntityVisuals {
       state.stepSide = -state.stepSide;
     }
   }
+}
+
+/** 0..1 opacity for a stain: solid, then drying off over its last seconds. */
+export function stainFade(stain: BloodStain): number {
+  const left = stain.life - stain.age;
+  return left >= STAIN_FADE ? 1 : clamp01(left / STAIN_FADE);
+}
+
+/** Age wounds in place, dropping the dry ones. Oldest-first order is kept. */
+function ageStains(stains: BloodStain[], dt: number): void {
+  let kept = 0;
+  for (const stain of stains) {
+    stain.age += dt;
+    if (stain.age >= stain.life) continue;
+    stains[kept++] = stain;
+  }
+  stains.length = kept;
+}
+
+function clamp(value: number, low: number, high: number): number {
+  return value < low ? low : value > high ? high : value;
 }

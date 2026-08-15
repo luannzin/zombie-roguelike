@@ -19,7 +19,7 @@ game's scale.
 | `enemies.py` | `EnemyType` stat blocks (incl. the sight cone, visual variants and accessory pools), live `Enemy`, `dress` |
 | `ai.py` | enemy senses, patrol/hunt/return, steering/attack, the director |
 | `pathing.py` | BFS flow field, one per player |
-| `coins.py` | dropped gold: burst, magnet, collection |
+| `coins.py` | dropped gold: the per-kill drop roll, burst, magnet, collection |
 | `loot.py` | world collectables: catalog, scene-context scatter, E-to-collect |
 | `crates.py` | breakable boxes/barrels: extract from scenery, smash, drop roll |
 | `inventory.py` | the pocket: slots, stacking, weight |
@@ -184,6 +184,14 @@ game's scale.
   worth standing in, and a direction leading away from spawn. Loot is a
   second pass over `scenes` (`loot.scatter`) — a drop belongs to the place
   it sits in, not to a hash. Do not delete them for being unused.
+- **A corpse pays a ROLL, not a receipt.** A creature's `gold` is the most it
+  can drop; each point is flipped on its own at `COIN_DROP_CHANCE`
+  (`coins.roll_drop`), so a 3-gold zombie lands on 0..3 with both ends rare
+  and nothing is credited — the coins hit the ground and somebody has to walk
+  over them. xp is the opposite and stays fixed: what the kill was worth does
+  not vary, what fell out of it does. `kills[].gold` is what actually fell,
+  `enemyTypes[*].goldMax` is the ceiling; the client displays neither as a
+  promise.
 - **Loot is not a coin.** Coins magnetize off a corpse. A drop sits next to
   a scene, shows a tooltip, and is collected with `{type:"collect","id"}`.
   The catalog and rarity weights live in `loot.py`; the client never invents

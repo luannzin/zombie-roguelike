@@ -93,6 +93,15 @@
   --fx-hit-core: #ffffff;
   --fx-miss-core: #e8e8f0;
 
+  /* blood thrown by a landed hit. Same material as the stains on the ground
+     and the wounds on a body (server/tools/make_gore.py): dark mass, one hot
+     step so a spray still reads once the darkness pass multiplies over it */
+  --fx-blood-a: #5f1216;
+  --fx-blood-b: #7d1c20;
+  --fx-blood-c: #460c0f;
+  --fx-blood-d: #a02a26;
+  --fx-blood-mist: #2e070a;
+
   /* footstep dust */
   --fx-dust-a: #6a6558;
   --fx-dust-b: #5a564c;

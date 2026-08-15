@@ -11,6 +11,7 @@
  */
 
 import type { Effects } from '../game/effects';
+import type { BloodStain } from '../game/entity-visuals';
 import type { TileMap } from '../game/world';
 import type { GameConfig, LootRarity } from '../net/protocol';
 import type { Camera } from './camera';
@@ -56,6 +57,12 @@ export interface DrawableEntity {
   isLocal: boolean;
   /** 0..1 white flash intensity after taking a hit. */
   hitFlash: number;
+  /**
+   * Wounds this body is wearing, oldest first. Stamped on the sprite in the
+   * entity pass; positions are normalised to the sprite, so the renderer
+   * scales them by whatever sheet it is drawing.
+   */
+  stains: readonly BloodStain[];
   /**
    * 0..1 how much of this entity is drawn at all.
    *

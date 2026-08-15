@@ -12,9 +12,11 @@
  */
 
 import type { GameConfig } from '../../net/protocol';
+import { stainFade } from '../../game/entity-visuals';
 import { clamp01 } from '../../lib/math';
 import { HUD_GRID, hudFont } from '../../theme/fonts';
 import { hpColor, palette } from '../../theme/palette';
+import type { GoreAtlas } from '../gore';
 import type { Projection } from '../projection';
 import { facingFromAim, frameIndex, type SpriteBook } from '../sprites';
 import type { DrawableCoin, DrawableEntity } from '../types';
@@ -73,6 +75,8 @@ export interface EntityContext {
   view: Projection;
   config: GameConfig;
   book: SpriteBook;
+  /** Wound decals stamped on hurt bodies. Null until the atlas lands. */
+  gore: GoreAtlas | null;
 }
 
 export function drawShadow(entity: EntityContext, target: DrawableEntity): void {
@@ -196,6 +200,11 @@ export function drawEntity(entity: EntityContext, target: DrawableEntity): void 
     ctx.globalAlpha = target.visibility;
   }
 
+  // After the flash, not under it: the white blink is the moment the hit
+  // lands, the wound is what the hit left, and the second has to outlast the
+  // first on screen or it never registers as damage.
+  drawStains(entity, target, dx, dy, dw, dh);
+
   if (target.kind === 'player') {
     drawAimIndicator(entity, target, px, py);
     drawHealthBar(entity, target, view.rawX(px), spriteTop);
@@ -237,6 +246,61 @@ function blitGear(
       dh,
     );
   }
+}
+
+/**
+ * Wounds, stamped on the body inside the sprite's own dest rect.
+ *
+ * They ride the sprite rather than the world: the offsets are normalised to
+ * the frame, so a stain stays on the shoulder it landed on while the creature
+ * walks, turns and animates. Drawn plainly (no additive, no tint) and scaled
+ * by the same zoom as the body — a wound is part of the picture of the
+ * creature, not a light on top of it, and it goes dark with the creature when
+ * the lantern leaves.
+ */
+function drawStains(
+  { ctx, view, gore }: EntityContext,
+  target: DrawableEntity,
+  dx: number,
+  dy: number,
+  dw: number,
+  dh: number,
+): void {
+  if (!gore || target.stains.length === 0) return;
+
+  const sw = view.size(gore.frameWidth);
+  const sh = view.size(gore.frameHeight);
+  const cx = dx + dw / 2;
+  const bottom = dy + dh;
+
+  for (const stain of target.stains) {
+    ctx.globalAlpha = stainFade(stain) * target.visibility;
+    const left = Math.round(cx + stain.u * (dw / 2) - sw / 2);
+    const top = Math.round(bottom - stain.v * dh - sh / 2);
+    const frame = stain.frame * gore.frameWidth;
+    if (stain.flip) {
+      // Mirrored so six frames read as twelve. Cheap here: only a body that
+      // has been hit has stains at all.
+      ctx.save();
+      ctx.translate(left + sw, top);
+      ctx.scale(-1, 1);
+      ctx.drawImage(gore.image, frame, 0, gore.frameWidth, gore.frameHeight, 0, 0, sw, sh);
+      ctx.restore();
+    } else {
+      ctx.drawImage(
+        gore.image,
+        frame,
+        0,
+        gore.frameWidth,
+        gore.frameHeight,
+        left,
+        top,
+        sw,
+        sh,
+      );
+    }
+  }
+  ctx.globalAlpha = target.visibility;
 }
 
 function drawAimIndicator(

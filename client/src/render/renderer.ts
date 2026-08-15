@@ -35,6 +35,7 @@ import { TerrainLayer, type DecorationMask } from './layers/terrain';
 import { drawVignette } from './layers/vignette';
 import { projectionFor } from './projection';
 import { palette } from '../theme/palette';
+import { loadGore, type GoreAtlas } from './gore';
 import { loadLoot, type LootAtlas } from './loot';
 import { loadScenery, type SceneryAtlas } from './scenery';
 import { loadTerrain } from './terrain';
@@ -72,6 +73,7 @@ export class Renderer {
   private scenery: SceneryAtlas | null = null;
   private lootAtlas: LootAtlas | null = null;
   private vfx: VfxAtlas | null = null;
+  private gore: GoreAtlas | null = null;
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
@@ -92,6 +94,9 @@ export class Renderer {
     });
     void loadVfx().then((atlas) => {
       this.vfx = atlas;
+    });
+    void loadGore().then((atlas) => {
+      this.gore = atlas;
     });
   }
 
@@ -132,6 +137,7 @@ export class Renderer {
       view,
       config: state.config,
       book: this.book,
+      gore: this.gore,
     };
 
     this.clear();

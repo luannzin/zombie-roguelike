@@ -227,6 +227,8 @@ export class Effects {
     color: string,
     hit: boolean,
     damage?: number,
+    /** The thing hit was a BODY. Wood and stone throw debris but do not bleed. */
+    flesh = false,
   ): void {
     const fx = palette().effects;
     this.tracers.push({ x, y, dx, dy, dist, color, age: 0, life: 0.09 });
@@ -239,10 +241,67 @@ export class Effects {
     const iy = y + dy * dist;
     this.spawnImpact(ix, iy, dx, dy, hit);
     if (hit) this.spawnLight(ix, iy, 30, 0.5, fx.hitCore, 0.08);
+    if (flesh) this.spawnBlood(ix, iy, dx, dy, 1);
 
     if (hit && damage !== undefined && damage > 0) {
       this.spawnDamage(ix, iy, damage);
     }
+  }
+
+  /**
+   * Blood off a body that was just hit at `(x, y)` by something travelling
+   * along `(dx, dy)`. `amount` scales the volume — 1 for a shot, more for a
+   * death.
+   *
+   * It sprays with the bullet, not back at the shooter. The debris in
+   * `spawnImpact` already kicks BACK along the ray, which is what a round does
+   * to the surface it strikes; blood is what comes out the far side, so the two
+   * together read as a shot passing THROUGH something instead of stopping on
+   * it. A narrow cone forward carries most of it, a little sprays back off the
+   * entry, and all of it falls — blood has weight, and the arc down to the
+   * ground is what separates it from a spark.
+   */
+  spawnBlood(x: number, y: number, dx: number, dy: number, amount = 1): void {
+    const fx = palette().effects;
+    const count = Math.round((7 + Math.random() * 4) * amount);
+
+    for (let i = 0; i < count; i++) {
+      // Mostly forward, in a tight cone; every fifth drop kicks back out of
+      // the entry wound.
+      const back = i % 5 === 4;
+      const spread = (Math.random() - 0.5) * (back ? 2.0 : 1.1);
+      const cos = Math.cos(spread);
+      const sin = Math.sin(spread);
+      const sign = back ? -1 : 1;
+      const bx = (dx * cos - dy * sin) * sign;
+      const by = (dy * cos + dx * sin) * sign;
+      const speed = (back ? 34 : 70) * (0.5 + Math.random() * 0.9);
+      this.particles.push({
+        x,
+        y,
+        vx: bx * speed,
+        vy: by * speed - Math.random() * 14,
+        size: 1 + Math.random() * 1.8,
+        color: pick(fx.blood),
+        age: 0,
+        life: 0.34 * (0.7 + Math.random() * 0.7),
+        gy: 190,
+      });
+    }
+
+    // A dark mist right at the wound, going nowhere. Without it the spray
+    // starts from nothing and the hit reads as a spark rather than a wound.
+    this.particles.push({
+      x,
+      y,
+      vx: dx * 6,
+      vy: dy * 6,
+      size: 2.6 + Math.random() * 1.2,
+      color: fx.bloodMist,
+      age: 0,
+      life: 0.16,
+      gy: 40,
+    });
   }
 
   spawnImpact(x: number, y: number, dx: number, dy: number, hit: boolean): void {
@@ -364,10 +423,13 @@ export class Effects {
         life: 0.22 * (0.7 + Math.random() * 0.6),
       });
     }
+    // A claw that got through opens something. Half a shot's worth: a swipe
+    // is not a hole punched clean through the body.
+    this.spawnBlood(x, y, dx, dy, 0.5);
     if (damage > 0) this.spawnDamage(x, y, damage);
   }
 
-  /** Gore burst where something died. */
+  /** A crate coming apart: splinters, a puff of dust, and the sheet to play. */
   spawnCrateSmash(
     x: number,
     y: number,
@@ -400,7 +462,11 @@ export class Effects {
     this.winds.push({ x, y, age: 0, life });
   }
 
-  spawnDeath(x: number, y: number): void {
+  /**
+   * Something died here. `dx`/`dy` is the direction the last hit came from, so
+   * the burst leans the way the shot was going.
+   */
+  spawnDeath(x: number, y: number, dx = 0, dy = 0): void {
     const fx = palette().effects;
     for (let i = 0; i < 16; i++) {
       const angle = Math.random() * Math.PI * 2;
@@ -416,6 +482,14 @@ export class Effects {
         life: 0.32 + Math.random() * 0.28,
         gy: 40,
       });
+    }
+    // The body opens. Leans along the killing blow when the caller knows it,
+    // and throws in every direction when it does not.
+    if (dx !== 0 || dy !== 0) {
+      this.spawnBlood(x, y, dx, dy, 2);
+    } else {
+      const angle = Math.random() * Math.PI * 2;
+      this.spawnBlood(x, y, Math.cos(angle), Math.sin(angle), 2);
     }
     this.spawnDust(x, y, 0, 1, 1);
     this.spawnLight(x, y, 46, 0.55, fx.hitCore, 0.16);

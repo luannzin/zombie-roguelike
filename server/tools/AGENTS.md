@@ -15,6 +15,7 @@ imported by `app/` and never run at request time.
 | `make_textures.py` | generates final pixels | `assets/processed/terrain/` (4 grounds, blend, patch, rock, tree, deadtree, stump, grass, bush, branch, leaves, fern, campfire) |
 | `make_scenery.py` | generates final pixels | `assets/processed/scenery/` (cabin, tent, fence, sign, logs, crate, firepit, blood, tracks, clothes, debris) |
 | `make_vfx.py` | generates final pixels | `assets/processed/vfx/` (summon, kindle, aura, wind) |
+| `make_gore.py` | generates final pixels | `assets/processed/gore/` (6 wound decals worn by a hit body) |
 | `make_loot.py` | generates final pixels | `assets/processed/loot/` (one 16x16 frame per item) |
 | `make_hud_icons.py` | generates final pixels | `assets/processed/hud/` (battery, backpack, coin) |
 | `make_audio.py` | generates final samples | `assets/processed/audio/` (31 sounds, 58 wavs + manifest + loudness.json) |
@@ -53,6 +54,21 @@ imported by `app/` and never run at request time.
   a placement rule: terrain is scattered client-side off the map seed, scenery
   is placed server-side in groups by `app/scenery.py`. A new sheet goes in
   whichever folder matches how it will be positioned.
+- **`gore/` is the third destination and it is a fourth shape: a mark on a
+  BODY.** Not a standing prop, not a flat decal baked into the ground, not a
+  vfx timeline. Its frames are wound VARIANTS in their own baked colour, drawn
+  with the sprite in the entity pass and lit by the same night the sprite is —
+  so they are not greyscale, not tinted at draw time and never additive. The
+  client rolls one per landed hit and the creature carries it (see
+  `client/src/render/gore.ts`). At 8px a wound reads by WEIGHT and DIRECTION,
+  not outline, and nothing here is outlined: a keyline lifts the mark off the
+  body and it becomes a sticker. Keep each frame to a handful of pixels — four
+  of them share one 16px creature, and a heavy sheet paints a red silhouette
+  over the thing the lantern just found.
+- **There is one blood.** `BLOOD` lives in `make_textures.py` beside
+  `COIN_RAMP`, for the same reason: the stain a scene left on the floor
+  (`make_scenery.py`) and the wound a bullet just opened (`make_gore.py`) have
+  to be the same material, or the forest has two kinds of blood in it.
 - `tracks.png` bakes one frame per compass point rather than being rotated at
   draw time. A 16px print through a canvas rotate is grey mush, and heel-vs-toe
   is the whole value of a footprint. `TRACK_DIRECTIONS` here and in
@@ -169,6 +185,7 @@ python tools/process_sprites.py --name zhat-cap --tile 16 --exact --side-facing 
 python tools/make_textures.py
 python tools/make_scenery.py
 python tools/make_vfx.py
+python tools/make_gore.py
 python tools/make_loot.py
 python tools/make_hud_icons.py
 python tools/make_coin.py

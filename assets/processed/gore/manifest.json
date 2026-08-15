@@ -1,0 +1,14 @@
+{
+  "tile": 16,
+  "frameWidth": 8,
+  "frameHeight": 8,
+  "frames": 6,
+  "kinds": [
+    "hole",
+    "spray",
+    "run",
+    "splash",
+    "streak",
+    "gash"
+  ]
+}

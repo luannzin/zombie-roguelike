@@ -5,16 +5,19 @@ Python literals or generated procedurally.
 
     0 FLOOR   walkable
     1 ROCK    solid boulder
-    2 TREE    solid trunk
+    2 TREE    solid TRUNK — one tile, the contact. The canopy is 1.5 tiles
+              of art on the tiles above and is not a wall; walking behind a
+              tree is walking on those tiles. A second TREE there is another
+              trunk, not this one's leaves.
     3 FIRE    solid campfire — a lit tile, and a landmark
     4 VOID    solid gap — winding forest floor between trees, too dark to
               walk into. Blocks bodies, not light; the client paints ground
               and crushes a darkness falloff around the path so it reads as
               a hole in the woods, not as a missing texture or a corridor.
-    5 PROP    solid footprint of a BUILDING placed by scenery.py. The client
-              paints ground here and draws nothing: the cabin or tent sprite
-              that owns these tiles arrives in the map payload's prop list and
-              covers them. Blocks light too — a cabin is a cabin.
+    5 PROP    solid DOORSTEP of a BUILDING placed by scenery.py — one tile
+              tall, at the contact. The client paints ground here and draws
+              nothing: the cabin or tent sprite covers it, including the
+              roof you walk behind. Blocks light too — a cabin is a cabin.
     6 LOW     WAIST-HIGH COVER: a fallen log, a crate, a fence rail, a signpost.
               Solid to bodies and to BULLETS, transparent to LIGHT. That
               combination is the whole reason it is its own kind. Making these

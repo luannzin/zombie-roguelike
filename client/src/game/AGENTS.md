@@ -103,6 +103,8 @@ seam React is allowed to read.
   waist-high cover (crate, fence, log, sign): solid to bodies and bullets,
   transparent to light, painted as ground the same way. A log that blocked
   sight would throw a hard shadow; one that was walkable would not be cover.
+  Standing collision is one tile tall at the contact — a tree's canopy and a
+  sign's board are drawn on the tiles above and are not walls.
 - **Footprints are the one effect that is not short-lived, and the exception is
   the feature.** `Game.trackFootsteps` lays one per stride for every body on
   visible ground, with the depth coming from the SOIL under it (`soilAt`), and
@@ -128,6 +130,14 @@ seam React is allowed to read.
   shockwaves — the code only adds what it cannot know, which is whose arrival
   it is: the sheet is greyscale and tinted with the arriving player's colour,
   plus one ring and a spray of sparks in the same colour.
+- **The kindle sheet is the fire's clock.** `KINDLE_TIME` is the sheet's
+  `frames / fps` and `KINDLE_IMPACT` mirrors `KINDLE_IMPACT` in
+  `make_vfx.py`. It plays on the start-match launch, on the bonfire — not
+  when a player is summoned, and not when the lobby first appears. The
+  code only adds what the sheet cannot know: live embers past the frame
+  and a surge on the same `flicker` every lit thing reads. No expanding
+  ring; the column is the tell. The sheet is greyscale and tinted with
+  `fire.core`, so the roar belongs to the hearth rather than to a player.
 - Lobby names are drawn in SCREEN space, on a card ABOVE the head. Above,
   because the seat ring is elliptical and a label under a player's feet lands
   on whoever is sitting closer to the camera. The card is the roster row in

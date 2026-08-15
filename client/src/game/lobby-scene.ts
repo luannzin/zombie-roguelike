@@ -110,6 +110,23 @@ const SUMMON_IMPACT = 0.52;
 /** When in the summon the body starts to appear, and when it has fully landed. */
 const BODY_FADE_IN = 0.34;
 const BODY_LANDED = SUMMON_IMPACT;
+
+/**
+ * Seconds the fire spends roaring when the party starts the match.
+ *
+ * The kindle sheet is the clock: 16 frames at 16 fps. Same rule as the
+ * summon — overriding it here would cut the collapse off or leave a dead
+ * beat after the column has gone.
+ */
+const KINDLE_TIME = 1.0;
+/**
+ * Normalized moment the column peaks. Mirrors `KINDLE_IMPACT` in
+ * `server/tools/make_vfx.py` — the ember burst has to land on the same
+ * frame the sprite flashes.
+ */
+const KINDLE_IMPACT = 0.48;
+/** Extra embers the fire throws at the roar's peak. */
+const KINDLE_IMPACT_EMBERS = 36;
 /**
  * Squash-and-stretch after touchdown, in seconds. The body arrives compressed
  * and springs back — a character that simply becomes opaque has been faded in,
@@ -137,8 +154,7 @@ const FALLBACK_FIRE_TILES = 10;
  * unprompted lurch instead of as a decision followed by a departure.
  */
 const LAUNCH_HOLD = 0.14;
-/** Embers the fire throws when the party commits, and how long it flares. */
-const LAUNCH_FLARE_EMBERS = 46;
+/** How long the fire stays hotter after the party commits. */
 const LAUNCH_FLARE_TIME = 0.9;
 
 export interface LobbyMember {
@@ -276,6 +292,11 @@ export class LobbyScene {
 	private resizeDirty = true;
 	/** Running (or finished) launch. Null while the party is still gathering. */
 	private launch: Launch | null = null;
+	/**
+	 * The fire's roar when the party starts the match. Null until
+	 * `beginLaunch`; the lobby fire just burns until then.
+	 */
+	private kindle: { elapsed: number } | null = null;
 
 	private tile = FALLBACK_TILE;
 	private dpr = 1;
@@ -359,6 +380,7 @@ export class LobbyScene {
 		this.seats.length = 0;
 		this.particles.length = 0;
 		this.rings.length = 0;
+		this.kindle = null;
 		this.world = null;
 		this.fov = null;
 		this.lights = [];
@@ -403,43 +425,97 @@ export class LobbyScene {
 			fromZoom: this.camera.zoom,
 			focusId: this.seats.find((seat) => seat.isLocal)?.id ?? "",
 		};
-		this.spawnFlare();
+		this.beginKindle();
 	}
 
 	/**
-	 * The fire surges as the party commits.
+	 * The fire answers when the party commits.
 	 *
 	 * A camera move on its own is the game telling you something happened; a
-	 * shower of embers off the fire at the same instant is the WORLD reacting to
-	 * it. It costs one burst of particles and it is the difference between a
-	 * transition and a departure.
+	 * column of flame off the pit at the same instant is the WORLD reacting
+	 * to it. The sheet is the roar — no expanding ring. Player summons keep
+	 * their own landing rings; this one does not grow a circle.
 	 */
-	private spawnFlare(): void {
+	private beginKindle(): void {
+		if (this.kindle) return;
+		this.kindle = { elapsed: 0 };
+		this.spawnKindleCharge();
+	}
+
+	/**
+	 * Sparks lifting out of the pit as it gathers.
+	 *
+	 * The kindle sheet is only six tiles tall; these start in the coals and
+	 * climb past the top of the frame so the roar comes FROM the fire rather
+	 * than appearing as a sprite sitting on it. They streak — a rising ember
+	 * that jumps tiles between frames is a dotted line unless it leaves a trail.
+	 */
+	private spawnKindleCharge(): void {
 		const ts = this.tile;
-		const tones = palette().fire.embers;
-		for (let i = 0; i < LAUNCH_FLARE_EMBERS; i++) {
+		const tones = palette().fire;
+		for (let i = 0; i < 32; i++) {
+			const spread = (Math.random() * 2 - 1) * ts * 0.7;
+			const startY = this.fireY - ts * (0.15 + Math.random() * 0.45);
 			this.particles.push({
-				x: this.fireX + (Math.random() * 2 - 1) * ts * 0.55,
-				y: this.fireY - ts * (0.3 + Math.random() * 0.7),
-				vx: (Math.random() * 2 - 1) * ts * 1.5,
-				vy: -ts * (2.4 + Math.random() * 3.4),
-				gy: ts * 1.1,
-				// Staggered, so the fire keeps throwing sparks through the first
-				// half of the move rather than coughing once and stopping.
-				age: -Math.random() * LAUNCH_FLARE_TIME * 0.55,
-				life: 0.8 + Math.random() * 1.5,
-				size: Math.random() < 0.3 ? 2 : 1,
-				color: tones[Math.floor(Math.random() * tones.length)],
+				x: this.fireX + spread,
+				y: startY,
+				sx: this.fireX + spread,
+				sy: startY,
+				tx: this.fireX + spread * 0.2,
+				ty: this.fireY - ts * (5.5 + Math.random() * 8),
+				vx: 0,
+				vy: 0,
+				gy: 0,
+				age: -Math.random() * 0.35,
+				life: KINDLE_TIME * (0.55 + Math.random() * 0.3),
+				size: Math.random() < 0.28 ? 2 : 1,
+				streak: true,
+				color:
+					Math.random() < 0.35
+						? tones.core
+						: tones.embers[Math.floor(Math.random() * tones.embers.length)],
 			});
 		}
-		this.rings.push({
-			x: this.fireX,
-			y: this.fireY,
-			age: 0,
-			life: 0.85,
-			maxRadius: ts * 5.2,
-			color: palette().fire.core,
-		});
+	}
+
+	/**
+	 * The peak, in the fire's own colours.
+	 *
+	 * The flash is baked into the kindle sheet. What the sprite cannot do is
+	 * throw live embers past its own frame — that is this burst. No ring:
+	 * the start-match tell is the column, not a circle on the ground.
+	 */
+	private spawnKindleImpact(): void {
+		const ts = this.tile;
+		const tones = palette().fire;
+		for (let i = 0; i < KINDLE_IMPACT_EMBERS; i++) {
+			this.particles.push({
+				x: this.fireX + (Math.random() * 2 - 1) * ts * 0.6,
+				y: this.fireY - ts * (0.25 + Math.random() * 0.8),
+				vx: (Math.random() * 2 - 1) * ts * 2.2,
+				vy: -ts * (2.8 + Math.random() * 4.2),
+				gy: ts * 1.4,
+				age: -Math.random() * 0.18,
+				life: 0.7 + Math.random() * 1.3,
+				size: Math.random() < 0.34 ? 2 : 1,
+				color: tones.embers[Math.floor(Math.random() * tones.embers.length)],
+			});
+		}
+		for (let i = 0; i < 16; i++) {
+			const angle = Math.random() * TAU;
+			const speed = ts * (1.8 + Math.random() * 3.4);
+			this.particles.push({
+				x: this.fireX,
+				y: this.fireY,
+				vx: Math.cos(angle) * speed,
+				vy: Math.sin(angle) * speed * 0.42 - ts * 0.8,
+				gy: ts * 5.2,
+				age: 0,
+				life: 0.35 + Math.random() * 0.4,
+				size: 1,
+				color: Math.random() < 0.45 ? tones.core : tones.mid,
+			});
+		}
 	}
 
 	/** True once `beginLaunch` has run. The scene is on its way out. */
@@ -723,7 +799,8 @@ export class LobbyScene {
 	 * and are not on an eight-frame cycle.
 	 */
 	private spawnEmbers(dt: number): void {
-		this.emberDebt += dt * EMBER_RATE * (0.6 + this.flicker * 0.7);
+		this.emberDebt +=
+			dt * EMBER_RATE * (0.6 + this.flicker * 0.7) * (1 + this.kindleBoost() * 2.4);
 		const ts = this.tile;
 		const tones = palette().fire.embers;
 		while (this.emberDebt >= 1) {
@@ -819,7 +896,7 @@ export class LobbyScene {
 			focusY = lerp(this.fireY, target.y, k);
 		}
 
-		this.camera.zoom = zoom;
+		this.camera.zoom = zoom * this.kindlePunch();
 		this.camera.resize(this.canvas.width, this.canvas.height);
 		if (!world) return;
 		// `snapTo` centres its target, so the point handed to it is displaced by
@@ -853,6 +930,22 @@ export class LobbyScene {
 	}
 
 	private update(dt: number): void {
+		if (this.kindle) {
+			const before = this.kindle.elapsed;
+			this.kindle.elapsed += dt;
+			if (
+				before < KINDLE_IMPACT * KINDLE_TIME &&
+				this.kindle.elapsed >= KINDLE_IMPACT * KINDLE_TIME
+			) {
+				this.spawnKindleImpact();
+			}
+			if (this.kindle.elapsed >= KINDLE_TIME) this.kindle = null;
+			// The punch is a zoom change, so the camera has to be rewritten
+			// every frame of the roar — and once more on the frame it ends,
+			// so the rest shot lands exactly where it started.
+			this.frameCamera();
+		}
+
 		if (this.launch) {
 			// Clamped, not stopped: the move holds on its last frame until the
 			// arena takes over, so there is never a gap where the lobby has
@@ -874,8 +967,10 @@ export class LobbyScene {
 				Math.sin(t * 7.3) * 0.11 +
 				Math.sin(t * 13.1 + 1.7) * 0.08 +
 				Math.sin(t * 2.9 + 0.4) * 0.09 +
-				// The surge that goes with the flare, decaying over its length.
-				this.flareBoost(),
+				// The surge that goes with a roar or a launch flare, decaying
+				// over its length. One number so the ground, the bodies and
+				// the embers all jump together.
+				this.surgeBoost(),
 		);
 
 		this.spawnEmbers(dt);
@@ -988,11 +1083,14 @@ export class LobbyScene {
 			this.time,
 		);
 		this.darkness.drawSceneLights(ctx, world.scenery.lights, this.tile, this.time);
+		this.drawKindleGlow();
 
 		// Everything below is LIGHT, so it goes over the darkness rather than
 		// under it — the same rule the arena's renderer follows for muzzle
 		// flashes. The summon column washing over the body it is delivering is
 		// the point: the character resolves inside the beam, not next to it.
+		// Kindle first: a player's arrival sits on top of the fire's roar.
+		this.drawKindle();
 		this.drawSummons();
 		this.drawRings();
 		this.drawParticles();
@@ -1045,6 +1143,13 @@ export class LobbyScene {
 		// The frames are a loop, not variants — see `fps` in the terrain manifest.
 		const frame =
 			sheet.fps > 0 ? Math.floor(this.time * sheet.fps) % sheet.frames : 0;
+		const roar = this.kindleRoar();
+		if (roar !== 1) {
+			ctx.save();
+			ctx.translate(this.fireX, this.fireY);
+			ctx.scale(1 + (1 - roar) * 0.35, roar);
+			ctx.translate(-this.fireX, -this.fireY);
+		}
 		ctx.drawImage(
 			sheet.image,
 			frame * sheet.frameWidth,
@@ -1056,6 +1161,7 @@ export class LobbyScene {
 			sheet.frameWidth,
 			sheet.frameHeight,
 		);
+		if (roar !== 1) ctx.restore();
 	}
 
 	/**
@@ -1195,16 +1301,65 @@ export class LobbyScene {
 	}
 
 	/**
-	 * Extra flame brightness while the launch flare is burning, 0 otherwise.
+	 * Extra flame brightness while a roar or a launch flare is burning.
 	 *
 	 * It rides on the same `flicker` every lit thing in the scene reads, so the
 	 * surge reaches the ground, the bodies and the embers at once instead of
 	 * being a separate effect drawn on top of a fire that did not react.
 	 */
+	private surgeBoost(): number {
+		return Math.max(this.flareBoost(), this.kindleBoost());
+	}
+
 	private flareBoost(): number {
 		const launch = this.launch;
 		if (!launch || launch.elapsed >= LAUNCH_FLARE_TIME) return 0;
 		return 0.3 * (1 - launch.elapsed / LAUNCH_FLARE_TIME) ** 1.6;
+	}
+
+	/**
+	 * 0..~0.42 extra brightness while the kindle is up. Peaks at impact,
+	 * then lets go — a flat boost for the whole second would just look like
+	 * the fire got brighter and stayed there.
+	 */
+	private kindleBoost(): number {
+		const kindle = this.kindle;
+		if (!kindle || kindle.elapsed < 0) return 0;
+		const t = clamp01(kindle.elapsed / KINDLE_TIME);
+		if (t < KINDLE_IMPACT) {
+			return 0.42 * (t / KINDLE_IMPACT) ** 1.35;
+		}
+		return 0.42 * (1 - (t - KINDLE_IMPACT) / (1 - KINDLE_IMPACT)) ** 1.7;
+	}
+
+	/**
+	 * A small zoom punch at impact. The fire stays on the rest anchor — this
+	 * is scale, not a jump — and it settles before anyone could confuse it
+	 * with the launch.
+	 */
+	private kindlePunch(): number {
+		const kindle = this.kindle;
+		if (!kindle) return 1;
+		const since = kindle.elapsed - KINDLE_IMPACT * KINDLE_TIME;
+		if (since < 0 || since > 0.36) return 1;
+		const k = since / 0.36;
+		return 1 + 0.04 * Math.exp(-5.2 * k) * Math.cos(k * 8);
+	}
+
+	/**
+	 * Vertical scale of the campfire sprite during the roar: stretches as
+	 * the column climbs, then overshoots and settles. Applied about the
+	 * feet, same as a landing squash.
+	 */
+	private kindleRoar(): number {
+		const kindle = this.kindle;
+		if (!kindle || kindle.elapsed < 0) return 1;
+		const t = clamp01(kindle.elapsed / KINDLE_TIME);
+		if (t < KINDLE_IMPACT) {
+			return 1 + 0.2 * (t / KINDLE_IMPACT) ** 1.2;
+		}
+		const since = (t - KINDLE_IMPACT) / (1 - KINDLE_IMPACT);
+		return 1 + 0.2 * Math.exp(-4.2 * since) * Math.cos(since * 9);
 	}
 
 	/**
@@ -1267,6 +1422,67 @@ export class LobbyScene {
 				sheet.frameHeight,
 			);
 		}
+		ctx.restore();
+	}
+
+	/**
+	 * The fire's roar: a generated sprite, not a gradient.
+	 *
+	 * Same contract as `drawSummons` — see server/tools/make_vfx.py. The
+	 * sheet is greyscale and tinted with the fire's own core, so the column
+	 * is the hearth answering, not a second summon in somebody's colour.
+	 */
+	private drawKindle(): void {
+		const sheet = this.vfx?.kindle;
+		const kindle = this.kindle;
+		if (!sheet || !kindle || kindle.elapsed < 0) return;
+		const { ctx } = this;
+		const frame = effectFrame(sheet, kindle.elapsed);
+		ctx.save();
+		ctx.globalCompositeOperation = "lighter";
+		ctx.drawImage(
+			effectImage(sheet, palette().fire.core),
+			frame * sheet.frameWidth,
+			0,
+			sheet.frameWidth,
+			sheet.frameHeight,
+			Math.round(this.fireX - sheet.frameWidth / 2),
+			Math.round(this.fireY - sheet.anchorY),
+			sheet.frameWidth,
+			sheet.frameHeight,
+		);
+		ctx.restore();
+	}
+
+	/**
+	 * A second warm disc at the roar's peak, on top of `drawFires`.
+	 *
+	 * The fov already stretched and the glow already breathed — this is the
+	 * flash the sheet cannot throw past its own frame. Additive, fire-coloured,
+	 * gone with the boost.
+	 */
+	private drawKindleGlow(): void {
+		const boost = this.kindleBoost();
+		if (boost <= 0.01) return;
+		const { ctx } = this;
+		const glow = palette().fire.glow.join(" ");
+		const radius = this.tile * 7.5 * (0.55 + boost);
+		const cy = this.fireY - this.tile * 0.55;
+		ctx.save();
+		ctx.globalCompositeOperation = "lighter";
+		const gradient = ctx.createRadialGradient(
+			this.fireX,
+			cy,
+			1,
+			this.fireX,
+			cy,
+			radius,
+		);
+		gradient.addColorStop(0, `rgb(${glow} / ${(0.38 * boost).toFixed(3)})`);
+		gradient.addColorStop(0.4, `rgb(${glow} / ${(0.14 * boost).toFixed(3)})`);
+		gradient.addColorStop(1, `rgb(${glow} / 0)`);
+		ctx.fillStyle = gradient;
+		ctx.fillRect(this.fireX - radius, cy - radius, radius * 2, radius * 2);
 		ctx.restore();
 	}
 

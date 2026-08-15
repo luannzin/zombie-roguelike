@@ -13,7 +13,7 @@ imported by `app/` and never run at request time.
 | `process_sprites.py` | raw → production | `assets/processed/<name>/` |
 | `make_textures.py` | generates final pixels | `assets/processed/terrain/` (4 grounds, blend, patch, rock, tree, deadtree, stump, grass, bush, branch, leaves, fern, campfire) |
 | `make_scenery.py` | generates final pixels | `assets/processed/scenery/` (cabin, tent, fence, sign, logs, crate, firepit, blood, tracks, clothes, debris) |
-| `make_vfx.py` | generates final pixels | `assets/processed/vfx/` (summon) |
+| `make_vfx.py` | generates final pixels | `assets/processed/vfx/` (summon, kindle) |
 | `make_hud_icons.py` | generates final pixels | `assets/processed/hud/` |
 
 ## Local Contracts
@@ -60,11 +60,13 @@ imported by `app/` and never run at request time.
   They are anchored on `anchorY` — the row the effect happens at, with spare
   rows BELOW it for an impact to spread into — not on the bottom edge.
 - VFX sheets are GREYSCALE. An effect belonging to a player is tinted with that
-  player's colour by the client (`client/src/render/vfx.ts`); a hue baked in
-  here would mean one sheet per colour and would not match the roster.
+  player's colour by the client (`client/src/render/vfx.ts`); the kindle roar
+  is tinted with `fire.core` the same way. A hue baked in here would mean one
+  sheet per colour and would not match the roster.
 - A VFX sheet's `frames / fps` is the effect's duration and the client times
   itself off it. Changing either means changing whatever the client aligns to
-  it (`SUMMON_TIME`, `SUMMON_IMPACT` in `client/src/game/lobby-scene.ts`).
+  it (`SUMMON_TIME` / `SUMMON_IMPACT`, `KINDLE_TIME` / `KINDLE_IMPACT` in
+  `client/src/game/lobby-scene.ts`).
 - Shared helpers (`pick`, `hash01`, `clamp01`, `pack`, `rgb`, the ramps) live in
   `make_textures.py` and are imported by the other generators, so every sheet
   keeps one shading vocabulary. Do not copy them.

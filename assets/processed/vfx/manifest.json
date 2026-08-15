@@ -9,6 +9,15 @@
       "fps": 14,
       "anchorY": 84,
       "loop": false
+    },
+    "kindle": {
+      "file": "kindle.png",
+      "frameWidth": 48,
+      "frameHeight": 96,
+      "frames": 16,
+      "fps": 16,
+      "anchorY": 84,
+      "loop": false
     }
   }
 }

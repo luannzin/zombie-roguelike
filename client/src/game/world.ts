@@ -12,14 +12,15 @@ import type { MapPayload } from '../net/protocol';
 /** Tile kinds. Mirror of server/app/world.py. */
 export const FLOOR = 0;
 export const ROCK = 1;
+/** Solid trunk — one tile, the contact. The canopy is art on the tiles above. */
 export const TREE = 2;
 export const FIRE = 3;
 /** Solid gap in the trees. Painted as floor, blocks bodies, not light. */
 export const VOID = 4;
 /**
- * Solid footprint of a BUILDING from a placed scene. Painted as floor and
- * drawn with nothing: the cabin or tent sprite in `TileMap.scenery` covers it.
- * Blocks light too — a cabin is a cabin.
+ * Solid doorstep of a BUILDING from a placed scene — one tile tall, at the
+ * contact. Painted as floor and drawn with nothing: the cabin or tent sprite
+ * covers it, including the roof you walk behind. Blocks light too.
  */
 export const PROP = 5;
 /**

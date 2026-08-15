@@ -157,6 +157,11 @@ game's scale.
   fences, signs, crates, logs — claims `world.LOW`: solid to bodies and
   bullets, transparent to light. Making those PROP puts a shadow wedge behind
   every crate and turns a fence into a wall of black. Firepits stay walkable.
+- **A standing thing is solid on one tile of height, at its feet.** Trees,
+  signs, tents, cabins — the canopy, the board, the roof are drawn, not
+  walked into. `FOOTPRINTS` depth is 1 and `_cells` sits on the contact
+  point; growing the box up the sprite is how a signboard becomes a wall.
+  TREE is the same contract: the trunk tile only.
 - The LANDMARK (the cabin) is placed first, alone, with a much larger attempt
   budget, and there is at most one per map. Rolled in with the weighted pool it
   loses every anchor race to a 4x3 woodpile; a second one turns the first from a

@@ -17,7 +17,8 @@
  * The art is GREYSCALE. An effect that belongs to a player is tinted here with
  * that player's colour (`effectImage`), so the column delivering somebody to
  * the fire is the same colour as their row in the roster and the swatch on
- * their character. See server/tools/make_vfx.py.
+ * their character. An effect that belongs to the fire — the kindle roar —
+ * is tinted with `fire.core` the same way. See server/tools/make_vfx.py.
  *
  * Loading is best-effort: a missing atlas resolves to `null` and callers skip
  * the effect, so the game still runs with no assets built.
@@ -50,6 +51,8 @@ export interface VfxAtlas {
   tile: number;
   /** A player materialising: charge, strike, impact, collapse. */
   summon: VfxSheet | null;
+  /** The bonfire roaring when the match starts: charge, rise, impact, collapse. */
+  kindle: VfxSheet | null;
 }
 
 interface EffectManifest {
@@ -64,7 +67,7 @@ interface EffectManifest {
 
 interface VfxManifest {
   tile: number;
-  effects: { summon?: EffectManifest };
+  effects: { summon?: EffectManifest; kindle?: EffectManifest };
 }
 
 const ROOT = '/vfx';
@@ -72,10 +75,11 @@ const ROOT = '/vfx';
 export async function loadVfx(): Promise<VfxAtlas | null> {
   try {
     const manifest = await loadJson<VfxManifest>(`${ROOT}/manifest.json`);
-    const summon = manifest.effects.summon
-      ? await loadEffect(manifest.effects.summon)
-      : null;
-    return { tile: manifest.tile, summon };
+    const [summon, kindle] = await Promise.all([
+      manifest.effects.summon ? loadEffect(manifest.effects.summon) : null,
+      manifest.effects.kindle ? loadEffect(manifest.effects.kindle) : null,
+    ]);
+    return { tile: manifest.tile, summon, kindle };
   } catch (err) {
     console.warn('[vfx] no effect atlas, effects disabled:', err);
     return null;

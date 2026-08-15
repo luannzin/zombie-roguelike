@@ -195,10 +195,12 @@ class Layout:
 #: disappear behind it.
 #:
 #: Widths match the sheets in `make_scenery.py` (cabin 5, tent 2, logs 2,
-#: the rest 1). Depth is the contact slab, not the sprite height — a cabin's
-#: roof is 4.5 tiles tall and must not be a wall you bounce off.
+#: the rest 1). Height is always one tile, on the contact point — the feet,
+#: the doorstep, the post. A sign is 1.75 tiles tall and a cabin's roof is
+#: 4.5; those pixels are drawn, not walked into. Claiming them is how a
+#: board becomes a wall and a roof becomes eaves you bounce off.
 FOOTPRINTS: dict[str, tuple[int, int, int]] = {
-    "cabin": (5, 3, PROP),
+    "cabin": (5, 1, PROP),
     "tent": (2, 1, PROP),
     "logs": (2, 1, LOW),
     "crate": (1, 1, LOW),
@@ -210,22 +212,24 @@ FOOTPRINTS: dict[str, tuple[int, int, int]] = {
 def _cells(layout: Layout, x0: int, y0: int) -> list[tuple[int, int, int]]:
     """Every tile this scene's standing pieces claim, as (tx, ty, kind).
 
-    A standing piece is anchored on its CONTACT POINT — bottom centre — so the
-    footprint is centred on `dx` and grows upward from `dy`. That is the same
-    anchor the client draws from, which is the point: the tiles you bump into
-    are computed from the same number that decides where the sprite lands.
+    A standing piece is anchored on its CONTACT POINT — bottom centre — and
+    the solid slab sits on that point, one tile tall. Growing the box upward
+    from `dy - depth` put the sign's board and the cabin's eaves in the way,
+    which is the top of the sprite. The client draws from the same contact
+    number, so the tiles you bump into are the tiles the feet stand on.
     """
     cells: list[tuple[int, int, int]] = []
     for piece in layout.pieces:
         spec = FOOTPRINTS.get(piece.kind)
         if spec is None or piece.layer != STANDING:
             continue
-        width, depth, kind = spec
+        width, _, kind = spec
         bx = int(math.floor(x0 + piece.dx - width / 2 + 0.5))
-        by = int(math.floor(y0 + piece.dy - depth + 0.5))
-        for oy in range(depth):
-            for ox in range(width):
-                cells.append((bx + ox, by + oy, kind))
+        # Tile containing the point just above the contact — the feet, not
+        # the canopy. An integer `dy` is the bottom edge of that tile.
+        by = int(math.floor(y0 + piece.dy - 1e-6))
+        for ox in range(width):
+            cells.append((bx + ox, by, kind))
     return cells
 
 

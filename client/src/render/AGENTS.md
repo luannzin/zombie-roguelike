@@ -17,7 +17,7 @@ mutation, no React.
 | `sprites.ts` | sheet loading, `SpriteBook`, per-colour multiply tints |
 | `terrain.ts` | terrain atlas loading (4 grounds, blend stencils, props, flat decals, the animated campfire) |
 | `scenery.ts` | scenery atlas loading: standing props and flat decals of what people left |
-| `vfx.ts` | effect atlas loading: one-shot animation sheets |
+| `vfx.ts` | effect atlas loading: one-shot animation sheets (summon, kindle) |
 | `fov.ts` | shared field of view — `light` and `heat` fields |
 | `wind.ts` | the shared gust field every bending thing reads |
 | `disturbance.ts` | what bodies do to the plants they walk through |
@@ -182,10 +182,11 @@ mutation, no React.
   lit. Their `frames / fps` is the effect's duration — callers time themselves
   off the sheet rather than picking their own.
 - VFX art is GREYSCALE and tinted at draw time through `effectImage(sheet,
-  color)`, so an effect that belongs to a player carries their colour. That
-  tint is not `sprites.TintCache`: a straight multiply is right for a material
-  and turns a white-hot core into flat paint, so `EffectTintCache` adds the
-  neutral art back over it. Never bake a hue into a sheet in `make_vfx.py`.
+  color)`, so an effect that belongs to a player carries their colour and the
+  kindle roar carries `fire.core`. That tint is not `sprites.TintCache`: a
+  straight multiply is right for a material and turns a white-hot core into
+  flat paint, so `EffectTintCache` adds the neutral art back over it. Never
+  bake a hue into a sheet in `make_vfx.py`.
 - `terrain.ts` and `layers/terrain.ts` are also used by `game/lobby-scene.ts`
   over a locally generated map. Nothing in them may assume a server sent the
   `TileMap`.

@@ -8,13 +8,15 @@ imported from make_textures rather than copied.
 
 Output (assets/processed/vfx/):
     summon.png    14 frames, 32x96 — a player materialising at the campfire
+    kindle.png    16 frames, 48x96 — the bonfire roaring when the match starts
     manifest.json
 
 EFFECT SHEETS ARE GREYSCALE. An effect that belongs to somebody — a summon, a
 revive, a marker — is tinted at draw time with that player's colour (see
-client/src/render/vfx.ts). Baking a hue in here would mean one sheet per
-colour, and the arriving player's column would not match their row in the
-roster.
+client/src/render/vfx.ts). An effect that belongs to the fire — the kindle
+roar — is tinted with `fire.core` the same way. Baking a hue in here would
+mean one sheet per colour, and the arriving player's column would not match
+their row in the roster.
 
 WHY A SPRITE AND NOT A GRADIENT
 A beam of light is the one effect a canvas gradient does worst. The gradient
@@ -85,6 +87,16 @@ CHARGE_START = 0.02
 STRIKE_START = 0.20
 IMPACT_AT = 0.52
 COLLAPSE_START = 0.68
+
+# The fire answering a start, not a beam arriving. Wider than a summon — a
+# roar is a mass, not a thread — and it RISES from the pit. Charge, rise,
+# impact, collapse. KINDLE_IMPACT is what the client aligns the ember burst to.
+KINDLE_FRAMES = 16
+KINDLE_FPS = 16
+KINDLE_CHARGE = 0.02
+KINDLE_RISE = 0.16
+KINDLE_IMPACT = 0.48
+KINDLE_COLLAPSE = 0.64
 
 
 def _ease_out(t: float) -> float:
@@ -295,6 +307,178 @@ def make_summon_frame(
     return img
 
 
+def _kindle_flames(
+    field: list[list[float]],
+    width: int,
+    cx: float,
+    base_y: float,
+    reach: float,
+    strength: float,
+    frame: int,
+) -> None:
+    """The fire's own tongues, scaled up into a roar.
+
+    Same idea as `_flame_field` in make_textures.py: three overlapping tongues
+    summed, not drawn as separate shapes, so the crossing is the hot core.
+    Authored here rather than imported because the prop's sway is in pixels
+    sized for a 24px pit; a 48px column needs a lean that actually travels.
+    """
+    if reach < 1.0:
+        return
+    phase = frame * 0.62
+    tongues = (
+        # (half width, height ratio, sway px, sway harmonic, phase offset)
+        # Wider than a summon's shaft: a roar is a mass sitting on the pit.
+        (width * 0.38, 0.86, 4.2, 1, 0.0),
+        (width * 0.24, 1.00, 6.4, 2, 2.1),
+        (width * 0.16, 0.74, 7.2, 3, 4.3),
+        (width * 0.12, 0.54, 5.2, 2, 1.1),
+    )
+    for half_w, tall, sway, harmonic, offset in tongues:
+        span = reach * tall
+        steps = int(span * 2.4)
+        for step in range(steps + 1):
+            t = step / max(steps, 1)
+            lean = math.sin(phase * harmonic + offset + t * 2.8) * sway * t
+            fx = cx + lean
+            fy = base_y - t * span
+            # Soft taper: a high exponent pinches the column into a thread
+            # two-thirds of the way up and the roar reads as a second summon.
+            half = max(0.8, half_w * (1.0 - t) ** 0.38)
+            # Bands travelling UP the shaft — fire rises; the summon's travel
+            # the other way. Tied to the frame so the texture moves.
+            band = 0.86 + 0.14 * math.sin((base_y - fy) * 0.30 + frame * 1.7)
+            y = int(round(fy))
+            for x in range(int(fx - half) - 1, int(fx + half) + 2):
+                if not 0 <= x < width:
+                    continue
+                radial = abs(x - fx) / half
+                if radial > 1.0:
+                    continue
+                core = (1.0 - radial) ** 1.35
+                grain = 0.88 + hash01(x, y, frame * 17 + 3) * 0.24
+                # Hottest at the root, cooler at the tip — same rule as the
+                # campfire sprite, or the column reads as a white slab.
+                cool = 1.0 - t * 0.30
+                _add(field, x, y, strength * core * band * grain * cool)
+
+
+def make_kindle_frame(
+    width: int, height: int, contact_y: int, index: int, frames: int
+) -> Image.Image:
+    """One frame of the fire answering: charge, rise, impact, collapse."""
+    img = Image.new("RGBA", (width, height), TRANSPARENT)
+    t = index / (frames - 1)
+    cx = (width - 1) / 2.0
+    field = [[0.0] * width for _ in range(height)]
+
+    # --- CHARGE: the pit gathers itself --------------------------------------
+    if KINDLE_CHARGE <= t < KINDLE_IMPACT:
+        grow = clamp01((t - KINDLE_CHARGE) / (KINDLE_IMPACT - KINDLE_CHARGE))
+        # A pool of heat on the coals, plus a rim, so the charge is a thing
+        # you see — not a smudge that only makes sense once the column is up.
+        _ellipse(
+            field,
+            cx,
+            contact_y,
+            width * 0.16 + grow * width * 0.28,
+            height * 0.022 + grow * height * 0.036,
+            0.65 + grow * 0.85,
+        )
+        _ellipse(
+            field,
+            cx,
+            contact_y,
+            width * 0.18 + grow * width * 0.30,
+            height * 0.024 + grow * height * 0.038,
+            0.55 + grow * 0.55,
+            hollow=0.36,
+        )
+        # Embers lifting OFF the pit — the fire inhaling.
+        for i in range(10):
+            phase = (index * 0.85 + i * 1.6) % 5.0
+            mx = int(round(cx + math.sin(i * 2.1 + index * 0.45) * width * 0.26))
+            my = int(round(contact_y - phase * height * 0.055))
+            _add(field, mx, my, (0.55 + grow * 0.7) * (1.0 - phase / 5.0))
+
+    # --- RISE: the column climbs out of the pit ------------------------------
+    if KINDLE_RISE <= t:
+        if t < KINDLE_IMPACT:
+            climb = _ease_out((t - KINDLE_RISE) / (KINDLE_IMPACT - KINDLE_RISE))
+            reach = climb * contact_y * 0.96
+            strength = 0.95 + climb * 0.85
+        elif t < KINDLE_COLLAPSE:
+            reach = contact_y * 0.96
+            strength = 1.85
+        else:
+            fade = _ease_out((t - KINDLE_COLLAPSE) / (1.0 - KINDLE_COLLAPSE))
+            # Drawn back INTO the pit, not switched off — the fire keeps the
+            # heat and lets the column go.
+            reach = contact_y * (0.96 - fade * 0.70)
+            strength = 1.55 * (1.0 - fade)
+        _kindle_flames(field, width, cx, contact_y, reach, strength, index)
+        # A wide bloom at the coals for the whole rise, so the column is
+        # sitting IN the fire rather than hovering a thread above it.
+        if reach > 2.0:
+            bloom = min(1.0, strength / 1.85)
+            _ellipse(
+                field,
+                cx,
+                contact_y,
+                width * (0.22 + bloom * 0.16),
+                height * (0.028 + bloom * 0.022),
+                0.9 * bloom,
+            )
+
+    # --- IMPACT: the flash and the wave the hearth throws --------------------
+    if KINDLE_IMPACT <= t:
+        since = (t - KINDLE_IMPACT) / (1.0 - KINDLE_IMPACT)
+        flash = max(0.0, 1.0 - since * 2.0)
+        if flash > 0.0:
+            _ellipse(
+                field,
+                cx,
+                contact_y,
+                width * (0.28 + flash * 0.38),
+                height * (0.032 + flash * 0.048),
+                2.2 * flash,
+            )
+        # Two waves, the second late and slower, so the ground rings twice.
+        # Wider than a summon's: this is the whole hearth answering, not a seat.
+        for delay, span, weight in ((0.0, 0.58, 1.0), (0.14, 0.82, 0.62)):
+            wave = (since - delay) / span
+            if not 0.0 < wave < 1.0:
+                continue
+            radius = _ease_out(wave)
+            _ellipse(
+                field,
+                cx,
+                contact_y,
+                width * 0.20 + radius * width * 0.42,
+                height * 0.022 + radius * height * 0.046,
+                (1.0 - wave) * 1.55 * weight,
+                hollow=0.5,
+            )
+        for i in range(12):
+            if hash01(i, index, 505) < 0.32:
+                continue
+            angle = hash01(i, 4, 81) * math.tau
+            travel = since * width * (0.28 + hash01(i, 11, 6) * 0.38)
+            sx = int(round(cx + math.cos(angle) * travel))
+            sy = int(round(contact_y + math.sin(angle) * travel * 0.32 - since * height * 0.08))
+            _add(field, sx, sy, max(0.0, 1.0 - since * 1.35))
+
+    px = img.load()
+    for y in range(height):
+        for x in range(width):
+            value = field[y][x]
+            if value <= 0.07:
+                continue
+            colour: RGBA = pick(BEAM, clamp01(value * 0.92), x, y)
+            px[x, y] = (colour[0], colour[1], colour[2], _quantize_alpha(value * 1.1))
+    return img
+
+
 def build(args) -> Path:
     tile = args.tile
     out_dir = PROCESSED_DIR / "vfx"
@@ -310,6 +494,18 @@ def build(args) -> Path:
     ]
     pack(frames, width, height).save(out_dir / "summon.png")
 
+    # Wider than a summon: a roar is a mass sitting on the hearth, not a
+    # thread delivering one body. Same height and contact row so the two
+    # sheets share an anchor language.
+    kindle_w = tile * 3
+    kindle_h = tile * 6
+    kindle_contact = kindle_h - round(tile * 0.75)
+    kindle_frames = [
+        make_kindle_frame(kindle_w, kindle_h, kindle_contact, i, KINDLE_FRAMES)
+        for i in range(KINDLE_FRAMES)
+    ]
+    pack(kindle_frames, kindle_w, kindle_h).save(out_dir / "kindle.png")
+
     manifest = {
         "tile": tile,
         "effects": {
@@ -324,14 +520,24 @@ def build(args) -> Path:
                 "anchorY": contact_y,
                 # Plays once per event; do not loop it.
                 "loop": False,
-            }
+            },
+            "kindle": {
+                "file": "kindle.png",
+                "frameWidth": kindle_w,
+                "frameHeight": kindle_h,
+                "frames": KINDLE_FRAMES,
+                "fps": KINDLE_FPS,
+                "anchorY": kindle_contact,
+                "loop": False,
+            },
         },
     }
     (out_dir / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
 
     print(
         f"wrote {out_dir}: summon {SUMMON_FRAMES}x{width}x{height} "
-        f"@ {SUMMON_FPS}fps, contact row {contact_y}"
+        f"@ {SUMMON_FPS}fps, kindle {KINDLE_FRAMES}x{kindle_w}x{kindle_h} "
+        f"@ {KINDLE_FPS}fps, contact row {contact_y}/{kindle_contact}"
     )
     return out_dir
 

@@ -48,8 +48,8 @@ _NIGHT_SPAN_MINUTES = 7 * 60 + 1
 # feels like a different place; fog is the rarer coat.
 _WEATHER_TABLE: tuple[tuple[str, int], ...] = (
     (WEATHER_CLEAR, 0),
-    (WEATHER_RAIN, 10),
-    (WEATHER_FOG, 0),
+    (WEATHER_RAIN, 0),
+    (WEATHER_FOG, 10),
 )
 
 

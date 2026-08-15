@@ -348,7 +348,7 @@ export class Renderer {
       // joins for its gradients. The tint cache wants a CSS colour.
       const beacon = palette().scene.beacon;
       drawRiftGlow(
-        ctx, this.riftAtlas, rift, phase, state.time,
+        ctx, this.riftAtlas, rift, phase,
         `rgb(${beacon[0]} ${beacon[1]} ${beacon[2]})`,
       );
     }

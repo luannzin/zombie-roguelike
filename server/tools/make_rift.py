@@ -1351,8 +1351,11 @@ def _layout(plot: int) -> dict:
         # THE SAME POINT as the scar: the anomaly is anchored on its core and
         # sits IN the sigil, not above it.
         "anomaly": {"dx": middle, "dy": middle},
-        # Front face, centred between the two near stones: you walk up to this
-        # from the approach, not from inside the ring.
+        # Front face, centred between the two near stones and ON THEIR ROW.
+        # It used to stand a tile further out, on the plot's own south edge —
+        # close enough that a tree just outside the plot drew its CANOPY over
+        # it, and a canopy is painted several tiles above its trunk. The one
+        # piece the player has to walk up to and find was behind foliage.
         "console": {"dx": middle, "dy": near},
         # The light the structure is on the map for. `kind` 2 is BEACON in
         # `server/app/scenery.py` — the value is the contract.

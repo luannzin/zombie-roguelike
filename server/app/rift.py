@@ -65,28 +65,16 @@ _PILLARS: tuple[tuple[float, float, int], ...] = (
     (1.5, PLOT - 1.0, 2),
     (PLOT - 1.5, PLOT - 1.0, 3),
 )
-_CONSOLE = (PLOT / 2.0, float(PLOT))
+#: On the front stones' row, not the plot's south edge. Out there a tree
+#: growing just past the plot drew its canopy — painted several tiles above
+#: its trunk — straight over the one piece the player has to walk up to.
+_CONSOLE = (PLOT / 2.0, PLOT - 1.0)
 _CENTRE = (PLOT / 2.0, PLOT / 2.0)
 #: THE SAME POINT AS THE SIGIL. The anomaly's sheet is anchored on the centre
 #: of the sphere rather than on a ground contact — it hovers, so that is the
 #: point that means anything — which lets it be placed on the middle of the
 #: scar and actually sit in it.
 _ANOMALY = _CENTRE
-
-#: Tiles within this of the centre become solid ONCE THE RIFT IS OPEN, so
-#: nobody walks into it. While the structure is dormant the sigil is just a
-#: mark on the floor and you can stand in the middle of it — there is nothing
-#: there yet, and an invisible wall around empty ground is the worst bug a 2D
-#: game can have because the screen contradicts it.
-#:
-#: LOW, not PROP: waist-high cover is the only kind that is solid to bodies
-#: while staying transparent to light, and a sight-blocking core would throw a
-#: hard black wedge across the pad from a thing that is the brightest object on
-#: the map. The sphere is about 1.55 tiles in radius, so this covers what the
-#: sprite actually occupies and nothing more — a bigger block would fence off
-#: ground the player can see is empty, which is the worst kind of invisible
-#: wall because the screen contradicts it.
-CORE_RADIUS_TILES = 1.6
 
 #: Radius of the beacon once it is open, in tiles. Small on purpose: this is
 #: not an area of safety, it is a thing you can see from far away — which is
@@ -141,9 +129,6 @@ class Rift:
     anomaly_x: float
     anomaly_y: float
     pillars: tuple[tuple[float, float, int], ...]
-    #: Tiles the anomaly occupies once it exists. Shipped rather than
-    #: re-derived so both sides solidify exactly the same cells.
-    core: tuple[tuple[int, int], ...] = ()
     state: str = DORMANT
     #: Seconds since the console was pressed. Only meaningful while CHARGING,
     #: and it is on the wire so a player who joins mid-sequence sees the rest
@@ -172,7 +157,6 @@ class Rift:
             "anomaly": [round(self.anomaly_x, 1), round(self.anomaly_y, 1)],
             "console": [round(self.console_x, 1), round(self.console_y, 1)],
             "pillars": [[round(px, 1), round(py, 1), shape] for px, py, shape in self.pillars],
-            "core": [[cx, cy] for cx, cy in self.core],
             "lightTiles": LIGHT_TILES,
             "lightKind": LIGHT_KIND,
             **self.state_payload(),
@@ -196,7 +180,6 @@ def from_payload(row: dict | None) -> Rift | None:
         console_x=float(row["console"][0]),
         console_y=float(row["console"][1]),
         pillars=tuple((float(p[0]), float(p[1]), int(p[2])) for p in row["pillars"]),
-        core=tuple((int(c[0]), int(c[1])) for c in row.get("core", ())),
         state=str(row.get("state", DORMANT)),
         elapsed=float(row.get("t", 0.0)),
     )
@@ -214,7 +197,15 @@ BORDER = 2
 #: Requiring that the plot is mostly a clearing already means the structure is
 #: found in a space rather than punched into the trees — which is also the
 #: better read: somebody chose this spot.
-MIN_OPEN = 0.55
+MIN_OPEN = 0.70
+#: And the MARGIN ring around it has to be mostly open too.
+#:
+#: The plot gets cleared, so trees inside it are not the problem — trees just
+#: OUTSIDE it are. A canopy is drawn several tiles above its own trunk, so a
+#: treeline hugging the south edge paints leaves over the structure standing
+#: inside. Requiring the ring to be open as well is what puts the whole thing
+#: in a clearing instead of in a hole cut out of a thicket.
+MIN_MARGIN_OPEN = 0.55
 
 #: THE STRUCTURE STANDS ALONE, and these three numbers are what enforce it.
 #:
@@ -333,6 +324,8 @@ def _plot_open(tiles: list[list[int]], tx: int, ty: int) -> bool:
     """
     height = len(tiles)
     width = len(tiles[0]) if tiles else 0
+    margin_tiles = 0
+    margin_open = 0
     for oy in range(-MARGIN, PLOT + MARGIN):
         for ox in range(-MARGIN, PLOT + MARGIN):
             x, y = tx + ox, ty + oy
@@ -340,6 +333,13 @@ def _plot_open(tiles: list[list[int]], tx: int, ty: int) -> bool:
                 continue
             if tiles[y][x] in (PROP, LOW):
                 return False
+            if 0 <= ox < PLOT and 0 <= oy < PLOT:
+                continue
+            margin_tiles += 1
+            if tiles[y][x] == FLOOR:
+                margin_open += 1
+    if margin_tiles and margin_open < margin_tiles * MIN_MARGIN_OPEN:
+        return False
 
     open_tiles = 0
     for oy in range(PLOT):
@@ -378,20 +378,12 @@ def _stamp(tiles: list[list[int]], tx: int, ty: int) -> Rift:
     cy = int(math.floor(ty + _CONSOLE[1] - 1e-6))
     tiles[cy][cx] = LOW
 
-    # The anomaly's own footprint, WORKED OUT BUT NOT STAMPED. These tiles stay
-    # walkable until the rift actually opens — see `CORE_RADIUS_TILES`.
-    # Measured from tile CENTRES against the plot centre, so the block is a disc
-    # rather than a square: the sphere is round and the collision should agree
-    # with the silhouette.
-    core = tuple(
-        (tx + ox, ty + oy)
-        for oy in range(PLOT)
-        for ox in range(PLOT)
-        if math.hypot(ox + 0.5 - _CENTRE[0], oy + 0.5 - _CENTRE[1]) <= CORE_RADIUS_TILES
-    )
+    # NOTHING BLOCKS THE MIDDLE. The anomaly is not a wall: you can walk under
+    # it, through it, and stand in the sigil while it is open. It was solid for
+    # a while and it was worse — a body-sized hole in the one place the party
+    # is meant to gather reads as the structure fighting them.
 
     return Rift(
-        core=core,
         tx=tx,
         ty=ty,
         x=(tx + _CENTRE[0]) * TILE_SIZE,

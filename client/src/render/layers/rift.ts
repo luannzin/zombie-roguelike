@@ -73,8 +73,20 @@ export interface RiftPhase {
   /** Whether each stone is holding its `crown` loop. */
   pillarCrowned: boolean[];
   consoleArmed: boolean;
+  /**
+   * Seconds each stone has been holding its `crown` loop.
+   *
+   * ANCHORED ON THE HANDOVER, not on wall time. `charge` ends on exactly
+   * `crown` frame 0, so the loop has to START at frame 0 or the handover jumps
+   * to an arbitrary point in the cycle and undoes the whole reason the seam was
+   * built to be byte-identical. It also gets the stagger for free: each stone
+   * crowns at its own moment, so no two are in phase.
+   */
+  crownTime: number[];
   /** Seconds into `emerge`, or `NOT_STARTED` before the tear begins. */
   emerging: number;
+  /** Seconds the anomaly has been on its resting loop. Same rule as `crownTime`. */
+  anomalyTime: number;
   /** The anomaly is on its resting loop. */
   open: boolean;
 }
@@ -83,8 +95,10 @@ const DORMANT_PHASE: RiftPhase = {
   pillarCharge: [NOT_STARTED, NOT_STARTED, NOT_STARTED, NOT_STARTED],
   pillarAwake: [false, false, false, false],
   pillarCrowned: [false, false, false, false],
+  crownTime: [0, 0, 0, 0],
   consoleArmed: false,
   emerging: NOT_STARTED,
+  anomalyTime: 0,
   open: false,
 };
 
@@ -103,27 +117,19 @@ export function riftPhase(
   chargeHandoff: number,
 ): RiftPhase {
   if (rift.state === 'dormant') return DORMANT_PHASE;
-  if (rift.state === 'open') {
-    return {
-      pillarCharge: [NOT_STARTED, NOT_STARTED, NOT_STARTED, NOT_STARTED],
-      pillarAwake: [true, true, true, true],
-      pillarCrowned: [true, true, true, true],
-      consoleArmed: true,
-      emerging: NOT_STARTED,
-      open: true,
-    };
-  }
 
   const elapsed = rift.elapsed;
   const pillarCharge: number[] = [];
   const pillarAwake: boolean[] = [];
   const pillarCrowned: boolean[] = [];
+  const crownTime: number[] = [];
   for (let i = 0; i < rift.pillars.length; i++) {
     const local = elapsed - (timing.consoleLag + i * timing.pillarStagger);
     const crowned = local >= timing.chargeTime;
     pillarCharge.push(local >= 0 && !crowned ? local : NOT_STARTED);
     pillarAwake.push(local >= timing.chargeTime * chargeHandoff);
     pillarCrowned.push(crowned);
+    crownTime.push(Math.max(0, local - timing.chargeTime));
   }
 
   const sinceTear = elapsed - timing.emergeAt;
@@ -131,6 +137,8 @@ export function riftPhase(
     pillarCharge,
     pillarAwake,
     pillarCrowned,
+    crownTime,
+    anomalyTime: Math.max(0, elapsed - timing.openAt),
     // The console answers the instant it is pressed. It is the one piece that
     // must not wait for anything: a button that visibly does nothing for a
     // third of a second reads as a button that did not take the press.
@@ -279,7 +287,6 @@ export function drawRiftGlow(
   atlas: RiftAtlas | null,
   rift: Rift | null,
   phase: RiftPhase,
-  time: number,
   beacon: string,
 ): void {
   if (!atlas || !rift || rift.state === 'dormant') return;
@@ -289,17 +296,14 @@ export function drawRiftGlow(
   for (let i = 0; i < rift.pillars.length; i++) {
     const pillar = rift.pillars[i];
     if (phase.pillarCrowned[i]) {
-      // The loop is driven by wall time, not by the sequence clock, so four
-      // crowned stones breathe out of step with each other instead of pulsing
-      // as one object.
-      blit(ctx, atlas.crown, pillar.x, pillar.y, time + i * 0.37, beacon);
+      blit(ctx, atlas.crown, pillar.x, pillar.y, phase.crownTime[i], beacon);
     } else if (phase.pillarCharge[i] >= 0) {
       blit(ctx, atlas.charge, pillar.x, pillar.y, phase.pillarCharge[i], beacon);
     }
   }
 
   if (phase.open) {
-    blit(ctx, atlas.rift, rift.anomalyX, rift.anomalyY, time, beacon);
+    blit(ctx, atlas.rift, rift.anomalyX, rift.anomalyY, phase.anomalyTime, beacon);
   } else if (phase.emerging >= 0) {
     blit(ctx, atlas.emerge, rift.anomalyX, rift.anomalyY, phase.emerging, beacon);
   }

@@ -2350,9 +2350,13 @@ export class Game {
    */
   private stepRift(dt: number): void {
     const rift = this.world?.rift;
-    if (!rift || rift.state !== 'charging' || !this.config) return;
+    if (!rift) return;
     const before = rift.elapsed;
+    // Unconditionally, and BEFORE the charging guard: the clock keeps running
+    // once the rift is open because that is what phases the resting loop. Stop
+    // it here and the anomaly freezes on frame 0 forever.
     this.world?.stepRift(dt);
+    if (rift.state !== 'charging' || !this.config) return;
     const after = rift.elapsed;
     const timing = this.config.rift ?? null;
     if (!timing) return;

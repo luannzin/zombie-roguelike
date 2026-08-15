@@ -31,7 +31,7 @@ const BLOOD_POOL_FRAME = 1;
 
 export function poolRadius(age: number): number {
   const grown = clamp01(age / POOL_GROW);
-  return 6.5 + grown * 12;
+  return 3.2 + grown * 5.5;
 }
 
 export function poolWetness(age: number): number {
@@ -70,7 +70,7 @@ export function drawBloodPools(
 
     if (body.age < 0.28) {
       const spray = 1 - body.age / 0.28;
-      const scale = 0.55 + (1 - spray) * 0.35;
+      const scale = 0.28 + (1 - spray) * 0.16;
       blit(
         ctx,
         sheet.image,
@@ -80,12 +80,12 @@ export function drawBloodPools(
         body.x,
         body.y + body.halfHeight,
         scale,
-        alpha * spray * 0.85,
+        alpha * spray * 0.75,
         body.dx < 0,
       );
     }
 
-    const scale = 0.38 + grown * 0.78;
+    const scale = 0.18 + grown * 0.30;
     blit(
       ctx,
       sheet.image,

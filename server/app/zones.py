@@ -47,9 +47,9 @@ _NIGHT_SPAN_MINUTES = 7 * 60 + 1
 # Most nights are dry. Rain is common enough that a second expedition often
 # feels like a different place; fog is the rarer coat.
 _WEATHER_TABLE: tuple[tuple[str, int], ...] = (
-    (WEATHER_CLEAR, 5),
-    (WEATHER_RAIN, 3),
-    (WEATHER_FOG, 2),
+    (WEATHER_CLEAR, 0),
+    (WEATHER_RAIN, 10),
+    (WEATHER_FOG, 0),
 )
 
 

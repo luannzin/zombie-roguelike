@@ -27,6 +27,26 @@ export interface Projection {
   size(worldLength: number): number;
 }
 
+/**
+ * The identity projection: world coordinates ARE the coordinates.
+ *
+ * For a caller that has already applied the world transform to its context and
+ * wants to reuse a screen-space drawing routine anyway — the lobby scene draws
+ * scaled and translated, but the scenery layer is written for the arena's
+ * screen-space pass. Handing it this is what lets both scenes share one
+ * routine instead of the camp growing a second copy of it that drifts.
+ */
+export const WORLD_SPACE: Projection = {
+  zoom: 1,
+  offsetX: 0,
+  offsetY: 0,
+  x: Math.round,
+  y: Math.round,
+  rawX: (worldX) => worldX,
+  rawY: (worldY) => worldY,
+  size: (worldLength) => worldLength,
+};
+
 export function projectionFor(camera: Camera): Projection {
   const { zoom } = camera;
   const offsetX = Math.round(-camera.renderX * zoom);

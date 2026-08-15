@@ -15,10 +15,12 @@ mutation, no React.
 | `framing.ts` | the wide shot of the camp — zoom and rest-shot fire position |
 | `projection.ts` | zoom + offset between world and screen space |
 | `sprites.ts` | sheet loading, `SpriteBook`, per-colour multiply tints |
-| `terrain.ts` | terrain atlas loading (ground, props, the animated campfire) |
+| `terrain.ts` | terrain atlas loading (4 grounds, blend stencils, props, flat decals, the animated campfire) |
+| `scenery.ts` | scenery atlas loading: standing props and flat decals of what people left |
 | `vfx.ts` | effect atlas loading: one-shot animation sheets |
 | `fov.ts` | shared field of view — `light` and `heat` fields |
 | `layers/vision.ts` | the ENEMY's sight cone and its alert mark |
+| `layers/scenery.ts` | placed scenes: flat decals into the ground bake, standing props into the depth sort |
 | `minimap.ts` | the minimap canvas |
 | `layers/` | the actual drawing: terrain, entities, vision, effects, atmosphere, darkness, vignette |
 
@@ -27,9 +29,9 @@ mutation, no React.
 - The renderer consumes state and never mutates it. Players and enemies arrive
   in one `entities` list and are drawn by one path.
 - `renderer.ts` only sequences passes and switches spaces; drawing lives in
-  `layers/`. **The pass order is the atmosphere** — ground → dust → entities
-  (depth-sorted by `y`) → overgrowth → motes → darkness → combat effects →
-  labels → vignette. Effects go over the darkness because a muzzle flash is a
+  `layers/`. **The pass order is the atmosphere** — ground (soil, litter, flat
+  scenery) → dust → entities, bonfires and standing scenery (one depth sort by
+  `y`) → overgrowth → motes → darkness → combat effects → labels → vignette. Effects go over the darkness because a muzzle flash is a
   light source, not a thing being lit. Enemy sight cones go in just after the
   ground; their alert marks go after the overgrowth — both BEFORE the
   darkness, see below.
@@ -99,6 +101,42 @@ mutation, no React.
 - A prop sheet's frames are VARIANTS unless its manifest entry carries `fps`
   (only the campfire does), in which case they are an animation loop. Playing a
   variant sheet makes the boulders twitch.
+- **The floor is FOUR soils, mixed by a client-side material field.** One ground
+  texture over a whole map is the loudest tell that a forest was generated —
+  the eye finds the 4x4 atlas repeat in seconds. The field is two octaves of
+  value noise off the map seed (one octave puts its extrema on the lattice and
+  draws square regions), banded into loam / turf / mud / litter, and its
+  boundaries are DISSOLVED through the graded stencils in `blend.png` rather
+  than butted together on a grid line. Three things fray that boundary and all
+  three are needed: the stencil frays it inside a tile, a per-tile jitter on the
+  field frays which tiles are on it, and the fringe width has to sit between
+  "wider than the narrowest band" (everything becomes mush) and "narrower than a
+  tile" (regions get straight rectangular sides).
+- **BLIGHT is the same idea applied to trunks.** A coarser field marks stands of
+  dead wood, so `deadtree` and `stump` come in GROVES — see-through clearings
+  next to thickets you cannot see through — rather than salted evenly, which
+  reads as damage to the art. `trunkSheet` is what decides, and BOTH the prop
+  bake and the overgrowth pass must call it: a canopy redrawn from a different
+  sheet than the one baked under it leaves a living crown over a bare trunk
+  wherever a body walked past.
+- **Flat decals are baked, standing props are sorted.** Litter, stains, blood,
+  boot prints and dropped clothing go into the ground canvas — no silhouette, no
+  per-frame cost, and they can never occlude a body. Cabins, tents, fences,
+  signs, crates and cold firepits go into the entity depth sort next to the
+  bonfires, because a player walking behind a cabin has to disappear behind it.
+  That one requirement is the whole reason they are not in the prop bake.
+- The bake order inside the ground canvas is a stack of things resting on each
+  other: soil, stains that soaked in, litter that fell on top, then what people
+  left last. A blood stain under a drift of leaves is older than the leaves,
+  which is not the story any of those scenes is telling.
+- Almost nothing in `layers/scenery.ts` moves, and that is deliberate: these are
+  the things in the forest that have STOPPED. A sign swings, canvas breathes, a
+  dead fire smokes — all three off the sheet's own `sway`/`smokes` fields, so
+  the art decides what the wind can push, not a table in the layer.
+- Scenery props are drawn through `Projection`, so the lobby can reuse the same
+  routine with `WORLD_SPACE` after applying its own transform. The camp is
+  dressed too (`server/app/camp.py`); a crate the lobby drew flat behind the
+  party would jump into the depth sort the instant the run started.
 - A `FIRE` tile is drawn in the ENTITY sort, not with the terrain: baked it
   could not animate, and drawn as scenery it would be covered by whoever is
   standing behind it — a ring of players around a picture of a fire. Its glow
@@ -118,7 +156,7 @@ mutation, no React.
 - `terrain.ts` and `layers/terrain.ts` are also used by `game/lobby-scene.ts`
   over a locally generated map. Nothing in them may assume a server sent the
   `TileMap`.
-- `TerrainLayer.setDecorationMask` vetoes grass and ferns per tile. It exists so
+- `TerrainLayer.setDecorationMask` vetoes grass, bushes and ferns per tile. It exists so
   an area can be kept clear of undergrowth **without** its tiles becoming solid
   — `isSolidTile` treats anything that is not `FLOOR` as a wall, so "bare floor"
   can never be a tile kind. Rocks and trees are not affected; those are the

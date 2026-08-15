@@ -1,11 +1,61 @@
 {
   "tile": 16,
   "seed": 1337,
-  "ground": {
-    "file": "ground.png",
-    "tile": 16,
-    "cols": 4,
-    "rows": 4
+  "grounds": [
+    {
+      "name": "loam",
+      "file": "ground_loam.png",
+      "tile": 16,
+      "cols": 4,
+      "rows": 4
+    },
+    {
+      "name": "turf",
+      "file": "ground_turf.png",
+      "tile": 16,
+      "cols": 4,
+      "rows": 4
+    },
+    {
+      "name": "mud",
+      "file": "ground_mud.png",
+      "tile": 16,
+      "cols": 4,
+      "rows": 4
+    },
+    {
+      "name": "litter",
+      "file": "ground_litter.png",
+      "tile": 16,
+      "cols": 4,
+      "rows": 4
+    }
+  ],
+  "blend": {
+    "file": "blend.png",
+    "frameWidth": 16,
+    "frameHeight": 16,
+    "frames": 8
+  },
+  "decals": {
+    "patch": {
+      "file": "patch.png",
+      "frameWidth": 32,
+      "frameHeight": 32,
+      "frames": 6
+    },
+    "branch": {
+      "file": "branch.png",
+      "frameWidth": 16,
+      "frameHeight": 7,
+      "frames": 5
+    },
+    "leaves": {
+      "file": "leaves.png",
+      "frameWidth": 16,
+      "frameHeight": 12,
+      "frames": 6
+    }
   },
   "props": {
     "rock": {
@@ -23,12 +73,35 @@
       "solid": true,
       "canopyHeight": 24
     },
+    "deadtree": {
+      "file": "deadtree.png",
+      "frameWidth": 24,
+      "frameHeight": 40,
+      "frames": 4,
+      "solid": true,
+      "canopyHeight": 24
+    },
+    "stump": {
+      "file": "stump.png",
+      "frameWidth": 16,
+      "frameHeight": 14,
+      "frames": 4,
+      "solid": true
+    },
     "grass": {
       "file": "grass.png",
       "frameWidth": 10,
       "frameHeight": 10,
       "frames": 6,
       "solid": false
+    },
+    "bush": {
+      "file": "bush.png",
+      "frameWidth": 20,
+      "frameHeight": 16,
+      "frames": 5,
+      "solid": false,
+      "sways": true
     },
     "fern": {
       "file": "fern.png",

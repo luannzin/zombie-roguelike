@@ -22,10 +22,12 @@ import {
 import { drawAlertMarks, drawVisionCones } from './layers/vision';
 import { AtmosphereLayer } from './layers/atmosphere';
 import { DarknessLayer } from './layers/darkness';
+import { drawSceneryProp } from './layers/scenery';
 import { TerrainLayer, type DecorationMask } from './layers/terrain';
 import { drawVignette } from './layers/vignette';
 import { projectionFor } from './projection';
 import { palette } from '../theme/palette';
+import { loadScenery, type SceneryAtlas } from './scenery';
 import { loadTerrain } from './terrain';
 import type { SpriteBook } from './sprites';
 import type { DrawableEntity, RenderState } from './types';
@@ -39,15 +41,22 @@ export class Renderer {
   private readonly atmosphere = new AtmosphereLayer();
   /** Depth-sort scratch — see `draw`. */
   private readonly ordered: DrawableEntity[] = [];
+  private scenery: SceneryAtlas | null = null;
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
     private readonly book: SpriteBook,
   ) {
     this.ctx = get2d(canvas, 'renderer', { alpha: false });
-    // Fire-and-forget: until the atlas lands the terrain layer paints flat
-    // colours, so the first frames are plain rather than blank.
+    // Fire-and-forget: until the atlases land the terrain layer paints flat
+    // colours and no scenery is drawn, so the first frames are plain rather
+    // than blank. The scenery atlas goes to the terrain layer as well as being
+    // held here, because its FLAT half is baked into the ground canvas.
     void loadTerrain().then((atlas) => this.terrain.setAtlas(atlas));
+    void loadScenery().then((atlas) => {
+      this.scenery = atlas;
+      this.terrain.setSceneryAtlas(atlas);
+    });
   }
 
   /**
@@ -117,22 +126,43 @@ export class Renderer {
     ordered.sort((a, b) => a.y - b.y);
     for (const target of ordered) drawShadow(entity, target);
 
-    // Fires are merged into the same depth order rather than sorted with it:
-    // a fire is sorted as if it were a body whose feet are at the base of the
-    // flame (entity `y` is a box centre, the fire's is a contact point), and
-    // both lists are already in ascending y.
+    // Bonfires and standing scenery are MERGED into the same depth order
+    // rather than sorted with it. Both are already in ascending y and both are
+    // anchored on a contact point where an entity's `y` is a box centre, so
+    // each is sorted as if it were a body whose feet are at its base. A cabin
+    // has to hide whoever walks behind it and be hidden by whoever walks in
+    // front, which is the same requirement the fire has and the same answer.
     const fires = state.world.fires;
-    let next = 0;
-    for (const target of ordered) {
-      while (next < fires.length && fires[next].y - state.config.playerHalfHeight <= target.y) {
-        this.terrain.fire(ctx, view, fires[next], state.time);
-        next++;
+    const standing = state.world.scenery.standing;
+    const foot = state.config.playerHalfHeight;
+    let fire = 0;
+    let prop = 0;
+    const scenery = this.scenery;
+
+    const flushTo = (limit: number): void => {
+      for (;;) {
+        const fireY = fire < fires.length ? fires[fire].y - foot : Infinity;
+        const propY = prop < standing.length ? standing[prop].y - foot : Infinity;
+        const nextY = Math.min(fireY, propY);
+        // Both exhausted. Checked before the limit compare because the final
+        // flush passes Infinity, and `Infinity > Infinity` is false.
+        if (nextY === Infinity) return;
+        if (nextY > limit) return;
+        if (fireY <= propY) {
+          this.terrain.fire(ctx, view, fires[fire], state.time);
+          fire++;
+        } else {
+          if (scenery) drawSceneryProp(ctx, view, scenery, standing[prop], state.time);
+          prop++;
+        }
       }
+    };
+
+    for (const target of ordered) {
+      flushTo(target.y);
       drawEntity(entity, target);
     }
-    for (; next < fires.length; next++) {
-      this.terrain.fire(ctx, view, fires[next], state.time);
-    }
+    flushTo(Infinity);
 
     // World space again, and the order here IS the atmosphere:
     //   overgrowth  canopies and ferns close over whoever is standing behind

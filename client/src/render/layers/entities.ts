@@ -41,6 +41,28 @@ const LABEL_ACCENT = 2;
 const LABEL_CARD_H = LABEL_CAP + LABEL_DESCENT + 5;
 /** Clearance between the pointer's tip and the head it points at. */
 const LABEL_TIP_GAP = 2;
+
+/**
+ * "Confirmed", as a pixel stamp: one entry per lit cell, `[x, y]` from the
+ * mark's top-left. Six wide and four tall, with the rising arm longer than the
+ * falling one so it reads as a tick and not as a V.
+ *
+ * Stamped rather than typed or stroked. A glyph would be at the mercy of
+ * whether Departure Mono has one (it is a pixel face with a small set), and a
+ * stroked path at four pixels tall antialiases into a grey smudge.
+ */
+const LABEL_TICK: readonly (readonly [number, number])[] = [
+  [5, 0],
+  [0, 1],
+  [4, 1],
+  [1, 2],
+  [3, 2],
+  [2, 3],
+];
+const LABEL_TICK_W = 6;
+const LABEL_TICK_H = 4;
+/** Gap between the tick and the name it precedes. */
+const LABEL_TICK_GAP = 3;
 /** Coin bob amplitude in world px — tiny so it still reads as grounded. */
 const COIN_BOB = 0.35;
 /** Draw scale vs the processed 16px frame. */
@@ -255,8 +277,13 @@ export function drawNameLabels(entity: EntityContext, targets: DrawableEntity[])
     const cardTop = cardBottom - LABEL_CARD_H;
     const baseline = cardBottom - LABEL_DESCENT - 2;
 
+    // A player who has not confirmed gets no mark at all — an empty box or a
+    // greyed tick is a second thing to read before you learn nothing. The card
+    // is measured with the tick's space only when it is there, so an unready
+    // plate is exactly the name and nothing else.
+    const tick = target.ready ? LABEL_TICK_W + LABEL_TICK_GAP : 0;
     const textWidth = Math.ceil(ctx.measureText(target.name).width);
-    const width = LABEL_ACCENT + LABEL_PAD_X * 2 + textWidth;
+    const width = LABEL_ACCENT + LABEL_PAD_X * 2 + tick + textWidth;
     const left = cx - Math.round(width / 2);
 
     ctx.globalAlpha = alpha * 0.88;
@@ -284,10 +311,23 @@ export function drawNameLabels(entity: EntityContext, targets: DrawableEntity[])
       ctx.fillRect(cx - (2 - step), cardBottom - 1 + step, 5 - step * 2, 1);
     }
 
-    // Centred on the space BESIDE the colour bar rather than on the card, so
-    // the bar does not push the name off its own plate.
-    const textX = Math.round(left + LABEL_ACCENT + LABEL_PAD_X + textWidth / 2);
     ctx.globalAlpha = alpha;
+    if (target.ready) {
+      const tickX = left + LABEL_ACCENT + LABEL_PAD_X;
+      // Centred on the CAP BLOCK, not on the card: the tick is read as part of
+      // the word, so it sits on the line the letters sit on.
+      const tickY = baseline - LABEL_CAP + Math.round((LABEL_CAP - LABEL_TICK_H) / 2);
+      ctx.fillStyle = tone.entity.labelShadow;
+      for (const [dx, dy] of LABEL_TICK) ctx.fillRect(tickX + dx + 1, tickY + dy + 1, 1, 1);
+      // The meter green, which everywhere else in this game means "full" —
+      // borrowing it costs nothing and saves the player learning a colour.
+      ctx.fillStyle = tone.hp.high;
+      for (const [dx, dy] of LABEL_TICK) ctx.fillRect(tickX + dx, tickY + dy, 1, 1);
+    }
+
+    // Centred on the space BESIDE the colour bar and the tick rather than on
+    // the card, so neither pushes the name off its own plate.
+    const textX = Math.round(left + LABEL_ACCENT + LABEL_PAD_X + tick + textWidth / 2);
     ctx.fillStyle = tone.entity.labelShadow;
     ctx.fillText(target.name, textX + 1, baseline + 1);
     ctx.fillStyle = target.isLocal ? tone.ink : tone.inkMuted;

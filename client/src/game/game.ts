@@ -141,6 +141,7 @@ interface PlayerSource {
   alive: boolean;
   moving: boolean;
   isLocal: boolean;
+  ready: boolean;
 }
 
 export interface GameOptions {
@@ -755,6 +756,11 @@ export class Game {
       this.connection.rtt,
     );
 
+    // The tick on a nameplate answers "who are we waiting on", which is only a
+    // question at the camp. Everywhere else the flag is stale the moment the
+    // party walks out, so it is dropped here rather than trusted downstream.
+    const preparing = this.zone?.kind === 'camp' && !this.departing;
+
     for (const remote of sampled.players) {
       const meta = this.roster.get(remote.id);
       entities.push(
@@ -766,6 +772,7 @@ export class Game {
             name: meta?.name ?? '',
             color: meta?.color ?? palette().effects.fallbackShot,
             isLocal: remote.id === this.localId,
+            ready: preparing && (remote.ready ?? false),
           },
           dt,
         ),
@@ -790,6 +797,10 @@ export class Game {
             alive: this.local.alive,
             moving: Math.hypot(vx, vy) > MOVING_SPEED,
             isLocal: true,
+            // Your own tick comes from the optimistic flag, not the snapshot,
+            // so pressing E marks your plate on the same frame it hides the
+            // prompt instead of an RTT later.
+            ready: preparing && this.localReady,
           },
           dt,
         ),
@@ -940,6 +951,7 @@ export class Game {
       tint: source.color,
       color: source.color,
       name: source.name,
+      ready: source.ready,
       x,
       y,
       ax: source.ax,
@@ -995,6 +1007,7 @@ export class Game {
       tint: null,
       color: palette().minimap.enemy,
       name: '',
+      ready: false,
       x,
       y,
       ax: enemy.ax,

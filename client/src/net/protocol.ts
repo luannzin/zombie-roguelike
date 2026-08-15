@@ -146,18 +146,46 @@ export interface EnemyTypeConfig {
   viewDegrees: number;
 }
 
+/**
+ * One placed scenery piece: `[kindIndex, x, y, variant, flip, layer]`.
+ *
+ * Compact arrays rather than objects because a map ships a hundred of these
+ * and the keys would cost more than the data. `kindIndex` reads
+ * `MapPayload.propKinds`; `x`/`y` are world pixels — a contact point for a
+ * standing prop, a centre for a flat one; `variant` is taken modulo the
+ * sheet's frame count; `flip` mirrors horizontally; `layer` is 0 flat / 1
+ * standing.
+ */
+export type PropRow = [
+  kind: number,
+  x: number,
+  y: number,
+  variant: number,
+  flip: number,
+  layer: number,
+];
+
 export interface MapPayload {
   width: number;
   height: number;
   tileSize: number;
   /**
-   * Generator seed. Decoration (grass tufts, which prop variant a tile gets) is
-   * hashed from this plus the tile coordinate rather than transmitted, so the
-   * payload stays exactly as big as the map itself.
+   * Generator seed. The FOREST — soil, grass, ferns, litter, which prop
+   * variant a tile gets — is hashed from this plus the tile coordinate rather
+   * than transmitted, so texture costs four bytes and never repeats.
    */
   seed: number;
   /** Tile kinds — see game/world.ts. */
   tiles: number[][];
+  /**
+   * The other half of the world, and the opposite kind of thing: the SCENES
+   * the server placed (`server/app/scenery.py`). These cannot be re-derived
+   * from the seed because their whole value is that the pieces know about each
+   * other — the blood is at the doorway, the tracks lead into it. Optional
+   * because a locally generated map (the title screen's clearing) has none.
+   */
+  propKinds?: string[];
+  props?: PropRow[];
 }
 
 /**

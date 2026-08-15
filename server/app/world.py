@@ -11,6 +11,12 @@ Python literals or generated procedurally.
               walk into. Blocks bodies, not light; the client paints ground
               and crushes a darkness falloff around the path so it reads as
               a hole in the woods, not as a missing texture or a corridor.
+    5 PROP    solid footprint of a BUILDING placed by scenery.py. The client
+              paints ground here and draws nothing: the cabin or tent sprite
+              that owns these tiles arrives in the map payload's prop list and
+              covers them. Only buildings claim tiles — a fence, a sign, a
+              crate and a log are all walked through, because a scene made of
+              obstacles is a maze and the scenes are meant to be walked into.
 
 Only FLOOR is walkable, and the solidity test is `!= FLOOR` rather than a list
 of known blockers: adding a fifth tile kind (water, rubble, a bush) is then a
@@ -39,6 +45,7 @@ ROCK = 1
 TREE = 2
 FIRE = 3
 VOID = 4
+PROP = 5
 
 # Legacy name: '#' in an ASCII map is a rock.
 WALL = ROCK
@@ -47,8 +54,13 @@ _EPS = 1e-4
 
 
 class TileMap:
-    def __init__(self, tiles: list[list[int]], seed: int = 0):
+    def __init__(self, tiles: list[list[int]], seed: int = 0, scenery: dict | None = None):
         self.tiles = tiles
+        # The story laid over this map: a legend plus one compact row per
+        # drawable, straight from `scenery.to_payload`. Held as the payload
+        # rather than as objects because nothing on the server reads it back —
+        # it is placed once at generation time and forwarded verbatim.
+        self.scenery = scenery or {"propKinds": [], "props": []}
         # Shipped to the client, which hashes it with tile coordinates to place
         # decoration (grass tufts, prop variants). Sending a seed instead of a
         # decoration layer keeps the map payload the size of the map.
@@ -144,4 +156,5 @@ class TileMap:
             "tileSize": TILE_SIZE,
             "seed": self.seed,
             "tiles": self.tiles,
+            **self.scenery,
         }

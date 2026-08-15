@@ -19,11 +19,20 @@ import { readTooltipAnchor } from '../../game/tooltip-anchors';
 export interface TooltipProps {
   /** Id the game loop writes a screen-space point into. Omit for a static tooltip. */
   anchor?: string;
+  /**
+   * Sits before the copy, inside the card — a key cap, a tick, a cost. It is a
+   * slot rather than a prop per shape because the row is a flex line: whatever
+   * goes here is spaced and centred by the same rule the copy is, so a caller
+   * cannot end up nudging one with a margin.
+   */
+  start?: ReactNode;
+  /** The same, after the copy. */
+  end?: ReactNode;
   children: ReactNode;
   className?: string;
 }
 
-export function Tooltip({ anchor, children, className }: TooltipProps) {
+export function Tooltip({ anchor, start, end, children, className }: TooltipProps) {
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -67,7 +76,13 @@ export function Tooltip({ anchor, children, className }: TooltipProps) {
           'world-tooltip pixel-text text-ink flex items-center gap-1.5 text-[11px] leading-[14px]',
         )}
       >
+        {/* `shrink-0`: the copy may wrap or be clipped, an adornment may not —
+            half a key cap says nothing at all. */}
+        {start === undefined ? null : (
+          <span className="flex shrink-0 items-center">{start}</span>
+        )}
         {children}
+        {end === undefined ? null : <span className="flex shrink-0 items-center">{end}</span>}
       </p>
     </div>
   );

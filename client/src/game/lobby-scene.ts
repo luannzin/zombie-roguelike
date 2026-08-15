@@ -41,6 +41,9 @@ import { ARENA_ZOOM, CAMP_FIRE_ANCHOR, campZoom } from "../render/framing";
 import { DarknessLayer } from "../render/layers/darkness";
 import { TerrainLayer } from "../render/layers/terrain";
 import { frameIndex, SpriteBook } from "../render/sprites";
+import { loadScenery, type SceneryAtlas } from "../render/scenery";
+import { drawSceneryProp } from "../render/layers/scenery";
+import { WORLD_SPACE } from "../render/projection";
 import { loadTerrain, type TerrainAtlas, tileHash } from "../render/terrain";
 import {
 	effectFrame,
@@ -261,6 +264,9 @@ export class LobbyScene {
 	private camp: CampView | null = null;
 
 	private atlas: TerrainAtlas | null = null;
+	/** The camp is dressed too — see `server/app/camp.py`. Same atlas the
+	 *  arena uses, so the stores and the woodpiles do not change at the swap. */
+	private scenery: SceneryAtlas | null = null;
 	private vfx: VfxAtlas | null = null;
 	private world: TileMap | null = null;
 	private resizeObserver: ResizeObserver | null = null;
@@ -310,17 +316,20 @@ export class LobbyScene {
 
 		// The webfont too: names drawn in the fallback face and then swapped is the
 		// one flicker in this scene that is not on purpose.
-		const [, atlas, vfx] = await Promise.all([
+		const [, atlas, scenery, vfx] = await Promise.all([
 			this.sprites.load([PLAYER_SHEET]),
 			loadTerrain(),
+			loadScenery(),
 			loadVfx(),
 			whenFontsReady(),
 		]);
 		if (this.disposed) return;
 
 		this.atlas = atlas;
+		this.scenery = scenery;
 		this.vfx = vfx;
 		this.terrain.setAtlas(atlas);
+		this.terrain.setSceneryAtlas(scenery);
 		this.buildWorld();
 		if (this.pending) {
 			const members = this.pending;
@@ -354,6 +363,7 @@ export class LobbyScene {
 		this.fov = null;
 		this.lights = [];
 		this.atlas = null;
+		this.scenery = null;
 		this.vfx = null;
 	}
 
@@ -560,7 +570,7 @@ export class LobbyScene {
 		// The manifest is the authority on art scale for the fallback — with no
 		// server config to read `tileSize` from, inventing one here would put
 		// the clearing on a different grid from the arena's.
-		this.tile = camp?.map.tileSize ?? this.atlas?.groundTile ?? FALLBACK_TILE;
+		this.tile = camp?.map.tileSize ?? this.atlas?.grounds[0]?.tile ?? FALLBACK_TILE;
 		this.world = camp
 			? new TileMap(camp.map)
 			: buildClearing(this.seed, this.tile);
@@ -994,6 +1004,21 @@ export class LobbyScene {
 				y: seat.y,
 				draw: () => this.drawSeat(seat),
 			});
+		}
+		// The camp's own stores and woodpiles, in the same sort as the party —
+		// the arena merges them into its entity order for exactly this reason,
+		// and a crate the lobby drew flat behind everyone would jump the moment
+		// the run started. Drawn through the identity projection because this
+		// scene has already applied the world transform.
+		const scenery = this.scenery;
+		if (scenery && this.world) {
+			for (const piece of this.world.scenery.standing) {
+				entries.push({
+					y: piece.y,
+					draw: () =>
+						drawSceneryProp(this.ctx, WORLD_SPACE, scenery, piece, this.time),
+				});
+			}
 		}
 		entries.sort((a, b) => a.y - b.y);
 		for (const entry of entries) entry.draw();

@@ -4,19 +4,26 @@
  * Produced by server/tools/make_textures.py and served from
  * /terrain/ (assets/processed is Vite's publicDir).
  *
- * Two kinds of asset, because the world contains two kinds of thing:
+ * Three kinds of asset, because the world contains three kinds of thing:
  *
- *   GROUND is square and tiles. It is a single seamless image cut into a
+ *   GROUNDS are square and tile. Each is a single seamless image cut into a
  *   `cols x rows` grid; a tile picks its cell with `(tx % cols, ty % rows)`.
  *   That is not a random variant lookup — the cells are neighbouring windows
  *   into one continuous texture, so they are guaranteed to line up and the
- *   floor has no grid seams.
+ *   floor has no grid seams. There are FOUR of them and a map mixes them off
+ *   its own material field; `blend` is the set of alpha stencils that dissolve
+ *   one into the next instead of butting them together on a grid line.
  *
- *   PROPS (rock, tree, grass, fern) are not square. They are alpha silhouettes
- *   that sit ON TOP of the ground, bottom-anchored and centred on their tile,
- *   the same way process_sprites.py anchors a character. A tree is taller than
- *   a tile and overhangs the tile above it by `canopyHeight` px, and a fern is
- *   drawn in FRONT of characters rather than behind them.
+ *   PROPS (rock, tree, deadtree, stump, grass, bush, fern) are not square.
+ *   They are alpha silhouettes that sit ON TOP of the ground, bottom-anchored
+ *   and centred on their tile, the same way process_sprites.py anchors a
+ *   character. A tree is taller than a tile and overhangs the tile above it by
+ *   `canopyHeight` px, and a fern is drawn in FRONT of characters rather than
+ *   behind them.
+ *
+ *   DECALS (patch, branch, leaves) lie FLAT. They have no silhouette; the
+ *   terrain layer bakes them into the ground canvas, so they cost nothing per
+ *   frame and can never occlude a body.
  *
  * Loading is best-effort: a missing atlas resolves to `null` and the terrain
  * layer falls back to flat colours, so the game still runs with no assets
@@ -44,15 +51,48 @@ export interface PropSheet {
   fps: number;
 }
 
+/** One soil: a seamless atlas cut into a `cols x rows` grid of tiles. */
+export interface GroundSheet {
+  name: string;
+  image: HTMLImageElement;
+  tile: number;
+  cols: number;
+  rows: number;
+}
+
+/** A flat sheet baked into the ground canvas. No anchor, no depth. */
+export interface DecalSheet {
+  image: HTMLImageElement;
+  frameWidth: number;
+  frameHeight: number;
+  frames: number;
+}
+
 export interface TerrainAtlas {
-  ground: HTMLImageElement;
-  groundTile: number;
-  groundCols: number;
-  groundRows: number;
+  /**
+   * The soils, in manifest order — that order IS the material index the
+   * client's field produces, so it must not be sorted or filtered.
+   */
+  grounds: GroundSheet[];
+  /**
+   * Alpha stencils with ASCENDING coverage. Index by how far a tile has
+   * crossed a material boundary and draw the neighbouring soil through it;
+   * see `layers/terrain.ts`.
+   */
+  blend: DecalSheet;
   rock: PropSheet;
   tree: PropSheet;
+  /** Bare trunks for a blighted TREE tile. Same frame and anchor as `tree`. */
+  deadtree: PropSheet;
+  stump: PropSheet;
   grass: PropSheet;
+  /** Taller than grass and drawn with it, so a body passes IN FRONT of it. */
+  bush: PropSheet;
   fern: PropSheet;
+  /** Flat scatter baked into the ground: stains, twigs, leaf litter. */
+  patch: DecalSheet;
+  branch: DecalSheet;
+  leaves: DecalSheet;
   /**
    * The lobby's campfire. Optional because it arrived after the first atlas
    * shipped: a client running against older `assets/processed/` still gets a
@@ -70,12 +110,15 @@ interface PropManifest {
   fps?: number;
 }
 
+type PropName = 'rock' | 'tree' | 'deadtree' | 'stump' | 'grass' | 'bush' | 'fern';
+type DecalName = 'patch' | 'branch' | 'leaves';
+
 interface TerrainManifest {
   tile: number;
-  ground: { file: string; tile: number; cols: number; rows: number };
-  props: Record<'rock' | 'tree' | 'grass' | 'fern', PropManifest> & {
-    campfire?: PropManifest;
-  };
+  grounds: { name: string; file: string; tile: number; cols: number; rows: number }[];
+  blend: PropManifest;
+  props: Record<PropName, PropManifest> & { campfire?: PropManifest };
+  decals: Record<DecalName, PropManifest>;
 }
 
 const ROOT = '/terrain';
@@ -99,24 +142,29 @@ export function loadTerrain(): Promise<TerrainAtlas | null> {
 async function fetchTerrain(): Promise<TerrainAtlas | null> {
   try {
     const manifest = await loadJson<TerrainManifest>(`${ROOT}/manifest.json`);
-    const [ground, rock, tree, grass, fern, campfire] = await Promise.all([
-      loadImage(`${ROOT}/${manifest.ground.file}`),
-      loadProp(manifest.props.rock),
-      loadProp(manifest.props.tree),
-      loadProp(manifest.props.grass),
-      loadProp(manifest.props.fern),
+    const prop = (name: PropName) => loadProp(manifest.props[name]);
+    const decal = (name: DecalName) => loadDecal(manifest.decals[name]);
+    const [
+      grounds, blend, rock, tree, deadtree, stump, grass, bush, fern,
+      patch, branch, leaves, campfire,
+    ] = await Promise.all([
+      Promise.all(manifest.grounds.map(loadGround)),
+      loadDecal(manifest.blend),
+      prop('rock'),
+      prop('tree'),
+      prop('deadtree'),
+      prop('stump'),
+      prop('grass'),
+      prop('bush'),
+      prop('fern'),
+      decal('patch'),
+      decal('branch'),
+      decal('leaves'),
       manifest.props.campfire ? loadProp(manifest.props.campfire) : Promise.resolve(null),
     ]);
     return {
-      ground,
-      groundTile: manifest.ground.tile,
-      groundCols: manifest.ground.cols,
-      groundRows: manifest.ground.rows,
-      rock,
-      tree,
-      grass,
-      fern,
-      campfire,
+      grounds, blend, rock, tree, deadtree, stump, grass, bush, fern,
+      patch, branch, leaves, campfire,
     };
   } catch (err) {
     console.warn('[terrain] falling back to flat tiles:', err);
@@ -124,6 +172,27 @@ async function fetchTerrain(): Promise<TerrainAtlas | null> {
     atlasPromise = null;
     return null;
   }
+}
+
+async function loadGround(
+  manifest: TerrainManifest['grounds'][number],
+): Promise<GroundSheet> {
+  return {
+    name: manifest.name,
+    image: await loadImage(`${ROOT}/${manifest.file}`),
+    tile: manifest.tile,
+    cols: manifest.cols,
+    rows: manifest.rows,
+  };
+}
+
+async function loadDecal(manifest: PropManifest): Promise<DecalSheet> {
+  return {
+    image: await loadImage(`${ROOT}/${manifest.file}`),
+    frameWidth: manifest.frameWidth,
+    frameHeight: manifest.frameHeight,
+    frames: manifest.frames,
+  };
 }
 
 async function loadProp(manifest: PropManifest): Promise<PropSheet> {

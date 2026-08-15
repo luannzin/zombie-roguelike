@@ -43,6 +43,17 @@ the tile they start `preparation` on, so the lobby cannot invent its own layout.
 on all three messages because all three can be the first thing a client learns
 about a room it just joined.
 
+The `map` payload is `{width, height, tileSize, seed, tiles, propKinds, props}`.
+`seed` is what the client hashes with a tile coordinate to scatter the FOREST —
+soil, grass, ferns, litter — so texture costs four bytes and never repeats.
+`props` is the other half and it is the opposite kind of thing: the SCENES
+`scenery.py` placed, which cannot be re-derived from a hash because their whole
+value is that the pieces know about each other. Each row is
+`[kindIndex, x, y, variant, flip, layer]` against the `propKinds` legend, with
+x/y in world pixels — a contact point for a standing prop, a centre for a flat
+one — and `layer` 0 flat / 1 standing. `variant` is taken modulo the sheet's
+frame count client-side, except for `tracks`, where it is a compass point.
+
 A snapshot is IDENTICAL for every socket in the room — it is serialised once a
 tick and the same string is written to all of them. That is why the per-player
 ack rides on each player's own row (`seq`) instead of at the top level: one

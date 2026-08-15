@@ -16,7 +16,7 @@ seam React is allowed to read.
 | `prediction.ts` | apply-locally, replay-on-ack reconciliation |
 | `interpolation.ts` | remote entity smoothing |
 | `input.ts` | keyboard/mouse sampling into an `InputPacket` |
-| `world.ts` | client tile map, collision + sight queries, fires, hearth mask |
+| `world.ts` | client tile map, collision + sight queries, fires, hearth mask, placed scenery |
 | `combat.ts` | client-side shot feel and tracer bookkeeping |
 | `effects.ts` | tracers, dust, floating text, event lights |
 | `entity-visuals.ts` | per-player colour/name visual state |
@@ -90,6 +90,16 @@ seam React is allowed to read.
   collision, the animated sprite, and the light. It blocks bodies but not sight
   (`blocksSight`) — left as an occluder it would shadow the half of the party
   sitting behind it, which is the one place in the camp that must be lit.
+- **`TileMap.scenery` is the placed half of the world and it is not derivable.**
+  Everything else the client draws comes off `world.seed` hashed with a tile
+  coordinate, because one rock is as good as another. The scenes on the map
+  payload (`server/app/scenery.py`) cannot work that way — their meaning is the
+  relationship between pieces — so they arrive as rows and are unpacked once,
+  split into `flat` (baked into the ground canvas) and `standing` (sorted by
+  `y` at parse time, because the renderer MERGES it into the entity depth order
+  every frame and that merge walks two ascending lists). `PROP` is the tile kind
+  a building's footprint claims: solid, sight-blocking, painted as ground, and
+  drawn by nothing — the sprite in `scenery.standing` covers it.
 - VOID is a winding gap in the treeline, not a missing floor and not a
   rectangle: solid, painted as ground, crushed by a darkness falloff.
   `blocksSight` lets light fall into it so the trees do not close into a

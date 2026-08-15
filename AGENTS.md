@@ -126,6 +126,15 @@ subtree.
   rendering; the server simulation knows nothing about either.
 - `assets/processed/` is generated output. Edit the generator in
   `server/tools/`, never the PNG.
+- The world arrives in two halves and they are placed by two different systems.
+  TEXTURE — soil, grass, ferns, litter, prop variants — is scattered by the
+  client from the map seed, because one rock is as good as another. SCENES —
+  a cabin and its fence, a camp somebody left in a hurry, boot prints and the
+  blood at the end of them — are placed by `server/app/scenery.py` and shipped
+  on the map payload, because their meaning is the relationship between the
+  pieces and a hash cannot agree on that. Anything decidable from
+  `(tx, ty, seed)` belongs to the client; anything that means something belongs
+  to a scene.
 
 ## Child DOX Index
 

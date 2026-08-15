@@ -1,0 +1,83 @@
+{
+  "tile": 16,
+  "seed": 1337,
+  "props": {
+    "cabin": {
+      "file": "cabin.png",
+      "frameWidth": 80,
+      "frameHeight": 72,
+      "frames": 2,
+      "sway": 0
+    },
+    "tent": {
+      "file": "tent.png",
+      "frameWidth": 32,
+      "frameHeight": 28,
+      "frames": 3,
+      "sway": 0.5
+    },
+    "fence": {
+      "file": "fence.png",
+      "frameWidth": 16,
+      "frameHeight": 22,
+      "frames": 6,
+      "sway": 0
+    },
+    "sign": {
+      "file": "sign.png",
+      "frameWidth": 16,
+      "frameHeight": 28,
+      "frames": 3,
+      "sway": 1.6
+    },
+    "logs": {
+      "file": "logs.png",
+      "frameWidth": 32,
+      "frameHeight": 14,
+      "frames": 4,
+      "sway": 0
+    },
+    "crate": {
+      "file": "crate.png",
+      "frameWidth": 16,
+      "frameHeight": 18,
+      "frames": 5,
+      "sway": 0
+    },
+    "firepit": {
+      "file": "firepit.png",
+      "frameWidth": 20,
+      "frameHeight": 12,
+      "frames": 3,
+      "sway": 0,
+      "smokes": true
+    }
+  },
+  "decals": {
+    "blood": {
+      "file": "blood.png",
+      "frameWidth": 32,
+      "frameHeight": 32,
+      "frames": 6
+    },
+    "tracks": {
+      "file": "tracks.png",
+      "frameWidth": 16,
+      "frameHeight": 16,
+      "frames": 8,
+      "directions": 8
+    },
+    "clothes": {
+      "file": "clothes.png",
+      "frameWidth": 20,
+      "frameHeight": 16,
+      "frames": 5
+    },
+    "debris": {
+      "file": "debris.png",
+      "frameWidth": 16,
+      "frameHeight": 16,
+      "frames": 6
+    }
+  }
+}

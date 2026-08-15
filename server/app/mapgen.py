@@ -26,6 +26,7 @@ from __future__ import annotations
 import math
 import random
 
+from . import scenery
 from .maps import count_reachable
 from .world import FLOOR, ROCK, TREE, TileMap
 
@@ -268,13 +269,40 @@ def generate_forest(
     return tiles, seed
 
 
+def populate_forest(
+    tiles: list[list[int]],
+    seed: int,
+) -> list[scenery.Prop]:
+    """Lay the story over a finished forest. Mutates `tiles`.
+
+    Runs AFTER connectivity, never before: a scene needs a box of open ground
+    to stand in, and `_connect` is the step that decides which ground is open.
+    Its own building footprints are re-checked against connectivity inside
+    `scenery.populate`, which reverts rather than drilling.
+
+    The spawn clearing is excluded with a generous radius. It is the first
+    thing every player sees and the one place the party has to be able to read
+    each other; a cabin in it would be the best-lit prop in the game and the
+    worst-placed one.
+    """
+    height = len(tiles)
+    width = len(tiles[0]) if tiles else 0
+    return scenery.populate(
+        tiles,
+        random.Random(seed ^ 0x5CE7E),
+        landmark=scenery.LANDMARK,
+        avoid=((width / 2, height / 2, CENTRE_CLEARING_TILES + 6.0),),
+    )
+
+
 def build_forest(
     width: int = DEFAULT_WIDTH,
     height: int = DEFAULT_HEIGHT,
     seed: int | None = None,
 ) -> TileMap:
-    """Generate and validate. Raises rather than shipping a broken map."""
+    """Generate, populate and validate. Raises rather than shipping a broken map."""
     tiles, used = generate_forest(width, height, seed)
+    props = populate_forest(tiles, used)
     floor = sum(row.count(FLOOR) for row in tiles)
     reachable = count_reachable(tiles)
     if reachable != floor:
@@ -283,4 +311,4 @@ def build_forest(
         )
     if floor < width * height * 0.35:
         raise ValueError(f"forest seed {used} is only {floor / (width * height):.0%} floor")
-    return TileMap(tiles, seed=used)
+    return TileMap(tiles, seed=used, scenery=scenery.to_payload(props))

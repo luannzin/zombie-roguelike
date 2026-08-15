@@ -29,6 +29,14 @@ export interface DrawableEntity {
   color: string;
   /** Display name. Empty for enemies, which are never labelled. */
   name: string;
+  /**
+   * Camp only: this player is at the fire and has confirmed. Puts a tick on
+   * their nameplate — the readout for "who are we still waiting on", answered
+   * by looking at the party rather than at a counter in the corner.
+   *
+   * Always false outside the camp and always false for enemies.
+   */
+  ready: boolean;
   x: number;
   y: number;
   ax: number;

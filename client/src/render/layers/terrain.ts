@@ -4,28 +4,46 @@
  * Split into THREE passes because the world is stacked in three parts and the
  * player stands in the middle of it:
  *
- *   ground()      floor + rocks + tree trunks. Static, so it bakes into two
- *                 offscreen canvases and costs two blits a frame.
- *   undergrowth() grass tufts. Drawn live because they SWAY, which is the
- *                 cheapest thing that stops a forest looking like a photograph.
+ *   ground()      floor + litter + rocks + trunks. Static, so it bakes into
+ *                 two offscreen canvases and costs two blits a frame.
+ *   undergrowth() grass tufts and bushes. Drawn live because they SWAY, which
+ *                 is the cheapest thing that stops a forest looking like a
+ *                 photograph.
  *   overgrowth()  tree canopies and ferns, drawn AFTER characters, so you walk
  *                 under foliage and behind bushes instead of over a flat plane.
  *
- * The bake is two canvases, not one, precisely so the swaying grass can sit
- * between them: ground underneath, grass on top of it, props on top of that.
+ * The bake is two canvases, not one, precisely so the swaying plants can sit
+ * between them: ground underneath, plants on top of it, props on top of that.
  * Merging them would force the grass either under the ground or over the rocks.
+ *
+ * FOUR SOILS, ONE FLOOR. A single ground texture over a whole map is the
+ * loudest tell that a forest was generated — the eye finds the atlas repeat in
+ * seconds. So a low-frequency MATERIAL FIELD, hashed from the map seed, says
+ * which of loam / turf / mud / leaf litter each tile is made of. A hard tile
+ * boundary between two soils would only move the tell, so the fringe is
+ * dissolved through the graded stencils in `blend.png`: the neighbouring soil
+ * is drawn through the stencil whose coverage matches how far this tile has
+ * crossed the boundary, and the two interlock in ragged teeth.
+ *
+ * BLIGHT is the same idea applied to trunks. A second, coarser field marks
+ * stands of dead wood, so bare trees come in GROVES — a clearing full of grey
+ * limbs you can see through, next to a thicket you cannot — instead of being
+ * salted evenly across the map, which would read as damage to the art rather
+ * than as a place.
  *
  * Sway is per-plant, never global. Every tuft gets its own phase and speed from
  * the tile hash; a forest where every blade leans the same way at the same
  * moment reads as a screen filter, not as wind.
  */
 
-import { FLOOR, ROCK, TREE, VOID, type FirePlace, type TileMap } from '../../game/world';
+import { FLOOR, PROP, ROCK, TREE, VOID, type FirePlace, type TileMap } from '../../game/world';
 import { createSurface } from '../../lib/canvas';
 import { floorColor, hasFloorSpeck, palette } from '../../theme/palette';
 import type { Camera } from '../camera';
 import type { Projection } from '../projection';
-import { tileHash, type PropSheet, type TerrainAtlas } from '../terrain';
+import type { SceneryAtlas } from '../scenery';
+import { tileHash, type DecalSheet, type PropSheet, type TerrainAtlas } from '../terrain';
+import { bakeSceneryDecals } from './scenery';
 
 /** Above this a map is drawn per-tile instead of cached. */
 const MAX_CACHED_MAP_PIXELS = 4096 * 4096;
@@ -34,11 +52,23 @@ const MAX_CACHED_MAP_PIXELS = 4096 * 4096;
 const GRASS_CHANCE = 0.34;
 /** Second tuft on a tile that already has one. */
 const GRASS_DOUBLE_CHANCE = 0.4;
+/** Share of floor tiles that get a bush. Behind bodies, so it can afford more
+ *  than the fern, which is in front of them. */
+const BUSH_CHANCE = 0.055;
 /** Share of floor tiles that get a foreground bush. Deliberately rare. */
 const FERN_CHANCE = 0.045;
 
+/** Share of floor tiles that get flat litter baked into the ground. */
+const LEAVES_CHANCE = 0.16;
+const BRANCH_CHANCE = 0.07;
+/** Ground stains are sampled on a coarse lattice — they are 2 tiles across and
+ *  hashing them per tile would carpet the map in overlapping blotches. */
+const PATCH_STRIDE = 5;
+const PATCH_CHANCE = 0.32;
+
 /** Peak horizontal lean of a swaying plant, in world px. */
 const SWAY_GRASS = 0.9;
+const SWAY_BUSH = 1.1;
 const SWAY_FERN = 1.4;
 /** Radians/second of the sway oscillation, before per-plant variation. */
 const SWAY_RATE = 1.5;
@@ -49,6 +79,48 @@ const SHADOW_HEIGHT = 0.24;
 const SHADOW_ALPHA = 0.3;
 
 /**
+ * Material field. Lattice cell in TILES: big enough that a soil covers a
+ * recognisable stretch of ground and small enough that a screen usually holds
+ * more than one.
+ */
+const MATERIAL_CELL = 13;
+/**
+ * Where one soil ends and the next begins, on the 0..1 field. Unequal on
+ * purpose — loam is the forest's default and the others are things that have
+ * happened to it, so mud (the narrowest band) reads as low ground rather than
+ * as a quarter of the map.
+ */
+const MATERIAL_EDGES = [0, 0.46, 0.7, 0.87, 1];
+/**
+ * Width of the dissolve either side of an edge, in field units.
+ *
+ * Both ends of this are visible failures and they are opposite. Too WIDE and
+ * the narrowest band (mud, 0.13) has no interior left, so the map reads as one
+ * dithered mush of every soil at once instead of as ground that changes. Too
+ * NARROW and a region's edge falls inside a single tile, which quantizes it to
+ * the tile grid and draws soil patches with straight rectangular sides.
+ */
+const MATERIAL_FRINGE = 0.07;
+/**
+ * Per-tile jitter on the field before it is banded, as a full range.
+ *
+ * Frays which TILES are on a boundary, where the stencil frays the boundary
+ * inside a tile. Both are needed: the stencil alone still leaves the run of
+ * fringe tiles following a smooth contour, and a smooth contour on a grid is a
+ * staircase.
+ */
+const MATERIAL_JITTER = 0.06;
+
+/** Blight field: coarser than the soil, so a dead stand spans a clearing. */
+const BLIGHT_CELL = 17;
+/** Above this the field is a blighted stand. */
+const BLIGHT_AT = 0.62;
+/** Share of trunks inside a stand that are dead, at the heart of it. */
+const BLIGHT_DENSITY = 0.85;
+/** Share of dead trunks that are cut stumps instead — somebody worked here. */
+const STUMP_SHARE = 0.16;
+
+/**
  * Veto for a decorative plant on a floor tile. Used to keep an area clear of
  * undergrowth without making its tiles solid — see the lobby's hearth.
  */
@@ -56,20 +128,34 @@ export type DecorationMask = (tx: number, ty: number) => boolean;
 
 export class TerrainLayer {
   private atlas: TerrainAtlas | null = null;
+  private scenery: SceneryAtlas | null = null;
   private groundCache: HTMLCanvasElement | null = null;
   private propCache: HTMLCanvasElement | null = null;
+  /** One tile-sized scratch surface, reused for every soil dissolve. */
+  private stencil: { canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D } | null = null;
   private cachedFor: TileMap | null = null;
   private decorationMask: DecorationMask | null = null;
 
   /** Swap in the loaded atlas (or null to keep the flat fallback). */
   setAtlas(atlas: TerrainAtlas | null): void {
     this.atlas = atlas;
+    this.stencil = null;
     this.reset();
   }
 
   /**
-   * Restrict where grass and ferns may grow. `null` (the default) allows them
-   * on every floor tile, which is what the arena wants.
+   * Swap in the scenery atlas. Flat scenery — blood, boot prints, dropped
+   * clothing — is baked into the SAME ground canvas as the forest's own
+   * litter, so it arriving is a reason to rebuild that canvas.
+   */
+  setSceneryAtlas(atlas: SceneryAtlas | null): void {
+    this.scenery = atlas;
+    this.reset();
+  }
+
+  /**
+   * Restrict where grass, bushes and ferns may grow. `null` (the default)
+   * allows them on every floor tile, which is what the arena wants.
    *
    * Only plants are affected: rocks and trees are tile kinds and are decided by
    * whoever built the map. This is deliberately not a tile kind of its own —
@@ -97,7 +183,7 @@ export class TerrainLayer {
 
     // Uncached (very large map): paint the visible window in the same order.
     if (this.atlas) {
-      paintGround(ctx, world, this.atlas, window);
+      this.paintGround(ctx, world, this.atlas, window, true);
       this.undergrowth(ctx, world, window, time);
       paintProps(ctx, world, this.atlas, window);
     } else {
@@ -151,27 +237,31 @@ export class TerrainLayer {
     const ts = world.tileSize;
     const seed = world.seed;
     const { x0, y0, x1, y1 } = visibleTiles(world, camera);
-    const { tree, fern } = atlas;
+    const { fern } = atlas;
 
     for (let ty = y0; ty <= y1; ty++) {
       for (let tx = x0; tx <= x1; tx++) {
         const tile = world.tiles[ty][tx];
 
-        if (tile === TREE && tree.canopyHeight > 0) {
+        if (tile === TREE) {
           // The canopy is already in the prop bake; redrawing the same opaque
           // pixels is a no-op except where a character has since been drawn
-          // over them, which is exactly the case we want covered.
-          const frame = variant(tree, tx, ty, seed, 2);
+          // over them, which is exactly the case we want covered. The sheet is
+          // resolved through the same function the bake used, or a body would
+          // walk under a canopy belonging to a different tree.
+          const trunk = trunkSheet(atlas, tx, ty, seed);
+          if (trunk.canopyHeight <= 0) continue;
+          const frame = variant(trunk, tx, ty, seed, 2);
           ctx.drawImage(
-            tree.image,
-            frame * tree.frameWidth,
+            trunk.image,
+            frame * trunk.frameWidth,
             0,
-            tree.frameWidth,
-            tree.canopyHeight,
-            tx * ts + (ts - tree.frameWidth) / 2,
-            (ty + 1) * ts - tree.frameHeight,
-            tree.frameWidth,
-            tree.canopyHeight,
+            trunk.frameWidth,
+            trunk.canopyHeight,
+            tx * ts + (ts - trunk.frameWidth) / 2,
+            (ty + 1) * ts - trunk.frameHeight,
+            trunk.frameWidth,
+            trunk.canopyHeight,
           );
           continue;
         }
@@ -203,7 +293,7 @@ export class TerrainLayer {
     this.cachedFor = null;
   }
 
-  /** Swaying grass. Live, so it cannot live in the bake. */
+  /** Swaying grass and bushes. Live, so they cannot live in the bake. */
   private undergrowth(
     ctx: CanvasRenderingContext2D,
     world: TileMap,
@@ -218,6 +308,12 @@ export class TerrainLayer {
       for (let tx = x0; tx <= x1; tx++) {
         if (world.tiles[ty][tx] !== FLOOR) continue;
         if (this.decorationMask && !this.decorationMask(tx, ty)) continue;
+
+        if (tileHash(tx, ty, seed, 13) < BUSH_CHANCE) {
+          drawPlant(ctx, atlas.bush, world, tx, ty, time, SWAY_BUSH, 14);
+          // A bush and a tuft on the same tile is a pile, not undergrowth.
+          continue;
+        }
         if (tileHash(tx, ty, seed, 11) >= GRASS_CHANCE) continue;
         drawTuft(ctx, atlas.grass, world, tx, ty, 0, time);
         if (tileHash(tx, ty, seed, 12) < GRASS_DOUBLE_CHANCE) {
@@ -225,6 +321,93 @@ export class TerrainLayer {
         }
       }
     }
+  }
+
+  /**
+   * The floor: soil, its dissolved boundaries, and everything lying flat on it.
+   *
+   * Order inside this pass is a stack of things resting on each other — soil,
+   * then stains that soaked into it, then litter that fell on top, then what
+   * people left last. A blood stain under a drift of leaves is older than the
+   * leaves, which is not the story any of these scenes is telling.
+   */
+  private paintGround(
+    ctx: CanvasRenderingContext2D,
+    world: TileMap,
+    atlas: TerrainAtlas,
+    window: TileWindow,
+    live = false,
+  ): void {
+    this.paintSoil(ctx, world, atlas, window);
+    paintPatches(ctx, world, atlas.patch, window);
+    paintLitter(ctx, world, atlas, window, this.decorationMask);
+    if (this.scenery) {
+      const ts = world.tileSize;
+      bakeSceneryDecals(
+        ctx,
+        world,
+        this.scenery,
+        // Baking walks the whole map once; painting live walks it every frame,
+        // so that path gets the visible window to cull against.
+        live
+          ? {
+              x0: window.x0 * ts,
+              y0: window.y0 * ts,
+              x1: (window.x1 + 1) * ts,
+              y1: (window.y1 + 1) * ts,
+            }
+          : null,
+      );
+    }
+  }
+
+  /** Soil, one tile at a time, with the material boundaries dissolved. */
+  private paintSoil(
+    ctx: CanvasRenderingContext2D,
+    world: TileMap,
+    atlas: TerrainAtlas,
+    { x0, y0, x1, y1 }: TileWindow,
+  ): void {
+    const ts = world.tileSize;
+    const seed = world.seed;
+    const { grounds, blend } = atlas;
+    if (grounds.length === 0) return;
+
+    for (let ty = y0; ty <= y1; ty++) {
+      for (let tx = x0; tx <= x1; tx++) {
+        const mix = materialAt(tx, ty, seed, grounds.length);
+        drawSoil(ctx, grounds[mix.index], tx, ty, ts);
+        if (mix.other < 0) continue;
+
+        // The neighbouring soil, through the stencil whose coverage matches how
+        // far this tile has crossed the boundary. Drawn into a scratch tile and
+        // masked with `destination-in`, because the alternative — clipping —
+        // would antialias the teeth into a blur on a canvas that is otherwise
+        // entirely hard pixels.
+        const step = Math.min(
+          blend.frames - 1,
+          Math.max(0, Math.floor(mix.coverage * blend.frames)),
+        );
+        const scratch = this.scratch(ts);
+        scratch.ctx.clearRect(0, 0, ts, ts);
+        drawSoil(scratch.ctx, grounds[mix.other], tx, ty, ts, true, true);
+        scratch.ctx.globalCompositeOperation = 'destination-in';
+        scratch.ctx.drawImage(
+          blend.image,
+          step * blend.frameWidth, 0, blend.frameWidth, blend.frameHeight,
+          0, 0, ts, ts,
+        );
+        scratch.ctx.globalCompositeOperation = 'source-over';
+        ctx.drawImage(scratch.canvas, tx * ts, ty * ts);
+      }
+    }
+  }
+
+  private scratch(size: number): { canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D } {
+    if (!this.stencil || this.stencil.canvas.width !== size) {
+      this.stencil = createSurface(size, size, 'terrain/blend');
+    }
+    return this.stencil;
   }
 
   private rebuild(world: TileMap): void {
@@ -237,7 +420,7 @@ export class TerrainLayer {
     const window = { x0: 0, y0: 0, x1: world.width - 1, y1: world.height - 1 };
 
     const ground = createSurface(world.pixelWidth, world.pixelHeight, 'terrain/ground');
-    if (this.atlas) paintGround(ground.ctx, world, this.atlas, window);
+    if (this.atlas) this.paintGround(ground.ctx, world, this.atlas, window);
     else paintFlat(ground.ctx, world, window);
     this.groundCache = ground.canvas;
 
@@ -283,9 +466,135 @@ function visibleTiles(world: TileMap, camera: Camera): TileWindow {
   };
 }
 
+/**
+ * Smooth 0..1 noise over the tile grid, from the map seed.
+ *
+ * TWO octaves of bilinear value noise with a quintic fade — the same mixer the
+ * ground textures are built from, so a soil boundary in the field has the same
+ * softness as the grain inside the soil. `salt` picks the field: every
+ * independent decision (which soil, which stand is dead) needs its own, or the
+ * material map and the blight map would be the same shape.
+ *
+ * The second octave is what stops the regions being SQUARE. One bilinear
+ * lattice has its extrema on the lattice points and its saddles between them,
+ * so every level set through it is an axis-aligned blob about a cell across —
+ * on the floor that reads as a grid of soil patches, which is the exact
+ * artefact the whole material field exists to hide.
+ */
+function field(tx: number, ty: number, seed: number, cell: number, salt: number): number {
+  return (
+    octave(tx, ty, seed, cell, salt) * 0.72 + octave(tx, ty, seed, cell / 2.7, salt + 1) * 0.28
+  );
+}
+
+function octave(tx: number, ty: number, seed: number, cell: number, salt: number): number {
+  const fx = tx / cell;
+  const fy = ty / cell;
+  const gx = Math.floor(fx);
+  const gy = Math.floor(fy);
+  const ax = fade(fx - gx);
+  const ay = fade(fy - gy);
+  const top =
+    tileHash(gx, gy, seed, salt) * (1 - ax) + tileHash(gx + 1, gy, seed, salt) * ax;
+  const bottom =
+    tileHash(gx, gy + 1, seed, salt) * (1 - ax) + tileHash(gx + 1, gy + 1, seed, salt) * ax;
+  return top * (1 - ay) + bottom * ay;
+}
+
+function fade(t: number): number {
+  return t * t * t * (t * (t * 6 - 15) + 10);
+}
+
+interface Material {
+  /** Soil this tile is made of. */
+  index: number;
+  /** Soil bleeding in from the nearest boundary, or -1 when there is none. */
+  other: number;
+  /** 0..0.5 — how much of `other` shows through. */
+  coverage: number;
+}
+
+/**
+ * Which soil a tile is, and what is bleeding into it.
+ *
+ * Coverage peaks at 0.5 exactly on a boundary, so the tile on either side gives
+ * up half of itself and the two soils meet as an interlock rather than as a
+ * fade one way. Anything higher and the fringe reads as a third material.
+ */
+function materialAt(tx: number, ty: number, seed: number, count: number): Material {
+  const value = clamp01(
+    field(tx, ty, seed, MATERIAL_CELL, 71) +
+      (tileHash(tx, ty, seed, 72) - 0.5) * MATERIAL_JITTER,
+  );
+
+  const bands = Math.min(count, MATERIAL_EDGES.length - 1);
+  let index = bands - 1;
+  for (let band = 0; band < bands; band++) {
+    if (value < MATERIAL_EDGES[band + 1]) {
+      index = band;
+      break;
+    }
+  }
+
+  const below = value - MATERIAL_EDGES[index];
+  const above = MATERIAL_EDGES[index + 1] - value;
+  const [distance, other] = below < above ? [below, index - 1] : [above, index + 1];
+  if (other < 0 || other >= bands || distance >= MATERIAL_FRINGE) {
+    return { index, other: -1, coverage: 0 };
+  }
+  return { index, other, coverage: (1 - distance / MATERIAL_FRINGE) * 0.5 };
+}
+
+/**
+ * One tile of one soil.
+ *
+ * Modulo, not a hash: adjacent cells of an atlas are adjacent in the source
+ * texture, which is what keeps the floor seamless. `offset` shifts the cell
+ * pick by one so the soil bleeding across a boundary is not the identical
+ * pixels its neighbour would have drawn — the two atlases have different
+ * grain, but sharing the phase makes the teeth line up suspiciously well.
+ */
+function drawSoil(
+  ctx: CanvasRenderingContext2D,
+  sheet: { image: HTMLImageElement; tile: number; cols: number; rows: number },
+  tx: number,
+  ty: number,
+  ts: number,
+  offset = false,
+  local = false,
+): void {
+  const shift = offset ? 1 : 0;
+  const sx = (((tx + shift) % sheet.cols) + sheet.cols) % sheet.cols;
+  const sy = (((ty + shift) % sheet.rows) + sheet.rows) % sheet.rows;
+  ctx.drawImage(
+    sheet.image,
+    sx * sheet.tile, sy * sheet.tile, sheet.tile, sheet.tile,
+    local ? 0 : tx * ts, local ? 0 : ty * ts, ts, ts,
+  );
+}
+
 /** Which frame of a prop sheet this tile uses. Stable for the map's lifetime. */
 function variant(sheet: PropSheet, tx: number, ty: number, seed: number, salt: number): number {
   return Math.floor(tileHash(tx, ty, seed, salt) * sheet.frames) % sheet.frames;
+}
+
+/**
+ * Living tree, dead tree or stump for a TREE tile.
+ *
+ * Read by BOTH the prop bake and the overgrowth pass, and it has to be: they
+ * draw the same trunk twice, and a canopy redrawn from a different sheet than
+ * the one baked underneath would leave a living crown hanging over a bare
+ * trunk wherever a body walked past.
+ */
+function trunkSheet(atlas: TerrainAtlas, tx: number, ty: number, seed: number): PropSheet {
+  const blight = field(tx, ty, seed, BLIGHT_CELL, 81);
+  if (blight <= BLIGHT_AT) return atlas.tree;
+  // Density ramps from the edge of the stand to its heart, so a grove fades
+  // into the living wood instead of ending on a line.
+  const depth = Math.min(1, (blight - BLIGHT_AT) / (1 - BLIGHT_AT));
+  const roll = tileHash(tx, ty, seed, 82);
+  if (roll >= depth * BLIGHT_DENSITY) return atlas.tree;
+  return roll < depth * BLIGHT_DENSITY * STUMP_SHARE ? atlas.stump : atlas.deadtree;
 }
 
 /**
@@ -308,22 +617,80 @@ function sway(
   return Math.sin(time * rate + phase) * amount;
 }
 
-function paintGround(
+/** Ground stains — "manchas". Sampled coarsely; they are 2 tiles across. */
+function paintPatches(
+  ctx: CanvasRenderingContext2D,
+  world: TileMap,
+  patch: DecalSheet,
+  { x0, y0, x1, y1 }: TileWindow,
+): void {
+  const ts = world.tileSize;
+  const seed = world.seed;
+  const first = (v: number) => Math.floor(v / PATCH_STRIDE) * PATCH_STRIDE;
+
+  for (let ty = first(y0) - PATCH_STRIDE; ty <= y1 + PATCH_STRIDE; ty += PATCH_STRIDE) {
+    for (let tx = first(x0) - PATCH_STRIDE; tx <= x1 + PATCH_STRIDE; tx += PATCH_STRIDE) {
+      if (tileHash(tx, ty, seed, 91) >= PATCH_CHANCE) continue;
+      const frame = Math.floor(tileHash(tx, ty, seed, 92) * patch.frames) % patch.frames;
+      // Jittered across most of a stride, or the stains sit on a visible grid.
+      const jx = (tileHash(tx, ty, seed, 93) - 0.5) * PATCH_STRIDE * ts * 0.8;
+      const jy = (tileHash(tx, ty, seed, 94) - 0.5) * PATCH_STRIDE * ts * 0.8;
+      ctx.drawImage(
+        patch.image,
+        frame * patch.frameWidth, 0, patch.frameWidth, patch.frameHeight,
+        Math.round(tx * ts + jx - patch.frameWidth / 2),
+        Math.round(ty * ts + jy - patch.frameHeight / 2),
+        patch.frameWidth, patch.frameHeight,
+      );
+    }
+  }
+}
+
+/**
+ * Fallen leaves and twigs, baked flat into the floor.
+ *
+ * These are the cheapest thing in the whole layer and they do most of the
+ * work: a tile of bare soil next to a tile of bare soil is a texture, and the
+ * same two tiles with a drift of leaves across the seam is ground.
+ */
+function paintLitter(
   ctx: CanvasRenderingContext2D,
   world: TileMap,
   atlas: TerrainAtlas,
   { x0, y0, x1, y1 }: TileWindow,
+  mask: DecorationMask | null,
 ): void {
   const ts = world.tileSize;
-  const { ground, groundTile, groundCols, groundRows } = atlas;
+  const seed = world.seed;
 
   for (let ty = y0; ty <= y1; ty++) {
     for (let tx = x0; tx <= x1; tx++) {
-      // Modulo, not a hash: adjacent cells of the atlas are adjacent in the
-      // source texture, which is what keeps the floor seamless.
-      const sx = (tx % groundCols) * groundTile;
-      const sy = (ty % groundRows) * groundTile;
-      ctx.drawImage(ground, sx, sy, groundTile, groundTile, tx * ts, ty * ts, ts, ts);
+      const tile = world.tiles[ty][tx];
+      // VOID and PROP are floor with something on top of them, so litter
+      // belongs there too — it is what makes the camp exit read as forest
+      // floor in shadow rather than as a painted rectangle.
+      if (tile !== FLOOR && tile !== VOID && tile !== PROP) continue;
+      if (mask && !mask(tx, ty)) continue;
+
+      const roll = tileHash(tx, ty, seed, 95);
+      const sheet =
+        roll < LEAVES_CHANCE
+          ? atlas.leaves
+          : roll < LEAVES_CHANCE + BRANCH_CHANCE
+            ? atlas.branch
+            : null;
+      if (!sheet) continue;
+
+      const frame = Math.floor(tileHash(tx, ty, seed, 96) * sheet.frames) % sheet.frames;
+      const jx = (tileHash(tx, ty, seed, 97) - 0.5) * ts * 0.7;
+      const jy = (tileHash(tx, ty, seed, 98) - 0.5) * ts * 0.7;
+      ctx.drawImage(
+        sheet.image,
+        frame * sheet.frameWidth, 0, sheet.frameWidth, sheet.frameHeight,
+        Math.round(tx * ts + (ts - sheet.frameWidth) / 2 + jx),
+        Math.round(ty * ts + (ts - sheet.frameHeight) / 2 + jy),
+        sheet.frameWidth, sheet.frameHeight,
+      );
     }
   }
 }
@@ -343,7 +710,7 @@ function paintProps(
     for (let tx = x0; tx <= x1; tx++) {
       const tile = world.tiles[ty][tx];
       if (tile !== ROCK && tile !== TREE) continue;
-      const sheet = tile === TREE ? atlas.tree : atlas.rock;
+      const sheet = tile === TREE ? trunkSheet(atlas, tx, ty, seed) : atlas.rock;
       const frame = variant(sheet, tx, ty, seed, tile === TREE ? 2 : 3);
 
       const baseY = (ty + 1) * ts;
@@ -375,6 +742,35 @@ function paintProps(
       );
     }
   }
+}
+
+/** One swaying plant, centred on its tile and rooted at the bottom edge. */
+function drawPlant(
+  ctx: CanvasRenderingContext2D,
+  sheet: PropSheet,
+  world: TileMap,
+  tx: number,
+  ty: number,
+  time: number,
+  amount: number,
+  salt: number,
+): void {
+  const ts = world.tileSize;
+  const seed = world.seed;
+  const frame = variant(sheet, tx, ty, seed, salt);
+  const jx = (tileHash(tx, ty, seed, salt + 3) - 0.5) * ts * 0.4;
+  const lean = sway(tx, ty, seed, time, amount, salt + 5);
+  ctx.drawImage(
+    sheet.image,
+    frame * sheet.frameWidth,
+    0,
+    sheet.frameWidth,
+    sheet.frameHeight,
+    Math.round(tx * ts + (ts - sheet.frameWidth) / 2 + jx + lean),
+    Math.round((ty + 1) * ts - sheet.frameHeight),
+    sheet.frameWidth,
+    sheet.frameHeight,
+  );
 }
 
 function drawTuft(
@@ -420,7 +816,7 @@ function paintFlat(
       const px = tx * ts;
       const py = ty * ts;
       const tile = world.tiles[ty][tx];
-      if (tile !== FLOOR && tile !== VOID) {
+      if (tile !== FLOOR && tile !== VOID && tile !== PROP) {
         ctx.fillStyle = tiles.wallBody;
         ctx.fillRect(px, py, ts, ts);
         ctx.fillStyle = tiles.wallTop;
@@ -437,4 +833,8 @@ function paintFlat(
       }
     }
   }
+}
+
+function clamp01(value: number): number {
+  return value < 0 ? 0 : value > 1 ? 1 : value;
 }

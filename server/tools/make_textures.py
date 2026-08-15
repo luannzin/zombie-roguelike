@@ -7,30 +7,55 @@ and downscaled; terrain is *generated*, so this script writes final-resolution
 pixels directly into assets/processed/.
 
 Output (assets/processed/terrain/):
-    ground.png    64x64 — a 4x4 grid of 16px floor tiles
+    ground_loam.png    64x64 — a 4x4 grid of 16px floor tiles
+    ground_turf.png    64x64
+    ground_mud.png     64x64
+    ground_litter.png  64x64
+    blend.png     8 frames, 16x16   ALPHA STENCILS, graded coverage
+    patch.png     6 frames, 32x32   ground stains ("manchas"), flat decal
     rock.png      5 frames, 16x20   solid blocker
     tree.png      4 frames, 24x40   solid blocker, overhangs its tile
+    deadtree.png  4 frames, 24x40   solid blocker, bare — a blighted TREE tile
+    stump.png     4 frames, 16x14   solid blocker, a felled trunk
     grass.png     6 frames, 10x10   decoration, non-solid, sways
+    bush.png      5 frames, 20x16   decoration, non-solid, sways, BEHIND bodies
+    branch.png    5 frames, 16x7    flat decal, baked into the ground
+    leaves.png    6 frames, 16x12   flat decal, baked into the ground
     fern.png      5 frames, 20x18   FOREGROUND decoration, drawn over characters
     campfire.png  8 frames, 24x28   solid blocker, ANIMATED (a frame loop)
     manifest.json
 
-Two shapes of asset, because the world has two kinds of thing in it:
+Three shapes of asset, because the world has three kinds of thing in it:
 
   * The GROUND is square. It tiles, so it must be seamless, and it is the only
-    asset the client draws for every single tile.
+    asset the client draws for every single tile. There are FOUR of them and a
+    map mixes them — see below.
   * ROCKS, TREES and GRASS are not square. They are silhouettes with alpha that
     sit ON TOP of the ground, bottom-anchored and centred on their tile, the
     same anchoring process_sprites.py gives a character. A tree is 40px tall on
     a 16px tile: the extra 24px is canopy that overhangs the tile above.
+  * DECALS (patch, branch, leaves) lie FLAT. They have no silhouette and no
+    outline; the client bakes them into the ground canvas, so they cost
+    nothing per frame and never occlude a body.
 
-Seamlessness is the whole trick of ground.png. It is generated as ONE 64x64
-image from *periodic* value noise — the noise lattice wraps at 64px, so the
-left edge is the continuation of the right edge — and then read back as a 4x4
-grid of 16px tiles. The client picks its tile with `(tx % 4, ty % 4)`, which
-gives 16 distinct-looking floor tiles that are guaranteed to line up, because
-they are neighbouring windows into one continuous texture. Choosing a random
-variant per tile instead would put a visible seam on every tile boundary.
+Seamlessness is the whole trick of a ground atlas. Each is generated as ONE
+64x64 image from *periodic* value noise — the noise lattice wraps at 64px, so
+the left edge is the continuation of the right edge — and then read back as a
+4x4 grid of 16px tiles. The client picks its tile with `(tx % 4, ty % 4)`,
+which gives 16 distinct-looking floor tiles that are guaranteed to line up,
+because they are neighbouring windows into one continuous texture. Choosing a
+random variant per tile instead would put a visible seam on every tile
+boundary.
+
+FOUR GROUNDS, AND WHY THEY NEED A STENCIL. One soil over a whole map is the
+single loudest tell that a forest was generated: the eye finds the 4x4 repeat
+in seconds. So the client runs a low-frequency material field over the map and
+picks loam, turf, mud or leaf litter per tile. A hard tile boundary between two
+soils would just move the tell — a checkerboard instead of a repeat — so the
+fringe is dissolved through `blend.png`, eight alpha stencils of increasing
+coverage. The client draws the neighbouring soil through the stencil whose
+coverage matches how far that tile has crossed the boundary, and the two soils
+interlock in ragged pixel-art teeth instead of meeting on a grid line.
 
 Everything is deterministic: the same --seed produces byte-identical PNGs.
 
@@ -57,6 +82,11 @@ PROCESSED_DIR = ROOT / "assets" / "processed"
 DEFAULT_TILE = 16
 GROUND_TILES = 4
 
+# Alpha stencils for the boundary between two soils, coverage ascending. Eight
+# is enough that a two-tile-wide fringe never shows the same tooth twice and
+# few enough that the sheet stays one tile row tall.
+BLEND_STEPS = 8
+
 # Campfire animation. Eight frames is enough for the loop to read as fire and
 # short enough that the whole sheet stays under one tile-row of pixels.
 CAMPFIRE_FRAMES = 8
@@ -80,6 +110,28 @@ EARTH: Ramp = [rgb(c) for c in ("#1d1a15", "#26221a", "#2f2a20", "#383026", "#43
 MOSS: Ramp = [rgb(c) for c in ("#22291d", "#2b3524", "#33402b", "#3c4c32")]
 GRIT: Ramp = [rgb(c) for c in ("#4b4034", "#554839", "#3a3228")]
 
+# The other three soils. They are separated by HUE AND VALUE, not by hue alone:
+# under the client's darkness pass everything collapses toward black, and two
+# soils that differ only in tint become one soil the moment you step away from
+# the lantern. Turf is greener AND lighter, mud is cooler AND darker, litter is
+# warmer AND lighter — so the material field is still legible at the edge of
+# the beam, which is where the player actually reads the ground.
+TURF: Ramp = [rgb(c) for c in ("#182014", "#1e2a19", "#25341f", "#2d4026", "#354d2c")]
+TURF_BARE: Ramp = [rgb(c) for c in ("#242017", "#2d271c", "#372f23")]
+MUD: Ramp = [rgb(c) for c in ("#101109", "#17180f", "#1e1e15", "#26251b", "#2e2c21")]
+MUD_WET: Ramp = [rgb(c) for c in ("#1c2128", "#252c34", "#313944")]
+LITTER: Ramp = [rgb(c) for c in ("#211810", "#2b2015", "#352819", "#40301e", "#4b3923")]
+LITTER_DRY: Ramp = [rgb(c) for c in ("#43301a", "#513a1e", "#5e4522")]
+
+# Stains dropped on top of a soil — "manchas". Deliberately low contrast: a
+# patch is meant to break the repeat, not to be an object the player checks.
+PATCH_MOSS: Ramp = [rgb(c) for c in ("#1e2718", "#26331e", "#2f4025", "#384d2c")]
+PATCH_PUDDLE: Ramp = [rgb(c) for c in ("#0f1114", "#161a1e", "#1f262b", "#28323a")]
+PATCH_SCORCH: Ramp = [rgb(c) for c in ("#100e0c", "#191614", "#231e1b", "#2e2723")]
+PATCH_DUST: Ramp = [rgb(c) for c in ("#3a3126", "#463b2d", "#524634", "#5e513c")]
+PATCH_ROT: Ramp = [rgb(c) for c in ("#241c12", "#2f2517", "#3a2e1c", "#453721")]
+PATCH_GRAVEL: Ramp = [rgb(c) for c in ("#2a2823", "#37342e", "#454139", "#534e44")]
+
 ROCK_RAMP: Ramp = [rgb(c) for c in ("#242327", "#312f34", "#403d43", "#4e4a51", "#5d5860")]
 ROCK_OUTLINE = rgb("#131418")
 ROCK_MOSS = rgb("#33422c")
@@ -87,6 +139,22 @@ ROCK_MOSS = rgb("#33422c")
 BARK: Ramp = [rgb(c) for c in ("#231a13", "#2e231a", "#3b2d21", "#493829")]
 LEAF: Ramp = [rgb(c) for c in ("#1a2618", "#22321f", "#2b3f26", "#354d2d", "#425e37")]
 TREE_OUTLINE = rgb("#10160f")
+
+# Dead wood is GREY, not brown. A dead tree drawn in the same bark ramp as a
+# living one only reads as a tree that lost its leaves; drained of hue it reads
+# as bone, and a stand of them reads as something that happened here.
+DEADWOOD: Ramp = [rgb(c) for c in ("#1d1b19", "#2b2825", "#3b3733", "#4b4641", "#5d5750")]
+DEAD_OUTLINE = rgb("#0f0e0d")
+# The heartwood of a fresh stump: still warm, so a cut trunk reads as recent.
+HEARTWOOD: Ramp = [rgb(c) for c in ("#33261a", "#443322", "#55402a", "#664d33")]
+
+# Bushes sit BEHIND the player and in front of the floor, so they are lighter
+# than a fern (which is in front and must not fight the character) and darker
+# than grass (which is underfoot and catches the lantern first).
+SHRUB: Ramp = [rgb(c) for c in ("#151f14", "#1d2b1a", "#263822", "#31462b", "#3d5735")]
+# Fallen wood on the floor: read at a glance as "not soil", nothing more.
+TWIG: Ramp = [rgb(c) for c in ("#1b150f", "#261d14", "#33281b", "#413324")]
+FALLEN_LEAF: Ramp = [rgb(c) for c in ("#2b1f11", "#3a2a16", "#4a361c", "#5a4222", "#6b5029")]
 
 # Campfire. The flame ramp is the one place in this file that goes bright: it is
 # the only self-lit object in the game, and the client's darkness pass multiplies
@@ -139,7 +207,14 @@ def lattice(rng: random.Random, cells: int) -> list[list[float]]:
 
 
 def _fade(t: float) -> float:
-    return t * t * (3.0 - 2.0 * t)
+    """Quintic, not the usual smoothstep.
+
+    Bilinear interpolation with a cubic fade is only C1: its second derivative
+    jumps at every lattice line, and on a low-contrast soil that shows up as a
+    faint grid of creases once the camera zooms in. The quintic flattens the
+    second derivative at both ends too, and the creases go away.
+    """
+    return t * t * t * (t * (t * 6.0 - 15.0) + 10.0)
 
 
 def noise_at(grid: list[list[float]], x: float, y: float, cells: int, size: int) -> float:
@@ -171,48 +246,207 @@ def fbm(grids: list[tuple[list[list[float]], int]], x: float, y: float, size: in
 
 
 def hash01(*values: int) -> float:
-    """Deterministic 0..1 from integers. Used for per-pixel grain."""
+    """Deterministic 0..1 from integers. Used for per-pixel grain.
+
+    The avalanche at the end is not optional. FNV alone leaves the high bits of
+    the result dominated by the FIRST value mixed in, and since every call site
+    here passes (x, y, salt), that puts a strong per-column correlation into
+    what is supposed to be white noise — visible on a soil texture as faint
+    vertical dotted lines exactly where the speckle lands.
+    """
     h = 2166136261
     for value in values:
         h ^= value & 0xFFFFFFFF
         h = (h * 16777619) & 0xFFFFFFFF
+    h ^= h >> 15
+    h = (h * 2246822519) & 0xFFFFFFFF
+    h ^= h >> 13
+    h = (h * 3266489917) & 0xFFFFFFFF
+    h ^= h >> 16
     return h / 0xFFFFFFFF
 
 
 # --- ground -----------------------------------------------------------------
 
 
-def make_ground(size: int, seed: int) -> Image.Image:
+class Soil:
+    """One ground material: a base ramp, a sparse accent, and speckle.
+
+    Every soil is drawn by the same routine and differs only in these numbers.
+    That is on purpose — four soils authored by four separate functions drift
+    apart in grain size and contrast, and once they are tiled next to each
+    other on the same map the seam between them stops reading as a change of
+    ground and starts reading as a change of art style.
+    """
+
+    def __init__(
+        self,
+        name: str,
+        base: Ramp,
+        accent: Ramp,
+        accent_at: float,
+        grain: float,
+        gain: float,
+        bias: float,
+        speck: Ramp,
+        speck_rate: float,
+    ):
+        self.name = name
+        self.base = base
+        self.accent = accent
+        # Threshold on the accent noise field. Higher = rarer.
+        self.accent_at = accent_at
+        self.grain = grain
+        # Contrast on the base field. `gain` stretches it, `bias` shifts it.
+        self.gain = gain
+        self.bias = bias
+        self.speck = speck
+        # Share of pixels replaced by a single bright speck (pebbles, twigs).
+        self.speck_rate = speck_rate
+
+
+# The four soils a map mixes. Order is the manifest order and the client's
+# material index, so appending is safe and reordering is not.
+SOILS = (
+    # Accent thresholds are high and they are the reason the 4x4 repeat stays
+    # invisible: the accent is the only feature big enough to recognise, so the
+    # rarer it is, the further apart its copies land. Everything the player
+    # reads as variety comes from the material field and the client's scatter.
+    Soil("loam", EARTH, MOSS, 0.80, 0.26, 1.25, -0.14, GRIT, 0.025),
+    Soil("turf", TURF, TURF_BARE, 0.85, 0.30, 1.30, -0.12, GRIT, 0.014),
+    Soil("mud", MUD, MUD_WET, 0.88, 0.18, 1.15, -0.06, MUD_WET, 0.012),
+    Soil("litter", LITTER, LITTER_DRY, 0.80, 0.34, 1.22, -0.10, LITTER_DRY, 0.028),
+)
+
+
+def make_ground(size: int, seed: int, soil: Soil) -> Image.Image:
     """One seamless size x size floor texture, read back as a grid of tiles."""
     rng = random.Random(seed)
-    # High cell counts on purpose: features smaller than a tile keep the 4x4
-    # repeat from being legible once the atlas is tiled across a whole map.
-    earth = [(lattice(rng, cells), cells) for cells in (4, 8, 16)]
-    moss = [(lattice(rng, cells), cells) for cells in (5, 10)]
+    # High cell counts on purpose, and the LOWEST one is what matters: at 4
+    # cells across a 64px atlas the coarsest blob is a whole tile wide, and
+    # tiling that across a field of one soil draws a legible 4x4 checker on the
+    # floor. Starting at 8 keeps every feature well under a tile, so the repeat
+    # has nothing in it big enough to recognise. Structure at map scale is the
+    # client's material field's job, not the texture's.
+    base_field = [(lattice(rng, cells), cells) for cells in (8, 16, 32)]
+    accent_field = [(lattice(rng, cells), cells) for cells in (7, 14)]
 
     img = Image.new("RGBA", (size, size))
     px = img.load()
     for y in range(size):
         for x in range(size):
-            base = fbm(earth, x, y, size)
+            base = fbm(base_field, x, y, size)
             # Fine grain breaks up the smooth interpolation into soil speckle.
-            grain = (hash01(x, y, seed) - 0.5) * 0.26
-            colour = pick(EARTH, base * 1.25 - 0.14 + grain, x, y)
+            grain = (hash01(x, y, seed) - 0.5) * soil.grain
+            colour = pick(soil.base, base * soil.gain + soil.bias + grain, x, y)
 
-            # Moss is a faint accent, not the surface. Kept rare on purpose:
-            # the atlas repeats every 4 tiles, and any feature big or bright
-            # enough to notice turns that repeat into a visible lattice. The
-            # greenery the player actually sees is the client's grass tufts,
-            # which are hashed across the whole map and never repeat.
-            damp = fbm(moss, x, y, size)
-            if damp > 0.78:
-                colour = pick(MOSS, (damp - 0.78) / 0.22 + grain, x, y)
+            # The accent is a faint second surface, not a feature. Kept rare on
+            # purpose: the atlas repeats every 4 tiles, and anything big or
+            # bright enough to notice turns that repeat into a visible lattice.
+            # What the player actually sees as variety is the material field
+            # and the client's tufts, neither of which repeats.
+            damp = fbm(accent_field, x, y, size)
+            if damp > soil.accent_at:
+                span = max(1e-3, 1.0 - soil.accent_at)
+                colour = pick(soil.accent, (damp - soil.accent_at) / span + grain, x, y)
 
-            # Sparse grit: single bright pixels reading as pebbles and twigs.
-            if hash01(x, y, seed + 991) > 0.975:
-                colour = GRIT[int(hash01(y, x, seed) * len(GRIT)) % len(GRIT)]
+            if hash01(x, y, seed + 991) > 1.0 - soil.speck_rate:
+                colour = soil.speck[int(hash01(y, x, seed) * len(soil.speck)) % len(soil.speck)]
 
             px[x, y] = colour
+    return img
+
+
+# --- blend stencils ---------------------------------------------------------
+
+
+def make_blend(size: int, step: int, steps: int, seed: int) -> Image.Image:
+    """One alpha stencil: white where the neighbouring soil shows through.
+
+    Coverage climbs with `step`, so the client can pick a stencil by how far a
+    tile has crossed a material boundary and get a dissolve rather than a line.
+    The pattern is thresholded value noise, NOT a gradient: the client draws
+    the other soil through this with `destination-in`, and a soft edge there
+    would give a blurred seam in the middle of otherwise hard pixel art.
+    """
+    img = Image.new("RGBA", (size, size), TRANSPARENT)
+    px = img.load()
+    rng = random.Random(seed + step * 7717)
+    # Two octaves: the coarse one decides the shape of the tooth, the fine one
+    # frays its edge so the boundary never comes out as a smooth curve.
+    field = [(lattice(rng, cells), cells) for cells in (3, 6)]
+    coverage = (step + 0.5) / steps
+
+    values = [
+        (fbm(field, x, y, size) + (hash01(x, y, seed + step) - 0.5) * 0.22, x, y)
+        for y in range(size)
+        for x in range(size)
+    ]
+    # Threshold by RANK, not by value. Summed value noise clusters hard around
+    # 0.5, so a fixed threshold gives a stencil that is empty, empty, empty,
+    # then solid — the dissolve collapses into two states. Sorting and cutting
+    # at the requested fraction makes every step differ from the last by
+    # exactly 1/steps of the tile, which is what a graded set has to do.
+    values.sort(key=lambda item: item[0], reverse=True)
+    for _, x, y in values[: int(round(size * size * coverage))]:
+        px[x, y] = (255, 255, 255, 255)
+    return img
+
+
+# --- ground stains ("manchas") ----------------------------------------------
+
+
+PATCHES = (
+    ("moss", PATCH_MOSS, 0.62, 0.0),
+    ("puddle", PATCH_PUDDLE, 0.70, 0.22),
+    ("scorch", PATCH_SCORCH, 0.58, 0.0),
+    ("dust", PATCH_DUST, 0.55, 0.0),
+    ("rot", PATCH_ROT, 0.60, 0.0),
+    ("gravel", PATCH_GRAVEL, 0.50, 0.0),
+)
+
+
+def make_patch(size: int, ramp: Ramp, density: float, rim: float, seed: int) -> Image.Image:
+    """A soft-edged organic stain, drawn FLAT on the ground.
+
+    Radial falloff times noise, thresholded. The falloff is what keeps it a
+    blotch rather than a square of texture; the noise is what keeps its edge
+    from being a circle. `rim` lights the last ring of pixels, which is how a
+    puddle reads as standing water instead of as dark soil.
+    """
+    img = Image.new("RGBA", (size, size), TRANSPARENT)
+    px = img.load()
+    rng = random.Random(seed)
+    field = [(lattice(rng, cells), cells) for cells in (2, 4, 8)]
+    centre = (size - 1) / 2.0
+
+    # Falloff is squashed on one axis by a random amount, so the stains are not
+    # all the same circle at different sizes.
+    squash = rng.uniform(0.72, 1.35)
+    tilt = rng.uniform(0, math.pi)
+    cos_t, sin_t = math.cos(tilt), math.sin(tilt)
+
+    for y in range(size):
+        for x in range(size):
+            ox = (x - centre) / centre
+            oy = (y - centre) / centre
+            dx = (ox * cos_t - oy * sin_t)
+            dy = (ox * sin_t + oy * cos_t) * squash
+            radial = 1.0 - math.sqrt(dx * dx + dy * dy)
+            if radial <= -0.35:
+                continue
+            # ADDED, not multiplied. Multiplying keeps the level sets circular
+            # and only varies how fast the circle fades; adding lets the noise
+            # push the boundary itself in and out, which is what turns a disc
+            # into a stain.
+            value = radial + (fbm(field, x, y, size) - 0.42) * 1.15
+            if value < 1.0 - density:
+                continue
+            shade = clamp01((value - (1.0 - density)) / max(density, 1e-3))
+            if rim > 0.0 and shade < rim:
+                px[x, y] = ramp[-1]
+                continue
+            px[x, y] = pick(ramp, shade, x, y)
     return img
 
 
@@ -582,6 +816,263 @@ def make_grass(width: int, height: int, rng: random.Random) -> Image.Image:
     return img
 
 
+def make_dead_tree(width: int, height: int, rng: random.Random) -> Image.Image:
+    """A bare trunk with forked limbs. Same footprint as a living tree.
+
+    Drawn on a TREE tile the client has decided is blighted, so it must occupy
+    the same frame and anchor identically — a dead tree that sat differently on
+    its tile would make a blighted stand pop as the material changed. What
+    changes is the silhouette: no canopy mass, so the sky (such as it is) comes
+    through, and a grove of them opens sightlines that a living thicket closes.
+    """
+    img = Image.new("RGBA", (width, height), TRANSPARENT)
+    px = img.load()
+
+    cx = (width - 1) / 2.0
+    lean = rng.uniform(-0.10, 0.10)
+    trunk_top = height * rng.uniform(0.20, 0.30)
+    trunk_half = rng.uniform(1.6, 2.4)
+
+    def limb(x: float, y: float, angle: float, length: float, thick: float, depth: int) -> None:
+        """One tapering branch, forking twice. Recursion is the whole shape."""
+        for step in range(int(length)):
+            t = step / max(length - 1, 1)
+            # Branches curl as they thin, so the silhouette is never a starburst.
+            bend = angle + math.sin(t * 2.2) * 0.18
+            x += math.sin(bend)
+            y -= math.cos(bend)
+            ix, iy = int(round(x)), int(round(y))
+            if not (0 <= ix < width and 0 <= iy < height):
+                return
+            half = max(0.0, thick * (1.0 - t))
+            for offset in range(-int(half), int(half) + 1):
+                jx = ix + offset
+                if 0 <= jx < width:
+                    px[jx, iy] = pick(DEADWOOD, 0.28 + t * 0.5 - offset * 0.12, jx, iy)
+        if depth <= 0:
+            return
+        for side in (-1, 1):
+            limb(
+                x,
+                y,
+                angle + side * rng.uniform(0.35, 0.75),
+                length * rng.uniform(0.44, 0.62),
+                thick * 0.55,
+                depth - 1,
+            )
+
+    for y in range(height - 1, int(trunk_top) - 1, -1):
+        centre = cx + (height - y) * lean
+        half = trunk_half + max(0.0, (y - (height - 5)) * 0.5)
+        for x in range(width):
+            offset = x - centre
+            if abs(offset) > half:
+                continue
+            shade = clamp01(0.68 - offset / max(half, 0.1) * 0.40)
+            shade += (hash01(x, y, 811) - 0.5) * 0.28
+            px[x, y] = pick(DEADWOOD, shade, x, y)
+
+    # Three limbs off the top of the trunk, each forking twice.
+    for _ in range(rng.randint(3, 4)):
+        limb(
+            cx + (height - trunk_top) * lean + rng.uniform(-1.0, 1.0),
+            trunk_top + rng.uniform(0.0, height * 0.14),
+            rng.uniform(-1.15, 1.15),
+            height * rng.uniform(0.16, 0.26),
+            2.0,
+            2,
+        )
+
+    outline(img, DEAD_OUTLINE)
+    return img
+
+
+def make_stump(width: int, height: int, rng: random.Random) -> Image.Image:
+    """A felled trunk, cut face up. Growth rings are the whole read."""
+    img = Image.new("RGBA", (width, height), TRANSPARENT)
+    px = img.load()
+
+    cx = (width - 1) / 2.0
+    # Wide and low. A stump the proportions of a barrel is a barrel; the read
+    # is "something was cut down here", and that lives entirely in a broad cut
+    # face sitting close to the ground.
+    rx = width * rng.uniform(0.40, 0.46)
+    ry = max(2.0, rx * 0.42)
+    top_y = height - 1.0 - ry - rng.uniform(1.0, 2.5)
+    lumps = [(rng.uniform(0.06, 0.14), rng.uniform(0, math.tau)) for _ in range(2)]
+
+    def edge(angle: float) -> float:
+        """Radius multiplier at this angle — bark is not a smooth cylinder."""
+        wobble = 1.0
+        for index, (amp, phase) in enumerate(lumps):
+            wobble += amp * math.sin(angle * (index + 3) + phase)
+        return wobble
+
+    # Bark sides: the cut ellipse extruded down to the ground.
+    for y in range(int(top_y), height):
+        for x in range(width):
+            dx = (x - cx) / (rx * edge(0.0 if x >= cx else math.pi))
+            if dx * dx > 1.0:
+                continue
+            shade = clamp01(0.55 - dx * 0.40 + (hash01(x, y, 97) - 0.5) * 0.34)
+            # Vertical grain: a plain gradient reads as metal at this size.
+            if hash01(x, 0, 313) > 0.72:
+                shade -= 0.18
+            px[x, y] = pick(DEADWOOD, shade, x, y)
+
+    # Cut face: concentric rings in warm heartwood, so it reads as fresh.
+    for y in range(int(top_y - ry) - 1, int(top_y + ry) + 2):
+        for x in range(width):
+            if not (0 <= y < height):
+                continue
+            dx = (x - cx) / rx
+            dy = (y - top_y) / ry
+            dist = math.sqrt(dx * dx + dy * dy)
+            if dist > edge(math.atan2(dy, dx)):
+                continue
+            # Alternating hard rings, not a smooth sine: at 6px across, a
+            # gradient of rings averages out into one flat disc.
+            ring = 1.0 if math.sin(dist * 11.0) > 0 else 0.0
+            px[x, y] = pick(HEARTWOOD, 0.22 + ring * 0.62 - dist * 0.15, x, y)
+
+    outline(img, DEAD_OUTLINE)
+    return img
+
+
+def make_bush(width: int, height: int, rng: random.Random) -> Image.Image:
+    """A round shrub. Drawn BEHIND characters and it sways.
+
+    The counterpart to the fern: a fern is in front of you and dark, a bush is
+    behind you and lighter. Between them a body walking across open ground
+    passes through three depths instead of sliding over one plane.
+    """
+    img = Image.new("RGBA", (width, height), TRANSPARENT)
+    px = img.load()
+
+    base_y = height - 1.0
+    cx = (width - 1) / 2.0
+    # A cluster of overlapping lobes, so the outline is lumpy rather than
+    # domed. One big lobe carries the mass and the rest break its edge — an
+    # even spread of equal lobes came out as a flat green mat, which reads as
+    # ground cover rather than as something with a front and a back.
+    lobes = [(cx + rng.uniform(-1.5, 1.5), base_y - height * 0.46, height * 0.52)]
+    for _ in range(rng.randint(3, 5)):
+        lobes.append(
+            (
+                cx + rng.uniform(-width * 0.26, width * 0.26),
+                base_y - rng.uniform(height * 0.28, height * 0.72),
+                rng.uniform(height * 0.26, height * 0.40),
+            )
+        )
+
+    for y in range(height):
+        for x in range(width):
+            best = 0.0
+            for bx, by, radius in lobes:
+                dx = (x - bx) / radius
+                dy = (y - by) / (radius * 0.92)
+                dist = dx * dx + dy * dy
+                if dist < 1.0:
+                    best = max(best, 1.0 - math.sqrt(dist))
+            if best <= 0.0:
+                continue
+            lit = clamp01(0.22 + best * 0.6 - (y / height) * 0.35)
+            lit += (hash01(x, y, 421) - 0.5) * 0.45
+            px[x, y] = pick(SHRUB, lit, x, y)
+
+    # A handful of loose sprigs breaking the outline, so it is not a blob.
+    for _ in range(rng.randint(3, 6)):
+        sx = cx + rng.uniform(-width * 0.4, width * 0.4)
+        sy = base_y - rng.uniform(height * 0.4, height * 0.85)
+        angle = rng.uniform(-0.9, 0.9)
+        for step in range(rng.randint(2, 4)):
+            ix = int(round(sx + math.sin(angle) * step))
+            iy = int(round(sy - math.cos(angle) * step))
+            if 0 <= ix < width and 0 <= iy < height:
+                px[ix, iy] = pick(SHRUB, 0.75, ix, iy)
+    return img
+
+
+def make_branch(width: int, height: int, rng: random.Random) -> Image.Image:
+    """A fallen twig lying flat. A DECAL: no outline, no silhouette.
+
+    Baked into the ground canvas, so it must read as something ON the floor
+    rather than something standing in it. That is why it gets no outline — the
+    dark keyline is what tells the eye a thing has a side facing the camera.
+    """
+    img = Image.new("RGBA", (width, height), TRANSPARENT)
+    px = img.load()
+
+    y = height * rng.uniform(0.45, 0.65)
+    x = rng.uniform(1.0, 3.0)
+    angle = rng.uniform(-0.35, 0.35)
+    length = rng.uniform(width * 0.6, width * 0.92)
+
+    trail: list[tuple[int, int, float]] = []
+    for step in range(int(length)):
+        t = step / max(length - 1, 1)
+        x += math.cos(angle)
+        y += math.sin(angle + math.sin(t * 3.0) * 0.25) * 0.5
+        ix, iy = int(round(x)), int(round(y))
+        if not (0 <= ix < width and 0 <= iy < height):
+            break
+        trail.append((ix, iy, t))
+        px[ix, iy] = pick(TWIG, 0.35 + t * 0.4, ix, iy)
+        if t < 0.7 and iy + 1 < height:
+            px[ix, iy + 1] = pick(TWIG, 0.2 + t * 0.3, ix, iy + 1)
+
+    # One or two side shoots — a bare stick reads as a scratch, a forked one
+    # reads as wood.
+    for _ in range(rng.randint(1, 2)):
+        if not trail:
+            break
+        sx, sy, _ = trail[rng.randrange(len(trail))]
+        side = rng.choice((-1, 1))
+        for step in range(rng.randint(2, 3)):
+            ix = sx + step
+            iy = sy + side * step
+            if 0 <= ix < width and 0 <= iy < height:
+                px[ix, iy] = pick(TWIG, 0.5, ix, iy)
+    return img
+
+
+def make_leaves(width: int, height: int, rng: random.Random) -> Image.Image:
+    """A scatter of fallen leaves. A DECAL, baked into the ground.
+
+    Individually drawn rather than noise-thresholded, because a leaf has a
+    shape and a pile of noise does not: at this size three lit pixels in a row
+    with a dark one under them is the whole difference between litter and dirt.
+    """
+    img = Image.new("RGBA", (width, height), TRANSPARENT)
+    px = img.load()
+
+    for _ in range(rng.randint(9, 14)):
+        lx = rng.uniform(1.0, width - 2.0)
+        ly = rng.uniform(1.0, height - 2.0)
+        span = rng.uniform(1.6, 2.6)
+        angle = rng.uniform(0, math.pi)
+        shade = rng.uniform(0.3, 1.0)
+        cos_a, sin_a = math.cos(angle), math.sin(angle)
+        # A filled lens, not a stroke. A single-pixel line is a twig; two
+        # pixels across the short axis is the smallest thing that still reads
+        # as a leaf lying face up.
+        for oy in range(-3, 4):
+            for ox in range(-3, 4):
+                # Rotate into the leaf's own frame, then test an ellipse that
+                # is long one way and 2px the other.
+                u = ox * cos_a + oy * sin_a
+                v = -ox * sin_a + oy * cos_a
+                if (u / span) ** 2 + (v / 0.95) ** 2 > 1.0:
+                    continue
+                ix, iy = int(round(lx + ox)), int(round(ly + oy))
+                if not (0 <= ix < width and 0 <= iy < height):
+                    continue
+                # Lit along the spine, darker at the rim, so each leaf has a
+                # curl instead of being a flat chip of colour.
+                px[ix, iy] = pick(FALLEN_LEAF, shade - abs(v) * 0.35, ix, iy)
+    return img
+
+
 # --- sheets -----------------------------------------------------------------
 
 
@@ -598,8 +1089,23 @@ def build(args) -> Path:
     out_dir.mkdir(parents=True, exist_ok=True)
 
     ground_size = tile * GROUND_TILES
-    ground = make_ground(ground_size, args.seed)
-    ground.save(out_dir / "ground.png")
+    for index, soil in enumerate(SOILS):
+        # A per-soil seed offset, not one shared lattice: four soils drawn from
+        # the same noise are four recolours of one texture, and tiling them
+        # against each other shows the identical blotches lining up.
+        make_ground(ground_size, args.seed + index * 1607, soil).save(
+            out_dir / f"ground_{soil.name}.png"
+        )
+
+    blends = [make_blend(tile, step, BLEND_STEPS, args.seed + 505) for step in range(BLEND_STEPS)]
+    pack(blends, tile, tile).save(out_dir / "blend.png")
+
+    patch_size = tile * 2
+    patches = [
+        make_patch(patch_size, ramp, density, rim, args.seed + 606 + index * 37)
+        for index, (_, ramp, density, rim) in enumerate(PATCHES)
+    ]
+    pack(patches, patch_size, patch_size).save(out_dir / "patch.png")
 
     rock_w, rock_h = tile, round(tile * 1.25)
     rng = random.Random(args.seed + 101)
@@ -615,10 +1121,36 @@ def build(args) -> Path:
     trees = [make_tree(tree_w, tree_h, tile, rng) for _ in range(4)]
     pack(trees, tree_w, tree_h).save(out_dir / "tree.png")
 
+    # Same frame as a living tree, so a blighted tile swaps sheets and nothing
+    # else — see the client's `blight` field.
+    rng = random.Random(args.seed + 212)
+    dead_trees = [make_dead_tree(tree_w, tree_h, rng) for _ in range(4)]
+    pack(dead_trees, tree_w, tree_h).save(out_dir / "deadtree.png")
+
+    stump_w, stump_h = tile, round(tile * 0.875)
+    rng = random.Random(args.seed + 222)
+    stumps = [make_stump(stump_w, stump_h, rng) for _ in range(4)]
+    pack(stumps, stump_w, stump_h).save(out_dir / "stump.png")
+
     grass_w = grass_h = round(tile * 0.625)
     rng = random.Random(args.seed + 303)
     grasses = [make_grass(grass_w, grass_h, rng) for _ in range(6)]
     pack(grasses, grass_w, grass_h).save(out_dir / "grass.png")
+
+    bush_w, bush_h = round(tile * 1.25), tile
+    rng = random.Random(args.seed + 313)
+    bushes = [make_bush(bush_w, bush_h, rng) for _ in range(5)]
+    pack(bushes, bush_w, bush_h).save(out_dir / "bush.png")
+
+    branch_w, branch_h = tile, round(tile * 0.4375)
+    rng = random.Random(args.seed + 323)
+    branches = [make_branch(branch_w, branch_h, rng) for _ in range(5)]
+    pack(branches, branch_w, branch_h).save(out_dir / "branch.png")
+
+    leaf_w, leaf_h = tile, round(tile * 0.75)
+    rng = random.Random(args.seed + 333)
+    leaf_piles = [make_leaves(leaf_w, leaf_h, rng) for _ in range(6)]
+    pack(leaf_piles, leaf_w, leaf_h).save(out_dir / "leaves.png")
 
     fern_w, fern_h = round(tile * 1.25), round(tile * 1.125)
     rng = random.Random(args.seed + 404)
@@ -632,11 +1164,45 @@ def build(args) -> Path:
     manifest = {
         "tile": tile,
         "seed": args.seed,
-        "ground": {
-            "file": "ground.png",
-            "tile": tile,
-            "cols": GROUND_TILES,
-            "rows": GROUND_TILES,
+        # Order IS the client's material index. Append, never reorder.
+        "grounds": [
+            {
+                "name": soil.name,
+                "file": f"ground_{soil.name}.png",
+                "tile": tile,
+                "cols": GROUND_TILES,
+                "rows": GROUND_TILES,
+            }
+            for soil in SOILS
+        ],
+        # Alpha stencils, coverage ascending. The client picks by how far a
+        # tile has crossed a material boundary.
+        "blend": {
+            "file": "blend.png",
+            "frameWidth": tile,
+            "frameHeight": tile,
+            "frames": len(blends),
+        },
+        # Flat stains scattered over the floor. Baked, never depth-sorted.
+        "decals": {
+            "patch": {
+                "file": "patch.png",
+                "frameWidth": patch_size,
+                "frameHeight": patch_size,
+                "frames": len(patches),
+            },
+            "branch": {
+                "file": "branch.png",
+                "frameWidth": branch_w,
+                "frameHeight": branch_h,
+                "frames": len(branches),
+            },
+            "leaves": {
+                "file": "leaves.png",
+                "frameWidth": leaf_w,
+                "frameHeight": leaf_h,
+                "frames": len(leaf_piles),
+            },
         },
         "props": {
             "rock": {
@@ -656,12 +1222,40 @@ def build(args) -> Path:
                 # player north of a tree walks under the foliage.
                 "canopyHeight": tree_h - tile,
             },
+            "deadtree": {
+                "file": "deadtree.png",
+                "frameWidth": tree_w,
+                "frameHeight": tree_h,
+                "frames": len(dead_trees),
+                "solid": True,
+                # Bare limbs still hang over the tile above, and a body has to
+                # pass behind them for the stand to have any depth.
+                "canopyHeight": tree_h - tile,
+            },
+            "stump": {
+                "file": "stump.png",
+                "frameWidth": stump_w,
+                "frameHeight": stump_h,
+                "frames": len(stumps),
+                "solid": True,
+            },
             "grass": {
                 "file": "grass.png",
                 "frameWidth": grass_w,
                 "frameHeight": grass_h,
                 "frames": len(grasses),
                 "solid": False,
+            },
+            "bush": {
+                "file": "bush.png",
+                "frameWidth": bush_w,
+                "frameHeight": bush_h,
+                "frames": len(bushes),
+                "solid": False,
+                # Drawn live with the grass so it can sway, but taller — a body
+                # passes IN FRONT of it, which is the depth a fern gives from
+                # the other side.
+                "sways": True,
             },
             "fern": {
                 "file": "fern.png",
@@ -688,11 +1282,18 @@ def build(args) -> Path:
     (out_dir / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
 
     print(
-        f"wrote {out_dir}: ground {ground_size}x{ground_size} "
-        f"({GROUND_TILES}x{GROUND_TILES} tiles), "
+        f"wrote {out_dir}: {len(SOILS)} grounds {ground_size}x{ground_size} "
+        f"({GROUND_TILES}x{GROUND_TILES} tiles) [{', '.join(s.name for s in SOILS)}], "
+        f"blend {len(blends)}x{tile}x{tile}, "
+        f"patch {len(patches)}x{patch_size}x{patch_size}, "
         f"rock {len(rocks)}x{rock_w}x{rock_h}, "
         f"tree {len(trees)}x{tree_w}x{tree_h}, "
+        f"deadtree {len(dead_trees)}x{tree_w}x{tree_h}, "
+        f"stump {len(stumps)}x{stump_w}x{stump_h}, "
         f"grass {len(grasses)}x{grass_w}x{grass_h}, "
+        f"bush {len(bushes)}x{bush_w}x{bush_h}, "
+        f"branch {len(branches)}x{branch_w}x{branch_h}, "
+        f"leaves {len(leaf_piles)}x{leaf_w}x{leaf_h}, "
         f"fern {len(ferns)}x{fern_w}x{fern_h}, "
         f"campfire {len(fires)}x{fire_w}x{fire_h}"
     )

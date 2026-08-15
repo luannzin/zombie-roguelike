@@ -27,7 +27,9 @@ same contract `mapgen.py` has.
 from __future__ import annotations
 
 import math
+import random
 
+from . import scenery
 from .config import (
     CAMP_CLEARING_TILES,
     CAMP_EXIT_HALF_TILES,
@@ -127,7 +129,41 @@ def build_camp(seed: int) -> TileMap:
     ]
     tiles[fy][fx] = FIRE
     _carve_exit(tiles, cx, cy, seed)
-    return TileMap(tiles, seed=seed)
+    return TileMap(tiles, seed=seed, scenery=scenery.to_payload(_dress_camp(tiles, cx, cy, seed)))
+
+
+def _dress_camp(tiles: list[list[int]], cx: float, cy: float, seed: int) -> list[scenery.Prop]:
+    """A couple of scenes out at the edge of the clearing. Mutates `tiles`.
+
+    The camp is a place the party owns, so it gets stores and firewood and
+    nothing that bled. It also gets a lighter hand than the forest: the whole
+    clearing is barely wider than one forest scene, and everything standing in
+    it competes with the one thing the lobby is actually about, which is four
+    characters around a fire.
+
+    Two exclusions, and they are both hard. The HEARTH, because a crate
+    standing where a player is sitting hides the character the roster is
+    pointing at — the same rule the decoration mask enforces for grass. And the
+    EXIT, because the walk-out marches the party through it on rails and a prop
+    in the mouth would have bodies sliding through solid wood.
+    """
+    return scenery.populate(
+        tiles,
+        random.Random(seed ^ 0xCA47),
+        count=scenery.CAMP_SCENES,
+        pool=scenery.CAMP_POOL,
+        # Tight, because the clearing has room for maybe three anchors and the
+        # forest's spacing would reject all but one of them.
+        separation=5.5,
+        # The camp is mostly treeline, so most anchors land in woods that are
+        # too thick to clear. The forest's budget would give up before finding
+        # the handful of spots on the clearing's rim that actually work.
+        tries=400,
+        avoid=(
+            (cx, cy, CAMP_HEARTH_TILES + 1.5),
+            (cx + CAMP_CLEARING_TILES, cy, 6.0),
+        ),
+    )
 
 
 def _carve_exit(tiles: list[list[int]], cx: float, cy: float, seed: int) -> None:

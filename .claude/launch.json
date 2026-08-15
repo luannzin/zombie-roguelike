@@ -3,9 +3,24 @@
   "configurations": [
     {
       "name": "client",
-      "runtimeExecutable": "bun",
-      "runtimeArgs": ["run", "--cwd", "client", "dev"],
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "client", "run", "dev"],
       "port": 5173
+    },
+    {
+      "name": "server",
+      "runtimeExecutable": "server/.venv/Scripts/python.exe",
+      "runtimeArgs": [
+        "-m",
+        "uvicorn",
+        "--app-dir",
+        "server",
+        "app.main:app",
+        "--reload",
+        "--port",
+        "8000"
+      ],
+      "port": 8000
     }
   ]
 }

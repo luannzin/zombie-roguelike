@@ -11,7 +11,8 @@ imported by `app/` and never run at request time.
 | --- | --- | --- |
 | `make_placeholder_sheet.py` | generates raw art | `assets/raw/<name>.png` |
 | `process_sprites.py` | raw → production | `assets/processed/<name>/` |
-| `make_textures.py` | generates final pixels | `assets/processed/terrain/` (ground, rock, tree, grass, fern, campfire) |
+| `make_textures.py` | generates final pixels | `assets/processed/terrain/` (4 grounds, blend, patch, rock, tree, deadtree, stump, grass, bush, branch, leaves, fern, campfire) |
+| `make_scenery.py` | generates final pixels | `assets/processed/scenery/` (cabin, tent, fence, sign, logs, crate, firepit, blood, tracks, clothes, debris) |
 | `make_vfx.py` | generates final pixels | `assets/processed/vfx/` (summon) |
 | `make_hud_icons.py` | generates final pixels | `assets/processed/hud/` |
 
@@ -26,9 +27,29 @@ imported by `app/` and never run at request time.
 - Generation is deterministic: the same command must produce byte-identical
   PNGs. Do not introduce unseeded randomness.
 - `--tile` must match `TILE_SIZE` in `app/config.py`.
-- Non-square props (rock, tree, grass, fern, campfire) are bottom-anchored
-  silhouettes with alpha, centred on their tile; only `ground.png` tiles
+- Non-square props (rock, tree, deadtree, stump, grass, bush, fern, campfire and
+  everything in `scenery/props`) are bottom-anchored silhouettes with alpha,
+  centred on their tile or contact point; only the `ground_*.png` atlases tile
   seamlessly.
+- **DECALS are the third shape and they are drawn differently.** `patch`,
+  `branch`, `leaves` and everything in `scenery/decals` lie FLAT: no outline, no
+  silhouette, no implied face toward the camera. The client bakes them into its
+  ground canvas. Giving one a keyline makes it read as a thing standing up at
+  ankle height.
+- There are FOUR ground atlases and a map mixes them. Every feature inside one
+  must stay well under a tile — the atlas repeats every 4 tiles, and one blob a
+  tile wide draws a legible checker on the floor. Structure at map scale is the
+  client's material field's job. `blend.png` is the set of alpha stencils that
+  dissolve one soil into the next; its frames are graded by COVERAGE, thresholded
+  by rank so each step differs from the last by exactly 1/frames of the tile.
+- `terrain/` is the place and `scenery/` is what people left in it. The split is
+  a placement rule: terrain is scattered client-side off the map seed, scenery
+  is placed server-side in groups by `app/scenery.py`. A new sheet goes in
+  whichever folder matches how it will be positioned.
+- `tracks.png` bakes one frame per compass point rather than being rotated at
+  draw time. A 16px print through a canvas rotate is grey mush, and heel-vs-toe
+  is the whole value of a footprint. `TRACK_DIRECTIONS` here and in
+  `app/scenery.py` are one number.
 - Prop frames are VARIANTS, except the campfire's, which are an ANIMATION —
   flagged with `animated` + `fps` in the manifest. An animated sheet's frames
   must LOOP: every wobble is a sine of the frame phase (or an integer multiple),
@@ -58,6 +79,7 @@ Run from `server/` with the venv python:
 python tools/make_placeholder_sheet.py --name player
 python tools/process_sprites.py --name player --tile 16
 python tools/make_textures.py
+python tools/make_scenery.py
 python tools/make_vfx.py
 python tools/make_hud_icons.py
 ```

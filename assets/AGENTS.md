@@ -10,8 +10,13 @@ output the game actually loads.
 - `raw/` — source art (`player.png`, `zombie.png`, `coin.png`) and font sources
   (`fonts/DepartureMono-Regular.otf`). **Never served.**
 - `processed/` — production art: `player/`, `zombie/`, `coin/` (`sheet.png` +
-  `manifest.json`), `terrain/`, `hud/`. Vite's `publicDir` points here, so these
-  files are fetched as `/player/sheet.png`, `/terrain/ground.png`, ….
+  `manifest.json`), `terrain/`, `scenery/`, `vfx/`, `hud/`. Vite's `publicDir`
+  points here, so these files are fetched as `/player/sheet.png`,
+  `/terrain/ground_loam.png`, `/scenery/cabin.png`, ….
+- `terrain/` is the PLACE — soil, stone, wood that grew there — and the client
+  scatters it off the map seed. `scenery/` was carried in by somebody, and it
+  arrives placed in groups from `server/app/scenery.py`. Two folders because
+  they are positioned by two different systems, not because they look different.
 
 ## Local Contracts
 
@@ -22,6 +27,9 @@ output the game actually loads.
   down/side/up, col 1 idle. Terrain and HUD icons have no raw stage.
 - Processed character sheets are rows down/left/right/up × 3 frames, at
   `TILE_SIZE` from `server/app/config.py`.
+- Three shapes of art, and the shape decides how it is drawn: a seamless GROUND
+  atlas, a bottom-anchored PROP silhouette with an outline, and a flat DECAL
+  with neither. See `server/tools/AGENTS.md`.
 - A folder name here is the asset key the server ships in
   `welcome.config` (`enemyTypes[*].sprite`, `coinSprite`) — renaming a folder is
   a protocol-visible change.

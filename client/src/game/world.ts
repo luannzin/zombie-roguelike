@@ -16,6 +16,13 @@ export const TREE = 2;
 export const FIRE = 3;
 /** Solid gap in the trees. Painted as floor, blocks bodies, not light. */
 export const VOID = 4;
+/**
+ * Solid footprint of a BUILDING from a placed scene. Painted as floor and
+ * drawn with nothing: the cabin or tent sprite in `TileMap.scenery` covers it.
+ * Only buildings claim tiles — fences, signs, crates and logs are walked
+ * through, because a scene made of obstacles is a maze.
+ */
+export const PROP = 5;
 
 /** Legacy alias: '#' in a hand-drawn ASCII map is a rock. */
 export const WALL = ROCK;
@@ -26,6 +33,30 @@ const EPS = 1e-4;
 export interface FirePlace {
   x: number;
   y: number;
+}
+
+/**
+ * One placed scenery piece, unpacked from the wire's compact row.
+ *
+ * `y` is a contact point for a standing piece and a centre for a flat one,
+ * which is the same split `render/scenery.ts` draws on. The two lists are kept
+ * apart here rather than filtered per frame: `standing` is merged into the
+ * entity depth sort every frame and `flat` is baked once, so sorting them into
+ * one array would cost a scan of the whole map's scenery sixty times a second.
+ */
+export interface SceneryPiece {
+  kind: string;
+  x: number;
+  y: number;
+  variant: number;
+  flip: boolean;
+}
+
+export interface Scenery {
+  /** Flat on the floor, baked into the ground canvas. */
+  flat: readonly SceneryPiece[];
+  /** Stands up, depth-sorted with the party. Sorted by `y` at parse time. */
+  standing: readonly SceneryPiece[];
 }
 
 export class TileMap {
@@ -49,6 +80,12 @@ export class TileMap {
    * the walk-out camera asks for it every frame, and it cannot move.
    */
   readonly exit: { x: number; y: number } | null;
+  /**
+   * The scenes the server laid over this map, split by how they are drawn.
+   * Empty on a locally generated map — the title screen's clearing has no
+   * story in it, because nobody is standing in it to read one.
+   */
+  readonly scenery: Scenery;
 
   constructor(payload: MapPayload) {
     this.tiles = payload.tiles;
@@ -60,6 +97,7 @@ export class TileMap {
     this.pixelHeight = this.height * this.tileSize;
     this.fires = findFires(this.tiles, this.tileSize);
     this.exit = findExitMouth(this.tiles, this.tileSize);
+    this.scenery = unpackScenery(payload);
   }
 
   /**
@@ -169,6 +207,29 @@ export class TileMap {
     }
     return maxDist;
   }
+}
+
+/**
+ * Unpack the map payload's scenery rows into the two lists that get drawn.
+ *
+ * `standing` is sorted by `y` here, once, because the renderer merges it into
+ * the entity depth order every frame the way it already merges the bonfires —
+ * that merge is a walk of two ascending lists, and it only works if this one
+ * is ascending.
+ */
+function unpackScenery(payload: MapPayload): Scenery {
+  const kinds = payload.propKinds ?? [];
+  const rows = payload.props ?? [];
+  const flat: SceneryPiece[] = [];
+  const standing: SceneryPiece[] = [];
+
+  for (const [kind, x, y, variant, flip, layer] of rows) {
+    const name = kinds[kind];
+    if (name === undefined) continue;
+    (layer === 0 ? flat : standing).push({ kind: name, x, y, variant, flip: flip !== 0 });
+  }
+  standing.sort((a, b) => a.y - b.y);
+  return { flat, standing };
 }
 
 /**

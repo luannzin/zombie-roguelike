@@ -99,7 +99,10 @@ seam React is allowed to read.
   `y` at parse time, because the renderer MERGES it into the entity depth order
   every frame and that merge walks two ascending lists). `PROP` is the tile kind
   a building's footprint claims: solid, sight-blocking, painted as ground, and
-  drawn by nothing — the sprite in `scenery.standing` covers it.
+  drawn by nothing — the sprite in `scenery.standing` covers it. `LOW` is
+  waist-high cover (crate, fence, log, sign): solid to bodies and bullets,
+  transparent to light, painted as ground the same way. A log that blocked
+  sight would throw a hard shadow; one that was walkable would not be cover.
 - **Footprints are the one effect that is not short-lived, and the exception is
   the feature.** `Game.trackFootsteps` lays one per stride for every body on
   visible ground, with the depth coming from the SOIL under it (`soilAt`), and

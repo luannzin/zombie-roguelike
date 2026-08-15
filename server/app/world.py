@@ -14,9 +14,20 @@ Python literals or generated procedurally.
     5 PROP    solid footprint of a BUILDING placed by scenery.py. The client
               paints ground here and draws nothing: the cabin or tent sprite
               that owns these tiles arrives in the map payload's prop list and
-              covers them. Only buildings claim tiles — a fence, a sign, a
-              crate and a log are all walked through, because a scene made of
-              obstacles is a maze and the scenes are meant to be walked into.
+              covers them. Blocks light too — a cabin is a cabin.
+    6 LOW     WAIST-HIGH COVER: a fallen log, a crate, a fence rail, a signpost.
+              Solid to bodies and to BULLETS, transparent to LIGHT. That
+              combination is the whole reason it is its own kind. Making these
+              PROP would put a hard shadow wedge behind every crate and turn a
+              fence run into a wall of black, which is both wrong and ugly;
+              leaving them walkable throws away the best cover the forest has.
+              You can see your target over the log and still not shoot through
+              it, which is what cover is supposed to mean.
+
+Solidity is `!= FLOOR`, so movement, pathing and hitscan pick up a new kind for
+free. SIGHT is `blocks_sight`, which is the narrower question and has its own
+exceptions: FIRE (knee-high, and it is the thing doing the lighting), VOID (a
+gap between trees — light falls in) and LOW.
 
 Only FLOOR is walkable, and the solidity test is `!= FLOOR` rather than a list
 of known blockers: adding a fifth tile kind (water, rubble, a bush) is then a
@@ -46,6 +57,7 @@ TREE = 2
 FIRE = 3
 VOID = 4
 PROP = 5
+LOW = 6
 
 # Legacy name: '#' in an ASCII map is a rock.
 WALL = ROCK
@@ -79,6 +91,21 @@ class TileMap:
 
     def is_solid_at(self, x: float, y: float) -> bool:
         return self.is_solid_tile(int(x // TILE_SIZE), int(y // TILE_SIZE))
+
+    def blocks_sight(self, tx: int, ty: int) -> bool:
+        """Whether this tile stops LIGHT. Mirrors `TileMap.blocksSight`.
+
+        Narrower than solidity, and the difference is not cosmetic: the client
+        draws exactly this, so an enemy that could not see over a log the
+        player can see over would be enforcing a rule the screen contradicts.
+        Three exceptions — a bonfire is knee-high and is the light source, VOID
+        is a gap between trunks that light falls into, and LOW is cover you
+        look over.
+        """
+        if tx < 0 or ty < 0 or tx >= self.width or ty >= self.height:
+            return True
+        tile = self.tiles[ty][tx]
+        return tile != FLOOR and tile != FIRE and tile != VOID and tile != LOW
 
     def box_blocked(self, cx: float, cy: float, hw: float, hh: float) -> bool:
         """Axis-aligned box centred on (cx, cy) with half-extents (hw, hh)."""

@@ -19,10 +19,16 @@ export const VOID = 4;
 /**
  * Solid footprint of a BUILDING from a placed scene. Painted as floor and
  * drawn with nothing: the cabin or tent sprite in `TileMap.scenery` covers it.
- * Only buildings claim tiles — fences, signs, crates and logs are walked
- * through, because a scene made of obstacles is a maze.
+ * Blocks light too — a cabin is a cabin.
  */
 export const PROP = 5;
+/**
+ * Waist-high cover: a fallen log, a crate, a fence rail, a signpost.
+ * Solid to bodies and bullets, transparent to light. Making these PROP would
+ * put a hard shadow wedge behind every crate; leaving them walkable throws
+ * away the best cover the forest has.
+ */
+export const LOW = 6;
 
 /** Legacy alias: '#' in a hand-drawn ASCII map is a rock. */
 export const WALL = ROCK;
@@ -119,7 +125,8 @@ export class TileMap {
    * Anything that is not floor blocks movement and shots. Testing for
    * "not floor" rather than a list of known blockers is what lets the server
    * add a tile kind without touching collision on either side. Sight is
-   * `blocksSight` — a fire and the camp exit stop a body but not a beam.
+   * `blocksSight` — a fire, the camp exit and waist-high cover stop a body
+   * but not a beam.
    */
   isSolidTile(tx: number, ty: number): boolean {
     if (tx < 0 || ty < 0 || tx >= this.width || ty >= this.height) return true;
@@ -127,15 +134,16 @@ export class TileMap {
   }
 
   /**
-   * Whether this tile stops LIGHT. Solid, with two exceptions: a bonfire, and
-   * the camp exit. A fire is knee-high and it is the thing doing the lighting.
-   * VOID is a gap between trees — light falls into it, darkness crushes it,
-   * and a sight-blocker would turn that gap into a painted wall.
+   * Whether this tile stops LIGHT. Narrower than solidity, and the difference
+   * is not cosmetic: the server enforces exactly this, so a log you can see
+   * over has to be a log an enemy can see over. Three exceptions — a bonfire
+   * is knee-high and is the light source, VOID is a gap between trunks that
+   * light falls into, and LOW is cover you look over.
    */
   blocksSight(tx: number, ty: number): boolean {
     if (tx < 0 || ty < 0 || tx >= this.width || ty >= this.height) return true;
     const tile = this.tiles[ty][tx];
-    return tile !== FLOOR && tile !== FIRE && tile !== VOID;
+    return tile !== FLOOR && tile !== FIRE && tile !== VOID && tile !== LOW;
   }
 
   /** Axis-aligned box centred on (cx, cy) with half-extents (hw, hh). */
@@ -186,12 +194,28 @@ export class TileMap {
     return (row + 1) * ts + hh + EPS;
   }
 
-  /** DDA ray march against solid tiles. Used for local shot tracers. */
-  raycastTiles(ox: number, oy: number, dx: number, dy: number, maxDist: number): number {
+  /**
+   * DDA ray march. Used for local shot tracers.
+   *
+   * `sight` asks what stops LIGHT instead of what stops a body — see
+   * `blocksSight`. One traversal serves both because the walk is identical
+   * and only the predicate differs; two copies of this loop would drift.
+   */
+  raycastTiles(
+    ox: number,
+    oy: number,
+    dx: number,
+    dy: number,
+    maxDist: number,
+    sight = false,
+  ): number {
+    const blocked = sight
+      ? (tx: number, ty: number) => this.blocksSight(tx, ty)
+      : (tx: number, ty: number) => this.isSolidTile(tx, ty);
     const ts = this.tileSize;
     let tx = Math.floor(ox / ts);
     let ty = Math.floor(oy / ts);
-    if (this.isSolidTile(tx, ty)) return 0;
+    if (blocked(tx, ty)) return 0;
 
     const stepX = dx > 0 ? 1 : -1;
     const stepY = dy > 0 ? 1 : -1;
@@ -218,7 +242,7 @@ export class TileMap {
         tMaxY += tDeltaY;
       }
       if (travelled > maxDist) break;
-      if (this.isSolidTile(tx, ty)) return travelled;
+      if (blocked(tx, ty)) return travelled;
     }
     return maxDist;
   }

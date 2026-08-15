@@ -22,14 +22,28 @@ class RayHit:
 
 
 def raycast_tiles(
-    world: TileMap, ox: float, oy: float, dx: float, dy: float, max_dist: float
+    world: TileMap,
+    ox: float,
+    oy: float,
+    dx: float,
+    dy: float,
+    max_dist: float,
+    sight: bool = False,
 ) -> float:
-    """DDA grid traversal. Returns distance to the first solid tile, or max_dist."""
+    """DDA grid traversal. Returns distance to the first blocking tile.
+
+    `sight=True` asks what stops LIGHT instead of what stops a body — see
+    `world.blocks_sight`. One traversal serves both because the walk is
+    identical and only the predicate differs; two copies of this loop would
+    drift, and the pair that must not drift is a bullet's path and a sight
+    line's, since the player is shown both.
+    """
+    blocked = world.blocks_sight if sight else world.is_solid_tile
     ts = world.tile_size
     tx = int(ox // ts)
     ty = int(oy // ts)
 
-    if world.is_solid_tile(tx, ty):
+    if blocked(tx, ty):
         return 0.0
 
     step_x = 1 if dx > 0 else -1
@@ -67,7 +81,7 @@ def raycast_tiles(
             t_max_y += t_delta_y
         if travelled > max_dist:
             break
-        if world.is_solid_tile(tx, ty):
+        if blocked(tx, ty):
             return travelled
     return max_dist
 

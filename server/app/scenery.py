@@ -48,8 +48,7 @@ import random
 from dataclasses import dataclass
 
 from .config import TILE_SIZE
-from .maps import count_reachable
-from .world import FLOOR, PROP, ROCK, TREE
+from .world import FLOOR, LOW, PROP, ROCK, TREE
 
 #: Tiles of treeline kept clear of scenes at every edge. Matches the border
 #: both generators draw (`mapgen.BORDER_TILES`, `camp.BORDER_TILES`).
@@ -177,11 +176,57 @@ class Layout:
 
     width: int
     height: int
-    #: Tile offsets that become PROP. Only buildings claim tiles — see below.
-    solid: tuple[tuple[int, int], ...]
     pieces: tuple[Piece, ...]
     #: Anything in this scene that is still lit. Usually empty.
     lights: tuple[SceneLight, ...] = ()
+
+
+#: What each standing kind does to the tiles under it: (width, depth, kind) in
+#: tiles. Anything absent is walked through — cold ash, a dropped pack, a stain.
+#:
+#: DERIVED FROM THE PIECES, never listed by hand. A scene that wrote its own
+#: solid tiles would drift from its own art the first time somebody nudged a
+#: crate half a tile, and the failure mode is invisible walls — the worst bug a
+#: 2D game can have, because nothing on screen explains it.
+#:
+#: The kind matters as much as the size. A CABIN is a building: it stops light.
+#: Everything else here is waist-high, so it is LOW — solid to bodies and
+#: bullets, transparent to sight. You take cover behind a log, you do not
+#: disappear behind it.
+#:
+#: Widths match the sheets in `make_scenery.py` (cabin 5, tent 2, logs 2,
+#: the rest 1). Depth is the contact slab, not the sprite height — a cabin's
+#: roof is 4.5 tiles tall and must not be a wall you bounce off.
+FOOTPRINTS: dict[str, tuple[int, int, int]] = {
+    "cabin": (5, 3, PROP),
+    "tent": (2, 1, PROP),
+    "logs": (2, 1, LOW),
+    "crate": (1, 1, LOW),
+    "fence": (1, 1, LOW),
+    "sign": (1, 1, LOW),
+}
+
+
+def _cells(layout: Layout, x0: int, y0: int) -> list[tuple[int, int, int]]:
+    """Every tile this scene's standing pieces claim, as (tx, ty, kind).
+
+    A standing piece is anchored on its CONTACT POINT — bottom centre — so the
+    footprint is centred on `dx` and grows upward from `dy`. That is the same
+    anchor the client draws from, which is the point: the tiles you bump into
+    are computed from the same number that decides where the sprite lands.
+    """
+    cells: list[tuple[int, int, int]] = []
+    for piece in layout.pieces:
+        spec = FOOTPRINTS.get(piece.kind)
+        if spec is None or piece.layer != STANDING:
+            continue
+        width, depth, kind = spec
+        bx = int(math.floor(x0 + piece.dx - width / 2 + 0.5))
+        by = int(math.floor(y0 + piece.dy - depth + 0.5))
+        for oy in range(depth):
+            for ox in range(width):
+                cells.append((bx + ox, by + oy, kind))
+    return cells
 
 
 #: Compass points in the tracks sheet. Mirrors TRACK_DIRECTIONS in
@@ -252,13 +297,6 @@ def _homestead(rng: random.Random) -> Layout:
     flip = rng.random() < 0.5
     ruined = rng.random() < 0.45
 
-    # The cabin's own tiles. Five wide and three deep — the sprite is taller
-    # than that, but a building's FOOTPRINT is its ground floor, and letting
-    # the roof claim tiles would make players bounce off the eaves.
-    solid = tuple(
-        (int(cabin_x) + ox, int(cabin_y) + oy) for ox in range(5) for oy in range(3)
-    )
-
     pieces = [Piece("cabin", STANDING, cabin_x + 2.5, cabin_y + 3.0, 1 if ruined else 0, flip)]
 
     # The door is off centre in the art; the story hangs off knowing where.
@@ -307,7 +345,7 @@ def _homestead(rng: random.Random) -> Layout:
     lights: tuple[SceneLight, ...] = ()
     if rng.random() < 0.75:
         lights = (SceneLight(door_x + (0.9 if flip else -0.9), door_y - 0.4, 3.4, LAMP),)
-    return Layout(width, height, solid, tuple(pieces), lights)
+    return Layout(width, height, tuple(pieces), lights)
 
 
 def _campsite(rng: random.Random) -> Layout:
@@ -316,8 +354,6 @@ def _campsite(rng: random.Random) -> Layout:
     flip = rng.random() < 0.5
 
     tent_x, tent_y = cx + rng.uniform(-1.6, 1.6), cy - 1.4
-    solid = tuple((int(tent_x) - 1 + ox, int(tent_y) - 1 + oy) for ox in range(3) for oy in range(1))
-
     pieces = [
         Piece("tent", STANDING, tent_x, tent_y, rng.randrange(3), flip),
         Piece("firepit", STANDING, cx, cy + 1.0, rng.randrange(3)),
@@ -353,7 +389,7 @@ def _campsite(rng: random.Random) -> Layout:
     lights: tuple[SceneLight, ...] = ()
     if rng.random() < 0.3:
         lights = (SceneLight(cx, cy + 1.0, 2.2, EMBER),)
-    return Layout(width, height, solid, tuple(pieces), lights)
+    return Layout(width, height, tuple(pieces), lights)
 
 
 def _last_stand(rng: random.Random) -> Layout:
@@ -400,7 +436,7 @@ def _last_stand(rng: random.Random) -> Layout:
             Piece("blood", DECAL, cx + math.cos(away) * (1.0 + t * 2.4),
                   cy + math.sin(away) * (1.0 + t * 2.0), 2)
         )
-    return Layout(width, height, (), tuple(pieces))
+    return Layout(width, height, tuple(pieces))
 
 
 def _deadfall(rng: random.Random) -> Layout:
@@ -415,7 +451,7 @@ def _deadfall(rng: random.Random) -> Layout:
         pieces.append(
             Piece("debris", DECAL, rng.uniform(0.5, width - 0.5), rng.uniform(0.5, height - 0.5), 1)
         )
-    return Layout(width, height, (), tuple(pieces))
+    return Layout(width, height, tuple(pieces))
 
 
 def _boundary(rng: random.Random) -> Layout:
@@ -441,7 +477,7 @@ def _boundary(rng: random.Random) -> Layout:
                      row + direction * 2.2, rng)
     if rng.random() < 0.5:
         pieces.append(Piece("blood", DECAL, gap + rng.uniform(0.4, 1.6), row, 0))
-    return Layout(width, height, (), tuple(pieces))
+    return Layout(width, height, tuple(pieces))
 
 
 def _trailhead(rng: random.Random) -> Layout:
@@ -461,7 +497,7 @@ def _trailhead(rng: random.Random) -> Layout:
                         y0 + rng.uniform(-0.6, 0.6), rng.randrange(5)))
     pieces.append(Piece("blood", DECAL, cx + rng.uniform(-0.8, 0.8),
                         cy + rng.uniform(-0.8, 0.8), rng.choice((0, 3, 4))))
-    return Layout(width, height, (), tuple(pieces))
+    return Layout(width, height, tuple(pieces))
 
 
 def _dumpsite(rng: random.Random) -> Layout:
@@ -481,7 +517,7 @@ def _dumpsite(rng: random.Random) -> Layout:
     if rng.random() < 0.5:
         pieces.append(Piece("clothes", DECAL, cx + rng.uniform(-2, 2), cy + rng.uniform(-2, 2),
                             rng.randrange(5)))
-    return Layout(width, height, (), tuple(pieces))
+    return Layout(width, height, tuple(pieces))
 
 
 #: (builder, weight). Weights are the pacing: `deadfall` is common because most
@@ -506,7 +542,7 @@ def _woodpile(rng: random.Random) -> Layout:
     ]
     if rng.random() < 0.5:
         pieces.append(Piece("crate", STANDING, rng.uniform(0.8, 3.2), rng.uniform(1.6, 2.6), 3))
-    return Layout(width, height, (), tuple(pieces))
+    return Layout(width, height, tuple(pieces))
 
 
 def _stores(rng: random.Random) -> Layout:
@@ -517,14 +553,14 @@ def _stores(rng: random.Random) -> Layout:
               rng.choice((0, 2, 3, 4)))
         for _ in range(rng.randint(2, 4))
     ]
-    return Layout(width, height, (), tuple(pieces))
+    return Layout(width, height, tuple(pieces))
 
 
 def _marker(rng: random.Random) -> Layout:
     """One sign, standing alone. The cheapest scene there is and still a scene:
     a board on a post in an empty clearing is somebody's decision about where
     people should go."""
-    return Layout(2, 2, (), (Piece("sign", STANDING, 1.0, 1.4, rng.randrange(3)),))
+    return Layout(2, 2, (Piece("sign", STANDING, 1.0, 1.4, rng.randrange(3)),))
 
 
 #: What may stand in the CAMP. The camp is the party's own ground and the one
@@ -581,8 +617,8 @@ def _plot(tiles: list[list[int]], x0: int, y0: int, w: int, h: int) -> list[tupl
 
     FIRE and VOID are refusals, not scrub: the bonfire is the camp's anchor and
     VOID is the walk-out corridor, and both have code elsewhere that assumes
-    they are exactly where they were put. PROP is a refusal too — that is
-    another scene's building.
+    they are exactly where they were put. PROP and LOW are refusals too — those
+    are another scene's things, and scenes do not stack.
     """
     height = len(tiles)
     width = len(tiles[0]) if tiles else 0
@@ -604,37 +640,159 @@ def _plot(tiles: list[list[int]], x0: int, y0: int, w: int, h: int) -> list[tupl
     return scrub
 
 
+def _reachable(tiles: list[list[int]], anchor: tuple[int, int]) -> set[tuple[int, int]]:
+    """Every floor tile reachable from `anchor`, as a set.
+
+    Anchored rather than seeded from the first floor tile in scan order, which
+    is what `maps.count_reachable` does. That distinction is not academic: the
+    camp is a clearing inside a ragged treeline and its first floor tile in
+    scan order is a two-tile pocket between trunks, so a whole-map "is
+    everything connected" test answers no before a scene has touched anything.
+    What actually matters is whether the ground the PLAYERS are standing on
+    stays connected, and that is a flood from where they stand.
+    """
+    height = len(tiles)
+    width = len(tiles[0]) if tiles else 0
+    start = _nearest_floor(tiles, anchor)
+    if start is None:
+        return set()
+
+    seen = {start}
+    stack = [start]
+    while stack:
+        x, y = stack.pop()
+        for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            nx, ny = x + dx, y + dy
+            if 0 <= nx < width and 0 <= ny < height and tiles[ny][nx] == FLOOR:
+                if (nx, ny) not in seen:
+                    seen.add((nx, ny))
+                    stack.append((nx, ny))
+    return seen
+
+
+def _nearest_floor(
+    tiles: list[list[int]], anchor: tuple[int, int]
+) -> tuple[int, int] | None:
+    """Walkable tile closest to `anchor`. The anchor itself is often not one —
+    the camp's is the bonfire, which is solid."""
+    height = len(tiles)
+    width = len(tiles[0]) if tiles else 0
+    ax, ay = anchor
+    for radius in range(0, max(width, height)):
+        for oy in range(-radius, radius + 1):
+            for ox in range(-radius, radius + 1):
+                # Ring only: the interior was covered by a smaller radius.
+                if radius and max(abs(ox), abs(oy)) != radius:
+                    continue
+                tx, ty = ax + ox, ay + oy
+                if 0 <= tx < width and 0 <= ty < height and tiles[ty][tx] == FLOOR:
+                    return tx, ty
+    return None
+
+
+def _grow(
+    tiles: list[list[int]],
+    reach: set[tuple[int, int]],
+    added: list[tuple[int, int]],
+) -> set[tuple[int, int]]:
+    """Expand `reach` by newly opened floor that touches it.
+
+    Clearing a plot can join a sealed pocket onto the players' ground. Walking
+    only from the tiles we just opened finds that pocket without flooding the
+    whole map again — the set we already hold is the cache.
+    """
+    height = len(tiles)
+    width = len(tiles[0]) if tiles else 0
+    grown = set(reach)
+    stack: list[tuple[int, int]] = []
+    for tx, ty in added:
+        if (tx, ty) in grown or tiles[ty][tx] != FLOOR:
+            continue
+        if any((tx + dx, ty + dy) in grown for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1))):
+            grown.add((tx, ty))
+            stack.append((tx, ty))
+    while stack:
+        x, y = stack.pop()
+        for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            nx, ny = x + dx, y + dy
+            if 0 <= nx < width and 0 <= ny < height and tiles[ny][nx] == FLOOR:
+                if (nx, ny) not in grown:
+                    grown.add((nx, ny))
+                    stack.append((nx, ny))
+    return grown
+
+
 def _stamp(
     tiles: list[list[int]],
     layout: Layout,
     x0: int,
     y0: int,
     scrub: list[tuple[int, int]],
-) -> bool:
-    """Clear the plot and claim the building's tiles, or leave the map as it was.
+    anchor: tuple[int, int],
+    reach: set[tuple[int, int]],
+    cleared: list[tuple[int, int, int]],
+) -> set[tuple[int, int]] | None:
+    """Clear the plot and claim what the props stand on, or leave the map alone.
 
-    Clearing only ever ADDS floor, so it cannot disconnect anything. Buildings
-    can, which is why the connectivity guarantee is re-checked here and why the
-    failure path reverts instead of drilling: a corridor cut through a cabin to
-    keep the map connected is a map with a hole in a cabin.
+    Returns the new reachable set, or None if the scene was rejected.
+
+    Clearing only ever ADDS floor, so it cannot disconnect anything. Solid props
+    can — a fence run is a LINE, and a line is the one shape that seals things —
+    so the connectivity guarantee is re-checked here and the failure path
+    REVERTS. It does not drill: a corridor cut through a cabin to keep the map
+    connected is a map with a hole in a cabin, and a gap punched in a fence
+    somewhere other than its gate is a fence that stopped meaning anything.
+    Rejected scenes just try another anchor.
     """
+    cells = [
+        (tx, ty, kind)
+        for tx, ty, kind in _cells(layout, x0, y0)
+        # Props overhang their scene's box — a log at the edge can reach past
+        # it — so cells are bounds-checked here rather than assumed inside.
+        if 0 <= ty < len(tiles) and 0 <= tx < len(tiles[0]) and tiles[ty][tx] == FLOOR
+    ]
+
     changed: list[tuple[int, int, int]] = []
     for tx, ty in scrub:
         changed.append((tx, ty, tiles[ty][tx]))
         tiles[ty][tx] = FLOOR
-    for ox, oy in layout.solid:
-        tx, ty = x0 + ox, y0 + oy
-        changed.append((tx, ty, tiles[ty][tx]))
-        tiles[ty][tx] = PROP
+    for tx, ty, kind in cells:
+        changed.append((tx, ty, FLOOR))
+        tiles[ty][tx] = kind
 
-    if not layout.solid:
-        return True
-    floor = sum(row.count(FLOOR) for row in tiles)
-    if count_reachable(tiles) == floor:
-        return True
+    if not cells:
+        # Nothing solid went down, so nothing can have been cut off — but the
+        # cleared scrub may have joined a pocket on, so the set has to grow.
+        cleared.extend(changed)
+        return _grow(tiles, reach, scrub) if changed else reach
+
+    # The invariant is "nothing that was reachable stopped being reachable,
+    # other than what we just built on". Not "the whole map is one region" —
+    # both generators leave sealed pockets in their treelines that were never
+    # connected to begin with, and holding a scene responsible for those means
+    # no scene ever places.
+    #
+    # Tested as SET CONTAINMENT, not by comparing counts. Clearing scrub can
+    # connect a pre-existing pocket at the same moment a fence orphans a
+    # corner, and the two cancel out in a total — so the count version passes a
+    # scene that just stranded a piece of the map.
+    built = {(tx, ty) for tx, ty, _ in cells}
+    if not (built & reach):
+        # Building on a pocket the players could never reach cannot cut their
+        # ground. Grow if we cleared, skip the flood.
+        if changed:
+            cleared.extend(item for item in changed if item[2] in (ROCK, TREE))
+            return _grow(tiles, reach, scrub)
+        return reach
+    after = _reachable(tiles, anchor)
+    if reach <= after | built:
+        # Only the scrub it cleared, and only on success — a reverted scene put
+        # everything back itself.
+        cleared.extend(item for item in changed if item[2] in (ROCK, TREE))
+        return after
     for tx, ty, was in changed:
         tiles[ty][tx] = was
-    return False
+    return None
 
 
 def populate(
@@ -648,6 +806,7 @@ def populate(
     landmark=None,
     tries: int = ATTEMPTS,
     thread: bool = False,
+    anchor: tuple[int, int] | None = None,
 ) -> Population:
     """Place scenes on a finished map. Mutates `tiles`; returns what was placed.
 
@@ -660,12 +819,22 @@ def populate(
     """
     height = len(tiles)
     width = len(tiles[0]) if tiles else 0
+    # Where the players will be standing. Everything a scene builds has to
+    # leave this connected to itself — see `_stamp`.
+    origin = anchor or (width // 2, height // 2)
     placed: list[tuple[float, float]] = []
     landmark_at: tuple[float, float] | None = None
     props: list[Prop] = []
     lights: list[PlacedLight] = []
+    #: Scrub the scenes cleared, with what it used to be. See `_seal`.
+    cleared: list[tuple[int, int, int]] = []
+    # Carried across attempts instead of recomputed on both sides of every
+    # stamp: the set only changes when a scene actually lands, and a flood of
+    # the whole map per attempt is most of what map generation costs.
+    reach = _reachable(tiles, origin)
 
     def attempt(layout: Layout, budget: int) -> bool:
+        nonlocal reach
         for _ in range(budget):
             # The border stays untouched: it is the treeline that keeps the
             # camera from framing the end of the world, and a scene allowed to
@@ -682,8 +851,10 @@ def populate(
             scrub = _plot(tiles, x0, y0, layout.width, layout.height)
             if scrub is None:
                 continue
-            if not _stamp(tiles, layout, x0, y0, scrub):
+            grown = _stamp(tiles, layout, x0, y0, scrub, origin, reach, cleared)
+            if grown is None:
                 continue
+            reach = grown
 
             placed.append((cx, cy))
             for light in layout.lights:
@@ -718,11 +889,37 @@ def populate(
     for _ in range(rng.randint(*count)):
         attempt(_pick(rng, pool)(rng), tries)
 
+    _seal(tiles, origin, cleared)
+
     route: list[tuple[float, float]] = []
     if thread:
-        route = _route(placed, landmark_at, (width / 2, height / 2), rng)
+        route = _route(placed, landmark_at, (float(origin[0]), float(origin[1])), rng)
         props.extend(_thread(tiles, route, rng))
     return Population(props=props, lights=lights, scenes=placed, route=route)
+
+
+def _seal(
+    tiles: list[list[int]],
+    anchor: tuple[int, int],
+    cleared: list[tuple[int, int, int]],
+) -> None:
+    """Put back any scrub whose clearing left an orphan tile of floor.
+
+    A scene clears its own plot, and a plot corner can poke into a thicket. The
+    tile that gets cleared there comes out surrounded by trunks — a one-tile
+    island of walkable ground nothing can ever reach. Harmless to look at and
+    fatal to `build_forest`, which asserts every floor tile is reachable.
+
+    Only tiles THIS pass cleared are considered. Both generators leave sealed
+    pockets in their own treelines and those are not ours to tidy: filling them
+    would salt the camp's treeline with boulders that were never there.
+    """
+    if not cleared:
+        return
+    reach = _reachable(tiles, anchor)
+    for tx, ty, was in cleared:
+        if tiles[ty][tx] == FLOOR and (tx, ty) not in reach:
+            tiles[ty][tx] = was
 
 
 def _route(

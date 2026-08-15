@@ -152,6 +152,10 @@ def _dress_camp(tiles: list[list[int]], cx: float, cy: float, seed: int) -> scen
         random.Random(seed ^ 0xCA47),
         count=scenery.CAMP_SCENES,
         pool=scenery.CAMP_POOL,
+        # The fire, not the first floor tile in scan order. The camp's treeline
+        # is full of two-tile pockets; a flood that starts in one of those
+        # answers "is the map connected?" with no before a crate has landed.
+        anchor=(int(cx), int(cy)),
         # Tight, because the clearing has room for maybe three anchors and the
         # forest's spacing would reject all but one of them.
         separation=5.5,

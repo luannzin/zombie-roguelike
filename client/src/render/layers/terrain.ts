@@ -36,7 +36,7 @@
  * moment reads as a screen filter, not as wind.
  */
 
-import { FLOOR, PROP, ROCK, TREE, VOID, type FirePlace, type TileMap } from '../../game/world';
+import { FLOOR, LOW, PROP, ROCK, TREE, VOID, type FirePlace, type TileMap } from '../../game/world';
 import { createSurface } from '../../lib/canvas';
 import { floorColor, hasFloorSpeck, palette } from '../../theme/palette';
 import type { Camera } from '../camera';
@@ -730,10 +730,11 @@ function paintLitter(
   for (let ty = y0; ty <= y1; ty++) {
     for (let tx = x0; tx <= x1; tx++) {
       const tile = world.tiles[ty][tx];
-      // VOID and PROP are floor with something on top of them, so litter
+      // VOID, PROP and LOW are floor with something on top of them, so litter
       // belongs there too — it is what makes the camp exit read as forest
-      // floor in shadow rather than as a painted rectangle.
-      if (tile !== FLOOR && tile !== VOID && tile !== PROP) continue;
+      // floor in shadow rather than as a painted rectangle, and what keeps
+      // the dirt under a crate from turning into a wall tile.
+      if (tile !== FLOOR && tile !== VOID && tile !== PROP && tile !== LOW) continue;
       if (mask && !mask(tx, ty)) continue;
 
       const roll = tileHash(tx, ty, seed, 95);
@@ -884,7 +885,7 @@ function paintFlat(
       const px = tx * ts;
       const py = ty * ts;
       const tile = world.tiles[ty][tx];
-      if (tile !== FLOOR && tile !== VOID && tile !== PROP) {
+      if (tile !== FLOOR && tile !== VOID && tile !== PROP && tile !== LOW) {
         ctx.fillStyle = tiles.wallBody;
         ctx.fillRect(px, py, ts, ts);
         ctx.fillStyle = tiles.wallTop;

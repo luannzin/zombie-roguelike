@@ -137,14 +137,26 @@ game's scale.
   connectivity is what decides which ground is open. A scene may CLEAR up to
   `scenery.CLEARABLE` of its plot (rock and tree only — never FIRE, VOID or
   another scene's building), which only adds floor and so cannot disconnect
-  anything. Buildings claim `world.PROP` tiles, which can, so `_stamp`
-  re-checks reachability and REVERTS on failure. Never drill: a corridor cut
-  through a cabin to keep the map connected is a map with a hole in a cabin.
+  anything. Standing pieces claim tiles from `FOOTPRINTS` — derived from the
+  piece's contact point, never listed per-scene — and those can cut a path, so
+  `_stamp` re-checks reachability from the player origin and REVERTS on
+  failure. Never drill: a corridor cut through a cabin to keep the map
+  connected is a map with a hole in a cabin. `_seal` puts back scrub whose
+  clearing left an orphan tile of floor; both generators leave sealed pockets
+  in their own treelines and those are not ours to tidy.
+- The connectivity check is a SET from a point that matters (spawn clearing,
+  camp fire), not a count from the first floor tile in scan order. A camp
+  treeline pocket is two tiles and is the first floor the scan finds; a count
+  that starts there answers no before a crate has landed. Containment, not
+  totals: clearing one pocket while a fence orphans another cancels in a
+  count. The reachable set is carried across attempts — a flood of the whole
+  map per try is most of what generation costs.
 - Scene placement never touches the `BORDER` treeline, which is what keeps the
   camera from framing the end of the world.
-- Only BUILDINGS are solid. Fences, signs, crates, logs and firepits are walked
-  through — a scene made of obstacles is a maze, and these are meant to be
-  walked into and read.
+- BUILDINGS claim `world.PROP` (solid, sight-blocking). Waist-high cover —
+  fences, signs, crates, logs — claims `world.LOW`: solid to bodies and
+  bullets, transparent to light. Making those PROP puts a shadow wedge behind
+  every crate and turns a fence into a wall of black. Firepits stay walkable.
 - The LANDMARK (the cabin) is placed first, alone, with a much larger attempt
   budget, and there is at most one per map. Rolled in with the weighted pool it
   loses every anchor race to a 4x3 woodpile; a second one turns the first from a

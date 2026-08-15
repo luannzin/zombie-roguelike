@@ -82,7 +82,9 @@ mutation, no React.
   and a bullet but not light. VOID is the same for light: it is a gap between
   trees, so the beam falls in; darkness then follows the path as a falloff
   (`VOID_CRUSH_REACH`), not as a stamped rectangle, so it reads as a ribbon
-  of deep woods.
+  of deep woods. `LOW` is the third exception — waist-high cover you look
+  over. Paint it as ground (with PROP and VOID); the standing sprite covers
+  it. Treating it as a wall tile puts a rock under every crate.
 - `Camera` follows the player and nothing else. The move INTO a zone belongs to
   `game/lobby-scene.ts`, which is already showing the same place when it starts;
   by the time this camera exists the push-in is over and it opens on the frame

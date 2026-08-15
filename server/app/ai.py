@@ -382,8 +382,14 @@ def look(enemy: Enemy, living: Sequence[Player], world: TileMap) -> Player | Non
             # notice, whichever way you are facing — hence the guard.
             if (dx * enemy.aim_x + dy * enemy.aim_y) / distance < cos_half:
                 continue
+            # `sight=True`: what stops a look is not what stops a body. A
+            # creature can see you over a fallen log and across the mouth of
+            # the camp exit, and the client draws it that way — see
+            # `world.blocks_sight`.
             if (
-                combat.raycast_tiles(world, enemy.x, enemy.y, dx / distance, dy / distance, distance)
+                combat.raycast_tiles(
+                    world, enemy.x, enemy.y, dx / distance, dy / distance, distance, sight=True
+                )
                 < distance - 1e-3
             ):
                 continue
@@ -512,8 +518,12 @@ def glare(pack: Sequence[Enemy], living: Sequence[Player], world: TileMap, dt: f
             # noticed is where the player is pointing.
             if (dx * player.aim_x + dy * player.aim_y) / distance < cos_half:
                 continue
+            # Light, not a bullet: a log you can see over does not hide you
+            # from the lamp any more than it hides you from an enemy's eyes.
             if (
-                combat.raycast_tiles(world, player.x, player.y, dx / distance, dy / distance, distance)
+                combat.raycast_tiles(
+                    world, player.x, player.y, dx / distance, dy / distance, distance, sight=True
+                )
                 < distance - 1e-3
             ):
                 continue

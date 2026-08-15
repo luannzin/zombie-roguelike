@@ -17,8 +17,8 @@ and nowhere near the frame loop.
 - `lobby/` — `CampfireCanvas` (mounts `LobbyScene`; owns the rest-shot fire
   position via `campFireAnchor`, not via per-screen props), `RoomCode`,
   `PlayerRoster`.
-- `menu/` — `MenuButton`, `HudInput`, `JoinRoomDialog`: the title screen's
-  controls, in HUD chrome.
+- `menu/` — `MenuButton`, `HudInput`, `HudSlider`, `JoinRoomDialog`,
+  `AudioOptions`: the title screen's controls, in HUD chrome.
 - `ui/` — coss primitives (Base UI + shadcn-style copy-in). **Generated. Do not
   hand-edit.**
 
@@ -112,6 +112,14 @@ and nowhere near the frame loop.
   `ControlsHint` always lists `M som`, unlike the rest of that line, because
   mute is the one control that works everywhere and there is no settings screen
   yet.
+- **Opções is a stage of `HomeScreen`, not a route.** Same reason `play` is:
+  there is nothing to link to and nothing to come back to. `AudioOptions` reads
+  the audio engine through `useSyncExternalStore` — the same shape as `useHud`,
+  since the mix lives in a Web Audio graph React does not own — and every change
+  applies live and ramped, so there is no apply button. `HudSlider` is a native
+  `<input type="range">` skinned by `.hud-range`: the platform supplies drag,
+  keyboard stepping, touch and ARIA, and we supply every pixel. The coss
+  `Slider` is not used, for the reason below.
 - `menu/` reimplements the button and the text field rather than restyling the
   coss ones: every visual decision in those primitives (radius, shadow, ring,
   sans face) is the opposite of the HUD's, and overriding them all at the call

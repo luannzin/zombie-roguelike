@@ -11,10 +11,10 @@ own the HUD and routing only. Talks to the server over one WebSocket.
 - `src/render/` — canvas renderer and its layers (child doc)
 - `src/components/` — React components, ours and generated (child doc)
 - Owned directly here:
-  - `src/audio/` — `engine.ts` (context, the three buses, gesture unlock, mute),
-    `library.ts` (the generated catalog and its decoded buffers), `sfx.ts`
-    (one-shots: variant, detune, world position), `beds.ts` (looping ambience
-    and the crossfades between places)
+  - `src/audio/` — `engine.ts` (context, the four buses and their volumes,
+    gesture unlock, mute), `library.ts` (the generated catalog and its decoded
+    buffers), `sfx.ts` (one-shots: variant, detune, world position), `beds.ts`
+    (looping ambience and the crossfades between places)
   - `src/net/` — `connection.ts` (socket, reconnect, RTT, multicast delivery),
     `protocol.ts` (wire types, mirror of `server/app/protocol.py`),
     `endpoints.ts` (where the server is) and `rooms.ts` (the room REST pair)
@@ -46,10 +46,19 @@ own the HUD and routing only. Talks to the server over one WebSocket.
   that, `playSfx` is a no-op rather than an error, and there is deliberately no
   "click to enable audio" gate. M toggles mute anywhere; the setting is in
   `localStorage` under `zr:audio`.
-- **Ambience is declarative.** Callers state what the world sounds like
-  (`setBeds({ wind: 1, night: 0.85 })`), never start/stop beds. It is
-  idempotent, safe to call before the buffers have decoded (it retries when they
-  land), and it is what makes the camp → forest hand-off one call in one place.
+- **Ambience is declarative, and the SCREEN declares it.** Callers state what
+  the world sounds like (`setBeds({ wind: 1, night: 0.85 })`), never start/stop
+  beds. It is idempotent, safe to call before the buffers have decoded (it
+  retries when they land), and no screen clears on unmount — whoever mounts next
+  states its own mix. `HomeScreen` states silence (the title screen's fire is a
+  picture, not a place), `LobbyScreen` states the bonfire, `Game` states the
+  zone's.
+- **Four buses, and they are a player-facing taxonomy** (`audio/engine.ts`):
+  `ui`, `ambient`, `sfx` — guns and zombies only — and `misc` for everything
+  else that happens. Each is a row in Opções with a 0-100 fader, live and
+  ramped, persisted in `zr:audio`. `sfx` is deliberately narrow so somebody can
+  turn combat down without losing their own footsteps. Which bus a sound rides
+  is authored in `server/tools/make_audio.py` and travels on the manifest.
 - **React never renders per frame.** `Game` publishes to `hud-store` at 5 Hz and
   components read it via `useSyncExternalStore`. Per-frame state must not become
   component state.

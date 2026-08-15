@@ -169,12 +169,14 @@ seam React is allowed to read.
 - **The zone says what the place sounds like**, exactly as it already says the
   title card, whether guns fire and whether the lamp works. `applyZoneAmbience`
   runs on arrival and nothing reads the map to infer it.
-- **The fire bed is handed over, not owned.** `lobby-scene` starts it in
-  `start()` and deliberately does NOT stop it in `dispose()` — the one exception
-  to the release rule above. Title screen and lobby are one continuous shot of
-  one clearing, and `Game.dispose()` is where the beds are finally released
-  (`stopBeds`). Stopping it in the scene would put a gap in the audio at exactly
-  the seams the transition exists to hide.
+- **Ambience is declared by the SCREEN, and `lobby-scene` declares none.** The
+  scene is decoration and draws the title screen's backdrop as well as a room's,
+  so it cannot know whether it is a place you are standing in — the menu's fire
+  is a picture and must stay silent. `LobbyScreen` states `{ fire: 1 }` on
+  mount, `HomeScreen` states `{}`, and `Game` states the zone's on arrival.
+  None of them clear on unmount: whoever mounts next declares the mix, which is
+  what lets lobby → arena hand over with no gap while lobby → menu still goes
+  quiet. `Game.dispose()` is the only release (`stopBeds`).
 - **Footsteps are played from `trackFootsteps`**, because that loop is already
   the one place that fires exactly once per stride, for every body, with the
   soil in hand — a separate timer keyed off velocity would drift out of sync

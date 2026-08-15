@@ -104,8 +104,14 @@ imported by `app/` and never run at request time.
     `sfx_crate_break` fits inside the crate smash strip. Changing a sheet's
     `frames / fps` means changing its sound.
   - **The mix lives in the manifest**, not at the call site: `gain` and `bus`
-    (`sfx` / `ambient` / `ui`) are authored in `CATALOG`, so "why is the shot
-    louder than a footstep" has one answer in one file.
+    are authored in `CATALOG`, so "why is the shot louder than a footstep" has
+    one answer in one file.
+  - **`bus` is a player-facing grouping**, because each one is a fader in the
+    game's Opções panel: `ui` (the interface answering), `ambient` (the loops),
+    `sfx` (**guns and zombies only**) and `misc` (everything else that happens —
+    steps, loot, crates, the lamp, the transitions). Keep `sfx` narrow: somebody
+    turning combat down must not lose their own footsteps with it. A sound in
+    the wrong bus is a slider that does not do what its label says.
 - Every zombie sound is one instrument (`_throat`) and the differences are
   contour and envelope, so they come from one creature. **A growl is ROUGH, not
   LOW**: `_wander` (cycle-to-cycle pitch instability) and `_grind` (irregular

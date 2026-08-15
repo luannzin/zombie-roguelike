@@ -81,8 +81,9 @@ and nowhere near the frame loop.
   rarity colour. Slot value is the small HUD coin (`/hud/coin.png`)
   plus the number. Dragging a cell off the panel tosses it;
   `InventoryGhost` follows the cursor.
-  The open bag shows pocket gold (`InventoryGold`) and weight as
-  `0.2 / 10kg`. The hover card's PESO is the same unit.
+  The open bag shows the sum of item values (`InventoryGold`) and
+  weight as `0.2 / 10kg`. The hover card's PESO is the same unit.
+  A fly in the air is not in that gold total yet, same as the bar.
   Both the card and the ghost portal to `document.body` so the glass
   does not warp them off the pointer. The card's `fixed` layer is a
   wrapper — `.world-tooltip` is `position: relative` and cannot be the

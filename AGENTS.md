@@ -152,7 +152,7 @@ subtree.
   it. Camp maps have none. The pocket is
   `server/app/inventory.py`: a few slots (upgradeable), stacking by key,
   and a weight in kg that may go past max. The open bag shows
-  `current / maxkg` and the pocket gold total. Past 20% of max carry the walk slows
+  `current / maxkg` and the bag's item-value total. Past 20% of max carry the walk slows
   and the footsteps read heavier.   TAB expands the bag on the left HUD. A collected item is held over the
   head, the bag opens so the slot is visible, then the sprite flies into
   that cell — the slot stays empty (border, value, weight) until the

@@ -221,9 +221,9 @@ seam React is allowed to read.
   head, open the bag, then travel into the slot. Travel waits until
   `slot-N` has a live anchor (drawer open, cell on screen) and aims
   through `warpHudPoint` so the sprite lands on the glass-warped cell.
-  The pocket snapshot carries `gold` for the bag totalizer (same
-  number as vitals). The cell and the weight bar stay at their pre-collect state while
-  that fly is in the air.
+  The pocket snapshot carries `gold` as the sum of catalog values in
+  the bag (`value × qty`). The cell, the weight bar and that total
+  stay at their pre-collect state while a fly is in the air.
   Dragging a cell off the panel calls `requestInventoryDrop`; `Game`
   sends `{type:"drop","slot"}` and clears the cell until the roster
   confirms. `lootPrompt.full` is a bag that cannot take the nearby drop.

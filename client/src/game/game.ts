@@ -1464,11 +1464,18 @@ export class Game {
       if (def.frame + 1 > frames) frames = def.frame + 1;
     }
     let weight = this.local?.carryWeight ?? this.localMeta?.inv?.w ?? 0;
+    let gold = 0;
+    for (const slot of slots) {
+      if (slot) gold += slot.value * slot.qty;
+    }
     for (const fly of listLootFlies()) {
       const def = catalog[fly.key];
-      if (def) weight -= def.weight;
+      if (!def) continue;
+      weight -= def.weight;
+      gold -= def.value;
     }
     if (weight < 0) weight = 0;
+    if (gold < 0) gold = 0;
 
     return {
       open: this.inventoryOpen,
@@ -1476,7 +1483,7 @@ export class Game {
       slots,
       weight: Math.round(weight * 100) / 100,
       maxWeight: config.carryMaxWeight ?? 10,
-      gold: this.localMeta?.gold ?? 0,
+      gold,
       lootFrames: Math.max(1, frames),
       catches: this.bagCatches,
       refusals: this.bagRefusals,

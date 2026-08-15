@@ -1,6 +1,6 @@
 /**
- * Pocket gold total. Same number as the vitals GOLD line — here so the
- * open bag can answer "how much am I carrying" without leaving the panel.
+ * Bag value total: every stowed item's catalog value × stack. Not the
+ * vitals GOLD line (that is coin gold from kills).
  */
 
 import { CoinIcon } from './CoinIcon';

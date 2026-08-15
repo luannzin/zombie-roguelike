@@ -230,15 +230,15 @@ WALKER = ExactCreature(
     legs=SHAMBLE_LEGS,
 )
 
-# Husk — spent. Ashen skin, almost no shirt, skull showing, arms hang.
+# Husk — spent. Pale green skin, almost no shirt, skull showing, arms hang.
 HUSK_PALETTE: Palette = {
-    "o": (28, 28, 30, 255),
-    "d": (58, 56, 54, 255),
-    "b": (98, 96, 88, 255),
-    "k": (76, 74, 68, 255),
-    "s": (154, 156, 132, 255),
-    "h": (176, 178, 154, 255),
-    "e": (36, 34, 32, 255),
+    "o": (24, 32, 28, 255),
+    "d": (52, 62, 50, 255),
+    "b": (100, 108, 86, 255),
+    "k": (78, 84, 66, 255),
+    "s": (146, 168, 122, 255),
+    "h": (168, 186, 140, 255),
+    "e": (30, 36, 28, 255),
     "r": (120, 48, 52, 255),
 }
 
@@ -300,15 +300,15 @@ HUSK = ExactCreature(
     legs=SHAMBLE_LEGS,
 )
 
-# Brute — heavier. Jaundiced skin, stained shirt, thick brow, arms out.
+# Brute — heavier. Dark olive skin, stained shirt, thick brow, arms out.
 BRUTE_PALETTE: Palette = {
-    "o": (32, 28, 22, 255),
-    "d": (62, 52, 36, 255),
-    "b": (88, 78, 58, 255),
-    "k": (68, 60, 44, 255),
-    "s": (168, 164, 88, 255),
-    "h": (188, 180, 110, 255),
-    "e": (36, 30, 22, 255),
+    "o": (18, 28, 20, 255),
+    "d": (40, 56, 32, 255),
+    "b": (86, 100, 64, 255),
+    "k": (66, 78, 48, 255),
+    "s": (116, 154, 72, 255),
+    "h": (140, 174, 88, 255),
+    "e": (24, 32, 20, 255),
     "r": (140, 40, 44, 255),
 }
 

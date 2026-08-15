@@ -98,10 +98,15 @@ function poseAt(age: number, ends: LootFlyEnds): LootFlyPose {
   return {
     x: ends.from.x + (ends.to.x - ends.from.x) * ease,
     y: ends.from.y + (ends.to.y - ends.from.y) * ease,
-    scale: 1.6 - 0.75 * ease,
+    scale: 1.6 - 0.6 * ease,
     rotate: ease * 420,
-    alpha: t > 0.88 ? (1 - t) / 0.12 : 1,
+    alpha: 1,
   };
+}
+
+/** True while a fly is still the sprite for that cell — the slot stays empty. */
+export function incomingHas(slot: number): boolean {
+  return snapshot.some((fly) => fly.slot === slot);
 }
 
 export function listLootFlies(): readonly LootFlySpec[] {

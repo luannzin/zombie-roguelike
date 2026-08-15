@@ -12,7 +12,8 @@ and nowhere near the frame loop.
 - `hud/` — ours: `Hud`, `HudScreen`, `Panel`, `Vitals`, `BatteryGauge`,
   `ProgressBar`, `StatusLine`, `NetStats`, `ControlsHint`, `ZoneTitle`,
   `ReadyCount`, `InteractPrompt`, `LootPrompt`, `Inventory`, `InventorySlot`,
-  `WeightBar`, `LootIcon`, `LootFly`, `Tooltip`, `TooltipKey`.
+  `WeightBar`, `LootIcon`, `LootFly`, `LootCard`, `LootCardRow`,
+  `TooltipCard`, `InventoryGhost`, `Tooltip`, `TooltipKey`.
 - `lobby/` — `CampfireCanvas` (mounts `LobbyScene`; owns the rest-shot fire
   position via `campFireAnchor`, not via per-screen props), `RoomCode`,
   `PlayerRoster`.
@@ -26,7 +27,9 @@ and nowhere near the frame loop.
 - HUD state is read from `hud-store` through `useHud`, republished at 5 Hz.
   Never subscribe a component to per-frame game state.
 - Every HUD layer is `pointer-events: none` (the `hud-layer` utility) so the
-  canvas keeps receiving aim and fire input underneath.
+  canvas keeps receiving aim and fire input underneath. The bag is the
+  exception: `Inventory` sets `pointer-events: auto` on itself so hover
+  and drag work, and nothing else on that corner may.
 - All four corners live inside `HudScreen`, which curves and tears the overlay.
   A HUD panel placed outside that wrapper visibly floats off the glass. World
   `Tooltip`s are the exception — they belong to the scene, not the glass.
@@ -67,7 +70,13 @@ and nowhere near the frame loop.
   opens it so the slot is on screen before the fly leaves the head. Slot
   centres are written to `inventory-anchors` from layout. `LootFly` sits
   outside the glass — hold, then travel — pose is rAF, membership is
-  `loot-flies`.
+  `loot-flies`. A fly targeting a cell hides that cell's icon until it
+  lands. Hovering a filled cell is a pointer and opens `LootCard`
+  (`TooltipCard` chrome: same fill, bar, staircase arrow). Dragging a
+  cell off the panel tosses it; `InventoryGhost` follows the cursor.
+  Both the card and the ghost portal to `document.body` so the glass
+  does not warp them off the pointer. Drop goes through
+  `inventory-actions`, never a socket from React.
 - A control a zone forbids is shown DISABLED, never hidden. `BatteryGauge` in
   the camp still answers "how much light am I carrying into the night"; only
   its readout changes, and a refused keypress kicks the panel instead of doing

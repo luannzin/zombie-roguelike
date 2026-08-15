@@ -58,7 +58,8 @@ the client talks to that same origin and Vite proxies `/ws` to the server.
 
 Controls: **WASD** move · **mouse** aim · **left click / hold** shoot · **F**
 lantern on/off · **E** ready (at the campfire) / collect (a nearby drop) ·
-**TAB** backpack.
+**TAB** backpack. Hover a slot for the card; drag a filled cell off the
+panel to toss it near your feet.
 
 Point the client at another host with `VITE_SERVER_URL=http://192.168.0.10:8000 bun run dev`
 — an HTTP origin, not a socket URL; the client derives both from it. That host

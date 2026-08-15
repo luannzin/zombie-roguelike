@@ -41,6 +41,11 @@ list rides `welcome.loot` and a dirty snapshot `loot`; `lootPickups` is the
 juice for that tick and carries `slot` so the client can fly the sprite
 onto that HUD cell. The pocket itself rides the roster as `inv`.
 
+`{"type":"drop","slot":0}` — toss a bag slot onto the ground near the
+player's feet. The server ignores it in camp, during the walk-out, or if
+that cell is empty. A stack becomes one world drop per unit; the server
+picks walkable tiles. The ground list and the roster both dirty.
+
 ### server → client
 
 `hello` (once, first message — the lobby is built from this):

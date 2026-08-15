@@ -12,6 +12,9 @@
  * `welcome` is the forest. That welcome carries `ack` so the client keeps
  * numbering inputs above what the server already processed — resetting to 0
  * makes every later packet look like a replay.
+ *
+ * `{type:"drop","slot"}` tosses a bag cell onto the ground near the feet.
+ * The server places it; the client never sends a position.
  */
 
 export interface MovementInput {
@@ -52,7 +55,19 @@ export interface CollectPacket {
   id: string;
 }
 
-export type ClientMessage = InputPacket | PingPacket | StartPacket | ReadyPacket | CollectPacket;
+/** Toss a bag slot onto the ground near your feet. Server places it. */
+export interface DropPacket {
+  type: 'drop';
+  slot: number;
+}
+
+export type ClientMessage =
+  | InputPacket
+  | PingPacket
+  | StartPacket
+  | ReadyPacket
+  | CollectPacket
+  | DropPacket;
 
 /**
  * Canonical scale, decided server-side (see server/app/config.py):

@@ -18,6 +18,7 @@ export interface HudInventorySlot {
   rarity: LootRarity;
   frame: number;
   value: number;
+  weight: number;
 }
 
 export interface HudInventory {

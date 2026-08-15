@@ -1006,6 +1006,14 @@
  * back to the centre of the BORDER box, which the 2px bar would otherwise
  * shift it off.
  */
+.world-tooltip-card {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 6px;
+  min-width: 88px;
+}
+
 .world-tooltip::after {
   content: '';
   position: absolute;

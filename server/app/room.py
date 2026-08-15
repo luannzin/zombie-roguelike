@@ -127,14 +127,27 @@ class Room:
         #: Someone joined or left: attach the roster to the next snapshot
         #: instead of making the party wait out the interval for a name.
         self._roster_dirty = True
-        #: A drop was collected: attach the remaining loot list next tick.
+        #: A drop was collected or tossed: attach the remaining loot list next tick.
         self._loot_dirty = True
+        self._loot_seq = 0
         self._load_drops()
 
     def _load_drops(self) -> None:
         """Hydrate live drops from the map the generator left behind."""
         self.drops = loot.from_payloads(self.world.loot)
+        seq = 0
+        for drop_id in self.drops:
+            if drop_id.startswith("l"):
+                try:
+                    seq = max(seq, int(drop_id[1:]))
+                except ValueError:
+                    pass
+        self._loot_seq = seq
         self._loot_dirty = True
+
+    def _next_drop_id(self) -> str:
+        self._loot_seq += 1
+        return f"l{self._loot_seq}"
 
     # --- lifecycle ----------------------------------------------------------
     def start(self) -> None:
@@ -329,6 +342,40 @@ class Room:
         self.loot_pickup_events.append(
             loot.LootPickup(drop.id, player.id, drop.key, drop.x, drop.y, slot).to_payload()
         )
+        self._loot_dirty = True
+        self._roster_dirty = True
+
+    def drop_loot(self, pid: str, slot: int) -> None:
+        """Toss a bag slot onto the ground near this player's feet.
+
+        Camp has none, and the walk-out is too late. A stack becomes one
+        world drop per unit — the ground list has no quantity. Placement
+        is walkable floor around the feet; the server picks the tiles.
+        """
+        if self.phase != protocol.PHASE_PLAYING or self.departing:
+            return
+        if self.zone.kind == zones.KIND_CAMP:
+            return
+        player = self.players.get(pid)
+        if player is None or not player.alive:
+            return
+        taken = player.inventory.take(slot)
+        if taken is None:
+            return
+        feet_y = player.y + PLAYER_HALF_HEIGHT
+        occupied = [
+            (drop.x / TILE_SIZE - 0.5, drop.y / TILE_SIZE - 0.5)
+            for drop in self.drops.values()
+        ]
+        rng = random.Random()
+        for _ in range(taken.qty):
+            pos = loot.place_near(self.world.tiles, player.x, feet_y, occupied, rng)
+            if pos is None:
+                pos = (player.x, feet_y)
+            px, py = pos
+            occupied.append((px / TILE_SIZE - 0.5, py / TILE_SIZE - 0.5))
+            drop_id = self._next_drop_id()
+            self.drops[drop_id] = Drop(id=drop_id, key=taken.key, x=px, y=py)
         self._loot_dirty = True
         self._roster_dirty = True
 

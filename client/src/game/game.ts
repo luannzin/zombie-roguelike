@@ -56,6 +56,7 @@ import {
   type HudStore,
 } from './hud-store';
 import { InputController } from './input';
+import { bindInventoryDrop } from './inventory-actions';
 import { readInventoryAnchor, clearInventoryAnchors } from './inventory-anchors';
 import { Lantern } from './lantern';
 import { SnapshotBuffer, type RenderedEnemy, type RenderedPlayer } from './interpolation';
@@ -306,6 +307,7 @@ export class Game {
     this.input.onToggleLantern = () => this.lantern.toggle();
     this.input.onInteract = () => this.sendInteract();
     this.input.onToggleInventory = () => this.toggleInventory();
+    bindInventoryDrop((slot) => this.requestDrop(slot));
     this.minimap = new Minimap(options.minimapCanvas);
   }
 
@@ -375,6 +377,7 @@ export class Game {
     clearTooltipAnchors();
     clearInventoryAnchors();
     clearLootFlies();
+    bindInventoryDrop(null);
     this.inventoryOpen = false;
     this.bagCatches = 0;
     this.bagRefusals = 0;
@@ -1367,6 +1370,28 @@ export class Game {
     if (inventory) this.patchHud({ inventory });
   }
 
+  private requestDrop(slot: number): void {
+    if (this.departing || this.introLeft > 0) return;
+    if (this.zone?.kind === 'camp') return;
+    const meta = this.localMeta;
+    if (!meta?.inv) return;
+    const row = meta.inv.bag[slot];
+    if (!row) return;
+    this.connection.send({ type: 'drop', slot });
+    meta.inv.bag[slot] = null;
+    const catalog = this.config?.loot ?? {};
+    let weight = 0;
+    for (const cell of meta.inv.bag) {
+      if (!cell) continue;
+      const def = catalog[cell.k];
+      if (def) weight += def.weight * cell.n;
+    }
+    meta.inv.w = Math.round(weight * 100) / 100;
+    if (this.local) this.local.carryWeight = meta.inv.w;
+    const inventory = this.inventoryHud();
+    if (inventory) this.patchHud({ inventory });
+  }
+
   private canStow(key: string): boolean {
     const inv = this.localMeta?.inv;
     if (!inv) return true;
@@ -1395,6 +1420,7 @@ export class Game {
         rarity: def.rarity,
         frame: def.frame,
         value: def.value,
+        weight: def.weight,
       };
     });
     let frames = 0;

@@ -1,13 +1,15 @@
 /**
  * One bag cell: rarity border, the item sprite, value up-right, qty down-right.
+ * A fly targeting this cell IS the sprite — the icon stays hidden until it lands.
  */
 
-import { useLayoutEffect, useRef } from 'react';
+import { useLayoutEffect, useRef, useSyncExternalStore, type PointerEvent } from 'react';
 import type { HudInventorySlot } from '../../game/hud-store';
 import {
   dropInventoryAnchor,
   writeInventoryAnchor,
 } from '../../game/inventory-anchors';
+import { incomingHas, subscribeLootFlies } from '../../game/loot-flies';
 import type { LootRarity } from '../../net/protocol';
 import { cn } from '@/lib/utils';
 import { LootIcon } from './LootIcon';
@@ -16,6 +18,12 @@ export interface InventorySlotProps {
   index: number;
   item: HudInventorySlot | null;
   lootFrames: number;
+  dragging?: boolean;
+  onHover?: (item: HudInventorySlot, x: number, y: number) => void;
+  onLeave?: () => void;
+  onGrip?: (index: number, item: HudInventorySlot, event: PointerEvent<HTMLDivElement>) => void;
+  onDrag?: (event: PointerEvent<HTMLDivElement>) => void;
+  onRelease?: (event: PointerEvent<HTMLDivElement>) => void;
 }
 
 const RARITY_BORDER: Record<LootRarity, string> = {
@@ -26,8 +34,24 @@ const RARITY_BORDER: Record<LootRarity, string> = {
   legendary: 'border-rarity-legendary',
 };
 
-export function InventorySlot({ index, item, lootFrames }: InventorySlotProps) {
+export function InventorySlot({
+  index,
+  item,
+  lootFrames,
+  dragging = false,
+  onHover,
+  onLeave,
+  onGrip,
+  onDrag,
+  onRelease,
+}: InventorySlotProps) {
   const ref = useRef<HTMLDivElement>(null);
+  const incoming = useSyncExternalStore(
+    subscribeLootFlies,
+    () => incomingHas(index),
+    () => false,
+  );
+  const hide = dragging || (incoming && (!item || item.qty <= 1));
 
   useLayoutEffect(() => {
     const el = ref.current;
@@ -53,11 +77,28 @@ export function InventorySlot({ index, item, lootFrames }: InventorySlotProps) {
       ref={ref}
       data-inv-slot={index}
       className={cn(
-        'relative size-10 border bg-panel-inset shadow-[inset_0_0_0_1px_var(--surface)]',
+        'relative size-10 touch-none border bg-panel-inset shadow-[inset_0_0_0_1px_var(--surface)]',
         item ? RARITY_BORDER[item.rarity] : 'border-track-border',
+        item && !incoming ? 'cursor-pointer' : null,
+        dragging ? 'cursor-grabbing' : null,
       )}
+      onPointerEnter={() => {
+        if (!item || dragging) return;
+        const el = ref.current;
+        if (!el) return;
+        const box = el.getBoundingClientRect();
+        onHover?.(item, box.left + box.width / 2, box.top);
+      }}
+      onPointerLeave={() => onLeave?.()}
+      onPointerDown={(event) => {
+        if (!item || incoming) return;
+        onGrip?.(index, item, event);
+      }}
+      onPointerMove={onDrag}
+      onPointerUp={onRelease}
+      onPointerCancel={onRelease}
     >
-      {item ? (
+      {item && !hide ? (
         <>
           <LootIcon
             frame={item.frame}

@@ -183,7 +183,10 @@ game's scale.
   a name or a colour. Camp maps have none. What was collected rides the
   roster as `player.inv` (slots, stacks, weight) so extraction can spend
   it later. A full bag refuses a new kind; overweight is allowed and only
-  slows the walk (`carry_scale` in `simulation.py`).
+  slows the walk (`carry_scale` in `simulation.py`). `{type:"drop","slot"}`
+  pulls a cell back onto the ground near the feet (`inventory.take`,
+  `loot.place_near`); camp and the walk-out refuse it. A stack is one
+  world drop per unit.
 - **The thread is what makes it one story instead of seven.** `_route` orders
   the placed scenes by distance from spawn so the narrative reads OUTWARD and
   ends at the landmark; `_thread` lays prints between them with blood

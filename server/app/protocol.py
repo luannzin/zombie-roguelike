@@ -18,6 +18,8 @@ client -> server
   {"type":"ready"}                      toggle ready, camp only, near the fire
   {"type":"collect","id":"l3"}          pick up a loot drop; ignored if too far
                                         or the bag has no slot for that key
+  {"type":"drop","slot":0}              pull a bag slot back onto the ground
+                                        near the player's feet; ignored in camp
 
 server -> client
   {"type":"hello","playerId":"...","code":"ABC1234",
@@ -80,7 +82,8 @@ Snapshot arrays:
             ({"kind":"enemy"} entries: xp paid now; gold = coins spawned)
   pickups   coins collected since the last snapshot
   loot      remaining world drops; attached like the roster — on welcome,
-            and again on a snapshot only when someone collected
+            and again on a snapshot only when the ground list changed
+            (collect or a bag toss)
   lootPickups  drops collected since the last snapshot (juice). `slot` is
                the bag index it landed in, so the client can fly the sprite
                from the world onto that HUD cell.
@@ -95,6 +98,7 @@ MSG_PING = "ping"
 MSG_START = "start"
 MSG_READY = "ready"
 MSG_COLLECT = "collect"
+MSG_DROP = "drop"
 
 MSG_HELLO = "hello"
 MSG_LOBBY = "lobby"

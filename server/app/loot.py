@@ -4,7 +4,9 @@ Coins are gold that flies off a corpse. These are the things people left —
 a bottle by a tent, a ring in a cabin, a relic at the landmark — and the
 player walks up and presses E. Server-authoritative: the client draws and
 sends `{type:"collect","id"}`; this module decides whether they were close
-enough and what they got.
+enough and what they got. A bag toss (`{type:"drop","slot"}`) comes back
+through `place_near` — walkable floor around the feet, never a client
+position.
 
 Placement is a consequence of scenery. A scene is still the unit of
 decoration; loot is a second pass over the scenes that landed, rolling a
@@ -220,6 +222,37 @@ def scatter(tiles: list[list[int]], scenes, rng: random.Random) -> list[Drop]:
     return drops
 
 
+DROP_RADIUS = 2.5
+DROP_RADIUS_WIDE = 5.0
+DROP_SEPARATION = 0.8
+
+
+def place_near(
+    tiles: list[list[int]],
+    x: float,
+    y: float,
+    occupied: list[tuple[float, float]],
+    rng: random.Random,
+) -> tuple[float, float] | None:
+    """A walkable world-pixel near `(x, y)`. `occupied` is tile coords."""
+    cx = x / TILE_SIZE
+    cy = y / TILE_SIZE
+    for radius in (DROP_RADIUS, DROP_RADIUS_WIDE):
+        tile = _find_floor(
+            tiles, cx, cy, occupied, rng, radius=radius, min_sep=DROP_SEPARATION
+        )
+        if tile is not None:
+            tx, ty = tile
+            return ((tx + 0.5) * TILE_SIZE, (ty + 0.5) * TILE_SIZE)
+    height = len(tiles)
+    width = len(tiles[0]) if tiles else 0
+    tx = int(math.floor(cx))
+    ty = int(math.floor(cy))
+    if 0 <= ty < height and 0 <= tx < width and tiles[ty][tx] == FLOOR:
+        return ((tx + 0.5) * TILE_SIZE, (ty + 0.5) * TILE_SIZE)
+    return None
+
+
 def nearest(drops: dict[str, Drop], x: float, y: float, max_dist: float) -> Drop | None:
     best: Drop | None = None
     best_d2 = max_dist * max_dist
@@ -269,21 +302,23 @@ def _find_floor(
     cy: float,
     occupied: list[tuple[float, float]],
     rng: random.Random,
+    radius: float = SEARCH_RADIUS,
+    min_sep: float = MIN_SEPARATION,
 ) -> tuple[int, int] | None:
     height = len(tiles)
     width = len(tiles[0]) if tiles else 0
     candidates: list[tuple[int, int]] = []
-    x0 = max(1, int(math.floor(cx - SEARCH_RADIUS)))
-    x1 = min(width - 1, int(math.ceil(cx + SEARCH_RADIUS)))
-    y0 = max(1, int(math.floor(cy - SEARCH_RADIUS)))
-    y1 = min(height - 1, int(math.ceil(cy + SEARCH_RADIUS)))
+    x0 = max(1, int(math.floor(cx - radius)))
+    x1 = min(width - 1, int(math.ceil(cx + radius)))
+    y0 = max(1, int(math.floor(cy - radius)))
+    y1 = min(height - 1, int(math.ceil(cy + radius)))
     for ty in range(y0, y1 + 1):
         for tx in range(x0, x1 + 1):
             if tiles[ty][tx] != FLOOR:
                 continue
-            if math.hypot(tx + 0.5 - cx, ty + 0.5 - cy) > SEARCH_RADIUS:
+            if math.hypot(tx + 0.5 - cx, ty + 0.5 - cy) > radius:
                 continue
-            if any(math.hypot(tx - ox, ty - oy) < MIN_SEPARATION for ox, oy in occupied):
+            if any(math.hypot(tx - ox, ty - oy) < min_sep for ox, oy in occupied):
                 continue
             candidates.append((tx, ty))
     if not candidates:

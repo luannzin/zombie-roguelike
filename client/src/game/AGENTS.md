@@ -24,6 +24,7 @@ seam React is allowed to read.
 | `hud-store.ts` | the only seam to React; `HUD_INTERVAL` = 0.2 s |
 | `tooltip-anchors.ts` | screen-space points for world `Tooltip`s, written every frame |
 | `inventory-anchors.ts` | screen-space centres for the HUD bag (pack + slots) |
+| `inventory-actions.ts` | bag → socket: `Game` binds `drop`; React never owns the connection |
 | `loot-flies.ts` | collect flies: hold over the head, then travel; membership is a store, pose is per-frame |
 
 ## Local Contracts
@@ -211,8 +212,11 @@ seam React is allowed to read.
   TAB toggles `inventory.open` locally and is patched immediately so the
   drawer does not wait for the 5 Hz tick. A collect fly is
   `loot-flies` + `inventory-anchors`, not a React render: hold over the
-  head, open the bag, then travel into the slot. `lootPrompt.full` is a
-  bag that cannot take the nearby drop.
+  head, open the bag, then travel into the slot. The cell stays empty
+  while `incomingHas(slot)` so the fly is the sprite that lands.
+  Dragging a cell off the panel calls `requestInventoryDrop`; `Game`
+  sends `{type:"drop","slot"}` and clears the cell until the roster
+  confirms. `lootPrompt.full` is a bag that cannot take the nearby drop.
 - Anything long-lived created here gets a matching release in `Game.dispose()`
   in the same change.
 

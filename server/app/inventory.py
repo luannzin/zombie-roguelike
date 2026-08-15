@@ -50,6 +50,16 @@ class Inventory:
                 return index
         return None
 
+    def take(self, index: int) -> Slot | None:
+        """Pull the whole stack out of `index`. None if that cell is empty."""
+        if index < 0 or index >= len(self.slots):
+            return None
+        slot = self.slots[index]
+        if slot is None:
+            return None
+        self.slots[index] = None
+        return slot
+
     def can_stow(self, key: str) -> bool:
         if key not in BY_KEY:
             return False

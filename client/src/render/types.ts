@@ -109,7 +109,7 @@ export interface DrawableLoot {
   y: number;
   frame: number;
   rarity: LootRarity;
-  /** Epic and legendary get the looping beam. */
+  /** Epic and legendary get the looping beam; the rest get motes. */
   beam: boolean;
   visibility: number;
   animTime: number;

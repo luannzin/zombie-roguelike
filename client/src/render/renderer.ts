@@ -24,7 +24,13 @@ import { DisturbanceField } from './disturbance';
 import { AtmosphereLayer } from './layers/atmosphere';
 import { DarknessLayer } from './layers/darkness';
 import { drawFootprints, drawSceneryProp } from './layers/scenery';
-import { drawLootAuras, drawLootBeams, drawLootShadows, drawLootSprites } from './layers/loot';
+import {
+  drawLootAuras,
+  drawLootBeams,
+  drawLootMotes,
+  drawLootShadows,
+  drawLootSprites,
+} from './layers/loot';
 import { TerrainLayer, type DecorationMask } from './layers/terrain';
 import { drawVignette } from './layers/vignette';
 import { projectionFor } from './projection';
@@ -214,8 +220,9 @@ export class Renderer {
     );
     drawCombatEffects(ctx, state.effects, state.config.tileSize);
     this.darkness.drawLights(ctx, state.effects.lights);
-    drawLootAuras(ctx, view, state.loot, state.time);
-    drawLootBeams(ctx, view, this.vfx?.aura ?? null, state.loot, state.time);
+    drawLootAuras(ctx, state.loot, state.time);
+    drawLootMotes(ctx, state.loot, state.time, state.config.tileSize);
+    drawLootBeams(ctx, this.vfx?.aura ?? null, state.loot, state.time);
     // Hunt tell sits ON the night: a hunter you cannot see still wears the
     // diamond, so killing the lamp does not hide that it has you.
     drawAlertMarks(entity, state.entities, state.time);

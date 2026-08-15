@@ -146,7 +146,8 @@ subtree.
   (`server/app/loot.py`), not hashed from the seed. Five rarities (common
   white, uncommon green, rare blue, epic purple, legendary gold). E collects
   when close; the name in the tooltip takes the rarity colour. Epic and
-  legendary also get a small looping beam. Camp maps have none.
+  legendary get a small looping beam; the other three rarities get a few
+  rarity-coloured motes. Camp maps have none.
 
 ## Child DOX Index
 

@@ -35,10 +35,15 @@ mutation, no React.
   `layers/`. **The pass order is the atmosphere** — ground (soil, litter, flat
   scenery) → dust → coins and loot sprites → entities, bonfires and standing
   scenery (one depth sort by `y`) → overgrowth → motes → darkness → combat
-  effects → loot auras / epic-legendary beams → hunt diamond → labels →
-  vignette. Effects and loot auras go over the darkness because they are
-  light, not things being lit. An unlit drop is not drawn at all. The hunt
-  diamond goes AFTER the darkness on purpose, see below.
+  effects → loot auras / motes / epic-legendary beams → hunt diamond →
+  labels → vignette. Effects and loot light go over the darkness because
+  they are light, not things being lit. An unlit drop is not drawn at all.
+  Loot sprites use `Projection` in the screen-space pass with the coins;
+  glow, motes and beams sit in the world-space pass after darkness and
+  take raw world pixels — `view.x` there would project them a second time,
+  off the map. Common / uncommon / rare get a few rising specks in the
+  rarity colour; epic and legendary keep the looping column.
+  The hunt diamond goes AFTER the darkness on purpose, see below.
 - **`fov.ts` is what the PLAYERS can see; `layers/vision.ts` is the ENEMY hunt
   tell.** Unrelated systems: the first is a client-side tile field that decides
   what is drawn at all, the second fills a diamond from the `aw` meter on the

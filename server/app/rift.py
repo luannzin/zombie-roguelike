@@ -55,15 +55,14 @@ PLOT = 7
 #: `scenery.Piece`. There is no `flip`: the stones are shaded from the upper
 #: left and a mirrored one is lit from the wrong side, which is why the art
 #: ships four cuts instead of two.
-#: ONE TILE IN FROM THE CORNERS — see `_layout()` in make_rift.py. Close
-#: enough that the rift's spines reach the stones, which is the picture: they
-#: are what is holding it open. The plot stays 7x7 regardless; that is the
-#: cleared ground and the isolation footprint, not the structure's own size.
+#: ONE STONE — see `_layout()` in make_rift.py. Four of them framed the
+#: anomaly symmetrically and, being symmetrical, said nothing; one off to the
+#: side reads as something driven into the ground next to a hole in the world.
+#:
+#: The plot stays 7x7 regardless: that is the cleared ground and the isolation
+#: footprint, not the structure's own size.
 _PILLARS: tuple[tuple[float, float, int], ...] = (
-    (1.5, 2.0, 0),
-    (PLOT - 1.5, 2.0, 1),
     (1.5, PLOT - 1.0, 2),
-    (PLOT - 1.5, PLOT - 1.0, 3),
 )
 #: On the front stones' row, not the plot's south edge. Out there a tree
 #: growing just past the plot drew its canopy — painted several tiles above
@@ -100,7 +99,10 @@ PILLAR_STAGGER = 0.45
 #: charge and its strike.
 SETTLE = 0.30
 
-PILLARS = 4
+#: Derived, never typed. The ceremony's length is a consequence of how many
+#: stones there are, so adding or removing one re-times the sequence — and the
+#: client reads the result through `client_config`, so all three stay in step.
+PILLARS = len(_PILLARS)
 LAST_PILLAR_AT = CONSOLE_LAG + (PILLARS - 1) * PILLAR_STAGGER
 CROWNED_AT = LAST_PILLAR_AT + CHARGE_TIME
 EMERGE_AT = CROWNED_AT + SETTLE

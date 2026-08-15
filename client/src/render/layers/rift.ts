@@ -91,16 +91,26 @@ export interface RiftPhase {
   open: boolean;
 }
 
-const DORMANT_PHASE: RiftPhase = {
-  pillarCharge: [NOT_STARTED, NOT_STARTED, NOT_STARTED, NOT_STARTED],
-  pillarAwake: [false, false, false, false],
-  pillarCrowned: [false, false, false, false],
-  crownTime: [0, 0, 0, 0],
-  consoleArmed: false,
-  emerging: NOT_STARTED,
-  anomalyTime: 0,
-  open: false,
-};
+/**
+ * Nothing has happened yet.
+ *
+ * Sized from the rift's OWN stone count rather than a fixed four. How many
+ * stones a structure has is data now (`server/app/rift.py` derives the whole
+ * ceremony's length from it), so a hardcoded four would hand back `undefined`
+ * for the fifth the day somebody places one.
+ */
+function dormantPhase(stones: number): RiftPhase {
+  return {
+    pillarCharge: new Array<number>(stones).fill(NOT_STARTED),
+    pillarAwake: new Array<boolean>(stones).fill(false),
+    pillarCrowned: new Array<boolean>(stones).fill(false),
+    crownTime: new Array<number>(stones).fill(0),
+    consoleArmed: false,
+    emerging: NOT_STARTED,
+    anomalyTime: 0,
+    open: false,
+  };
+}
 
 /**
  * What every piece is doing, from the one clock the server and client share.
@@ -116,7 +126,7 @@ export function riftPhase(
   timing: RiftTimingConfig,
   chargeHandoff: number,
 ): RiftPhase {
-  if (rift.state === 'dormant') return DORMANT_PHASE;
+  if (rift.state === 'dormant') return dormantPhase(rift.pillars.length);
 
   const elapsed = rift.elapsed;
   const pillarCharge: number[] = [];

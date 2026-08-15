@@ -331,15 +331,16 @@ EMERGE_SETTLE = 0.82
 # `frames / fps` is ALSO the rotation period, because the lattice spins exactly
 # one turn per loop — that is the only spin that brings every cell back to
 # where it started, so the loop is the revolution and there is no separate
-# knob for it. Four seconds. At 16 frames and 12 fps this was 1.3 s and the
-# sphere read as a spinning top: menace comes from something big moving
-# slowly, and a fast rotation makes a 64px object look small and light.
+# knob for it. Four seconds: menace comes from something big moving slowly, and
+# a fast rotation makes a 64px object look small and light.
 #
-# The frame count went up with the period rather than the fps coming down, so
-# the step stays 11 degrees a frame and the spin stays smooth instead of
-# strobing round in visible jumps.
-RIFT_FRAMES = 32
-RIFT_FPS = 8
+# THE FRAME RATE MATCHES `emerge`, and the frame count carries the period. At 8
+# fps the idle was strobing round in visible steps while the burst that handed
+# over to it was smooth, so the effect got WORSE at the moment it settled. Both
+# sheets now run at 16 fps and the period is bought with frames instead — 5.6
+# degrees a step, and the whole sequence moves at one rate.
+RIFT_FRAMES = 64
+RIFT_FPS = 16
 
 #: Openings on the shell. Enough that the sphere reads as a lattice, few enough
 #: that at 64px each one is still a shape rather than a speck.
@@ -1094,18 +1095,17 @@ def _anomaly(
     ry = radius * stretch_y
 
     # IT FLOATS. Breathing alone made it a pulsing ball sitting in mid-air; a
-    # slow vertical drift is what says the thing is HANGING there, unsupported,
-    # and it is the cheapest possible term — one sine of the loop phase, so it
-    # wraps like everything else and is exactly 0 at phase 0 (which is what
-    # keeps the emerge handoff exact).
+    # vertical drift is what says the thing is HANGING there, unsupported.
     #
-    # The floor does NOT move with it. The pool stays where the ground is and
-    # only tightens and brightens as the sphere comes down, which is what a
-    # light source approaching a surface actually does — and that contrast is
-    # what makes the rise read as the RIFT moving rather than the camera.
-    bob = math.sin(phase) * radius * 0.10
+    # TWO harmonics, not one. A single sine is a metronome and reads as
+    # mechanical — something on a piston. Adding the second at twice the rate
+    # makes the rise and the fall different shapes, so it wanders instead of
+    # oscillating. Both are still whole harmonics of the loop phase, so it
+    # wraps, and both are exactly 0 at phase 0 — which is what keeps the
+    # handoff out of `emerge` exact.
+    bob = (math.sin(phase) * 0.72 + math.sin(phase * 2.0) * 0.28) * radius * 0.17
     cy += bob
-    near = 1.0 - bob / max(radius * 0.10, 1e-6) * 0.18
+    near = 1.0 - bob / max(radius * 0.17, 1e-6) * 0.18
 
     # The core, seen through the biggest opening. Sat low, like the reference:
     # the shell is thinner underneath and that is where the inside shows.
@@ -1125,7 +1125,7 @@ def _anomaly(
     # further down than the ball, landing on the far rim of the sigil instead
     # of inside it. Under the sphere's own lower edge is where light cast by a
     # hovering object actually falls.
-    floor_y = cy - bob + ry * 0.78
+    floor_y = cy - bob + ry
     bloom = (0.85 + 0.15 * math.sin(phase)) * near
     # The pool on the floor is COOL — cyan into violet at its rim, the same
     # gradient the pillars run and the coldest end of the prism. Mint made it
@@ -1213,7 +1213,7 @@ def make_emerge_frame(
     # no longer read here — the tail derives its own from `_rift_state(phase)`
     # so that it is already moving at loop rate before the handover.
     _, _, rest_y, _, _ = _rift_state(0.0)
-    floor_y = cy + radius * rest_y * 0.78
+    floor_y = cy + radius * rest_y
 
     # --- SEAM: a hairline splits, and the air starts falling into it ---------
     if t < EMERGE_BURST:
@@ -1326,25 +1326,24 @@ def _layout(plot: int) -> dict:
     structure rather than seven loose sheets — whoever wires it up should not
     have to re-derive where a corner is.
     """
-    # ONE TILE IN FROM THE CORNERS. At the corners the stones were three tiles
-    # from an anomaly a tile and a half wide, and the gap read as four lamp
-    # posts standing near a sphere rather than as one structure holding it. In
-    # here the ring closes to the point where the rift's own spines reach the
-    # stones, which is the picture: they are what is holding it open.
+    # ONE STONE, not four.
     #
-    # The PLOT does not shrink with them — it is the cleared ground and the
-    # isolation footprint, and the room to fight in around the structure is
-    # worth more than a tighter box.
-    far, near = 2.0, plot - 1.0           # contact rows: back row, front row
-    left, right = 1.5, plot - 1.5         # tile centres of the stone columns
+    # A ring of four framed the anomaly symmetrically and, being symmetrical,
+    # said nothing: it read as a fixture the rift had been installed into. A
+    # single stone off to one side reads as a thing somebody DROVE INTO THE
+    # GROUND next to a hole in the world, which is the story this structure is
+    # actually telling. It also stops the pad being a diagram — you approach
+    # from anywhere except the one corner that is already occupied.
+    #
+    # The sheet still carries four cuts. They are not dead: the shape is a field
+    # on the placed stone, so this can be rolled per map, and four maps' worth
+    # of extraction points do not all have the same rock in them.
+    near = plot - 1.0                     # contact row of the front pieces
+    left = 1.5                            # tile centre of the stone's column
     middle = plot / 2.0
     return {
-        # One shape per corner, no flips — see PILLAR_SHAPES.
         "pillars": [
-            {"dx": left, "dy": far, "shape": 0},
-            {"dx": right, "dy": far, "shape": 1},
             {"dx": left, "dy": near, "shape": 2},
-            {"dx": right, "dy": near, "shape": 3},
         ],
         # Flat, centred on the plot's middle.
         "scar": {"dx": middle, "dy": middle},
@@ -1410,15 +1409,19 @@ def build(args) -> Path:
     rift_w, rift_h = tile * 4, tile * 5
     rift_anchor = rift_h - round(tile * 0.75)
     radius = tile * 1.55
-    # THE ANOMALY IS ANCHORED ON ITS CORE, not on a ground contact, and it is
-    # the only sheet here that is. Everything else in this game registers where
-    # it touches the floor because everything else touches the floor; this one
-    # HOVERS, so the meaningful point is the centre of the sphere. Anchoring it
-    # on the row its ground bloom sits in would hang the ball a sphere-radius
-    # above the sigil it is supposed to be sitting in the middle of — which is
-    # exactly what it did. The bloom is still drawn, further down the frame,
-    # and lands on the near rim of the ring.
-    rift_core = round(_hover_y(rift_anchor, radius))
+    # THE ANOMALY IS ANCHORED ON ITS UNDERSIDE, not on a ground contact and not
+    # on its centre.
+    #
+    # Everything else in this game registers where it touches the floor, because
+    # everything else touches the floor. This one hovers over a ring cut into
+    # the ground, and the picture is that the ring is a MOUTH: the sphere's
+    # bottom sits in the middle of it and its top half stands clear above the
+    # sigil's far edge. Anchoring on the centre buried half the ball below the
+    # ring; anchoring on the bloom row hung it a whole radius too high.
+    #
+    # The pool is drawn on this same row, so the anchor, the underside and the
+    # light on the floor are all one point.
+    rift_core = round(_hover_y(rift_anchor, radius) + radius)
     emerge_frames = [
         make_emerge_frame(rift_w, rift_h, rift_anchor, radius, i, EMERGE_FRAMES)
         for i in range(EMERGE_FRAMES)
@@ -1543,7 +1546,7 @@ def build(args) -> Path:
         f"crown {CROWN_FRAMES}x{glow_w}x{glow_h} @{CROWN_FPS}fps loop, "
         f"emerge {EMERGE_FRAMES}x{rift_w}x{rift_h} @{EMERGE_FPS}fps, "
         f"rift {RIFT_FRAMES}x{rift_w}x{rift_h} @{RIFT_FPS}fps loop, "
-        f"anchors {glow_anchor}/{rift_core} (core, not contact), "
+        f"anchors {glow_anchor}/{rift_core} (underside, not contact), "
         f"seams charge->crown {charge_seam}, emerge->rift {emerge_seam}"
     )
     if charge_seam or emerge_seam:

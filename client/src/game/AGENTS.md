@@ -16,7 +16,7 @@ seam React is allowed to read.
 | `prediction.ts` | apply-locally, replay-on-ack reconciliation |
 | `interpolation.ts` | remote entity smoothing |
 | `input.ts` | keyboard/mouse sampling into an `InputPacket` (1/2/3 is the hotbar) |
-| `world.ts` | client tile map, collision + sight queries, fires, hearth mask, placed scenery, live crates |
+| `world.ts` | client tile map, collision + sight queries, fires, hearth mask, placed scenery, live crates, the extraction rift |
 | `combat.ts` | client-side shot feel: capsules, tile DDA, crate sprite boxes |
 | `effects.ts` | tracers, dust, blood, floating text, event lights, boot prints, crate smash, wind, death burst |
 | `entity-visuals.ts` | per-entity flash, recoil, gun kick/pump, hit-stun tilt, anim, worn wounds; `HIT_FLASH_LIFE` is also the crate smash blink |
@@ -161,6 +161,29 @@ seam React is allowed to read.
   `DEATH_TIME` / `DEATH_IMPACT` mirror `make_vfx.py`; the thud in
   `zombie-death` sits on that impact. The body sheet's own `frames / fps`
   is the collapse clock.
+- **The extraction rift is the one object on the map with a STATE MACHINE, and
+  the split is: the server says WHAT, the client says what that FEELS like.**
+  Two snapshot rows a run — pressed, and open — and the four seconds between
+  them run on this client's own render clock (`Game.stepRift`), because a
+  ceremony resolved at 6 Hz would step rather than play. The server's `t` is
+  adopted on every row, so somebody joining mid-sequence picks it up in
+  progress instead of watching it replay from zero.
+  - **The stagger IS the effect.** The four stones catch one at a time
+    (`rift.PILLAR_STAGGER`), so the light visibly runs around the ring. Firing
+    them together costs nothing and reads as a light switch. Each catch throws
+    a point light and a small trauma; the tear throws a big one. Those beats
+    fire on the frame `elapsed` CROSSES them, which is what makes each happen
+    exactly once when a frame runs long.
+  - Timing is ONE clock: `config.rift`, straight out of `server/app/rift.py`,
+    whose sheet durations are `frames / fps` from `make_rift.py`. Three files,
+    one set of numbers, the same discipline `SUMMON_TIME` already follows.
+  - E offers the console BEFORE a crate and before the fire: if you are
+    standing at the console with a box at your elbow, you did not walk there
+    for the box. The prompt shows only while DORMANT — once it is answering,
+    there is nothing left to press, and a prompt still hanging over a thrown
+    button reads as the press not registering.
+  - Activation is one-way. There is no packet to switch it off, because a rift
+    you could toggle would stop being the one irreversible decision on the map.
 - `Game.lights` is bonfires read off the tiles PLUS whatever the map's scenes
   are still burning (`world.scenery.lights`), on one list. The lighting has no
   concept of a camp light versus a forest light and must not grow one.

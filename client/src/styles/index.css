@@ -186,14 +186,19 @@
    * thing in the game and nothing out in the woods may compete with it. A lamp
    * is paler and thinner, embers are deeper and dimmer.
    *
-   * `--scene-beacon` is unused today and deliberately the odd one out: cold,
-   * green, unmistakably not fire. It is reserved for the EXTRACTION point, so
-   * that when it lands it is already the one light in the world that could not
-   * be something somebody left behind.
+   * `--scene-beacon` is the EXTRACTION point, and it is deliberately the odd
+   * one out: cold, unmistakably not fire, the one light in the world that could
+   * not be something somebody left behind.
+   *
+   * It is PALE CYAN, not the mint it started as. The rift's own art is
+   * iridescent (see `server/tools/make_rift.py`), and a green beacon glow under
+   * a rose-and-violet sphere read as two unrelated light sources stacked on one
+   * tile. This is the cold end of that same prism, so the halo and the thing
+   * throwing it agree.
    */
   --scene-lamp: 255 214 150;
   --scene-ember: 226 108 44;
-  --scene-beacon: 118 255 196;
+  --scene-beacon: 158 228 248;
 
   /* summoning — a player materialising into a seat at the fire.
      The column itself has no token: the sheet is greyscale and takes the

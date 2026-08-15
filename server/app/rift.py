@@ -41,6 +41,7 @@ import random
 from dataclasses import dataclass
 
 from .config import TILE_SIZE
+from .maps import count_reachable
 from .world import FLOOR, LOW, PROP
 
 KIND = "rift"
@@ -62,7 +63,22 @@ _PILLARS: tuple[tuple[float, float, int], ...] = (
 )
 _CONSOLE = (PLOT / 2.0, float(PLOT))
 _CENTRE = (PLOT / 2.0, PLOT / 2.0)
-_ANOMALY = (PLOT / 2.0, PLOT / 2.0 + 0.5)
+#: THE SAME POINT AS THE SIGIL. The anomaly's sheet is anchored on the centre
+#: of the sphere rather than on a ground contact — it hovers, so that is the
+#: point that means anything — which lets it be placed on the middle of the
+#: scar and actually sit in it.
+_ANOMALY = _CENTRE
+
+#: Tiles within this of the centre become solid, so nobody walks INTO the rift.
+#:
+#: LOW, not PROP: waist-high cover is the only kind that is solid to bodies
+#: while staying transparent to light, and a sight-blocking core would throw a
+#: hard black wedge across the pad from a thing that is the brightest object on
+#: the map. The sphere is about 1.55 tiles in radius, so this covers what the
+#: sprite actually occupies and nothing more — a bigger block would fence off
+#: ground the player can see is empty, which is the worst kind of invisible
+#: wall because the screen contradicts it.
+CORE_RADIUS_TILES = 1.6
 
 #: Radius of the beacon once it is open, in tiles. Small on purpose: this is
 #: not an area of safety, it is a thing you can see from far away — which is
@@ -187,10 +203,26 @@ BORDER = 2
 #: better read: somebody chose this spot.
 MIN_OPEN = 0.55
 
+#: THE STRUCTURE STANDS ALONE, and these three numbers are what enforce it.
+#:
+#: Everything else on this map is somebody's leftovers, arranged into scenes
+#: that mean something. The rift is not part of any of them, and dropping it
+#: beside a cabin makes it read as that homestead's yard ornament — the one
+#: reading that costs it the whole "this does not belong here" effect the
+#: iridescence is doing all the work to buy.
+#:
+#: `MARGIN` also protects the approach: a fence or a woodpile lapping onto the
+#: pad would be cover the player fights from on the one tile they are supposed
+#: to be standing exposed on.
+SCENE_CLEARANCE = 13.0
+SPAWN_CLEARANCE = 20.0
+MARGIN = 3
+
 
 def place(
     tiles: list[list[int]],
     route: list[tuple[float, float]],
+    scenes: list[tuple[float, float]],
     origin: tuple[float, float],
     rng: random.Random,
 ) -> Rift | None:
@@ -199,6 +231,12 @@ def place(
     Mutates `tiles`. Returns None if the map has nowhere to put one, which is
     survivable — a forest without an extraction point is a forest you leave the
     way you came — and is why the caller treats the rift as optional.
+
+    The clearances are RELAXED rather than absolute. A cramped map that cannot
+    honour them should still get an extraction point somewhere imperfect: the
+    isolation is what makes the structure read best, but having one at all is
+    what makes the run work. Each pass loosens both distances, so the first
+    attempt is the one that gets the good spot and the last one takes anything.
     """
     height = len(tiles)
     width = len(tiles[0]) if tiles else 0
@@ -206,10 +244,34 @@ def place(
         return None
 
     aim = route[-1] if route else None
-    for tx, ty in _candidates(width, height, aim, origin, rng):
-        if not _plot_open(tiles, tx, ty):
-            continue
-        return _stamp(tiles, tx, ty)
+    for relax in (1.0, 0.7, 0.45, 0.0):
+        scene_clear = SCENE_CLEARANCE * relax
+        spawn_clear = SPAWN_CLEARANCE * relax
+        for tx, ty in _candidates(width, height, aim, origin, rng):
+            if not _plot_open(tiles, tx, ty):
+                continue
+            cx = tx + PLOT / 2.0
+            cy = ty + PLOT / 2.0
+            if math.hypot(cx - origin[0], cy - origin[1]) < spawn_clear:
+                continue
+            if any(math.hypot(cx - sx, cy - sy) < scene_clear for sx, sy in scenes):
+                continue
+            # STAMP, THEN CHECK, THEN KEEP OR PUT IT BACK.
+            #
+            # Clearing the plot only ever ADDS reachable ground — but the solid
+            # core in the middle takes nine tiles away, and if the plot happens
+            # to straddle a neck in the forest those nine were the bridge. The
+            # far side is then unreachable and `build_forest` rightly refuses
+            # the whole map. Rather than forbid narrow spots up front (hard to
+            # measure, and it would reject good ones), the placement tries it
+            # and rolls back if the map came out worse.
+            before = [row[tx:tx + PLOT] for row in tiles[ty:ty + PLOT]]
+            placed = _stamp(tiles, tx, ty)
+            floor = sum(row.count(FLOOR) for row in tiles)
+            if count_reachable(tiles) == floor:
+                return placed
+            for oy in range(PLOT):
+                tiles[ty + oy][tx:tx + PLOT] = before[oy]
     return None
 
 
@@ -251,17 +313,25 @@ def _candidates(
 def _plot_open(tiles: list[list[int]], tx: int, ty: int) -> bool:
     """Whether a plot at this corner is a clearing rather than a thicket.
 
-    Rejects any plot that already contains a building or cover: those tiles
-    belong to a scene, and dropping a monolith through somebody's cabin is the
-    one placement bug that would be visible from across the map.
+    Rejects any plot — or `MARGIN` tiles around it — that already contains a
+    building or cover: those tiles belong to a scene, and dropping a monolith
+    through somebody's cabin is the one placement bug that would be visible
+    from across the map.
     """
+    height = len(tiles)
+    width = len(tiles[0]) if tiles else 0
+    for oy in range(-MARGIN, PLOT + MARGIN):
+        for ox in range(-MARGIN, PLOT + MARGIN):
+            x, y = tx + ox, ty + oy
+            if not (0 <= x < width and 0 <= y < height):
+                continue
+            if tiles[y][x] in (PROP, LOW):
+                return False
+
     open_tiles = 0
     for oy in range(PLOT):
         for ox in range(PLOT):
-            kind = tiles[ty + oy][tx + ox]
-            if kind in (PROP, LOW):
-                return False
-            if kind == FLOOR:
+            if tiles[ty + oy][tx + ox] == FLOOR:
                 open_tiles += 1
     if tiles[ty + PLOT // 2][tx + PLOT // 2] != FLOOR:
         return False
@@ -294,6 +364,14 @@ def _stamp(tiles: list[list[int]], tx: int, ty: int) -> Rift:
     cx = int(math.floor(tx + _CONSOLE[0]))
     cy = int(math.floor(ty + _CONSOLE[1] - 1e-6))
     tiles[cy][cx] = LOW
+
+    # The anomaly's own footprint. Measured from tile CENTRES against the plot
+    # centre, so the block is a disc rather than a square — the sphere is round
+    # and the collision should agree with the silhouette.
+    for oy in range(PLOT):
+        for ox in range(PLOT):
+            if math.hypot(ox + 0.5 - _CENTRE[0], oy + 0.5 - _CENTRE[1]) <= CORE_RADIUS_TILES:
+                tiles[ty + oy][tx + ox] = LOW
 
     return Rift(
         tx=tx,

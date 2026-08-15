@@ -18,6 +18,8 @@ mutation, no React.
 | `terrain.ts` | terrain atlas loading (4 grounds, blend stencils, props, flat decals, the animated campfire) |
 | `scenery.ts` | scenery atlas loading: standing props and flat decals of what people left |
 | `vfx.ts` | effect atlas loading: one-shot sheets (summon, kindle, wind, death) and the looping loot `aura` |
+| `rift.ts` | extraction atlas: the sigil decal, the pillar/console props with their STATES, and the four activation sheets |
+| `layers/rift.ts` | the extraction point: the ceremony's timing (`riftPhase`) plus its three passes — floor, depth sort, additive light |
 | `loot.ts` | loot atlas: one 16x16 frame per collectable item |
 | `guns.ts` | held-gun atlas and the shared muzzle/grip pose (`gunMuzzle`) |
 | `gore.ts` | gore atlas: small wound decals stamped on a body that has been hit |
@@ -231,8 +233,10 @@ mutation, no React.
 - **A light is a light.** `drawSceneLights` is `drawFires` with a different
   tone and beat, and must stay that way: the moment a lamp out in the woods is
   drawn by different code from the camp's bonfire they start reading as
-  different kinds of object. Tones come from `--scene-*`; `beacon` is unused
-  and reserved so the extraction point is a data change, not a render change.
+  different kinds of object. Tones come from `--scene-*`; `beacon` is the
+  extraction rift, pushed onto the SAME `scenery.lights` list when it opens
+  (`TileMap.setRiftState`) rather than given a list of its own — the lighting
+  has no idea it is special, which is what "a light is a light" was for.
 - A `FIRE` tile is drawn in the ENTITY sort, not with the terrain: baked it
   could not animate, and drawn as scenery it would be covered by whoever is
   standing behind it — a ring of players around a picture of a fire. Its glow
@@ -263,6 +267,21 @@ mutation, no React.
   ferns stay off it, and the darkness pass crushes a falloff around it. The
   tiles themselves wander and fray — a rectangle of VOID would read as a
   corridor punched through the woods.
+- **The extraction rift spans all three shapes at once and is drawn in three
+  different places in the frame**, because it is three kinds of object: the
+  sigil is a flat decal on the floor (with the boot prints), the stones and the
+  console are bottom-anchored props MERGED into the entity depth sort (so a
+  body walking behind a pillar disappears behind it), and the charge, crown,
+  emerge and rift sheets are additive light after the darkness pass. Its prop
+  frames are STATES, never variants — `riftPropFrame` takes the state, and
+  hashing one would make the extraction point flicker between on and off.
+- **Two rift sheets carry their own colour and `tinted` is what says so.**
+  `charge` and `crown` belong to the PILLARS — built, quarried, part of this
+  world — so they are greyscale and take `--scene-beacon` like every other
+  effect. `emerge` and `rift` belong to the anomaly, which belongs to nobody:
+  they bake an IRIDESCENT palette, because six pastels in one frame is the one
+  thing a single draw-time tint can never produce. `riftImage` refuses the tint
+  for those rather than trusting each call site to remember.
 - Cached bitmaps and tints are released in `Renderer.dispose()`.
 - `imageSmoothingEnabled` stays `false` — this is pixel art.
 

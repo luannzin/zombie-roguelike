@@ -2364,12 +2364,20 @@ export class Game {
     // A stone catching. One light and a small shove each, so the four of them
     // walking around the ring are four separate events rather than one long
     // brightening — the punctuation is what sells the stagger.
+    //
+    // KEPT SHORT AND SMALL, and the LIFE matters more than the radius. These
+    // are `ctx.arc` radial gradients: at a muzzle flash's size but four times
+    // its duration they stop reading as a flash and start reading as a drawn
+    // blue disc sitting on the floor. Every other event light in this game is
+    // under 0.15 s (see `spawnShot`, `spawnGoldPickup`) and this belongs on
+    // that ladder — the crown SHEET is what carries the glow; this is only the
+    // ground noticing.
     for (let i = 0; i < rift.pillars.length; i++) {
       const at = timing.consoleLag + i * timing.pillarStagger
         + timing.chargeTime * RIFT_CROWN_FRACTION;
       if (before < at && after >= at) {
         const pillar = rift.pillars[i];
-        this.effects.spawnLight(pillar.x, pillar.y - RIFT_CROWN_LIFT, 78, 0.7, beaconCss, 0.34);
+        this.effects.spawnLight(pillar.x, pillar.y - RIFT_CROWN_LIFT, 34, 0.5, beaconCss, 0.13);
         this.camera.addTrauma(0.08);
         // Four of these in a row is a rising figure, which is the whole reason
         // the stones are staggered. Borrowed from the loot-reveal chime for
@@ -2385,7 +2393,9 @@ export class Game {
     }
     const burst = timing.emergeAt + timing.emergeTime * RIFT_BURST_FRACTION;
     if (before < burst && after >= burst) {
-      this.effects.spawnLight(rift.anomalyX, rift.anomalyY, 210, 1, beaconCss, 0.5);
+      // The biggest light in the game, and still a flash: half a second of a
+      // 13-tile disc was a wall of blue, not an event.
+      this.effects.spawnLight(rift.anomalyX, rift.anomalyY, 96, 0.8, beaconCss, 0.22);
       this.camera.addTrauma(0.42);
       playSfx('kindle');
       for (let i = 0; i < 22; i++) {

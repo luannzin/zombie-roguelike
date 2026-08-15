@@ -24,6 +24,7 @@ game's scale.
 | `weapons.py` | gun catalog (glock/deagle/famas/ak47/awp), hotbar, per-shot stats |
 | `crates.py` | breakable boxes/barrels: extract from scenery, smash, drop roll |
 | `corpses.py` | dead enemies left on the floor: persist until the map swaps |
+| `rift.py` | the extraction point: one per forest, its plot, and the activation sequence |
 | `inventory.py` | the pocket: slots, stacking, weight |
 | `world.py` | tile grid, tile alphabet, collision queries |
 | `maps.py` | hand-authored maps (`from_ascii`, `from_rects`) |

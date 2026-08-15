@@ -86,11 +86,11 @@ class Piece:
 #: Light kinds. The client maps these to tones; the numbers are the contract.
 LAMP = 0
 EMBER = 1
-#: Reserved. The EXTRACTION point will be a light like any other — that is the
-#: whole reason this is a list on the map payload and not a field on the cabin.
-#: When extraction lands, the room drops one `SceneLight(BEACON, ...)` at the
-#: chosen tile and the client already knows how to burn it, feed the fov with
-#: it and draw its glow. Nothing about that is a rendering change.
+#: The EXTRACTION point, and it is a light like any other — which is the whole
+#: reason this is a list on the map payload and not a field on the cabin. When
+#: `rift.py` opens, the client pushes one `SceneLight(BEACON, ...)` onto this
+#: same list and the lighting burns it, feeds the fov with it and draws its
+#: glow with no idea that it is special. That was not a rendering change.
 BEACON = 2
 
 

@@ -324,6 +324,7 @@ def build_forest(
     placed = rift.place(
         tiles,
         population.route,
+        [(scene.x, scene.y) for scene in population.scenes],
         (width / 2.0, height / 2.0),
         random.Random(used ^ 0x21F7),
     )

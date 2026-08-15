@@ -107,7 +107,8 @@ export interface Palette {
 
   /**
    * Lights the MAP owns out in the forest. Bare channels: the layer computes
-   * alpha from its own flicker. `beacon` is reserved for the extraction point.
+   * alpha from its own flicker. `beacon` is the extraction rift — cold pale
+   * cyan, the same end of the prism its art is painted in.
    */
   scene: { lamp: Channels; ember: Channels; beacon: Channels };
 

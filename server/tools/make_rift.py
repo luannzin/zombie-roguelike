@@ -182,6 +182,44 @@ PRISM: tuple[Ramp, ...] = tuple(
 )
 
 
+def conduit(up: float) -> int:
+    """Which prism ramp the structure's own light is in, `up` = 0 at the foot.
+
+    THE PILLARS BURN THE ANOMALY'S LIGHT, NOT THEIR OWN. They were mint — the
+    reserved beacon colour — while the thing they open is iridescent, and that
+    made the stones read as somebody else's equipment parked around it. Running
+    them up the same prism says the opposite: this is the rift's light, and the
+    stones are only the plumbing.
+
+    It is a GRADIENT UP THE SHAFT rather than one hue, because a channel of even
+    colour reads as a painted stripe. Deep violet at the foot where the light
+    is still under pressure, through cyan, to a white-hot crown — cold at the
+    bottom and hot at the top is the same rule the campfire's flame ramp
+    follows, borrowed for a colder fire.
+
+    All four stones share it. Giving each its own accent would be prettier for
+    one screenshot and would stop them reading as four parts of one structure.
+    """
+    if up < 0.34:
+        return VIOLET
+    if up < 0.68:
+        return CYAN
+    if up < 0.90:
+        return MINT
+    return CORE
+
+
+def lit(hue: int, value: float) -> RGBA:
+    """One flat step off a prism ramp — no dithering.
+
+    Ordered dither is right for a broad soil where the eye reads an average.
+    Inside a three-pixel channel it is a checkerboard, and a checkerboard is
+    what a light looks like when it is broken.
+    """
+    ramp = PRISM[hue]
+    return ramp[int(clamp01(value) * (len(ramp) - 1) + 0.5)]
+
+
 class Prism:
     """An intensity field and, beside it, the hue that intensity is arriving in.
 
@@ -289,8 +327,19 @@ EMERGE_BURST = 0.40
 EMERGE_SETTLE = 0.82
 
 # The rift at rest. LOOPING, and it must never look restful.
-RIFT_FRAMES = 16
-RIFT_FPS = 12
+#
+# `frames / fps` is ALSO the rotation period, because the lattice spins exactly
+# one turn per loop — that is the only spin that brings every cell back to
+# where it started, so the loop is the revolution and there is no separate
+# knob for it. Four seconds. At 16 frames and 12 fps this was 1.3 s and the
+# sphere read as a spinning top: menace comes from something big moving
+# slowly, and a fast rotation makes a 64px object look small and light.
+#
+# The frame count went up with the period rather than the fps coming down, so
+# the step stays 11 degrees a frame and the spin stays smooth instead of
+# strobing round in visible jumps.
+RIFT_FRAMES = 32
+RIFT_FPS = 8
 
 #: Openings on the shell. Enough that the sphere reads as a lattice, few enough
 #: that at 64px each one is still a shape rather than a speck.
@@ -434,9 +483,6 @@ def _pillar_channel(px, width: int, height: int, geo: PillarGeometry, awake: boo
     lift = geo.lift if awake else 0
     span = max(geo.groove_bot - geo.groove_top, 1)
 
-    def step(value: float) -> RGBA:
-        return BEACON[int(clamp01(value) * (len(BEACON) - 1) + 0.5)]
-
     for row in range(geo.groove_top, geo.groove_bot + 1):
         cx = geo.centre(width, row)
         up = 1.0 - (row - geo.groove_top) / span
@@ -447,7 +493,7 @@ def _pillar_channel(px, width: int, height: int, geo: PillarGeometry, awake: boo
             if off > 1.0:
                 continue
             if awake:
-                px[x, row] = step((0.46 + 0.46 * up) * (1.0 - 0.34 * off))
+                px[x, row] = lit(conduit(up), (0.52 + 0.44 * up) * (1.0 - 0.30 * off))
             elif off > 0.62 and x > cx:
                 px[x, row] = ROCK_RAMP[2]  # the far lip catching the light
             else:
@@ -460,7 +506,7 @@ def _pillar_channel(px, width: int, height: int, geo: PillarGeometry, awake: boo
             cx = geo.centre(width, row)
             for x in range(int(cx - 3.0), int(cx + 4.0)):
                 if 0 <= x < width and abs(x - cx) <= 3.0:
-                    px[x, row] = BEACON[5] if abs(x - cx) < 1.6 else BEACON[4]
+                    px[x, row] = lit(CORE, 1.0) if abs(x - cx) < 1.6 else lit(MINT, 0.9)
 
     lens_y = geo.lens_y - lift
     lens_x = geo.centre(width, geo.lens_y)
@@ -472,7 +518,8 @@ def _pillar_channel(px, width: int, height: int, geo: PillarGeometry, awake: boo
             if d > 1.0:
                 continue
             if awake:
-                px[x, row] = step(0.55 + (1.0 - d) * 0.45)
+                # The lens is where the light leaves: white core, cyan rim.
+                px[x, row] = lit(CORE if d < 0.5 else CYAN, 0.62 + (1.0 - d) * 0.38)
             else:
                 px[x, row] = SOCKET if d > 0.55 else ROCK_RAMP[0]
 
@@ -528,9 +575,6 @@ def make_console(width: int, height: int, armed: bool) -> Image.Image:
         shade = 0.24 - u * 0.10 if part == "lip" else 0.70 - u * 0.30 - (y - face_top) * 0.022
         px[x, y] = pick(IRON, clamp01(shade + (hash01(x, y, 613) - 0.5) * 0.12), x, y)
 
-    def step(value: float) -> RGBA:
-        return BEACON[int(clamp01(value) * (len(BEACON) - 1) + 0.5)]
-
     # The plunger: proud when idle, driven flush when armed. The travel is a
     # pixel and a half — at this size the state is carried by the socket
     # LIGHTING UP, not by the throw of the button, so the travel only has to be
@@ -543,7 +587,7 @@ def make_console(width: int, height: int, armed: bool) -> Image.Image:
             d = math.hypot((x - cx) / 3.4, (y - plunger_y) / 2.8)
             if d <= 1.0:
                 if armed:
-                    px[x, y] = step(0.5 + (1.0 - d) * 0.5)
+                    px[x, y] = lit(CORE if d < 0.45 else CYAN, 0.55 + (1.0 - d) * 0.45)
                 else:
                     # A DOME, lit from the upper left like everything else in
                     # the game. A flat disc reads as a hole, and a hole is the
@@ -553,7 +597,7 @@ def make_console(width: int, height: int, armed: bool) -> Image.Image:
                         - (y - plunger_y) / 2.8 * 0.28
                     ), x, y)
             elif d <= 1.36:
-                px[x, y] = step(0.34) if armed else SOCKET
+                px[x, y] = lit(VIOLET, 0.62) if armed else SOCKET
 
     # Two pips flanking the plunger. Nothing says "console" at 20 pixels like a
     # pair of indicator lamps that are dead until they are not.
@@ -561,7 +605,7 @@ def make_console(width: int, height: int, armed: bool) -> Image.Image:
         for oy in range(2):
             x, y = int(round(cx + side * 6.0)), int(round(plunger_y - 0.5 + oy))
             if (x, y) in body:
-                px[x, y] = step(0.72) if armed else SOCKET
+                px[x, y] = lit(MINT, 0.78) if armed else SOCKET
 
     if not armed:
         # A shadow under a raised button. Without it the plunger is a sticker.
@@ -575,7 +619,7 @@ def make_console(width: int, height: int, armed: bool) -> Image.Image:
         # above the silhouette is a line floating in the air.
         for x in range(width):
             if (x, face_top) in body and abs(x - cx) < 3.4:
-                px[x, face_top] = BEACON[4]
+                px[x, face_top] = lit(CYAN, 0.82)
     return img
 
 
@@ -669,7 +713,7 @@ def make_scar(size: int, rng: random.Random) -> Image.Image:
 
 
 def _crown_paint(
-    field: list[list[float]],
+    prism: Prism,
     width: int,
     geo: PillarGeometry,
     contact_y: int,
@@ -682,6 +726,11 @@ def _crown_paint(
     wraps. `charge` calls this at `phase=0` with `level=1` on its last frame,
     which is what makes the one-shot hand over to the loop without a snap —
     the two frames are the same call, not two drawings that look alike.
+
+    PRISMATIC AND BAKED, like the anomaly and unlike every other effect sheet
+    in the game. The stone's glow has to be the same light as the thing it
+    opened, and a single draw-time tint can only ever be one hue — so the
+    conduit gradient is resolved here and `tinted` is false in the manifest.
     """
     cx = geo.centre(width, geo.lens_y)
     breathe = 0.90 + 0.10 * math.sin(phase)
@@ -699,23 +748,26 @@ def _crown_paint(
             off = abs(x - centre) / 2.4
             if off > 1.0:
                 continue
-            add(field, x, row, level * (0.34 + 0.42 * up) * (1.0 - off) ** 1.3 * band)
+            prism.add(x, row, level * (0.34 + 0.42 * up) * (1.0 - off) ** 1.3 * band,
+                      conduit(up))
 
-    # The lens, and the halo it throws.
-    ellipse(field, cx, lens_y, 2.6 * breathe, 3.0 * breathe, level * 1.55)
-    ellipse(field, cx, lens_y, 5.2 * breathe, 5.8 * breathe, level * 0.34)
-    ellipse(field, cx, lens_y, 4.4 * breathe, 5.0 * breathe, level * 0.30, hollow=0.42)
+    # The lens, and the halo it throws. White at the source, cooling outward —
+    # the same read the anomaly's core has.
+    prism.ellipse(cx, lens_y, 2.6 * breathe, 3.0 * breathe, level * 1.55, CORE)
+    prism.ellipse(cx, lens_y, 5.2 * breathe, 5.8 * breathe, level * 0.34, CYAN)
+    prism.ellipse(cx, lens_y, 4.4 * breathe, 5.0 * breathe, level * 0.30, VIOLET, hollow=0.42)
 
     # Motes leaving the lens, wrapping with the phase.
     for i in range(3):
         rise = ((phase / math.tau) + i / 3.0) % 1.0
         mx = int(round(cx + math.sin(phase + i * 2.1) * 2.6))
         my = int(round(lens_y - rise * 15.0))
-        add(field, mx, my, level * 0.75 * (1.0 - rise))
+        prism.add(mx, my, level * 0.75 * (1.0 - rise), MINT)
 
-    # A pool at the foot, so the stone is standing IN its own light.
-    ellipse(field, geo.centre(width, geo.height), contact_y, 6.0 * breathe, 2.1 * breathe,
-            level * 0.60)
+    # A pool at the foot, so the stone is standing IN its own light. Violet:
+    # the cold end of the conduit, where the light has not gone anywhere yet.
+    prism.ellipse(geo.centre(width, geo.height), contact_y,
+                  6.0 * breathe, 2.1 * breathe, level * 0.60, VIOLET)
 
 
 def make_crown_frame(
@@ -723,9 +775,9 @@ def make_crown_frame(
 ) -> Image.Image:
     """One frame of an awake pillar holding. LOOP."""
     img = Image.new("RGBA", (width, height), TRANSPARENT)
-    field = [[0.0] * width for _ in range(height)]
-    _crown_paint(field, width, geo, contact_y, (index / total) * math.tau, 1.0)
-    resolve(field, img, floor=0.08, tone=0.95, gain=1.05)
+    prism = Prism(width, height)
+    _crown_paint(prism, width, geo, contact_y, (index / total) * math.tau, 1.0)
+    prism.paint(img, floor=0.08, tone=1.02, gain=1.05)
     return img
 
 
@@ -738,7 +790,7 @@ def make_charge_frame(
     phase 0 plus extras that reach exactly zero at t=1.
     """
     img = Image.new("RGBA", (width, height), TRANSPARENT)
-    field = [[0.0] * width for _ in range(height)]
+    prism = Prism(width, height)
     t = index / max(total - 1, 1)
     if t <= 0.0:
         return img
@@ -752,7 +804,8 @@ def make_charge_frame(
         # A spark at the foot first: the light comes from the ground, and you
         # have to see where it started or the climb reads as the stone
         # switching on from the top.
-        ellipse(field, base_x, contact_y, 3.0 + wake * 4.0, 1.2 + wake * 1.4, 0.5 + wake * 0.9)
+        prism.ellipse(base_x, contact_y, 3.0 + wake * 4.0, 1.2 + wake * 1.4,
+                      0.5 + wake * 0.9, VIOLET)
         climb = ease_in(clamp01((t - CHARGE_WAKE) / (CHARGE_CROWN - CHARGE_WAKE)))
         front = geo.groove_bot - climb * (geo.groove_bot - lens_y)
         for row in range(int(front), geo.groove_bot + 1):
@@ -765,36 +818,40 @@ def make_charge_frame(
                 off = abs(x - centre) / 2.2
                 if off > 1.0:
                     continue
-                add(field, x, row, wake * (0.35 + tail * 1.25) * (1.0 - off) ** 1.3)
+                # The climbing head carries the conduit's colour for the row
+                # it is passing, so the light CHANGES as it rises rather than
+                # arriving at the crown the colour it left the ground.
+                up = 1.0 - (row - geo.groove_top) / max(geo.groove_bot - geo.groove_top, 1)
+                prism.add(x, row, wake * (0.35 + tail * 1.25) * (1.0 - off) ** 1.3,
+                          conduit(up))
         # Motes shaken loose along the shaft as the front goes past.
         for i in range(5):
             my = int(round(front + 2.0 + i * 1.7))
             mx = int(round(geo.centre(width, my) + math.sin(i * 2.4 + index * 0.7) * 3.4))
-            add(field, mx, my, wake * 0.55 * (1.0 - i / 5.0))
-        resolve(field, img, floor=0.08, tone=0.95, gain=1.05)
+            prism.add(mx, my, wake * 0.55 * (1.0 - i / 5.0), CYAN)
+        prism.paint(img, floor=0.08, tone=1.02, gain=1.05)
         return img
 
     # --- the crown catches, then settles into the loop ------------------------
-    _crown_paint(field, width, geo, contact_y, 0.0, 1.0)
+    _crown_paint(prism, width, geo, contact_y, 0.0, 1.0)
     since = (t - CHARGE_CROWN) / (1.0 - CHARGE_CROWN)
     flash = max(0.0, 1.0 - since * 2.0)
     if flash > 0.0:
-        ellipse(field, cx, lens_y, 3.0 + flash * 7.0, 3.4 + flash * 7.5, 1.9 * flash)
+        prism.ellipse(cx, lens_y, 3.0 + flash * 7.0, 3.4 + flash * 7.5, 1.9 * flash, CORE)
         # A ring thrown along the ground, not through the air: what the stone
         # did was land, and the ground is what answers.
         radius = ease_out(min(1.0, since / 0.6))
-        ellipse(field, base_x, contact_y, 4.0 + radius * 11.0, 1.4 + radius * 3.4,
-                (1.0 - min(1.0, since / 0.6)) * 1.3, hollow=0.5)
+        prism.ellipse(base_x, contact_y, 4.0 + radius * 11.0, 1.4 + radius * 3.4,
+                      (1.0 - min(1.0, since / 0.6)) * 1.3, CYAN, hollow=0.5)
         for i in range(9):
             if hash01(i, index, 733) < 0.3:
                 continue
             angle = hash01(i, 5, 91) * math.tau
             travel = since * (5.0 + hash01(i, 8, 17) * 9.0)
-            add(field,
-                int(round(cx + math.cos(angle) * travel)),
-                int(round(lens_y + math.sin(angle) * travel * 0.75)),
-                max(0.0, 0.95 - since * 1.9))
-    resolve(field, img, floor=0.08, tone=0.95, gain=1.05)
+            prism.add(int(round(cx + math.cos(angle) * travel)),
+                      int(round(lens_y + math.sin(angle) * travel * 0.75)),
+                      max(0.0, 0.95 - since * 1.9), MINT)
+    prism.paint(img, floor=0.08, tone=1.02, gain=1.05)
     return img
 
 
@@ -1030,13 +1087,14 @@ def _anomaly(
     # It is HOVERING, and the ground under it has to say so. A bloom with a ring
     # riding out of it, breathing on the same phase as everything else.
     bloom = 0.85 + 0.15 * math.sin(phase)
-    # The pool on the floor stays MINT: it is the structure's own light landing
-    # on the structure's own ground, and it is what ties the sphere back to the
-    # four pillars burning the same colour at the corners.
+    # The pool on the floor is COOL — cyan into violet at its rim, the same
+    # gradient the pillars run and the coldest end of the prism. Mint made it
+    # the greenest thing on screen and pulled the eye off the sphere onto the
+    # dirt underneath it, which is the wrong half of the object.
     prism.ellipse(cx, contact_y, rx * 0.52 * bloom, ry * 0.13 * bloom,
-                  0.95 * bright * opened, MINT)
+                  0.95 * bright * opened, CYAN)
     prism.ellipse(cx, contact_y, rx * 0.66 * bloom, ry * 0.16 * bloom,
-                  0.34 * bright * opened, MINT, hollow=0.40)
+                  0.34 * bright * opened, VIOLET, hollow=0.40)
 
     # Motes falling INTO it out of the ground: the rift is taking, not giving.
     for i in range(7):
@@ -1090,7 +1148,7 @@ def _hover_y(contact_y: int, radius: float) -> float:
     """Centre row of the sphere. It hangs clear of the floor by design — a rift
     resting on the ground is a bonfire, and the gap under it is what says the
     thing is not obeying the same rules the players are."""
-    return contact_y - radius - 8.0
+    return contact_y - radius - 5.0
 
 
 def make_emerge_frame(
@@ -1127,7 +1185,7 @@ def make_emerge_frame(
                       wake * (0.35 + opening * 0.55), VIOLET, hollow=0.40)
         prism.ellipse(cx, contact_y, radius * (0.20 + opening * 0.45),
                       radius * (0.05 + opening * 0.12),
-                      wake * (0.45 + opening * 0.85), MINT)
+                      wake * (0.45 + opening * 0.85), CYAN)
         # Specks pulled IN, against the way everything flies at the burst. The
         # reversal is what makes the burst feel like a release.
         for i in range(16):
@@ -1174,7 +1232,7 @@ def make_emerge_frame(
             spread = ease_out(wave)
             prism.ellipse(cx, contact_y, radius * (0.3 + spread * 1.15),
                           radius * (0.07 + spread * 0.22),
-                          (1.0 - wave) * 1.45 * weight, MINT, hollow=0.5)
+                          (1.0 - wave) * 1.45 * weight, CYAN, hollow=0.5)
         for i in range(20):
             if hash01(i, 11, 307) < 0.28:
                 continue
@@ -1220,8 +1278,9 @@ def _layout(plot: int) -> dict:
         ],
         # Flat, centred on the plot's middle.
         "scar": {"dx": middle, "dy": middle},
-        # The contact point the anomaly hovers over.
-        "anomaly": {"dx": middle, "dy": middle + 0.5},
+        # THE SAME POINT as the scar: the anomaly is anchored on its core and
+        # sits IN the sigil, not above it.
+        "anomaly": {"dx": middle, "dy": middle},
         # Front face, centred between the two near stones: you walk up to this
         # from the approach, not from inside the ring.
         "console": {"dx": middle, "dy": near},
@@ -1278,6 +1337,15 @@ def build(args) -> Path:
     rift_w, rift_h = tile * 4, tile * 5
     rift_anchor = rift_h - round(tile * 0.75)
     radius = tile * 1.55
+    # THE ANOMALY IS ANCHORED ON ITS CORE, not on a ground contact, and it is
+    # the only sheet here that is. Everything else in this game registers where
+    # it touches the floor because everything else touches the floor; this one
+    # HOVERS, so the meaningful point is the centre of the sphere. Anchoring it
+    # on the row its ground bloom sits in would hang the ball a sphere-radius
+    # above the sigil it is supposed to be sitting in the middle of — which is
+    # exactly what it did. The bloom is still drawn, further down the frame,
+    # and lands on the near rim of the ring.
+    rift_core = round(_hover_y(rift_anchor, radius))
     emerge_frames = [
         make_emerge_frame(rift_w, rift_h, rift_anchor, radius, i, EMERGE_FRAMES)
         for i in range(EMERGE_FRAMES)
@@ -1350,8 +1418,9 @@ def build(args) -> Path:
                 "loop": False,
                 "crownAt": CHARGE_CROWN,
                 "handsOffTo": "crown",
-                # Greyscale: the client multiplies `--scene-beacon` onto it.
-                "tinted": True,
+                # Baked prismatic, like the anomaly: the stones burn the
+                # rift's light, and one draw-time tint cannot be four hues.
+                "tinted": False,
             },
             "crown": {
                 "file": "crown.png",
@@ -1361,7 +1430,7 @@ def build(args) -> Path:
                 "fps": CROWN_FPS,
                 "anchorY": glow_anchor,
                 "loop": True,
-                "tinted": True,
+                "tinted": False,
             },
             "emerge": {
                 "file": "emerge.png",
@@ -1369,7 +1438,7 @@ def build(args) -> Path:
                 "frameHeight": rift_h,
                 "frames": EMERGE_FRAMES,
                 "fps": EMERGE_FPS,
-                "anchorY": rift_anchor,
+                "anchorY": rift_core,
                 "loop": False,
                 "burstAt": EMERGE_BURST,
                 "handsOffTo": "rift",
@@ -1383,7 +1452,7 @@ def build(args) -> Path:
                 "frameHeight": rift_h,
                 "frames": RIFT_FRAMES,
                 "fps": RIFT_FPS,
-                "anchorY": rift_anchor,
+                "anchorY": rift_core,
                 "loop": True,
                 "tinted": False,
             },
@@ -1401,7 +1470,7 @@ def build(args) -> Path:
         f"crown {CROWN_FRAMES}x{glow_w}x{glow_h} @{CROWN_FPS}fps loop, "
         f"emerge {EMERGE_FRAMES}x{rift_w}x{rift_h} @{EMERGE_FPS}fps, "
         f"rift {RIFT_FRAMES}x{rift_w}x{rift_h} @{RIFT_FPS}fps loop, "
-        f"anchors {glow_anchor}/{rift_anchor}, "
+        f"anchors {glow_anchor}/{rift_core} (core, not contact), "
         f"seams charge->crown {charge_seam}, emerge->rift {emerge_seam}"
     )
     if charge_seam or emerge_seam:

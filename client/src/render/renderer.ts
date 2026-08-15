@@ -288,7 +288,9 @@ export class Renderer {
         } else {
           const row = depthProps[prop];
           if (row.rift) {
-            if (this.riftAtlas) drawRiftProp(ctx, this.riftAtlas, row.rift);
+            if (this.riftAtlas) {
+              drawRiftProp(ctx, view, this.riftAtlas, row.rift, palette().entity.shadow);
+            }
           } else if (scenery && row.piece) {
             drawSceneryProp(
               ctx, view, scenery, row.piece, state.time, row.anim, row.hitFlash,

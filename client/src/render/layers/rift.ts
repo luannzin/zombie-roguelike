@@ -28,6 +28,7 @@
 import type { Rift } from '../../game/world';
 import type { RiftTimingConfig } from '../../net/protocol';
 import type { Camera } from '../camera';
+import type { Projection } from '../projection';
 import {
   riftFrame,
   riftImage,
@@ -178,27 +179,63 @@ export function riftStanding(rift: Rift, phase: RiftPhase): RiftStanding[] {
   return pieces;
 }
 
-/** One standing piece, bottom-anchored on its contact point. World pixels. */
+/**
+ * One standing piece, bottom-anchored on its contact point.
+ *
+ * SCREEN SPACE, through the projection — this runs inside the entity depth
+ * sort, which is a screen-space pass, and every sprite in it is placed with
+ * `view.x/y` and scaled by `view.zoom`. Drawing world pixels here instead
+ * pins the structure near the screen origin and it rides the camera like a
+ * HUD element, which is exactly what it looks like.
+ */
 export function drawRiftProp(
   ctx: CanvasRenderingContext2D,
+  view: Projection,
   atlas: RiftAtlas,
   piece: RiftStanding,
+  shadow: string,
 ): void {
   const sheet = piece.sheet === 'pillar' ? atlas.pillar : atlas.console;
   if (!sheet) return;
   const frame = riftPropFrame(sheet, piece.shape, piece.state);
+  const width = sheet.frameWidth * view.zoom;
+  const height = sheet.frameHeight * view.zoom;
+  const px = view.x(piece.x);
+  const py = view.y(piece.y);
+
+  // The same contact shadow every other standing prop gets. Without it a three
+  // metre stone hovers: at this camera angle the dark ellipse where it meets
+  // the floor is the only thing saying it is standing ON the ground.
+  ctx.globalAlpha = RIFT_SHADOW_ALPHA;
+  ctx.fillStyle = shadow;
+  ctx.beginPath();
+  ctx.ellipse(
+    px,
+    py - (RIFT_SHADOW_HEIGHT * view.zoom) / 2,
+    (width * RIFT_SHADOW_WIDTH) / 2,
+    (RIFT_SHADOW_HEIGHT * view.zoom) / 2,
+    0, 0, Math.PI * 2,
+  );
+  ctx.fill();
+  ctx.globalAlpha = 1;
+
   ctx.drawImage(
     sheet.image,
     frame * sheet.frameWidth,
     0,
     sheet.frameWidth,
     sheet.frameHeight,
-    Math.round(piece.x - sheet.frameWidth / 2),
-    Math.round(piece.y - sheet.frameHeight),
-    sheet.frameWidth,
-    sheet.frameHeight,
+    Math.round(px - width / 2),
+    Math.round(py - height),
+    Math.round(width),
+    Math.round(height),
   );
 }
+
+/** Matches the scenery layer's contact shadow, so one pad has one language. */
+const RIFT_SHADOW_ALPHA = 0.32;
+const RIFT_SHADOW_WIDTH = 0.62;
+const RIFT_SHADOW_HEIGHT = 4;
 
 /**
  * The sigil cut into the floor. Flat, centred, no silhouette.

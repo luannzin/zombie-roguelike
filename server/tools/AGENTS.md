@@ -104,8 +104,9 @@ imported by `app/` and never run at request time.
   it (`SUMMON_TIME` / `SUMMON_IMPACT`, `KINDLE_TIME` / `KINDLE_IMPACT` in
   `client/src/game/lobby-scene.ts`; crate smash / wind life / death in
   `client/src/game/game.ts`). `wind` is the empty-crate gust — greyscale,
-  drawn without a player tint. `death` is a body hitting the floor, tinted
-  with blood at draw time; `sfx_zombie_death` puts its thud on `DEATH_IMPACT`.
+  drawn without a player tint. `death` is the same family: dirt and air
+  kicked when a body hits the floor. `sfx_zombie_death` puts its thud on
+  `DEATH_IMPACT`.
 - Shared helpers (`pick`, `hash01`, `clamp01`, `pack`, `rgb`, the ramps) live in
   `make_textures.py` and are imported by the other generators, so every sheet
   keeps one shading vocabulary. Do not copy them.

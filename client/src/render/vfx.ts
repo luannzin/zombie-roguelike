@@ -18,7 +18,8 @@
  * that player's colour (`effectImage`), so the column delivering somebody to
  * the fire is the same colour as their row in the roster and the swatch on
  * their character. An effect that belongs to the fire — the kindle roar —
- * is tinted with `fire.core` the same way. See server/tools/make_vfx.py.
+ * is tinted with `fire.core` the same way. `wind` and `death` stay greyscale:
+ * they are air and dirt, not a hue. See server/tools/make_vfx.py.
  *
  * Loading is best-effort: a missing atlas resolves to `null` and callers skip
  * the effect, so the game still runs with no assets built.
@@ -57,7 +58,7 @@ export interface VfxAtlas {
   aura: VfxSheet | null;
   /** One-shot gust when a crate breaks empty. */
   wind: VfxSheet | null;
-  /** A body hitting the floor: flash, shockwave, spat. Tinted with blood. */
+  /** A body hitting the floor: dirt and wind. Greyscale, like `wind`. */
   death: VfxSheet | null;
 }
 

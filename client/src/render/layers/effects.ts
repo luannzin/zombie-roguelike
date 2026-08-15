@@ -3,8 +3,9 @@
  * debris, melee slashes, floating text, and the empty-crate wind puff.
  *
  * Dust draws under entities; the rest draws over them. Floating text is
- * screen-space so it stays legible at any zoom. Wind is world-space after
- * darkness, additive, greyscale — a gust of air, not a player-tinted beam.
+ * screen-space so it stays legible at any zoom. Wind and the death puff are
+ * world-space after darkness, additive, greyscale — air leaving the ground,
+ * not a player-tinted beam.
  */
 
 import type { Effects, WindPuff, DeathBurst } from '../../game/effects';
@@ -12,7 +13,7 @@ import { fadeOf } from '../../lib/math';
 import { hudFont } from '../../theme/fonts';
 import { palette } from '../../theme/palette';
 import type { Projection } from '../projection';
-import { effectFrame, effectImage, type VfxSheet } from '../vfx';
+import { effectFrame, type VfxSheet } from '../vfx';
 
 /** World space, under entities. */
 export function drawDust(ctx: CanvasRenderingContext2D, effects: Effects): void {
@@ -232,9 +233,9 @@ export function drawWindPuffs(
 }
 
 /**
- * A body hitting the floor. World pixels, after darkness, additive, tinted
- * with blood — the sheet is greyscale the way kindle is, and the hue is the
- * same blood the spray already uses.
+ * Dirt and air kicked when a body hits the floor. World pixels, after
+ * darkness, additive, greyscale — the same family as the empty-crate gust,
+ * not a blood tint. The hue of dirt is the dust particles under the body.
  */
 export function drawDeathBursts(
   ctx: CanvasRenderingContext2D,
@@ -242,16 +243,14 @@ export function drawDeathBursts(
   deaths: DeathBurst[],
 ): void {
   if (!sheet || deaths.length === 0) return;
-  const tint = palette().effects.blood[3] ?? palette().effects.hitCore;
-  const image = effectImage(sheet, tint);
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
   for (const burst of deaths) {
     const fade = fadeOf(burst);
     const frame = effectFrame(sheet, burst.age);
-    ctx.globalAlpha = 0.95 * fade;
+    ctx.globalAlpha = 0.8 * fade;
     ctx.drawImage(
-      image,
+      sheet.image,
       frame * sheet.frameWidth,
       0,
       sheet.frameWidth,

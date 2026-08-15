@@ -11,7 +11,7 @@ Output (assets/processed/vfx/):
     kindle.png    16 frames, 48x96 — the bonfire roaring when the match starts
     aura.png      8 frames, 16x48  — a small looping column over epic/legendary loot
     wind.png      8 frames, 32x32  — a one-shot gust when a crate breaks empty
-    death.png     12 frames, 32x32 — a body hitting the floor: flash, shockwave, spat
+    death.png     12 frames, 32x32 — a body hitting the floor: dirt and wind
     manifest.json
 
 EFFECT SHEETS ARE GREYSCALE. An effect that belongs to somebody — a summon, a
@@ -112,15 +112,13 @@ AURA_FPS = 10
 WIND_FRAMES = 8
 WIND_FPS = 14
 
-# A body hitting the floor. TIMELINE, empty at both ends. The flash is the
-# moment the corpse lands — `DEATH_IMPACT` is what the client and the death
-# sound both align to. Tinted with blood at draw time, same as kindle is
-# tinted with fire.
+# A body hitting the floor. TIMELINE, empty at both ends. Cousin of `wind`:
+# dirt and air kicked off the ground, not a flash of blood. The envelope
+# peaks on `DEATH_IMPACT` so the puff lands with the thud in `sfx_zombie_death`.
 DEATH_FRAMES = 12
 DEATH_FPS = 16
 DEATH_CHARGE = 0.04
 DEATH_IMPACT = 0.48
-DEATH_COLLAPSE = 0.68
 
 
 def _ease_out(t: float) -> float:
@@ -592,10 +590,11 @@ def make_wind_frame(
 def make_death_frame(
     width: int, height: int, contact_y: int, index: int, total: int
 ) -> Image.Image:
-    """A body hitting the floor: charge, flash, two shockwaves, spatters.
+    """Dirt and air kicked when a body hits the floor.
 
-    Empty at both ends so it can play from t=0 with no pop. The flash is the
-    landing — everything after is the pool the corpse is about to wear.
+    Cousin of `make_wind_frame`: low, wide, empty at both ends. The envelope
+    peaks on `DEATH_IMPACT` so the puff lands with the thud. No flash, no
+    rings — those read as light and blood. This is dust leaving the ground.
     """
     img = Image.new("RGBA", (width, height), TRANSPARENT)
     field = [[0.0] * width for _ in range(height)]
@@ -604,79 +603,45 @@ def make_death_frame(
     if t <= 0.02 or t >= 0.97:
         return img
 
-    # --- CHARGE: the body gathering itself to fall --------------------------
-    if DEATH_CHARGE <= t < DEATH_IMPACT:
-        gather = (t - DEATH_CHARGE) / max(DEATH_IMPACT - DEATH_CHARGE, 1e-6)
-        pulse = _ease_in(gather)
-        _ellipse(
-            field,
-            cx,
-            contact_y,
-            width * (0.10 + pulse * 0.12),
-            height * (0.06 + pulse * 0.05),
-            0.55 + pulse * 0.7,
-        )
-        # A few specks kicking up as the weight hits.
-        for i in range(6):
-            seed = hash01(i, index, 41)
-            side = -1.0 if i % 2 == 0 else 1.0
-            mx = int(round(cx + side * pulse * width * (0.12 + seed * 0.18)))
-            my = int(round(contact_y - pulse * height * (0.08 + seed * 0.16)))
-            _add(field, mx, my, (0.4 + seed * 0.5) * pulse)
+    if t < DEATH_IMPACT:
+        gather = clamp01((t - DEATH_CHARGE) / max(DEATH_IMPACT - DEATH_CHARGE, 1e-6))
+        envelope = _ease_in(gather) * 0.55
+        travel = _ease_out(gather) * 0.35
+    else:
+        since = (t - DEATH_IMPACT) / max(1.0 - DEATH_IMPACT, 1e-6)
+        envelope = (1.0 - since) ** 1.25
+        travel = 0.35 + _ease_out(min(1.0, since / 0.85)) * 0.65
 
-    # --- IMPACT: the flash and the waves the body throws --------------------
-    if t >= DEATH_IMPACT:
-        since = (t - DEATH_IMPACT) / (1.0 - DEATH_IMPACT)
-        flash = max(0.0, 1.0 - since * 2.4)
-        if flash > 0.0:
-            _ellipse(
-                field,
-                cx,
-                contact_y,
-                width * (0.18 + flash * 0.22),
-                height * (0.08 + flash * 0.10),
-                2.4 * flash,
-            )
-        # Two rings, the second late and slower — a body landing rings twice.
-        for delay, span, weight in ((0.0, 0.48, 1.0), (0.12, 0.72, 0.62)):
-            wave = (since - delay) / span
-            if not 0.0 < wave < 1.0:
-                continue
-            radius = _ease_out(wave)
-            _ellipse(
-                field,
-                cx,
-                contact_y,
-                width * 0.14 + radius * width * 0.42,
-                height * 0.05 + radius * height * 0.16,
-                (1.0 - wave) * 1.65 * weight,
-                hollow=0.42,
-            )
-        # Spatters: short arcs out of the impact, falling back to the floor.
-        collapse = _ease_out(min(1.0, since / 0.7))
-        for i in range(14):
-            if hash01(i, index, 77) < 0.18:
-                continue
-            angle = hash01(i, 4, 19) * math.tau
-            travel = (0.18 + hash01(i, 11, 6) * 0.42) * collapse
-            fall = collapse * collapse * height * 0.12
-            mx = int(round(cx + math.cos(angle) * travel * width * 0.48))
-            my = int(round(contact_y - math.sin(angle) * travel * height * 0.22 + fall))
-            strength = (1.0 - collapse) * (0.7 + hash01(i, 3, 91) * 0.8)
-            _add(field, mx, my, strength)
-            _add(field, mx + int(math.cos(angle)), my, strength * 0.5)
+    punch = max(0.0, 1.0 - abs(t - DEATH_IMPACT) * 9.0)
+    weight = max(envelope, punch * 0.85)
 
-    # --- COLLAPSE: the pool that stays, fading the light --------------------
-    if t >= DEATH_COLLAPSE:
-        fade = _ease_out((t - DEATH_COLLAPSE) / max(1.0 - DEATH_COLLAPSE, 1e-6))
-        _ellipse(
-            field,
-            cx,
-            contact_y,
-            width * (0.22 + fade * 0.10),
-            height * (0.08 + fade * 0.04),
-            0.55 * (1.0 - fade),
-        )
+    # Specks: mostly sideways, a short hop, then they settle. Heavier and
+    # lower than the crate gust — a body, not empty air.
+    for i in range(22):
+        side = -1.0 if i % 2 == 0 else 1.0
+        seed = hash01(i, 3, 91)
+        spread = (0.12 + seed * 0.62) * travel
+        hop = math.sin(min(1.0, travel) * math.pi) * (0.06 + hash01(i, 7, 19) * 0.16)
+        mx = int(round(cx + side * spread * width * 0.50))
+        my = int(round(contact_y - hop * height))
+        strength = weight * (0.45 + seed * 0.75)
+        _add(field, mx, my, strength)
+        _add(field, mx + int(side), my, strength * 0.55)
+        _add(field, mx, my - 1, strength * 0.35)
+        if punch > 0.4 and seed > 0.45:
+            _add(field, mx + int(side * 2), my + 1, strength * 0.4 * punch)
+
+    # Ground smear: the dirt the body pressed. Wide, flat, sits on the floor.
+    _ellipse(
+        field,
+        cx,
+        contact_y,
+        width * (0.14 + travel * 0.36),
+        height * (0.05 + travel * 0.03),
+        0.75 * weight,
+    )
+    if punch > 0.0:
+        _ellipse(field, cx, contact_y, width * 0.16, height * 0.05, 1.05 * punch)
 
     px = img.load()
     for y in range(height):
@@ -684,8 +649,8 @@ def make_death_frame(
             value = field[y][x]
             if value <= 0.08:
                 continue
-            colour: RGBA = pick(BEAM, clamp01(value * 0.95), x, y)
-            px[x, y] = (colour[0], colour[1], colour[2], _quantize_alpha(value * 1.08))
+            colour: RGBA = pick(BEAM, clamp01(value * 0.9), x, y)
+            px[x, y] = (colour[0], colour[1], colour[2], _quantize_alpha(value * 1.05))
     return img
 
 

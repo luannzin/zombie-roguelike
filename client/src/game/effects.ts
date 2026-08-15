@@ -185,7 +185,7 @@ export interface WindPuff {
   life: number;
 }
 
-/** One-shot death burst. The greyscale sheet, tinted with blood at draw time. */
+/** One-shot death puff. Greyscale sheet, same family as the empty-crate gust. */
 export interface DeathBurst {
   x: number;
   y: number;
@@ -338,7 +338,7 @@ export class Effects {
   /**
    * Blood off a body that was just hit at `(x, y)` by something travelling
    * along `(dx, dy)`. `amount` scales the volume — a Glock is ~1, a Deagle
-   * more, a death more still.
+   * more. Death does not call this: the pool and the wounds already bleed.
    *
    * It sprays with the bullet, not back at the shooter. The debris in
    * `spawnImpact` already kicks BACK along the ray, which is what a round does
@@ -579,58 +579,39 @@ export class Effects {
   }
 
   /**
-   * Something died here. `dx`/`dy` is the direction the last hit came from, so
-   * the burst leans the way the shot was going.
+   * A body hitting the floor. `dx`/`dy` is the killing blow, used to throw
+   * dirt along the fall. Dust and wind, not blood — the pool and the wounds
+   * already say that.
    */
   spawnDeath(x: number, y: number, dx = 0, dy = 0): void {
     const fx = palette().effects;
     let nx = 0;
-    let ny = 0;
+    let ny = 1;
     if (dx !== 0 || dy !== 0) {
       const len = Math.hypot(dx, dy) || 1;
       nx = dx / len;
       ny = dy / len;
     }
-    for (let i = 0; i < 28; i++) {
-      const angle = Math.random() * Math.PI * 2;
-      const speed = 28 + Math.random() * 70;
-      const along = 0.35 + Math.random() * 0.65;
-      this.particles.push({
+    const footY = y + 4;
+    this.spawnDust(x, footY, nx, ny, 1, 1.5);
+    this.spawnDust(x, footY, -ny, nx, -1, 1.1);
+    this.spawnDust(x, footY, ny, -nx, 1, 1.1);
+    for (let i = 0; i < 12; i++) {
+      const side = i % 2 === 0 ? -1 : 1;
+      const along = 0.25 + Math.random() * 0.75;
+      const speed = 16 + Math.random() * 32;
+      this.dust.push({
         x,
-        y: y - 2,
-        vx: Math.cos(angle) * speed * (1 - along * 0.35) + nx * speed * along,
-        vy: Math.sin(angle) * speed * 0.65 * (1 - along * 0.35) + ny * speed * along * 0.55 - 12,
-        size: 1.1 + Math.random() * 2.4,
-        color: i % 3 === 0 ? pick(fx.blood) : pick(fx.hitParticles),
+        y: footY,
+        vx: (side * (1 - along) + nx * along) * speed,
+        vy: ny * speed * 0.35 * along - 10 - Math.random() * 14,
+        size: 1.0 + Math.random() * 2.2,
+        color: pick(fx.dust),
         age: 0,
-        life: 0.38 + Math.random() * 0.42,
-        gy: 55 + Math.random() * 30,
+        life: 0.3 + Math.random() * 0.28,
+        gy: 55 + Math.random() * 35,
       });
     }
-    // Chunks: heavier, fewer, they are the body coming apart.
-    for (let i = 0; i < 6; i++) {
-      const angle = Math.random() * Math.PI * 2;
-      const speed = 18 + Math.random() * 28;
-      this.particles.push({
-        x,
-        y: y - 3,
-        vx: Math.cos(angle) * speed + nx * 22,
-        vy: Math.sin(angle) * speed * 0.5 - 20,
-        size: 2.2 + Math.random() * 1.8,
-        color: pick(fx.blood),
-        age: 0,
-        life: 0.5 + Math.random() * 0.3,
-        gy: 90,
-      });
-    }
-    if (dx !== 0 || dy !== 0) {
-      this.spawnBlood(x, y, dx, dy, 3.2);
-    } else {
-      const angle = Math.random() * Math.PI * 2;
-      this.spawnBlood(x, y, Math.cos(angle), Math.sin(angle), 3.2);
-    }
-    this.spawnDust(x, y, 0, 1, 1, 1.2);
-    this.spawnLight(x, y, 62, 0.72, fx.hitCore, 0.22);
   }
 
   spawnDamage(x: number, y: number, value: number): void {

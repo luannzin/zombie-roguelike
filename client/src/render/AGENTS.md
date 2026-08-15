@@ -249,8 +249,9 @@ mutation, no React.
   kindle roar carries `fire.core`. That tint is not `sprites.TintCache`: a
   straight multiply is right for a material and turns a white-hot core into
   flat paint, so `EffectTintCache` adds the neutral art back over it. Never
-  bake a hue into a sheet in `make_vfx.py`. `wind` is the exception that
-  stays greyscale at draw time — a gust of air, not a player-coloured beam.
+  bake a hue into a sheet in `make_vfx.py`. `wind` and `death` stay
+  greyscale at draw time — a gust of air, dirt off the ground, not a
+  player-coloured beam.
 - `terrain.ts` and `layers/terrain.ts` are also used by `game/lobby-scene.ts`
   over a locally generated map. Nothing in them may assume a server sent the
   `TileMap`.

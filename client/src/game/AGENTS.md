@@ -153,13 +153,13 @@ seam React is allowed to read.
   Stepping in a corpse's pool tints the next prints red (`Footprint.blood`),
   decaying each stride — a trail of what you walked through, drying out behind
   you.
-- **Corpses stay.** `spawnDeath` is the juice (particles, light, the death
+- **Corpses stay.** `spawnDeath` is the juice (dirt, a wind puff, the death
   VFX sheet); the body is a persistent row (`welcome.corpses` / dirty
   snapshot), drawn from `<sheet>-death` (a one-shot timeline that holds the
   last prone frame) with a growing pool from scenery `blood.png`. Never
   rotate the walk sprite. Hidden in the dark. Embark clears them.
   `DEATH_TIME` / `DEATH_IMPACT` mirror `make_vfx.py`; the thud in
-  `zombie-death` sits on that flash. The body sheet's own `frames / fps`
+  `zombie-death` sits on that impact. The body sheet's own `frames / fps`
   is the collapse clock.
 - `Game.lights` is bonfires read off the tiles PLUS whatever the map's scenes
   are still burning (`world.scenery.lights`), on one list. The lighting has no

@@ -1093,6 +1093,20 @@ def _anomaly(
     rx = radius * stretch_x
     ry = radius * stretch_y
 
+    # IT FLOATS. Breathing alone made it a pulsing ball sitting in mid-air; a
+    # slow vertical drift is what says the thing is HANGING there, unsupported,
+    # and it is the cheapest possible term — one sine of the loop phase, so it
+    # wraps like everything else and is exactly 0 at phase 0 (which is what
+    # keeps the emerge handoff exact).
+    #
+    # The floor does NOT move with it. The pool stays where the ground is and
+    # only tightens and brightens as the sphere comes down, which is what a
+    # light source approaching a surface actually does — and that contrast is
+    # what makes the rise read as the RIFT moving rather than the camera.
+    bob = math.sin(phase) * radius * 0.10
+    cy += bob
+    near = 1.0 - bob / max(radius * 0.10, 1e-6) * 0.18
+
     # The core, seen through the biggest opening. Sat low, like the reference:
     # the shell is thinner underneath and that is where the inside shows.
     prism.ellipse(cx, cy + ry * 0.20, rx * 0.34, ry * 0.26, bright * 0.42, CORE)
@@ -1111,8 +1125,8 @@ def _anomaly(
     # further down than the ball, landing on the far rim of the sigil instead
     # of inside it. Under the sphere's own lower edge is where light cast by a
     # hovering object actually falls.
-    floor_y = cy + ry * 0.78
-    bloom = 0.85 + 0.15 * math.sin(phase)
+    floor_y = cy - bob + ry * 0.78
+    bloom = (0.85 + 0.15 * math.sin(phase)) * near
     # The pool on the floor is COOL — cyan into violet at its rim, the same
     # gradient the pillars run and the coldest end of the prism. Mint made it
     # the greenest thing on screen and pulled the eye off the sphere onto the
@@ -1194,9 +1208,11 @@ def make_emerge_frame(
 
     cx = (width - 1) / 2.0
     cy = _hover_y(contact_y, radius)
-    rest_spin, rest_x, rest_y, rest_bright, rest_instability = _rift_state(0.0)
     # Same rule as `_anomaly`: the floor this throws light onto is under the
-    # SPHERE, not at the bottom of the frame.
+    # SPHERE, not at the bottom of the frame. The rest of the resting state is
+    # no longer read here — the tail derives its own from `_rift_state(phase)`
+    # so that it is already moving at loop rate before the handover.
+    _, _, rest_y, _, _ = _rift_state(0.0)
     floor_y = cy + radius * rest_y * 0.78
 
     # --- SEAM: a hairline splits, and the air starts falling into it ---------
@@ -1230,22 +1246,38 @@ def make_emerge_frame(
     # --- BURST and SETTLE: it inflates past its size and contracts onto it ---
     settle = clamp01((t - EMERGE_BURST) / (EMERGE_SETTLE - EMERGE_BURST))
     grown = ease_out(settle)
-    # `grown` is exactly 1.0 from EMERGE_SETTLE on, so every term below is
-    # exactly its resting value for the whole tail. No lerp, no drift.
+
+    # THE TAIL IS ALREADY THE LOOP, RUN BACKWARDS FROM ITS OWN FRAME 0.
+    #
+    # It used to hold `phase = 0` for the whole settle, which made every term a
+    # constant — so once the debris had faded (well before the end) the sheet
+    # played several byte-identical frames and the effect visibly emerged,
+    # FROZE, and only started moving again when the client swapped to the loop.
+    # The seam was perfect and the motion was not, which is the harder half.
+    #
+    # Instead the phase counts UP to exactly 0 on the last frame at the loop's
+    # own angular rate, so the shell is already turning, breathing and floating
+    # at rest speed before the handover — there is no frame where it stops. The
+    # step is derived from both sheets' rates rather than typed in, or re-timing
+    # either one silently reintroduces the stall.
+    step = math.tau * RIFT_FPS / (EMERGE_FPS * RIFT_FRAMES)
+    phase = -(total - 1 - index) * step
+    base_spin, base_x, base_y, base_bright, base_instability = _rift_state(phase)
+
     over = 1.0 + 0.34 * (1.0 - grown)
-    # A full turn while it inflates, landing back on the orientation the loop
-    # starts from. Snapped, not trusted to floating point: tau and 0 are the
-    # same angle mathematically and one ULP apart in a cosine.
-    spin = rest_spin if grown >= 1.0 else math.tau * grown
-    stretch_x = rest_x * over
-    stretch_y = rest_y * (1.0 + 0.20 * (1.0 - grown))
-    bright = rest_bright + 1.30 * (1.0 - grown)
-    shear = rest_instability * 2.0 + 3.4 * (1.0 - grown)
+    # An extra turn on top while it inflates, decaying to nothing — so it spins
+    # up and DECELERATES into its resting rate instead of stepping down to it.
+    # Exactly `base_spin` at grown = 1, which is what keeps the seam exact.
+    spin = base_spin + math.tau * (1.0 - grown)
+    stretch_x = base_x * over
+    stretch_y = base_y * (1.0 + 0.20 * (1.0 - grown))
+    bright = base_bright + 1.30 * (1.0 - grown)
+    shear = base_instability * 2.0 + 3.4 * (1.0 - grown)
     reach = 1.0 + 1.5 * (1.0 - grown)
     opened = grown if settle < 1.0 else 1.0
 
     _anomaly(prism, width, contact_y, cy, radius, spin, stretch_x, stretch_y,
-             bright, shear, 0.0, reach, opened)
+             bright, shear, phase, reach, opened)
 
     # One-shot debris, on its own clock. Reaches zero at `since = 0.72`, well
     # inside the tail, so the last frame carries none of it.
@@ -1294,8 +1326,17 @@ def _layout(plot: int) -> dict:
     structure rather than seven loose sheets — whoever wires it up should not
     have to re-derive where a corner is.
     """
-    far, near = 1.0, float(plot)          # contact rows: back row, front row
-    left, right = 0.5, plot - 0.5         # tile centres of the corner columns
+    # ONE TILE IN FROM THE CORNERS. At the corners the stones were three tiles
+    # from an anomaly a tile and a half wide, and the gap read as four lamp
+    # posts standing near a sphere rather than as one structure holding it. In
+    # here the ring closes to the point where the rift's own spines reach the
+    # stones, which is the picture: they are what is holding it open.
+    #
+    # The PLOT does not shrink with them — it is the cleared ground and the
+    # isolation footprint, and the room to fight in around the structure is
+    # worth more than a tighter box.
+    far, near = 2.0, plot - 1.0           # contact rows: back row, front row
+    left, right = 1.5, plot - 1.5         # tile centres of the stone columns
     middle = plot / 2.0
     return {
         # One shape per corner, no flips — see PILLAR_SHAPES.

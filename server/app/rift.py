@@ -55,11 +55,15 @@ PLOT = 7
 #: `scenery.Piece`. There is no `flip`: the stones are shaded from the upper
 #: left and a mirrored one is lit from the wrong side, which is why the art
 #: ships four cuts instead of two.
+#: ONE TILE IN FROM THE CORNERS — see `_layout()` in make_rift.py. Close
+#: enough that the rift's spines reach the stones, which is the picture: they
+#: are what is holding it open. The plot stays 7x7 regardless; that is the
+#: cleared ground and the isolation footprint, not the structure's own size.
 _PILLARS: tuple[tuple[float, float, int], ...] = (
-    (0.5, 1.0, 0),
-    (PLOT - 0.5, 1.0, 1),
-    (0.5, float(PLOT), 2),
-    (PLOT - 0.5, float(PLOT), 3),
+    (1.5, 2.0, 0),
+    (PLOT - 1.5, 2.0, 1),
+    (1.5, PLOT - 1.0, 2),
+    (PLOT - 1.5, PLOT - 1.0, 3),
 )
 _CONSOLE = (PLOT / 2.0, float(PLOT))
 _CENTRE = (PLOT / 2.0, PLOT / 2.0)

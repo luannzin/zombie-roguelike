@@ -187,7 +187,8 @@ subtree.
   debris BACK along the ray and blood FORWARD out the far side, so the two
   read as a round passing through something rather than stopping on it, and
   it leaves a WOUND — one frame of `assets/processed/gore/` pinned to the
-  sprite, carried through the walk cycle until it dries. Damage the player
+  sprite and masked to its silhouette, so the mark is ON the creature and
+  carried through the walk cycle until it dries. Damage the player
   can only read off a health bar is a number; damage they can see on the
   creature is damage. Only flesh bleeds: wood takes splinters and a swing the
   i-frames ate takes nothing.

@@ -129,7 +129,10 @@ seam React is allowed to read.
   separately from `hit` and `onAttack` splatters only when the swing got
   through. Wounds are normalised to the sprite (`u`/`v`), never world pixels:
   this folder does not know how big anything is, and the renderer scales them
-  by whatever sheet it is drawing.
+  by whatever sheet it is drawing. It also MASKS them to the silhouette, which
+  makes `splatter`'s ranges a contract rather than taste — a mark aimed past
+  the body is deleted, not clipped, so it aims at the trunk and stays inside
+  it. Widening those ranges quietly costs hits their wound.
 - **Footprints are the one effect that is not short-lived, and the exception is
   the feature.** `Game.trackFootsteps` lays one per stride for every body on
   visible ground, with the depth coming from the SOIL under it (`soilAt`), and

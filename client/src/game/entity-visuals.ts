@@ -186,17 +186,24 @@ export class EntityVisuals {
    * The mark lands on the side the hit came FROM, so a creature shot from the
    * left wears it on its left — the sprite has one body and four facings, and
    * a wound placed on the exit side would be on the wrong half of the sprite
-   * as soon as the thing turned around. Height is the torso, biased upward:
-   * the legs are two pixels wide at this scale and a stain on them reads as
-   * mud.
+   * as soon as the thing turned around.
+   *
+   * The ranges are the TRUNK, and they are narrow for a reason: the renderer
+   * masks every wound to the sprite's own alpha, so a mark aimed past the
+   * silhouette does not spill — it is simply thrown away, and a hit that
+   * leaves nothing visible is worse than one placed conservatively. On the
+   * processed 16x16 grid a body runs x 4..11 and its trunk y 6..10, which is
+   * roughly the middle two fifths across and a band from a third to two
+   * thirds up. Legs are excluded: they are four pixels wide and a stain down
+   * there reads as mud.
    */
   splatter(id: string, dirX: number, dirY: number): void {
     const state = this.state(id);
     if (state.stains.length >= STAIN_LIMIT) state.stains.shift();
     const { x: nx } = normalize(dirX, dirY);
     state.stains.push({
-      u: clamp(-nx * 0.42 + (Math.random() - 0.5) * 0.5, -0.72, 0.72),
-      v: 0.34 + Math.random() * 0.42,
+      u: clamp(-nx * 0.28 + (Math.random() - 0.5) * 0.32, -0.4, 0.4),
+      v: 0.42 + Math.random() * 0.26,
       frame: (Math.random() * STAIN_FRAMES) | 0,
       flip: Math.random() < 0.5,
       age: 0,

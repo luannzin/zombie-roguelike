@@ -13,6 +13,7 @@
 
 import type { GameConfig } from '../../net/protocol';
 import { stainFade } from '../../game/entity-visuals';
+import { createSurface, type OffscreenSurface } from '../../lib/canvas';
 import { clamp01 } from '../../lib/math';
 import { HUD_GRID, hudFont } from '../../theme/fonts';
 import { hpColor, palette } from '../../theme/palette';
@@ -203,7 +204,7 @@ export function drawEntity(entity: EntityContext, target: DrawableEntity): void 
   // After the flash, not under it: the white blink is the moment the hit
   // lands, the wound is what the hit left, and the second has to outlast the
   // first on screen or it never registers as damage.
-  drawStains(entity, target, dx, dy, dw, dh);
+  drawStains(entity, target, image, col * w, row * h, w, h, dx, dy, dw, dh);
 
   if (target.kind === 'player') {
     drawAimIndicator(entity, target, px, py);
@@ -249,18 +250,55 @@ function blitGear(
 }
 
 /**
- * Wounds, stamped on the body inside the sprite's own dest rect.
+ * One scratch frame, reused by every wounded body on screen.
  *
- * They ride the sprite rather than the world: the offsets are normalised to
- * the frame, so a stain stays on the shoulder it landed on while the creature
- * walks, turns and animates. Drawn plainly (no additive, no tint) and scaled
- * by the same zoom as the body — a wound is part of the picture of the
- * creature, not a light on top of it, and it goes dark with the creature when
- * the lantern leaves.
+ * Grown to the largest sprite frame seen and never shrunk: this is one small
+ * canvas for the whole game, and reallocating it per entity per frame would
+ * cost more than everything else in this layer put together.
+ */
+let stainScratch: OffscreenSurface | null = null;
+
+function scratchFor(w: number, h: number): OffscreenSurface {
+  if (!stainScratch || stainScratch.canvas.width < w || stainScratch.canvas.height < h) {
+    stainScratch = createSurface(
+      Math.max(w, stainScratch?.canvas.width ?? 0),
+      Math.max(h, stainScratch?.canvas.height ?? 0),
+      'entities/stains',
+    );
+  }
+  return stainScratch;
+}
+
+/**
+ * Wounds, painted ONTO the creature — masked to the sprite's own alpha so no
+ * part of a splat can hang in the air beside it.
+ *
+ * This is the whole difference between blood and a sticker. A wound is
+ * composited in the sheet's own 16x16 space first: the marks are stamped on
+ * the sprite's pixel grid (so they never straddle a half pixel and shimmer as
+ * the camera moves), then `destination-in` against the body frame throws away
+ * everything that missed, and only then is the result blown up to the dest
+ * rect the body was drawn into. Clipping AFTER the zoom would leave blood on
+ * the transparent corners of the frame; clipping before it means the creature
+ * is wearing the wound.
+ *
+ * Masking against the BODY and not the gear on purpose: overlays are
+ * registered to the same grid and sit inside that silhouette, so the body is
+ * the outline of the whole thing, and a hat is the one piece that pokes out of
+ * it — which is not where a chest wound goes anyway.
+ *
+ * Drawn plainly (no additive, no tint) and dimmed by the creature's own
+ * `visibility`: a wound is part of the picture of the creature, not a light on
+ * top of it, so it goes into the dark when the creature does.
  */
 function drawStains(
-  { ctx, view, gore }: EntityContext,
+  { ctx, gore }: EntityContext,
   target: DrawableEntity,
+  image: CanvasImageSource,
+  sx: number,
+  sy: number,
+  w: number,
+  h: number,
   dx: number,
   dy: number,
   dw: number,
@@ -268,39 +306,38 @@ function drawStains(
 ): void {
   if (!gore || target.stains.length === 0) return;
 
-  const sw = view.size(gore.frameWidth);
-  const sh = view.size(gore.frameHeight);
-  const cx = dx + dw / 2;
-  const bottom = dy + dh;
+  const scratch = scratchFor(w, h);
+  const paint = scratch.ctx;
+  paint.clearRect(0, 0, w, h);
 
+  const gw = gore.frameWidth;
+  const gh = gore.frameHeight;
   for (const stain of target.stains) {
-    ctx.globalAlpha = stainFade(stain) * target.visibility;
-    const left = Math.round(cx + stain.u * (dw / 2) - sw / 2);
-    const top = Math.round(bottom - stain.v * dh - sh / 2);
-    const frame = stain.frame * gore.frameWidth;
+    paint.globalAlpha = stainFade(stain);
+    const left = Math.round(w / 2 + stain.u * (w / 2) - gw / 2);
+    const top = Math.round(h - stain.v * h - gh / 2);
+    const frame = stain.frame * gw;
     if (stain.flip) {
       // Mirrored so six frames read as twelve. Cheap here: only a body that
       // has been hit has stains at all.
-      ctx.save();
-      ctx.translate(left + sw, top);
-      ctx.scale(-1, 1);
-      ctx.drawImage(gore.image, frame, 0, gore.frameWidth, gore.frameHeight, 0, 0, sw, sh);
-      ctx.restore();
+      paint.save();
+      paint.translate(left + gw, top);
+      paint.scale(-1, 1);
+      paint.drawImage(gore.image, frame, 0, gw, gh, 0, 0, gw, gh);
+      paint.restore();
     } else {
-      ctx.drawImage(
-        gore.image,
-        frame,
-        0,
-        gore.frameWidth,
-        gore.frameHeight,
-        left,
-        top,
-        sw,
-        sh,
-      );
+      paint.drawImage(gore.image, frame, 0, gw, gh, left, top, gw, gh);
     }
   }
+
+  // Keep only what landed on the creature.
+  paint.globalAlpha = 1;
+  paint.globalCompositeOperation = 'destination-in';
+  paint.drawImage(image, sx, sy, w, h, 0, 0, w, h);
+  paint.globalCompositeOperation = 'source-over';
+
   ctx.globalAlpha = target.visibility;
+  ctx.drawImage(scratch.canvas, 0, 0, w, h, dx, dy, dw, dh);
 }
 
 function drawAimIndicator(

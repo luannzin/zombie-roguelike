@@ -108,14 +108,28 @@ mutation, no React.
   / `clothes`, never a hardcoded list. The backpack overlay is
   `welcome.config.backpackSprite`.
 - **Wounds sit on the body too, and they are the OPPOSITE of a vfx sheet.**
-  `DrawableEntity.stains` are frames of the gore atlas stamped inside the
-  sprite's own dest rect: baked colour, no tint, no additive, drawn in the
-  entity pass and multiplied by the same `visibility` as the body — a wound on
-  a creature outside the lantern is as invisible as the creature, or blood
-  becomes a free tracker. They go AFTER the hit flash, because the blink is
-  the moment and the wound is the record, and the record has to outlast it.
-  Offsets are normalised (`u` -1..1 across the frame, `v` 0..1 up from the
-  feet), so the same stain lands correctly on a creature of any size.
+  `DrawableEntity.stains` are frames of the gore atlas: baked colour, no tint,
+  no additive, drawn in the entity pass and multiplied by the same
+  `visibility` as the body — a wound on a creature outside the lantern is as
+  invisible as the creature, or blood becomes a free tracker. They go AFTER
+  the hit flash, because the blink is the moment and the wound is the record,
+  and the record has to outlast it. Offsets are normalised (`u` -1..1 across
+  the frame, `v` 0..1 up from the feet), so the same stain lands correctly on
+  a creature of any size.
+- **A wound is MASKED TO THE SILHOUETTE, and that is what makes it blood
+  rather than a sticker.** `drawStains` composites into a shared scratch frame
+  in the sheet's own 16x16 space — marks land on the sprite's pixel grid, so
+  they never straddle a half pixel and shimmer as the camera moves — then
+  `destination-in` against the body frame discards everything that missed the
+  creature, and only the survivor is blown up into the dest rect. Doing it in
+  the other order leaves blood hanging in the transparent corners of the frame
+  beside the body. The mask is the BODY, not the gear: overlays are registered
+  to the same grid and live inside that outline. The scratch surface is one
+  canvas for the whole game, grown to the largest frame and never shrunk —
+  do not allocate one per entity per frame.
+  Because the mask is unforgiving, placement (`EntityVisuals.splatter`) aims
+  at the trunk and stays well inside it: a mark aimed past the edge is not
+  clipped gracefully, it is deleted.
 - **Gear sits on the body.** `DrawableEntity.gear` is a back-to-front list of
   overlay sheets drawn in the same facing and walk frame. A tinted target
   (the player) multiply-tints every layer — the backpack follows the wearer.

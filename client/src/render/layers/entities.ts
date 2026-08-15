@@ -67,8 +67,6 @@ const LABEL_TICK_GAP = 3;
 const COIN_BOB = 0.35;
 /** Draw scale vs the processed 16px frame. */
 const COIN_SCALE = 0.5;
-/** Spin FPS — face → ¾ → edge → ¾ reads as a continuous flip. */
-const COIN_SPIN_FPS = 12;
 
 export interface EntityContext {
   ctx: CanvasRenderingContext2D;
@@ -117,8 +115,8 @@ export function drawCoinShadows(entity: EntityContext, coins: DrawableCoin[]): v
 }
 
 /**
- * Spinning gold pickups. Always animate (walk frames as spin), fixed "down"
- * row of the processed sheet — item art repeats every facing.
+ * Spinning gold pickups. The sheet is a Y-axis tumble (`make_coin.py`);
+ * `walkFrameOrder` + `fps` are the spin. One row — no facing.
  */
 export function drawCoins(entity: EntityContext, coins: DrawableCoin[], sheetName: string): void {
   const { ctx, view, book } = entity;
@@ -129,11 +127,11 @@ export function drawCoins(entity: EntityContext, coins: DrawableCoin[], sheetNam
   const w = sheet.frameWidth * COIN_SCALE;
   const h = sheet.frameHeight * COIN_SCALE;
   const row = sheet.rows.down ?? 0;
+  const order = sheet.walkFrameOrder;
+  const fps = sheet.fps || 12;
 
   for (const coin of coins) {
-    const col = sheet.walkFrameOrder[
-      Math.floor(coin.animTime * COIN_SPIN_FPS) % sheet.walkFrameOrder.length
-    ];
+    const col = order[Math.floor(coin.animTime * fps) % order.length];
     const bob = Math.sin(coin.animTime * 7 + hashId(coin.id)) * COIN_BOB;
     const dx = view.x(coin.x - w / 2);
     const dy = view.y(coin.y - h + 0.75 + bob);

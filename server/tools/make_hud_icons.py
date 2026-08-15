@@ -40,7 +40,7 @@ from pathlib import Path
 
 from PIL import Image
 
-from make_textures import RGBA, Ramp, outline, pick, rgb
+from make_textures import RGBA, Ramp, outline, paint_coin, pick, rgb
 
 ROOT = Path(__file__).resolve().parents[2]
 PROCESSED_DIR = ROOT / "assets" / "processed"
@@ -63,11 +63,6 @@ BOLT = rgb("#5c3410")
 LEATHER: Ramp = [rgb(c) for c in ("#3a2a1c", "#5a4030", "#8a6244", "#c49a68")]
 STRAP = rgb("#2a2218")
 BUCKLE = rgb("#d8c078")
-
-# Slot gold. Same ramp as the world coin, shrunk to an 8px badge so it
-# sits next to an 11px value without covering the item.
-COIN: Ramp = [rgb(c) for c in ("#a05a1c", "#f2a541", "#ffd678", "#fff1c2")]
-COIN_OUTLINE = rgb("#482a12")
 
 # The charge glyph, punched into the cell window as a silhouette. Authored by
 # hand because a 4x6 bolt is below the size where any procedural stroke reads.
@@ -164,23 +159,9 @@ def make_backpack(size: int = 16) -> Image.Image:
 
 
 def make_coin(size: int = 8) -> Image.Image:
-    """A face-on gold disc. 8x8 so a slot value stays a badge, not a cover."""
+    """Face-on frame of the world coin, 8x8 so a slot value stays a badge."""
     img = Image.new("RGBA", (size, size), TRANSPARENT)
-    px = img.load()
-    cx = cy = (size - 1) / 2
-    radius = size / 2 - 1.15
-    for y in range(size):
-        for x in range(size):
-            dx = x - cx
-            dy = y - cy
-            dist = (dx * dx + dy * dy) ** 0.5
-            if dist > radius:
-                continue
-            falloff = 1 - dist / radius
-            shine = max(0.0, 1 - ((dx + 1.1) ** 2 + (dy + 1.1) ** 2) ** 0.5 / radius)
-            px[x, y] = pick(COIN, 0.32 + falloff * 0.28 + shine * 0.42, x, y)
-    outline(img, COIN_OUTLINE)
-    return img
+    return paint_coin(img)
 
 
 def stamp(

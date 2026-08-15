@@ -9,8 +9,9 @@ imported by `app/` and never run at request time.
 
 | script | stage | output |
 | --- | --- | --- |
-| `make_placeholder_sheet.py` | generates raw art | `assets/raw/<name>.png` (player, zombie, coin, backpack) |
+| `make_placeholder_sheet.py` | generates raw art | `assets/raw/<name>.png` (player, zombie, backpack) |
 | `process_sprites.py` | raw → production | `assets/processed/<name>/` |
+| `make_coin.py` | generates final pixels | `assets/processed/coin/` (8-frame Y-spin, same disc as the HUD badge) |
 | `make_textures.py` | generates final pixels | `assets/processed/terrain/` (4 grounds, blend, patch, rock, tree, deadtree, stump, grass, bush, branch, leaves, fern, campfire) |
 | `make_scenery.py` | generates final pixels | `assets/processed/scenery/` (cabin, tent, fence, sign, logs, crate, firepit, blood, tracks, clothes, debris) |
 | `make_vfx.py` | generates final pixels | `assets/processed/vfx/` (summon, kindle, aura) |
@@ -24,8 +25,10 @@ imported by `app/` and never run at request time.
   mirrors the side row and writes `sheet.png` + `manifest.json` with rows
   down/left/right/up. Gear overlays (backpack) skip the crop: they are
   authored on the processed 16x16 player grid and processed with `--exact`.
-- Terrain and HUD icons have **no raw stage** — they are generated straight into
-  `assets/processed/`.
+- Terrain, HUD icons and the world coin have **no raw stage** — they are
+  generated straight into `assets/processed/`. The coin disc is `paint_coin`
+  in `make_textures.py`; the HUD badge is that disc face-on, the pickup
+  sheet is the same disc spun.
 - Generation is deterministic: the same command must produce byte-identical
   PNGs. Do not introduce unseeded randomness.
 - `--tile` must match `TILE_SIZE` in `app/config.py`.
@@ -91,6 +94,7 @@ python tools/make_scenery.py
 python tools/make_vfx.py
 python tools/make_loot.py
 python tools/make_hud_icons.py
+python tools/make_coin.py
 ```
 
 - A new character or item is `--name` (plus `--height` for taller entities); art

@@ -8,10 +8,6 @@ Characters:
   rows: 0 = facing down, 1 = facing side (right), 2 = facing up
   cols: 0 = step A, 1 = idle/stand, 2 = step B
 
-Items (coin, …):
-  rows: same art repeated (no facing)
-  cols: spin / idle frames
-
 Gear (backpack, …):
   rows: down / side / up, same as a character
   cols: walk frames (col 1 idle)
@@ -19,15 +15,15 @@ Gear (backpack, …):
   without a second transform. Neutral greys — the client multiply-tints them
   with the wearer's colour.
 
-One art set per run. `--entity` picks it (defaults to `--name`). Creatures,
-items and gear are all data tables, so adding any of them is not a code change.
+One art set per run. `--entity` picks it (defaults to `--name`). Creatures
+and gear are data tables, so adding either is not a code change. The world
+coin is `make_coin.py` — generated, no raw stage.
 
 Output: assets/raw/<name>.png  (consumed by tools/process_sprites.py)
 
 Usage:
     python tools/make_placeholder_sheet.py --name player
     python tools/make_placeholder_sheet.py --name zombie
-    python tools/make_placeholder_sheet.py --name coin
 """
 
 from __future__ import annotations
@@ -192,69 +188,6 @@ ZOMBIE = Entity(
 ENTITIES = {"player": PLAYER, "zombie": ZOMBIE}
 
 # ---------------------------------------------------------------------------
-# Items — pickups use the same 3x3 raw format so process_sprites.py eats them
-# unchanged. Columns are spin frames; every row is the same art (no facing).
-# ---------------------------------------------------------------------------
-
-
-@dataclass(frozen=True)
-class Item:
-    """One pickup: palette + 3 spin frames (cols 0..2 of the raw sheet)."""
-
-    palette: Palette
-    frames: list[Art]
-
-
-COIN_PALETTE: Palette = {
-    "o": (72, 42, 18, 255),      # outline
-    "d": (160, 90, 28, 255),     # dark gold / rim
-    "g": (242, 165, 65, 255),    # body — matches --ink-accent
-    "h": (255, 214, 120, 255),   # highlight
-    "s": (255, 245, 200, 255),   # shine
-}
-
-# Y-axis spin: face → three-quarter → edge. Process with `--uniform` so every
-# frame shares one crop box and stays the same on-screen size while rotating.
-COIN = Item(
-    palette=COIN_PALETTE,
-    frames=[
-        # Face-on — full disc, bright face.
-        [
-            "..oooooo..",
-            ".odggggdo.",
-            "odghsshgdo",
-            "oggssssggo",
-            "odghsshgdo",
-            ".odggggdo.",
-            "..oooooo..",
-        ],
-        # Three-quarter — body foreshortens, shine slides to the rim.
-        [
-            "...oooo...",
-            "..odggdo..",
-            ".odghhgdo.",
-            ".oggssggo.",
-            ".odghhgdo.",
-            "..odggdo..",
-            "...oooo...",
-        ],
-        # Edge-on — thin slab, rim gleam. Same height as the face disc.
-        [
-            "....oo....",
-            "...oddo...",
-            "...oggo...",
-            "...ohso...",
-            "...oggo...",
-            "...oddo...",
-            "....oo....",
-        ],
-    ],
-)
-
-ITEMS = {"coin": COIN}
-
-
-# ---------------------------------------------------------------------------
 # Gear — equipment overlays. Same 3x3 raw grid as a character (down / side /
 # up), but the art is a 16x16 frame registered to the processed player sheet
 # so it composites on the body with no extra offset. Side faces RIGHT; the
@@ -394,23 +327,10 @@ def write_gear(gear: Gear, path: Path) -> None:
     print(f"wrote {path} ({sheet.width}x{sheet.height})")
 
 
-def write_sheet(frames: list[Art], palette: Palette, cell: int, scale: int, path: Path) -> None:
-    sheet = Image.new("RGBA", (cell * 3, cell * 3), MAGENTA)
-    for row in range(3):
-        for col, art in enumerate(frames):
-            sheet.paste(
-                render_cell(palette, art, cell, scale, center=True),
-                (col * cell, row * cell),
-            )
-    path.parent.mkdir(parents=True, exist_ok=True)
-    sheet.convert("RGB").save(path)
-    print(f"wrote {path} ({sheet.width}x{sheet.height})")
-
-
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--name", default="player")
-    keys = (*ENTITIES, *ITEMS, *GEAR)
+    keys = (*ENTITIES, *GEAR)
     ap.add_argument("--entity", choices=keys, default=None,
                     help="art set to draw (defaults to --name)")
     ap.add_argument("--cell", type=int, default=32, help="raw cell size in px")
@@ -423,11 +343,6 @@ def main() -> None:
 
     key = args.entity or args.name
     out = Path(args.out_dir) / f"{args.name}.png"
-
-    if key in ITEMS:
-        item = ITEMS[key]
-        write_sheet(item.frames, item.palette, args.cell, args.scale, out)
-        return
 
     if key in GEAR:
         # Gear is authored on the processed 16x16 grid. Forcing the cell here

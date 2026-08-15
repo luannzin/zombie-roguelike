@@ -106,6 +106,11 @@ def rgb(hex_code: str) -> RGBA:
 # multiplies over this, so a bright texture would leave nothing for the light to
 # add. Ramps run darkest -> lightest and are indexed by noise.
 
+# World pickup and HUD badge share this disc. One ramp so a coin on the
+# floor and a coin on a slot are the same piece of gold.
+COIN_RAMP: Ramp = [rgb(c) for c in ("#a05a1c", "#f2a541", "#ffd678", "#fff1c2")]
+COIN_OUTLINE = rgb("#482a12")
+
 EARTH: Ramp = [rgb(c) for c in ("#1d1a15", "#26221a", "#2f2a20", "#383026", "#43392d")]
 MOSS: Ramp = [rgb(c) for c in ("#22291d", "#2b3524", "#33402b", "#3c4c32")]
 GRIT: Ramp = [rgb(c) for c in ("#4b4034", "#554839", "#3a3228")]
@@ -470,6 +475,46 @@ def outline(img: Image.Image, colour: RGBA) -> None:
                     break
     for x, y in edges:
         px[x, y] = colour
+
+
+def paint_coin(
+    img: Image.Image,
+    *,
+    radius: float | None = None,
+    scale_x: float = 1.0,
+    shine_x: float = -1.1,
+    shine_y: float = -1.1,
+    dim: float = 1.0,
+) -> Image.Image:
+    """The gold disc the HUD badge and the world pickup are both made of.
+
+    `scale_x` is a Y-axis squash (1 = face, ~0 = rim). Shine is in pixels
+    from the centre so a world light stays put while the coin turns. `dim`
+    is the back-face drop so the flip reads.
+    """
+    px = img.load()
+    width, height = img.size
+    cx = (width - 1) / 2
+    cy = (height - 1) / 2
+    if radius is None:
+        radius = min(width, height) / 2 - 1.15
+    rx = max(0.85, radius * max(0.0, scale_x))
+    for y in range(height):
+        for x in range(width):
+            dx = (x - cx) / rx
+            dy = (y - cy) / radius
+            dist = (dx * dx + dy * dy) ** 0.5
+            if dist > 1:
+                continue
+            falloff = 1 - dist
+            shine = max(
+                0.0,
+                1 - ((x - cx - shine_x) ** 2 + (y - cy - shine_y) ** 2) ** 0.5 / radius,
+            )
+            tone = (0.32 + falloff * 0.28 + shine * 0.42) * dim
+            px[x, y] = pick(COIN_RAMP, tone, x, y)
+    outline(img, COIN_OUTLINE)
+    return img
 
 
 def make_rock(width: int, height: int, rng: random.Random, scale: float) -> Image.Image:

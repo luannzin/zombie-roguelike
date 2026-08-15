@@ -7,7 +7,7 @@ output the game actually loads.
 
 ## Ownership
 
-- `raw/` — source art (`player.png`, `zombie.png`, `coin.png`, `backpack.png`)
+- `raw/` — source art (`player.png`, `zombie.png`, `backpack.png`)
   and font sources (`fonts/DepartureMono-Regular.otf`). **Never served.**
 - `processed/` — production art: `player/`, `zombie/`, `coin/`, `backpack/`
   (`sheet.png` + `manifest.json`), `terrain/`, `scenery/`, `vfx/`, `hud/`.
@@ -26,7 +26,8 @@ output the game actually loads.
   `processed/` is reproducible by rerunning a script in `server/tools/`; edit
   the generator, not the PNG.
 - Raw character art is a 3x3 grid of frames on solid magenta (`#FF00FF`), rows
-  down/side/up, col 1 idle. Terrain and HUD icons have no raw stage.
+  down/side/up, col 1 idle. Terrain, HUD icons and the world coin have
+  no raw stage. The pickup is `make_coin.py` — the HUD disc, spinning.
 - Processed character sheets are rows down/left/right/up × 3 frames, at
   `TILE_SIZE` from `server/app/config.py`.
 - Three shapes of art, and the shape decides how it is drawn: a seamless GROUND

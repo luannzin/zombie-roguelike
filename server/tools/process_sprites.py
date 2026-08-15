@@ -180,8 +180,7 @@ def process(args) -> Path:
         for row in grid
     ]
 
-    # Spin sheets (coin, …): one crop box for every cell so foreshortened
-    # frames do not shrink relative to the face-on frame.
+    # Shared crop box: foreshortened frames keep the face-on size.
     shared = union_bbox([cell for row in keyed for cell in row]) if args.uniform else None
 
     frames: dict[str, list[Image.Image]] = {}
@@ -222,7 +221,8 @@ def process(args) -> Path:
     sheet_path = out_dir / "sheet.png"
     sheet.save(sheet_path)
 
-    # Coin-style spin: face → ¾ → edge → ¾. Character walk keeps the old order.
+    # Walk cycle. `--uniform` used to mean a 3-frame ping-pong; the world
+    # coin now lives in make_coin.py and owns its own order.
     walk_order = [0, 1, 2, 1]
     idle = 0 if args.uniform else 1
     fps = 12 if args.uniform else 8

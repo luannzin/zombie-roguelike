@@ -41,6 +41,7 @@ import { loadTerrain } from './terrain';
 import { loadVfx, type VfxAtlas } from './vfx';
 import type { SpriteBook } from './sprites';
 import type { DrawableEntity, RenderState } from './types';
+import { HIT_FLASH_LIFE } from '../game/entity-visuals';
 import type { SceneryPiece } from '../game/world';
 
 export type { DrawableEntity, RenderState } from './types';
@@ -56,7 +57,12 @@ export class Renderer {
    * Standing scenery + live crates + smash sheets. Rebuilt every frame so a
    * crate can leave the live list and keep playing its break in the same sort.
    */
-  private readonly depthProps: { y: number; anim: number; piece: SceneryPiece }[] = [];
+  private readonly depthProps: {
+    y: number;
+    anim: number;
+    hitFlash: number;
+    piece: SceneryPiece;
+  }[] = [];
   /**
    * What the bodies on screen are doing to the plants around them. Owned here
    * rather than passed in: it is a per-frame consequence of `state.entities`,
@@ -171,12 +177,13 @@ export class Renderer {
     const depthProps = this.depthProps;
     depthProps.length = 0;
     for (const piece of state.world.scenery.standing) {
-      depthProps.push({ y: piece.y, anim: 0, piece });
+      depthProps.push({ y: piece.y, anim: 0, hitFlash: 0, piece });
     }
     for (const crate of state.world.crates) {
       depthProps.push({
         y: crate.y,
         anim: 0,
+        hitFlash: 0,
         piece: {
           kind: 'crate',
           x: crate.x,
@@ -188,9 +195,12 @@ export class Renderer {
     }
     const crateSheet = this.scenery?.props.crate;
     for (const smash of state.effects.crateSmashes) {
+      const flash =
+        smash.age < HIT_FLASH_LIFE ? 1 - smash.age / HIT_FLASH_LIFE : 0;
       depthProps.push({
         y: smash.y,
         anim: crateSheet ? crateAnimFrame(crateSheet, smash.age) : 0,
+        hitFlash: flash,
         piece: {
           kind: 'crate',
           x: smash.x,
@@ -222,7 +232,9 @@ export class Renderer {
         } else {
           const row = depthProps[prop];
           if (scenery) {
-            drawSceneryProp(ctx, view, scenery, row.piece, state.time, row.anim);
+            drawSceneryProp(
+              ctx, view, scenery, row.piece, state.time, row.anim, row.hitFlash,
+            );
           }
           prop++;
         }

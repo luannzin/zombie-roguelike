@@ -19,8 +19,8 @@
 import type { Effects } from './effects';
 import { clamp01, expDamp } from '../lib/math';
 
-/** Seconds of white flash after taking a hit. */
-const HIT_FLASH_LIFE = 0.18;
+/** Seconds of white flash after taking a hit. Shared with crate smash. */
+export const HIT_FLASH_LIFE = 0.18;
 /** Sprite kick distance opposite aim (world px). */
 const RECOIL_KICK = 0;
 /** How far an enemy lurches into its own attack (world px). */

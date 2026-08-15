@@ -19,7 +19,7 @@ seam React is allowed to read.
 | `world.ts` | client tile map, collision + sight queries, fires, hearth mask, placed scenery, live crates |
 | `combat.ts` | client-side shot feel and tracer bookkeeping |
 | `effects.ts` | tracers, dust, floating text, event lights, boot prints, crate smash, wind |
-| `entity-visuals.ts` | per-player colour/name visual state |
+| `entity-visuals.ts` | per-entity flash, recoil, anim; `HIT_FLASH_LIFE` is also the crate smash blink |
 | `lantern.ts` | four-cell battery, produces `output` 0..1 |
 | `hud-store.ts` | the only seam to React; `HUD_INTERVAL` = 0.2 s |
 | `tooltip-anchors.ts` | screen-space points for world `Tooltip`s, written every frame |

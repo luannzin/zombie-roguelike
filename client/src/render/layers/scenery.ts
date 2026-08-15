@@ -169,6 +169,7 @@ export function drawSceneryProp(
   piece: SceneryPiece,
   time: number,
   anim = 0,
+  hitFlash = 0,
 ): void {
   const sheet = atlas.props[piece.kind];
   if (!sheet) return;
@@ -204,8 +205,33 @@ export function drawSceneryProp(
   ctx.fill();
   ctx.globalAlpha = 1;
 
+  blitProp(ctx, sheet, frame, x, y, width, height, lean, piece.flip);
+  // Same additive white blink a body gets when a shot lands. A smash without
+  // it reads as the wood just starting to play, not as a hit.
+  if (hitFlash > 0) {
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = Math.min(1, hitFlash * 0.95);
+    blitProp(ctx, sheet, frame, x, y, width, height, lean, piece.flip);
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.globalAlpha = 1;
+  }
+
+  if (sheet.smokes) drawSmoke(ctx, view, piece, time);
+}
+
+function blitProp(
+  ctx: CanvasRenderingContext2D,
+  sheet: { image: HTMLImageElement; frameWidth: number; frameHeight: number },
+  frame: number,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  lean: number,
+  flip: boolean,
+): void {
   if (lean !== 0) {
-    const foot = Math.max(1, Math.round(view.zoom));
+    const foot = Math.max(1, Math.round(width / sheet.frameWidth));
     ctx.drawImage(
       sheet.image,
       frame * sheet.frameWidth, 0, sheet.frameWidth, sheet.frameHeight - 1,
@@ -216,14 +242,12 @@ export function drawSceneryProp(
       frame * sheet.frameWidth, sheet.frameHeight - 1, sheet.frameWidth, 1,
       x, y + height - foot, width, foot,
     );
-  } else {
-    drawFrame(
-      ctx, sheet.image, frame, sheet.frameWidth, sheet.frameHeight,
-      x, y, piece.flip, width, height,
-    );
+    return;
   }
-
-  if (sheet.smokes) drawSmoke(ctx, view, piece, time);
+  drawFrame(
+    ctx, sheet.image, frame, sheet.frameWidth, sheet.frameHeight,
+    x, y, flip, width, height,
+  );
 }
 
 /**

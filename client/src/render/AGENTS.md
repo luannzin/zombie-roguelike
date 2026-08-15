@@ -154,6 +154,8 @@ mutation, no React.
   dead fire smokes — all three off the sheet's own `sway`/`smokes` fields, so
   the art decides what the wind can push, not a table in the layer. A crate
   smash is a one-shot on the crate sheet (`kinds` × `breakFrames`), not sway.
+  The first `HIT_FLASH_LIFE` of a smash is the same additive white blink a
+  body gets when a shot lands — without it the wood just starts playing.
 - Scenery props are drawn through `Projection`, so the lobby can reuse the same
   routine with `WORLD_SPACE` after applying its own transform. The camp is
   dressed too (`server/app/camp.py`); a crate the lobby drew flat behind the

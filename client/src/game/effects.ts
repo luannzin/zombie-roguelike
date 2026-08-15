@@ -268,40 +268,48 @@ export class Effects {
    * Footfall puff at the feet. `vx/vy` = move direction; `side` = -1/1 for
    * left/right foot so puffs straddle the path.
    */
-  spawnDust(x: number, y: number, vx: number, vy: number, side: number): void {
+  spawnDust(
+    x: number,
+    y: number,
+    vx: number,
+    vy: number,
+    side: number,
+    burden = 0,
+  ): void {
     const fx = palette().effects;
     const { x: nx, y: ny } = normalize(vx, vy);
     // Perpendicular for left/right foot offset.
     const px = -ny * side;
     const py = nx * side;
+    const load = Math.min(1.4, Math.max(0, burden));
 
-    const count = 3 + ((Math.random() * 2) | 0);
+    const count = 3 + ((Math.random() * 2) | 0) + Math.round(load * 3);
     for (let i = 0; i < count; i++) {
-      const back = 8 + Math.random() * 14;
-      const scatter = (Math.random() - 0.5) * 12;
+      const back = 8 + Math.random() * 14 + load * 6;
+      const scatter = (Math.random() - 0.5) * (12 + load * 6);
       this.dust.push({
         x: x + px * (1.6 + Math.random() * 1.2) + nx * scatter * 0.15,
         y: y + py * (1.6 + Math.random() * 1.2) + ny * scatter * 0.15,
         vx: -nx * back + px * (4 + Math.random() * 6) + (Math.random() - 0.5) * 8,
         vy: -ny * back + py * (4 + Math.random() * 6) + (Math.random() - 0.5) * 6 - 6,
-        size: 1.1 + Math.random() * 2.2,
+        size: (1.1 + Math.random() * 2.2) * (1 + 0.5 * load),
         color: pick(fx.dust),
         age: 0,
-        life: 0.28 + Math.random() * 0.22,
+        life: 0.28 + Math.random() * 0.22 + load * 0.08,
         gy: 18,
       });
     }
 
-    // Soft ground smear that blooms then fades.
+    // Soft ground smear that blooms then fades. Heavier feet press a wider one.
     this.dust.push({
       x: x + px * 1.2,
       y: y + py * 1.2,
       vx: -nx * 4,
       vy: -ny * 4,
-      size: 2.8 + Math.random() * 1.4,
+      size: (2.8 + Math.random() * 1.4) * (1 + 0.55 * load),
       color: fx.dustSmear,
       age: 0,
-      life: 0.2,
+      life: 0.2 + load * 0.08,
       gy: 0,
     });
   }

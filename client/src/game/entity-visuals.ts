@@ -201,6 +201,7 @@ export class EntityVisuals {
     effects: Effects,
     halfHeight: number,
     topSpeed: number,
+    burden = 0,
   ): void {
     const state = this.state(id);
     const prevX = state.stepPrevX;
@@ -225,10 +226,12 @@ export class EntityVisuals {
     const speed = Math.hypot(vx, vy);
     const dirX = speed > 1 ? vx : x - prevX;
     const dirY = speed > 1 ? vy : y - prevY;
+    const load = Math.min(1.2, Math.max(0, burden));
+    const spacing = FOOTSTEP_SPACING * (1 - 0.42 * Math.min(1, load));
 
-    while (state.stepAccum >= FOOTSTEP_SPACING) {
-      state.stepAccum -= FOOTSTEP_SPACING;
-      effects.spawnDust(x, feetY, dirX, dirY, state.stepSide);
+    while (state.stepAccum >= spacing) {
+      state.stepAccum -= spacing;
+      effects.spawnDust(x, feetY, dirX, dirY, state.stepSide, load);
       state.stepSide = -state.stepSide;
     }
   }

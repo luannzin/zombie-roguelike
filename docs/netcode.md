@@ -34,9 +34,12 @@ snapshots flip `departing` and the server puppets the party through the VOID
 exit; a second `welcome` is the forest.
 
 `{"type":"collect","id":"l3"}` — pick up a world drop. The server ignores it
-unless the room is in a hostile zone, the player is alive, and their feet are
-inside `lootCollectTiles` of that drop. The remaining list rides `welcome.loot`
-and a dirty snapshot `loot`; `lootPickups` is the juice for that tick.
+unless the room is in a hostile zone, the player is alive, their feet are
+inside `lootCollectTiles` of that drop, and the bag has a slot for that key
+(empty, or a stack of the same item). Overweight is allowed. The remaining
+list rides `welcome.loot` and a dirty snapshot `loot`; `lootPickups` is the
+juice for that tick and carries `slot` so the client can fly the sprite
+onto that HUD cell. The pocket itself rides the roster as `inv`.
 
 ### server → client
 

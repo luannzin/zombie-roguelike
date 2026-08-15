@@ -30,16 +30,51 @@ export function moveDir(input: InputPacket): { dx: number; dy: number } {
   return { dx, dy };
 }
 
+/**
+ * How much of `moveSpeed` a body gets at this carried weight.
+ * Mirror of `carry_scale` in server/app/simulation.py.
+ */
+export function carryScale(weight: number, config: GameConfig): number {
+  const max = config.carryMaxWeight ?? 10;
+  const start = config.carrySlowStart ?? 0.2;
+  const atMax = config.carrySlowAtMax ?? 0.55;
+  const floor = config.carrySlowFloor ?? 0.35;
+  if (max <= 0) return 1;
+  const ratio = weight / max;
+  if (ratio <= start) return 1;
+  const span = 1 - start;
+  const t = span > 0 ? (ratio - start) / span : 1;
+  const scale = 1 + (atMax - 1) * t;
+  return scale < floor ? floor : scale;
+}
+
+/**
+ * How heavy the walk *feels* past the free band. 0 at `carrySlowStart`,
+ * 1 at max weight, and it keeps climbing if they go over. Footprints and
+ * dust read this; speed uses `carryScale`.
+ */
+export function carryBurden(weight: number, config: GameConfig): number {
+  const max = config.carryMaxWeight ?? 10;
+  const start = config.carrySlowStart ?? 0.2;
+  if (max <= 0) return 0;
+  const ratio = weight / max;
+  const span = 1 - start;
+  if (span <= 0) return ratio > start ? 1 : 0;
+  return Math.max(0, (ratio - start) / span);
+}
+
 export function applyInput(
   state: MovableState,
   input: InputPacket,
   world: TileMap,
   config: GameConfig,
   dt: number,
+  weight = 0,
 ): void {
   const { dx, dy } = moveDir(input);
-  state.vx = dx * config.moveSpeed;
-  state.vy = dy * config.moveSpeed;
+  const speed = config.moveSpeed * carryScale(weight, config);
+  state.vx = dx * speed;
+  state.vy = dy * speed;
 
   const hw = config.playerHalfWidth;
   const hh = config.playerHalfHeight;

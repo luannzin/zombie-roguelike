@@ -11,6 +11,28 @@ import type { LanternReading } from './lantern';
 import type { ConnectionStatus } from '../net/connection';
 import type { LootRarity, ZoneInfo } from '../net/protocol';
 
+export interface HudInventorySlot {
+  key: string;
+  qty: number;
+  name: string;
+  rarity: LootRarity;
+  frame: number;
+  value: number;
+}
+
+export interface HudInventory {
+  open: boolean;
+  cap: number;
+  slots: Array<HudInventorySlot | null>;
+  weight: number;
+  maxWeight: number;
+  lootFrames: number;
+  /** Bumps the pack when a fly lands. Count, not a boolean — 5 Hz. */
+  catches: number;
+  /** Full-bag refusals. Same counter contract as the lantern. */
+  refusals: number;
+}
+
 /** How often the game republishes HUD state. 5 Hz is plenty for text. */
 export const HUD_INTERVAL = 0.2;
 
@@ -97,6 +119,8 @@ export interface HudSnapshot {
   prompt: 'ready' | null;
   /** Proximity prompt on a world drop. */
   lootPrompt: { id: string; name: string; rarity: LootRarity } | null;
+  /** The pocket. Null before welcome. Open/close is client-local (TAB). */
+  inventory: HudInventory | null;
 }
 
 export const EMPTY_HUD: HudSnapshot = {
@@ -113,6 +137,7 @@ export const EMPTY_HUD: HudSnapshot = {
   ready: null,
   prompt: null,
   lootPrompt: null,
+  inventory: null,
 };
 
 export type HudStore = Store<HudSnapshot>;

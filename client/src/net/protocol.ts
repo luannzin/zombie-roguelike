@@ -101,6 +101,16 @@ export interface GameConfig {
   lootCollectTiles?: number;
   /** Catalog of world loot. Keyed by item key; `frame` indexes the loot atlas. */
   loot?: Record<string, LootItemConfig>;
+  /** Starting bag size. A later upgrade grows it. */
+  inventorySlots?: number;
+  /** Weight the walk is tuned around. The bag may go past this. */
+  carryMaxWeight?: number;
+  /** Fraction of max weight that is still full speed. */
+  carrySlowStart?: number;
+  /** Speed multiplier at exactly max weight. */
+  carrySlowAtMax?: number;
+  /** Slowest the walk is allowed to get, even overweight. */
+  carrySlowFloor?: number;
 }
 
 export type LootRarity = 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary';
@@ -109,6 +119,8 @@ export interface LootItemConfig {
   name: string;
   rarity: LootRarity;
   frame: number;
+  weight: number;
+  value: number;
 }
 
 /** One world drop. `k` keys into `GameConfig.loot`. */
@@ -126,6 +138,8 @@ export interface LootPickupEvent {
   k: string;
   x: number;
   y: number;
+  /** Bag slot it landed in. The fly aims at this cell. */
+  slot: number;
 }
 
 /**
@@ -289,8 +303,20 @@ export interface PlayerMeta {
   level: number;
   xpInLevel: number;
   xpToLevel: number;
-  /** Item keys collected this run. */
-  loot?: string[];
+  /** The pocket. Slots, contents and current weight. */
+  inv?: InventoryState;
+}
+
+/** One bag slot on the wire. `n` is the stack. */
+export interface InventorySlotState {
+  k: string;
+  n: number;
+}
+
+export interface InventoryState {
+  cap: number;
+  bag: Array<InventorySlotState | null>;
+  w: number;
 }
 
 /** A player with everything known about them: `welcome` and roster rows. */

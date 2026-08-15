@@ -57,7 +57,8 @@ fire. On another device, use the Network URL Vite prints (`http://192.168.x.x:51
 the client talks to that same origin and Vite proxies `/ws` to the server.
 
 Controls: **WASD** move · **mouse** aim · **left click / hold** shoot · **F**
-lantern on/off · **E** ready (at the campfire) / collect (a nearby drop).
+lantern on/off · **E** ready (at the campfire) / collect (a nearby drop) ·
+**TAB** backpack.
 
 Point the client at another host with `VITE_SERVER_URL=http://192.168.0.10:8000 bun run dev`
 — an HTTP origin, not a socket URL; the client derives both from it. That host
@@ -217,6 +218,7 @@ server/
     camp.py         the camp clearing, its bonfire and the seat ring
     zones.py        where a run is: title card, hostile, lantern
     entities.py     Player / InputCmd
+    inventory.py    the pocket: slots, stacking, weight
     enemies.py      EnemyType stat blocks + live Enemy instances
     ai.py           enemy behaviour (chase, attack) + the spawn director
     protocol.py     wire message shapes

@@ -54,34 +54,39 @@ class ItemDef:
     #: What kind of place this belongs in. Overlap with a scene's tags is
     #: how a radio lands at a campsite and a crown lands in a cabin.
     tags: tuple[str, ...]
+    #: How heavy one of these is. The bag sums them; past a fraction of
+    #: max carry the walk slows. Not a reject — overweight is allowed.
+    weight: float
+    #: What it is worth. The HUD slot shows it; extraction will spend it.
+    value: int
 
 
 # Catalog order is the loot atlas frame order (see tools/make_loot.py).
 ITEMS: tuple[ItemDef, ...] = (
-    ItemDef("old_tools", "Ferramentas velhas", "common", ("tools", "abandoned", "scrap")),
-    ItemDef("empty_bottle", "Garrafa vazia", "common", ("camp", "abandoned", "scrap")),
-    ItemDef("broken_toy", "Brinquedo quebrado", "common", ("living", "dropped")),
-    ItemDef("broken_clock", "Relógio quebrado", "common", ("living", "abandoned")),
-    ItemDef("scrap", "Sucata", "common", ("scrap", "supplies")),
-    ItemDef("camera", "Câmera", "uncommon", ("electronics", "abandoned", "living")),
-    ItemDef("old_headphone", "Fone velho", "uncommon", ("electronics", "camp")),
-    ItemDef("portable_radio", "Rádio portátil", "uncommon", ("electronics", "camp", "travel")),
-    ItemDef("compass", "Bússola", "uncommon", ("travel", "dropped")),
-    ItemDef("military_camera", "Câmera militar", "rare", ("military", "electronics")),
-    ItemDef("gold_ring", "Anel de ouro", "rare", ("valuables", "living")),
-    ItemDef("binoculars", "Binóculo", "rare", ("travel", "military")),
-    ItemDef("precious_gem", "Gema preciosa", "rare", ("valuables", "nature")),
-    ItemDef("stone_idol", "Ídolo de pedra", "epic", ("relics", "nature")),
-    ItemDef("tribal_mask", "Máscara tribal", "epic", ("relics", "living")),
-    ItemDef("ancient_amulet", "Amuleto antigo", "epic", ("relics", "valuables")),
-    ItemDef("gold_figurine", "Estatueta de ouro", "epic", ("valuables", "living")),
-    ItemDef("raw_diamond", "Diamante bruto", "epic", ("valuables", "nature")),
-    ItemDef("black_pearl", "Pérola negra", "epic", ("valuables", "relics")),
-    ItemDef("black_diamond", "Diamante negro", "legendary", ("valuables", "relics")),
-    ItemDef("lost_crown", "Coroa perdida", "legendary", ("valuables", "living")),
-    ItemDef("sanctuary_relic", "Relíquia do santuário", "legendary", ("relics",)),
-    ItemDef("vault_key", "Chave do cofre nacional", "legendary", ("valuables", "supplies")),
-    ItemDef("royal_ring", "Anel da família real", "legendary", ("valuables", "living")),
+    ItemDef("old_tools", "Ferramentas velhas", "common", ("tools", "abandoned", "scrap"), 2.5, 8),
+    ItemDef("empty_bottle", "Garrafa vazia", "common", ("camp", "abandoned", "scrap"), 0.8, 4),
+    ItemDef("broken_toy", "Brinquedo quebrado", "common", ("living", "dropped"), 0.6, 5),
+    ItemDef("broken_clock", "Relógio quebrado", "common", ("living", "abandoned"), 1.2, 7),
+    ItemDef("scrap", "Sucata", "common", ("scrap", "supplies"), 2.0, 6),
+    ItemDef("camera", "Câmera", "uncommon", ("electronics", "abandoned", "living"), 1.0, 22),
+    ItemDef("old_headphone", "Fone velho", "uncommon", ("electronics", "camp"), 0.4, 18),
+    ItemDef("portable_radio", "Rádio portátil", "uncommon", ("electronics", "camp", "travel"), 1.4, 28),
+    ItemDef("compass", "Bússola", "uncommon", ("travel", "dropped"), 0.3, 24),
+    ItemDef("military_camera", "Câmera militar", "rare", ("military", "electronics"), 1.2, 55),
+    ItemDef("gold_ring", "Anel de ouro", "rare", ("valuables", "living"), 0.15, 70),
+    ItemDef("binoculars", "Binóculo", "rare", ("travel", "military"), 1.0, 60),
+    ItemDef("precious_gem", "Gema preciosa", "rare", ("valuables", "nature"), 0.25, 75),
+    ItemDef("stone_idol", "Ídolo de pedra", "epic", ("relics", "nature"), 2.2, 120),
+    ItemDef("tribal_mask", "Máscara tribal", "epic", ("relics", "living"), 1.1, 130),
+    ItemDef("ancient_amulet", "Amuleto antigo", "epic", ("relics", "valuables"), 0.4, 150),
+    ItemDef("gold_figurine", "Estatueta de ouro", "epic", ("valuables", "living"), 1.6, 160),
+    ItemDef("raw_diamond", "Diamante bruto", "epic", ("valuables", "nature"), 0.5, 170),
+    ItemDef("black_pearl", "Pérola negra", "epic", ("valuables", "relics"), 0.2, 180),
+    ItemDef("black_diamond", "Diamante negro", "legendary", ("valuables", "relics"), 0.5, 320),
+    ItemDef("lost_crown", "Coroa perdida", "legendary", ("valuables", "living"), 1.8, 400),
+    ItemDef("sanctuary_relic", "Relíquia do santuário", "legendary", ("relics",), 2.0, 380),
+    ItemDef("vault_key", "Chave do cofre nacional", "legendary", ("valuables", "supplies"), 0.3, 350),
+    ItemDef("royal_ring", "Anel da família real", "legendary", ("valuables", "living"), 0.15, 420),
 )
 
 BY_KEY: dict[str, ItemDef] = {item.key: item for item in ITEMS}
@@ -141,6 +146,8 @@ class LootPickup:
     key: str
     x: float
     y: float
+    #: Which bag slot it landed in. The client flies the sprite there.
+    slot: int
 
     def to_payload(self) -> dict:
         return {
@@ -149,13 +156,20 @@ class LootPickup:
             "k": self.key,
             "x": round(self.x, 2),
             "y": round(self.y, 2),
+            "slot": self.slot,
         }
 
 
 def catalog_payload() -> dict:
-    """Item defs the client needs to draw a name, a rarity and a frame."""
+    """Item defs the client needs to draw a name, a rarity, a frame and a slot."""
     return {
-        item.key: {"name": item.name, "rarity": item.rarity, "frame": index}
+        item.key: {
+            "name": item.name,
+            "rarity": item.rarity,
+            "frame": index,
+            "weight": item.weight,
+            "value": item.value,
+        }
         for index, item in enumerate(ITEMS)
     }
 

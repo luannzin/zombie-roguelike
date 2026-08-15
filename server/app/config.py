@@ -342,6 +342,19 @@ COIN_ATTRACT_MAX_SPEED = TILE_SIZE * COIN_ATTRACT_MAX_TILES_PER_SEC
 LOOT_COLLECT_TILES = 2.25
 LOOT_COLLECT_DIST = TILE_SIZE * LOOT_COLLECT_TILES
 
+# --- inventory / carry ------------------------------------------------------
+# Starting pocket. A later upgrade grows the slot count; weight is independent
+# of that and can go PAST the max — the bag never refuses for being heavy.
+INVENTORY_SLOTS = 3
+CARRY_MAX_WEIGHT = 10.0
+# Fraction of max weight where the walk is still full speed. Past this the
+# body starts to feel it; at 1.0 the multiplier is CARRY_SLOW_AT_MAX, and it
+# keeps falling if they go over, floored at CARRY_SLOW_FLOOR so they can
+# still limp out.
+CARRY_SLOW_START = 0.2
+CARRY_SLOW_AT_MAX = 0.55
+CARRY_SLOW_FLOOR = 0.35
+
 # --- combat (authored in tiles) ---------------------------------------------
 SHOT_RANGE_TILES = 8.0
 MUZZLE_OFFSET_TILES = 0.25
@@ -417,6 +430,12 @@ def client_config() -> dict:
         "readyRangeTiles": CAMP_READY_RANGE_TILES,
         # How close to a drop E will collect, in tiles.
         "lootCollectTiles": LOOT_COLLECT_TILES,
-        # Catalog: name, rarity, atlas frame. The client never invents an item.
+        # Catalog: name, rarity, atlas frame, weight, value. The client never
+        # invents an item.
         "loot": catalog_payload(),
+        "inventorySlots": INVENTORY_SLOTS,
+        "carryMaxWeight": CARRY_MAX_WEIGHT,
+        "carrySlowStart": CARRY_SLOW_START,
+        "carrySlowAtMax": CARRY_SLOW_AT_MAX,
+        "carrySlowFloor": CARRY_SLOW_FLOOR,
     }

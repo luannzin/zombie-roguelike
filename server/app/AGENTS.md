@@ -21,6 +21,7 @@ game's scale.
 | `pathing.py` | BFS flow field, one per player |
 | `coins.py` | dropped gold: burst, magnet, collection |
 | `loot.py` | world collectables: catalog, scene-context scatter, E-to-collect |
+| `inventory.py` | the pocket: slots, stacking, weight |
 | `world.py` | tile grid, tile alphabet, collision queries |
 | `maps.py` | hand-authored maps (`from_ascii`, `from_rects`) |
 | `mapgen.py` | procedural forest, seeded and connectivity-checked |
@@ -179,8 +180,10 @@ game's scale.
 - **Loot is not a coin.** Coins magnetize off a corpse. A drop sits next to
   a scene, shows a tooltip, and is collected with `{type:"collect","id"}`.
   The catalog and rarity weights live in `loot.py`; the client never invents
-  a name or a colour. Camp maps have none. Collected keys ride the roster
-  as `player.loot` so extraction can spend them later.
+  a name or a colour. Camp maps have none. What was collected rides the
+  roster as `player.inv` (slots, stacks, weight) so extraction can spend
+  it later. A full bag refuses a new kind; overweight is allowed and only
+  slows the walk (`carry_scale` in `simulation.py`).
 - **The thread is what makes it one story instead of seven.** `_route` orders
   the placed scenes by distance from spawn so the narrative reads OUTWARD and
   ends at the landmark; `_thread` lays prints between them with blood

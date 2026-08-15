@@ -21,6 +21,8 @@ const KEY_MAP: Record<string, keyof MovementInput> = {
 const LANTERN_KEY = 'KeyF';
 /** Ready at the campfire. Physical key, so it lands on E under any layout. */
 const READY_KEY = 'KeyE';
+/** Expand the pocket. Tab is the key, not a code under a letter. */
+const INVENTORY_KEY = 'Tab';
 
 export class InputController {
   readonly movement: MovementInput = { up: false, down: false, left: false, right: false };
@@ -39,6 +41,8 @@ export class InputController {
    * is collect. Same edge contract as the lantern key.
    */
   onInteract: (() => void) | null = null;
+  /** Fired once per Tab. Edge, not held — same contract as E and F. */
+  onToggleInventory: (() => void) | null = null;
 
   constructor(private readonly canvas: HTMLCanvasElement) {
     window.addEventListener('keydown', this.onKeyDown);
@@ -84,6 +88,11 @@ export class InputController {
     }
     if (e.code === READY_KEY && !e.repeat) {
       this.onInteract?.();
+      e.preventDefault();
+      return;
+    }
+    if (e.code === INVENTORY_KEY && !e.repeat) {
+      this.onToggleInventory?.();
       e.preventDefault();
     }
   };

@@ -382,6 +382,12 @@
    */
   --animate-lantern-refused: lantern-refused 0.3s steps(1, end) 1;
 
+  /*
+   * An item landing in the pack. One hard scale bump, same step language as
+   * a refused lantern — a catch, not a bounce.
+   */
+  --animate-pack-catch: pack-catch 0.28s steps(1, end) 1;
+
   --animate-skeleton: skeleton 2s -1s infinite linear;
 
   --animate-caret-blink: 1s ease-out infinite caret-blink;
@@ -681,6 +687,20 @@
     }
   100% {
     translate: 0 0;
+    }
+  }
+  @keyframes pack-catch {
+  0% {
+    scale: 1;
+    }
+  20% {
+    scale: 1.18;
+    }
+  55% {
+    scale: 0.94;
+    }
+  100% {
+    scale: 1;
     }
   }
   @keyframes skeleton {

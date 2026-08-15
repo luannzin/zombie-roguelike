@@ -37,6 +37,8 @@ import { Vitals } from './Vitals';
 import { ZONE_INTRO_MS, ZoneTitle } from './ZoneTitle';
 import { ReadyCount } from './ReadyCount';
 import { InteractPrompt } from './InteractPrompt';
+import { Inventory } from './Inventory';
+import { LootFly } from './LootFly';
 import { LootPrompt } from './LootPrompt';
 
 export interface HudProps {
@@ -102,7 +104,13 @@ export function Hud({ snapshot, minimapRef, error }: HudProps) {
           <Vitals vitals={snapshot.vitals} />
         </div>
 
-        <div className={cn('hud-layer pixel-text bottom-2.5 left-3', chrome)}>
+        <div
+          className={cn(
+            'hud-layer pixel-text bottom-2.5 left-3 flex flex-col items-start gap-2',
+            chrome,
+          )}
+        >
+          <Inventory inventory={snapshot.inventory} />
           <ControlsHint zone={snapshot.zone} />
         </div>
 
@@ -128,6 +136,7 @@ export function Hud({ snapshot, minimapRef, error }: HudProps) {
       */}
       <InteractPrompt prompt={snapshot.prompt} />
       <LootPrompt prompt={snapshot.lootPrompt} />
+      <LootFly lootFrames={snapshot.inventory?.lootFrames ?? 1} />
     </>
   );
 }

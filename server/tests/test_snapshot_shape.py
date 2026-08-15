@@ -21,7 +21,7 @@ from app.coins import Coin  # noqa: E402
 from app.entities import Player  # noqa: E402
 
 MOVING = {"id", "x", "y", "vx", "vy", "ax", "ay", "seq", "lantern", "hp", "alive", "ready"}
-IDENTITY = {"name", "color", "kills", "deaths", "xp", "gold", "level", "xpInLevel", "xpToLevel", "loot"}
+IDENTITY = {"name", "color", "kills", "deaths", "xp", "gold", "level", "xpInLevel", "xpToLevel", "inv"}
 
 
 def main() -> None:
@@ -34,6 +34,7 @@ def main() -> None:
 
     full = player.to_payload()
     assert set(full) == MOVING | IDENTITY, set(full) ^ (MOVING | IDENTITY)
+    assert full["inv"] == {"cap": 3, "bag": [None, None, None], "w": 0}
 
     packet = protocol.snapshot(1, [row], [], [], [], [], [], [])
     assert "ack" not in packet, "per-recipient field would force a dump per socket"

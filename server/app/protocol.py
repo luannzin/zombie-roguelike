@@ -17,6 +17,7 @@ client -> server
   {"type":"start"}                      host only; ignored otherwise
   {"type":"ready"}                      toggle ready, camp only, near the fire
   {"type":"collect","id":"l3"}          pick up a loot drop; ignored if too far
+                                        or the bag has no slot for that key
 
 server -> client
   {"type":"hello","playerId":"...","code":"ABC1234",
@@ -80,7 +81,9 @@ Snapshot arrays:
   pickups   coins collected since the last snapshot
   loot      remaining world drops; attached like the roster — on welcome,
             and again on a snapshot only when someone collected
-  lootPickups  drops collected since the last snapshot (juice)
+  lootPickups  drops collected since the last snapshot (juice). `slot` is
+               the bag index it landed in, so the client can fly the sprite
+               from the world onto that HUD cell.
 """
 
 from __future__ import annotations

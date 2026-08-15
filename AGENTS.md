@@ -147,7 +147,11 @@ subtree.
   white, uncommon green, rare blue, epic purple, legendary gold). E collects
   when close; the name in the tooltip takes the rarity colour. Epic and
   legendary get a small looping beam; the other three rarities get a few
-  rarity-coloured motes. Camp maps have none.
+  rarity-coloured motes. Camp maps have none. The pocket is
+  `server/app/inventory.py`: a few slots (upgradeable), stacking by key,
+  and a weight that may go past max. Past 20% of max carry the walk slows
+  and the footsteps read heavier. TAB expands the bag on the left HUD;
+  a collected item flies from above the head into its slot.
 
 ## Child DOX Index
 

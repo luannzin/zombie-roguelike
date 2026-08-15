@@ -48,11 +48,14 @@ import { palette } from '../theme/palette';
 import { hitscan, type RayTarget } from './combat';
 import { Effects } from './effects';
 import { EntityVisuals } from './entity-visuals';
-import { EMPTY_HUD, HUD_INTERVAL, type HudSnapshot, type HudStore } from './hud-store';
+import { EMPTY_HUD, HUD_INTERVAL, type HudInventory, type HudSnapshot, type HudStore } from './hud-store';
 import { InputController } from './input';
+import { readInventoryAnchor, clearInventoryAnchors } from './inventory-anchors';
 import { Lantern } from './lantern';
 import { SnapshotBuffer, type RenderedEnemy, type RenderedPlayer } from './interpolation';
+import { clearLootFlies, spawnLootFly, stepLootFlies } from './loot-flies';
 import { LocalPlayer } from './prediction';
+import { carryBurden } from './simulation';
 import { hearthMask, TileMap } from './world';
 import {
   clearTooltipAnchors,
@@ -259,6 +262,12 @@ export class Game {
   private localReady = false;
   /** Remaining world drops. Replaced on welcome and on a dirty snapshot. */
   private readonly loot = new Map<string, LootState>();
+  /** TAB. Client-local — the bag itself is authoritative, the drawer is not. */
+  private inventoryOpen = false;
+  /** Flies that have landed. HUD reads the count so a bump cannot collapse. */
+  private bagCatches = 0;
+  /** E on a full bag. Same counter contract as a refused lantern. */
+  private bagRefusals = 0;
 
   private accumulator = 0;
   private lastFrame = 0;
@@ -290,6 +299,7 @@ export class Game {
     // from a broken keybind. See `Lantern.toggle`.
     this.input.onToggleLantern = () => this.lantern.toggle();
     this.input.onInteract = () => this.sendInteract();
+    this.input.onToggleInventory = () => this.toggleInventory();
     this.minimap = new Minimap(options.minimapCanvas);
   }
 
@@ -357,6 +367,11 @@ export class Game {
     this.alertSeen.clear();
     this.lantern.reset();
     clearTooltipAnchors();
+    clearInventoryAnchors();
+    clearLootFlies();
+    this.inventoryOpen = false;
+    this.bagCatches = 0;
+    this.bagRefusals = 0;
     this.world = null;
     this.fov = null;
     this.zone = null;
@@ -428,6 +443,7 @@ export class Game {
       sequence: Math.max(continued, ack),
       lastAck: ack,
     });
+    this.local.carryWeight = msg.player.inv?.w ?? 0;
 
     // Bonfires are read off the tiles, not off a message: the fire that blocks
     // you, the fire you can see and the fire that lights you are one tile.
@@ -519,6 +535,7 @@ export class Game {
       ready: null,
       prompt: null,
       lootPrompt: null,
+      inventory: this.inventoryHud(),
     });
     this.replaceLoot(msg.loot ?? []);
   }
@@ -537,7 +554,10 @@ export class Game {
     if (msg.roster) {
       for (const meta of msg.roster) this.roster.set(meta.id, meta);
       const mine = this.roster.get(this.localId);
-      if (mine) this.localMeta = mine;
+      if (mine) {
+        this.localMeta = mine;
+        if (this.local && mine.inv) this.local.carryWeight = mine.inv.w;
+      }
     }
 
     for (const state of msg.players) {
@@ -630,7 +650,15 @@ export class Game {
     this.loot.delete(ev.id);
     if (ev.by !== this.localId) return;
     const def = this.config?.loot?.[ev.k];
-    this.effects.spawnReward(ev.x, ev.y, def?.name ?? ev.k);
+    if (def) {
+      spawnLootFly({
+        id: ev.id,
+        key: ev.k,
+        frame: def.frame,
+        rarity: def.rarity,
+        slot: ev.slot,
+      });
+    }
     this.camera.addTrauma(PICKUP_TRAUMA);
   }
 
@@ -693,6 +721,7 @@ export class Game {
       }
     }
 
+    this.stepCollectFlies(dt);
     this.effects.update(dt);
     this.visuals.update(dt);
     // Dying puts the lamp out: no drain while you are down, and you come back
@@ -964,7 +993,7 @@ export class Game {
   private trackFootsteps(entities: DrawableEntity[]): void {
     const world = this.world;
     if (!world) return;
-    const stride = world.tileSize * FOOTPRINT_STRIDE;
+    const baseStride = world.tileSize * FOOTPRINT_STRIDE;
 
     for (const entity of entities) {
       if (!entity.alive || entity.visibility <= FOOTPRINT_MIN_VISIBILITY) {
@@ -980,6 +1009,8 @@ export class Game {
         continue;
       }
 
+      const burden = entity.kind === 'player' ? this.carryBurdenOf(entity.id) : 0;
+      const stride = baseStride * (1 - 0.38 * Math.min(1, burden));
       const dx = entity.x - last.x;
       const dy = footY - last.y;
       if (dx * dx + dy * dy < stride * stride) continue;
@@ -990,7 +1021,8 @@ export class Game {
         tx >= 0 && ty >= 0 && tx < world.width && ty < world.height
           ? SOIL_PRINT_DEPTH[soilAt(tx, ty, world.seed)] ?? SOIL_PRINT_DEPTH[0]
           : SOIL_PRINT_DEPTH[0];
-      this.effects.spawnFootprint(entity.x, footY, dx, dy, depth, FOOTPRINT_LIFE);
+      const printDepth = depth * (1 + 0.75 * Math.min(1.2, burden));
+      this.effects.spawnFootprint(entity.x, footY, dx, dy, printDepth, FOOTPRINT_LIFE);
       last.x = entity.x;
       last.y = footY;
     }
@@ -1112,6 +1144,7 @@ export class Game {
       this.effects,
       config.playerHalfHeight,
       config.moveSpeed,
+      this.carryBurdenOf(id),
     );
     const recoil = this.visuals.recoilOf(id);
 
@@ -1287,6 +1320,7 @@ export class Game {
       ready: this.readyCount(),
       prompt: this.readyPrompt(),
       lootPrompt: this.lootPromptInfo(),
+      inventory: this.inventoryHud(),
       net: {
         players: this.snapshots.latest?.players.size ?? 0,
         enemies: this.snapshots.latest?.enemies.size ?? 0,
@@ -1306,7 +1340,95 @@ export class Game {
       return;
     }
     const near = this.nearLoot();
-    if (near) this.connection.send({ type: 'collect', id: near.id });
+    if (!near) return;
+    if (!this.canStow(near.k)) {
+      this.bagRefusals += 1;
+      const inventory = this.inventoryHud();
+      if (inventory) this.patchHud({ inventory });
+      return;
+    }
+    this.connection.send({ type: 'collect', id: near.id });
+  }
+
+  private toggleInventory(): void {
+    if (this.departing || this.introLeft > 0) return;
+    this.inventoryOpen = !this.inventoryOpen;
+    const inventory = this.inventoryHud();
+    if (inventory) this.patchHud({ inventory });
+  }
+
+  private canStow(key: string): boolean {
+    const inv = this.localMeta?.inv;
+    if (!inv) return true;
+    for (let i = 0; i < inv.cap; i++) {
+      const slot = inv.bag[i];
+      if (!slot || slot.k === key) return true;
+    }
+    return false;
+  }
+
+  private inventoryHud(): HudInventory | null {
+    const config = this.config;
+    if (!config) return null;
+    const catalog = config.loot ?? {};
+    const cap = this.localMeta?.inv?.cap ?? config.inventorySlots ?? 3;
+    const bag = this.localMeta?.inv?.bag ?? [];
+    const slots = Array.from({ length: cap }, (_, index) => {
+      const row = bag[index];
+      if (!row) return null;
+      const def = catalog[row.k];
+      if (!def) return null;
+      return {
+        key: row.k,
+        qty: row.n,
+        name: def.name,
+        rarity: def.rarity,
+        frame: def.frame,
+        value: def.value,
+      };
+    });
+    let frames = 0;
+    for (const def of Object.values(catalog)) {
+      if (def.frame + 1 > frames) frames = def.frame + 1;
+    }
+    return {
+      open: this.inventoryOpen,
+      cap,
+      slots,
+      weight: this.local?.carryWeight ?? this.localMeta?.inv?.w ?? 0,
+      maxWeight: config.carryMaxWeight ?? 10,
+      lootFrames: Math.max(1, frames),
+      catches: this.bagCatches,
+      refusals: this.bagRefusals,
+    };
+  }
+
+  private stepCollectFlies(dt: number): void {
+    const config = this.config;
+    if (!config) return;
+    const view = projectionFor(this.camera);
+    const headX = view.x(this.smoothX);
+    const headY = view.y(
+      this.smoothY + config.playerHalfHeight - config.spriteHeight - config.tileSize * 0.35,
+    );
+    const landed = stepLootFlies(dt, (fly) => {
+      const target = this.inventoryOpen
+        ? readInventoryAnchor(`slot-${fly.slot}`)
+        : readInventoryAnchor('pack');
+      const to = target ?? readInventoryAnchor('pack');
+      if (!to) return null;
+      return { from: { x: headX, y: headY }, to };
+    });
+    if (landed > 0) this.bagCatches += landed;
+  }
+
+  private carryBurdenOf(id: string): number {
+    if (!this.config) return 0;
+    const weight =
+      id === this.localId
+        ? (this.local?.carryWeight ?? 0)
+        : (this.roster.get(id)?.inv?.w ?? 0);
+    return carryBurden(weight, this.config);
   }
 
   private nearFire(): boolean {

@@ -15,7 +15,8 @@ are imported from make_textures rather than copied, so every generated asset in
 the game shares one shading vocabulary.
 
 Output (assets/processed/hud/):
-    battery.png   one 10x18 frame — a single cell of the lantern's battery
+    battery.png    one 10x18 frame — a single cell of the lantern's battery
+    backpack.png   one 16x16 frame — the pocket on the HUD, seen from the back
 
 Why one frame and not a strip of charge levels: the HUD draws this sprite FOUR
 times side by side and drains each one from the top down by clipping a
@@ -55,6 +56,12 @@ OUTLINE = rgb("#101018")
 SHELL: Ramp = [rgb(c) for c in ("#22222e", "#33334a", "#4a4a66", "#6c6c8c")]
 CELL: Ramp = [rgb(c) for c in ("#8a4a12", "#c47a28", "#f2a541", "#ffd678", "#fff1c2")]
 BOLT = rgb("#5c3410")
+
+# The HUD pack. Leather a shade above the panel so the silhouette holds, with
+# a flap and two straps — the same object the character wears, read as an icon.
+LEATHER: Ramp = [rgb(c) for c in ("#3a2a1c", "#5a4030", "#8a6244", "#c49a68")]
+STRAP = rgb("#2a2218")
+BUCKLE = rgb("#d8c078")
 
 # The charge glyph, punched into the cell window as a silhouette. Authored by
 # hand because a 4x6 bolt is below the size where any procedural stroke reads.
@@ -117,6 +124,39 @@ def make_battery(width: int, height: int) -> Image.Image:
     return img
 
 
+def make_backpack(size: int = 16) -> Image.Image:
+    """The pocket, from the back. 16x16 so it sits on the same HUD grid."""
+    img = Image.new("RGBA", (size, size), TRANSPARENT)
+    px = img.load()
+
+    # Body: a rounded satchel, inset 1px for the keyline.
+    for y in range(4, 14):
+        for x in range(3, 13):
+            if (x in (3, 12) and y in (4, 13)) or (x in (3, 12) and y == 4):
+                continue
+            across = (x - 3) / 9
+            down = (y - 4) / 9
+            px[x, y] = pick(LEATHER, 0.78 - across * 0.28 - down * 0.18, x, y)
+
+    # Flap: a darker lid across the top third.
+    for y in range(4, 8):
+        for x in range(3, 13):
+            if x in (3, 12) and y == 4:
+                continue
+            across = (x - 3) / 9
+            px[x, y] = pick(LEATHER, 0.55 - across * 0.2, x, y)
+
+    # Two vertical straps and a buckle on the flap.
+    for y in range(5, 13):
+        px[5, y] = STRAP
+        px[10, y] = STRAP
+    px[7, 6] = BUCKLE
+    px[8, 6] = BUCKLE
+
+    outline(img, OUTLINE)
+    return img
+
+
 def stamp(
     px,
     art: tuple[str, ...],
@@ -146,8 +186,12 @@ def build(args) -> Path:
     battery = make_battery(args.width, args.height)
     path = out_dir / "battery.png"
     battery.save(path)
-
     print(f"wrote {path} ({battery.width}x{battery.height})")
+
+    pack = make_backpack()
+    pack_path = out_dir / "backpack.png"
+    pack.save(pack_path)
+    print(f"wrote {pack_path} ({pack.width}x{pack.height})")
     return out_dir
 
 

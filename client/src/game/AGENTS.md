@@ -23,13 +23,17 @@ seam React is allowed to read.
 | `lantern.ts` | four-cell battery, produces `output` 0..1 |
 | `hud-store.ts` | the only seam to React; `HUD_INTERVAL` = 0.2 s |
 | `tooltip-anchors.ts` | screen-space points for world `Tooltip`s, written every frame |
+| `inventory-anchors.ts` | screen-space centres for the HUD bag (pack + slots) |
+| `loot-flies.ts` | collect flies: membership is a store, pose is per-frame |
 
 ## Local Contracts
 
 - Two clocks: a fixed 30 Hz tick samples input, predicts and sends; `rAF`
   interpolates, smooths and renders. Do not move prediction into `rAF`.
 - `simulation.ts` is the **only** place the local player may be moved, and it
-  must stay a line-for-line mirror of the Python version.
+  must stay a line-for-line mirror of the Python version. Carried weight
+  scales `moveSpeed` (`carryScale`); prediction reads `LocalPlayer.carryWeight`
+  from the roster.
 - `hud-store.ts` is the only channel to the UI for state. World tooltip
   positions travel through `tooltip-anchors.ts` (written every frame, never
   subscribed). Nothing here may touch the DOM beyond the two canvases
@@ -199,10 +203,14 @@ seam React is allowed to read.
 - New per-frame state stays here or in `render/`; it must not reach React.
 - New HUD data means a field on the `hud-store` snapshot, published at 5 Hz —
   not a subscription from a component to the game. Camp ready uses `ready` and
-  `prompt`; a nearby drop uses `lootPrompt`; the walk-out uses `cinematic`.
+  `prompt`; a nearby drop uses `lootPrompt`; the pocket uses `inventory`;
+  the walk-out uses `cinematic`.
   A world `Tooltip` also needs an `anchor` id written in `syncTooltipAnchors`
   each frame — show/hide is the store, the pixels are the camera. E is
   interact: ready at the fire, collect on a drop. The server validates range.
+  TAB toggles `inventory.open` locally and is patched immediately so the
+  drawer does not wait for the 5 Hz tick. A collect fly is
+  `loot-flies` + `inventory-anchors`, not a React render.
 - Anything long-lived created here gets a matching release in `Game.dispose()`
   in the same change.
 

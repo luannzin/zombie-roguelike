@@ -305,7 +305,9 @@ class Room:
         """Pick up a drop if this player is standing on it.
 
         Camp has none. Too late once the walk-out has started. Distance is
-        measured from the feet, the same way the ready prompt is.
+        measured from the feet, the same way the ready prompt is. A full bag
+        (no empty slot and no stack of this key) leaves the drop where it is.
+        Overweight is not a refuse.
         """
         if self.phase != protocol.PHASE_PLAYING or self.departing:
             return
@@ -320,10 +322,12 @@ class Room:
         feet_y = player.y + PLAYER_HALF_HEIGHT
         if (drop.x - player.x) ** 2 + (drop.y - feet_y) ** 2 > LOOT_COLLECT_DIST * LOOT_COLLECT_DIST:
             return
-        player.loot.append(drop.key)
+        slot = player.inventory.add(drop.key)
+        if slot is None:
+            return
         del self.drops[drop_id]
         self.loot_pickup_events.append(
-            loot.LootPickup(drop.id, player.id, drop.key, drop.x, drop.y).to_payload()
+            loot.LootPickup(drop.id, player.id, drop.key, drop.x, drop.y, slot).to_payload()
         )
         self._loot_dirty = True
         self._roster_dirty = True

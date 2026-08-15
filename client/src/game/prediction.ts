@@ -29,6 +29,8 @@ export class LocalPlayer {
   lastAck = 0;
   alive = true;
   hp: number;
+  /** Authoritative carried weight. Roster-only; prediction reads it every tick. */
+  carryWeight = 0;
 
   private errorX = 0;
   private errorY = 0;
@@ -61,7 +63,7 @@ export class LocalPlayer {
   predict(input: InputPacket, world: TileMap, config: GameConfig): void {
     this.pending.push(input);
     if (this.alive) {
-      applyInput(this.state, input, world, config, config.dt);
+      applyInput(this.state, input, world, config, config.dt, this.carryWeight);
     } else {
       this.state.vx = 0;
       this.state.vy = 0;
@@ -86,7 +88,7 @@ export class LocalPlayer {
     this.pending = this.pending.filter((input) => input.sequence > ack);
     if (this.alive) {
       for (const input of this.pending) {
-        applyInput(this.state, input, world, config, config.dt);
+        applyInput(this.state, input, world, config, config.dt, this.carryWeight);
       }
     }
 
@@ -135,7 +137,7 @@ export class LocalPlayer {
       return { x: this.renderX, y: this.renderY };
     }
     const scratch: MovableState = { ...this.state };
-    applyInput(scratch, input, world, config, Math.min(remainder, config.dt));
+    applyInput(scratch, input, world, config, Math.min(remainder, config.dt), this.carryWeight);
     return { x: scratch.x + this.errorX, y: scratch.y + this.errorY };
   }
 }

@@ -19,6 +19,7 @@ export function ControlsHint({ zone }: ControlsHintProps) {
   if (zone?.lantern !== false) parts.push('F lanterna');
   if (zone?.kind === 'camp') parts.push('E pronto');
   else if (zone?.hostile) parts.push('E coletar');
+  parts.push('TAB mochila');
 
   return <div className="text-ink-muted text-[11px] leading-[11px]">{parts.join(' · ')}</div>;
 }

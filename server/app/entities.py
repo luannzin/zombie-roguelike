@@ -12,12 +12,14 @@ from collections import deque
 from dataclasses import dataclass, field
 
 from .config import (
+    INVENTORY_SLOTS,
     MAX_HP,
     PLAYER_HALF_HEIGHT,
     PLAYER_HIT_RADIUS,
     SPRITE_HEIGHT,
     level_progress,
 )
+from .inventory import Inventory
 
 COLORS = [
     "#e6484f", "#f2a541", "#f6e05e", "#7bd389", "#3fb8af",
@@ -83,9 +85,8 @@ class Player:
     #: Lifetime xp; the level curve lives in config.level_progress.
     xp: int = 0
     gold: int = 0
-    #: Item keys collected this run. Extraction will spend them; until then
-    #: they just sit in the pocket.
-    loot: list[str] = field(default_factory=list)
+    #: The pocket. Slots and weight; extraction will spend what is in it.
+    inventory: Inventory = field(default_factory=lambda: Inventory(INVENTORY_SLOTS))
 
     # server bookkeeping (never sent verbatim)
     inputs: deque = field(default_factory=deque)
@@ -151,7 +152,7 @@ class Player:
             "level": level,
             "xpInLevel": into_level,
             "xpToLevel": to_level,
-            "loot": list(self.loot),
+            "inv": self.inventory.to_payload(),
         }
 
 

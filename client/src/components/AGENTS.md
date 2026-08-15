@@ -11,7 +11,8 @@ and nowhere near the frame loop.
   `Game`; React never touches those pixels again.
 - `hud/` — ours: `Hud`, `HudScreen`, `Panel`, `Vitals`, `BatteryGauge`,
   `ProgressBar`, `StatusLine`, `NetStats`, `ControlsHint`, `ZoneTitle`,
-  `ReadyCount`, `InteractPrompt`, `LootPrompt`, `Tooltip`, `TooltipKey`.
+  `ReadyCount`, `InteractPrompt`, `LootPrompt`, `Inventory`, `InventorySlot`,
+  `WeightBar`, `LootIcon`, `LootFly`, `Tooltip`, `TooltipKey`.
 - `lobby/` — `CampfireCanvas` (mounts `LobbyScene`; owns the rest-shot fire
   position via `campFireAnchor`, not via per-screen props), `RoomCode`,
   `PlayerRoster`.
@@ -59,6 +60,11 @@ and nowhere near the frame loop.
   Do not `setState` from that rAF — it is a transform, same idea as the
   glass burst. `InteractPrompt` is ready at the fire; `LootPrompt` is a
   nearby drop. New items get a new caller, not a fork of the chrome.
+- `Inventory` is the left-side pocket. Collapsed it is the backpack sprite
+  and a TAB hint; TAB expands the slots in place, not a dialog. Slot
+  centres are written to `inventory-anchors` from layout. `LootFly` sits
+  outside the glass and flies a sprite from the head onto a cell — pose
+  is rAF, membership is `loot-flies`.
 - A control a zone forbids is shown DISABLED, never hidden. `BatteryGauge` in
   the camp still answers "how much light am I carrying into the night"; only
   its readout changes, and a refused keypress kicks the panel instead of doing

@@ -95,6 +95,13 @@ export interface Rift {
   consoleX: number;
   consoleY: number;
   pillars: readonly RiftPillar[];
+  /**
+   * Tiles the anomaly occupies once it exists, `[tx, ty]`. Solid only from the
+   * moment it OPENS — while the structure is dormant the sigil is a mark on the
+   * floor and you are meant to be able to stand in it. Shipped by the server
+   * rather than re-derived, so both sides wall off exactly the same cells.
+   */
+  core: readonly (readonly [number, number])[];
   lightTiles: number;
   lightKind: number;
   state: RiftState;
@@ -192,6 +199,15 @@ export class TileMap {
     if (state === 'open') this.lightRift();
   }
 
+  /**
+   * The anomaly now occupies its tiles. Mirrors `Room.solidify_rift`, on the
+   * same transition and off the same list, so prediction does not walk into
+   * ground the server has just made solid (or bounce off ground it has not).
+   */
+  private solidifyRift(): void {
+    for (const [tx, ty] of this.rift?.core ?? []) this.setTile(tx, ty, LOW);
+  }
+
   /** Advance the local ceremony clock. Called once per frame while charging. */
   stepRift(dt: number): void {
     if (this.rift?.state === 'charging') this.rift.elapsed += dt;
@@ -208,6 +224,7 @@ export class TileMap {
   private lightRift(): void {
     const rift = this.rift;
     if (!rift) return;
+    this.solidifyRift();
     const lights = this.scenery.lights as SceneryLight[];
     if (lights.some((light) => light.x === rift.x && light.y === rift.y)) return;
     lights.push({
@@ -399,6 +416,7 @@ function unpackRift(payload: MapPayload): Rift | null {
     consoleX: row.console[0],
     consoleY: row.console[1],
     pillars: row.pillars.map(([x, y, shape]) => ({ x, y, shape })),
+    core: (row.core ?? []).map(([tx, ty]) => [tx, ty] as const),
     lightTiles: row.lightTiles,
     lightKind: row.lightKind,
     state: row.state,

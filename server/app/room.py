@@ -61,7 +61,7 @@ from .crates import Crate
 from .rift import Rift
 from .loot import Drop
 from .enemies import Enemy, EnemyType, dress
-from .world import FLOOR
+from .world import FLOOR, LOW
 from .entities import InputCmd, Player, clean_name, pick_color, random_name
 from .pathing import Navigator
 from .simulation import apply_input
@@ -173,6 +173,10 @@ class Room:
         """Hydrate the extraction point from the map the generator left behind."""
         self.rift = rift.from_payload(self.world.rift)
         self._rift_dirty = False
+        # A map that arrives already open (nothing does today, but the payload
+        # can say so) has to come back with its core solid.
+        if self.rift is not None and self.rift.state == rift.OPEN:
+            self.solidify_rift()
 
     # --- lifecycle ----------------------------------------------------------
     def start(self) -> None:
@@ -608,6 +612,25 @@ class Room:
         """Run the activation sequence. Marks dirty only on the transition."""
         if self.rift is not None and self.rift.step(dt):
             self._rift_dirty = True
+            self.solidify_rift()
+
+    def solidify_rift(self) -> None:
+        """The anomaly now occupies its tiles, so nobody may stand in it.
+
+        Deferred to the moment it OPENS rather than done at generation: while
+        the structure is dormant the sigil is a mark on the floor and walking
+        across it is the whole invitation. The client does the same on the same
+        transition (`TileMap.setRiftState`), off the same tile list, so
+        prediction and the server agree about the wall that just appeared.
+
+        Cannot seal anything off: the core is interior to the plot and the plot
+        was cleared to floor, so the ring around it is always a way past.
+        """
+        if self.rift is None:
+            return
+        for tx, ty in self.rift.core:
+            self.world.set_tile(tx, ty, LOW)
+        self.navigator.invalidate()
 
     def step_players(self, dt: float) -> None:
         if self.departing:

@@ -133,8 +133,7 @@ const RIFT_TOOLTIP_LIFT_TILES = 1.9;
  */
 const RIFT_CROWN_FRACTION = 0.55;
 const RIFT_BURST_FRACTION = 0.4;
-/** Capstone height and sphere height above their contact points, in world px. */
-const RIFT_CROWN_LIFT = 42;
+/** Sphere height above its anchor, in world px — where burst debris starts. */
 const RIFT_BURST_LIFT = 34;
 /** Distance between boot prints, in tiles. One stride, not one frame. */
 const FOOTPRINT_STRIDE = 0.9;
@@ -2361,23 +2360,22 @@ export class Game {
     const beacon = palette().scene.beacon;
     const beaconCss = `rgb(${beacon[0]} ${beacon[1]} ${beacon[2]})`;
 
-    // A stone catching. One light and a small shove each, so the four of them
+    // A stone catching. A small shove and a note each, so the four of them
     // walking around the ring are four separate events rather than one long
     // brightening — the punctuation is what sells the stagger.
     //
-    // KEPT SHORT AND SMALL, and the LIFE matters more than the radius. These
-    // are `ctx.arc` radial gradients: at a muzzle flash's size but four times
-    // its duration they stop reading as a flash and start reading as a drawn
-    // blue disc sitting on the floor. Every other event light in this game is
-    // under 0.15 s (see `spawnShot`, `spawnGoldPickup`) and this belongs on
-    // that ladder — the crown SHEET is what carries the glow; this is only the
-    // ground noticing.
+    // NO POINT LIGHT. `Effects.spawnLight` is a `ctx.arc` radial gradient in
+    // WORLD pixels, and the world is drawn at `ARENA_ZOOM` — so a radius that
+    // reads as modest in this file arrives on screen multiplied by the zoom and
+    // covers half the viewport as a hard-edged disc. Every existing caller gets
+    // away with it by being over in about a tenth of a second; a beat you are
+    // meant to WATCH cannot hide behind that. The glow belongs to the sheets,
+    // which are pixel art and lit like everything else — see `crown` and
+    // `emerge` in `make_rift.py`.
     for (let i = 0; i < rift.pillars.length; i++) {
       const at = timing.consoleLag + i * timing.pillarStagger
         + timing.chargeTime * RIFT_CROWN_FRACTION;
       if (before < at && after >= at) {
-        const pillar = rift.pillars[i];
-        this.effects.spawnLight(pillar.x, pillar.y - RIFT_CROWN_LIFT, 34, 0.5, beaconCss, 0.13);
         this.camera.addTrauma(0.08);
         // Four of these in a row is a rising figure, which is the whole reason
         // the stones are staggered. Borrowed from the loot-reveal chime for
@@ -2393,9 +2391,9 @@ export class Game {
     }
     const burst = timing.emergeAt + timing.emergeTime * RIFT_BURST_FRACTION;
     if (before < burst && after >= burst) {
-      // The biggest light in the game, and still a flash: half a second of a
-      // 13-tile disc was a wall of blue, not an event.
-      this.effects.spawnLight(rift.anomalyX, rift.anomalyY, 96, 0.8, beaconCss, 0.22);
+      // Same reason: the sheet already whites the whole frame out on this
+      // exact frame. A gradient disc on top of it only adds the one thing the
+      // sheet does not have — a hard circular edge.
       this.camera.addTrauma(0.42);
       playSfx('kindle');
       for (let i = 0; i < 22; i++) {

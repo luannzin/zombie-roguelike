@@ -1103,23 +1103,30 @@ def _anomaly(
     _shell(prism, cx, cy, rx, ry, spin, bright, shear, opened)
     _spines(prism, cx, cy, rx, ry, spin, bright, phase, reach)
 
-    # It is HOVERING, and the ground under it has to say so. A bloom with a ring
-    # riding out of it, breathing on the same phase as everything else.
+    # It is HOVERING, and the ground under it has to say so.
+    #
+    # THE POOL IS MEASURED FROM THE SPHERE, not from a floor row. This effect
+    # never touches the ground, so `contact_y` was a fiction inherited from the
+    # sheets that do — and pinning the pool to it left the glow a full sphere
+    # further down than the ball, landing on the far rim of the sigil instead
+    # of inside it. Under the sphere's own lower edge is where light cast by a
+    # hovering object actually falls.
+    floor_y = cy + ry * 0.78
     bloom = 0.85 + 0.15 * math.sin(phase)
     # The pool on the floor is COOL — cyan into violet at its rim, the same
     # gradient the pillars run and the coldest end of the prism. Mint made it
     # the greenest thing on screen and pulled the eye off the sphere onto the
     # dirt underneath it, which is the wrong half of the object.
-    prism.ellipse(cx, contact_y, rx * 0.52 * bloom, ry * 0.13 * bloom,
+    prism.ellipse(cx, floor_y, rx * 0.52 * bloom, ry * 0.13 * bloom,
                   0.95 * bright * opened, CYAN)
-    prism.ellipse(cx, contact_y, rx * 0.66 * bloom, ry * 0.16 * bloom,
+    prism.ellipse(cx, floor_y, rx * 0.66 * bloom, ry * 0.16 * bloom,
                   0.34 * bright * opened, VIOLET, hollow=0.40)
 
     # Motes falling INTO it out of the ground: the rift is taking, not giving.
     for i in range(7):
         drift = ((phase / math.tau) + i / 7.0) % 1.0
         mx = int(round(cx + math.sin(phase + i * 1.9) * rx * 0.7))
-        my = int(round(contact_y - drift * (contact_y - cy - ry * 0.4)))
+        my = int(round(floor_y - drift * (floor_y - cy - ry * 0.4)))
         prism.add(mx, my, bright * 0.55 * (1.0 - drift) * opened,
                   CELL_TABLE[i * 5 % len(CELL_TABLE)][4])
 
@@ -1188,6 +1195,9 @@ def make_emerge_frame(
     cx = (width - 1) / 2.0
     cy = _hover_y(contact_y, radius)
     rest_spin, rest_x, rest_y, rest_bright, rest_instability = _rift_state(0.0)
+    # Same rule as `_anomaly`: the floor this throws light onto is under the
+    # SPHERE, not at the bottom of the frame.
+    floor_y = cy + radius * rest_y * 0.78
 
     # --- SEAM: a hairline splits, and the air starts falling into it ---------
     if t < EMERGE_BURST:
@@ -1202,7 +1212,7 @@ def make_emerge_frame(
         prism.ellipse(cx, cy, lens_w, lens_h, wake * (0.85 + opening * 1.35), CORE)
         prism.ellipse(cx, cy, lens_w * 1.7, lens_h * 1.12,
                       wake * (0.35 + opening * 0.55), VIOLET, hollow=0.40)
-        prism.ellipse(cx, contact_y, radius * (0.20 + opening * 0.45),
+        prism.ellipse(cx, floor_y, radius * (0.20 + opening * 0.45),
                       radius * (0.05 + opening * 0.12),
                       wake * (0.45 + opening * 0.85), CYAN)
         # Specks pulled IN, against the way everything flies at the burst. The
@@ -1249,7 +1259,7 @@ def make_emerge_frame(
             if not 0.0 < wave < 1.0:
                 continue
             spread = ease_out(wave)
-            prism.ellipse(cx, contact_y, radius * (0.3 + spread * 1.15),
+            prism.ellipse(cx, floor_y, radius * (0.3 + spread * 1.15),
                           radius * (0.07 + spread * 0.22),
                           (1.0 - wave) * 1.45 * weight, CYAN, hollow=0.5)
         for i in range(20):

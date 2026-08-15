@@ -380,6 +380,8 @@ export interface RiftPayload {
   console: [number, number];
   /** `[x, y, shape]` per stone. `shape` indexes the pillar sheet's four cuts. */
   pillars: [number, number, number][];
+  /** `[tx, ty]` the anomaly occupies — solid only once it opens. */
+  core?: [number, number][];
   lightTiles: number;
   /** Scene-light kind. 2 is `beacon` — see `theme/palette.ts`. */
   lightKind: number;

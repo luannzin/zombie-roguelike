@@ -69,7 +69,11 @@ _CENTRE = (PLOT / 2.0, PLOT / 2.0)
 #: scar and actually sit in it.
 _ANOMALY = _CENTRE
 
-#: Tiles within this of the centre become solid, so nobody walks INTO the rift.
+#: Tiles within this of the centre become solid ONCE THE RIFT IS OPEN, so
+#: nobody walks into it. While the structure is dormant the sigil is just a
+#: mark on the floor and you can stand in the middle of it — there is nothing
+#: there yet, and an invisible wall around empty ground is the worst bug a 2D
+#: game can have because the screen contradicts it.
 #:
 #: LOW, not PROP: waist-high cover is the only kind that is solid to bodies
 #: while staying transparent to light, and a sight-blocking core would throw a
@@ -133,6 +137,9 @@ class Rift:
     anomaly_x: float
     anomaly_y: float
     pillars: tuple[tuple[float, float, int], ...]
+    #: Tiles the anomaly occupies once it exists. Shipped rather than
+    #: re-derived so both sides solidify exactly the same cells.
+    core: tuple[tuple[int, int], ...] = ()
     state: str = DORMANT
     #: Seconds since the console was pressed. Only meaningful while CHARGING,
     #: and it is on the wire so a player who joins mid-sequence sees the rest
@@ -161,6 +168,7 @@ class Rift:
             "anomaly": [round(self.anomaly_x, 1), round(self.anomaly_y, 1)],
             "console": [round(self.console_x, 1), round(self.console_y, 1)],
             "pillars": [[round(px, 1), round(py, 1), shape] for px, py, shape in self.pillars],
+            "core": [[cx, cy] for cx, cy in self.core],
             "lightTiles": LIGHT_TILES,
             "lightKind": LIGHT_KIND,
             **self.state_payload(),
@@ -184,6 +192,7 @@ def from_payload(row: dict | None) -> Rift | None:
         console_x=float(row["console"][0]),
         console_y=float(row["console"][1]),
         pillars=tuple((float(p[0]), float(p[1]), int(p[2])) for p in row["pillars"]),
+        core=tuple((int(c[0]), int(c[1])) for c in row.get("core", ())),
         state=str(row.get("state", DORMANT)),
         elapsed=float(row.get("t", 0.0)),
     )
@@ -365,15 +374,20 @@ def _stamp(tiles: list[list[int]], tx: int, ty: int) -> Rift:
     cy = int(math.floor(ty + _CONSOLE[1] - 1e-6))
     tiles[cy][cx] = LOW
 
-    # The anomaly's own footprint. Measured from tile CENTRES against the plot
-    # centre, so the block is a disc rather than a square — the sphere is round
-    # and the collision should agree with the silhouette.
-    for oy in range(PLOT):
-        for ox in range(PLOT):
-            if math.hypot(ox + 0.5 - _CENTRE[0], oy + 0.5 - _CENTRE[1]) <= CORE_RADIUS_TILES:
-                tiles[ty + oy][tx + ox] = LOW
+    # The anomaly's own footprint, WORKED OUT BUT NOT STAMPED. These tiles stay
+    # walkable until the rift actually opens — see `CORE_RADIUS_TILES`.
+    # Measured from tile CENTRES against the plot centre, so the block is a disc
+    # rather than a square: the sphere is round and the collision should agree
+    # with the silhouette.
+    core = tuple(
+        (tx + ox, ty + oy)
+        for oy in range(PLOT)
+        for ox in range(PLOT)
+        if math.hypot(ox + 0.5 - _CENTRE[0], oy + 0.5 - _CENTRE[1]) <= CORE_RADIUS_TILES
+    )
 
     return Rift(
+        core=core,
         tx=tx,
         ty=ty,
         x=(tx + _CENTRE[0]) * TILE_SIZE,

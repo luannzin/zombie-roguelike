@@ -375,9 +375,12 @@ class PillarGeometry:
         self.height = height
         #: The lens in the capstone — the fitting the light actually lives in.
         self.lens_y = self.cap_top + 4.0
-        #: The channel cut up the front of the shaft, between cap and base.
+        #: The channel cut up the front of the shaft. It runs INTO the base
+        #: rather than stopping above it — see `sink` in `_pillar_channel`.
         self.groove_top = self.cap_bot + 1
-        self.groove_bot = self.base_top - 2
+        self.groove_bot = self.base_top + 2
+        #: Where the channel starts being swallowed by the footing.
+        self.sink_top = self.base_top - 3
         #: Awake, the capstone comes off the shaft and hangs. Two pixels is
         #: enough to read at this size and small enough that it still looks
         #: like a stone held up rather than a stone thrown.
@@ -493,7 +496,19 @@ def _pillar_channel(px, width: int, height: int, geo: PillarGeometry, awake: boo
             if off > 1.0:
                 continue
             if awake:
-                px[x, row] = lit(conduit(up), (0.52 + 0.44 * up) * (1.0 - 0.30 * off))
+                # THE CHANNEL DOES NOT STOP, IT SINKS. Ending it in mid-shaft
+                # left a bright violet band floating above the footing, which
+                # reads as paint that ran out — the light has to come from
+                # somewhere, and the only place it can come from is under the
+                # stone. So the last rows dim and narrow into the base.
+                sink = clamp01((geo.groove_bot - row + 1) / 5.0) if row > geo.sink_top else 1.0
+                if sink <= 0.05 or off > sink:
+                    continue
+                px[x, row] = lit(
+                    conduit(up), (0.52 + 0.44 * up) * (1.0 - 0.30 * off) * (0.35 + 0.65 * sink)
+                )
+            elif row > geo.sink_top:
+                continue  # the dormant groove stops at the footing
             elif off > 0.62 and x > cx:
                 px[x, row] = ROCK_RAMP[2]  # the far lip catching the light
             else:
@@ -742,13 +757,17 @@ def _crown_paint(
         # A band running UP the channel — the light is going somewhere.
         band = 0.84 + 0.16 * math.sin(row * 0.55 - phase * 2.0)
         centre = geo.centre(width, row)
+        # The glow sinks with the channel it is sitting on, or the sprite
+        # goes dark at the footing while the light over it does not.
+        sink = clamp01((geo.groove_bot - row + 1) / 5.0) if row > geo.sink_top else 1.0
         for x in range(int(centre - 2.5), int(centre + 3.5)):
             if not 0 <= x < width:
                 continue
             off = abs(x - centre) / 2.4
             if off > 1.0:
                 continue
-            prism.add(x, row, level * (0.34 + 0.42 * up) * (1.0 - off) ** 1.3 * band,
+            prism.add(x, row,
+                      level * (0.34 + 0.42 * up) * (1.0 - off) ** 1.3 * band * sink,
                       conduit(up))
 
     # The lens, and the halo it throws. White at the source, cooling outward —

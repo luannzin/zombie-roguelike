@@ -275,13 +275,20 @@ mutation, no React.
   emerge and rift sheets are additive light after the darkness pass. Its prop
   frames are STATES, never variants — `riftPropFrame` takes the state, and
   hashing one would make the extraction point flicker between on and off.
-- **Two rift sheets carry their own colour and `tinted` is what says so.**
-  `charge` and `crown` belong to the PILLARS — built, quarried, part of this
-  world — so they are greyscale and take `--scene-beacon` like every other
-  effect. `emerge` and `rift` belong to the anomaly, which belongs to nobody:
-  they bake an IRIDESCENT palette, because six pastels in one frame is the one
-  thing a single draw-time tint can never produce. `riftImage` refuses the tint
-  for those rather than trusting each call site to remember.
+- **Every rift sheet carries its own colour, and `tinted` is the flag that
+  says so.** The whole structure is painted from ONE iridescent prism: the
+  anomaly's openings, and the pillars' conduit running violet at the foot
+  through cyan to a white crown. That is the one thing a draw-time tint can
+  never produce — a single multiply is a single hue — so the colour is resolved
+  in `make_rift.py` and `riftImage` refuses the tint rather than trusting each
+  call site to remember. `--scene-beacon` survives only as the BEACON GLOW's
+  tone (the scene light on the map), and it is pale cyan to match, not the mint
+  it started as.
+- **The anomaly is anchored on its CORE, not on a ground contact**, and it is
+  the only sheet in the game that is. Everything else registers where it
+  touches the floor because everything else touches the floor; the rift hovers,
+  so `anchorY` is the centre of the sphere and it can be placed on the middle
+  of its own sigil instead of a radius above it.
 - Cached bitmaps and tints are released in `Renderer.dispose()`.
 - `imageSmoothingEnabled` stays `false` — this is pixel art.
 

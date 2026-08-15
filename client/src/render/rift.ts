@@ -18,14 +18,15 @@
  * frame index says what the structure IS, and picking one by hash would make
  * the extraction point flicker between on and off.
  *
- * TWO OF THESE SHEETS CARRY THEIR OWN COLOUR AND FOUR DO NOT, and `tinted`
- * on each entry is what says which. `charge` and `crown` belong to the
- * PILLARS — built, quarried, part of this world — so they are greyscale and
- * get `--scene-beacon` at draw time like every other effect in the game.
- * `emerge` and `rift` belong to the anomaly, which belongs to nobody: they are
- * baked IRIDESCENT, because the one thing a single draw-time tint can never
- * produce is six different pastels in one frame. Multiplying a colour onto
- * those would collapse the whole prism to one hue.
+ * EVERY EFFECT SHEET HERE BAKES ITS OWN COLOUR, and `tinted` is the flag that
+ * says so. The structure is painted from one iridescent prism — the anomaly's
+ * openings, and the pillars' conduit running violet at the foot through cyan to
+ * a white crown — and the one thing a draw-time tint can never produce is six
+ * pastels in a frame, because a multiply is a single hue. So `riftImage`
+ * refuses the tint rather than trusting each call site to remember, and the
+ * tint machinery is kept only because `tinted` is a manifest flag that a future
+ * sheet could set. `--scene-beacon` survives as the beacon GLOW's tone, on the
+ * scene-light list, and nothing else.
  *
  * Loading is best-effort: a missing atlas resolves to `null` and callers skip
  * the structure, so the game still runs with no assets built.

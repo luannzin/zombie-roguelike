@@ -21,7 +21,7 @@ mutation, no React.
 | `fov.ts` | shared field of view — `light` and `heat` fields |
 | `wind.ts` | the shared gust field every bending thing reads |
 | `disturbance.ts` | what bodies do to the plants they walk through |
-| `layers/vision.ts` | the ENEMY's sight cone and its alert mark |
+| `layers/vision.ts` | the ENEMY's hunt diamond — fill meter and bang over the head |
 | `layers/scenery.ts` | placed scenes: flat decals into the ground bake, standing props into the depth sort |
 | `minimap.ts` | the minimap canvas |
 | `layers/` | the actual drawing: terrain, entities, vision, effects, atmosphere, darkness, vignette |
@@ -33,34 +33,26 @@ mutation, no React.
 - `renderer.ts` only sequences passes and switches spaces; drawing lives in
   `layers/`. **The pass order is the atmosphere** — ground (soil, litter, flat
   scenery) → dust → entities, bonfires and standing scenery (one depth sort by
-  `y`) → overgrowth → motes → darkness → combat effects → labels → vignette. Effects go over the darkness because a muzzle flash is a
-  light source, not a thing being lit. Enemy sight cones go in just after the
-  ground; their alert marks go after the overgrowth — both BEFORE the
-  darkness, see below.
-- **`fov.ts` is what the PLAYERS can see; `layers/vision.ts` is what an ENEMY
-  can.** Unrelated systems: the first is a client-side tile field that decides
-  what is drawn at all, the second draws the wedge the SERVER is already
-  testing against (`ai.look`), from the reach and width on the creature's stat
-  block and the `aw` meter on its snapshot row. Do not re-derive that cone
-  here — a tell that does not match the rule is worse than no tell.
-- **Everything `vision.ts` draws goes UNDER the darkness pass and is scaled by
-  the enemy's own `visibility`** — the cone on the floor and the alert mark
-  over the head alike. Both halves matter: a cone reaching into the dark has
-  to fade with the ground it lies on, and a mark or a cone painted over
-  something the player cannot see is a free tracker that undoes the lantern.
-  The mark is drawn as world-pixel rectangles, not as type, for the same
-  reason: it lives in the forest, not on the HUD.
-- **A cone is a REACTION, not furniture.** Below `NOTICE_AT` nothing is drawn
-  at all; from there it opens out of nothing and grows — yellow, amber, red,
-  brighter and longer — up to the reach the server enforces, and never past it.
-  Drawing a wedge over every idle creature turns the dark into a diagram and
-  leaves nothing to be afraid of; over-drawing one promises safety that is not
-  there. Both failures are worse than the cone being briefly conservative.
-- The cone's reach is the reach against the LOCAL player, and that depends on
-  their own lamp (`Game.sightReach` picks between `viewRange` and
-  `viewRangeLit` on the battery's output). Switching on stretches every cone on
-  screen toward you. Do not average the two or pick one — the stretch IS the
-  feedback that seeing costs being seen.
+  `y`) → overgrowth → motes → darkness → combat effects → hunt diamond →
+  labels → vignette. Effects go over the darkness because a muzzle flash is a
+  light source, not a thing being lit. The hunt diamond goes AFTER the
+  darkness on purpose, see below.
+- **`fov.ts` is what the PLAYERS can see; `layers/vision.ts` is the ENEMY hunt
+  tell.** Unrelated systems: the first is a client-side tile field that decides
+  what is drawn at all, the second fills a diamond from the `aw` meter on the
+  creature's snapshot row. The server still tests a sight cone (`ai.look`);
+  that wedge is not drawn. Do not re-derive a floor cone here.
+- **The hunt diamond is the one tell that sits ON the night.** It is not
+  scaled by `visibility` and it is drawn after the darkness pass. A hunter
+  in the dark still wears it, so killing the lamp does not hide that it has
+  you. The body itself still vanishes. Idle creatures (`aw` below
+  `NOTICE_AT`) show nothing. The mark is drawn as world-pixel rectangles, not
+  as type: it lives in the forest, not on the HUD.
+- **A diamond is a REACTION, not furniture.** Below `NOTICE_AT` nothing is
+  drawn at all; from there an empty lozenge appears and fills — yellow, amber,
+  red — and at 1 it is hunting and stays full. Drawing one over every idle
+  creature turns the dark into a diagram; hiding one on a hunter undoes the
+  tell. Both failures are worse than the diamond being briefly conservative.
 - Vision is a client-side visual system: the server broadcasts the whole world.
   `fov.ts` produces two fields — `light` saturates at 1 (visibility), `heat`
   keeps climbing (warmth, drawn as additive amber). Shared vision is a `max()`
@@ -154,7 +146,7 @@ mutation, no React.
   instant you clear it and reads as a bubble stuck to your shoes. A body the
   fov says you cannot see contributes NOTHING: foliage parting around an
   invisible creature is a free tracker that undoes the lantern, exactly as a
-  sight cone drawn over an unlit thing would be. Inside your light it is a fair
+  floor cone drawn over an unlit thing would be. Inside your light it is a fair
   tell and a good one.
 - The field is owned by `Renderer` and takes the entity list DIRECTLY —
   `Disturber` is structurally a subset of `DrawableEntity` so there is no

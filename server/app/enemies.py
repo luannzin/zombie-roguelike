@@ -68,8 +68,8 @@ class EnemyType:
     #: SIGHT CONE. How far it can see, and how wide, measured off its facing.
     #: This is the only way an enemy finds a player on its own — everything
     #: else (a shout from a neighbour, a gunshot, a lantern in the face, being
-    #: shot) is somebody else's cone doing the work. The client draws this
-    #: exact wedge.
+    #: shot) is somebody else's cone doing the work. The client does not
+    #: draw this wedge; the hunt diamond is the tell.
     #:
     #: Two reaches, because sight is symmetric and the dark is shared: a player
     #: with the lamp OFF is only a shape, and is made out at `view_tiles`; one
@@ -144,10 +144,9 @@ class EnemyType:
             "spriteHeight": self.sprite_height,
             "halfWidth": self.half_width,
             "halfHeight": self.half_height,
-            # The sight cone, so the client can draw the wedge the server is
-            # actually testing against rather than an illustration of one.
-            # Both reaches: the client picks between them on the LOCAL lamp, so
-            # switching on visibly stretches every cone on screen toward you.
+            # The sight cone the server tests against. Both reaches: the
+            # client picks between them on the LOCAL lamp. Not drawn — the
+            # hunt diamond is the tell.
             "viewRange": self.view_range,
             "viewRangeLit": self.view_lit_range,
             "viewDegrees": self.view_degrees,
@@ -203,9 +202,9 @@ class Enemy:
 
     #: 0..1 how much of a player it has noticed. Below 1 it is only suspicious
     #: and stays on its patrol; at 1 it is hunting, and it is PINNED there for
-    #: as long as the hunt lasts (see ai.py). The client colours the sight cone
-    #: with this — white, through orange, to red — so the number the simulation
-    #: is deciding on is the number the player is watching.
+    #: as long as the hunt lasts (see ai.py). The client fills the hunt
+    #: diamond with this, so the number the simulation is deciding on is the
+    #: number the player is watching.
     awareness: float = 0.0
 
     # server bookkeeping (never sent verbatim)
@@ -277,7 +276,7 @@ class Enemy:
             "ax": round(self.aim_x, 3),
             "ay": round(self.aim_y, 3),
             "hp": self.hp,
-            # The sight cone's colour and reach. Two decimals is under a
-            # percent of the meter — finer than the client can paint.
+            # The hunt diamond's fill. Two decimals is under a percent of
+            # the meter — finer than the client can paint.
             "aw": round(self.awareness, 2),
         }

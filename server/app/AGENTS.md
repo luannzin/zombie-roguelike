@@ -66,21 +66,23 @@ game's scale.
   inside the creature's SIGHT CONE (`EnemyType.view_tiles` / `view_degrees`,
   occluded by the tile grid, tested in `ai.look`), faster the closer they are,
   and is PINNED at 1 for the whole hunt — a meter that sagged behind cover
-  would flicker the cone back to calm while the thing was still coming.
+  would flicker the hunt diamond back to empty while the thing was still coming.
   `aggro_range` is now the give-up distance, not the notice distance.
 - **Sight is symmetric, and the lamp is a two-way switch.** A cone's reach is
   a fraction of the LANTERN's, chosen per target by that player's own switch:
   `ENEMY_VIEW_DARK_SCALE` mirrors `EYE_REACH` and `ENEMY_VIEW_LIT_SCALE`
   mirrors `SIGHT_REACH`, both in `client/src/render/fov.ts`. Move one, move
-  the other — a client drawing a reach the server does not enforce teaches a
-  rule that is not true. Never give a creature an absolute view distance.
+  the other. Hunt uses the same pair: a player who kills the lamp is a
+  shorter shape, and that is how they slip a hunter. Never give a creature
+  an absolute view distance.
 - **Nothing snaps its head.** Every facing change outside an active hunt goes
   through `ai.turn_towards` at a bounded rate — `ENEMY_IDLE_TURN_DEGREES` while
   patrolling, `ENEMY_TURN_DEGREES` under a glare — and a patrolling body walks
   along the facing it currently has, so a new waypoint is a curve rather than a
   change of direction. Assigning `aim_x`/`aim_y` directly makes a turret out of
-  a shambling thing, and the sight cone is drawn off that facing: a clearing of
-  enemies re-aiming per tick reads as searchlights. `ENEMY_ARRIVE_TILES` must
+  a shambling thing, and the sight test is measured off that facing: a
+  clearing of enemies re-aiming per tick reads as searchlights.
+  `ENEMY_ARRIVE_TILES` must
   stay comfortably above the resulting turn radius or a patrol orbits a
   waypoint it can never reach.
 - **`ai.glare` is the lantern's price and it is deliberately indirect.** The
@@ -103,8 +105,8 @@ game's scale.
   members scattered around it, each taking its own tile as `home`. The
   director places an occupied patch of forest, not a wave aimed at the party.
 - Only what moves goes on the tick row, and `aw` earns its place: the client
-  paints the cone from it every frame. Cone geometry is per-type and rides
-  `welcome.config.enemyTypes`.
+  fills the hunt diamond from it every frame. Cone geometry is per-type and
+  rides `welcome.config.enemyTypes`; it is tested, not drawn.
 - `rooms.py` owns every live `Room`. Nothing else may hold one past the request
   that fetched it — a reference kept elsewhere outlives `rooms.drop()` and keeps
   a tick task alive after the last player left.
@@ -213,8 +215,8 @@ game's scale.
 
 - Adding a creature = one `EnemyType`, a `SPAWN_TABLE` weight, and a processed
   sprite folder of the same name. It must require no client change — its sight
-  cone is two more fields on the same stat block, and the client draws
-  whatever they say.
+  cone is two more fields on the same stat block, and the hunt diamond
+  fills from `aw` regardless.
 - Adding a zone = one `zones.Zone` and whatever builds its map. Its title card,
   its safety and its lighting rules are all data; the client needs no change to
   announce or obey a new one. A forest's subtitle is `night_clock()` — a time

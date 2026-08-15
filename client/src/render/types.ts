@@ -60,12 +60,14 @@ export interface DrawableEntity {
    */
   visibility: number;
   /**
-   * 0..1 how much this enemy has noticed the party — the colour and the reach
-   * of its sight cone, and whether it wears an alert mark. Always 0 for
-   * players, who have no cone: `viewRange` 0 is what skips them.
+   * 0..1 how much this enemy has noticed the party. Fills the hunt diamond
+   * over its head; at 1 it is hunting. Always 0 for players.
    */
   awareness: number;
-  /** Sight cone reach in world px and full width in degrees. 0 draws nothing. */
+  /**
+   * Sight reach the server tests against, in world px, and the cone's full
+   * width in degrees. Not drawn — the diamond is the tell. 0 for players.
+   */
   viewRange: number;
   viewDegrees: number;
   /** Visual kick (world px). Recoil for players, attack lunge for enemies. */

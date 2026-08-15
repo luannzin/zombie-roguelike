@@ -19,7 +19,7 @@ import {
   drawShadow,
   type EntityContext,
 } from './layers/entities';
-import { drawAlertMarks, drawVisionCones } from './layers/vision';
+import { drawAlertMarks } from './layers/vision';
 import { DisturbanceField } from './disturbance';
 import { AtmosphereLayer } from './layers/atmosphere';
 import { DarknessLayer } from './layers/darkness';
@@ -111,14 +111,11 @@ export class Renderer {
     // the undergrowth bends around whatever is standing in it this frame.
     this.disturbance.update(state.entities, state.dt);
 
-    // World space: floor, then what is painted ON the floor — boot prints,
-    // enemy sight cones and footstep dust. The cones go under the bodies and
-    // under the darkness on purpose: a cone reaching into the dark has to fade
-    // out with the ground it is lying on.
+    // World space: floor, then what is painted ON the floor — boot prints
+    // and footstep dust.
     this.useWorldSpace(view.zoom, view.offsetX, view.offsetY);
     this.terrain.ground(ctx, state.world, state.camera, state.time, this.disturbance);
     if (this.scenery) drawFootprints(ctx, state.effects, this.scenery, state.camera);
-    drawVisionCones(ctx, state.entities, state.time, view.zoom);
     drawDust(ctx, state.effects);
 
     // Screen space: coins under characters, then everything that STANDS on the
@@ -187,9 +184,6 @@ export class Renderer {
     //               muzzle flash is a light source, not a thing being lit
     this.useWorldSpace(view.zoom, view.offsetX, view.offsetY);
     this.terrain.overgrowth(ctx, state.world, state.camera, state.time, this.disturbance);
-    // Over the ferns so a frond cannot hide it, under the darkness so the night
-    // swallows it exactly as hard as the creature wearing it.
-    drawAlertMarks(entity, state.entities, state.time);
     this.atmosphere.draw(ctx, state.camera, state.dt);
     if (state.fov) this.darkness.draw(ctx, state.world, state.fov);
     this.darkness.drawFires(
@@ -207,6 +201,9 @@ export class Renderer {
     );
     drawCombatEffects(ctx, state.effects, state.config.tileSize);
     this.darkness.drawLights(ctx, state.effects.lights);
+    // Hunt tell sits ON the night: a hunter you cannot see still wears the
+    // diamond, so killing the lamp does not hide that it has you.
+    drawAlertMarks(entity, state.entities, state.time);
 
     // Screen space: labels, numbers, then the full-screen vignette.
     this.useScreenSpace();

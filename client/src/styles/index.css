@@ -120,16 +120,15 @@
   --minimap-unseen: rgb(6 8 14 / 0.92);
 
   /*
-   * Enemy senses. The sight cone only exists while something is being noticed,
-   * and it warms as that happens: yellow the instant it catches movement,
-   * amber while it works you out, red once it has committed. Bare `R G B` —
-   * the vision layer mixes between the three stops and computes its own alpha,
-   * so these cannot be strings.
+   * Enemy hunt tell. The diamond over a noticing enemy fills with these
+   * stops: yellow the instant it catches movement, amber while it works
+   * you out, red once it has committed. Bare `R G B` — the vision layer
+   * mixes between the three and computes its own alpha.
    */
   --enemy-view-notice: 240 214 96;
   --enemy-view-alert: 242 136 43;
   --enemy-view-hunt: 230 72 79;
-  /* The mark over the head of something that has committed to you. */
+  /* The bang inside a noticing or hunting diamond. */
   --enemy-alert-mark: #ff6b5e;
 
   /* lighting — bare `R G B`, the darkness layer computes its own alpha */

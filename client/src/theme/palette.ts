@@ -73,9 +73,9 @@ export interface Palette {
   minimap: { localRing: string; enemy: string; fog: string; unseen: string };
 
   /**
-   * The enemy sight cone's three stops, as `[r, g, b]`: the layer mixes between
-   * them on the awareness meter and picks its own alpha, so a colour string
-   * would be the wrong shape. `mark` is the glyph over a committed hunter.
+   * The hunt diamond's three fill stops, as `[r, g, b]`: the layer mixes
+   * between them on the awareness meter and picks its own alpha, so a colour
+   * string would be the wrong shape. `mark` is the bang inside the lozenge.
    */
   enemyView: { notice: Channels; alert: Channels; hunt: Channels; mark: string };
 

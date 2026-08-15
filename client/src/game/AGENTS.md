@@ -152,12 +152,12 @@ seam React is allowed to read.
   and reach, hearth warmth, the HUD cells, and how far every enemy on screen
   can see you (`sightReach`). Remotes contribute 0 or 1 from their snapshot
   `lantern` flag.
-- **The lamp is a two-way switch and `sightReach` is where that is drawn.**
+- **The lamp is a two-way switch and `sightReach` is where that is answered.**
   Enemy stat blocks carry two reaches; the local battery's output picks between
-  them, so turning the lantern on stretches every sight cone toward you in the
-  same motion that opens up your own vision. The server decides the real thing
-  on the boolean switch — the few frames of fade where they disagree are the
-  price of the cones moving smoothly, and they are worth it.
+  them. The server decides the real thing on the boolean switch — including
+  while a creature hunts, so killing the lamp shortens a hunter too. The
+  few frames of fade where they disagree cost nothing. The tell is the hunt
+  diamond (`layers/vision.ts`), not a floor cone.
 - `lantern.allowed` comes from `welcome.zone.lantern` and is a property of the
   LAMP, not a check at the call site, so every route to switching on goes
   through one refusal. A refused press is COUNTED, not ignored: the HUD reads

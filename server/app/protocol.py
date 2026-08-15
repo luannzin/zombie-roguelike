@@ -67,8 +67,9 @@ Snapshot arrays:
   enemies   live enemies only; `t` keys into welcome.config.enemyTypes.
             `aw` is the 0..1 detection meter — it fills while a player stands
             in the creature's sight cone and is pinned at 1 while it hunts.
-            The client colours the cone with it; the cone's own reach and
-            width are per-type and ride the config, not the tick
+            The client fills the hunt diamond with it; the cone's own reach
+            and width are per-type and ride the config, not the tick, and
+            are not drawn
   coins     live gold pickups (one per gold point dropped)
   shots     hitscan tracers fired since the last snapshot
   attacks   enemy melee swings; `dmg` is 0 when the victim's i-frames ate it

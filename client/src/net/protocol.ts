@@ -131,15 +131,16 @@ export interface EnemyTypeConfig {
   halfHeight: number;
   /**
    * The sight cone the server tests against: reach in world px, full width in
-   * degrees, both measured off the creature's own facing (`ax`/`ay`). The
-   * client draws this exact wedge — an illustration that did not match would
-   * teach the player a rule the simulation does not follow.
+   * degrees, both measured off the creature's own facing (`ax`/`ay`). Not
+   * drawn — the hunt diamond is the tell. The numbers still ride the config
+   * so a client that needs them (reach vs the local lamp) does not invent
+   * them.
    *
    * Two reaches, because sight is symmetric and the dark is shared: `viewRange`
    * is how far it makes out a shape, `viewRangeLit` how far it makes out
    * somebody carrying a lit lantern. The server picks per target by that
-   * player's switch; the renderer picks by the LOCAL lamp, so switching on
-   * stretches every cone on screen toward you.
+   * player's switch, including while it hunts — killing the lamp shortens
+   * a hunter too.
    */
   viewRange: number;
   viewRangeLit: number;
@@ -268,15 +269,15 @@ export interface EnemyState {
   y: number;
   vx: number;
   vy: number;
-  /** normalized facing — and so where its sight cone points */
+  /** normalized facing — and so where its sight cone points (server-side) */
   ax: number;
   ay: number;
   hp: number;
   /**
    * 0..1 how much of the party this enemy has noticed. It fills while somebody
    * stands in its sight cone, and is pinned at 1 for as long as it is hunting.
-   * The cone is drawn from this: white when idle, orange while it is working
-   * you out, red once it has committed.
+   * The hunt diamond is drawn from this: hidden when idle, filling while it
+   * works you out, full once it has committed.
    */
   aw: number;
 }

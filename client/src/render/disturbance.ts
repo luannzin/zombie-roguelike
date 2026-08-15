@@ -22,8 +22,8 @@
  * VISIBILITY IS A HARD GATE, AND IT IS A RULE, NOT AN OPTIMISATION. A creature
  * the fov says you cannot see contributes NOTHING. Grass bending around an
  * invisible body would be a free tracker that undoes the lantern completely —
- * the exact failure `layers/vision.ts` documents for sight cones drawn over
- * things in the dark. Bending foliage is a tell, and a tell is only fair if
+ * the exact failure a floor cone drawn over things in the dark would be.
+ * Bending foliage is a tell, and a tell is only fair if
  * you can see the thing making it. Inside your light it is a real one, and it
  * is the good kind for an extraction run: something moving through the weeds
  * at the edge of the beam is information you earned by looking.

@@ -29,9 +29,9 @@ player stands inside the SIGHT CONE — a wedge of `view_tiles` and
 `view_degrees` off the enemy's own facing, occluded by the tile grid, so a
 thicket really does hide you. Filling is faster the closer you are. It drains
 whenever the cone is empty. At 1 the enemy commits, and the meter is PINNED
-there for the whole hunt: the client paints the cone from this number (white →
-orange → red), and a hunter whose meter sagged every time you rounded a corner
-would flicker back to "calm" while it was actively coming for you.
+there for the whole hunt: the client fills the hunt diamond from this number,
+and a hunter whose meter sagged every time you rounded a corner would flicker
+back to "calm" while it was actively coming for you.
 
 **Sight is symmetric.** The cone's reach is not a number the creature owns, it
 is a fraction of the lantern's, chosen PER TARGET by that player's own switch:
@@ -424,7 +424,7 @@ def commit(enemy: Enemy, target: Player) -> None:
 
 
 def give_up(enemy: Enemy) -> None:
-    """End a hunt: head home, and let the cone cool back to white."""
+    """End a hunt: head home, and let the diamond empty."""
     enemy.mode = MODE_RETURN
     enemy.target_id = None
     enemy.awareness = 0.0
@@ -536,7 +536,7 @@ def glare(pack: Sequence[Enemy], living: Sequence[Player], world: TileMap, dt: f
 
 
 def face(enemy: Enemy, x: float, y: float) -> None:
-    """Point the enemy's facing (and so its sight cone) at a world point."""
+    """Point the enemy's facing (and so its sight test) at a world point."""
     dx = x - enemy.x
     dy = y - enemy.y
     length = math.hypot(dx, dy)
@@ -650,8 +650,8 @@ def walk(enemy: Enemy, dx: float, dy: float, speed: float, world: TileMap, dt: f
     whatever the head is currently pointing at, so a new waypoint is a CURVE
     rather than a change of direction. That is the whole difference between a
     thing wandering the woods and a sprite being teleported through headings —
-    and, since the sight cone is drawn off this facing, it is also what stops
-    the cones in a clearing from flicking about like searchlights.
+    and, since the sight test is measured off this facing, it is also what
+    stops a clearing of heads from flicking about like searchlights.
     """
     if math.hypot(dx, dy) <= 1e-6:
         enemy.vx = enemy.vy = 0.0

@@ -217,7 +217,7 @@ ENEMY_GLARE_REACH = 0.7
 # than expensive.
 ENEMY_GLARE_CAP = 0.75
 # How fast a glared enemy swings round, in degrees per second. Slow enough to
-# watch the cone come about, fast enough that it is coming about.
+# watch the head come about, fast enough that it is coming about.
 ENEMY_TURN_DEGREES = 200.0
 # How fast a creature turns while it is only patrolling. Nothing in this game
 # ever snaps its head: a body that changes facing between two frames reads as a

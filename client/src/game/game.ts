@@ -867,8 +867,8 @@ export class Game {
     this.updateVision(sampled.players, dt);
     this.applyVisibility(entities);
     // After `applyVisibility`, so a body the team cannot see leaves no prints.
-    // A trail appearing out of the dark would be a free tracker, the same way
-    // a sight cone drawn over an unlit creature would be.
+    // A trail appearing out of the dark would be a free tracker. The hunt
+    // diamond is the one exception — see layers/vision.ts.
     this.trackFootsteps(entities);
     this.syncTooltipAnchors();
 
@@ -1067,7 +1067,7 @@ export class Game {
       isLocal: source.isLocal,
       // Teammates are never hidden by the dark; only enemies are.
       visibility: 1,
-      // Players notice nothing and see no cone — that is their own fov field.
+      // Players notice nothing — that is their own fov field.
       awareness: 0,
       viewRange: 0,
       viewDegrees: 0,
@@ -1123,8 +1123,8 @@ export class Game {
       isLocal: false,
       // Overwritten by applyVisibility once the light field is current.
       visibility: 0,
-      // The detection meter and the wedge it colours. A server too old to send
-      // either leaves the cone off rather than inventing one.
+      // The detection meter that fills the hunt diamond. A server too old
+      // to send it leaves the mark off rather than inventing one.
       awareness: enemy.aw ?? 0,
       viewRange: this.sightReach(type),
       viewDegrees: type.viewDegrees ?? 0,
@@ -1146,11 +1146,11 @@ export class Game {
    * Sight is symmetric and the dark is shared, so the answer depends on the
    * lamp: a shape gets `viewRange`, a shape holding a lantern gets
    * `viewRangeLit` (see server/app/config.py). Drawn from the local battery's
-   * `output` rather than the switch, so the cones stretch out as the lamp comes
-   * up and pull back in as it dies — the player watches the reach of every
-   * enemy on screen answer their own key. The server switches on the boolean;
-   * the few frames of fade where the two disagree cost nothing and read far
-   * better than a snap.
+   * `output` rather than the switch, so the reach answers the lamp as it
+   * comes up and as it dies. The server switches on the boolean; the few
+   * frames of fade where the two disagree cost nothing and read far better
+   * than a snap. Hunt uses the same pair — killing the lamp shortens a
+   * hunter too, which is how you slip it.
    */
   private sightReach(type: EnemyTypeConfig): number {
     const dark = type.viewRange ?? 0;

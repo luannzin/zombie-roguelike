@@ -19,7 +19,6 @@ if (!container) throw new Error('#root is missing from index.html');
  * is in memory. `Game` primes the combat set on top of this.
  */
 const OPENING_SOUNDS = [
-  'ui-hover',
   'ui-click',
   'ui-back',
   'ui-error',

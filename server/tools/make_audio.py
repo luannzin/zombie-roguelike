@@ -508,13 +508,6 @@ def save_wav(path: Path, src: Buf, rate: int) -> int:
 # purpose — UI that announces itself is UI you get tired of on the third click.
 
 
-def ui_hover(rng: random.Random) -> tuple[Buf, int]:
-    rate = SFX_RATE
-    n = dur(0.045, rate)
-    tick = biquad(white(n, rng), rate, "bandpass", 3200, 1.6)
-    return normalize(mul(tick, env_perc(n, rate, 0.001, 0.035, 3.0)), 0.30), rate
-
-
 def ui_click(rng: random.Random) -> tuple[Buf, int]:
     rate = SFX_RATE
     n = dur(0.14, rate)
@@ -576,6 +569,25 @@ def ui_bag_close(rng: random.Random) -> tuple[Buf, int]:
 # --- the camp --------------------------------------------------------------
 
 
+def _fire_spit(rate: int, rng: random.Random, scale: float = 1.0) -> Buf:
+    """One pop of sap letting go. The grain both fire sounds are built from.
+
+    Shared rather than written twice, for the same reason the drawing helpers
+    are shared: the bonfire you sit next to and the bonfire that roars when the
+    party commits have to be made of the same material, or the second one reads
+    as a different fire being cut to.
+    """
+    m = dur((0.006 + rng.random() * 0.035) * scale, rate)
+    pop = biquad(white(m, rng), rate, "bandpass", 1200 + rng.random() * 2600, 2.2)
+    return gain(mul(pop, env_perc(m, rate, 0.0005, 0.02 * scale, 3.5)), 0.35 + rng.random() * 0.65)
+
+
+def _fire_roar(n: int, rate: int, rng: random.Random, cutoff: float = 520.0) -> Buf:
+    """The steady half: air and heat, with no transients in it."""
+    roar = biquad(pink(n, rng), rate, "lowpass", cutoff, 0.8)
+    return mix(roar, gain(biquad(brown(n, rng), rate, "lowpass", 180), 0.5))
+
+
 def bed_fire(rng: random.Random) -> tuple[Buf, int]:
     """The bonfire. The camp's whole sound bed, and the thing you walk away from.
 
@@ -587,22 +599,8 @@ def bed_fire(rng: random.Random) -> tuple[Buf, int]:
     cross = 0.9
     n = dur(5.0 + cross, rate)
 
-    roar = biquad(pink(n, rng), rate, "lowpass", 520, 0.8)
-    roar = mul(roar, lfo(n, rate, 0.31, 0.22, 0.78))
-    roar = mix(roar, gain(biquad(brown(n, rng), rate, "lowpass", 180), 0.5))
-
-    def spit(local_rng: random.Random, _index: int) -> Buf:
-        m = dur(0.006 + local_rng.random() * 0.035, rate)
-        pop = biquad(
-            white(m, local_rng),
-            rate,
-            "bandpass",
-            1200 + local_rng.random() * 2600,
-            2.2,
-        )
-        return gain(mul(pop, env_perc(m, rate, 0.0005, 0.02, 3.5)), 0.35 + local_rng.random() * 0.65)
-
-    crackle = scatter(n, rate, rng, 150, spit)
+    roar = mul(_fire_roar(n, rate, rng), lfo(n, rate, 0.31, 0.22, 0.78))
+    crackle = scatter(n, rate, rng, 150, lambda r, _i: _fire_spit(rate, r))
     body = mix(gain(roar, 0.75), gain(crackle, 0.55))
     return normalize(loopify(body, rate, cross), 0.72), rate
 
@@ -610,60 +608,88 @@ def bed_fire(rng: random.Random) -> tuple[Buf, int]:
 def sfx_kindle(rng: random.Random) -> tuple[Buf, int]:
     """The fire answering the match.
 
-    Timed to `make_vfx.py`'s kindle sheet: 16 frames at 16 fps is one second,
-    and the visual impact lands at 0.48 of it. The boom here sits on that frame
-    — a whoosh that peaks somewhere else is two events instead of one.
+    IT IS THE SAME FIRE, ALL AT ONCE. This used to be a whoosh with a low boom
+    under it, which is the sound of an explosion, not of a hearth — the fire
+    you are sitting next to and the fire that answers you had nothing in common
+    but a name. So it is built from `_fire_roar` and `_fire_spit`, the same two
+    parts as the bed: the roar swells hard and falls away, and the crackle
+    arrives as a dense burst rather than a sprinkle.
+
+    Timed to `make_vfx.py`'s kindle sheet — 16 frames at 16 fps is one second
+    and the visual impact lands at 0.48 of it, so the roar peaks there.
     """
     rate = SFX_RATE
-    n = dur(1.6, rate)
+    n = dur(2.0, rate)
     impact = int(0.48 * rate)
 
-    intake = biquad(pink(impact, rng), rate, "bandpass", lambda t: 300 + 2200 * t, 0.9)
-    intake = mul(intake, env_from(impact, [(0.0, 0.0), (0.85, 0.85), (1.0, 1.0)]))
-
-    burst_n = n - impact
-    burst = biquad(pink(burst_n, rng), rate, "lowpass", lambda t: 3400 - 2900 * t, 0.9)
-    burst = mul(burst, env_perc(burst_n, rate, 0.012, 1.0, 2.2))
-    boom = mul(
-        tone(burst_n, lambda t: 90.0 - 42.0 * t, rate, "sine"),
-        env_perc(burst_n, rate, 0.006, 0.55, 2.6),
+    # The pit gathering itself: the roar rises INTO the impact, opening up as
+    # it goes, so the peak is arrived at rather than cut to.
+    roar = _fire_roar(n, rate, rng, cutoff=900.0)
+    roar = mul(
+        roar,
+        env_from(
+            n,
+            [
+                (0.0, 0.06),
+                (impact / n * 0.55, 0.42),
+                (impact / n, 1.0),
+                (impact / n + 0.14, 0.62),
+                (1.0, 0.0),
+            ],
+        ),
     )
 
-    out = at(silence(n), gain(intake, 0.55), 0)
-    out = at(out, gain(burst, 0.9), impact)
-    out = at(out, gain(boom, 0.8), impact)
-    return normalize(softclip(out, 1.3), 0.92), rate
+    # A brighter band on top for the moment of the flare — a big fire has
+    # treble a small one does not, and this is what makes it read as bigger
+    # rather than merely louder.
+    flare_n = n - impact
+    flare = biquad(pink(flare_n, rng), rate, "bandpass", lambda t: 2400 - 1700 * t, 0.8)
+    flare = mul(flare, env_perc(flare_n, rate, 0.02, 0.9, 2.0))
+
+    # Crackle, dense and front-loaded: everything in the pit letting go at once.
+    crackle = scatter(n, rate, rng, 90, lambda r, _i: _fire_spit(rate, r, 1.4), spread=(0.24, 0.72))
+
+    out = mix(gain(roar, 1.0), at(silence(n), gain(flare, 0.4), impact), gain(crackle, 0.7))
+    return normalize(softclip(out, 1.5), 0.92), rate
 
 
 def sfx_summon(rng: random.Random) -> tuple[Buf, int]:
-    """A player materialising. Rising shimmer, then the column lands.
+    """A player arriving at the fire. SUBTLE — it is a greeting, not an event.
 
-    Aligned to the summon sheet: 14 frames at 14 fps, impact at 0.52.
+    This is the sound that plays every time anybody joins, including four
+    people filing into a room in ten seconds, so it has to survive repetition.
+    The earlier version had a hard strike, a sub drop and a bell on top, which
+    was a fine one-off and exhausting on the fourth arrival. What is left is a
+    soft rise and a settle: no transient to speak of, no low end, and a peak
+    well below every other sound in the game.
+
+    Still aligned to the summon sheet (14 frames at 14 fps, impact at 0.52) —
+    the settle lands where the column does, it just does not hit.
     """
     rate = SFX_RATE
-    n = dur(1.5, rate)
+    n = dur(1.3, rate)
     impact = int(0.52 * rate)
 
+    # A quiet rising chord, mostly air. Fifths and octaves only: anything with
+    # a third in it starts sounding like a jingle.
     charge = silence(impact)
-    for partial, level in ((1.0, 0.5), (1.5, 0.3), (2.02, 0.22), (3.01, 0.12)):
-        sweep = tone(impact, lambda t, p=partial: (180.0 + 700.0 * t**1.7) * p, rate, "sine")
+    for partial, level in ((1.0, 0.4), (1.5, 0.26), (2.0, 0.16)):
+        sweep = tone(impact, lambda t, p=partial: (260.0 + 300.0 * t**1.4) * p, rate, "sine")
         charge = mix(charge, gain(sweep, level))
-    charge = mul(charge, env_from(impact, [(0.0, 0.0), (0.6, 0.5), (1.0, 1.0)]))
+    charge = mul(charge, env_from(impact, [(0.0, 0.0), (0.55, 0.45), (1.0, 0.8)]))
 
-    strike_n = n - impact
-    strike = biquad(white(strike_n, rng), rate, "lowpass", lambda t: 6000 - 5200 * t, 0.8)
-    strike = mul(strike, env_perc(strike_n, rate, 0.002, 0.42, 2.4))
-    sub = mul(
-        tone(strike_n, lambda t: 140.0 - 84.0 * t, rate, "sine"),
-        env_perc(strike_n, rate, 0.003, 0.5, 2.2),
-    )
-    ring = mul(tone(strike_n, 880.0, rate, "sine"), env_perc(strike_n, rate, 0.001, 0.7, 4.0))
+    # The settle: a breath of filtered noise closing, with a soft tone under
+    # it. No percussion — the sprite already flashes on this frame, and two
+    # things landing at once is what made the old one feel like a hit.
+    settle_n = n - impact
+    breath = biquad(white(settle_n, rng), rate, "bandpass", lambda t: 1800 - 1100 * t, 0.9)
+    breath = mul(breath, env_from(settle_n, [(0.0, 0.0), (0.08, 0.7), (0.4, 0.3), (1.0, 0.0)]))
+    hum = mul(tone(settle_n, 392.0, rate, "sine"), env_perc(settle_n, rate, 0.02, 0.55, 2.6))
 
-    out = at(silence(n), gain(charge, 0.32), 0)
-    out = at(out, gain(strike, 0.7), impact)
-    out = at(out, gain(sub, 0.75), impact)
-    out = at(out, gain(ring, 0.18), impact)
-    return normalize(softclip(out, 1.2), 0.85), rate
+    out = at(silence(n), gain(charge, 0.5), 0)
+    out = at(out, gain(breath, 0.3), impact)
+    out = at(out, gain(hum, 0.34), impact)
+    return normalize(out, 0.42), rate
 
 
 def sfx_ready(rng: random.Random) -> tuple[Buf, int]:
@@ -854,40 +880,62 @@ def sfx_step_litter(rng: random.Random, variant: int) -> tuple[Buf, int]:
 def sfx_shot(rng: random.Random, variant: int) -> tuple[Buf, int]:
     """The gun. The most-heard sound in the game, so it gets the most layers.
 
-    Four of them, and each is doing a job the others cannot:
-      CRACK   the first two milliseconds. This is what makes it sound close.
-      BODY    noise under a lowpass falling off a cliff — the actual report.
-      PUNCH   a sine dropping two octaves in seventy milliseconds. Chest.
+    A GUNSHOT IS A HIGH-FREQUENCY EVENT. That is the thing this got wrong the
+    first time: the body's cutoff fell to 350 Hz and a sine swept down to 48,
+    so nearly all the energy ended up under 500 and it read as a dull thump in
+    a box. What the ear identifies as "gun" lives between about 1 and 5 kHz —
+    the crack — and the low end is only there to give it a floor. The balance
+    below is deliberately top-heavy, and the sub is a third of what it was.
+
+    Four layers, each doing a job the others cannot:
+      CRACK   a hot, bright snap. Longer than the old four milliseconds,
+              because two milliseconds of anything is a tick, not a report.
+      BODY    noise under a BANDPASS sweeping 4 kHz -> 1.1 kHz. Bandpass, not
+              lowpass: a lowpass leaves everything underneath it and the sound
+              silts up at the bottom as the sweep falls.
+      PUNCH   a short drop from 170 to 80 Hz. Weight, not a kick drum.
       TAIL    the wood answering, as discrete slaps rather than reverb.
-    Driven into a soft clip before normalize, because a shot that merely peaks
-    is a shot with no weight behind it.
     """
     rate = SFX_RATE
     n = dur(0.7, rate)
 
-    crack_n = dur(0.004, rate)
-    crack = biquad(white(crack_n, rng), rate, "highpass", 3000)
-    crack = mul(crack, env_perc(crack_n, rate, 0.0002, 0.0035, 1.6))
+    crack_n = dur(0.016, rate)
+    crack = biquad(white(crack_n, rng), rate, "highpass", 2200, 0.8)
+    crack = mix(crack, gain(biquad(white(crack_n, rng), rate, "bandpass", 3600, 1.1), 0.9))
+    crack = mul(crack, env_perc(crack_n, rate, 0.0002, 0.014, 2.2))
 
-    body_n = dur(0.14, rate)
-    body = biquad(white(body_n, rng), rate, "lowpass", lambda t: 3600 - 3250 * t**0.45, 1.1)
-    body = mul(body, env_perc(body_n, rate, 0.0008, 0.10, 2.8))
+    body_n = dur(0.12, rate)
+    body = biquad(white(body_n, rng), rate, "bandpass", lambda t: 4000 - 2900 * t**0.5, 0.7)
+    body = mul(body, env_perc(body_n, rate, 0.0006, 0.085, 2.6))
 
-    punch_n = dur(0.18, rate)
+    # A separate mid band that holds on a touch longer, so the report has a
+    # centre instead of being a transient with a tail bolted on.
+    mid_n = dur(0.09, rate)
+    mid = biquad(white(mid_n, rng), rate, "bandpass", 1500, 1.4)
+    mid = mul(mid, env_perc(mid_n, rate, 0.001, 0.07, 2.2))
+
+    punch_n = dur(0.1, rate)
     punch = mul(
-        tone(punch_n, lambda t: 200.0 - 152.0 * t**0.6, rate, "sine"),
-        env_perc(punch_n, rate, 0.001, 0.12, 2.4),
+        tone(punch_n, lambda t: 170.0 - 90.0 * t**0.5, rate, "sine"),
+        env_perc(punch_n, rate, 0.001, 0.07, 2.6),
     )
 
-    dry = mix(pad(gain(crack, 0.8), n), pad(gain(body, 1.0), n), pad(gain(punch, 0.85), n))
-    dry = softclip(dry, 2.1)
+    dry = mix(
+        pad(gain(crack, 1.0), n),
+        pad(gain(body, 0.95), n),
+        pad(gain(mid, 0.5), n),
+        pad(gain(punch, 0.32), n),
+    )
+    dry = softclip(dry, 2.4)
 
+    # Brighter slaps than before, and one very early: a close reflection is
+    # what puts the shooter among trees rather than in a field.
     wet = reflections(
         dry,
         rate,
-        [(0.021, 0.30), (0.043, 0.20), (0.078, 0.13), (0.135, 0.08)],
+        [(0.011, 0.24), (0.026, 0.26), (0.052, 0.17), (0.091, 0.11), (0.147, 0.06)],
     )
-    wet = mix(wet, gain(reverb(pad(dry, len(wet)), rate, room=0.72, damp=0.5, wet=1.0), 0.16))
+    wet = mix(wet, gain(reverb(pad(dry, len(wet)), rate, room=0.7, damp=0.35, wet=1.0), 0.14))
     return normalize(pad(wet, n), 0.97), rate
 
 
@@ -925,28 +973,31 @@ def bed_heartbeat(rng: random.Random) -> tuple[Buf, int]:
 # --- the lantern -----------------------------------------------------------
 
 
-def sfx_lantern_on(rng: random.Random) -> tuple[Buf, int]:
+def _switch_tick(rng: random.Random, centre: float, decay: float) -> tuple[Buf, int]:
+    """A switch, and nothing else.
+
+    Both lantern sounds used to carry an electrical coil swelling up or dying
+    away underneath, which made switching the lamp on a small event. It is not
+    an event — it is a thumb moving a piece of plastic, and the light doing
+    something is what the player is looking at. Two ticks, one a little duller
+    than the other so on and off are distinguishable with your eyes closed.
+    """
     rate = SFX_RATE
-    n = dur(0.55, rate)
-    click = biquad(white(dur(0.02, rate), rng), rate, "bandpass", 2600, 2.0)
-    click = mul(click, env_perc(len(click), rate, 0.0005, 0.018, 2.6))
-    coil = mul(
-        tone(n, lambda t: 400.0 + 620.0 * min(1.0, t * 3.0), rate, "tri"),
-        env_from(n, [(0.0, 0.0), (0.1, 0.55), (0.35, 0.22), (1.0, 0.0)]),
-    )
-    return normalize(mix(pad(gain(click, 0.9), n), gain(biquad(coil, rate, "lowpass", 2200), 0.3)), 0.5), rate
+    n = dur(decay + 0.02, rate)
+    body = biquad(white(n, rng), rate, "bandpass", centre, 1.8)
+    snap = biquad(white(n, rng), rate, "highpass", 4200)
+    out = mix(gain(body, 1.0), gain(snap, 0.35))
+    return normalize(mul(out, env_perc(n, rate, 0.0004, decay, 3.4)), 0.5), rate
+
+
+def sfx_lantern_on(rng: random.Random) -> tuple[Buf, int]:
+    """Brighter and shorter — the positive half of the switch."""
+    return _switch_tick(rng, 2900.0, 0.016)
 
 
 def sfx_lantern_off(rng: random.Random) -> tuple[Buf, int]:
-    rate = SFX_RATE
-    n = dur(0.4, rate)
-    click = biquad(white(dur(0.018, rate), rng), rate, "bandpass", 2100, 2.0)
-    click = mul(click, env_perc(len(click), rate, 0.0005, 0.016, 2.6))
-    die = mul(
-        tone(n, lambda t: 780.0 - 560.0 * min(1.0, t * 2.2), rate, "tri"),
-        env_from(n, [(0.0, 0.5), (0.25, 0.2), (1.0, 0.0)]),
-    )
-    return normalize(mix(pad(gain(click, 0.9), n), gain(biquad(die, rate, "lowpass", 1800), 0.25)), 0.45), rate
+    """Duller and a touch longer. Same switch, travelling the other way."""
+    return _switch_tick(rng, 1700.0, 0.022)
 
 
 def sfx_lantern_flicker(rng: random.Random) -> tuple[Buf, int]:
@@ -975,6 +1026,26 @@ def sfx_lantern_flicker(rng: random.Random) -> tuple[Buf, int]:
 # which is also why they sound like they come from the same throat.
 
 
+def _wander(n: int, rate: int, rng: random.Random, amount: float, hz: float = 80.0) -> Buf:
+    """A 1.0-centred random walk. Irregularity, not vibrato.
+
+    THIS IS WHAT KEEPS A GROWL FROM BEING A MOO. A cow is a clean pitch with a
+    smooth contour; the only difference between that and a throat which no
+    longer works is cycle-to-cycle instability. A sine wobble sounds like a
+    singer, however deep you set it. A random walk sounds broken, which is the
+    one we want.
+    """
+    steps = max(2, int(n / max(1.0, rate / hz)))
+    points = [1.0 + rng.uniform(-amount, amount) for _ in range(steps + 2)]
+    out = silence(n)
+    for i in range(n):
+        pos = i / n * steps
+        k = int(pos)
+        frac = pos - k
+        out[i] = points[k] * (1.0 - frac) + points[k + 1] * frac
+    return out
+
+
 def _throat(
     n: int,
     rate: int,
@@ -983,15 +1054,56 @@ def _throat(
     breath: float,
     formants: tuple[tuple[float, float, float], ...],
     width: float = 0.16,
+    rough: float = 0.0,
+    sub: float = 0.0,
 ) -> Buf:
+    """The one instrument every zombie sound is played on.
+
+    A narrow pulse train through bandpass formants, with noise mixed into the
+    source for breath — a crude vocal tract, and crude is right for something
+    that used to have a voice and does not any more. `rough` and `sub` are what
+    make it a growl rather than a note: instability in the pitch, and a layer
+    an octave down that the ear reads as a torn throat instead of a low one.
+    """
+    denom = max(n - 1, 1)
+    base = freq
+    if rough > 0.0:
+        wobble = _wander(n, rate, rng, rough)
+        raw = freq
+
+        def base(t: float) -> float:  # noqa: F811 - deliberate shadow
+            value = raw(t) if callable(raw) else raw  # type: ignore[operator]
+            return value * wobble[min(int(t * denom), n - 1)]
+
     source = mix(
-        gain(tone(n, freq, rate, "pulse", width=width), 1.0 - breath),
+        gain(tone(n, base, rate, "pulse", width=width), 1.0 - breath),
         gain(biquad(white(n, rng), rate, "bandpass", 1100, 0.7), breath),
     )
+    if sub > 0.0:
+        # Period doubling. Real growls, screams and creaky voices all do this —
+        # the vocal folds fall into a two-cycle pattern and the octave below
+        # appears. It is the single most "animal" thing available here.
+        def halved(t: float) -> float:
+            value = base(t) if callable(base) else base  # type: ignore[operator]
+            return value * 0.5
+
+        source = mix(source, gain(tone(n, halved, rate, "pulse", width=width * 1.5), sub))
+
     voiced = silence(n)
     for centre, q, level in formants:
         voiced = mix(voiced, gain(biquad(source, rate, "bandpass", centre, q), level))
     return biquad(voiced, rate, "lowpass", 3600, 0.8)
+
+
+def _grind(n: int, rate: int, rng: random.Random, depth: float = 0.45) -> Buf:
+    """Irregular amplitude, from filtered noise rather than an LFO.
+
+    Same argument as `_wander`, one dimension over: a clean tremolo is a
+    musical effect and a wandering one is a body.
+    """
+    rectified = [abs(v) for v in white(n, rng)]
+    slow = normalize(onepole_lp(rectified, rate, 11.0), 1.0)
+    return [(1.0 - depth) + depth * v for v in slow]
 
 
 def sfx_zombie_idle(rng: random.Random, variant: int) -> tuple[Buf, int]:
@@ -1003,69 +1115,112 @@ def sfx_zombie_idle(rng: random.Random, variant: int) -> tuple[Buf, int]:
     lantern tells you the rest only if you point it there.
     """
     rate = SFX_RATE
-    length = 1.05 + rng.random() * 0.4
+    length = 0.85 + rng.random() * 0.3
     n = dur(length, rate)
-    f0 = 56.0 + rng.random() * 24.0
+    # Well clear of cattle. Under about 70 Hz with a smooth contour this stops
+    # being a growl and becomes livestock — the earlier 56 Hz version was a
+    # moo with a filter on it, and no amount of formant tuning saved it. The
+    # rasp comes from `rough` and `sub`, not from going lower.
+    f0 = 84.0 + rng.random() * 34.0
 
     def contour(t: float) -> float:
-        return f0 * (1.0 + 0.04 * math.sin(t * math.tau * 3.4) - 0.14 * t**1.6)
+        return f0 * (1.0 - 0.16 * t**1.4)
 
     body = _throat(
         n,
         rate,
         rng,
         contour,
-        breath=0.35,
-        formants=((300.0, 3.2, 1.0), (980.0, 4.0, 0.5), (2350.0, 5.5, 0.18)),
+        breath=0.5,
+        # Tighter and lower than a vowel: a throat, not a mouth saying
+        # something. The top band is deliberately noisy rasp rather than a
+        # formant, which is where the "wet" comes from.
+        formants=((255.0, 2.3, 1.0), (740.0, 2.8, 0.62), (2500.0, 2.6, 0.34)),
+        width=0.11,
+        # Roughness carries the growl; the subharmonic only seasons it. Pushed
+        # much past this the octave-down becomes the strongest periodic
+        # component in the sound, the ear hears THAT as the pitch, and the
+        # variant lands back in cattle territory — which is exactly how the
+        # first version failed, one layer further down.
+        rough=0.22,
+        sub=0.24,
     )
-    shape = mul(
-        env_swell(n, rate, 0.18, length - 0.52, 0.34),
-        lfo(n, rate, 2.4 + rng.random(), 0.2, 0.9),
-    )
-    return normalize(softclip(mul(body, shape), 1.3), 0.7), rate
+    shape = mul(env_swell(n, rate, 0.09, length - 0.36, 0.28), _grind(n, rate, rng, 0.5))
+    return normalize(softclip(mul(body, shape), 1.8), 0.75), rate
 
 
 def sfx_zombie_alert(rng: random.Random, variant: int) -> tuple[Buf, int]:
     """It has you. Pitch rises instead of sagging — the one contour that reads
     as intent rather than as a body making noise."""
     rate = SFX_RATE
-    n = dur(0.8, rate)
-    f0 = 70.0 + rng.random() * 22.0
+    n = dur(0.66, rate)
+    f0 = 104.0 + rng.random() * 30.0
 
     def contour(t: float) -> float:
-        return f0 * (1.0 + 0.55 * t**1.3 + 0.05 * math.sin(t * math.tau * 6.0))
+        return f0 * (1.0 + 0.62 * t**1.2)
 
     body = _throat(
         n,
         rate,
         rng,
         contour,
-        breath=0.42,
-        formants=((420.0, 3.0, 1.0), (1250.0, 3.6, 0.62), (2800.0, 5.0, 0.3)),
-        width=0.12,
+        breath=0.5,
+        formants=((400.0, 2.4, 1.0), (1350.0, 2.8, 0.72), (3000.0, 3.0, 0.45)),
+        width=0.09,
+        # Rougher than the idle: committing tears the voice further.
+        rough=0.22,
+        sub=0.3,
     )
-    shape = env_from(n, [(0.0, 0.0), (0.12, 0.7), (0.55, 1.0), (0.8, 0.85), (1.0, 0.0)])
-    return normalize(softclip(mul(body, shape), 1.6), 0.82), rate
+    shape = mul(
+        env_from(n, [(0.0, 0.0), (0.1, 0.75), (0.5, 1.0), (0.78, 0.8), (1.0, 0.0)]),
+        _grind(n, rate, rng, 0.3),
+    )
+    return normalize(softclip(mul(body, shape), 2.0), 0.85), rate
 
 
 def sfx_zombie_attack(rng: random.Random, variant: int) -> tuple[Buf, int]:
-    """The swing. A snarl and the air it moves."""
+    """The swing, and it is a SLASH — an arm cutting air, not a monster talking.
+
+    The blade is a narrow band of noise whose centre sweeps up and back down in
+    under a fifth of a second. That arc is the whole effect: a band that only
+    rises reads as a zip, and a static one reads as a hiss. The snarl is an
+    accent underneath at less than half the level — the earlier version had it
+    at 0.9 against a 0.4 swish, which is why it read as a growl with some wind
+    behind it instead of as a hit coming at you.
+    """
     rate = SFX_RATE
-    n = dur(0.42, rate)
-    f0 = 88.0 + rng.random() * 30.0
+    n = dur(0.34, rate)
+
+    # Up and back down, peaking about a third of the way in. `sin(pi t)` is the
+    # arc; the exponent skews the peak early so the fastest part of the swing
+    # is at the start, the way an arm actually moves.
+    def sweep(t: float) -> float:
+        arc = math.sin(min(1.0, t * 1.25) * math.pi) ** 0.65
+        return 600.0 + 5400.0 * arc
+
+    air = biquad(white(n, rng), rate, "bandpass", sweep, 2.0)
+    air = mul(air, env_from(n, [(0.0, 0.0), (0.14, 1.0), (0.42, 0.5), (1.0, 0.0)]))
+
+    # A second, brighter edge a beat later: two things passing, not one tube.
+    edge = biquad(white(n, rng), rate, "bandpass", lambda t: 2600 + 3800 * t, 3.2)
+    edge = mul(edge, env_from(n, [(0.0, 0.0), (0.2, 0.85), (0.48, 0.18), (1.0, 0.0)]))
+
+    f0 = 116.0 + rng.random() * 34.0
     snarl = _throat(
         n,
         rate,
         rng,
-        lambda t: f0 * (1.0 + 0.3 * t - 0.5 * max(0.0, t - 0.6)),
-        breath=0.5,
-        formants=((520.0, 2.6, 1.0), (1500.0, 3.2, 0.7), (3100.0, 4.5, 0.35)),
-        width=0.1,
+        lambda t: f0 * (1.0 + 0.28 * t),
+        breath=0.55,
+        formants=((480.0, 2.2, 1.0), (1500.0, 2.6, 0.7)),
+        width=0.09,
+        rough=0.24,
+        sub=0.28,
     )
-    snarl = mul(snarl, env_from(n, [(0.0, 0.0), (0.08, 1.0), (0.5, 0.7), (1.0, 0.0)]))
-    swish = biquad(white(n, rng), rate, "bandpass", lambda t: 800 + 2600 * t, 1.0)
-    swish = mul(swish, env_from(n, [(0.0, 0.0), (0.35, 0.9), (0.6, 0.2), (1.0, 0.0)]))
-    return normalize(softclip(mix(gain(snarl, 0.9), gain(swish, 0.4)), 1.5), 0.85), rate
+    snarl = mul(snarl, env_from(n, [(0.0, 0.0), (0.05, 1.0), (0.3, 0.35), (1.0, 0.0)]))
+
+    out = mix(gain(air, 1.0), gain(edge, 0.55), gain(snarl, 0.42))
+    return normalize(softclip(out, 1.7), 0.88), rate
 
 
 def sfx_zombie_hit(rng: random.Random, variant: int) -> tuple[Buf, int]:
@@ -1087,14 +1242,18 @@ def sfx_zombie_death(rng: random.Random, variant: int) -> tuple[Buf, int]:
     """The growl collapsing. Pitch falls through the floor, then a body lands."""
     rate = SFX_RATE
     n = dur(1.1, rate)
-    f0 = 74.0 + rng.random() * 20.0
+    f0 = 100.0 + rng.random() * 26.0
     body = _throat(
         n,
         rate,
         rng,
-        lambda t: f0 * (1.0 - 0.55 * t**0.7),
-        breath=0.48,
-        formants=((330.0, 2.8, 1.0), (900.0, 3.4, 0.45), (2100.0, 4.6, 0.15)),
+        lambda t: f0 * (1.0 - 0.5 * t**0.7),
+        breath=0.52,
+        formants=((300.0, 2.4, 1.0), (860.0, 2.8, 0.5), (2200.0, 2.8, 0.2)),
+        width=0.11,
+        # Roughness climbs as it goes: the voice comes apart on the way down.
+        rough=0.3,
+        sub=0.26,
     )
     body = mul(body, env_from(n, [(0.0, 0.0), (0.06, 1.0), (0.45, 0.55), (0.75, 0.12), (1.0, 0.0)]))
     fall = biquad(white(dur(0.2, rate), rng), rate, "lowpass", lambda t: 900 - 700 * t)
@@ -1221,8 +1380,9 @@ def sfx_drop(rng: random.Random) -> tuple[Buf, int]:
 #: so "why is the shot louder than a footstep" has one answer in one file.
 #: `bus` picks which volume slider the player controls it with.
 CATALOG: dict[str, tuple[object, int, float, str, bool]] = {
-    # interface
-    "ui-hover": (ui_hover, 1, 0.35, "ui", False),
+    # interface. There is no hover sound: the pointer crosses buttons on the
+    # way to the one it wants, so hover ticks chatter at moves the player has
+    # not decided on. A sound marks a decision.
     "ui-click": (ui_click, 1, 0.7, "ui", False),
     "ui-back": (ui_back, 1, 0.6, "ui", False),
     "ui-error": (ui_error, 1, 0.6, "ui", False),
@@ -1231,7 +1391,7 @@ CATALOG: dict[str, tuple[object, int, float, str, bool]] = {
     # camp
     "fire": (bed_fire, 1, 0.5, "ambient", True),
     "kindle": (sfx_kindle, 1, 0.85, "sfx", False),
-    "summon": (sfx_summon, 1, 0.7, "sfx", False),
+    "summon": (sfx_summon, 1, 0.45, "sfx", False),
     "ready": (sfx_ready, 1, 0.5, "ui", False),
     "unready": (sfx_unready, 1, 0.45, "ui", False),
     # leaving and arriving

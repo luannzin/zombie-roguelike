@@ -17,7 +17,7 @@ imported by `app/` and never run at request time.
 | `make_vfx.py` | generates final pixels | `assets/processed/vfx/` (summon, kindle, aura, wind) |
 | `make_loot.py` | generates final pixels | `assets/processed/loot/` (one 16x16 frame per item) |
 | `make_hud_icons.py` | generates final pixels | `assets/processed/hud/` (battery, backpack, coin) |
-| `make_audio.py` | generates final samples | `assets/processed/audio/` (34 sounds, 62 wavs + manifest) |
+| `make_audio.py` | generates final samples | `assets/processed/audio/` (33 sounds, 60 wavs + manifest) |
 
 ## Local Contracts
 
@@ -106,6 +106,19 @@ imported by `app/` and never run at request time.
   - **The mix lives in the manifest**, not at the call site: `gain` and `bus`
     (`sfx` / `ambient` / `ui`) are authored in `CATALOG`, so "why is the shot
     louder than a footstep" has one answer in one file.
+- Every zombie sound is one instrument (`_throat`) and the differences are
+  contour and envelope, so they come from one creature. **A growl is ROUGH, not
+  LOW**: `_wander` (cycle-to-cycle pitch instability) and `_grind` (irregular
+  amplitude) are what separate it from a moo, and dropping the fundamental to
+  find menace instead produces livestock. The `sub` subharmonic seasons it and
+  must stay well under the roughness — pushed too far it becomes the strongest
+  periodic component, the ear takes THAT as the pitch, and the sound lands back
+  in the same hole an octave down.
+- The bonfire at rest and the bonfire that roars on launch are built from the
+  same two helpers (`_fire_roar`, `_fire_spit`). A kindle written as a generic
+  whoosh-and-boom is an explosion, and reads as cutting to a different fire.
+- There is no UI hover sound: the pointer crosses buttons on the way to the one
+  it wants, so hover ticks chatter at decisions the player has not made.
 - One-shots are 22050 Hz, beds 16000 Hz, all 16-bit mono. The beds are the bulk
   of the ~2.3 MB output; if that ever needs to come down, encoding them is the
   lever, not shortening them.

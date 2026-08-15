@@ -1,12 +1,5 @@
 {
   "sounds": {
-    "ui-hover": {
-      "files": [
-        "ui-hover.wav"
-      ],
-      "gain": 0.35,
-      "bus": "ui"
-    },
     "ui-click": {
       "files": [
         "ui-click.wav"
@@ -61,7 +54,7 @@
       "files": [
         "summon.wav"
       ],
-      "gain": 0.7,
+      "gain": 0.45,
       "bus": "sfx"
     },
     "ready": {

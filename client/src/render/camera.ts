@@ -1,6 +1,8 @@
 /**
- * 2D camera. Position is the top-left corner in world pixels; `zoom` is an
- * integer pixel-art scale factor.
+ * 2D camera. Position is the top-left corner in world pixels; `zoom` is a
+ * pixel-art scale factor (resting value `ARENA_ZOOM`). Game may ease it
+ * toward a weapon's `scopeZoom` while an AWP is aimed; Camera does not
+ * decide that.
  *
  * Trauma shake offsets rendering only — `x`/`y` stay logical so aim
  * (`screenToWorld`) never jitters with the punch.

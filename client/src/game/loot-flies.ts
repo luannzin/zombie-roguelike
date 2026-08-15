@@ -14,12 +14,15 @@ export const LOOT_FLY_HOLD = 0.55;
 export const LOOT_FLY_TRAVEL = 0.62;
 export const LOOT_FLY_LIFE = LOOT_FLY_HOLD + LOOT_FLY_TRAVEL;
 
+export type LootFlyDest = 'bag' | 'hotbar';
+
 export interface LootFlySpec {
   id: string;
   key: string;
   frame: number;
   rarity: LootRarity;
   slot: number;
+  dest?: LootFlyDest;
 }
 
 export interface LootFlyPose {
@@ -110,10 +113,10 @@ function poseAt(age: number, ends: LootFlyEnds): LootFlyPose {
 }
 
 /** How many flies are still the sprite for that cell. */
-export function incomingCount(slot: number): number {
+export function incomingCount(slot: number, dest: LootFlyDest = 'bag'): number {
   let n = 0;
   for (const fly of snapshot) {
-    if (fly.slot === slot) n += 1;
+    if (fly.slot === slot && (fly.dest ?? 'bag') === dest) n += 1;
   }
   return n;
 }

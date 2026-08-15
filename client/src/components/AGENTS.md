@@ -11,9 +11,10 @@ and nowhere near the frame loop.
   `Game`; React never touches those pixels again.
 - `hud/` — ours: `Hud`, `HudScreen`, `Panel`, `Vitals`, `BatteryGauge`,
   `ProgressBar`, `StatusLine`, `NetStats`, `ControlsHint`, `ZoneTitle`,
-  `ReadyCount`, `InteractPrompt`, `LootPrompt`, `CratePrompt`, `Inventory`, `InventorySlot`,
+  `ReadyCount`, `InteractPrompt`,   `LootPrompt`, `CratePrompt`, `Inventory`, `InventorySlot`,
   `InventoryGold`, `WeightBar`, `LootIcon`, `CoinIcon`, `SlotValue`, `LootFly`, `LootCard`,
-  `LootCardRow`, `TooltipCard`, `InventoryGhost`, `Tooltip`, `TooltipKey`.
+  `LootCardRow`, `TooltipCard`, `InventoryGhost`, `Tooltip`, `TooltipKey`,
+  `Hotbar`, `HotbarSlot`.
 - `lobby/` — `CampfireCanvas` (mounts `LobbyScene`; owns the rest-shot fire
   position via `campFireAnchor`, not via per-screen props), `RoomCode`,
   `PlayerRoster`.
@@ -89,6 +90,11 @@ and nowhere near the frame loop.
   wrapper — `.world-tooltip` is `position: relative` and cannot be the
   positioned node. Drop goes through
   `inventory-actions`, never a socket from React.
+- `Hotbar` is three cells above the battery. Always visible, pointer-events
+  none — 1/2/3 is sampled in `game/input.ts`, not by the DOM. Same chrome
+  fade as the corners. A gun fly uses dest `hotbar` and writes `hotbar-N`
+  anchors the way bag slots write `slot-N`. The selected cell rings and
+  replays `animate-hotbar-pick`. Guns do not show a coin value.
 - A control a zone forbids is shown DISABLED, never hidden. `BatteryGauge` in
   the camp still answers "how much light am I carrying into the night"; only
   its readout changes, and a refused keypress kicks the panel instead of doing

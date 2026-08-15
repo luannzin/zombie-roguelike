@@ -21,6 +21,22 @@ export interface HudInventorySlot {
   weight: number;
 }
 
+export interface HudHotbarSlot {
+  key: string;
+  name: string;
+  rarity: LootRarity;
+  frame: number;
+  weight: number;
+}
+
+export interface HudHotbar {
+  slots: Array<HudHotbarSlot | null>;
+  held: number;
+  lootFrames: number;
+  /** Bumps when the selection changes. Count, not a boolean — 5 Hz plus a patch. */
+  picks: number;
+}
+
 export interface HudInventory {
   open: boolean;
   cap: number;
@@ -134,6 +150,8 @@ export interface HudSnapshot {
   cratePrompt: boolean;
   /** The pocket. Null before welcome. Open/close is client-local (TAB). */
   inventory: HudInventory | null;
+  /** The gun belt. Always on screen; 1/2/3 selects. */
+  hotbar: HudHotbar | null;
 }
 
 export const EMPTY_HUD: HudSnapshot = {
@@ -152,6 +170,7 @@ export const EMPTY_HUD: HudSnapshot = {
   lootPrompt: null,
   cratePrompt: false,
   inventory: null,
+  hotbar: null,
 };
 
 export type HudStore = Store<HudSnapshot>;

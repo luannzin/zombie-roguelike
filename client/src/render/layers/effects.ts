@@ -43,19 +43,38 @@ export function drawCombatEffects(
     const ey = tracer.y + tracer.dy * tracer.dist;
 
     // Wide coloured body, then a thin hot core on top.
-    strokeLine(ctx, tracer.x, tracer.y, ex, ey, tracer.color, tileSize * 0.125, 0.35 * fade);
-    strokeLine(ctx, tracer.x, tracer.y, ex, ey, fx.tracerCore, tileSize * 0.0375, fade);
+    strokeLine(
+      ctx,
+      tracer.x,
+      tracer.y,
+      ex,
+      ey,
+      tracer.color,
+      tileSize * 0.125 * tracer.width,
+      0.35 * fade,
+    );
+    strokeLine(
+      ctx,
+      tracer.x,
+      tracer.y,
+      ex,
+      ey,
+      fx.tracerCore,
+      tileSize * 0.0375 * tracer.width,
+      fade,
+    );
   }
 
   for (const flash of effects.flashes) {
     const fade = fadeOf(flash);
+    const size = flash.size ?? 1;
     ctx.globalAlpha = fade;
     ctx.fillStyle = fx.muzzleFlash;
     ctx.beginPath();
     ctx.arc(
       flash.x + flash.dx * tileSize * 0.125,
       flash.y + flash.dy * tileSize * 0.125,
-      tileSize * (0.14 * fade + 0.05),
+      tileSize * (0.14 * fade + 0.05) * size,
       0,
       Math.PI * 2,
     );

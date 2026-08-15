@@ -17,6 +17,7 @@ import {
   drawEntity,
   drawNameLabels,
   drawShadow,
+  drawWeaponLasers,
   type EntityContext,
 } from './layers/entities';
 import { drawAlertMarks } from './layers/vision';
@@ -36,6 +37,7 @@ import { drawVignette } from './layers/vignette';
 import { projectionFor } from './projection';
 import { palette } from '../theme/palette';
 import { loadGore, type GoreAtlas } from './gore';
+import { loadGuns, type GunAtlas } from './guns';
 import { loadLoot, type LootAtlas } from './loot';
 import { loadScenery, type SceneryAtlas } from './scenery';
 import { loadTerrain } from './terrain';
@@ -72,6 +74,7 @@ export class Renderer {
   private readonly disturbance = new DisturbanceField();
   private scenery: SceneryAtlas | null = null;
   private lootAtlas: LootAtlas | null = null;
+  private gunAtlas: GunAtlas | null = null;
   private vfx: VfxAtlas | null = null;
   private gore: GoreAtlas | null = null;
 
@@ -97,6 +100,9 @@ export class Renderer {
     });
     void loadGore().then((atlas) => {
       this.gore = atlas;
+    });
+    void loadGuns().then((atlas) => {
+      this.gunAtlas = atlas;
     });
   }
 
@@ -138,6 +144,7 @@ export class Renderer {
       config: state.config,
       book: this.book,
       gore: this.gore,
+      guns: this.gunAtlas,
     };
 
     this.clear();
@@ -280,6 +287,7 @@ export class Renderer {
     );
     drawCombatEffects(ctx, state.effects, state.config.tileSize);
     this.darkness.drawLights(ctx, state.effects.lights);
+    drawWeaponLasers(ctx, this.gunAtlas, state.entities);
     drawLootAuras(ctx, state.loot, state.time);
     drawLootMotes(ctx, state.loot, state.time, state.config.tileSize);
     drawLootBeams(ctx, this.vfx?.aura ?? null, state.loot, state.time);

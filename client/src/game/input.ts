@@ -23,6 +23,14 @@ const LANTERN_KEY = 'KeyF';
 const READY_KEY = 'KeyE';
 /** Expand the pocket. Tab is the key, not a code under a letter. */
 const INVENTORY_KEY = 'Tab';
+const HOTBAR_KEYS: Record<string, number> = {
+  Digit1: 0,
+  Digit2: 1,
+  Digit3: 2,
+  Numpad1: 0,
+  Numpad2: 1,
+  Numpad3: 2,
+};
 
 export class InputController {
   readonly movement: MovementInput = { up: false, down: false, left: false, right: false };
@@ -42,8 +50,10 @@ export class InputController {
    * lantern key.
    */
   onInteract: (() => void) | null = null;
-  /** Fired once per Tab. Edge, not held — same contract as E and F. */
+  /** Expand the pocket. Tab is the key, not a code under a letter. */
   onToggleInventory: (() => void) | null = null;
+  /** Fired once per 1/2/3. `slot` is 0..2. Edge, not held. */
+  onHotbar: ((slot: number) => void) | null = null;
 
   constructor(private readonly canvas: HTMLCanvasElement) {
     window.addEventListener('keydown', this.onKeyDown);
@@ -94,6 +104,12 @@ export class InputController {
     }
     if (e.code === INVENTORY_KEY && !e.repeat) {
       this.onToggleInventory?.();
+      e.preventDefault();
+      return;
+    }
+    const slot = HOTBAR_KEYS[e.code];
+    if (slot !== undefined && !e.repeat) {
+      this.onHotbar?.(slot);
       e.preventDefault();
     }
   };

@@ -19,7 +19,8 @@ predicts locally, and sends the packet. Rendering runs at display rate.
   "movement": { "up": true, "down": false, "left": false, "right": true },
   "aim": { "x": 0.72, "y": -0.69 },
   "shoot": true,
-  "lantern": true
+  "lantern": true,
+  "held": 0
 }
 ```
 
@@ -35,11 +36,13 @@ exit; a second `welcome` is the forest.
 
 `{"type":"collect","id":"l3"}` — pick up a world drop. The server ignores it
 unless the room is in a hostile zone, the player is alive, their feet are
-inside `lootCollectTiles` of that drop, and the bag has a slot for that key
-(empty, or a stack of the same item). Overweight is allowed. The remaining
+inside `lootCollectTiles` of that drop, and the destination has room: the
+pocket for valuables (empty slot or a stack of the same key), the 3-slot
+hotbar for guns (no stacking). Overweight is allowed. The remaining
 list rides `welcome.loot` and a dirty snapshot `loot`; `lootPickups` is the
 juice for that tick and carries `slot` so the client can fly the sprite
-onto that HUD cell. The pocket itself rides the roster as `inv`.
+onto that HUD cell (`dest` is `"hotbar"` for a gun, omitted for the bag).
+The pocket itself rides the roster as `inv`; the belt as `guns`.
 
 `{"type":"break","id":"k1"}` — smash a crate. The server ignores it unless
 the player is alive, the walk-out has not started, and their feet are
@@ -117,10 +120,11 @@ presses start.
   "departing": false,
   "zoneKey": "camp-1",
   "players": [{ "id": "...", "x": 0, "y": 0, "vx": 0, "vy": 0, "ax": 1, "ay": 0, "lantern": true,
-                "hp": 100, "alive": true, "xp": 24, "gold": 6, "level": 1, "xpInLevel": 24, "xpToLevel": 40,
-                "ready": false }],
+                "hp": 100, "alive": true, "held": 0, "ads": false,
+                "xp": 24, "gold": 6, "level": 1, "xpInLevel": 24, "xpToLevel": 40,
+                "ready": false, "seq": 183 }],
   "enemies": [{ "id": "e12", "t": "zombie", "x": 0, "y": 0, "vx": 0, "vy": 0, "ax": 1, "ay": 0, "hp": 22, "v": 1, "hat": 0 }],
-  "shots": [{ "id": 7, "by": "a1b2c3d4", "x": 0, "y": 0, "dx": 1, "dy": 0, "dist": 132.5, "hit": "b5c6" }],
+  "shots": [{ "id": 7, "by": "a1b2c3d4", "k": "glock18", "x": 0, "y": 0, "dx": 1, "dy": 0, "dist": 132.5, "hit": "b5c6", "dmg": 7 }],
   "attacks": [{ "by": "e12", "target": "a1b2c3d4", "x": 0, "y": 0, "dx": 1, "dy": 0, "dmg": 9, "blocked": false }],
   "kills": [{ "kind": "enemy", "killer": "a1b2c3d4", "victim": "e12", "x": 0, "y": 0, "xp": 12, "gold": 3 }],
   "loot": [{"id":"l1","k":"compass","x":412.5,"y":288.5}],
@@ -223,10 +227,13 @@ If no input is available, the server briefly extrapolates the last input (up to
 
 ## Shooting
 
-Hitscan. On an accepted fire (`FIRE_COOLDOWN` elapsed) the server raycasts from
-the shooter along the aim direction, DDA against solid tiles and analytic
-ray-vs-circle against every other entity, and takes the nearest hit. The result
-is broadcast as a `shots` entry; damage is applied server-side only.
+Hitscan. On an accepted fire (the equipped weapon's `fireCooldown` elapsed,
+and its `aimDelay` spent if any — the AWP waits while the trigger is held)
+the server raycasts from the shooter along the aim direction, DDA against
+solid tiles and analytic ray-vs-circle against every other entity, and takes
+the nearest hit. An empty hand (`held` = -1) does not fire. The result is
+broadcast as a `shots` entry (`k` the weapon key, `dmg` the damage); damage
+is applied server-side only. Per-gun numbers ride `welcome.config.weapons`.
 
 The client draws its *own* tracer immediately using the same math
 (`client/src/game/combat.ts`) and ignores server shot events where

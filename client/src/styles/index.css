@@ -132,6 +132,11 @@
   --entity-bar-backdrop: rgb(0 0 0 / 0.6);
   --entity-aim-local: rgb(255 255 255 / 0.55);
   --entity-aim-remote: rgb(255 255 255 / 0.25);
+  --entity-laser-local: rgb(255 64 64 / 0.38);
+  --entity-laser-remote: rgb(255 64 64 / 0.16);
+  --fx-casing-a: #c4a35a;
+  --fx-casing-b: #e8c878;
+  --fx-casing-c: #8a7038;
   --entity-label-shadow: rgb(0 0 0 / 0.75);
   --fx-text-shadow: rgb(0 0 0 / 0.7);
   --minimap-local-ring: #ffffff;
@@ -390,6 +395,7 @@
    * on steps so it reads as a control saying no rather than as a wobble.
    */
   --animate-lantern-refused: lantern-refused 0.3s steps(1, end) 1;
+  --animate-hotbar-pick: hotbar-pick 0.18s ease-out 1;
 
   /*
    * An item landing in the pack. One hard scale bump, same step language as
@@ -696,6 +702,17 @@
     }
   100% {
     translate: 0 0;
+    }
+  }
+  @keyframes hotbar-pick {
+  0% {
+    transform: translateY(2px) scale(0.94);
+    }
+  55% {
+    transform: translateY(-2px) scale(1.06);
+    }
+  100% {
+    transform: translateY(0) scale(1);
     }
   }
   @keyframes pack-catch {

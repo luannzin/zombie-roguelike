@@ -15,11 +15,11 @@ seam React is allowed to read.
 | `simulation.ts` | movement — mirror of `server/app/simulation.py` |
 | `prediction.ts` | apply-locally, replay-on-ack reconciliation |
 | `interpolation.ts` | remote entity smoothing |
-| `input.ts` | keyboard/mouse sampling into an `InputPacket` |
+| `input.ts` | keyboard/mouse sampling into an `InputPacket` (1/2/3 is the hotbar) |
 | `world.ts` | client tile map, collision + sight queries, fires, hearth mask, placed scenery, live crates |
 | `combat.ts` | client-side shot feel: capsules, tile DDA, crate sprite boxes |
 | `effects.ts` | tracers, dust, blood, floating text, event lights, boot prints, crate smash, wind |
-| `entity-visuals.ts` | per-entity flash, recoil, anim, worn wounds; `HIT_FLASH_LIFE` is also the crate smash blink |
+| `entity-visuals.ts` | per-entity flash, recoil, gun kick/pump, anim, worn wounds; `HIT_FLASH_LIFE` is also the crate smash blink |
 | `lantern.ts` | four-cell battery, produces `output` 0..1 |
 | `hud-store.ts` | the only seam to React; `HUD_INTERVAL` = 0.2 s |
 | `tooltip-anchors.ts` | screen-space points for world `Tooltip`s, written every frame |
@@ -211,6 +211,13 @@ seam React is allowed to read.
   `[welcome.config.backpackSprite]` and the lobby draws the same overlay on
   every seat. It is always on for now — unequip is a later field, not a
   missing sprite. The sheet is greyscale and tinted with the player's colour.
+- **A gun is in the hand, selected locally.** `held` rides the input packet
+  the way the lantern switch does (slot index, or -1 holstered). The belt
+  itself is roster `guns`; a collect with `dest: "hotbar"` flies to
+  `hotbar-N`. Prediction fires with that weapon's cadence / damage / range
+  from `welcome.config.weapons`. AWP `aimDelay` waits on the held trigger
+  (`adsHold`); `stepScope` eases `Camera.zoom` toward `scopeZoom` and
+  `stepLaser` fades the sight in. Holstered draws nothing — no white line.
 - **A zombie is dressed at spawn.** `toDrawableEnemy` picks the body sheet
   from `enemyTypes[t].variants[v]` and builds `gear` as clothes then hat
   from the optional snapshot indices. The look is identity, not motion —
@@ -277,6 +284,11 @@ seam React is allowed to read.
   Dragging a cell off the panel calls `requestInventoryDrop`; `Game`
   sends `{type:"drop","slot"}` and clears the cell until the roster
   confirms. `lootPrompt.full` is a bag that cannot take the nearby drop.
+  The hotbar is `hotbar` on the same snapshot: three gun slots above the
+  lantern, always visible. 1/2/3 selects (same key holsters) and is patched
+  immediately, like TAB. A gun fly uses dest `hotbar` and anchor `hotbar-N`.
+  `held` rides the input packet. AWP hold-to-aim zooms the camera toward
+  `scopeZoom` and fades the laser in; ammo is named and unused.
 - Anything long-lived created here gets a matching release in `Game.dispose()`
   in the same change.
 

@@ -100,7 +100,7 @@ own the HUD and routing only. Talks to the server over one WebSocket.
   released in `Game.dispose()`. StrictMode and HMR both remount, and a leaked
   loop is silent until the frame rate collapses.
 - `publicDir` is `../assets/processed`, so art is fetched from `/player/...`,
-  `/backpack/...`, `/terrain/...`, `/scenery/...`. `assets/raw` is never served.
+  `/backpack/...`, `/terrain/...`, `/scenery/...`, `/guns/...`. `assets/raw` is never served.
 - The app is permanently `<html class="dark">`.
 - Imports may use the `@` alias for `src/`.
 
@@ -128,6 +128,6 @@ cd client && bun install && bun run dev
 ## Child DOX Index
 
 - `src/game/AGENTS.md` — loop, prediction/reconciliation, interpolation, world,
-  effects, lantern, HUD seam
+  effects, lantern, weapons/hotbar, HUD seam
 - `src/render/AGENTS.md` — camera, projection, sprites, fov, minimap, layers
 - `src/components/AGENTS.md` — HUD components (ours) vs `ui/` (generated)

@@ -18,6 +18,7 @@ import { clamp01 } from '../../lib/math';
 import { HUD_GRID, hudFont } from '../../theme/fonts';
 import { hpColor, palette } from '../../theme/palette';
 import type { GoreAtlas } from '../gore';
+import type { GunAtlas } from '../guns';
 import type { Projection } from '../projection';
 import { facingFromAim, frameIndex, type SpriteBook } from '../sprites';
 import type { DrawableCoin, DrawableEntity } from '../types';
@@ -78,6 +79,8 @@ export interface EntityContext {
   book: SpriteBook;
   /** Wound decals stamped on hurt bodies. Null until the atlas lands. */
   gore: GoreAtlas | null;
+  /** Held gun sprites. Null until the atlas lands. */
+  guns: GunAtlas | null;
 }
 
 export function drawShadow(entity: EntityContext, target: DrawableEntity): void {
@@ -207,7 +210,7 @@ export function drawEntity(entity: EntityContext, target: DrawableEntity): void 
   drawStains(entity, target, image, col * w, row * h, w, h, dx, dy, dw, dh);
 
   if (target.kind === 'player') {
-    drawAimIndicator(entity, target, px, py);
+    drawHeldGun(entity, target, px, py);
     drawHealthBar(entity, target, view.rawX(px), spriteTop);
   } else if (target.hp < target.maxHp) {
     drawHealthBar(entity, target, view.rawX(px), spriteTop);
@@ -340,16 +343,64 @@ function drawStains(
   ctx.drawImage(scratch.canvas, 0, 0, w, h, dx, dy, dw, dh);
 }
 
-function drawAimIndicator(
-  { ctx, view, config }: EntityContext,
+function drawHeldGun(
+  { ctx, view, guns }: EntityContext,
+  target: DrawableEntity,
+  px: number,
+  py: number,
+): void {
+  if (!target.weapon) return;
+  if (!guns) {
+    drawAimFallback(ctx, view, target, px, py);
+    return;
+  }
+  const spec = guns.items[target.weapon];
+  if (!spec) {
+    drawAimFallback(ctx, view, target, px, py);
+    return;
+  }
+
+  const angle = Math.atan2(target.ay, target.ax);
+  const flip = target.ax < 0;
+  const alongX = target.ax * target.gunPump;
+  const alongY = target.ay * target.gunPump;
+  // Hand sits on the chest, a little along the aim so the grip plants on the body.
+  const handX = px + target.ax * 4.2 + alongX;
+  const handY = py - 5.2 + target.ay * 4.2 + alongY;
+  const sx = view.rawX(handX);
+  const sy = view.rawY(handY);
+  const zoom = view.zoom;
+  const kick = flip ? -target.gunKick : target.gunKick;
+
+  ctx.save();
+  ctx.translate(sx, sy);
+  ctx.rotate(angle + kick);
+  if (flip) ctx.scale(1, -1);
+  ctx.globalAlpha = target.visibility;
+  ctx.drawImage(
+    guns.image,
+    spec.frame * guns.frameWidth,
+    0,
+    guns.frameWidth,
+    guns.frameHeight,
+    -spec.gripX * zoom,
+    -spec.gripY * zoom,
+    guns.frameWidth * zoom,
+    guns.frameHeight * zoom,
+  );
+  ctx.restore();
+}
+
+function drawAimFallback(
+  ctx: CanvasRenderingContext2D,
+  view: Projection,
   target: DrawableEntity,
   px: number,
   py: number,
 ): void {
   const cx = view.rawX(px);
   const cy = view.rawY(py);
-  const ts = config.tileSize;
-
+  const ts = 16;
   const aim = palette().entity;
   ctx.strokeStyle = target.isLocal ? aim.aimLocal : aim.aimRemote;
   ctx.lineWidth = Math.max(1, view.zoom * 0.7);
@@ -357,6 +408,74 @@ function drawAimIndicator(
   ctx.moveTo(cx + view.size(target.ax * ts * 0.4), cy + view.size(target.ay * ts * 0.4));
   ctx.lineTo(cx + view.size(target.ax * ts * 0.75), cy + view.size(target.ay * ts * 0.75));
   ctx.stroke();
+}
+
+/**
+ * Laser sight, drawn AFTER darkness in WORLD space — it is a light, not a
+ * thing being lit. Reach is precomputed (stops on walls) so this pass stays
+ * a stroke.
+ */
+export function drawWeaponLasers(
+  ctx: CanvasRenderingContext2D,
+  guns: GunAtlas | null,
+  targets: DrawableEntity[],
+): void {
+  const tone = palette().entity;
+  ctx.lineCap = 'round';
+  for (const target of targets) {
+    if (target.kind !== 'player' || !target.alive || target.laserReach <= 1) continue;
+    if (target.laserAlpha <= 0.01) continue;
+    const muzzle = muzzleWorld(target, guns);
+    const ex = muzzle.x + target.ax * target.laserReach;
+    const ey = muzzle.y + target.ay * target.laserReach;
+    const alpha = target.laserAlpha * target.visibility;
+    ctx.strokeStyle = target.isLocal ? tone.laserLocal : tone.laserRemote;
+    ctx.globalAlpha = alpha;
+    ctx.lineWidth = 0.7;
+    ctx.beginPath();
+    ctx.moveTo(muzzle.x, muzzle.y);
+    ctx.lineTo(ex, ey);
+    ctx.stroke();
+    ctx.globalAlpha = alpha * 0.55;
+    ctx.lineWidth = 0.3;
+    ctx.beginPath();
+    ctx.moveTo(muzzle.x, muzzle.y);
+    ctx.lineTo(ex, ey);
+    ctx.stroke();
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = target.isLocal ? tone.laserLocal : tone.laserRemote;
+    ctx.fillRect(ex - 0.4, ey - 0.4, 0.8, 0.8);
+  }
+  ctx.globalAlpha = 1;
+  ctx.lineCap = 'butt';
+}
+
+export function muzzleWorld(
+  target: DrawableEntity,
+  guns: GunAtlas | null,
+): { x: number; y: number } {
+  const px = target.x + target.recoilX;
+  const py = target.y + target.recoilY;
+  const spec = target.weapon && guns ? guns.items[target.weapon] : null;
+  const alongX = target.ax * target.gunPump;
+  const alongY = target.ay * target.gunPump;
+  const handX = px + target.ax * 4.2 + alongX;
+  const handY = py - 5.2 + target.ay * 4.2 + alongY;
+  if (!spec) {
+    return { x: handX + target.ax * 8, y: handY + target.ay * 8 };
+  }
+  const angle = Math.atan2(target.ay, target.ax);
+  const flip = target.ax < 0 ? -1 : 1;
+  const kick = flip < 0 ? -target.gunKick : target.gunKick;
+  const theta = angle + kick;
+  const dx = spec.muzzleX - spec.gripX;
+  const dy = (spec.muzzleY - spec.gripY) * flip;
+  const cos = Math.cos(theta);
+  const sin = Math.sin(theta);
+  return {
+    x: handX + dx * cos - dy * sin,
+    y: handY + dx * sin + dy * cos,
+  };
 }
 
 function drawHealthBar(

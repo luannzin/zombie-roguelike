@@ -1,0 +1,43 @@
+{
+  "tile": 16,
+  "frameWidth": 26,
+  "frameHeight": 12,
+  "frames": 5,
+  "items": {
+    "glock18": {
+      "frame": 0,
+      "gripX": 4,
+      "gripY": 6,
+      "muzzleX": 14,
+      "muzzleY": 4
+    },
+    "deagle": {
+      "frame": 1,
+      "gripX": 4,
+      "gripY": 7,
+      "muzzleX": 16,
+      "muzzleY": 4
+    },
+    "famas": {
+      "frame": 2,
+      "gripX": 2,
+      "gripY": 7,
+      "muzzleX": 18,
+      "muzzleY": 5
+    },
+    "ak47": {
+      "frame": 3,
+      "gripX": 2,
+      "gripY": 6,
+      "muzzleX": 17,
+      "muzzleY": 4
+    },
+    "awp": {
+      "frame": 4,
+      "gripX": 2,
+      "gripY": 7,
+      "muzzleX": 22,
+      "muzzleY": 5
+    }
+  }
+}

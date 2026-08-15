@@ -77,6 +77,7 @@ export interface Palette {
     slashBlocked: string;
     textShadow: string;
     fallbackShot: string;
+    casing: string[];
   };
 
   entity: {
@@ -84,6 +85,8 @@ export interface Palette {
     barBackdrop: string;
     aimLocal: string;
     aimRemote: string;
+    laserLocal: string;
+    laserRemote: string;
     labelShadow: string;
   };
 
@@ -206,6 +209,7 @@ function resolve(): Palette {
       slashBlocked: v('--fx-slash-blocked'),
       textShadow: v('--fx-text-shadow'),
       fallbackShot: v('--fx-shot-fallback'),
+      casing: [v('--fx-casing-a'), v('--fx-casing-b'), v('--fx-casing-c')],
     },
 
     entity: {
@@ -213,6 +217,8 @@ function resolve(): Palette {
       barBackdrop: v('--entity-bar-backdrop'),
       aimLocal: v('--entity-aim-local'),
       aimRemote: v('--entity-aim-remote'),
+      laserLocal: v('--entity-laser-local'),
+      laserRemote: v('--entity-laser-remote'),
       labelShadow: v('--entity-label-shadow'),
     },
 

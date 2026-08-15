@@ -55,7 +55,7 @@ def move_dir(cmd: InputCmd) -> tuple[float, float]:
 
 def apply_input(player: Player, cmd: InputCmd, world: TileMap, dt: float) -> None:
     dx, dy = move_dir(cmd)
-    speed = MOVE_SPEED * carry_scale(player.inventory.weight)
+    speed = MOVE_SPEED * carry_scale(player.carry_weight)
     player.vx = dx * speed
     player.vy = dy * speed
 

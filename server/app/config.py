@@ -415,6 +415,7 @@ def client_config() -> dict:
     # through this one function, which stays the single client-config contract.
     from .enemies import enemy_types_payload
     from .loot import catalog_payload
+    from .weapons import HOTBAR_SLOTS, catalog_payload as weapons_payload
 
     return {
         "tickRate": TICK_RATE,
@@ -452,10 +453,12 @@ def client_config() -> dict:
         # Shot box on a crate, in tiles. Bottom-anchored on the contact.
         "crateHitWTiles": CRATE_HIT_W_TILES,
         "crateHitHTiles": CRATE_HIT_H_TILES,
-        # Catalog: name, rarity, atlas frame, weight, value. The client never
-        # invents an item.
+        # Catalog: name, rarity, atlas frame, weight, value, pocket.
+        # Guns also have a combat block in `weapons`.
         "loot": catalog_payload(),
+        "weapons": weapons_payload(),
         "inventorySlots": INVENTORY_SLOTS,
+        "hotbarSlots": HOTBAR_SLOTS,
         "carryMaxWeight": CARRY_MAX_WEIGHT,
         "carrySlowStart": CARRY_SLOW_START,
         "carrySlowAtMax": CARRY_SLOW_AT_MAX,

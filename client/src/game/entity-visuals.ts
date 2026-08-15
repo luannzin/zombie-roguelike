@@ -22,8 +22,8 @@ import { clamp01, expDamp, normalize } from '../lib/math';
 
 /** Seconds of white flash after taking a hit. Shared with crate smash. */
 export const HIT_FLASH_LIFE = 0.18;
-/** Sprite kick distance opposite aim (world px). */
-const RECOIL_KICK = 0;
+/** Sprite kick distance opposite aim (world px). Default; weapons pass their own. */
+const RECOIL_KICK = 1.2;
 /** How far an enemy lurches into its own attack (world px). */
 const LUNGE_KICK = 3.5;
 /** How fast recoil and lunges spring back (higher = snappier). */
@@ -94,6 +94,10 @@ interface VisualState {
   stains: BloodStain[];
   /** Set every frame the entity appears; drives prune(). */
   seen: boolean;
+  /** Muzzle climb, radians, springs back. */
+  gunKick: number;
+  /** Slide back along aim, world px. */
+  gunPump: number;
 }
 
 function blank(): VisualState {
@@ -110,6 +114,8 @@ function blank(): VisualState {
     blockedCooldown: 0,
     stains: [],
     seen: true,
+    gunKick: 0,
+    gunPump: 0,
   };
 }
 
@@ -230,10 +236,22 @@ export class EntityVisuals {
   }
 
   // --- recoil / lunge ------------------------------------------------------
-  kickRecoil(id: string, aimX: number, aimY: number): void {
+  kickRecoil(id: string, aimX: number, aimY: number, kick = RECOIL_KICK): void {
     const state = this.state(id);
-    state.recoilX = -aimX * RECOIL_KICK;
-    state.recoilY = -aimY * RECOIL_KICK;
+    state.recoilX = -aimX * kick;
+    state.recoilY = -aimY * kick;
+  }
+
+  kickGun(id: string, angle: number, pump: number): void {
+    const state = this.state(id);
+    state.gunKick = -Math.abs(angle);
+    state.gunPump = pump;
+  }
+
+  gunFeelOf(id: string): { kick: number; pump: number } {
+    const state = this.states.get(id);
+    if (!state) return { kick: 0, pump: 0 };
+    return { kick: state.gunKick, pump: state.gunPump };
   }
 
   /** Shove an attacker forward along its swing; same spring as recoil. */
@@ -261,6 +279,10 @@ export class EntityVisuals {
       state.recoilY *= damp;
       if (Math.abs(state.recoilX) < 0.01) state.recoilX = 0;
       if (Math.abs(state.recoilY) < 0.01) state.recoilY = 0;
+      state.gunKick *= damp;
+      state.gunPump *= damp;
+      if (Math.abs(state.gunKick) < 0.002) state.gunKick = 0;
+      if (Math.abs(state.gunPump) < 0.05) state.gunPump = 0;
       if (state.stains.length > 0) ageStains(state.stains, dt);
     }
   }

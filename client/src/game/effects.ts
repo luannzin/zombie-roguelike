@@ -15,6 +15,8 @@ export interface Tracer {
   color: string;
   age: number;
   life: number;
+  /** Width multiplier. 1 is the original tracer. */
+  width: number;
 }
 
 export interface Flash {
@@ -24,6 +26,7 @@ export interface Flash {
   dy: number;
   age: number;
   life: number;
+  size: number;
 }
 
 export interface Particle {
@@ -60,6 +63,15 @@ export interface Slash {
  * near the barrel, it is a light source that the ground around it responds to,
  * and it decays over a few frames.
  */
+export interface ShotFeel {
+  tracerLife?: number;
+  tracerWidth?: number;
+  flash?: number;
+  casings?: number;
+  lightRadius?: number;
+  lightLife?: number;
+}
+
 export interface PointLight {
   x: number;
   y: number;
@@ -229,13 +241,37 @@ export class Effects {
     damage?: number,
     /** The thing hit was a BODY. Wood and stone throw debris but do not bleed. */
     flesh = false,
+    feel?: ShotFeel,
   ): void {
     const fx = palette().effects;
-    this.tracers.push({ x, y, dx, dy, dist, color, age: 0, life: 0.09 });
-    this.flashes.push({ x, y, dx, dy, age: 0, life: 0.06 });
+    const tracerLife = feel?.tracerLife ?? 0.09;
+    const tracerWidth = feel?.tracerWidth ?? 1;
+    const flashScale = feel?.flash ?? 1;
+    const lightRadius = feel?.lightRadius ?? 74;
+    const lightLife = feel?.lightLife ?? 0.09;
+    this.tracers.push({
+      x,
+      y,
+      dx,
+      dy,
+      dist,
+      color,
+      age: 0,
+      life: tracerLife,
+      width: tracerWidth,
+    });
+    this.flashes.push({
+      x,
+      y,
+      dx,
+      dy,
+      age: 0,
+      life: 0.06 * (0.7 + 0.3 * flashScale),
+      size: flashScale,
+    });
     // The muzzle throws light, not just a sprite: brief, warm, and wide enough
     // that a shot in the dark shows you the ground you are standing on.
-    this.spawnLight(x, y, 74, 0.85, fx.muzzleFlash, 0.09);
+    this.spawnLight(x, y, lightRadius, 0.85 * Math.min(1.3, flashScale), fx.muzzleFlash, lightLife);
 
     const ix = x + dx * dist;
     const iy = y + dy * dist;
@@ -245,6 +281,34 @@ export class Effects {
 
     if (hit && damage !== undefined && damage > 0) {
       this.spawnDamage(ix, iy, damage);
+    }
+
+    const casings = feel?.casings ?? 1;
+    if (casings > 0) this.spawnCasings(x, y, dx, dy, casings);
+  }
+
+  /** Brass kicked out perpendicular to the shot, falling with weight. */
+  spawnCasings(x: number, y: number, dx: number, dy: number, count: number): void {
+    const fx = palette().effects;
+    const side = Math.random() < 0.5 ? 1 : -1;
+    const px = -dy * side;
+    const py = dx * side;
+    for (let i = 0; i < count; i++) {
+      const spread = (Math.random() - 0.5) * 0.5;
+      const cx = px + dx * spread;
+      const cy = py + dy * spread;
+      const speed = 28 + Math.random() * 22;
+      this.particles.push({
+        x,
+        y,
+        vx: cx * speed,
+        vy: cy * speed - 18,
+        size: 0.7 + Math.random() * 0.5,
+        color: fx.casing[i % fx.casing.length],
+        age: 0,
+        life: 0.28 + Math.random() * 0.12,
+        gy: 220,
+      });
     }
   }
 

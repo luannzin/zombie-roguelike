@@ -99,6 +99,16 @@ export interface DrawableEntity {
    */
   halfWidth: number;
   halfHeight: number;
+  /** Equipped gun key, or null when the hand is empty. */
+  weapon: string | null;
+  /** Radians of muzzle climb, sprite-local (up is negative before the left-flip). */
+  gunKick: number;
+  /** Pixels of slide back along aim. */
+  gunPump: number;
+  /** How far the laser travels this frame, world px. 0 = hidden. */
+  laserReach: number;
+  /** 0..1. AWP fades this in while holding. */
+  laserAlpha: number;
 }
 
 /** World gold pickup — drawn under entities, spins forever. */

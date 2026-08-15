@@ -78,6 +78,13 @@ Default section order:
 
 When the user requests a durable behavior change, record it here or in the relevant child AGENTS.md
 
+- Guns are a 3-slot hotbar above the battery (keys 1/2/3, same key holsters).
+  They collect onto the belt, not the pocket. The held sprite follows the
+  mouse and flips when aiming left. Pistols and rifles show a low-opacity
+  laser; the AWP laser and a camera zoom-out appear only while holding to
+  shoot. Each gun has its own weight (slows the walk) and feel. Ammo types
+  are named; magazines are not built yet.
+
 ## Project
 
 Browser-based multiplayer 2D pixel-art zombie roguelike. Python + FastAPI
@@ -174,6 +181,14 @@ subtree.
   off the panel sends `{type:"drop","slot"}`; the server places the
   stack on walkable floor near the player's feet. A full bag (no slot
   and no stack) keeps the drop tooltip and reads "Inventário Cheio".
+  Guns are loot too, but they land on a 3-slot HOTBAR (`server/app/weapons.py`),
+  not in the pocket — they do not stack. Everyone starts with a Glock 18.
+  1 / 2 / 3 selects a slot; the same key holsters. An empty hand does not
+  fire. The held sprite follows the mouse and flips when the cursor is left
+  of the body. Pistols and rifles draw a low-opacity laser from the muzzle;
+  the AWP has none until the trigger is held, and that hold also eases the
+  camera out (`scopeZoom`) for more forest in frame. Carry weight is bag
+  PLUS belt. Ammo types (pistol / rifle / awp) are named and unused.
 - Boxes, barrels and the other wood on the crate sheet are live objects
   (`server/app/crates.py`), not scenery. Scenery still places them; after
   the stamp they are pulled onto the map as crates so a smash can remove

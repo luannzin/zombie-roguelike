@@ -61,6 +61,8 @@ class ItemDef:
     weight: float
     #: What it is worth. The HUD slot shows it; extraction will spend it.
     value: int
+    #: Where a collect puts it. `hotbar` is guns (no stack); `bag` is the pocket.
+    pocket: str = "bag"
 
 
 # Catalog order is the loot atlas frame order (see tools/make_loot.py).
@@ -89,6 +91,14 @@ ITEMS: tuple[ItemDef, ...] = (
     ItemDef("sanctuary_relic", "Relíquia do santuário", "legendary", ("relics",), 2.0, 380),
     ItemDef("vault_key", "Chave do cofre nacional", "legendary", ("valuables", "supplies"), 0.3, 350),
     ItemDef("royal_ring", "Anel da família real", "legendary", ("valuables", "living"), 0.15, 420),
+    # Guns. Combat stats live in weapons.py; these rows are the GROUND
+    # object — a name, a rarity, a loot-atlas frame, a weight. Collect
+    # routes them to the hotbar, not the pocket.
+    ItemDef("glock18", "Glock 18", "common", ("military", "combat"), 1.1, 40, "hotbar"),
+    ItemDef("deagle", "Desert Eagle", "uncommon", ("military", "combat"), 2.2, 90, "hotbar"),
+    ItemDef("famas", "FAMAS", "rare", ("military", "combat"), 3.4, 160, "hotbar"),
+    ItemDef("ak47", "AK-47", "epic", ("military", "combat"), 4.0, 240, "hotbar"),
+    ItemDef("awp", "AWP", "legendary", ("military", "combat"), 6.2, 400, "hotbar"),
 )
 
 BY_KEY: dict[str, ItemDef] = {item.key: item for item in ITEMS}
@@ -148,11 +158,13 @@ class LootPickup:
     key: str
     x: float
     y: float
-    #: Which bag slot it landed in. The client flies the sprite there.
+    #: Which bag or hotbar slot it landed in. The client flies the sprite there.
     slot: int
+    #: `hotbar` for guns; omitted on the wire when it is the pocket.
+    dest: str = "bag"
 
     def to_payload(self) -> dict:
-        return {
+        row = {
             "id": self.drop_id,
             "by": self.player_id,
             "k": self.key,
@@ -160,6 +172,9 @@ class LootPickup:
             "y": round(self.y, 2),
             "slot": self.slot,
         }
+        if self.dest != "bag":
+            row["dest"] = self.dest
+        return row
 
 
 def catalog_payload() -> dict:
@@ -171,6 +186,7 @@ def catalog_payload() -> dict:
             "frame": index,
             "weight": item.weight,
             "value": item.value,
+            "pocket": item.pocket,
         }
         for index, item in enumerate(ITEMS)
     }

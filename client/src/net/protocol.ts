@@ -35,6 +35,8 @@ export interface InputPacket {
   shoot: boolean;
   /** Switch state. Battery/flicker stay client-local; remotes only need on/off. */
   lantern: boolean;
+  /** Hotbar slot in hand. -1 is holstered. Empty slots are treated as -1. */
+  held: number;
 }
 
 export interface PingPacket {
@@ -132,8 +134,12 @@ export interface GameConfig {
   crateHitHTiles?: number;
   /** Catalog of world loot. Keyed by item key; `frame` indexes the loot atlas. */
   loot?: Record<string, LootItemConfig>;
+  /** Combat stats for guns. Keyed by the same keys as loot rows with pocket `hotbar`. */
+  weapons?: Record<string, WeaponConfig>;
   /** Starting bag size. A later upgrade grows it. */
   inventorySlots?: number;
+  /** Gun belt size. */
+  hotbarSlots?: number;
   /** Weight the walk is tuned around. The bag may go past this. */
   carryMaxWeight?: number;
   /** Fraction of max weight that is still full speed. */
@@ -152,6 +158,36 @@ export interface LootItemConfig {
   frame: number;
   weight: number;
   value: number;
+  /** Where a collect puts it. Guns are `hotbar`; valuables are `bag`. */
+  pocket?: 'bag' | 'hotbar';
+}
+
+export type WeaponKind = 'pistol' | 'rifle' | 'sniper' | string;
+export type WeaponLaser = 'always' | 'ads' | 'none' | string;
+
+/** Combat block for one gun. Mirrors server/app/weapons.py. */
+export interface WeaponConfig {
+  name: string;
+  kind: WeaponKind;
+  ammo: string;
+  damage: number;
+  fireCooldown: number;
+  range: number;
+  muzzle: number;
+  noise: number;
+  aimDelay: number;
+  laser: WeaponLaser;
+  scopeZoom: number;
+  kick: number;
+  trauma: number;
+  gunKick: number;
+  gunPump: number;
+  tracerLife: number;
+  tracerWidth: number;
+  flash: number;
+  casings: number;
+  lightRadius: number;
+  lightLife: number;
 }
 
 /** One world drop. `k` keys into `GameConfig.loot`. */
@@ -169,8 +205,10 @@ export interface LootPickupEvent {
   k: string;
   x: number;
   y: number;
-  /** Bag slot it landed in. The fly aims at this cell. */
+  /** Bag or hotbar slot it landed in. The fly aims at this cell. */
   slot: number;
+  /** `hotbar` for a gun; omitted for the pocket. */
+  dest?: 'bag' | 'hotbar';
 }
 
 /**
@@ -351,6 +389,10 @@ export interface PlayerState {
   alive: boolean;
   /** Camp only: standing at the fire and confirmed. */
   ready?: boolean;
+  /** Hotbar index in hand. -1 is holstered. */
+  held?: number;
+  /** True while a scoped gun is being held to fire. */
+  ads?: boolean;
 }
 
 /**
@@ -371,6 +413,8 @@ export interface PlayerMeta {
   xpToLevel: number;
   /** The pocket. Slots, contents and current weight. */
   inv?: InventoryState;
+  /** The gun belt. Slots and which one is in hand. */
+  guns?: HotbarState;
 }
 
 /** One bag slot on the wire. `n` is the stack. */
@@ -383,6 +427,12 @@ export interface InventoryState {
   cap: number;
   bag: Array<InventorySlotState | null>;
   w: number;
+}
+
+export interface HotbarState {
+  cap: number;
+  slots: Array<string | null>;
+  held: number;
 }
 
 /** A player with everything known about them: `welcome` and roster rows. */
@@ -434,12 +484,16 @@ export interface CoinState {
 export interface ShotEvent {
   id: number;
   by: string;
+  /** Weapon key. Absent on a server too old to send it. */
+  k?: string;
   x: number;
   y: number;
   dx: number;
   dy: number;
   dist: number;
   hit: string | null;
+  /** Damage dealt. 0 on a miss / crate. */
+  dmg?: number;
 }
 
 /** One enemy melee swing. `dmg` is 0 when the victim's i-frames ate it. */

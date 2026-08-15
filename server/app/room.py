@@ -31,29 +31,24 @@ import random
 import time
 import uuid
 
-from . import ai, camp, coins, combat, crates, loot, mapgen, protocol, zones
+from . import ai, camp, coins, combat, crates, loot, mapgen, protocol, weapons, zones
 from .ai import EnemyDirector
 from .coins import Coin
 from .config import (
     CRATE_BREAK_DIST,
     CRATE_NOISE_DIST,
     DT,
-    FIRE_COOLDOWN,
     LOOT_COLLECT_DIST,
     MARCH_SPEED,
     MAX_HP,
     MAX_INPUT_QUEUE,
     MAX_INPUTS_PER_TICK,
     MELEE_IMMUNITY,
-    MUZZLE_OFFSET,
     PLAYER_HALF_HEIGHT,
     PLAYER_HALF_WIDTH,
     RESPAWN_DELAY,
     RESPAWN_IMMUNITY,
     ROSTER_EVERY_N_TICKS,
-    SHOT_DAMAGE,
-    SHOT_NOISE_DIST,
-    SHOT_RANGE,
     SNAPSHOT_EVERY_N_TICKS,
     SPAWN_RING,
     SPAWN_SEPARATION,
@@ -348,12 +343,23 @@ class Room:
         feet_y = player.y + PLAYER_HALF_HEIGHT
         if (drop.x - player.x) ** 2 + (drop.y - feet_y) ** 2 > LOOT_COLLECT_DIST * LOOT_COLLECT_DIST:
             return
-        slot = player.inventory.add(drop.key)
+        item = loot.BY_KEY.get(drop.key)
+        dest = "bag"
+        if item is not None and item.pocket == "hotbar":
+            empty = player.hotbar.equipped() is None
+            slot = player.hotbar.add(drop.key)
+            dest = "hotbar"
+            if slot is not None and empty:
+                player.hotbar.held = slot
+        else:
+            slot = player.inventory.add(drop.key)
         if slot is None:
             return
         del self.drops[drop_id]
         self.loot_pickup_events.append(
-            loot.LootPickup(drop.id, player.id, drop.key, drop.x, drop.y, slot).to_payload()
+            loot.LootPickup(
+                drop.id, player.id, drop.key, drop.x, drop.y, slot, dest
+            ).to_payload()
         )
         self._loot_dirty = True
         self._roster_dirty = True
@@ -560,6 +566,7 @@ class Room:
             while player.inputs and consumed < budget:
                 cmd = player.inputs.popleft()
                 apply_input(player, cmd, self.world, dt)
+                player.hotbar.apply_held(cmd.held)
                 self.handle_shooting(player, cmd, dt)
                 player.last_processed_seq = cmd.sequence
                 player.last_input = cmd
@@ -570,6 +577,7 @@ class Room:
                 # remote viewers do not see a stutter.
                 if player.idle_ticks < 3:
                     apply_input(player, player.last_input, self.world, dt)
+                    player.hotbar.apply_held(player.last_input.held)
                     self.handle_shooting(player, player.last_input, dt)
                 player.idle_ticks += 1
             else:
@@ -714,20 +722,32 @@ class Room:
         # Nobody fires in a safe zone. The camp has nothing to shoot at except
         # the person standing next to you at the fire.
         if not self.zone.hostile:
+            player.aim_hold = 0.0
             return
-        if not cmd.shoot or not player.alive or player.fire_cooldown > 0.0:
+        weapon = player.hotbar.equipped()
+        if weapon is None or not player.alive:
+            player.aim_hold = 0.0
             return
-        player.fire_cooldown = FIRE_COOLDOWN
-        self.fire(player, cmd.aim_x, cmd.aim_y)
+        if cmd.shoot:
+            player.aim_hold += dt
+        else:
+            player.aim_hold = 0.0
+            return
+        if player.fire_cooldown > 0.0:
+            return
+        if player.aim_hold < weapon.aim_delay:
+            return
+        player.fire_cooldown = weapon.fire_cooldown
+        self.fire(player, cmd.aim_x, cmd.aim_y, weapon)
 
-    def fire(self, shooter: Player, dx: float, dy: float) -> None:
-        ox = shooter.x + dx * MUZZLE_OFFSET
-        oy = shooter.y + dy * MUZZLE_OFFSET
+    def fire(self, shooter: Player, dx: float, dy: float, weapon: weapons.WeaponDef) -> None:
+        ox = shooter.x + dx * weapon.muzzle
+        oy = shooter.y + dy * weapon.muzzle
         # A gun is loud. Everything in earshot that has not already noticed
         # somebody now has a direction to look in — and, close enough to the
         # muzzle, a person to walk at. See ai.Noise.
         self.noises.append(
-            ai.Noise(x=shooter.x, y=shooter.y, radius=SHOT_NOISE_DIST, source_id=shooter.id)
+            ai.Noise(x=shooter.x, y=shooter.y, radius=weapon.noise, source_id=shooter.id)
         )
         # Players and enemies share one target list: the capsule contract is
         # identical, so the ray does not care which kind it hits.
@@ -738,7 +758,7 @@ class Room:
             oy,
             dx,
             dy,
-            SHOT_RANGE,
+            weapon.range,
             targets,
             ignore_id=shooter.id,
         )
@@ -753,20 +773,22 @@ class Room:
             {
                 "id": self._shot_id,
                 "by": shooter.id,
+                "k": weapon.key,
                 "x": round(ox, 2),
                 "y": round(oy, 2),
                 "dx": round(dx, 3),
                 "dy": round(dy, 3),
                 "dist": round(dist, 2),
                 "hit": victim.id if victim is not None else None,
+                "dmg": weapon.damage if victim is not None else 0,
             }
         )
         if crate is not None:
             self.smash_crate(crate, shooter)
         elif isinstance(victim, Enemy):
-            self.damage_enemy(victim, SHOT_DAMAGE, shooter)
+            self.damage_enemy(victim, weapon.damage, shooter)
         elif victim is not None:
-            self.damage_player(victim, SHOT_DAMAGE, shooter)
+            self.damage_player(victim, weapon.damage, shooter)
 
     def damage_player(self, target: Player, amount: int, source: Player | None) -> None:
         if not target.alive:

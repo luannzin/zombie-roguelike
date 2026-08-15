@@ -2,7 +2,7 @@
   "tile": 16,
   "frameWidth": 16,
   "frameHeight": 16,
-  "frames": 24,
+  "frames": 29,
   "items": {
     "old_tools": {
       "frame": 0
@@ -75,6 +75,21 @@
     },
     "royal_ring": {
       "frame": 23
+    },
+    "glock18": {
+      "frame": 24
+    },
+    "deagle": {
+      "frame": 25
+    },
+    "famas": {
+      "frame": 26
+    },
+    "ak47": {
+      "frame": 27
+    },
+    "awp": {
+      "frame": 28
     }
   }
 }

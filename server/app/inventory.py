@@ -38,7 +38,8 @@ class Inventory:
 
     def add(self, key: str) -> int | None:
         """Put one of `key` in the bag. Returns the slot index, or None if full."""
-        if key not in BY_KEY:
+        item = BY_KEY.get(key)
+        if item is None or item.pocket != "bag":
             return None
         for index, slot in enumerate(self.slots):
             if slot is not None and slot.key == key:
@@ -61,7 +62,8 @@ class Inventory:
         return slot
 
     def can_stow(self, key: str) -> bool:
-        if key not in BY_KEY:
+        item = BY_KEY.get(key)
+        if item is None or item.pocket != "bag":
             return False
         return any(
             slot is None or slot.key == key for slot in self.slots

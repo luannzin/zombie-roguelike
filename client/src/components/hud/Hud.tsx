@@ -29,6 +29,7 @@ import type { HudSnapshot } from '../../game/hud-store';
 import { cn } from '@/lib/utils';
 import { MinimapCanvas } from '../game/MinimapCanvas';
 import { BatteryGauge } from './BatteryGauge';
+import { Hotbar } from './Hotbar';
 import { ControlsHint } from './ControlsHint';
 import { HudScreen } from './HudScreen';
 import { NetStats } from './NetStats';
@@ -101,6 +102,7 @@ export function Hud({ snapshot, minimapRef, error }: HudProps) {
             chrome,
           )}
         >
+          <Hotbar hotbar={snapshot.hotbar} />
           <BatteryGauge lantern={snapshot.lantern} />
           <Vitals vitals={snapshot.vitals} />
         </div>

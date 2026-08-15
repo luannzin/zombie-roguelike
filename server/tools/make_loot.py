@@ -367,6 +367,60 @@ ITEMS: list[tuple[str, Palette, Art]] = [
             "..gggg..",
         ],
     ),
+    (
+        "glock18",
+        {"t": LEATHER, "m": METAL},
+        [
+            "....mmmmmm.",
+            "...tmmmmmm.",
+            "...t.......",
+            "...t.......",
+            "...tt......",
+        ],
+    ),
+    (
+        "deagle",
+        {"s": GOLD, "g": CLOTH},
+        [
+            ".....sssssss",
+            "....ssssssss",
+            "...gg.......",
+            "...gg.......",
+            "...ggg......",
+        ],
+    ),
+    (
+        "famas",
+        {"m": METAL, "g": CLOTH},
+        [
+            "...mmmmmm...",
+            "...m....m.mm",
+            "ggggggggggmm",
+            "g....g......",
+            "gggggg......",
+        ],
+    ),
+    (
+        "ak47",
+        {"w": WOOD, "m": METAL},
+        [
+            ".........m..",
+            "wwwwwmmmmmmm",
+            "w...w.mmmmmm",
+            "wwwww.mm....",
+            "......mm....",
+        ],
+    ),
+    (
+        "awp",
+        {"o": OLIVE, "m": METAL, "s": STONE},
+        [
+            ".......ss.....",
+            "ooooooommmmmmm",
+            "o....o.mmmmmmm",
+            "oooooo.m......",
+        ],
+    ),
 ]
 
 

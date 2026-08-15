@@ -26,7 +26,7 @@ import {
   stopBeds,
   throttled,
 } from '../audio';
-import { clamp01 } from '../lib/math';
+import { clamp01, expDamp } from '../lib/math';
 import type { Connection, ConnectionStatus, Unsubscribe } from '../net/connection';
 import type {
   AttackEvent,
@@ -44,9 +44,11 @@ import type {
   ServerMessage,
   SnapshotMessage,
   WelcomeMessage,
+  WeaponConfig,
   ZoneInfo,
 } from '../net/protocol';
 import { Camera } from '../render/camera';
+import { ARENA_ZOOM } from '../render/framing';
 import { projectionFor } from '../render/projection';
 import { FovField, type LightSource, type VisionConfig, type Viewer } from '../render/fov';
 import { soilAt } from '../render/layers/terrain';
@@ -59,11 +61,12 @@ import type { DrawableCoin, DrawableEntity, DrawableLoot } from '../render/types
 import { whenFontsReady } from '../theme/fonts';
 import { palette } from '../theme/palette';
 import { crateAlongRay, hitscan, type RayTarget } from './combat';
-import { Effects } from './effects';
+import { Effects, type ShotFeel } from './effects';
 import { EntityVisuals } from './entity-visuals';
 import {
   EMPTY_HUD,
   HUD_INTERVAL,
+  type HudHotbar,
   type HudInventory,
   type HudLootPrompt,
   type HudSnapshot,
@@ -86,8 +89,6 @@ import {
 } from './tooltip-anchors';
 
 const MAX_TICKS_PER_FRAME = 5;
-/** Camera punch on local fire (miss or hit). */
-const FIRE_TRAUMA = 0.16;
 /** Extra camera punch when local shot lands on a target. */
 const HIT_TRAUMA = 0.12;
 /** Camera punch when local player loses HP. */
@@ -246,6 +247,8 @@ interface PlayerSource {
   moving: boolean;
   isLocal: boolean;
   ready: boolean;
+  held?: number;
+  ads?: boolean;
 }
 
 export interface GameOptions {
@@ -350,6 +353,14 @@ export class Game {
   private departing = false;
   private aimX = 1;
   private aimY = 0;
+  /** Hotbar slot in hand. -1 is holstered. Client-authored, like the lamp. */
+  private heldSlot = 0;
+  /** Seconds the trigger has been down. AWP spends this before it fires. */
+  private adsHold = 0;
+  /** 0..1 laser fade, render-clock. */
+  private adsAlpha = 0;
+  /** Selection punches. Same counter contract as lantern refusals. */
+  private hotbarPicks = 0;
   /** local player position interpolated between fixed ticks (see prediction.ts) */
   private smoothX = 0;
   private smoothY = 0;
@@ -390,6 +401,7 @@ export class Game {
     };
     this.input.onInteract = () => this.sendInteract();
     this.input.onToggleInventory = () => this.toggleInventory();
+    this.input.onHotbar = (slot) => this.selectHotbar(slot);
     bindInventoryDrop((slot) => this.requestDrop(slot));
     this.minimap = new Minimap(options.minimapCanvas);
   }
@@ -567,6 +579,8 @@ export class Game {
       lastAck: ack,
     });
     this.local.carryWeight = msg.player.inv?.w ?? 0;
+    this.heldSlot = msg.player.guns?.held ?? 0;
+    this.adsHold = 0;
 
     // Bonfires are read off the tiles, not off a message: the fire that blocks
     // you, the fire you can see and the fire that lights you are one tile.
@@ -676,6 +690,7 @@ export class Game {
       prompt: null,
       lootPrompt: null,
       inventory: this.inventoryHud(),
+      hotbar: this.hotbarHud(),
     });
     this.replaceLoot(msg.loot ?? []);
   }
@@ -740,6 +755,7 @@ export class Game {
       if (shot.by === this.localId) continue;
       const shooter = this.roster.get(shot.by);
       const hit = shot.hit !== null;
+      const weapon = shot.k ? this.config.weapons?.[shot.k] : undefined;
       this.effects.spawnShot(
         shot.x,
         shot.y,
@@ -748,12 +764,12 @@ export class Game {
         shot.dist,
         shooter?.color ?? palette().effects.fallbackShot,
         hit,
-        hit ? this.config.shotDamage : undefined,
-        // `shot.hit` is a body or nothing — a crate arrives as its own break
-        // event, so this never bleeds wood.
+        hit ? (shot.dmg ?? weapon?.damage ?? this.config.shotDamage) : undefined,
         hit,
+        weapon ? shotFeel(weapon) : undefined,
       );
-      this.visuals.kickRecoil(shot.by, shot.dx, shot.dy);
+      this.visuals.kickRecoil(shot.by, shot.dx, shot.dy, weapon?.kick);
+      if (weapon) this.visuals.kickGun(shot.by, weapon.gunKick, weapon.gunPump);
       if (shot.hit) {
         this.visuals.pulseHitFlash(shot.hit);
         this.visuals.splatter(shot.hit, shot.dx, shot.dy);
@@ -834,18 +850,23 @@ export class Game {
       // tooltip has drawn.
       playSfx('loot');
       playSfx('rarity', { variant: RARITY_CHIME[def.rarity], jitter: 0, delay: 0.07 });
-      // Open now so the slots exist before the hold ends and the sprite flies.
-      // Spawn first so inventoryHud can hide that cell and hold the weight.
-      this.inventoryOpen = true;
+      const dest = ev.dest === 'hotbar' ? 'hotbar' : 'bag';
+      if (dest === 'bag') this.inventoryOpen = true;
+      else if (this.heldSlot < 0) this.heldSlot = ev.slot;
       spawnLootFly({
         id: ev.id,
         key: ev.k,
         frame: def.frame,
         rarity: def.rarity,
         slot: ev.slot,
+        dest,
       });
       const inventory = this.inventoryHud();
-      if (inventory) this.patchHud({ inventory });
+      const hotbar = this.hotbarHud();
+      this.patchHud({
+        inventory: inventory ?? undefined,
+        hotbar: hotbar ?? undefined,
+      });
     }
     this.camera.addTrauma(PICKUP_TRAUMA);
   }
@@ -879,6 +900,8 @@ export class Game {
       // character is facing the camera on purpose, and a cursor that had drifted
       // across the window would spin them the moment the frame opened.
       if (this.introLeft === 0 && !this.departing) this.updateAim();
+      this.stepScope(dt);
+      this.stepLaser(dt);
 
       this.accumulator += dt;
       const step = this.config.dt;
@@ -939,9 +962,15 @@ export class Game {
     if (this.localFireCooldown > 0) {
       this.localFireCooldown = Math.max(0, this.localFireCooldown - dt);
     }
-    if (packet.shoot && local.alive && this.localFireCooldown === 0) {
-      this.localFireCooldown = config.fireCooldown;
-      this.predictShot();
+    const weapon = this.heldWeapon();
+    if (packet.shoot && local.alive && weapon) {
+      this.adsHold += dt;
+      if (this.localFireCooldown === 0 && this.adsHold >= weapon.aimDelay) {
+        this.localFireCooldown = weapon.fireCooldown;
+        this.predictShot(weapon);
+      }
+    } else {
+      this.adsHold = 0;
     }
   }
 
@@ -965,6 +994,7 @@ export class Game {
           : { x: INTRO_AIM_X, y: INTRO_AIM_Y },
         shoot: false,
         lantern: this.lantern.on,
+        held: this.heldSlot,
       };
     }
     return {
@@ -974,6 +1004,7 @@ export class Game {
       aim: { x: this.aimX, y: this.aimY },
       shoot: this.input.shooting && this.zone?.hostile !== false,
       lantern: this.lantern.on,
+      held: this.heldSlot,
     };
   }
 
@@ -990,12 +1021,12 @@ export class Game {
   }
 
   /** Immediate local tracer so shooting feels instant; server still decides damage. */
-  private predictShot(): void {
+  private predictShot(weapon: WeaponConfig): void {
     const world = this.world!;
     const config = this.config!;
 
-    const ox = this.smoothX + this.aimX * config.muzzleOffset;
-    const oy = this.smoothY + this.aimY * config.muzzleOffset;
+    const ox = this.smoothX + this.aimX * weapon.muzzle;
+    const oy = this.smoothY + this.aimY * weapon.muzzle;
     const world_ = this.snapshots.sample(performance.now(), this.localId, this.connection.rtt);
 
     const hitR = config.playerHitRadius;
@@ -1018,7 +1049,7 @@ export class Game {
       oy,
       this.aimX,
       this.aimY,
-      config.shotRange,
+      weapon.range,
       targets,
       this.localId,
     );
@@ -1043,16 +1074,13 @@ export class Game {
       distance,
       this.localMeta?.color ?? palette().effects.fallbackShot,
       hit || crateHit,
-      hit ? config.shotDamage : undefined,
-      // A crate is an impact, not a wound: `hit` already excludes one.
+      hit ? weapon.damage : undefined,
       hit,
+      shotFeel(weapon),
     );
-    this.camera.addTrauma(FIRE_TRAUMA + (hit || crateHit ? HIT_TRAUMA : 0));
-    this.visuals.kickRecoil(this.localId, this.aimX, this.aimY);
-    // Fired locally on the predicted frame, not when the server confirms —
-    // the whole reason `predictShot` exists is that a trigger has to answer
-    // now, and a shot you hear an RTT after you pulled it is worse than one
-    // you never hear. The server's echo of your own shot is skipped upstream.
+    this.camera.addTrauma(weapon.trauma + (hit || crateHit ? HIT_TRAUMA : 0));
+    this.visuals.kickRecoil(this.localId, this.aimX, this.aimY, weapon.kick);
+    this.visuals.kickGun(this.localId, weapon.gunKick, weapon.gunPump);
     playSfx('shot');
     if (hit && result.target) {
       this.visuals.pulseHitFlash(result.target.id);
@@ -1546,6 +1574,10 @@ export class Game {
       this.carryBurdenOf(id),
     );
     const recoil = this.visuals.recoilOf(id);
+    const gun = this.visuals.gunFeelOf(id);
+    const weaponKey = this.weaponKeyOf(id, source.isLocal ? this.heldSlot : source.held);
+    const weapon = weaponKey ? this.config?.weapons?.[weaponKey] : undefined;
+    const laser = this.laserFor(source, weapon);
 
     return {
       id,
@@ -1568,9 +1600,7 @@ export class Game {
       moving,
       animTime: this.visuals.advanceAnim(id, moving, dt),
       isLocal: source.isLocal,
-      // Teammates are never hidden by the dark; only enemies are.
       visibility: 1,
-      // Players notice nothing — that is their own fov field.
       awareness: 0,
       alertKnown: false,
       viewRange: 0,
@@ -1581,6 +1611,11 @@ export class Game {
       recoilY: recoil.y,
       halfWidth: config.playerHalfWidth,
       halfHeight: config.playerHalfHeight,
+      weapon: weaponKey,
+      gunKick: gun.kick,
+      gunPump: gun.pump,
+      laserReach: laser.reach,
+      laserAlpha: laser.alpha,
     };
   }
 
@@ -1642,6 +1677,11 @@ export class Game {
       recoilY: recoil.y,
       halfWidth: type.halfWidth,
       halfHeight: type.halfHeight,
+      weapon: null,
+      gunKick: 0,
+      gunPump: 0,
+      laserReach: 0,
+      laserAlpha: 0,
     };
   }
 
@@ -1723,6 +1763,7 @@ export class Game {
       lootPrompt: this.lootPromptInfo(),
       cratePrompt: this.cratePromptInfo(),
       inventory: this.inventoryHud(),
+      hotbar: this.hotbarHud(),
       net: {
         players: this.snapshots.latest?.players.size ?? 0,
         enemies: this.snapshots.latest?.enemies.size ?? 0,
@@ -1773,6 +1814,21 @@ export class Game {
     if (inventory) this.patchHud({ inventory });
   }
 
+  private selectHotbar(slot: number): void {
+    if (this.departing || this.introLeft > 0) return;
+    const guns = this.localMeta?.guns;
+    if (!guns || slot < 0 || slot >= guns.slots.length) return;
+    if (!guns.slots[slot]) {
+      playSfx('ui-error');
+      return;
+    }
+    this.heldSlot = this.heldSlot === slot ? -1 : slot;
+    this.hotbarPicks += 1;
+    this.adsHold = 0;
+    const hotbar = this.hotbarHud();
+    if (hotbar) this.patchHud({ hotbar });
+  }
+
   private requestDrop(slot: number): void {
     if (this.departing || this.introLeft > 0) return;
     if (this.zone?.kind === 'camp') return;
@@ -1797,6 +1853,13 @@ export class Game {
   }
 
   private canStow(key: string): boolean {
+    const catalog = this.config?.loot ?? {};
+    const def = catalog[key];
+    if (def?.pocket === 'hotbar') {
+      const guns = this.localMeta?.guns;
+      if (!guns) return true;
+      return guns.slots.some((cell) => cell === null);
+    }
     const inv = this.localMeta?.inv;
     if (!inv) return true;
     for (let i = 0; i < inv.cap; i++) {
@@ -1840,7 +1903,7 @@ export class Game {
       const def = catalog[fly.key];
       if (!def) continue;
       weight -= def.weight;
-      gold -= def.value;
+      if ((fly.dest ?? 'bag') === 'bag') gold -= def.value;
     }
     if (weight < 0) weight = 0;
     if (gold < 0) gold = 0;
@@ -1858,6 +1921,37 @@ export class Game {
     };
   }
 
+  private hotbarHud(): HudHotbar | null {
+    const config = this.config;
+    if (!config) return null;
+    const catalog = config.loot ?? {};
+    const cap = this.localMeta?.guns?.cap ?? config.hotbarSlots ?? 3;
+    const cells = this.localMeta?.guns?.slots ?? [];
+    const slots = Array.from({ length: cap }, (_, index) => {
+      const key = cells[index];
+      if (!key) return null;
+      const def = catalog[key];
+      if (!def) return null;
+      return {
+        key,
+        name: def.name,
+        rarity: def.rarity,
+        frame: def.frame,
+        weight: def.weight,
+      };
+    });
+    let frames = 0;
+    for (const def of Object.values(catalog)) {
+      if (def.frame + 1 > frames) frames = def.frame + 1;
+    }
+    return {
+      slots,
+      held: this.heldSlot,
+      lootFrames: Math.max(1, frames),
+      picks: this.hotbarPicks,
+    };
+  }
+
   private stepCollectFlies(dt: number): void {
     const config = this.config;
     if (!config) return;
@@ -1867,7 +1961,8 @@ export class Game {
       this.smoothY + config.playerHalfHeight - config.spriteHeight - config.tileSize * 0.35,
     );
     const landed = stepLootFlies(dt, (fly) => {
-      const slot = readInventoryAnchor(`slot-${fly.slot}`);
+      const dest = fly.dest === 'hotbar' ? `hotbar-${fly.slot}` : `slot-${fly.slot}`;
+      const slot = readInventoryAnchor(dest);
       const from = { x: headX, y: headY };
       if (!slot) return { from, to: from, ready: false };
       const to = warpHudPoint(slot.x, slot.y, window.innerWidth, window.innerHeight);
@@ -1876,8 +1971,83 @@ export class Game {
     if (landed > 0) {
       this.bagCatches += landed;
       const inventory = this.inventoryHud();
-      if (inventory) this.patchHud({ inventory });
+      const hotbar = this.hotbarHud();
+      this.patchHud({
+        inventory: inventory ?? undefined,
+        hotbar: hotbar ?? undefined,
+      });
     }
+  }
+
+  private heldWeapon(): WeaponConfig | null {
+    const key = this.weaponKeyOf(this.localId, this.heldSlot);
+    if (!key) return null;
+    return this.config?.weapons?.[key] ?? null;
+  }
+
+  private weaponKeyOf(id: string, held?: number): string | null {
+    const guns = this.roster.get(id)?.guns;
+    const index = held ?? guns?.held ?? -1;
+    if (index < 0 || !guns) return null;
+    return guns.slots[index] ?? null;
+  }
+
+  private laserFor(
+    source: PlayerSource,
+    weapon: WeaponConfig | undefined,
+  ): { reach: number; alpha: number } {
+    if (!weapon || !this.world) return { reach: 0, alpha: 0 };
+    const ads = source.isLocal
+      ? this.input.shooting && this.zone?.hostile !== false && this.introLeft === 0
+      : Boolean(source.ads);
+    const show = weapon.laser === 'always' || (weapon.laser === 'ads' && ads);
+    if (!show) return { reach: 0, alpha: 0 };
+    const ox = source.x + source.ax * weapon.muzzle;
+    const oy = source.y + source.ay * weapon.muzzle;
+    const reach = this.world.raycastTiles(ox, oy, source.ax, source.ay, weapon.range);
+    const alpha = source.isLocal
+      ? weapon.laser === 'ads'
+        ? this.adsAlpha
+        : 1
+      : weapon.laser === 'ads'
+        ? ads
+          ? 1
+          : 0
+        : 0.7;
+    return { reach, alpha };
+  }
+
+  private stepScope(dt: number): void {
+    const weapon = this.heldWeapon();
+    const ads =
+      !!weapon &&
+      weapon.scopeZoom > 0 &&
+      this.input.shooting &&
+      this.zone?.hostile !== false &&
+      this.introLeft === 0 &&
+      !this.departing;
+    const want = ads && weapon ? weapon.scopeZoom : ARENA_ZOOM;
+    const k = 1 - expDamp(9, dt);
+    this.camera.zoom += (want - this.camera.zoom) * k;
+    if (Math.abs(this.camera.zoom - want) < 0.02) this.camera.zoom = want;
+    this.camera.resize(this.canvas.width, this.canvas.height);
+  }
+
+  private stepLaser(dt: number): void {
+    const weapon = this.heldWeapon();
+    const want =
+      weapon?.laser === 'ads' &&
+      this.input.shooting &&
+      this.zone?.hostile !== false &&
+      this.introLeft === 0
+        ? 1
+        : weapon?.laser === 'always'
+          ? 1
+          : 0;
+    const k = 1 - expDamp(14, dt);
+    this.adsAlpha += (want - this.adsAlpha) * k;
+    if (this.adsAlpha < 0.01 && want === 0) this.adsAlpha = 0;
+    if (this.adsAlpha > 0.99 && want === 1) this.adsAlpha = 1;
   }
 
   private carryBurdenOf(id: string): number {
@@ -2142,6 +2312,17 @@ function hashLootId(id: string): number {
   let h = 0;
   for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) | 0;
   return ((h & 0xffff) / 0xffff) * Math.PI * 2;
+}
+
+function shotFeel(weapon: WeaponConfig): ShotFeel {
+  return {
+    tracerLife: weapon.tracerLife,
+    tracerWidth: weapon.tracerWidth,
+    flash: weapon.flash,
+    casings: weapon.casings,
+    lightRadius: weapon.lightRadius,
+    lightLife: weapon.lightLife,
+  };
 }
 
 /** Dots for the minimap: same entities, only the fields it needs. */

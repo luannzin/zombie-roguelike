@@ -21,6 +21,7 @@ game's scale.
 | `pathing.py` | BFS flow field, one per player |
 | `coins.py` | dropped gold: the per-kill drop roll, burst, magnet, collection |
 | `loot.py` | world collectables: catalog, scene-context scatter, E-to-collect |
+| `weapons.py` | gun catalog (glock/deagle/famas/ak47/awp), hotbar, per-shot stats |
 | `crates.py` | breakable boxes/barrels: extract from scenery, smash, drop roll |
 | `inventory.py` | the pocket: slots, stacking, weight |
 | `world.py` | tile grid, tile alphabet, collision queries |
@@ -195,13 +196,22 @@ game's scale.
 - **Loot is not a coin.** Coins magnetize off a corpse. A drop sits next to
   a scene, shows a tooltip, and is collected with `{type:"collect","id"}`.
   The catalog and rarity weights live in `loot.py`; the client never invents
-  a name or a colour. Camp maps have none. What was collected rides the
-  roster as `player.inv` (slots, stacks, weight) so extraction can spend
-  it later. A full bag refuses a new kind; overweight is allowed and only
-  slows the walk (`carry_scale` in `simulation.py`). `{type:"drop","slot"}`
-  pulls a cell back onto the ground near the feet (`inventory.take`,
+  a name or a colour. Camp maps have none. Valuables land in the pocket
+  (`player.inv`); guns land on the hotbar (`player.guns`, `weapons.py`) —
+  they do not stack, and a full belt refuses the drop the way a full bag
+  does. `ItemDef.pocket` is which. Roster `inv.w` is bag PLUS belt, so the
+  walk slows from everything you are carrying (`carry_scale`). `{type:"drop","slot"}`
+  pulls a bag cell back onto the ground near the feet (`inventory.take`,
   `loot.place_near`); camp and the walk-out refuse it. A stack is one
-  world drop per unit.
+  world drop per unit. Guns are not tossed from the belt yet.
+- **A gun is a catalog row AND a shot.** `weapons.py` owns damage, cadence,
+  reach, muzzle, noise, laser, AWP hold-to-aim (`aim_delay`) and the
+  3-slot hotbar. Everyone spawns with a Glock 18 in slot 0. Input `held`
+  is the slot in hand (-1 holstered), like the lantern switch; an empty
+  hand does not fire. Per-shot numbers ride `welcome.config.weapons`; the
+  global `FIRE_COOLDOWN` / `SHOT_DAMAGE` / `SHOT_RANGE` are leftovers for
+  a client that has not seen the catalog. Snapshot `held` / `ads` are
+  what remotes draw. Ammo types are named and unused.
 - **A crate is furniture you can break.** Scenery still places the pile;
   `crates.py` owns the live list. `{type:"break","id"}` smashes if the
   feet are inside `crateBreakTiles`; a bullet that hits the sprite box
@@ -258,6 +268,10 @@ game's scale.
   and the snapshot carries `v` / `hat` / `cloth`. Same stats, different
   sheets. A new overlay is a `GEAR` entry processed `--exact`, then a name
   on the pool.
+- Adding a gun = one `WeaponDef` in `weapons.py`, the same key on `loot.py`
+  with `pocket="hotbar"`, a held frame in `make_guns.py` and a 16x16 icon
+  in `make_loot.py`. Combat, laser, weight and the hotbar HUD all read the
+  catalog — the client needs no branch. Ammo is named and unused.
 - Adding a zone = one `zones.Zone` and whatever builds its map. Its title card,
   its safety and its lighting rules are all data; the client needs no change to
   announce or obey a new one. A forest's subtitle is `night_clock()` — a time

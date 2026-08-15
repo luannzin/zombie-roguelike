@@ -12,12 +12,12 @@ is no second socket and no re-handshake.
 client -> server
   {"type":"input","sequence":183,
    "movement":{"up":true,"down":false,"left":false,"right":true},
-   "aim":{"x":0.72,"y":-0.69},"shoot":true,"lantern":true}
+   "aim":{"x":0.72,"y":-0.69},"shoot":true,"lantern":true,"held":0}
   {"type":"ping","t":<client ms>}
   {"type":"start"}                      host only; ignored otherwise
   {"type":"ready"}                      toggle ready, camp only, near the fire
   {"type":"collect","id":"l3"}          pick up a loot drop; ignored if too far
-                                        or the bag has no slot for that key
+                                        or the destination (bag / hotbar) is full
   {"type":"break","id":"k3"}            smash a crate; ignored if too far.
                                         A shot that hits the crate's sprite
                                         box does the same.
@@ -72,10 +72,13 @@ ack rides on each player's own row (`seq`) instead of at the top level: one
 field that differed per recipient would cost a re-serialisation each.
 
 Snapshot arrays:
-  players   what moves, every tick; `seq` is that player's own input ack
-  roster    the same players with their name, colour and score board, sent
-            every ROSTER_EVERY_N_TICKS and on any membership change. A client
-            caches it: those fields feed a 5 Hz HUD and never change per tick
+  players   what moves, every tick; `seq` is that player's own input ack.
+            `held` is the hotbar slot in hand (-1 holstered); `ads` is the
+            trigger held (AWP laser / scope for remotes).
+  roster    the same players with their name, colour, score board and
+            `guns` (3-slot belt), sent every ROSTER_EVERY_N_TICKS and on
+            any membership change. A client caches it: those fields feed a
+            5 Hz HUD and never change per tick
   enemies   live enemies only; `t` keys into welcome.config.enemyTypes.
             `aw` is the 0..1 detection meter — it fills while a player stands
             in the creature's sight cone and is pinned at 1 while it hunts.
@@ -85,7 +88,8 @@ Snapshot arrays:
             `enemyTypes[t].variants`. `hat` / `cloth` are optional indices
             into those overlay pools — omitted when the zombie wears none.
   coins     live gold pickups (one per gold point dropped)
-  shots     hitscan tracers fired since the last snapshot
+  shots     hitscan tracers fired since the last snapshot; `k` is the
+            weapon key, `dmg` the damage dealt (0 on a miss / crate)
   attacks   enemy melee swings; `dmg` is 0 when the victim's i-frames ate it
   kills     deaths since the last snapshot, players and enemies alike
             ({"kind":"enemy"} entries: xp paid now; gold = coins spawned)
@@ -94,8 +98,9 @@ Snapshot arrays:
             and again on a snapshot only when the ground list changed
             (collect or a bag toss)
   lootPickups  drops collected since the last snapshot (juice). `slot` is
-               the bag index it landed in, so the client can fly the sprite
-               from the world onto that HUD cell.
+               the bag or hotbar index it landed in; `dest` is `hotbar`
+               for a gun and omitted for the pocket. The client flies
+               the sprite onto that HUD cell.
   crates       remaining breakable crates; attached like loot — on the map
                payload, and again on a snapshot only when one was smashed
   crateBreaks  crates smashed since the last snapshot (juice). `drop` is

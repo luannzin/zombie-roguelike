@@ -16,7 +16,8 @@ imported by `app/` and never run at request time.
 | `make_scenery.py` | generates final pixels | `assets/processed/scenery/` (cabin, tent, fence, sign, logs, crate, firepit, blood, tracks, clothes, debris) |
 | `make_vfx.py` | generates final pixels | `assets/processed/vfx/` (summon, kindle, aura, wind) |
 | `make_gore.py` | generates final pixels | `assets/processed/gore/` (6 wound decals worn by a hit body) |
-| `make_loot.py` | generates final pixels | `assets/processed/loot/` (one 16x16 frame per item) |
+| `make_loot.py` | generates final pixels | `assets/processed/loot/` (one 16x16 frame per item, including gun icons) |
+| `make_guns.py` | generates final pixels | `assets/processed/guns/` (held side-view, one 26x12 frame per weapon) |
 | `make_hud_icons.py` | generates final pixels | `assets/processed/hud/` (battery, backpack, coin) |
 | `make_audio.py` | generates final samples | `assets/processed/audio/` (31 sounds, 58 wavs + manifest + loudness.json) |
 
@@ -31,7 +32,10 @@ imported by `app/` and never run at request time.
 - Terrain, HUD icons and the world coin have **no raw stage** — they are
   generated straight into `assets/processed/`. The coin disc is `paint_coin`
   in `make_textures.py`; the HUD badge is that disc face-on, the pickup
-  sheet is the same disc spun.
+  sheet is the same disc spun. Guns are the same: `make_guns.py` writes the
+  held side-view; `make_loot.py` writes the 16x16 ground/HUD icons under the
+  same keys. Do not fold them — a 16px isometric pistol rotated around a
+  grip is mush.
 - Generation is deterministic: the same command must produce byte-identical
   PNGs. Do not introduce unseeded randomness.
 - `--tile` must match `TILE_SIZE` in `app/config.py`.
@@ -187,6 +191,7 @@ python tools/make_scenery.py
 python tools/make_vfx.py
 python tools/make_gore.py
 python tools/make_loot.py
+python tools/make_guns.py
 python tools/make_hud_icons.py
 python tools/make_coin.py
 python tools/make_audio.py

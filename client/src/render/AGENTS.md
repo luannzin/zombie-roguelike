@@ -10,7 +10,7 @@ mutation, no React.
 | file | owns |
 | --- | --- |
 | `renderer.ts` | pass sequencing and the world/screen transform |
-| `types.ts` | `RenderState`, `DrawableEntity` — the renderer's input contract (`gear` is the overlay list) |
+| `types.ts` | `RenderState`, `DrawableEntity` — the renderer's input contract (`gear` overlays, `weapon` the held gun) |
 | `camera.ts` | follow, clamp to map bounds, the arrival push-in |
 | `framing.ts` | the wide shot of the camp — zoom and rest-shot fire position |
 | `projection.ts` | zoom + offset between world and screen space |
@@ -19,6 +19,7 @@ mutation, no React.
 | `scenery.ts` | scenery atlas loading: standing props and flat decals of what people left |
 | `vfx.ts` | effect atlas loading: one-shot sheets (summon, kindle, wind) and the looping loot `aura` |
 | `loot.ts` | loot atlas: one 16x16 frame per collectable item |
+| `guns.ts` | held-gun atlas: side-view, one frame per weapon, grip/muzzle in the manifest |
 | `gore.ts` | gore atlas: small wound decals stamped on a body that has been hit |
 | `fov.ts` | shared field of view — `light` and `heat` fields |
 | `wind.ts` | the shared gust field every bending thing reads |
@@ -36,9 +37,9 @@ mutation, no React.
   `layers/`. **The pass order is the atmosphere** — ground (soil, litter, flat
   scenery) → dust → coins and loot sprites → entities, bonfires and standing
   scenery (one depth sort by `y`, including live crates and smash sheets) →
-  overgrowth → motes → darkness → combat effects → loot auras / motes /
+  overgrowth → motes → darkness → combat effects → weapon lasers → loot auras / motes /
   epic-legendary beams / empty-crate wind → hunt diamond →
-  labels → vignette. Effects and loot light go over the darkness because
+  labels → vignette. Effects, lasers and loot light go over the darkness because
   they are light, not things being lit. An unlit drop HIDES ITS SPRITE.
   Glow, motes and the epic/legendary column leak a whisper through the
   night (`lit(visibility, floor)`) so the player can feel a find before
@@ -94,7 +95,9 @@ mutation, no React.
   `game/lobby-scene.ts`, which is already showing the same place when it starts;
   by the time this camera exists the push-in is over and it opens on the frame
   it was handed. Do not add an arrival here — it would replay a shot the player
-  has just watched.
+  has just watched. Game may ease `Camera.zoom` toward a weapon's `scopeZoom`
+  while the AWP trigger is held (`stepScope`); rest is `ARENA_ZOOM`. That is
+  a gun, not a framing rule — keep it out of `Camera`.
 - `framing.ts` holds both ends of that move: `ARENA_ZOOM` is the scale the game
   is played at, and `campZoom` is the wide shot, clamped to at least one step
   below it so there is always a push to see. The wide shot's fire position
@@ -138,6 +141,13 @@ mutation, no React.
   registered to the processed 16x16 grid and blitted at the same dest rect.
   Players wear `[backpack]`; enemies wear the clothes-then-hat list the
   server rolled, or nothing.
+- **A gun is IN HAND, not gear.** `DrawableEntity.weapon` is a catalog key
+  into the guns atlas (`make_guns.py`): side-view, pointing right, rotated
+  around the grip and flipped when aim is left. An empty hand draws nothing.
+  The laser is a separate stroke AFTER darkness (`drawWeaponLasers`) —
+  pistols and rifles always, AWP only while `laserAlpha` is up. Reach is
+  precomputed (tile DDA) so the pass is a line. Do not rotate a loot-atlas
+  icon; that sheet is the ground/HUD face.
 - Colours come from `theme/palette.ts` only. Never write a literal colour here.
 - Frames are bottom-anchored, so any frame height works with no extra code.
 - A prop sheet's frames are VARIANTS unless its manifest entry carries `fps`

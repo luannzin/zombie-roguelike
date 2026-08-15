@@ -20,6 +20,7 @@ from .config import (
     level_progress,
 )
 from .inventory import Inventory
+from .weapons import Hotbar
 
 COLORS = [
     "#e6484f", "#f2a541", "#f6e05e", "#7bd389", "#3fb8af",
@@ -39,6 +40,8 @@ class InputCmd:
     aim_y: float = 0.0
     shoot: bool = False
     lantern: bool = False
+    #: Hotbar slot the client wants in hand. -1 is holstered.
+    held: int = 0
 
     @staticmethod
     def from_message(msg: dict) -> "InputCmd":
@@ -52,6 +55,10 @@ class InputCmd:
             ay /= length
         else:
             ax, ay = 1.0, 0.0
+        try:
+            held = int(msg.get("held", 0))
+        except (TypeError, ValueError):
+            held = 0
         return InputCmd(
             sequence=int(msg.get("sequence", 0)),
             up=bool(mv.get("up")),
@@ -62,6 +69,7 @@ class InputCmd:
             aim_y=ay,
             shoot=bool(msg.get("shoot")),
             lantern=bool(msg.get("lantern")),
+            held=held,
         )
 
 
@@ -87,6 +95,10 @@ class Player:
     gold: int = 0
     #: The pocket. Slots and weight; extraction will spend what is in it.
     inventory: Inventory = field(default_factory=lambda: Inventory(INVENTORY_SLOTS))
+    #: Three gun slots. Starts with a Glock 18 in the first cell.
+    hotbar: Hotbar = field(default_factory=Hotbar.starting)
+    #: How long the trigger has been held. AWP spends this before it fires.
+    aim_hold: float = 0.0
 
     # server bookkeeping (never sent verbatim)
     inputs: deque = field(default_factory=deque)
@@ -110,6 +122,11 @@ class Player:
         """Head end of the vertical hit capsule (inset by radius)."""
         return self.y + PLAYER_HALF_HEIGHT - SPRITE_HEIGHT + self.radius
 
+    @property
+    def carry_weight(self) -> float:
+        """Bag plus every gun on the belt. The walk reads this, not the bag alone."""
+        return self.inventory.weight + self.hotbar.weight
+
     def snapshot_payload(self) -> dict:
         """What changes every tick. Everything else rides the roster.
 
@@ -118,6 +135,13 @@ class Player:
         true. Client reconcile then blocks the other axis (strafe "lag"
         while sliding down a wall; up/left were fine because +EPS rounds away).
         """
+        weapon = self.hotbar.equipped()
+        ads = (
+            weapon is not None
+            and weapon.aim_delay > 0.0
+            and self.last_input.shoot
+            and self.aim_hold > 0.0
+        )
         return {
             "id": self.id,
             "x": round(self.x, 4),
@@ -135,6 +159,8 @@ class Player:
             # Not identity, but it has to land the moment it flips: it is what
             # the campfire's ready count is counting.
             "ready": self.ready,
+            "held": self.hotbar.held,
+            "ads": ads,
         }
 
     def to_payload(self) -> dict:
@@ -152,7 +178,13 @@ class Player:
             "level": level,
             "xpInLevel": into_level,
             "xpToLevel": to_level,
-            "inv": self.inventory.to_payload(),
+            "inv": {
+                **self.inventory.to_payload(),
+                # Total carried kg — bag plus the belt — so prediction and the
+                # weight bar agree without a second field.
+                "w": round(self.carry_weight, 2),
+            },
+            "guns": self.hotbar.to_payload(),
         }
 
 

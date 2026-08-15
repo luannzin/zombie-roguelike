@@ -60,7 +60,8 @@ import { bindInventoryDrop } from './inventory-actions';
 import { readInventoryAnchor, clearInventoryAnchors } from './inventory-anchors';
 import { Lantern } from './lantern';
 import { SnapshotBuffer, type RenderedEnemy, type RenderedPlayer } from './interpolation';
-import { clearLootFlies, spawnLootFly, stepLootFlies } from './loot-flies';
+import { clearLootFlies, listLootFlies, spawnLootFly, stepLootFlies } from './loot-flies';
+import { warpHudPoint } from '../lib/lens';
 import { LocalPlayer } from './prediction';
 import { carryBurden } from './simulation';
 import { hearthMask, TileMap } from './world';
@@ -661,9 +662,8 @@ export class Game {
     const def = this.config?.loot?.[ev.k];
     if (def) {
       // Open now so the slots exist before the hold ends and the sprite flies.
+      // Spawn first so inventoryHud can hide that cell and hold the weight.
       this.inventoryOpen = true;
-      const inventory = this.inventoryHud();
-      if (inventory) this.patchHud({ inventory });
       spawnLootFly({
         id: ev.id,
         key: ev.k,
@@ -671,6 +671,8 @@ export class Game {
         rarity: def.rarity,
         slot: ev.slot,
       });
+      const inventory = this.inventoryHud();
+      if (inventory) this.patchHud({ inventory });
     }
     this.camera.addTrauma(PICKUP_TRAUMA);
   }
@@ -1427,11 +1429,18 @@ export class Game {
     for (const def of Object.values(catalog)) {
       if (def.frame + 1 > frames) frames = def.frame + 1;
     }
+    let weight = this.local?.carryWeight ?? this.localMeta?.inv?.w ?? 0;
+    for (const fly of listLootFlies()) {
+      const def = catalog[fly.key];
+      if (def) weight -= def.weight;
+    }
+    if (weight < 0) weight = 0;
+
     return {
       open: this.inventoryOpen,
       cap,
       slots,
-      weight: this.local?.carryWeight ?? this.localMeta?.inv?.w ?? 0,
+      weight: Math.round(weight * 100) / 100,
       maxWeight: config.carryMaxWeight ?? 10,
       lootFrames: Math.max(1, frames),
       catches: this.bagCatches,
@@ -1448,12 +1457,17 @@ export class Game {
       this.smoothY + config.playerHalfHeight - config.spriteHeight - config.tileSize * 0.35,
     );
     const landed = stepLootFlies(dt, (fly) => {
-      const to =
-        readInventoryAnchor(`slot-${fly.slot}`) ?? readInventoryAnchor('pack');
-      if (!to) return null;
-      return { from: { x: headX, y: headY }, to };
+      const slot = readInventoryAnchor(`slot-${fly.slot}`);
+      const from = { x: headX, y: headY };
+      if (!slot) return { from, to: from, ready: false };
+      const to = warpHudPoint(slot.x, slot.y, window.innerWidth, window.innerHeight);
+      return { from, to, ready: true };
     });
-    if (landed > 0) this.bagCatches += landed;
+    if (landed > 0) {
+      this.bagCatches += landed;
+      const inventory = this.inventoryHud();
+      if (inventory) this.patchHud({ inventory });
+    }
   }
 
   private carryBurdenOf(id: string): number {

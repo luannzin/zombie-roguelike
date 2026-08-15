@@ -70,12 +70,15 @@ and nowhere near the frame loop.
   opens it so the slot is on screen before the fly leaves the head. Slot
   centres are written to `inventory-anchors` from layout. `LootFly` sits
   outside the glass — hold, then travel — pose is rAF, membership is
-  `loot-flies`. A fly targeting a cell hides that cell's icon until it
-  lands. Hovering a filled cell is a pointer and opens `LootCard`
+  `loot-flies`. A fly targeting a cell keeps that cell empty (no rarity
+  border, no value, no weight on the bar) until it lands. Slot anchors
+  are written every frame while the drawer is open, and travel waits
+  until the cell is on screen so the sprite cannot aim at a collapsed
+  row. Hovering a filled cell is a pointer and opens `LootCard`
   (`TooltipCard` chrome: same fill, bar, staircase arrow). The card
   measures and flips or shifts so a left-edge slot cannot push it off
   the screen; the arrow slides with it. Name and rarity both take the
-  rarity colour. Slot value is the static coin (`CoinIcon`, idle frame)
+  rarity colour. Slot value is the small HUD coin (`/hud/coin.png`)
   plus the number. Dragging a cell off the panel tosses it;
   `InventoryGhost` follows the cursor.
   Both the card and the ghost portal to `document.body` so the glass

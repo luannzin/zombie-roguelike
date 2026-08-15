@@ -212,8 +212,11 @@ seam React is allowed to read.
   TAB toggles `inventory.open` locally and is patched immediately so the
   drawer does not wait for the 5 Hz tick. A collect fly is
   `loot-flies` + `inventory-anchors`, not a React render: hold over the
-  head, open the bag, then travel into the slot. The cell stays empty
-  while `incomingHas(slot)` so the fly is the sprite that lands.
+  head, open the bag, then travel into the slot. Travel waits until
+  `slot-N` has a live anchor (drawer open, cell on screen) and aims
+  through `warpHudPoint` so the sprite lands on the glass-warped cell.
+  The cell and the weight bar stay at their pre-collect state while
+  that fly is in the air.
   Dragging a cell off the panel calls `requestInventoryDrop`; `Game`
   sends `{type:"drop","slot"}` and clears the cell until the roster
   confirms. `lootPrompt.full` is a bag that cannot take the nearby drop.

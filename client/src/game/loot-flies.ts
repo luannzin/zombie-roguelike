@@ -33,6 +33,8 @@ export interface LootFlyPose {
 export interface LootFlyEnds {
   from: { x: number; y: number };
   to: { x: number; y: number };
+  /** Slot is on screen. Travel waits for this so we never fly at a collapsed cell. */
+  ready: boolean;
 }
 
 const flies: LootFlySpec[] = [];
@@ -64,7 +66,12 @@ export function stepLootFlies(
   let landed = 0;
   for (let i = flies.length - 1; i >= 0; i--) {
     const fly = flies[i]!;
-    const age = (ages.get(fly.id) ?? 0) + dt;
+    const ends = locate(fly);
+    if (!ends) continue;
+    let age = (ages.get(fly.id) ?? 0) + dt;
+    if (age >= LOOT_FLY_HOLD && !ends.ready) {
+      age = LOOT_FLY_HOLD - 0.0001;
+    }
     if (age >= LOOT_FLY_LIFE) {
       flies.splice(i, 1);
       ages.delete(fly.id);
@@ -73,8 +80,6 @@ export function stepLootFlies(
       continue;
     }
     ages.set(fly.id, age);
-    const ends = locate(fly);
-    if (!ends) continue;
     poses.set(fly.id, poseAt(age, ends));
   }
   if (landed > 0) notify();
@@ -104,9 +109,18 @@ function poseAt(age: number, ends: LootFlyEnds): LootFlyPose {
   };
 }
 
+/** How many flies are still the sprite for that cell. */
+export function incomingCount(slot: number): number {
+  let n = 0;
+  for (const fly of snapshot) {
+    if (fly.slot === slot) n += 1;
+  }
+  return n;
+}
+
 /** True while a fly is still the sprite for that cell — the slot stays empty. */
 export function incomingHas(slot: number): boolean {
-  return snapshot.some((fly) => fly.slot === slot);
+  return incomingCount(slot) > 0;
 }
 
 export function listLootFlies(): readonly LootFlySpec[] {

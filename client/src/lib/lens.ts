@@ -27,6 +27,9 @@
 
 import { createSurface } from './canvas';
 
+/** Corner travel as a fraction of half the viewport. Shared with `HudScreen`. */
+export const HUD_LENS = 0.02;
+
 export interface LensMap {
   /** PNG data URL for `feImage`. */
   url: string;
@@ -46,6 +49,30 @@ export interface LensMap {
  * Stepping reads as pixel art; blur reads as a mistake.
  */
 const RESOLUTION = 96;
+
+/**
+ * Where a HUD layout point appears after the glass barrel.
+ *
+ * `feDisplacementMap` shows layout `S + O(S)` at screen `S`. For a slot
+ * centre `C` the first-order inverse is `C - O(C)` — enough at HUD_LENS
+ * that a fly outside the filter lands on the cell the player sees.
+ */
+export function warpHudPoint(
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  lens: number = HUD_LENS,
+): { x: number; y: number } {
+  if (width < 1 || height < 1) return { x, y };
+  const u = (x / width) * 2 - 1;
+  const v = (y / height) * 2 - 1;
+  const bow = lens * (u * u + v * v - 1);
+  return {
+    x: x - u * bow * (width / 2),
+    y: y - v * bow * (height / 2),
+  };
+}
 
 export function barrelMap(width: number, height: number, lens: number): LensMap {
   const halfWidth = width / 2;

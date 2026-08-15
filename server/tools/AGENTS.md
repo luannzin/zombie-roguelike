@@ -15,7 +15,7 @@ imported by `app/` and never run at request time.
 | `make_scenery.py` | generates final pixels | `assets/processed/scenery/` (cabin, tent, fence, sign, logs, crate, firepit, blood, tracks, clothes, debris) |
 | `make_vfx.py` | generates final pixels | `assets/processed/vfx/` (summon, kindle, aura) |
 | `make_loot.py` | generates final pixels | `assets/processed/loot/` (one 16x16 frame per item) |
-| `make_hud_icons.py` | generates final pixels | `assets/processed/hud/` (battery, backpack) |
+| `make_hud_icons.py` | generates final pixels | `assets/processed/hud/` (battery, backpack, coin) |
 
 ## Local Contracts
 

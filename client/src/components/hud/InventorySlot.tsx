@@ -1,15 +1,15 @@
 /**
  * One bag cell: rarity border, the item sprite, value up-right, qty down-right.
- * A fly targeting this cell IS the sprite — the icon stays hidden until it lands.
+ * A fly targeting this cell IS the sprite — the cell stays empty until it lands.
  */
 
-import { useLayoutEffect, useRef, useSyncExternalStore, type PointerEvent } from 'react';
+import { useEffect, useRef, useSyncExternalStore, type PointerEvent } from 'react';
 import type { HudInventorySlot } from '../../game/hud-store';
 import {
   dropInventoryAnchor,
   writeInventoryAnchor,
 } from '../../game/inventory-anchors';
-import { incomingHas, subscribeLootFlies } from '../../game/loot-flies';
+import { incomingCount, subscribeLootFlies } from '../../game/loot-flies';
 import type { LootRarity } from '../../net/protocol';
 import { cn } from '@/lib/utils';
 import { LootIcon } from './LootIcon';
@@ -19,6 +19,8 @@ export interface InventorySlotProps {
   index: number;
   item: HudInventorySlot | null;
   lootFrames: number;
+  /** Drawer is open. Anchors are only written then, so a fly cannot aim at a collapsed cell. */
+  active?: boolean;
   dragging?: boolean;
   onHover?: (item: HudInventorySlot, anchor: { x: number; top: number; bottom: number }) => void;
   onLeave?: () => void;
@@ -39,6 +41,7 @@ export function InventorySlot({
   index,
   item,
   lootFrames,
+  active = false,
   dragging = false,
   onHover,
   onLeave,
@@ -49,29 +52,32 @@ export function InventorySlot({
   const ref = useRef<HTMLDivElement>(null);
   const incoming = useSyncExternalStore(
     subscribeLootFlies,
-    () => incomingHas(index),
-    () => false,
+    () => incomingCount(index),
+    () => 0,
   );
-  const hide = dragging || (incoming && (!item || item.qty <= 1));
+  const shown = shownItem(item, incoming, dragging);
 
-  useLayoutEffect(() => {
+  useEffect(() => {
     const el = ref.current;
-    if (!el) return;
     const id = `slot-${index}`;
-    const write = () => {
+    if (!el || !active) {
+      dropInventoryAnchor(id);
+      return;
+    }
+    let raf = 0;
+    const tick = () => {
       const box = el.getBoundingClientRect();
-      writeInventoryAnchor(id, box.left + box.width / 2, box.top + box.height / 2);
+      if (box.width >= 8 && box.height >= 8) {
+        writeInventoryAnchor(id, box.left + box.width / 2, box.top + box.height / 2);
+      }
+      raf = requestAnimationFrame(tick);
     };
-    write();
-    const observer = new ResizeObserver(write);
-    observer.observe(el);
-    window.addEventListener('resize', write);
+    raf = requestAnimationFrame(tick);
     return () => {
-      observer.disconnect();
-      window.removeEventListener('resize', write);
+      cancelAnimationFrame(raf);
       dropInventoryAnchor(id);
     };
-  }, [index]);
+  }, [index, active]);
 
   return (
     <div
@@ -79,16 +85,16 @@ export function InventorySlot({
       data-inv-slot={index}
       className={cn(
         'relative size-10 touch-none border bg-panel-inset shadow-[inset_0_0_0_1px_var(--surface)]',
-        item ? RARITY_BORDER[item.rarity] : 'border-track-border',
-        item && !incoming ? 'cursor-pointer' : null,
+        shown ? RARITY_BORDER[shown.rarity] : 'border-track-border',
+        shown ? 'cursor-pointer' : null,
         dragging ? 'cursor-grabbing' : null,
       )}
       onPointerEnter={() => {
-        if (!item || dragging) return;
+        if (!shown || dragging) return;
         const el = ref.current;
         if (!el) return;
         const box = el.getBoundingClientRect();
-        onHover?.(item, {
+        onHover?.(shown, {
           x: box.left + box.width / 2,
           top: box.top,
           bottom: box.bottom,
@@ -96,26 +102,38 @@ export function InventorySlot({
       }}
       onPointerLeave={() => onLeave?.()}
       onPointerDown={(event) => {
-        if (!item || incoming) return;
-        onGrip?.(index, item, event);
+        if (!shown) return;
+        onGrip?.(index, shown, event);
       }}
       onPointerMove={onDrag}
       onPointerUp={onRelease}
       onPointerCancel={onRelease}
     >
-      {item && !hide ? (
+      {shown ? (
         <>
           <LootIcon
-            frame={item.frame}
+            frame={shown.frame}
             frames={lootFrames}
             className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2"
           />
-          <SlotValue value={item.value} />
+          <SlotValue value={shown.value} />
           <span className="text-ink absolute right-0.5 bottom-px text-[11px] leading-[11px] tabular-nums">
-            {item.qty}
+            {shown.qty}
           </span>
         </>
       ) : null}
     </div>
   );
+}
+
+function shownItem(
+  item: HudInventorySlot | null,
+  incoming: number,
+  dragging: boolean,
+): HudInventorySlot | null {
+  if (!item || dragging) return null;
+  const qty = item.qty - incoming;
+  if (qty <= 0) return null;
+  if (qty === item.qty) return item;
+  return { ...item, qty };
 }

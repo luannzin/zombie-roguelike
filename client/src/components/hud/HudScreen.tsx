@@ -31,10 +31,7 @@
  */
 
 import { useEffect, useId, useRef, type ReactNode } from 'react';
-import { barrelMap } from '@/lib/lens';
-
-/** Corner travel as a fraction of half the viewport. Bigger = fatter tube. */
-const LENS = 0.02;
+import { barrelMap, HUD_LENS } from '@/lib/lens';
 /** Peak horizontal tear, in px, at full burst strength. */
 const TEAR_PX = 13;
 /** Peak channel separation, in px. Beyond ~3 the text stops being readable. */
@@ -95,7 +92,7 @@ export function HudScreen({ unstable, children }: HudScreenProps) {
       const { width, height } = box.getBoundingClientRect();
       if (width < 1 || height < 1) return;
 
-      const map = barrelMap(width, height, LENS);
+      const map = barrelMap(width, height, HUD_LENS);
       const image = warp.current;
       if (image) {
         image.setAttribute('href', map.url);

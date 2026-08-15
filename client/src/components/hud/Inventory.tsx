@@ -176,6 +176,7 @@ export function Inventory({ inventory }: InventoryProps) {
                     index={index}
                     item={item}
                     lootFrames={inventory.lootFrames}
+                    active={inventory.open}
                     dragging={drag?.index === index}
                     onHover={(next, box) => {
                       if (drag) return;

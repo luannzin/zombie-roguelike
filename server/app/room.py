@@ -836,6 +836,7 @@ class Room:
         # its sight cone happens to be pointing.
         ai.alarm(target, source)
         if target.hp > 0:
+            target.take_stagger(amount)
             return
 
         target.hp = 0

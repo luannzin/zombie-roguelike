@@ -100,7 +100,11 @@ game's scale.
   own eyes, and all of them go through `ai.commit`: a neighbour's shout (one
   hop, `ENEMY_ALERT_SHARE_DIST` — a chain would wake the map), an `ai.Noise`,
   and `ai.alarm` when the room applies damage. Getting shot in the back must
-  wake it; do not add a damage path that skips `alarm`.
+  wake it; do not add a damage path that skips `alarm`. A gun hit that
+  leaves the enemy alive also stacks `Enemy.stagger` (`take_stagger`):
+  `ai.move` scales vx/vy by it so a burst slows then plants them. Do not
+  put stagger on the snapshot — the slowed velocity is enough. A pause in
+  fire decays the meter (`tick_stagger`).
 - **`ai.Noise` is the sound system's only shape.** The room collects them
   during a tick (`Room.noises`) and `ai.update` consumes them; they are
   cleared every tick, and a noise that survived one would keep waking whatever

@@ -83,6 +83,10 @@ until it is moving again — the difference between "briefly snagged" and
 On top of that a light separation push keeps a pack spread into a crescent
 instead of stacked into one sprite.
 
+Gun hits stack a stagger meter on the enemy (`Enemy.take_stagger`). `move`
+scales vx/vy by it, so a burst slows then plants them. The meter is never
+on the snapshot — the slowed velocity is enough. A pause in fire decays it.
+
 Per tick this is O(enemies x players + enemies²) with tiny constants, plus one
 BFS per player when they change tile; the director's population cap and the
 field's rebuild interval are what keep both bounded.
@@ -122,6 +126,7 @@ from .config import (
     ENEMY_SPAWN_INTERVAL,
     ENEMY_SPAWN_MAX_DIST,
     ENEMY_SPAWN_MIN_DIST,
+    ENEMY_STAGGER_STOP,
     ENEMY_STUCK_DELAY,
     ENEMY_SUSPICIOUS,
     ENEMY_TURN_DEGREES,
@@ -231,6 +236,7 @@ def update(
     shouted: list[tuple[Enemy, Player]] = []
 
     for enemy in pack:
+        enemy.tick_stagger(dt)
         if enemy.attack_cooldown > 0.0:
             enemy.attack_cooldown = max(0.0, enemy.attack_cooldown - dt)
 
@@ -758,6 +764,17 @@ def separation(enemy: Enemy, pack: Sequence[Enemy]) -> tuple[float, float]:
     return px, py
 
 
+def gait(enemy: Enemy) -> float:
+    """0..1 walk scale from stacked gun hits. 0 plants them.
+
+    Written onto vx/vy inside `move` so the snapshot already carries the slow
+    and interpolation does the rest — stagger itself never goes on the wire.
+    """
+    if enemy.stagger >= ENEMY_STAGGER_STOP:
+        return 0.0
+    return max(0.0, 1.0 - enemy.stagger)
+
+
 def move(enemy: Enemy, world: TileMap, dt: float) -> None:
     """Axis-separated move against the tile grid — the player's rule, reused.
 
@@ -765,6 +782,11 @@ def move(enemy: Enemy, world: TileMap, dt: float) -> None:
     this is the only place that knows the difference between "walking" and
     "walking into something".
     """
+    scale = gait(enemy)
+    if scale < 1.0:
+        enemy.vx *= scale
+        enemy.vy *= scale
+
     hw = enemy.type.half_width
     hh = enemy.type.half_height
     before_x = enemy.x

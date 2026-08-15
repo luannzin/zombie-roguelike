@@ -6,10 +6,12 @@ what it pays out when it dies (xp, gold). It is frozen data — one entry in
 `ENEMY_TYPES` plus a processed sprite sheet of the same name is a whole new
 creature. Nothing in the room, the renderer or the protocol is per-creature.
 
-An **Enemy** is one live instance of a type: position, hp, cooldowns, current
-target. It deliberately exposes the same `(id, x, capsule_y0, capsule_y1,
-radius, alive)` shape as `Player`, so `combat.raycast` shoots it with no
-changes and players and enemies can share one target list.
+An **Enemy** is one live instance of a type: position, hp, cooldowns, stagger
+from stacked gun hits, current target. It deliberately exposes the same
+`(id, x, capsule_y0, capsule_y1, radius, alive)` shape as `Player`, so
+`combat.raycast` shoots it with no changes and players and enemies can share
+one target list. Stagger never rides the snapshot — `ai.move` writes the
+slowed vx/vy instead.
 
 Sizes and speeds are authored in TILES and seconds, exactly like config.py, and
 multiplied by TILE_SIZE here — so changing the game's scale rescales enemies
@@ -34,6 +36,13 @@ import random
 from dataclasses import dataclass
 
 from .config import (
+    ENEMY_STAGGER_DECAY,
+    ENEMY_STAGGER_HOLD,
+    ENEMY_STAGGER_HOLD_MAX,
+    ENEMY_STAGGER_HOLD_SCALE,
+    ENEMY_STAGGER_MAX_ADD,
+    ENEMY_STAGGER_MIN,
+    ENEMY_STAGGER_PER_DAMAGE,
     ENEMY_VIEW_DARK_TILES,
     ENEMY_VIEW_LIT_TILES,
     PLAYER_BOX_TILES_H,
@@ -235,6 +244,11 @@ class Enemy:
 
     # server bookkeeping (never sent verbatim)
     attack_cooldown: float = 0.0
+    #: 0..1 walk slow from stacked gun hits. At ENEMY_STAGGER_STOP they plant.
+    #: Decays after stagger_left; never on the snapshot — vx/vy already slow.
+    stagger: float = 0.0
+    #: Seconds the meter holds before decaying. Refreshed by each landed shot.
+    stagger_left: float = 0.0
     target_id: str | None = None
     #: Seconds spent with no living player anywhere near — see ai.update.
     abandoned: float = 0.0
@@ -279,6 +293,25 @@ class Enemy:
             angle = random.uniform(0.0, math.tau)
             self.aim_x = math.cos(angle)
             self.aim_y = math.sin(angle)
+
+    def take_stagger(self, amount: int) -> None:
+        """Stack a gun hit onto the walk-slow meter. Call from damage_enemy."""
+        add = max(
+            ENEMY_STAGGER_MIN,
+            min(ENEMY_STAGGER_MAX_ADD, amount * ENEMY_STAGGER_PER_DAMAGE),
+        )
+        self.stagger = min(1.0, self.stagger + add)
+        hold = ENEMY_STAGGER_HOLD + add * ENEMY_STAGGER_HOLD_SCALE
+        self.stagger_left = min(ENEMY_STAGGER_HOLD_MAX, self.stagger_left + hold)
+
+    def tick_stagger(self, dt: float) -> None:
+        """Hold, then decay. Call once per tick before steering."""
+        if self.stagger_left > 0.0:
+            self.stagger_left = max(0.0, self.stagger_left - dt)
+            return
+        if self.stagger <= 0.0:
+            return
+        self.stagger = max(0.0, self.stagger - ENEMY_STAGGER_DECAY * dt)
 
     # --- hit capsule (same contract as Player) -------------------------------
     @property

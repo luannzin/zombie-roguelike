@@ -153,6 +153,20 @@ VISION_LANTERN_DIST = TILE_SIZE * VISION_LANTERN_TILES
 MELEE_IMMUNITY = 0.6         # seconds of melee i-frames after being hit
 RESPAWN_IMMUNITY = 1.5       # longer window on respawn, so you can walk away
 
+# Gun hits slow then pin. Damage adds to a 0..1 meter; at STOP they plant.
+# A Glock (~7) is a hitch; a burst stacks into a stop. A Deagle (~24) almost
+# pins in one; an AWP (~55) plants on the first round. The hold is how long
+# the meter stays before it decays — a pause in fire lets them walk again.
+# Never on the wire: the snapshot already carries the slowed vx/vy.
+ENEMY_STAGGER_PER_DAMAGE = 1 / 32
+ENEMY_STAGGER_MIN = 0.16
+ENEMY_STAGGER_MAX_ADD = 0.92
+ENEMY_STAGGER_STOP = 0.82
+ENEMY_STAGGER_HOLD = 0.22
+ENEMY_STAGGER_HOLD_SCALE = 0.35
+ENEMY_STAGGER_HOLD_MAX = 1.05
+ENEMY_STAGGER_DECAY = 1.6
+
 # Population. The cap scales with the number of living players so a solo run is
 # not a swarm and a full room is not empty.
 ENEMY_MAX_PER_PLAYER = 6

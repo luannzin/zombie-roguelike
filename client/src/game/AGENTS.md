@@ -122,9 +122,11 @@ seam React is allowed to read.
   of blood carrying forward out the far side (`Effects.spawnBlood`), a number,
   and — if the round was heavy — a knockback along the shot with a tilt
   around the feet (`EntityVisuals.takeHit`). `hitPower(damage)` is the
-  scale: a Glock flinches, a Deagle plants them, an AWP throws them. Blood
-  volume and impact debris use the same number. The freeze is visual only;
-  the server still walks the body.
+  scale: a Glock flinches, a Deagle plants them, an AWP still hits harder
+  than either — the shove itself stays small. Blood volume and impact
+  debris use the same number. The freeze stacks so a burst keeps the
+  sprite planted; the walk slow/stop is authoritative (`Enemy.stagger`),
+  not a client freeze over a body that keeps walking.
   The WOUND is what is still there ten seconds later: one frame of the gore
   sheet pinned to the sprite by `EntityVisuals.splatter`, riding the body
   through its walk cycle and its facings until it dries. Without the second a

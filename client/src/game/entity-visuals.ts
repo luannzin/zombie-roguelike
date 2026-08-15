@@ -273,19 +273,19 @@ export class EntityVisuals {
   }
 
   /**
-   * A gunshot landing on a body. Knockback is ALONG the shot (they go
-   * backwards), with a tilt around the feet and a freeze so a heavy round
-   * plants them for a beat. `power` is `hitPower(damage)`.
+   * A gunshot landing on a body. Knockback is a small shove ALONG the shot,
+   * with a tilt around the feet. The freeze stacks so a burst plants them;
+   * the server is what actually slows the walk. `power` is `hitPower(damage)`.
    */
   takeHit(id: string, dirX: number, dirY: number, power: number): void {
     const state = this.state(id);
     const { x: nx, y: ny } = normalize(dirX, dirY);
-    const kick = 1.5 + power * 4.4;
+    const kick = 0.8 + power * 1.6;
     state.recoilX = nx * kick;
     state.recoilY = ny * kick;
-    const twist = (0.07 + power * 0.15) * (nx >= 0 ? 1 : -1);
-    state.hitSpin = twist;
-    state.stunLeft = 0.035 + power * 0.085;
+    const twist = (0.035 + power * 0.055) * (nx >= 0 ? 1 : -1);
+    if (Math.abs(twist) > Math.abs(state.hitSpin)) state.hitSpin = twist;
+    state.stunLeft = Math.min(0.55, state.stunLeft + 0.04 + power * 0.07);
     state.hitFlash = HIT_FLASH_LIFE * (0.8 + power * 0.45);
     const wounds = power > 1.7 ? 2 : 1;
     for (let i = 0; i < wounds; i++) this.splatter(id, dirX, dirY);

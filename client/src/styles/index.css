@@ -411,6 +411,9 @@
    */
   --animate-lantern-refused: lantern-refused 0.3s steps(1, end) 1;
   --animate-hotbar-pick: hotbar-pick 0.18s ease-out 1;
+  --animate-quest-in: quest-in 0.28s cubic-bezier(0.23, 1, 0.32, 1) both;
+  --animate-quest-out: quest-out 0.22s cubic-bezier(0.55, 0, 1, 0.45) both;
+  --animate-quest-done: quest-done 0.32s cubic-bezier(0.23, 1, 0.32, 1) 1;
 
   /*
    * An item landing in the pack. One hard scale bump, same step language as
@@ -730,6 +733,37 @@
     transform: translateY(0) scale(1);
     }
   }
+  @keyframes quest-in {
+    from {
+      opacity: 0;
+      transform: translateY(-6px) scale(0.96);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+  @keyframes quest-out {
+    from {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+    to {
+      opacity: 0;
+      transform: translateY(-4px) scale(0.96);
+    }
+  }
+  @keyframes quest-done {
+    0% {
+      transform: scale(1);
+    }
+    40% {
+      transform: scale(1.14);
+    }
+    100% {
+      transform: scale(1);
+    }
+  }
   @keyframes pack-catch {
   0% {
     scale: 1;
@@ -845,6 +879,40 @@
 
   .zone-title-slash {
     display: none;
+  }
+
+  .animate-quest-in {
+    animation-name: quest-fade-in;
+    animation-duration: 160ms;
+    animation-timing-function: ease;
+  }
+
+  .animate-quest-out {
+    animation-name: quest-fade-out;
+    animation-duration: 160ms;
+    animation-timing-function: ease;
+  }
+
+  .animate-quest-done {
+    animation: none;
+  }
+}
+
+@keyframes quest-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes quest-fade-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
   }
 }
 

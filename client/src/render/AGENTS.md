@@ -86,7 +86,13 @@ mutation, no React.
   colours are replaced. `explored` is committed inside `shine`, never in a pass
   over the whole field.
 - The minimap repaints on its own cadence, not the render clock: `Minimap.draw`
-  is safe to call every frame and throttles itself.
+  is safe to call every frame and throttles itself. `rebuildTiles()` is the
+  contract when kinds change (the forest swallowing the arrival corridor).
+- **`Renderer.stampTiles` is the slam.** New TREE/ROCK on tiles that were VOID
+  go into the prop bake (`TerrainLayer.stampProps`) without rebuilding soil —
+  the corridor was already forest floor. `DarknessLayer.invalidatePath` drops
+  the VOID crush so the ribbon recedes with the path. A full terrain reset
+  here would hitch the slam.
 - A `LightSource` is a light the WORLD owns — a bonfire — and it is not a
   `Viewer` with the aim zeroed: it has no cone, no battery and no lag, and it
   is warmer than any lamp. It gets its own pass (`FovField.burn`) over the same

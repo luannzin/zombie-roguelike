@@ -10,9 +10,9 @@ Shape of the result, and why:
     comes from thickets and boulder fields with open ground between them, which
     is what makes a lantern interesting: you lose sight of a zombie behind a
     treeline, not behind a doorframe.
-  * The CENTRE is always a clearing. Players spawn there together (see
-    Room.pick_spawn), so it has to be open and it has to be reachable from
-    everywhere.
+  * The CENTRE is a glade so the map breathes. Players no longer spawn there:
+    they emerge from a VOID corridor on a random edge (see `entrance.py`) and
+    that path seals behind them.
   * It is CONNECTED. Noise happily produces sealed pockets; step 6 finds them
     and either drills them out or fills them in. `build_forest` asserts the
     result, the same guarantee `build_arena` gives.
@@ -26,9 +26,10 @@ from __future__ import annotations
 import math
 import random
 
-from . import crates, loot, rift, scenery
+from . import crates, entrance, loot, rift, scenery
+from .config import ENTRANCE_MOUTH_TILES, TILE_SIZE
 from .maps import count_reachable
-from .world import FLOOR, ROCK, TREE, TileMap
+from .world import FLOOR, ROCK, TREE, VOID, TileMap
 
 # --- authoring knobs ---------------------------------------------------------
 # Map size in tiles. Big enough that the lantern radius (11 tiles) never lights
@@ -103,13 +104,21 @@ def _fbm(octaves: list[_ValueNoise], x: float, y: float) -> float:
     return total / weight
 
 
-def _carve_circle(tiles: list[list[int]], cx: float, cy: float, radius: float) -> None:
+def _carve_circle(
+    tiles: list[list[int]],
+    cx: float,
+    cy: float,
+    radius: float,
+    protect: int | None = None,
+) -> None:
     height = len(tiles)
     width = len(tiles[0])
     r2 = radius * radius
     for ty in range(max(0, int(cy - radius)), min(height, int(cy + radius) + 1)):
         for tx in range(max(0, int(cx - radius)), min(width, int(cx + radius) + 1)):
             if (tx - cx) ** 2 + (ty - cy) ** 2 <= r2:
+                if protect is not None and tiles[ty][tx] == protect:
+                    continue
                 tiles[ty][tx] = FLOOR
 
 
@@ -142,19 +151,28 @@ def _regions(tiles: list[list[int]]) -> list[list[tuple[int, int]]]:
     return found
 
 
-def _drill(tiles: list[list[int]], start: tuple[int, int], goal: tuple[int, int]) -> None:
+def _drill(
+    tiles: list[list[int]],
+    start: tuple[int, int],
+    goal: tuple[int, int],
+    protect: int | None = None,
+) -> None:
     """Clear an L-shaped 2-tile-wide trail between two points."""
     x, y = start
     gx, gy = goal
     while x != gx:
         x += 1 if gx > x else -1
-        _carve_circle(tiles, x, y, 1.2)
+        _carve_circle(tiles, x, y, 1.2, protect)
     while y != gy:
         y += 1 if gy > y else -1
-        _carve_circle(tiles, x, y, 1.2)
+        _carve_circle(tiles, x, y, 1.2, protect)
 
 
-def _connect(tiles: list[list[int]], centre: tuple[int, int]) -> None:
+def _connect(
+    tiles: list[list[int]],
+    centre: tuple[int, int],
+    protect: int | None = None,
+) -> None:
     """Make every floor tile reachable from the centre clearing.
 
     Small pockets are filled solid (they are noise artefacts, not places).
@@ -187,7 +205,7 @@ def _connect(tiles: list[list[int]], centre: tuple[int, int]) -> None:
                 main_set,
                 key=lambda p: (p[0] - source[0]) ** 2 + (p[1] - source[1]) ** 2,
             )
-            _drill(tiles, source, target)
+            _drill(tiles, source, target, protect)
 
 
 def generate_forest(
@@ -247,7 +265,8 @@ def generate_forest(
             rng.uniform(*GLADE_RADIUS),
         )
 
-    # 4. the spawn clearing
+    # 4. a centre glade — the map still wants a heart, even though the party
+    #    arrives from an edge rather than standing in it
     cx = width // 2
     cy = height // 2
     _carve_circle(tiles, cx, cy, CENTRE_CLEARING_TILES)
@@ -272,6 +291,7 @@ def generate_forest(
 def populate_forest(
     tiles: list[list[int]],
     seed: int,
+    origin: tuple[float, float],
 ) -> scenery.Population:
     """Lay the story over a finished forest. Mutates `tiles`.
 
@@ -280,10 +300,11 @@ def populate_forest(
     Its own building footprints are re-checked against connectivity inside
     `scenery.populate`, which reverts rather than drilling.
 
-    The spawn clearing is excluded with a generous radius. It is the first
+    The arrival mouth is excluded with a generous radius. It is the first
     thing every player sees and the one place the party has to be able to read
     each other; a cabin in it would be the best-lit prop in the game and the
-    worst-placed one.
+    worst-placed one. The centre glade is kept clear too, so the map still
+    has a heart that is not somebody's leftover camp.
     """
     height = len(tiles)
     width = len(tiles[0]) if tiles else 0
@@ -292,11 +313,15 @@ def populate_forest(
         random.Random(seed ^ 0x5CE7E),
         landmark=scenery.LANDMARK,
         # One thread linking the scenes into a single route outward from the
-        # spawn clearing. The camp does not get one: it is four scenes of
-        # firewood around a fire, and a blood trail through it would be the
-        # wrong promise.
+        # mouth the party walked out of. The camp does not get one: it is four
+        # scenes of firewood around a fire, and a blood trail through it would
+        # be the wrong promise.
         thread=True,
-        avoid=((width / 2, height / 2, CENTRE_CLEARING_TILES + 6.0),),
+        anchor=(int(origin[0]), int(origin[1])),
+        avoid=(
+            (origin[0], origin[1], ENTRANCE_MOUTH_TILES + 6.0),
+            (width / 2, height / 2, CENTRE_CLEARING_TILES + 4.0),
+        ),
     )
 
 
@@ -307,7 +332,17 @@ def build_forest(
 ) -> TileMap:
     """Generate, populate and validate. Raises rather than shipping a broken map."""
     tiles, used = generate_forest(width, height, seed)
-    population = populate_forest(tiles, used)
+    gate = entrance.carve(tiles, used)
+    mouth_tx = int(gate.mouth_x // TILE_SIZE)
+    mouth_ty = int(gate.mouth_y // TILE_SIZE)
+    # The mouth has to be floor — it is the tile connectivity and the party
+    # walk onto. VOID behind it is the corridor and must not be drilled out.
+    if 0 <= mouth_ty < height and 0 <= mouth_tx < width:
+        tiles[mouth_ty][mouth_tx] = FLOOR
+    _connect(tiles, (mouth_tx, mouth_ty), protect=VOID)
+
+    origin = (gate.mouth_x / TILE_SIZE, gate.mouth_y / TILE_SIZE)
+    population = populate_forest(tiles, used, origin)
     floor = sum(row.count(FLOOR) for row in tiles)
     reachable = count_reachable(tiles)
     if reachable != floor:
@@ -325,7 +360,7 @@ def build_forest(
         tiles,
         population.route,
         [(scene.x, scene.y) for scene in population.scenes],
-        (width / 2.0, height / 2.0),
+        origin,
         random.Random(used ^ 0x21F7),
     )
     if placed is not None and count_reachable(tiles) != sum(row.count(FLOOR) for row in tiles):
@@ -340,4 +375,5 @@ def build_forest(
         loot=[drop.to_payload() for drop in drops],
         crates=crate_rows,
         rift=placed.geometry_payload() if placed is not None else None,
+        entrance=gate.geometry_payload(),
     )

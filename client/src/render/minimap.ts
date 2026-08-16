@@ -75,6 +75,13 @@ export class Minimap {
     this.paint([], '', null);
   }
 
+  /** Tile kinds changed. Rebuild the ground cache; fog stays. */
+  rebuildTiles(): void {
+    if (!this.world) return;
+    this.cache = buildTileCache(this.world);
+    this.lastPaint = 0;
+  }
+
   /** Safe to call every frame — it repaints at its own cadence. */
   draw(players: MinimapPlayer[], localId: string, fov: FovField | null): void {
     if (!this.world || !this.cache) return;

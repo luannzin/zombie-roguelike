@@ -9,7 +9,7 @@
 import { Store } from '../lib/store';
 import type { LanternReading } from './lantern';
 import type { ConnectionStatus } from '../net/connection';
-import type { LootRarity, ZoneInfo } from '../net/protocol';
+import type { LootRarity, QuestState, ZoneInfo } from '../net/protocol';
 
 export interface HudInventorySlot {
   key: string;
@@ -28,6 +28,9 @@ export interface HudHotbarSlot {
   frame: number;
   weight: number;
 }
+
+/** One run objective. The HUD mirrors the server list and never invents a row. */
+export type HudQuest = QuestState;
 
 export interface HudHotbar {
   slots: Array<HudHotbarSlot | null>;
@@ -165,6 +168,12 @@ export interface HudSnapshot {
   inventory: HudInventory | null;
   /** The gun belt. Always on screen; 1/2/3 selects. */
   hotbar: HudHotbar | null;
+  /**
+   * Run objectives. Empty until the forest entrance seals; the HUD is a
+   * mirror — progress as numbers, a done flag, optional risk, and dropping
+   * a row is how a task leaves the screen.
+   */
+  quests: HudQuest[];
 }
 
 export const EMPTY_HUD: HudSnapshot = {
@@ -185,6 +194,7 @@ export const EMPTY_HUD: HudSnapshot = {
   riftPrompt: false,
   inventory: null,
   hotbar: null,
+  quests: [],
 };
 
 export type HudStore = Store<HudSnapshot>;

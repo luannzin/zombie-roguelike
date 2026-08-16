@@ -25,6 +25,8 @@ game's scale.
 | `crates.py` | breakable boxes/barrels: extract from scenery, smash, drop roll |
 | `corpses.py` | dead enemies left on the floor: persist until the map swaps |
 | `rift.py` | the extraction point: one per forest, its plot, and the activation sequence |
+| `entrance.py` | forest edge VOID corridor, emerge formation, staggered seal to TREE |
+| `quests.py` | run objectives: progress, done, optional risk; the HUD mirrors this list |
 | `inventory.py` | the pocket: slots, stacking, weight |
 | `world.py` | tile grid, tile alphabet, collision queries |
 | `maps.py` | hand-authored maps (`from_ascii`, `from_rects`) |
@@ -131,7 +133,20 @@ game's scale.
   does. A room opens in the camp: the lobby is the camp seen from a chair,
   `preparation` is the same map with the loop running. `begin()` therefore
   moves nobody. The zone DOES change on `embark()`: that is the walk-out, and
-  it is the only legal map swap.
+  it is the only legal map swap. Forest spawn is the mouth of a VOID corridor
+  `entrance.py` carved on a random edge — never a random tile in the middle.
+  `snapshot.arriving` puppets the party out of it the same way `departing`
+  puppets them in; when every living body is past the mouth the corridor
+  seals rank by rank (VOID → TREE, some ROCK) and `tilePatches` ride that
+  tick. The director stays off until `gate.state == gone`. Respawn rings
+  around the mouth, not the map centre.
+- **Quests are authoritative and room-wide.** `quests.py` owns the list;
+  the HUD mirrors it (`have`/`need`/`done`/`risk`) and never invents a row.
+  Dropping a quest from the list is how it leaves the screen. The first
+  forest objective is finding the rift: offered the tick the entrance goes
+  `gone`, completed when any living player is inside `RIFT_FIND_TILES` of
+  the anomaly. Do not auto-remove it on complete — ticking `1/1` is the
+  check. Camp has none.
 - Zone rules are enforced HERE, not just described to the client. A
   non-hostile zone runs no spawn director and drops the GUN half of
   `handle_attack`. A client that ignores `zone.lantern` gets light it cannot
@@ -355,8 +370,10 @@ game's scale.
 - The expedition hand-off IS the walk-out. In the camp, `{type:"ready"}` at
   the fire; when everyone is ready the room puppets two staggered files into
   the VOID corridor and `embark()` swaps the map for `mapgen.build_forest`,
-  sends a second `welcome`, and the zone becomes `forest`. Do not invent a
-  third phase for this — `playing` stays `playing`. Do not reset
+  sends a second `welcome`, and the zone becomes `forest`. Players stand
+  inside the edge corridor; `begin_arrive()` marches them onto the mouth,
+  then `begin_seal()` eats the path. Do not invent a third phase for this
+  — `playing` stays `playing`. Do not reset
   `last_processed_seq` on embark: the client has been numbering packets since
   the camp, and `queue_input` drops anything at or below that ack. The
   welcome carries `ack` so a rebuilt `LocalPlayer` can resume above it.

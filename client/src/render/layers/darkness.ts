@@ -303,6 +303,12 @@ export class DarknessLayer {
     this.stale = true;
   }
 
+  /** VOID tiles changed — the crush ribbon has to be measured again. */
+  invalidatePath(): void {
+    this.pathCrush = null;
+    this.crushFor = null;
+  }
+
   /**
    * How much of the exit's darkness sits on each tile. VOID is 1; woods
    * within VOID_CRUSH_REACH fall off with a smoothstep, so the path reads

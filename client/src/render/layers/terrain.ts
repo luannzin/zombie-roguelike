@@ -322,6 +322,44 @@ export class TerrainLayer {
     this.cachedFor = null;
   }
 
+  /**
+   * Trees (and rocks) just landed on tiles that used to be VOID. Stamp them
+   * into the prop bake without rebuilding the soil — the corridor was already
+   * forest floor, and the slam is the trunks appearing on it.
+   */
+  stampProps(world: TileMap, tiles: ReadonlyArray<[tx: number, ty: number, kind: number]>): void {
+    if (!this.propCache || this.cachedFor !== world || !this.atlas || tiles.length === 0) {
+      this.reset();
+      return;
+    }
+    const ts = world.tileSize;
+    let x0 = world.width;
+    let y0 = world.height;
+    let x1 = 0;
+    let y1 = 0;
+    for (const [tx, ty] of tiles) {
+      if (tx < x0) x0 = tx;
+      if (ty < y0) y0 = ty;
+      if (tx > x1) x1 = tx;
+      if (ty > y1) y1 = ty;
+    }
+    // Canopies overhang upward; a stamp that forgot the rows above would
+    // clip a trunk that just grew in.
+    const window = {
+      x0: Math.max(0, x0 - 1),
+      y0: Math.max(0, y0 - 3),
+      x1: Math.min(world.width - 1, x1 + 1),
+      y1: Math.min(world.height - 1, y1 + 1),
+    };
+    const ctx = this.propCache.getContext('2d');
+    if (!ctx) {
+      this.reset();
+      return;
+    }
+    ctx.clearRect(window.x0 * ts, window.y0 * ts, (window.x1 - window.x0 + 1) * ts, (window.y1 - window.y0 + 4) * ts);
+    paintProps(ctx, world, this.atlas, window);
+  }
+
   /** Swaying grass and bushes. Live, so they cannot live in the bake. */
   private undergrowth(
     ctx: CanvasRenderingContext2D,

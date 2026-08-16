@@ -59,7 +59,7 @@ import { loadVfx, type VfxAtlas } from './vfx';
 import type { SpriteBook } from './sprites';
 import type { DrawableEntity, RenderState } from './types';
 import { HIT_FLASH_LIFE } from '../game/entity-visuals';
-import type { SceneryPiece } from '../game/world';
+import type { SceneryPiece, TileMap } from '../game/world';
 
 export type { DrawableEntity, RenderState } from './types';
 
@@ -180,6 +180,16 @@ export class Renderer {
     this.atmosphere.reset();
     this.disturbance.clear();
     this.book.clearTints();
+  }
+
+  /**
+   * Tiles just changed (the forest swallowing the arrival corridor). Stamp
+   * new trunks into the prop bake and drop the VOID crush so the ribbon
+   * recedes with the path.
+   */
+  stampTiles(world: TileMap, tiles: ReadonlyArray<[number, number, number]>): void {
+    this.terrain.stampProps(world, tiles);
+    this.darkness.invalidatePath();
   }
 
   draw(state: RenderState): void {

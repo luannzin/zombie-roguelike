@@ -141,10 +141,25 @@ export class TileMap {
   readonly fires: readonly FirePlace[];
   /**
    * Mouth of the camp exit — west-most VOID tile centre — or null on a map
-   * without one (the forest). Resolved with the fires rather than on demand:
-   * the walk-out camera asks for it every frame, and it cannot move.
+   * without one. Resolved with the fires rather than on demand: the walk-out
+   * camera asks for it every frame, and it cannot move.
    */
   readonly exit: { x: number; y: number } | null;
+  /**
+   * Forest arrival corridor. Null on the camp. Mouth / dir are world pixels;
+   * state is rewritten as the woods swallow the path.
+   */
+  entrance: {
+    side: string;
+    mouthX: number;
+    mouthY: number;
+    backX: number;
+    backY: number;
+    dirX: number;
+    dirY: number;
+    state: 'open' | 'sealing' | 'gone';
+    elapsed: number;
+  } | null;
   /**
    * The scenes the server laid over this map, split by how they are drawn.
    * Empty on a locally generated map — the title screen's clearing has no
@@ -172,6 +187,7 @@ export class TileMap {
     this.pixelHeight = this.height * this.tileSize;
     this.fires = findFires(this.tiles, this.tileSize);
     this.exit = findExitMouth(this.tiles, this.tileSize);
+    this.entrance = unpackEntrance(payload);
     this.scenery = unpackScenery(payload);
     this.crates = unpackCrates(payload);
     this.rift = unpackRift(payload);
@@ -193,6 +209,12 @@ export class TileMap {
     // Used up: the light comes off the map for good. The marks it threw stay
     // exactly where they are — that is the whole point of the state.
     if (state === 'spent') this.darkenRift();
+  }
+
+  setEntranceState(state: 'open' | 'sealing' | 'gone', elapsed: number): void {
+    if (!this.entrance) return;
+    this.entrance.state = state;
+    this.entrance.elapsed = elapsed;
   }
 
 
@@ -549,5 +571,21 @@ function findExitMouth(tiles: number[][], tileSize: number): { x: number; y: num
   return {
     x: (minTx + 0.5) * tileSize,
     y: (sumTy / count + 0.5) * tileSize,
+  };
+}
+
+function unpackEntrance(payload: MapPayload): TileMap['entrance'] {
+  const row = payload.entrance;
+  if (!row) return null;
+  return {
+    side: row.side,
+    mouthX: row.mouth[0],
+    mouthY: row.mouth[1],
+    backX: row.back[0],
+    backY: row.back[1],
+    dirX: row.dir[0],
+    dirY: row.dir[1],
+    state: row.state,
+    elapsed: row.t,
   };
 }

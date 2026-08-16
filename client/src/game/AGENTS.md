@@ -170,7 +170,8 @@ seam React is allowed to read.
   is the collapse clock.
 - **The extraction rift is the one object on the map with a STATE MACHINE, and
   the split is: the server says WHAT, the client says what that FEELS like.**
-  Two snapshot rows a run — pressed, and open — and the four seconds between
+  Finding it is a quest (`hud-store.quests`, id `extract`), not a packet —
+  proximity on the server ticks `0/1` to `1/1`. Two snapshot rows a run — pressed, and open — and the four seconds between
   them run on this client's own render clock (`Game.stepRift`), because a
   ceremony resolved at 6 Hz would step rather than play. The server's `t` is
   adopted on every row, so somebody joining mid-sequence picks it up in
@@ -202,7 +203,13 @@ seam React is allowed to read.
   rectangle: solid, painted as ground, crushed by a darkness falloff.
   `blocksSight` lets light fall into it so the trees do not close into a
   wall; the darkness pass then kills the warmth along the path so leaked
-  firelight never turns the mouth into a hallway.
+  firelight never turns the mouth into a hallway. Forest `world.entrance`
+  is the same shape on a random edge: after the emerge, `tilePatches`
+  turn those tiles to TREE. `Renderer.stampTiles` paints the new trunks
+  into the prop bake and `DarknessLayer.invalidatePath` lets the crush
+  recede; the minimap rebuilds so the corridor filling in is visible.
+  Soil under VOID was already forest floor — do not rebuild the ground
+  canvas for a slam.
 - **The summon sheet is the clock.** `SUMMON_TIME` is the sheet's
   `frames / fps` and `SUMMON_IMPACT` mirrors `IMPACT_AT` in
   `server/tools/make_vfx.py`; the body must finish resolving on the frame the
@@ -323,21 +330,28 @@ seam React is allowed to read.
 - The zone also masks `shoot` on the outgoing packet. The server drops it too,
   and the mask has to be on the packet or prediction draws a tracer that was
   never fired.
-- Entering a zone HOLDS the player for `INTRO_TIME`: movement and aim are
-  masked on the outgoing packet (not at the input layer, or prediction would
-  move them locally and yank them back), the character faces the camera, and
-  the HUD keeps its corners off the glass. What is on screen for that beat is
-  the place, one character standing in it, and the day's name — then the
-  controls and the chrome return together.
+- Entering a zone HOLDS the player for `INTRO_TIME` **except the forest
+  emerge**: movement and aim are masked on the outgoing packet (not at the
+  input layer, or prediction would move them locally and yank them back),
+  the character faces the camera, and the HUD keeps its corners off the
+  glass. Forest skips that posed hold — `snapshot.arriving` is the camp
+  walk-out in reverse, letterboxed (`cinematic`), looking into the trees,
+  and `introLeft` stays 0. After every living body is on floor the woods
+  slam the corridor (`tilePatches`); the player has the controls for that
+  beat so they can look back. Then `hud-store.quests` fills.
 - The camp walk-out (`snapshot.departing`) is the same mask plus no local
   prediction: the server puppets every body, and the local player is
   interpolated with the remotes so they cannot fight the march. Camera follows
   the party, looking ahead at the VOID mouth. E at the fire sends
   `{type:"ready"}`; the server is what decides whether it counted.
+  `Game.locked` is departing OR arriving — interact, loot, crates, the rift
+  prompt and prediction all key off that, not off `departing` alone.
 - Entering a zone is announced ONCE, through `hud-store.arrival`, keyed by the
   zone key; `introducing` says whether the hold is still running. INTRO_TIME,
   `CARD_MS` in `hud/ZoneTitle` and the `zone-*` keyframes are one timeline. The
   card must clear BEFORE the hold ends, or the HUD rises under the title.
+  Forest names the night over the march (`introducing` is false; `cinematic`
+  covers the letterbox).
 
 ## Work Guidance
 
@@ -345,7 +359,9 @@ seam React is allowed to read.
 - New HUD data means a field on the `hud-store` snapshot, published at 5 Hz —
   not a subscription from a component to the game. Camp ready uses `ready` and
   `prompt`; a nearby drop uses `lootPrompt`; the pocket uses `inventory`;
-  the walk-out uses `cinematic`; a crate in reach uses `cratePrompt`.
+  the walk-out and the forest emerge use `cinematic`; a crate in reach uses
+  `cratePrompt`. Run objectives use `quests` — the server list, mirrored,
+  including a row the HUD must be able to remove.
   A world `Tooltip` also needs an `anchor` id written in `syncTooltipAnchors`
   each frame — show/hide is the store, the pixels are the camera. E is
   interact: collect on a drop, smash a crate, ready at the fire. The

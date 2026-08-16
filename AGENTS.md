@@ -110,15 +110,19 @@ subtree.
 - A run is an **expedition loop**: prepare at the camp, go out to a level,
   extract with what you found, spend it, and go again. The first lap's hand-off
   exists — in `Preparação` the party readies at the fire, files through the
-  black exit, and a second `welcome` drops them in the forest.
-- **EXTRACTION is the core loop and it is not built.** The shape it will take:
-  a point appears somewhere in the level, the party carries what they collected
-  to it, and then they come back. The world is already laid out for it and new
-  work must keep it that way — `server/app/scenery.py` returns the ROUTE its
-  scenes are strung along (a walk outward from spawn ending at the landmark),
-  `SceneLight`/`BEACON` is the channel a beacon arrives on, and the boot prints
-  players leave behind are navigation for the trip back. Adding extraction
-  should be placement and rules, never a rendering change.
+  black exit, and a second `welcome` drops them in a VOID corridor on a random
+  edge of the forest (the camp exit, continued). They walk out of it; the woods
+  swallow the way back. Then the first objective appears: find the extraction
+  point.
+- **EXTRACTION is the core loop and return is not built.** Finding the rift is:
+  after the entrance seals, the HUD quest `Encontre o ponto de extração: 0/1`
+  ticks when any living player stands near the anomaly (`quests.py`). Carrying
+  loot back through it is still later. The world is already laid out for it —
+  `server/app/scenery.py` returns the ROUTE its scenes are strung along (a walk
+  outward from the mouth ending at the landmark), `SceneLight`/`BEACON` is the
+  channel a beacon arrives on, and the boot prints players leave behind are
+  navigation for the trip back. Adding the return should be placement and
+  rules, never a rendering change.
 - The room's ZONE (`server/app/zones.py`) says where the run is and how that
   place behaves: its title card, whether enemies spawn and guns fire
   (`hostile`), and whether the lantern may be switched on (`lantern`). The
@@ -133,9 +137,11 @@ subtree.
   not jump it.
 - Entering a zone is an EVENT, and it is one continuous move: the lobby's chrome
   slides away while its own camera drifts off the fire onto your character and
-  pushes in to game scale; the arena takes over on the frame that lands, holds
-  you still and facing the camera with no HUD while the title names the day,
-  and then hands back the controls and the chrome together. Every zone gets it.
+  pushes in to game scale; the arena takes over on the frame that lands. Camp
+  holds you still and facing the camera with no HUD while the title names the
+  day. Forest skips that posed hold — the party is already walking out of the
+  edge corridor, letterboxed, and the title names the night over the march.
+  Then the controls and the chrome return together. Every zone gets a title.
 - Nothing is persisted server-side. The only durable client datum is the
   player's name, in `localStorage`.
 - The server is authoritative. Clients send inputs, never positions.

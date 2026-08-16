@@ -31,7 +31,7 @@ import random
 import time
 import uuid
 
-from . import ai, camp, coins, combat, crates, loot, mapgen, protocol, rift, weapons, zones
+from . import ai, camp, coins, combat, crates, entrance, loot, mapgen, protocol, quests, rift, weapons, zones
 from .ai import EnemyDirector
 from .coins import Coin
 from .config import (
@@ -41,6 +41,7 @@ from .config import (
     LOOT_COLLECT_DIST,
     MARCH_SPEED,
     RIFT_ACTIVATE_DIST,
+    RIFT_FIND_DIST,
     MAX_HP,
     MAX_INPUT_QUEUE,
     MAX_INPUTS_PER_TICK,
@@ -58,8 +59,10 @@ from .config import (
 )
 from .corpses import Corpse
 from .crates import Crate
+from .entrance import Entrance
 from .rift import Rift
 from .loot import Drop
+from .quests import Quest
 from .enemies import Enemy, EnemyType, dress
 from .world import FLOOR
 from .entities import InputCmd, Player, clean_name, pick_color, random_name
@@ -82,22 +85,8 @@ class Room:
         #: Join order. It decides who sits where, and every client agrees on it
         #: because it is only ever computed here.
         self.seating: list[str] = []
-        self.spawn_points = self.world.free_spawn_points(PLAYER_HALF_WIDTH, PLAYER_HALF_HEIGHT)
-        # Spawn candidates, best first: closest to the ring around the centre
-        # clearing. Sorted once here so pick_spawn is a linear scan, not a sort
-        # on every join and every respawn.
-        centre_x = self.world.pixel_width / 2
-        centre_y = self.world.pixel_height / 2
-        # The jitter matters: without it the list is ordered by distance alone,
-        # so a filling room hands out spawns that walk monotonically around the
-        # ring instead of landing wherever there is room.
-        self.spawn_ring = sorted(
-            self.spawn_points,
-            key=lambda p: (
-                abs(math.hypot(p[0] - centre_x, p[1] - centre_y) - SPAWN_RING)
-                + random.uniform(0.0, SPAWN_SEPARATION)
-            ),
-        )
+        self.spawn_points: list[tuple[float, float]] = []
+        self.spawn_ring: list[tuple[float, float]] = []
         self.players: dict[str, Player] = {}
         self.enemies: dict[str, Enemy] = {}
         self.coins: dict[str, Coin] = {}
@@ -106,6 +95,10 @@ class Room:
         #: The extraction point, or None on a map without one (every camp, and
         #: any forest the generator could not fit a plot into).
         self.rift: Rift | None = None
+        #: Forest arrival corridor. None in the camp.
+        self.gate: Entrance | None = None
+        #: Run objectives. Empty until the entrance seals.
+        self.quests: list[Quest] = []
         self.corpses: dict[str, Corpse] = {}
         self.sockets: dict[str, object] = {}
         self.director = EnemyDirector(self.spawn_points)
@@ -137,6 +130,15 @@ class Room:
         self._depart_hold = 0.0
         self._slots: dict[str, tuple[float, float]] = {}
         self._pending_embark = False
+        #: Forest emerge cinematic. Same lock as the camp walk-out: input is
+        #: acked and dropped, bodies are slid out of the VOID corridor.
+        self.arriving = False
+        self._arrive_phase: str | None = None
+        self._arrive_hold = 0.0
+        self._seal_left = 0.0
+        self._tile_patches: list[tuple[int, int, int]] = []
+        self._entrance_dirty = False
+        self._quests_dirty = False
         #: Someone joined or left: attach the roster to the next snapshot
         #: instead of making the party wait out the interval for a name.
         self._roster_dirty = True
@@ -151,6 +153,8 @@ class Room:
         self._load_drops()
         self._load_crates()
         self._load_rift()
+        self._load_entrance()
+        self._rebuild_spawns()
 
     def _load_drops(self) -> None:
         """Hydrate live drops from the map the generator left behind."""
@@ -179,6 +183,16 @@ class Room:
         self.rift = rift.from_payload(self.world.rift)
         self._rift_dirty = False
 
+    def _load_entrance(self) -> None:
+        """Hydrate the forest corridor from the map the generator left behind."""
+        self.gate = entrance.hydrate(self.world.tiles, self.world.entrance)
+        self._entrance_dirty = False
+        self._tile_patches = []
+        self.arriving = False
+        self._arrive_phase = None
+        self.quests = []
+        self._quests_dirty = False
+
     # --- lifecycle ----------------------------------------------------------
     def start(self) -> None:
         if self._task is None:
@@ -195,20 +209,36 @@ class Room:
 
     # --- membership ---------------------------------------------------------
     def pick_spawn(self) -> tuple[float, float]:
-        """A tile on the ring around the centre clearing, clear of teammates.
+        """A tile on the ring around the arrival mouth, clear of teammates.
 
-        Co-op: everyone lands together in the middle. The separation test only
-        stops players from spawning inside each other — it does not push them
-        apart, so a full room still starts as one group.
+        Co-op: everyone lands together where they walked in. The separation
+        test only stops players from spawning inside each other — it does not
+        push them apart, so a full room still starts as one group.
         """
         living = [p for p in self.players.values() if p.alive]
         minimum = SPAWN_SEPARATION * SPAWN_SEPARATION
         for x, y in self.spawn_ring:
             if all((p.x - x) ** 2 + (p.y - y) ** 2 >= minimum for p in living):
                 return x, y
-        # Every ring tile is occupied (a very full room): take the centre-most
-        # one anyway rather than scattering someone across the map.
         return self.spawn_ring[0] if self.spawn_ring else random.choice(self.spawn_points)
+
+    def _rebuild_spawns(self) -> None:
+        """Floor tiles, nearest the arrival mouth (or the map centre in camp)."""
+        self.spawn_points = self.world.free_spawn_points(
+            PLAYER_HALF_WIDTH, PLAYER_HALF_HEIGHT
+        )
+        if self.gate is not None:
+            self.spawn_ring = entrance.mouth_spawns(self.gate, self.spawn_points)
+            return
+        centre_x = self.world.pixel_width / 2
+        centre_y = self.world.pixel_height / 2
+        self.spawn_ring = sorted(
+            self.spawn_points,
+            key=lambda p: (
+                abs(math.hypot(p[0] - centre_x, p[1] - centre_y) - SPAWN_RING)
+                + random.uniform(0.0, SPAWN_SEPARATION)
+            ),
+        )
 
     def reseat(self) -> None:
         """Space the party evenly around the fire, in join order.
@@ -254,6 +284,15 @@ class Room:
                 self._slots = camp.formation_slots(
                     self.world, self.seating, set(self.players)
                 )
+            elif self.arriving and self.gate is not None:
+                self._slots = entrance.formation_slots(
+                    self.gate, self.seating, set(self.players)
+                )
+                slot = self._slots.get(pid)
+                if slot is not None:
+                    player.x, player.y = slot
+                    player.aim_x = self.gate.dx
+                    player.aim_y = self.gate.dy
         return player
 
     def remove_player(self, pid: str) -> None:
@@ -276,6 +315,7 @@ class Room:
             ack=player.last_processed_seq,
             loot=[drop.to_payload() for drop in self.drops.values()],
             corpses=[row.to_payload() for row in self.corpses.values()],
+            quests=[q.payload() for q in self.quests] or None,
         )
 
     def hello_payload(self, player: Player) -> dict:
@@ -331,7 +371,7 @@ class Room:
         When every living player is ready, the walk-out starts. Too late to
         unready once it has: the camera has already left.
         """
-        if self.phase != protocol.PHASE_PLAYING or self.departing:
+        if self.phase != protocol.PHASE_PLAYING or self.departing or self.arriving:
             return
         if self.zone.kind != zones.KIND_CAMP:
             return
@@ -353,7 +393,7 @@ class Room:
         (no empty slot and no stack of this key) leaves the drop where it is.
         Overweight is not a refuse.
         """
-        if self.phase != protocol.PHASE_PLAYING or self.departing:
+        if self.phase != protocol.PHASE_PLAYING or self.departing or self.arriving:
             return
         if self.zone.kind == zones.KIND_CAMP:
             return
@@ -440,7 +480,7 @@ class Room:
         way collect is. Camp maps have none. A shot that lands on the sprite
         box does the same work through `smash_crate`.
         """
-        if self.phase != protocol.PHASE_PLAYING or self.departing:
+        if self.phase != protocol.PHASE_PLAYING or self.departing or self.arriving:
             return
         player = self.players.get(pid)
         if player is None or not player.alive:
@@ -498,7 +538,7 @@ class Room:
         Measured from the FEET, the same way collect and smash are, so the
         prompt the player is reading and the check the server runs agree.
         """
-        if self.phase != protocol.PHASE_PLAYING or self.departing:
+        if self.phase != protocol.PHASE_PLAYING or self.departing or self.arriving:
             return
         if self.rift is None or self.rift.state != rift.DORMANT:
             return
@@ -533,7 +573,7 @@ class Room:
         world drop per unit — the ground list has no quantity. Placement
         is walkable floor around the feet; the server picks the tiles.
         """
-        if self.phase != protocol.PHASE_PLAYING or self.departing:
+        if self.phase != protocol.PHASE_PLAYING or self.departing or self.arriving:
             return
         if self.zone.kind == zones.KIND_CAMP:
             return
@@ -580,8 +620,9 @@ class Room:
         """They have crossed. Swap the camp for the forest and welcome again.
 
         Same phase, new zone, new map. The client treats a second `welcome` as
-        arriving somewhere: intro, title card, lantern on. Nobody is persisted
-        across this — gold and xp they have not earned yet stay zero.
+        arriving somewhere: edge corridor, emerge march, title over the walk.
+        Nobody is persisted across this — gold and xp they have not earned yet
+        stay zero.
         """
         if self.zone.kind != zones.KIND_CAMP:
             self._pending_embark = False
@@ -592,29 +633,20 @@ class Room:
         self._slots = {}
         self.zone = zones.forest(self.day)
         self.world = mapgen.build_forest()
-        self.spawn_points = self.world.free_spawn_points(
-            PLAYER_HALF_WIDTH, PLAYER_HALF_HEIGHT
-        )
-        centre_x = self.world.pixel_width / 2
-        centre_y = self.world.pixel_height / 2
-        self.spawn_ring = sorted(
-            self.spawn_points,
-            key=lambda p: (
-                abs(math.hypot(p[0] - centre_x, p[1] - centre_y) - SPAWN_RING)
-                + random.uniform(0.0, SPAWN_SEPARATION)
-            ),
-        )
         self.navigator = Navigator(self.world)
-        self.director = EnemyDirector(self.spawn_points)
         self.enemies.clear()
         self.coins.clear()
         self.noises.clear()
         self._load_drops()
         self._load_crates()
         self._load_rift()
+        self._load_entrance()
+        self._rebuild_spawns()
+        self.director = EnemyDirector(self.spawn_points)
         self.corpses.clear()
         self._corpses_dirty = True
         self.crate_break_events = []
+        self.begin_arrive()
         for player in self.players.values():
             player.ready = False
             # Anybody who was down when the party left comes back up here.
@@ -626,10 +658,18 @@ class Room:
             player.alive = True
             player.respawn_timer = 0.0
             player.hurt_immunity = 0.0
-            player.x, player.y = self.pick_spawn()
+            slot = self._slots.get(player.id)
+            if slot is not None:
+                player.x, player.y = slot
+            else:
+                player.x, player.y = self.pick_spawn()
             player.vx = player.vy = 0.0
-            player.aim_x = 0.0
-            player.aim_y = 1.0
+            if self.gate is not None:
+                player.aim_x = self.gate.dx
+                player.aim_y = self.gate.dy
+            else:
+                player.aim_x = 0.0
+                player.aim_y = 1.0
             player.inputs.clear()
             player.idle_ticks = 0
             player.combo_step = 0
@@ -662,6 +702,8 @@ class Room:
     # --- simulation ---------------------------------------------------------
     def step(self, dt: float) -> None:
         self.step_players(dt)
+        self.step_seal(dt)
+        self.step_quests()
         self.step_enemies(dt)
         self.step_coins(dt)
         self.step_rift(dt)
@@ -671,10 +713,25 @@ class Room:
         if self.rift is not None and self.rift.step(dt):
             self._rift_dirty = True
 
+    def begin_arrive(self) -> None:
+        """Lock input and line the party up inside the forest corridor."""
+        if self.gate is None:
+            self.arriving = False
+            return
+        self.arriving = True
+        self._arrive_phase = "hold"
+        self._arrive_hold = 0.35
+        self._slots = entrance.formation_slots(
+            self.gate, self.seating, set(self.players)
+        )
+        self._entrance_dirty = True
 
     def step_players(self, dt: float) -> None:
         if self.departing:
             self.step_depart(dt)
+            return
+        if self.arriving:
+            self.step_arrive(dt)
             return
         for player in self.players.values():
             if player.fire_cooldown > 0.0:
@@ -784,12 +841,135 @@ class Room:
         if self.players and all(p.x >= crossed for p in self.players.values()):
             self._pending_embark = True
 
+    def step_arrive(self, dt: float) -> None:
+        """Puppet every body out of the forest corridor. Input is acked and dropped."""
+        gate = self.gate
+        if gate is None:
+            self.arriving = False
+            return
+        for player in self.players.values():
+            while player.inputs:
+                cmd = player.inputs.popleft()
+                player.last_processed_seq = cmd.sequence
+                player.last_input = cmd
+            player.idle_ticks = 0
+
+        if self._arrive_phase == "hold":
+            self._arrive_hold -= dt
+            for player in self.players.values():
+                player.vx = player.vy = 0.0
+                player.aim_x = gate.dx
+                player.aim_y = gate.dy
+            if self._arrive_hold <= 0.0:
+                self._arrive_phase = "walk"
+            return
+
+        if self._arrive_phase != "walk":
+            return
+
+        arrived = True
+        for pid, player in self.players.items():
+            slot = self._slots.get(pid)
+            sx = slot[0] if slot is not None else player.x
+            sy = slot[1] if slot is not None else player.y
+            dest_x, dest_y = entrance.emerge_point(gate, sx, sy)
+            (
+                player.x,
+                player.y,
+                player.vx,
+                player.vy,
+                player.aim_x,
+                player.aim_y,
+                done,
+            ) = camp.march_towards(
+                player.x, player.y, dest_x, dest_y, MARCH_SPEED, dt
+            )
+            if not done:
+                arrived = False
+        living = [p for p in self.players.values() if p.alive]
+        if living and arrived and all(gate.past_mouth(p.x, p.y) for p in living):
+            self.arriving = False
+            self._arrive_phase = None
+            self._slots = {}
+            self.begin_seal()
+
+    def begin_seal(self) -> None:
+        """The woods take the corridor back, edge first."""
+        gate = self.gate
+        if gate is None or gate.state != entrance.OPEN:
+            return
+        gate.state = entrance.SEALING
+        gate.elapsed = 0.0
+        gate.rank = 0
+        if not gate.ranks:
+            gate.ranks = entrance._ranks(self.world.tiles, gate.side)
+        self._seal_left = 0.0
+        self._entrance_dirty = True
+        self._sync_entrance_payload()
+
+    def step_seal(self, dt: float) -> None:
+        gate = self.gate
+        if gate is None or gate.state != entrance.SEALING:
+            return
+        gate.elapsed += dt
+        self._seal_left -= dt
+        if self._seal_left > 0.0:
+            return
+        self._seal_left = entrance.SEAL_RANK_TIME
+        patches = entrance.seal_rank(self.world.tiles, gate)
+        if patches:
+            self._tile_patches.extend(patches)
+            self.navigator.invalidate()
+        if gate.rank >= len(gate.ranks):
+            gate.state = entrance.GONE
+            gate.ranks = []
+            self._entrance_dirty = True
+            self._sync_entrance_payload()
+            self._rebuild_spawns()
+            self.director = EnemyDirector(self.spawn_points)
+            self.offer_extract_quest()
+
+    def _sync_entrance_payload(self) -> None:
+        if self.gate is None:
+            self.world.entrance = None
+            return
+        self.world.entrance = self.gate.geometry_payload()
+
+    def offer_extract_quest(self) -> None:
+        if self.rift is None:
+            return
+        if any(q.id == quests.EXTRACT for q in self.quests):
+            return
+        self.quests.append(quests.extract())
+        self._quests_dirty = True
+
+    def step_quests(self) -> None:
+        """Tick progress. Finding the rift is proximity, not a packet."""
+        if not self.quests or self.rift is None:
+            return
+        for quest in self.quests:
+            if quest.id != quests.EXTRACT or quest.done:
+                continue
+            rx, ry = self.rift.x, self.rift.y
+            reach = RIFT_FIND_DIST * RIFT_FIND_DIST
+            found = any(
+                p.alive and (p.x - rx) ** 2 + (p.y - ry) ** 2 <= reach
+                for p in self.players.values()
+            )
+            if found:
+                quest.have = quest.need
+                quest.done = True
+                self._quests_dirty = True
+
     def step_enemies(self, dt: float) -> None:
         """Advance the pack, resolve its swings, then top the population up."""
         # A safe zone has no director and, having never spawned anything, no
         # pack to advance. Checked here rather than in `step` so a zone that
         # turns hostile mid-run still finishes whatever is already on the map.
-        if not self.zone.hostile and not self.enemies:
+        # The forest also stays quiet until the entrance is GONE — the slam is
+        # the moment the night starts hunting, not the walk out of the dark.
+        sealed = self.gate is None or self.gate.state == entrance.GONE
+        if (not self.zone.hostile or self.arriving or not sealed) and not self.enemies:
             self.noises.clear()
             return
         outcome = ai.update(
@@ -1208,6 +1388,18 @@ class Room:
         self._corpses_dirty = False
         rift_row = self.rift.state_payload() if (self.rift and self._rift_dirty) else None
         self._rift_dirty = False
+        entrance_row = (
+            self.gate.state_payload() if (self.gate and self._entrance_dirty) else None
+        )
+        self._entrance_dirty = False
+        tile_patches = (
+            [[tx, ty, kind] for tx, ty, kind in self._tile_patches]
+            if self._tile_patches
+            else None
+        )
+        self._tile_patches = []
+        quest_rows = [q.payload() for q in self.quests] if self._quests_dirty else None
+        self._quests_dirty = False
         await self.broadcast(
             protocol.snapshot(
                 self.tick,
@@ -1220,6 +1412,7 @@ class Room:
                 self.pickup_events,
                 swings=self.swing_events or None,
                 departing=self.departing,
+                arriving=self.arriving,
                 zone_key=self.zone.key,
                 roster=roster,
                 loot=loot_rows,
@@ -1228,6 +1421,9 @@ class Room:
                 crate_breaks=self.crate_break_events or None,
                 corpses=corpse_rows,
                 rift=rift_row,
+                entrance=entrance_row,
+                tile_patches=tile_patches,
+                quests=quest_rows,
             )
         )
 

@@ -37,6 +37,7 @@ import { StatusLine } from './StatusLine';
 import { Vitals } from './Vitals';
 import { ZONE_INTRO_MS, ZoneTitle } from './ZoneTitle';
 import { ReadyCount } from './ReadyCount';
+import { QuestLog } from './QuestLog';
 import { InteractPrompt } from './InteractPrompt';
 import { Inventory } from './Inventory';
 import { LootFly } from './LootFly';
@@ -120,11 +121,12 @@ export function Hud({ snapshot, minimapRef, error }: HudProps) {
 
         <div
           className={cn(
-            'hud-layer pixel-text top-2.5 left-1/2 -translate-x-1/2',
+            'hud-layer pixel-text top-2.5 left-1/2 -translate-x-1/2 flex flex-col items-center gap-1',
             chrome,
           )}
         >
           <ReadyCount ready={snapshot.ready} />
+          <QuestLog quests={snapshot.quests} />
         </div>
 
         {/* Last, so the arrival card sits over every corner — it is the one thing

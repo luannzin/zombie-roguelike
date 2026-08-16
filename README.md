@@ -23,8 +23,11 @@ your lantern stays off, because the bonfire is the light and the battery is
 what you carry out into the dark.
 
 > **Where the loop stops today.** A run is meant to go camp → level → extract →
-> spend → repeat. Preparation and the walk-out exist: ready at the fire, file
-> through the black exit, land in the forest. Extract and return are not built.
+> spend → repeat. Preparation, the walk-out, and the forest emerge exist: ready
+> at the fire, file through the black exit, walk out of a matching corridor on
+> a random edge of the night, watch the woods eat the way back. Finding the
+> extraction point is the first quest (`Encontre o ponto de extração: 0/1`).
+> Carrying loot through it and returning to camp are not built.
 
 * **Client** — Vite + TypeScript + Canvas 2D (no game engine). React + Tailwind
   own the HUD and routing only; they are never part of the render loop.

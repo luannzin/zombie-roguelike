@@ -32,13 +32,14 @@ server -> client
                                         on every membership/phase change
   {"type":"error","code":"room_not_found"}  followed by a close
   {"type":"welcome","playerId":"...","player":{...},"config":{...},"map":{...},
-   "zone":{...},"ack":<last processed input seq for you>}
-  {"type":"snapshot","tick":N,"departing":false,"zoneKey":"camp-1",
+   "zone":{...},"ack":<last processed input seq for you>,"quests":[...]}
+  {"type":"snapshot","tick":N,"departing":false,"arriving":false,"zoneKey":"camp-1",
    "players":[...],"enemies":[...],"coins":[...],
    "shots":[...],"swings":[...],"attacks":[...],"kills":[...],"pickups":[...],
    "loot":[...],"lootPickups":[...],
    "crates":[...],"crateBreaks":[...],
    "corpses":[...],
+   "entrance":{...},"tilePatches":[...],"quests":[...],
    "roster":[...]}                    only every ROSTER_EVERY_N_TICKS ticks
   {"type":"pong","t":<echoed>}
 
@@ -185,8 +186,9 @@ def welcome(
     ack: int = 0,
     loot: list[dict] | None = None,
     corpses: list[dict] | None = None,
+    quests: list[dict] | None = None,
 ) -> dict:
-    return {
+    payload = {
         "type": MSG_WELCOME,
         "playerId": player_payload["id"],
         "player": player_payload,
@@ -199,6 +201,9 @@ def welcome(
         "loot": loot or [],
         "corpses": corpses or [],
     }
+    if quests:
+        payload["quests"] = quests
+    return payload
 
 
 def dumps(payload: dict) -> str:
@@ -218,6 +223,7 @@ def snapshot(
     pickups: list[dict],
     swings: list[dict] | None = None,
     departing: bool = False,
+    arriving: bool = False,
     zone_key: str | None = None,
     roster: list[dict] | None = None,
     loot: list[dict] | None = None,
@@ -226,11 +232,15 @@ def snapshot(
     crate_breaks: list[dict] | None = None,
     corpses: list[dict] | None = None,
     rift: dict | None = None,
+    entrance: dict | None = None,
+    tile_patches: list | None = None,
+    quests: list[dict] | None = None,
 ) -> dict:
     payload = {
         "type": MSG_SNAPSHOT,
         "tick": tick,
         "departing": departing,
+        "arriving": arriving,
         "zoneKey": zone_key,
         "players": players,
         "enemies": enemies,
@@ -263,4 +273,10 @@ def snapshot(
     # instead of watching a structure snap to finished.
     if rift is not None:
         payload["rift"] = rift
+    if entrance is not None:
+        payload["entrance"] = entrance
+    if tile_patches:
+        payload["tilePatches"] = tile_patches
+    if quests is not None:
+        payload["quests"] = quests
     return payload

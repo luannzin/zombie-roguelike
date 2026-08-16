@@ -71,9 +71,9 @@ MAX_HP = 100
 RESPAWN_DELAY = 2.0          # seconds
 
 # --- spawning (authored in tiles) -------------------------------------------
-# Players start together in the middle clearing, not scattered across the map:
-# a co-op run that opens with everyone lost is a bad first ten seconds. The ring
-# keeps them close without stacking them on one tile.
+# After the camp walk-out the party emerges from a VOID corridor on a random
+# map edge, then that path seals. Respawn (and a late join) uses a ring around
+# that mouth so a death does not throw someone into the middle of the woods.
 SPAWN_RING_TILES = 2.5
 SPAWN_SEPARATION_TILES = 1.2
 
@@ -125,6 +125,12 @@ CAMP_READY_RANGE_TILES = CAMP_HEARTH_TILES
 # rather than as a race to the trees.
 MARCH_TILES_PER_SEC = 3.6
 MARCH_SPEED = TILE_SIZE * MARCH_TILES_PER_SEC
+
+# Forest entrance: the camp's black corridor, continued. A winding VOID path
+# through a random edge, deep enough to read as the same walk, then a mouth
+# clearing the party is marched onto before the woods swallow the way back.
+ENTRANCE_DEPTH_TILES = 12
+ENTRANCE_MOUTH_TILES = 4.6
 
 # --- vision (authored in tiles) ---------------------------------------------
 # The client draws the darkness; these numbers decide its shape. They live here
@@ -371,6 +377,11 @@ CRATE_BREAK_DIST = TILE_SIZE * CRATE_BREAK_TILES
 # pixel-hunting at the worst possible moment.
 RIFT_ACTIVATE_TILES = 2.75
 RIFT_ACTIVATE_DIST = TILE_SIZE * RIFT_ACTIVATE_TILES
+# How close a living player has to get before the "find the extraction point"
+# quest ticks. Shorter than the lantern cone so you have to actually reach the
+# pad, longer than the console so spotting the structure counts as finding it.
+RIFT_FIND_TILES = 9.0
+RIFT_FIND_DIST = TILE_SIZE * RIFT_FIND_TILES
 # Quieter than a gunshot — wood giving way, not a muzzle.
 CRATE_NOISE_TILES = 5.5
 CRATE_NOISE_DIST = TILE_SIZE * CRATE_NOISE_TILES

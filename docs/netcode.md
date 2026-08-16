@@ -32,7 +32,10 @@ predicts locally, and sends the packet. Rendering runs at display rate.
 the room is in the camp, the walk-out has not started, and the player's feet
 are inside `readyRangeTiles` of the fire. When every living player is ready the
 snapshots flip `departing` and the server puppets the party through the VOID
-exit; a second `welcome` is the forest.
+exit; a second `welcome` is the forest, standing inside a VOID corridor on a
+random edge. Snapshots then flip `arriving` while they walk out of it; once
+everyone is on floor the woods seal the path (`tilePatches`) and the first
+quest appears.
 
 `{"type":"collect","id":"l3"}` — pick up a world drop. The server ignores it
 unless the room is in a hostile zone, the player is alive, their feet are
@@ -45,7 +48,7 @@ onto that HUD cell (`dest` is `"hotbar"` for a gun, omitted for the bag).
 The pocket itself rides the roster as `inv`; the belt as `guns`.
 
 `{"type":"break","id":"k1"}` — smash a crate. The server ignores it unless
-the player is alive, the walk-out has not started, and their feet are
+the player is alive, the walk-out / forest emerge has not started, and their feet are
 inside `crateBreakTiles` of that crate. Camp maps have none; a bullet that
 hits the crate's sprite box (`crateHitWTiles` × `crateHitHTiles`) does
 the same work. The remaining list rides
@@ -109,7 +112,8 @@ presses start.
   "zone": { "...": "..." },
   "ack": 183,
   "loot": [{"id":"l1","k":"compass","x":412.5,"y":288.5}],
-  "corpses": []
+  "corpses": [],
+  "quests": []
 }
 ```
 
@@ -121,6 +125,7 @@ presses start.
   "tick": 4021,
   "ack": 183,
   "departing": false,
+  "arriving": false,
   "zoneKey": "camp-1",
   "players": [{ "id": "...", "x": 0, "y": 0, "vx": 0, "vy": 0, "ax": 1, "ay": 0, "lantern": true,
                 "hp": 100, "alive": true, "held": 0, "ads": false,
@@ -139,12 +144,19 @@ presses start.
 
 `ack` is per-recipient: the last input sequence the server processed for *that*
 client. `departing` is the camp walk-out: the server is moving everybody and
-the local player must not predict. `ready` is camp-only. `zoneKey` is the
+the local player must not predict. `arriving` is the forest emerge, the same
+lock walking out of the edge corridor. `ready` is camp-only. `zoneKey` is the
 zone this snapshot belongs to — drop it if it does not match the last welcome.
+`map.entrance` on welcome is the corridor's geometry; a snapshot `entrance`
+row is only the live state (`open` / `sealing` / `gone`). `tilePatches` are
+`[tx, ty, kind]` for the ranks of trees that just grew. `quests` is the run
+objective list (`id`, `label`, `have`, `need`, optional `done` / `risk`) —
+attached on welcome and again only when it changes.
 
 A second `welcome` (same socket) is a new zone. The client rebuilds the map
 from it the same way it did the first time — that is how the party leaves the
-camp for the forest. `ack` is the same counter snapshots use: the client must
+camp for the forest. Forest spawn is inside that corridor, not a random
+clearing. `ack` is the same counter snapshots use: the client must
 keep issuing input sequences above it. Resetting to 0 after the camp walk-out
 makes every later packet look like a replay, and the player cannot walk off
 the spawn tile.

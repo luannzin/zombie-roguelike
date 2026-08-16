@@ -77,6 +77,7 @@ class TileMap:
         loot: list | None = None,
         crates: list | None = None,
         rift: dict | None = None,
+        entrance: dict | None = None,
     ):
         self.tiles = tiles
         # The story laid over this map: a legend plus one compact row per
@@ -96,6 +97,9 @@ class TileMap:
         # the same reason `scenery` is: the room hydrates a live `rift.Rift`
         # from it and this copy is only ever forwarded.
         self.rift = rift
+        # Forest arrival corridor. Geometry is placed at generation; `state`
+        # is rewritten as the woods swallow it. Camp maps leave it empty.
+        self.entrance = entrance
         # Shipped to the client, which hashes it with tile coordinates to place
         # decoration (grass tufts, prop variants). Sending a seed instead of a
         # decoration layer keeps the map payload the size of the map.
@@ -215,4 +219,5 @@ class TileMap:
             **self.scenery,
             "crates": list(self.crates),
             "rift": self.rift,
+            "entrance": self.entrance,
         }

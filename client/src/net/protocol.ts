@@ -363,6 +363,33 @@ export type PropRow = [
  */
 export type LightRow = [x: number, y: number, radiusTiles: number, kind: number];
 
+export type EntranceSide = 'e' | 'w' | 'n' | 's';
+export type EntranceState = 'open' | 'sealing' | 'gone';
+
+/**
+ * The forest's black corridor, the camp exit continued. Mouth is where the
+ * party walks onto floor; dir is into the woods; back is the map edge.
+ */
+export interface EntrancePayload {
+  side: EntranceSide;
+  mouth: [number, number];
+  back: [number, number];
+  dir: [number, number];
+  state: EntranceState;
+  t: number;
+}
+
+/** One run objective. The HUD mirrors this list and never invents a row. */
+export interface QuestState {
+  id: string;
+  label: string;
+  have: number;
+  need: number;
+  done?: boolean;
+  /** Dangerous work — the HUD paints the count in the danger tone. */
+  risk?: boolean;
+}
+
 export interface MapPayload {
   width: number;
   height: number;
@@ -401,6 +428,11 @@ export interface MapPayload {
    * and any forest the generator could not fit a 7x7 plot into.
    */
   rift?: RiftPayload | null;
+  /**
+   * Forest arrival corridor. Absent on the camp. Geometry is placed at
+   * generation; `state` is rewritten as the woods swallow the path.
+   */
+  entrance?: EntrancePayload | null;
 }
 
 /**
@@ -787,6 +819,8 @@ export interface WelcomeMessage {
   loot?: LootState[];
   /** Dead bodies still on this map. Replaces the client's list on every welcome. */
   corpses?: CorpseState[];
+  /** Run objectives. Absent until the entrance seals. */
+  quests?: QuestState[];
 }
 
 export interface SnapshotMessage {
@@ -794,6 +828,8 @@ export interface SnapshotMessage {
   tick: number;
   /** Camp walk-out: input is locked and bodies are puppeted toward the exit. */
   departing?: boolean;
+  /** Forest emerge: same lock, walking out of the VOID corridor. */
+  arriving?: boolean;
   /** Drop the snapshot if this does not match `welcome.zone.key` — a stale camp tick after embark. */
   zoneKey?: string;
   players: PlayerState[];
@@ -832,6 +868,12 @@ export interface SnapshotMessage {
    * between are the client's own clock, not something worth 30 Hz of wire.
    */
   rift?: RiftStateRow;
+  /** Entrance changed state (open → sealing → gone). */
+  entrance?: { state: EntranceState; t: number };
+  /** Tiles rewritten this tick — the forest swallowing the corridor. */
+  tilePatches?: Array<[tx: number, ty: number, kind: number]>;
+  /** Objectives. Present when the list changed (appear, tick, complete). */
+  quests?: QuestState[];
 }
 
 /** The live half of the extraction point. */

@@ -45,6 +45,7 @@ import type {
   PickupEvent,
   PlayerMeta,
   RiftStateRow,
+  QuestState,
   ServerMessage,
   SnapshotMessage,
   SwingEvent,
@@ -106,6 +107,9 @@ const HURT_TRAUMA = 0.55;
 const PICKUP_TRAUMA = 0.06;
 /** Camera punch when an enemy drops. */
 const DEATH_TRAUMA = 0.32;
+/** The woods swallowing the way in — one beat per rank of trees. */
+const SEAL_TRAUMA = 0.18;
+const SEAL_TRAUMA_START = 0.42;
 /** How much blood a print loses each stride after leaving a pool. */
 const BLOOD_STEP_KEEP = 0.72;
 /** HP ratio where vignette starts (above = none). */
@@ -390,6 +394,13 @@ export class Game {
   private introLeft = 0;
   /** Camp walk-out: local prediction is off, camera follows the party. */
   private departing = false;
+  /** Forest emerge: same lock, walking out of the VOID corridor. */
+  private arriving = false;
+  /** Run objectives. Cached; snapshots only attach the list when it changes. */
+  private quests: QuestState[] = [];
+  private get locked(): boolean {
+    return this.departing || this.arriving;
+  }
   private aimX = 1;
   private aimY = 0;
   /** Hotbar slot in hand. -1 is holstered. Client-authored, like the lamp. */
@@ -568,6 +579,8 @@ export class Game {
     this.fov = null;
     this.zone = null;
     this.departing = false;
+    this.arriving = false;
+    this.quests = [];
     this.lights = [];
     this.local = null;
     this.localMeta = null;
@@ -695,6 +708,8 @@ export class Game {
     this.smoothX = msg.player.x;
     this.smoothY = msg.player.y;
     this.departing = false;
+    this.arriving = msg.zone.kind === 'forest' && msg.map.entrance?.state === 'open';
+    this.quests = msg.quests ?? [];
     this.alertHeard.clear();
     this.growlLeft = GROWL_INTERVAL;
     this.dreadLeft = DREAD_INTERVAL;
@@ -707,10 +722,18 @@ export class Game {
     // and a sting on the first frame would be answering the screen change
     // instead of the name.
     playSfx('arrive', { delay: 0.18, jitter: 0 });
-    // Held still, facing the camera, while the zone names itself.
-    this.introLeft = INTRO_TIME;
-    this.aimX = INTRO_AIM_X;
-    this.aimY = INTRO_AIM_Y;
+    // Forest arrival is a walk out of the corridor, not a posed hold. The
+    // title still names the night; the body keeps moving.
+    if (this.arriving && this.world.entrance) {
+      this.introLeft = 0;
+      this.aimX = this.world.entrance.dirX;
+      this.aimY = this.world.entrance.dirY;
+      playSfx('void', { jitter: 0 });
+    } else {
+      this.introLeft = INTRO_TIME;
+      this.aimX = INTRO_AIM_X;
+      this.aimY = INTRO_AIM_Y;
+    }
 
     // Size the canvas NOW rather than on the first frame. The lobby has just
     // finished pushing in onto this exact player at this exact scale (see
@@ -730,11 +753,12 @@ export class Game {
       status: msg.zone.hostile ? 'em campo' : 'no acampamento',
       zone: msg.zone,
       arrival: { key: msg.zone.key, zone: msg.zone },
-      introducing: true,
-      cinematic: false,
+      introducing: !this.arriving,
+      cinematic: this.arriving,
       ready: null,
       prompt: null,
       lootPrompt: null,
+      quests: this.quests,
       inventory: this.inventoryHud(),
       hotbar: this.hotbarHud(),
     });
@@ -761,6 +785,30 @@ export class Game {
       playSfx('void', { jitter: 0 });
     }
 
+    const wasArriving = this.arriving;
+    this.arriving = Boolean(msg.arriving) && this.zone?.kind === 'forest';
+    if (this.arriving && !wasArriving) {
+      this.patchHud({ cinematic: true, prompt: null, cratePrompt: false });
+    }
+    if (!this.arriving && wasArriving) {
+      this.patchHud({ cinematic: false });
+    }
+
+    if (msg.entrance && this.world.entrance) {
+      const was = this.world.entrance.state;
+      this.world.setEntranceState(msg.entrance.state, msg.entrance.t);
+      if (was !== 'sealing' && msg.entrance.state === 'sealing') {
+        this.camera.addTrauma(SEAL_TRAUMA_START);
+        playSfx('void', { jitter: 0 });
+      }
+    }
+    if (msg.tilePatches && msg.tilePatches.length > 0) {
+      this.applyTilePatches(msg.tilePatches);
+    }
+    if (msg.quests) {
+      this.quests = msg.quests;
+    }
+
     if (msg.roster) {
       for (const meta of msg.roster) this.roster.set(meta.id, meta);
       const mine = this.roster.get(this.localId);
@@ -773,7 +821,7 @@ export class Game {
     for (const state of msg.players) {
       if (state.id === this.localId) {
         this.localReady = state.ready ?? false;
-        if (this.departing) {
+        if (this.locked) {
           this.local.state.x = state.x;
           this.local.state.y = state.y;
           this.local.state.vx = state.vx;
@@ -1137,7 +1185,7 @@ export class Game {
       // capped at the simulation rate. Not while the intro holds them: the
       // character is facing the camera on purpose, and a cursor that had drifted
       // across the window would spin them the moment the frame opened.
-      if (this.introLeft === 0 && !this.departing) this.updateAim();
+      if (this.introLeft === 0 && !this.locked) this.updateAim();
       this.stepScope(dt);
 
       this.accumulator += dt;
@@ -1164,6 +1212,8 @@ export class Game {
       this.smoothY = smooth.y;
       if (this.departing) {
         this.followDepartCamera(dt);
+      } else if (this.arriving) {
+        this.followArriveCamera(dt);
       } else {
         this.camera.follow(smooth.x, smooth.y, this.world, dt);
       }
@@ -1189,12 +1239,12 @@ export class Game {
     const local = this.local!;
 
     const packet = this.liveInput(local.nextSequence());
-    if (!this.departing) {
+    if (!this.locked) {
       local.predict(packet, world, config);
     }
     this.connection.send(packet);
 
-    if (this.departing) return;
+    if (this.locked) return;
 
     if (this.localFireCooldown > 0) {
       this.localFireCooldown = Math.max(0, this.localFireCooldown - dt);
@@ -1239,14 +1289,16 @@ export class Game {
    * would still move the character locally and then be yanked back.
    */
   private liveInput(sequence = 0): InputPacket {
-    if (this.introLeft > 0 || this.departing) {
+    if (this.introLeft > 0 || this.locked) {
       return {
         type: 'input',
         sequence,
         movement: { up: false, down: false, left: false, right: false },
         aim: this.departing
           ? { x: DEPART_AIM_X, y: DEPART_AIM_Y }
-          : { x: INTRO_AIM_X, y: INTRO_AIM_Y },
+          : this.arriving && this.world?.entrance
+            ? { x: this.world.entrance.dirX, y: this.world.entrance.dirY }
+            : { x: INTRO_AIM_X, y: INTRO_AIM_Y },
         shoot: false,
         lantern: this.lantern.on,
         held: this.heldSlot,
@@ -1617,7 +1669,7 @@ export class Game {
     const now = performance.now();
     const sampled = this.snapshots.sample(
       now,
-      this.departing ? undefined : this.localId,
+      this.locked ? undefined : this.localId,
       this.connection.rtt,
     );
 
@@ -1644,7 +1696,7 @@ export class Game {
       );
     }
 
-    if (!this.departing && this.local && this.localMeta) {
+    if (!this.locked && this.local && this.localMeta) {
       const { vx, vy } = this.local.state;
       entities.push(
         this.toDrawablePlayer(
@@ -2104,7 +2156,8 @@ export class Game {
             }
           : null,
       lantern: local ? this.lantern.reading() : null,
-      cinematic: this.departing,
+      cinematic: this.locked,
+      quests: this.quests,
       ready: this.readyCount(),
       prompt: this.readyPrompt(),
       lootPrompt: this.lootPromptInfo(),
@@ -2124,7 +2177,7 @@ export class Game {
   }
 
   private sendInteract(): void {
-    if (this.departing || this.introLeft > 0) return;
+    if (this.locked || this.introLeft > 0) return;
     const nearLoot = this.nearLoot();
     if (nearLoot) {
       // A full belt with a gun in hand is a TRADE, not a refusal, and it
@@ -2168,7 +2221,7 @@ export class Game {
   }
 
   private toggleInventory(): void {
-    if (this.departing || this.introLeft > 0) return;
+    if (this.locked || this.introLeft > 0) return;
     this.inventoryOpen = !this.inventoryOpen;
     playSfx(this.inventoryOpen ? 'bag-open' : 'bag-close');
     const inventory = this.inventoryHud();
@@ -2176,7 +2229,7 @@ export class Game {
   }
 
   private selectHotbar(slot: number): void {
-    if (this.departing || this.introLeft > 0) return;
+    if (this.locked || this.introLeft > 0) return;
     const guns = this.localMeta?.guns;
     if (!guns || slot < 0 || slot >= guns.slots.length) return;
     if (!guns.slots[slot]) {
@@ -2198,7 +2251,7 @@ export class Game {
   }
 
   private requestDrop(slot: number): void {
-    if (this.departing || this.introLeft > 0) return;
+    if (this.locked || this.introLeft > 0) return;
     if (this.zone?.kind === 'camp') return;
     const meta = this.localMeta;
     if (!meta?.inv) return;
@@ -2414,7 +2467,7 @@ export class Game {
       this.input.shooting &&
       this.zone?.hostile !== false &&
       this.introLeft === 0 &&
-      !this.departing;
+      !this.locked;
     const want = ads && weapon ? weapon.scopeZoom : ARENA_ZOOM;
     const k = 1 - expDamp(9, dt);
     this.camera.zoom += (want - this.camera.zoom) * k;
@@ -2496,7 +2549,7 @@ export class Game {
   }
 
   private cratePromptInfo(): boolean {
-    if (this.departing || this.introLeft > 0) return false;
+    if (this.locked || this.introLeft > 0) return false;
     if (this.nearLoot()) return false;
     if (this.riftPrompt()) return false;
     return this.nearCrate() !== null;
@@ -2513,7 +2566,7 @@ export class Game {
    * screen and the check on the server agree about what "close enough" means.
    */
   private riftPrompt(): boolean {
-    if (this.departing || this.introLeft > 0) return false;
+    if (this.locked || this.introLeft > 0) return false;
     const config = this.config;
     const local = this.local;
     const rift = this.world?.rift;
@@ -2770,7 +2823,7 @@ export class Game {
   }
 
   private lootPromptInfo(): HudLootPrompt | null {
-    if (this.zone?.kind === 'camp' || this.departing || this.introLeft > 0) return null;
+    if (this.zone?.kind === 'camp' || this.locked || this.introLeft > 0) return null;
     const near = this.nearLoot();
     if (!near || !this.config) return null;
     const def = this.config.loot?.[near.k];
@@ -2934,6 +2987,65 @@ export class Game {
     const look = world.tileSize * 4;
     const targetX = mouth ? cx * 0.55 + (mouth.x + look) * 0.45 : cx + look;
     this.camera.follow(targetX, cy, world, dt);
+  }
+
+  /**
+   * Frame the party walking out of the corridor, looking a little ahead
+   * into the forest so the night is in the shot rather than the wall behind.
+   */
+  private followArriveCamera(dt: number): void {
+    const world = this.world;
+    if (!world) return;
+    const latest = this.snapshots.latest;
+    let cx = this.smoothX;
+    let cy = this.smoothY;
+    if (latest && latest.players.size > 0) {
+      cx = 0;
+      cy = 0;
+      for (const player of latest.players.values()) {
+        cx += player.x;
+        cy += player.y;
+      }
+      cx /= latest.players.size;
+      cy /= latest.players.size;
+    }
+    const gate = world.entrance;
+    const look = world.tileSize * 3.5;
+    const targetX = gate ? cx + gate.dirX * look : cx;
+    const targetY = gate ? cy + gate.dirY * look : cy;
+    this.camera.follow(targetX, targetY, world, dt);
+  }
+
+  private applyTilePatches(patches: Array<[number, number, number]>): void {
+    const world = this.world;
+    if (!world || patches.length === 0) return;
+    const ts = world.tileSize;
+    let first = true;
+    for (const [tx, ty, kind] of patches) {
+      world.setTile(tx, ty, kind);
+      const x = (tx + 0.5) * ts;
+      const y = (ty + 1) * ts;
+      this.effects.spawnDust(x, y, 0, 1, 1, 1.6);
+      this.effects.spawnDust(x, y, 0, -1, -1, 1.1);
+      if (first) {
+        this.effects.spawnWind(x, y, WIND_LIFE);
+        first = false;
+      }
+    }
+    const mid = patches[(patches.length / 2) | 0];
+    if (mid && throttled('seal', 0.08, this.time)) {
+      playSfxAt('crate-break', (mid[0] + 0.5) * ts, (mid[1] + 1) * ts);
+    }
+    this.camera.addTrauma(SEAL_TRAUMA);
+    // The last rank is the door shutting. A second void drone plus a harder
+    // shove, so the player feels there is no way back rather than watching
+    // trees finish appearing.
+    if (world.entrance?.state === 'gone') {
+      this.camera.addTrauma(SEAL_TRAUMA_START);
+      playSfx('void', { jitter: 0 });
+    }
+    this.renderer?.stampTiles(world, patches);
+    this.minimap.rebuildTiles();
   }
 }
 

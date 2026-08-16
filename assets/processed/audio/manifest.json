@@ -144,6 +144,24 @@
       "bus": "sfx",
       "gain": 0.375
     },
+    "knife-swing": {
+      "files": [
+        "knife-swing-0.wav",
+        "knife-swing-1.wav",
+        "knife-swing-2.wav"
+      ],
+      "bus": "sfx",
+      "gain": 0.1181
+    },
+    "knife-hit": {
+      "files": [
+        "knife-hit-0.wav",
+        "knife-hit-1.wav",
+        "knife-hit-2.wav"
+      ],
+      "bus": "sfx",
+      "gain": 0.3564
+    },
     "step-soft": {
       "files": [
         "step-soft-0.wav",

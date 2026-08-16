@@ -157,7 +157,27 @@ mutation, no React.
   around the grip and flipped when aim is left. An empty hand draws nothing.
   `gunMuzzle` in `guns.ts` is the barrel tip — tracers start there, not at
   the body. Do not rotate a loot-atlas icon; that sheet is the ground/HUD
-  face. There is no laser sight.
+  face. There is no laser sight. The knife is one more frame on that same
+  sheet and needs no branch: a blade in the hand is a sprite rotated around
+  a grip exactly like a barrel is.
+- **How far out a weapon is HELD, and how big it is drawn, belong to the
+  weapon.** `GunFrame.hold` (world px along aim from the body centre) and
+  `GunFrame.scale` ride the guns manifest beside the grip, and `gunHand`
+  reads them — so the call site has to pass the weapon, not just a pose.
+  One constant for everything put the knife out where a barrel goes, which
+  read as a small sword floating beside the sprite rather than as something
+  somebody is holding. `GUN_HAND_ALONG` is now only the fallback for an
+  atlas without the field.
+- **The blade path is a PATH, not an arc.** `drawSwings` in `layers/effects`
+  draws where the edge IS at this instant plus the tail behind it — the
+  stroke races round the cone in the first two thirds of its life and
+  closes over the last third — because a static arc that fades is a decal
+  saying a swing happened near here, and the thing the player is doing is
+  moving a blade. Three strokes on one wedge (a glow the cut alone gets,
+  the tail, then a white core on the leading quarter), and `sweep` flips
+  the direction so two consecutive slashes cross into an X. It is the only
+  WHITE effect in the palette: every other fast-moving mark is tinted, so
+  an uncoloured stroke can only mean one thing.
 - Colours come from `theme/palette.ts` only. Never write a literal colour here.
 - Frames are bottom-anchored, so any frame height works with no extra code.
 - A prop sheet's frames are VARIANTS unless its manifest entry carries `fps`

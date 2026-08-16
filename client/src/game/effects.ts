@@ -56,6 +56,42 @@ export interface Slash {
 }
 
 /**
+ * A PLAYER's blade going through the air: a white path swept out of the
+ * body, not an arc parked on a victim.
+ *
+ * This is the opposite object to `Slash` and the difference is the whole
+ * reason there are two. A claw arc is drawn ON the thing it hit, because
+ * what the player has to read is "that one got me". A knife swing is drawn
+ * FROM THE HAND THAT THREW IT, whether or not it landed, because what the
+ * player has to read is where their own reach just went — and the answer
+ * has to arrive on the frame they clicked rather than a round trip later.
+ *
+ * The path is not a static arc either: it is drawn as the leading edge of
+ * the blade at `age`, with a tail behind it, so the mark travels across the
+ * swing the way the blade did. `sweep` says which way around, which is what
+ * makes the two slashes read as an X instead of as the same swing twice.
+ */
+export interface Swing {
+  x: number;
+  y: number;
+  /** Aim the arc is centred on. */
+  dx: number;
+  dy: number;
+  /** World px from the body centre to the outer edge of the path. */
+  reach: number;
+  /** Full width of the arc, in radians. */
+  arc: number;
+  /** +1 / -1 — the direction the edge travels through the arc. */
+  sweep: number;
+  /** `cut` is the finisher: thicker, brighter, and it throws a second edge. */
+  cut: boolean;
+  /** True when the swing opened something. A whiff draws thinner. */
+  landed: boolean;
+  age: number;
+  life: number;
+}
+
+/**
  * A short-lived light in the world: muzzle flash, death pop, coin glint.
  *
  * These are the reason the scene feels reactive rather than lit. A gunshot in a
@@ -200,6 +236,8 @@ export class Effects {
   /** Footstep / walk puffs — drawn under entities. */
   dust: Particle[] = [];
   slashes: Slash[] = [];
+  /** Player blade paths. See Swing — a different object to `slashes`. */
+  swings: Swing[] = [];
   textFloats: TextFloat[] = [];
   /** Transient world lights — see PointLight. */
   lights: PointLight[] = [];
@@ -541,6 +579,69 @@ export class Effects {
     if (damage > 0) this.spawnDamage(x, y, damage);
   }
 
+  /**
+   * A knife swing thrown from `(x, y)` along `(dx, dy)`.
+   *
+   * Spawned whether or not it landed, and spawned by the SWINGER rather than
+   * by whatever it hit: the path is a statement about reach, and a whiff has
+   * to draw or the player never learns how short the weapon is.
+   *
+   * The finisher gets a few sparks off the leading edge; the slashes get
+   * none. Two quick white strokes and then one that throws light is the
+   * cheapest possible way to make three swings read as a sentence.
+   */
+  spawnSwing(
+    x: number,
+    y: number,
+    dx: number,
+    dy: number,
+    reach: number,
+    arcDegrees: number,
+    sweep: number,
+    cut: boolean,
+    landed: boolean,
+  ): void {
+    const life = cut ? 0.26 : 0.18;
+    const arc = (arcDegrees * Math.PI) / 180;
+    this.swings.push({
+      x,
+      y,
+      dx,
+      dy,
+      reach,
+      arc,
+      sweep: sweep < 0 ? -1 : 1,
+      cut,
+      landed,
+      age: 0,
+      life,
+    });
+    if (!cut) return;
+
+    const fx = palette().effects;
+    // Struck off the edge at the far end of the sweep, thrown along the aim.
+    for (let i = 0; i < 7; i++) {
+      const along = 0.45 + Math.random() * 0.55;
+      const spread = (Math.random() - 0.5) * arc;
+      const cos = Math.cos(spread);
+      const sin = Math.sin(spread);
+      const bx = dx * cos - dy * sin;
+      const by = dy * cos + dx * sin;
+      const speed = 30 + Math.random() * 46;
+      this.particles.push({
+        x: x + bx * reach * along * 0.7,
+        y: y + by * reach * along * 0.7,
+        vx: bx * speed,
+        vy: by * speed - 10,
+        size: 0.7 + Math.random() * 1.1,
+        color: i % 3 === 0 ? fx.bladeCore : fx.blade,
+        age: 0,
+        life: 0.16 + Math.random() * 0.12,
+        gy: 120,
+      });
+    }
+  }
+
   /** A crate coming apart: splinters, a puff of dust, and the sheet to play. */
   spawnCrateSmash(
     x: number,
@@ -670,6 +771,7 @@ export class Effects {
     this.tracers = advance(this.tracers, dt);
     this.flashes = advance(this.flashes, dt);
     this.slashes = advance(this.slashes, dt);
+    this.swings = advance(this.swings, dt);
     this.lights = advance(this.lights, dt);
     this.footprints = advance(this.footprints, dt);
     this.crateSmashes = advance(this.crateSmashes, dt);
@@ -687,6 +789,7 @@ export class Effects {
     this.tracers.length = 0;
     this.flashes.length = 0;
     this.slashes.length = 0;
+    this.swings.length = 0;
     this.particles.length = 0;
     this.dust.length = 0;
     this.textFloats.length = 0;

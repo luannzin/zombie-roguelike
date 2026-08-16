@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Asset pipeline: held gun sprites.
 
-Side-view, pointing RIGHT, one frame per weapon. The client rotates the
-frame around the grip and mirrors it when the aim is left, so a single
-row is every facing.
+Side-view, pointing RIGHT, one frame per weapon — the knife included, since
+a blade in the hand is drawn by exactly the same code as a barrel in the
+hand. The client rotates the frame around the grip and mirrors it when the
+aim is left, so a single row is every facing.
 
 These are IN HAND, not loot icons. Ground / HUD icons live in
 make_loot.py under the same keys, because a drop is a standing prop on
@@ -11,17 +12,26 @@ the 16x16 loot atlas. Do not fold the two together: a 16px isometric
 pistol rotated around a grip is mush, and a side-view rifle planted on
 a tile reads as a signpost.
 
-Every gun is the same pixel SCALE and the same silhouette HEIGHT
-(5 authored rows, barrel on row 1). Length is the class: pistols short,
-rifles longer, AWP longest. A mixed scale next to a 16px body reads as
-five different toys.
+Every weapon is the same pixel SCALE and the same silhouette HEIGHT
+(5 authored rows, barrel on row 1). Length is the class: knife shortest,
+pistols short, rifles longer, AWP longest. A mixed scale next to a 16px
+body reads as six different toys.
 
 Output (assets/processed/guns/):
     sheet.png      one row, 18x8 frames, catalog order
-    manifest.json  frame, grip, muzzle per key
+    manifest.json  frame, grip, muzzle, hold, scale per key
 
 The grip is the pivot (hand). The muzzle is where the tracer starts.
 Both are pixel coordinates inside the frame.
+
+`hold` and `scale` are the odd ones out, and both are pose rather than art.
+`hold` is WORLD pixels along the aim from the body centre out to that pivot
+— how far in front of the character the weapon is carried. A gun is held out
+at arm's length, which is why it defaults to `HOLD_OUT`. A knife is not: it
+is held IN, at the body, and a blade drawn at a pistol's extension reads as
+a tiny sword floating beside the sprite rather than as something in
+somebody's hand. `scale` is a multiplier on the drawn frame, 1.0 for
+everything the sheet's one-pixel-scale rule covers.
 
 Usage:
     python tools/make_guns.py
@@ -49,6 +59,14 @@ from make_textures import (
 
 FRAME_W = 18
 FRAME_H = 8
+
+#: World px along aim from the body centre to the grip, for something held
+#: out at arm's length. Every gun uses it; see `hold` in the module docstring.
+HOLD_OUT = 3.0
+#: Held IN: the grip sits ON the body's centre line and the blade is the only
+#: part in front of it. That is the difference between a knife and a sword at
+#: this size — what reaches forward is the blade's length, never the arm's.
+HOLD_IN = 0.0
 
 # Materials against the night. Bright enough to read at 4x, dark enough
 # not to glow like a HUD icon on a body.
@@ -192,7 +210,45 @@ GUNS: list[tuple[str, Palette, Art, str, str]] = [
         "g",
         "m",
     ),
+    # The knife, and it is the one frame on this sheet that is not a gun.
+    # It is drawn STRAIGHT — handle, crossguard and blade on one line — and
+    # that is the whole silhouette decision. Every gun here hangs a grip
+    # below its barrel, so a blade with any drop at the back reads as one
+    # more pistol at 16px no matter what the blade is doing. The guard is
+    # the only thing that leaves the line, one pixel above and one below,
+    # which is what says "this end is held" without a grip.
+    #
+    # Same edge on row 1, so swapping to it does not jump the hand, and
+    # deliberately the SHORTEST thing on the sheet: length is what this
+    # sheet uses to say range, and the weapon you have to walk up to
+    # somebody with has to read as short.
+    (
+        "knife",
+        {"b": CHROME, "c": STEEL, "g": GRIP, "m": CHROME},
+        [
+            "...c......",
+            ".ggcbbbbb.",
+            ".ggcbbbbbm",
+            "...c......",
+            "..........",
+        ],
+        "g",
+        "m",
+    ),
 ]
+
+
+#: How far in front of the body each weapon is carried, and how big it is
+#: drawn. Written as the exceptions rather than as extra columns on every
+#: row: five of the six entries are guns held the one way guns are held at
+#: the one scale this sheet is authored at, and repeating that five times
+#: would bury the one row where either is a decision.
+HOLD: dict[str, float] = {"knife": HOLD_IN}
+#: Draw scale against the authored frame. The sheet's rule is that every
+#: weapon shares one pixel scale, and the knife is the deliberate exception:
+#: it is the one thing here that is not a firearm, and reading smaller than
+#: everything on the belt is how a 16px sprite says "sidearm".
+SCALE: dict[str, float] = {"knife": 0.8}
 
 
 def build(args) -> Path:
@@ -217,6 +273,8 @@ def build(args) -> Path:
             "gripY": grip[1],
             "muzzleX": muzzle[0],
             "muzzleY": muzzle[1],
+            "hold": HOLD.get(key, HOLD_OUT),
+            "scale": SCALE.get(key, 1.0),
         }
 
     pack(frames, width, height).save(out_dir / "sheet.png")

@@ -1,6 +1,10 @@
 /**
  * Transient combat visuals: footstep dust, tracers, muzzle flashes, impact
- * debris, melee slashes, floating text, and the empty-crate wind puff.
+ * debris, blade paths, enemy claw arcs, floating text, and the empty-crate
+ * wind puff.
+ *
+ * The two melee shapes are drawn by two functions and they are not the same
+ * effect wearing different colours — see `drawSwings` and `drawSlashes`.
  *
  * Dust draws under entities; the rest draws over them. Floating text is
  * screen-space so it stays legible at any zoom. Wind and the death puff are
@@ -82,6 +86,7 @@ export function drawCombatEffects(
     ctx.fill();
   }
 
+  drawSwings(ctx, effects, tileSize, fx);
   drawSlashes(ctx, effects, tileSize, fx);
 
   for (const p of effects.particles) {
@@ -93,6 +98,103 @@ export function drawCombatEffects(
   }
 
   ctx.globalAlpha = 1;
+}
+
+/**
+ * The player's blade: a white path swept out of the body, at speed.
+ *
+ * It is a PATH and not an arc, and that distinction is the effect. A static
+ * arc that fades is a decal — it says a swing happened somewhere near here.
+ * What is drawn instead is where the edge IS at this instant, with a tail
+ * behind it: the stroke starts at one lip of the cone, races round to the
+ * other in the first two thirds of the effect's life, and the tail catches up
+ * and closes over the last third. Watched at 60 Hz that reads as a blade
+ * travelling, which is the thing the player is actually doing.
+ *
+ * Three strokes on the same wedge, widest first:
+ *
+ *   glow   a wide soft band, only on the cut — the finisher throws light and
+ *          the two slashes do not, which is what separates them at a glance
+ *   body   the tail: the part of the path already travelled, fading behind
+ *   core   the leading edge, one third the width and pure white
+ *
+ * The radius grows a little over the life so the path opens away from the
+ * body rather than orbiting it, and `sweep` flips the direction of travel so
+ * two consecutive slashes cross into an X instead of repeating.
+ *
+ * Nothing here knows whether the swing hit anything: `landed` only thickens
+ * it. Blood, numbers and wounds are the victim's business and are drawn on
+ * the victim.
+ */
+function drawSwings(
+  ctx: CanvasRenderingContext2D,
+  effects: Effects,
+  tileSize: number,
+  fx: ReturnType<typeof palette>['effects'],
+): void {
+  if (effects.swings.length === 0) return;
+  ctx.lineCap = 'round';
+
+  for (const swing of effects.swings) {
+    const fade = fadeOf(swing);
+    const t = 1 - fade;
+    const facing = Math.atan2(swing.dy, swing.dx);
+    const half = swing.arc * 0.5;
+
+    // Where the edge is now, and how much path is behind it. `travel` eases
+    // out so the swing decelerates into its follow-through instead of
+    // stopping dead; `tail` shrinks at the end so the stroke closes rather
+    // than fading as a full-length band.
+    const travel = 1 - (1 - Math.min(1, t / 0.66)) ** 2;
+    const tail = Math.min(travel, t < 0.66 ? 0.55 : 0.55 * (1 - (t - 0.66) / 0.34));
+    if (tail <= 0.001) continue;
+
+    const lead = -half + swing.arc * travel;
+    const back = lead - swing.arc * tail;
+    // Screen angles run the other way when the swing is thrown left-handed.
+    const from = facing + (swing.sweep > 0 ? back : -back);
+    const to = facing + (swing.sweep > 0 ? lead : -lead);
+    const counter = swing.sweep <= 0;
+
+    const radius = swing.reach * (0.62 + 0.34 * t);
+    const weight = (swing.landed ? 1 : 0.72) * (swing.cut ? 1.5 : 1);
+
+    if (swing.cut) {
+      stroke(ctx, swing.x, swing.y, radius, from, to, counter, fx.bladeGlow,
+        tileSize * 0.2 * weight, 0.22 * fade);
+    }
+    stroke(ctx, swing.x, swing.y, radius, from, to, counter, fx.blade,
+      tileSize * 0.085 * weight, 0.7 * fade);
+    // The core is drawn on the leading QUARTER of the path only: white all
+    // the way along would be a ribbon, and a blade is bright where the metal
+    // is and dim where the air it left is.
+    const coreFrom = to - (to - from) * 0.28;
+    stroke(ctx, swing.x, swing.y, radius, coreFrom, to, counter, fx.bladeCore,
+      tileSize * 0.03 * weight, fade);
+  }
+
+  ctx.lineCap = 'butt';
+  ctx.globalAlpha = 1;
+}
+
+function stroke(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  radius: number,
+  from: number,
+  to: number,
+  counter: boolean,
+  color: string,
+  width: number,
+  alpha: number,
+): void {
+  ctx.globalAlpha = alpha;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = width;
+  ctx.beginPath();
+  ctx.arc(cx, cy, radius, from, to, counter);
+  ctx.stroke();
 }
 
 /**

@@ -112,6 +112,10 @@ class Room:
         self.navigator = Navigator(self.world)
         self.tick = 0
         self.shot_events: list[dict] = []
+        #: Melee arcs thrown this tick. A separate list from `shot_events`
+        #: because a swing is not a tracer: no distance, no single victim, and
+        #: a combo step the client draws a different shape for.
+        self.swing_events: list[dict] = []
         #: Things enemies can HEAR, made this tick and consumed by the next
         #: `ai.update`. A gunshot is the only source so far; anything else the
         #: player does loudly is one more append (see `ai.Noise`).
@@ -122,6 +126,7 @@ class Room:
         self.loot_pickup_events: list[dict] = []
         self.crate_break_events: list[dict] = []
         self._shot_id = 0
+        self._swing_id = 0
         self._enemy_id = 0
         self._coin_id = 0
         self._task: asyncio.Task | None = None
@@ -364,10 +369,16 @@ class Room:
         item = loot.BY_KEY.get(drop.key)
         dest = "bag"
         if item is not None and item.pocket == "hotbar":
-            empty = player.hotbar.equipped() is None
+            # A gun goes straight to the hand when there was no gun in it.
+            # The knife counts as no gun for this: a run opens holding the
+            # blade, so testing "is the hand empty" would mean nobody's
+            # FIRST pickup ever equipped itself, which is the one time this
+            # matters most. A second gun does not steal the hand.
+            held = player.hotbar.equipped()
+            unarmed = held is None or held.melee is not None
             slot = player.hotbar.add(drop.key)
             dest = "hotbar"
-            if slot is not None and empty:
+            if slot is not None and unarmed:
                 player.hotbar.held = slot
         else:
             slot = player.inventory.add(drop.key)
@@ -572,6 +583,8 @@ class Room:
             player.aim_y = 1.0
             player.inputs.clear()
             player.idle_ticks = 0
+            player.combo_step = 0
+            player.combo_left = 0.0
             # Sequence is NOT reset. The client has been numbering packets since
             # the camp, and queue_input drops anything ≤ last_processed_seq.
             player.last_input = InputCmd(sequence=player.last_processed_seq)
@@ -617,6 +630,14 @@ class Room:
         for player in self.players.values():
             if player.fire_cooldown > 0.0:
                 player.fire_cooldown = max(0.0, player.fire_cooldown - dt)
+            # The chain closes on its own. Ticked here rather than in
+            # `handle_melee`, because it has to run out for a player who
+            # stopped swinging — which is exactly the frame that handler is
+            # not doing anything.
+            if player.combo_left > 0.0:
+                player.combo_left = max(0.0, player.combo_left - dt)
+                if player.combo_left == 0.0:
+                    player.combo_step = 0
             if player.hurt_immunity > 0.0:
                 player.hurt_immunity = max(0.0, player.hurt_immunity - dt)
 
@@ -633,7 +654,7 @@ class Room:
                 cmd = player.inputs.popleft()
                 apply_input(player, cmd, self.world, dt)
                 player.hotbar.apply_held(cmd.held)
-                self.handle_shooting(player, cmd, dt)
+                self.handle_attack(player, cmd, dt)
                 player.last_processed_seq = cmd.sequence
                 player.last_input = cmd
                 consumed += 1
@@ -644,7 +665,7 @@ class Room:
                 if player.idle_ticks < 3:
                     apply_input(player, player.last_input, self.world, dt)
                     player.hotbar.apply_held(player.last_input.held)
-                    self.handle_shooting(player, player.last_input, dt)
+                    self.handle_attack(player, player.last_input, dt)
                 player.idle_ticks += 1
             else:
                 player.idle_ticks = 0
@@ -784,16 +805,31 @@ class Room:
             }
         )
 
-    def handle_shooting(self, player: Player, cmd: InputCmd, dt: float) -> None:
-        # Nobody fires in a safe zone. The camp has nothing to shoot at except
-        # the person standing next to you at the fire.
+    def handle_attack(self, player: Player, cmd: InputCmd, dt: float) -> None:
+        """One trigger, two weapons. A gun fires a ray; the knife swings an arc.
+
+        Dispatched on the weapon's own `melee` block rather than on its `kind`
+        string, so a second blade is a catalog row and nothing here changes.
+        """
+        # Nobody attacks in a safe zone. The camp has nothing to shoot at
+        # except the person standing next to you at the fire.
         if not self.zone.hostile:
             player.aim_hold = 0.0
+            player.combo_step = 0
+            player.combo_left = 0.0
             return
         weapon = player.hotbar.equipped()
         if weapon is None or not player.alive:
             player.aim_hold = 0.0
             return
+        if weapon.melee is not None:
+            self.handle_melee(player, cmd, weapon)
+            return
+        # Holstering the blade mid-chain abandons it: coming back to the knife
+        # starts at the first slash rather than resuming a finisher the player
+        # has stopped thinking about.
+        player.combo_step = 0
+        player.combo_left = 0.0
         if cmd.shoot:
             player.aim_hold += dt
         else:
@@ -805,6 +841,110 @@ class Room:
             return
         player.fire_cooldown = weapon.fire_cooldown
         self.fire(player, cmd.aim_x, cmd.aim_y, weapon)
+
+    def handle_melee(self, player: Player, cmd: InputCmd, weapon: weapons.WeaponDef) -> None:
+        """Advance the chain by one beat, if the trigger is down and the arm is free.
+
+        Holding the button chains: slash, slash, cut, and then back to the
+        first slash. The chain is not held open by the button, it is held open
+        by `combo_left` — which is what lets a player break contact after two
+        slashes and come back to a fresh one instead of an accidental finisher.
+        """
+        player.aim_hold = 0.0
+        if not cmd.shoot or player.fire_cooldown > 0.0:
+            return
+        melee = weapon.melee
+        if melee is None:
+            return
+        step_index = player.combo_step % len(melee.steps)
+        step = melee.steps[step_index]
+        player.fire_cooldown = step.cooldown
+        # The window opens the moment the swing is thrown, and it is measured
+        # from there rather than from when the cooldown ends, so the chain
+        # gets tighter as the steps get slower.
+        if step.window > 0.0:
+            player.combo_step = step_index + 1
+            player.combo_left = step.cooldown + step.window
+        else:
+            player.combo_step = 0
+            player.combo_left = 0.0
+        self.swing(player, cmd.aim_x, cmd.aim_y, weapon, step_index, step)
+
+    def swing(
+        self,
+        attacker: Player,
+        dx: float,
+        dy: float,
+        weapon: weapons.WeaponDef,
+        step_index: int,
+        step: weapons.ComboStep,
+    ) -> None:
+        """Resolve one arc: bodies first, then — only if it met none — a crate.
+
+        Only if it met none, because a knife that carried through a zombie and
+        also took the box behind it would clear a room the player never aimed
+        at. A swing that landed on flesh has already done its job.
+
+        A whiff is SILENT and is not broadcast. The client already drew its own
+        arc when the local player threw it, and a remote player waving a blade
+        at nothing is not information anybody needs at 30 Hz.
+        """
+        targets = [*self.players.values(), *self.enemies.values()]
+        hits = combat.sweep(
+            self.world,
+            attacker.x,
+            attacker.y,
+            dx,
+            dy,
+            step.reach,
+            step.arc_degrees,
+            targets,
+            ignore_id=attacker.id,
+            limit=step.max_targets,
+        )
+
+        crate = None
+        if not hits:
+            crate, _ = crates.along_ray(self.crates, attacker.x, attacker.y, dx, dy, step.reach)
+
+        self._swing_id += 1
+        rows = []
+        for hit in hits:
+            rows.append({"id": hit.target.id, "dmg": step.damage})
+        self.swing_events.append(
+            {
+                "id": self._swing_id,
+                "by": attacker.id,
+                "k": weapon.key,
+                "step": step_index,
+                "x": round(attacker.x, 2),
+                "y": round(attacker.y, 2),
+                "dx": round(dx, 3),
+                "dy": round(dy, 3),
+                "hits": rows,
+            }
+        )
+
+        if hits or crate is not None:
+            # Quiet, but not silent: steel going into a body still carries.
+            # The whole chain is worth less than a quarter of a gunshot, which
+            # is the entire argument for using it.
+            self.noises.append(
+                ai.Noise(
+                    x=attacker.x, y=attacker.y, radius=step.noise, source_id=attacker.id
+                )
+            )
+
+        if crate is not None:
+            self.smash_crate(crate, attacker)
+            return
+
+        for hit in hits:
+            victim = hit.target
+            if isinstance(victim, Enemy):
+                self.damage_enemy(victim, step.damage, attacker, hit.dx, hit.dy)
+            else:
+                self.damage_player(victim, step.damage, attacker)
 
     def fire(self, shooter: Player, dx: float, dy: float, weapon: weapons.WeaponDef) -> None:
         ox = shooter.x + dx * weapon.muzzle
@@ -972,6 +1112,8 @@ class Room:
         player.vx = player.vy = 0.0
         player.respawn_timer = 0.0
         player.idle_ticks = 0
+        player.combo_step = 0
+        player.combo_left = 0.0
         # Grace period: respawning into a waiting pack is not a fair death.
         player.hurt_immunity = RESPAWN_IMMUNITY
         player.last_input = InputCmd(sequence=player.last_processed_seq)
@@ -1022,6 +1164,7 @@ class Room:
                 self.attack_events,
                 self.kill_events,
                 self.pickup_events,
+                swings=self.swing_events or None,
                 departing=self.departing,
                 zone_key=self.zone.key,
                 roster=roster,
@@ -1052,6 +1195,7 @@ class Room:
             if self.tick % SNAPSHOT_EVERY_N_TICKS == 0:
                 await self.broadcast_snapshot()
                 self.shot_events = []
+                self.swing_events = []
                 self.attack_events = []
                 self.kill_events = []
                 self.pickup_events = []

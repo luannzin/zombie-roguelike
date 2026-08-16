@@ -35,7 +35,7 @@ server -> client
    "zone":{...},"ack":<last processed input seq for you>}
   {"type":"snapshot","tick":N,"departing":false,"zoneKey":"camp-1",
    "players":[...],"enemies":[...],"coins":[...],
-   "shots":[...],"attacks":[...],"kills":[...],"pickups":[...],
+   "shots":[...],"swings":[...],"attacks":[...],"kills":[...],"pickups":[...],
    "loot":[...],"lootPickups":[...],
    "crates":[...],"crateBreaks":[...],
    "corpses":[...],
@@ -91,6 +91,13 @@ Snapshot arrays:
   coins     live gold pickups (one per gold point dropped)
   shots     hitscan tracers fired since the last snapshot; `k` is the
             weapon key, `dmg` the damage dealt (0 on a miss / crate)
+  swings    PLAYER melee arcs that CONNECTED since the last snapshot. A
+            whiff is never sent: the swinger already drew their own arc and
+            a blade waving at nothing is not news. `step` is which beat of
+            the chain it was (slash, slash, cut) and the reach and width of
+            that beat ride `welcome.config.weapons[k].melee`, not the tick —
+            the same split as an enemy's sight cone. `hits` is one row per
+            body opened, because the finisher goes through more than one.
   attacks   enemy melee swings; `dmg` is 0 when the victim's i-frames ate it
   kills     deaths since the last snapshot, players and enemies alike
             ({"kind":"enemy"} entries: xp paid now; gold = coins spawned;
@@ -209,6 +216,7 @@ def snapshot(
     attacks: list[dict],
     kills: list[dict],
     pickups: list[dict],
+    swings: list[dict] | None = None,
     departing: bool = False,
     zone_key: str | None = None,
     roster: list[dict] | None = None,
@@ -232,6 +240,10 @@ def snapshot(
         "kills": kills,
         "pickups": pickups,
     }
+    # Absent on most ticks: a swing that connected is rarer than a shot, and
+    # the empty list would ride every tick of a run nobody is knifing through.
+    if swings:
+        payload["swings"] = swings
     # Absent on most ticks — see ROSTER_EVERY_N_TICKS.
     if roster is not None:
         payload["roster"] = roster

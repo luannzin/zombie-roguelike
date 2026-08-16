@@ -63,6 +63,10 @@ class ItemDef:
     value: int
     #: Where a collect puts it. `hotbar` is guns (no stack); `bag` is the pocket.
     pocket: str = "bag"
+    #: Whether the world may ever produce one. False for gear everybody
+    #: already has — it keeps the row in the catalog, so the HUD can name it
+    #: and draw it, while keeping it out of every rarity pool.
+    droppable: bool = True
 
 
 # Catalog order is the loot atlas frame order (see tools/make_loot.py).
@@ -99,11 +103,21 @@ ITEMS: tuple[ItemDef, ...] = (
     ItemDef("famas", "FAMAS", "rare", ("military", "combat"), 3.4, 160, "hotbar"),
     ItemDef("ak47", "AK-47", "epic", ("military", "combat"), 4.0, 240, "hotbar"),
     ItemDef("awp", "AWP", "legendary", ("military", "combat"), 6.2, 400, "hotbar"),
+    # The knife is a catalog row for its NAME, its ICON and its WEIGHT, and
+    # for nothing else: it is never scattered, never rolled and never
+    # collected — everybody already has one. It stays out of `BY_RARITY`'s
+    # useful half by being the cheapest common in the game, and `scatter`
+    # only ever reaches it through a tag overlap it does not have.
+    ItemDef("knife", "Faca", "common", ("combat",), 0.5, 12, "hotbar", droppable=False),
 )
 
 BY_KEY: dict[str, ItemDef] = {item.key: item for item in ITEMS}
+#: The roll pools, and they are built from what the world may PRODUCE rather
+#: than from the catalog. A knife on the forest floor would be a second one
+#: nobody has room for.
 BY_RARITY: dict[str, tuple[ItemDef, ...]] = {
-    rarity: tuple(item for item in ITEMS if item.rarity == rarity) for rarity in RARITIES
+    rarity: tuple(item for item in ITEMS if item.rarity == rarity and item.droppable)
+    for rarity in RARITIES
 }
 
 # What a scene is *about*, for the overlap test. deadfall is quiet woods;

@@ -18,7 +18,7 @@ imported by `app/` and never run at request time.
 | `make_rift.py` | generates final pixels | `assets/processed/rift/` (the extraction structure: scar, pillar, console, charge, crown, emerge, rift) |
 | `make_gore.py` | generates final pixels | `assets/processed/gore/` (6 wound decals worn by a hit body) |
 | `make_loot.py` | generates final pixels | `assets/processed/loot/` (one 16x16 frame per item, including gun icons) |
-| `make_guns.py` | generates final pixels | `assets/processed/guns/` (held side-view, one 18x8 frame per weapon) |
+| `make_guns.py` | generates final pixels | `assets/processed/guns/` (held side-view, one 18x8 frame per weapon, plus its carry pose) |
 | `make_hud_icons.py` | generates final pixels | `assets/processed/hud/` (battery, backpack, coin) |
 | `make_audio.py` | generates final samples | `assets/processed/audio/` (32 sounds, 59 wavs + manifest + loudness.json) |
 
@@ -42,6 +42,20 @@ imported by `app/` and never run at request time.
   same keys. Do not fold them — a 16px isometric pistol rotated around a
   grip is mush. Pistol grips are a solid block — no heel hole, no selector.
   At this size a 1px loop is eaten by the outline and reads as a circle.
+  **The knife is on both sheets and is drawn STRAIGHT on both** — handle,
+  crossguard and blade on one line, with the guard the only thing leaving
+  it. Every gun in these lists hangs a grip below its barrel, so a blade
+  with any drop at the back is a sixth pistol at 16px whatever the blade
+  is doing. It is also the shortest silhouette in both files: length is
+  how these sheets say range.
+- `make_guns.py`'s manifest carries POSE as well as pixels: `hold` (world px
+  along aim from the body centre to the grip — how far in front of the
+  character the thing is carried) and `scale`. Both are written as exception
+  maps rather than as columns on every row, because five of six entries are
+  guns held the one way guns are held. The knife is the exception on both:
+  held in against the body, drawn at 0.8. A single carry distance for
+  everything is what made the blade read as a sword floating beside the
+  sprite.
 - Generation is deterministic: the same command must produce byte-identical
   PNGs. Do not introduce unseeded randomness.
 - `--tile` must match `TILE_SIZE` in `app/config.py`.
@@ -207,6 +221,13 @@ imported by `app/` and never run at request time.
     steps, loot, crates, the lamp, the transitions). Keep `sfx` narrow: somebody
     turning combat down must not lose their own footsteps with it. A sound in
     the wrong bus is a slider that does not do what its label says.
+- **The knife's place on the ladder IS the weapon.** `knife-swing` and
+  `knife-hit` ride `sfx` with the guns and sit eleven-plus dB under them,
+  because quiet is the reason to carry a blade at all and a mix that made it
+  as loud as a Glock would take that away in the one channel the player
+  cannot turn off. Its three swing variants are NOT interchangeable the way
+  a footstep's are: the caller forces one per combo step (0 and 1 are the
+  slashes, 2 is the slower, lower cut), the same trick `sfx_rarity` uses.
 - Every zombie sound is one instrument (`_throat`) and the differences are
   contour and envelope, so they come from one creature. **A growl is ROUGH, not
   LOW**: `_wander` (cycle-to-cycle pitch instability) and `_grind` (irregular

@@ -90,11 +90,17 @@ and nowhere near the frame loop.
   wrapper — `.world-tooltip` is `position: relative` and cannot be the
   positioned node. Drop goes through
   `inventory-actions`, never a socket from React.
-- `Hotbar` is three cells above the battery. Always visible, pointer-events
-  none — 1/2/3 is sampled in `game/input.ts`, not by the DOM. Same chrome
-  fade as the corners. A gun fly uses dest `hotbar` and writes `hotbar-N`
-  anchors the way bag slots write `slot-N`. The selected cell rings and
-  replays `animate-hotbar-pick`. Guns do not show a coin value.
+- `Hotbar` is two gun cells and then the knife, above the battery. Always
+  visible, pointer-events none — 1/2/3 is sampled in `game/input.ts`, not
+  by the DOM. Same chrome fade as the corners. A gun fly uses dest `hotbar`
+  and writes `hotbar-N` anchors the way bag slots write `slot-N`. The
+  selected cell rings and replays `animate-hotbar-pick`. Weapons do not show
+  a coin value. The knife's cell is separated by a hairline and gets no
+  label: it is always full and always last, which explains itself the second
+  time somebody presses 3 — a caption on a permanent cell is chrome that is
+  read once. The hairline earns its keep on the first screen of a run, where
+  the two gun cells are empty and it is the difference between "you have
+  nothing" and "you have this".
 - A control a zone forbids is shown DISABLED, never hidden. `BatteryGauge` in
   the camp still answers "how much light am I carrying into the night"; only
   its readout changes, and a refused keypress kicks the panel instead of doing

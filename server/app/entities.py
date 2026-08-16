@@ -95,10 +95,17 @@ class Player:
     gold: int = 0
     #: The pocket. Slots and weight; extraction will spend what is in it.
     inventory: Inventory = field(default_factory=lambda: Inventory(INVENTORY_SLOTS))
-    #: Three gun slots. Starts with a Glock 18 in the first cell.
+    #: Three gun slots plus the fixed knife cell. Starts with a Glock 18.
     hotbar: Hotbar = field(default_factory=Hotbar.starting)
     #: How long the trigger has been held. AWP spends this before it fires.
     aim_hold: float = 0.0
+    #: Which beat of the melee chain the next swing is. Never on the wire —
+    #: the swing event carries the step it was, and that is what the client
+    #: draws; a counter would only let the two disagree.
+    combo_step: int = 0
+    #: Seconds left to keep the chain. Runs out and the next swing is a first
+    #: slash again.
+    combo_left: float = 0.0
 
     # server bookkeeping (never sent verbatim)
     inputs: deque = field(default_factory=deque)

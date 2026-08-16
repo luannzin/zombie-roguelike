@@ -15,8 +15,8 @@ export interface ControlsHintProps {
 
 export function ControlsHint({ zone }: ControlsHintProps) {
   const parts = ['WASD mover', 'mouse mirar'];
-  if (zone?.hostile !== false) parts.push('clique para atirar');
-  parts.push('1-3 arma');
+  if (zone?.hostile !== false) parts.push('clique para atacar');
+  parts.push('1-2 arma', '3 faca');
   if (zone?.lantern !== false) parts.push('F lanterna');
   if (zone?.kind === 'camp') parts.push('E pronto');
   else if (zone?.hostile) parts.push('E coletar');

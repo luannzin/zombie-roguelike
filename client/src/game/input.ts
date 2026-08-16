@@ -23,6 +23,7 @@ const LANTERN_KEY = 'KeyF';
 const READY_KEY = 'KeyE';
 /** Expand the pocket. Tab is the key, not a code under a letter. */
 const INVENTORY_KEY = 'Tab';
+/** Two gun slots, then the knife on 3. See `server/app/weapons.py`. */
 const HOTBAR_KEYS: Record<string, number> = {
   Digit1: 0,
   Digit2: 1,
@@ -52,7 +53,7 @@ export class InputController {
   onInteract: (() => void) | null = null;
   /** Expand the pocket. Tab is the key, not a code under a letter. */
   onToggleInventory: (() => void) | null = null;
-  /** Fired once per 1/2/3. `slot` is 0..2. Edge, not held. */
+  /** Fired once per 1/2/3. `slot` is 0..2 — 2 is the knife. Edge, not held. */
   onHotbar: ((slot: number) => void) | null = null;
 
   constructor(private readonly canvas: HTMLCanvasElement) {

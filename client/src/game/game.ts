@@ -40,11 +40,13 @@ import type {
   LootPickupEvent,
   LootRarity,
   LootState,
+  MeleeConfig,
   PickupEvent,
   PlayerMeta,
   RiftStateRow,
   ServerMessage,
   SnapshotMessage,
+  SwingEvent,
   WelcomeMessage,
   WeaponConfig,
   ZoneInfo,
@@ -393,6 +395,16 @@ export class Game {
   private heldSlot = 0;
   /** Seconds the trigger has been down. AWP spends this before it fires. */
   private adsHold = 0;
+  /**
+   * Which beat of the melee chain the next swing is, and how long is left to
+   * keep it. A local mirror of `Player.combo_step` / `combo_left` on the
+   * server, run off the same numbers in `weapons[k].melee` — the two agree
+   * because they are the same arithmetic on the same constants, exactly the
+   * way movement prediction does. The wire never carries the counter; the
+   * swing event carries the step it WAS, which is what remotes draw.
+   */
+  private comboStep = 0;
+  private comboLeft = 0;
   /** Selection punches. Same counter contract as lantern refusals. */
   private hotbarPicks = 0;
   /** local player position interpolated between fixed ticks (see prediction.ts) */
@@ -630,6 +642,8 @@ export class Game {
     this.local.carryWeight = msg.player.inv?.w ?? 0;
     this.heldSlot = msg.player.guns?.held ?? 0;
     this.adsHold = 0;
+    this.comboStep = 0;
+    this.comboLeft = 0;
 
     // Bonfires are read off the tiles, not off a message: the fire that blocks
     // you, the fire you can see and the fire that lights you are one tile.
@@ -845,6 +859,7 @@ export class Game {
       if (hit) playSfxAt('zombie-hit', shot.x + shot.dx * shot.dist, shot.y + shot.dy * shot.dist);
     }
 
+    for (const swing of msg.swings ?? []) this.onSwing(swing, msg);
     for (const attack of msg.attacks) this.onAttack(attack);
     for (const kill of msg.kills) this.onKill(kill);
     for (const pickup of msg.pickups ?? []) this.onPickup(pickup);
@@ -854,6 +869,64 @@ export class Game {
     for (const ev of msg.crateBreaks ?? []) this.onCrateBreak(ev);
     if (msg.rift) this.onRiftState(msg.rift);
     if (msg.corpses) this.mergeCorpses(msg.corpses);
+  }
+
+  /**
+   * A player's blade landing. Only connections arrive — the server drops whiffs.
+   *
+   * Split down the middle by who threw it. The ARC belongs to the swinger and
+   * is only drawn for remotes, because the local player has been looking at
+   * their own since the frame they clicked and a second one on top is a
+   * double image. The BODIES belong to everybody: the local player's
+   * prediction deliberately resolved no victims, so the blood, the numbers
+   * and the wounds all come from here whoever swung.
+   */
+  private onSwing(swing: SwingEvent, msg: SnapshotMessage): void {
+    const step = this.config?.weapons?.[swing.k]?.melee?.steps?.[swing.step];
+    if (!step) return;
+
+    if (swing.by !== this.localId) {
+      // Off the live body rather than off the event: the row is up to a tick
+      // old and an arc anchored behind a walking teammate reads as lag.
+      const body = msg.players.find((p) => p.id === swing.by);
+      this.effects.spawnSwing(
+        body?.x ?? swing.x,
+        body?.y ?? swing.y,
+        swing.dx,
+        swing.dy,
+        step.reach,
+        step.arcDegrees,
+        step.sweep,
+        step.kind === 'cut',
+        true,
+      );
+      this.visuals.kickRecoil(swing.by, -swing.dx, -swing.dy, step.lunge);
+      this.visuals.kickGun(swing.by, step.swing, 0);
+      playSfxAt('knife-swing', swing.x, swing.y, {
+        gain: 0.85,
+        variant: Math.min(swing.step, 2),
+      });
+    }
+
+    for (const hit of swing.hits) {
+      // On the BODY, not projected down the aim: the finisher opens up to
+      // three of them and a single spray at arm's length would put all the
+      // blood in one place regardless of who it came out of.
+      const body =
+        msg.enemies.find((e) => e.id === hit.id) ?? msg.players.find((p) => p.id === hit.id);
+      const hx = body?.x ?? swing.x + swing.dx * step.reach * 0.6;
+      const hy = body?.y ?? swing.y + swing.dy * step.reach * 0.6;
+      this.feelVictim(hit.id, swing.dx, swing.dy, hit.dmg);
+      // A blade opens rather than passes through, so the spray is smaller
+      // than a round of the same damage — and the cut still throws more than
+      // a slash, off the same ladder every other hit in the game reads.
+      this.effects.spawnBlood(hx, hy, swing.dx, swing.dy, 0.4 + hitPower(hit.dmg) * 0.5);
+      this.effects.spawnDamage(hx, hy, hit.dmg);
+      playSfxAt('knife-hit', hx, hy);
+    }
+    if (swing.hits.length > 0 && swing.by === this.localId) {
+      this.camera.addTrauma(HIT_TRAUMA);
+    }
   }
 
   /**
@@ -1147,7 +1220,25 @@ export class Game {
     if (this.localFireCooldown > 0) {
       this.localFireCooldown = Math.max(0, this.localFireCooldown - dt);
     }
+    // The chain closes on its own clock, not on the button — which is what
+    // lets a player break contact after two slashes and come back to a fresh
+    // one instead of an accidental finisher. Mirrors `Room.step_players`.
+    if (this.comboLeft > 0) {
+      this.comboLeft = Math.max(0, this.comboLeft - dt);
+      if (this.comboLeft === 0) this.comboStep = 0;
+    }
+
     const weapon = this.heldWeapon();
+    if (weapon?.melee) {
+      this.adsHold = 0;
+      if (packet.shoot && local.alive && this.localFireCooldown === 0) {
+        this.predictSwing(weapon.melee);
+      }
+      return;
+    }
+    // Holstering the blade mid-chain abandons it, same as the server.
+    this.comboStep = 0;
+    this.comboLeft = 0;
     if (packet.shoot && local.alive && weapon) {
       this.adsHold += dt;
       if (this.localFireCooldown === 0 && this.adsHold >= weapon.aimDelay) {
@@ -1282,6 +1373,63 @@ export class Game {
       this.feelVictim(result.target.id, this.aimX, this.aimY, weapon.damage);
       playSfxAt('zombie-hit', ox + this.aimX * distance, oy + this.aimY * distance);
     }
+  }
+
+  /**
+   * One beat of the melee chain, thrown locally the frame the button went down.
+   *
+   * The same three things happen here that happen in `predictShot`, and for
+   * the same reason: the arc, the punch and the sound are what the player is
+   * buying with the click, and a round trip in front of them is the whole
+   * difference between a weapon and a request. The server still decides
+   * damage — nothing below reduces anybody's HP.
+   *
+   * What is NOT predicted is who got opened. `predictShot` runs a local
+   * hitscan because it has to know where to stop the tracer; a swing has no
+   * length to resolve, so it draws its own reach and lets the authoritative
+   * `swings` row bring back the blood and the numbers. Predicting victims
+   * would mean drawing a wound on a zombie the server says was out of the
+   * arc, and the wound is the one effect here that lasts long enough to be
+   * a lie.
+   */
+  private predictSwing(melee: MeleeConfig): void {
+    const steps = melee.steps;
+    if (steps.length === 0) return;
+    const index = this.comboStep % steps.length;
+    const step = steps[index];
+
+    this.localFireCooldown = step.cooldown;
+    if (step.window > 0) {
+      this.comboStep = index + 1;
+      this.comboLeft = step.cooldown + step.window;
+    } else {
+      this.comboStep = 0;
+      this.comboLeft = 0;
+    }
+
+    // Thrown from the BODY, not the barrel. The arc is centred on the same
+    // point the server sweeps from, so what is drawn is the reach that was
+    // actually tested rather than a shape hanging off the sprite.
+    this.effects.spawnSwing(
+      this.smoothX,
+      this.smoothY,
+      this.aimX,
+      this.aimY,
+      step.reach,
+      step.arcDegrees,
+      step.sweep,
+      step.kind === 'cut',
+      // A local swing does not know yet. Drawn as a whiff and left alone:
+      // the landed version arrives with the blood, a fifth of a second later,
+      // and thickening a stroke after the fact is a flicker.
+      false,
+    );
+    this.camera.addTrauma(step.trauma);
+    // Forward, not back: a swing carries you into it. `kickRecoil` takes the
+    // direction it should push AGAINST, so the aim is negated to lunge along it.
+    this.visuals.kickRecoil(this.localId, -this.aimX, -this.aimY, step.lunge);
+    this.visuals.kickGun(this.localId, step.swing, 0);
+    playSfx('knife-swing', { variant: Math.min(index, 2) });
   }
 
   // --- sound ---------------------------------------------------------------
@@ -2039,6 +2187,9 @@ export class Game {
     this.heldSlot = this.heldSlot === slot ? -1 : slot;
     this.hotbarPicks += 1;
     this.adsHold = 0;
+    // Swapping weapons abandons the chain, the same way the server does it.
+    this.comboStep = 0;
+    this.comboLeft = 0;
     const hotbar = this.hotbarHud();
     if (hotbar) this.patchHud({ hotbar });
   }

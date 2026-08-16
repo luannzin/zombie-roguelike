@@ -18,7 +18,7 @@ seam React is allowed to read.
 | `input.ts` | keyboard/mouse sampling into an `InputPacket` (1/2/3 is the hotbar) |
 | `world.ts` | client tile map, collision + sight queries, fires, hearth mask, placed scenery, live crates, the extraction rift |
 | `combat.ts` | client-side shot feel: capsules, tile DDA, crate sprite boxes |
-| `effects.ts` | tracers, dust, blood, floating text, event lights, boot prints, crate smash, wind, death burst |
+| `effects.ts` | tracers, blade paths, dust, blood, floating text, event lights, boot prints, crate smash, wind, death burst |
 | `entity-visuals.ts` | per-entity flash, recoil, gun kick/pump, hit-stun tilt, anim, worn wounds; `HIT_FLASH_LIFE` is also the crate smash blink |
 | `lantern.ts` | four-cell battery, produces `output` 0..1 |
 | `hud-store.ts` | the only seam to React; `HUD_INTERVAL` = 0.2 s |
@@ -261,7 +261,30 @@ seam React is allowed to read.
   from `welcome.config.weapons`. AWP `aimDelay` waits on the held trigger
   (`adsHold`); `stepScope` eases `Camera.zoom` toward `scopeZoom`. Predicted
   tracers start at `gunMuzzle` so the streak leaves the barrel. Holstered
-  draws nothing — no white line.
+  draws nothing — no white line. The belt is 3 cells: two gun slots, both
+  EMPTY at the start of a run, and the knife last
+  (`server/app/weapons.py`); 3 selects it.
+- **The knife swings, and the split with prediction is different from a
+  gun's.** `Game.tick` branches on `weapon.melee`, not on `kind`, and
+  `predictSwing` runs the same chain arithmetic the server does off the
+  same `ComboStep` numbers (`comboStep` / `comboLeft` mirror
+  `Player.combo_step` / `combo_left`). What it predicts is the ARC, the
+  lunge, the trauma and the sound — everything the click bought. What it
+  deliberately does NOT predict is who got opened: `predictShot` runs a
+  local hitscan because it has to know where to stop a tracer, but a swing
+  has no length to resolve, so blood, damage numbers and wounds all come
+  back on the authoritative `swings` row. Guessing victims would stamp a
+  WOUND on a body the server says was outside the arc, and a wound is the
+  one effect here that lasts long enough to be a lie.
+- **A blade path is drawn from the HAND, a claw arc is drawn on the
+  VICTIM.** `Effects.swings` and `Effects.slashes` are two objects for that
+  reason and must not be merged. A player has to read their own reach
+  whether or not the swing landed — so a whiff still draws, and it draws
+  from the body centre the server actually swept from. An enemy's claw is
+  the opposite question ("that one got me") and belongs on the thing it
+  hit. `onSwing` therefore skips the arc for the local player, who has been
+  looking at their own since the frame they clicked, and applies the bodies
+  for everybody.
 - **A zombie is dressed at spawn.** `toDrawableEnemy` picks the body sheet
   from `enemyTypes[t].variants[v]` and builds `gear` as clothes then hat
   from the optional snapshot indices. The look is identity, not motion —
@@ -328,11 +351,11 @@ seam React is allowed to read.
   Dragging a cell off the panel calls `requestInventoryDrop`; `Game`
   sends `{type:"drop","slot"}` and clears the cell until the roster
   confirms. `lootPrompt.full` is a bag that cannot take the nearby drop.
-  The hotbar is `hotbar` on the same snapshot: three gun slots above the
-  lantern, always visible. 1/2/3 selects (same key holsters) and is patched
-  immediately, like TAB. A gun fly uses dest `hotbar` and anchor `hotbar-N`.
-  `held` rides the input packet. AWP hold-to-aim zooms the camera toward
-  `scopeZoom`; ammo is named and unused.
+  The hotbar is `hotbar` on the same snapshot: two gun slots and the
+  knife, above the lantern, always visible. 1/2/3 selects (same key
+  holsters) and is patched immediately, like TAB. A gun fly uses dest
+  `hotbar` and anchor `hotbar-N`. `held` rides the input packet. AWP
+  hold-to-aim zooms the camera toward `scopeZoom`; ammo is named and unused.
 - Anything long-lived created here gets a matching release in `Game.dispose()`
   in the same change.
 

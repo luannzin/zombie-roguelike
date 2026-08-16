@@ -177,9 +177,45 @@ export interface LootItemConfig {
   pocket?: 'bag' | 'hotbar';
 }
 
-export type WeaponKind = 'pistol' | 'rifle' | 'sniper' | string;
+export type WeaponKind = 'pistol' | 'rifle' | 'sniper' | 'melee' | string;
 
-/** Combat block for one gun. Mirrors server/app/weapons.py. */
+/** What a combo step reads as. `cut` is the finisher. */
+export type ComboKind = 'slash' | 'cut' | string;
+
+/**
+ * One beat of a melee chain. Mirrors `ComboStep` in server/app/weapons.py.
+ *
+ * The GEOMETRY (`reach`, `arcDegrees`) rides the config rather than the
+ * swing event, the same way an enemy's sight cone does: it never changes
+ * between ticks, and the client needs it to draw an arc for a swing it
+ * predicted before any server row existed.
+ */
+export interface ComboStepConfig {
+  kind: ComboKind;
+  damage: number;
+  cooldown: number;
+  /** World px from the body centre to the far edge of the arc. */
+  reach: number;
+  /** Full width of the arc, in degrees. */
+  arcDegrees: number;
+  /** Seconds the chain stays open after this step. 0 ends it. */
+  window: number;
+  maxTargets: number;
+  /** Body lunge along aim, world px. */
+  lunge: number;
+  trauma: number;
+  /** +1 / -1 — which way the arc travels. The two slashes cross. */
+  sweep: number;
+  /** Radians the held sprite sweeps through the swing. */
+  swing: number;
+}
+
+/** The swinging half of a weapon. Absent on everything that shoots. */
+export interface MeleeConfig {
+  steps: ComboStepConfig[];
+}
+
+/** Combat block for one weapon. Mirrors server/app/weapons.py. */
 export interface WeaponConfig {
   name: string;
   kind: WeaponKind;
@@ -201,6 +237,11 @@ export interface WeaponConfig {
   casings: number;
   lightRadius: number;
   lightLife: number;
+  /**
+   * Present only on melee weapons, and it is what the client branches on —
+   * not the `kind` string. A second blade is a catalog row and no code.
+   */
+  melee?: MeleeConfig;
 }
 
 /** One world drop. `k` keys into `GameConfig.loot`. */
@@ -578,6 +619,38 @@ export interface ShotEvent {
   dmg?: number;
 }
 
+/** One body a player's blade opened. */
+export interface SwingHit {
+  id: string;
+  dmg: number;
+}
+
+/**
+ * One PLAYER melee arc that connected. Whiffs are never sent — the swinger
+ * already drew their own, and a remote waving a blade at nothing is not news.
+ *
+ * There is no `dist` and no single `hit`, which is the whole reason this is
+ * not a `ShotEvent`: a swing is an area, and the finisher goes through more
+ * than one body. The reach and width of the arc are `step`'s, read off
+ * `GameConfig.weapons[k].melee.steps` — the tick carries which beat it was,
+ * never the geometry of it.
+ */
+export interface SwingEvent {
+  id: number;
+  by: string;
+  /** Weapon key — the row in `GameConfig.weapons` carrying the combo. */
+  k: string;
+  /** Which beat of the chain: 0 and 1 are slashes, 2 is the cut. */
+  step: number;
+  /** Swinger's body centre at the moment of the swing. */
+  x: number;
+  y: number;
+  /** Aim direction the arc was centred on. */
+  dx: number;
+  dy: number;
+  hits: SwingHit[];
+}
+
 /** One enemy melee swing. `dmg` is 0 when the victim's i-frames ate it. */
 export interface AttackEvent {
   /** Attacking enemy id. */
@@ -738,6 +811,8 @@ export interface SnapshotMessage {
   /** Live gold pickups. */
   coins: CoinState[];
   shots: ShotEvent[];
+  /** Player melee arcs that connected. Absent on ticks where none did. */
+  swings?: SwingEvent[];
   attacks: AttackEvent[];
   kills: KillEvent[];
   pickups: PickupEvent[];

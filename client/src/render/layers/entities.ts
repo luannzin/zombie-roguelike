@@ -506,16 +506,23 @@ function drawHeldGun(
 
   const angle = Math.atan2(target.ay, target.ax);
   const flip = target.ax < 0;
+  // The atlas row decides how far out the hand is — a rifle is pushed off
+  // the chest, the knife is tucked against it — so the weapon has to be
+  // passed in, not just its pose.
   const hand = gunHand({
     x: px,
     y: py,
     ax: target.ax,
     ay: target.ay,
+    weapon: target.weapon,
+    guns,
     pump: target.gunPump,
   });
   const sx = view.rawX(hand.x);
   const sy = view.rawY(hand.y);
-  const zoom = view.zoom;
+  // Per-weapon draw scale, folded into the zoom so the sprite grows and
+  // shrinks around the GRIP and the hand does not drift as it scales.
+  const zoom = view.zoom * (spec.scale ?? 1);
   const kick = flip ? -target.gunKick : target.gunKick;
 
   ctx.save();

@@ -1,9 +1,15 @@
-"""Hitscan combat.
+"""Hitscan and swept combat.
 
-`raycast` is deliberately entity-agnostic: it takes any iterable of objects
-exposing `.id`, `.x`, `.capsule_y0`, `.capsule_y1`, `.radius` and `.alive`.
-A capsule is a vertical stadium (segment + radius) covering the full body.
-Zombies drop straight into `targets` with no changes here.
+Both entry points are deliberately entity-agnostic: they take any iterable of
+objects exposing `.id`, `.x`, `.capsule_y0`, `.capsule_y1`, `.radius` and
+`.alive`. A capsule is a vertical stadium (segment + radius) covering the full
+body. Zombies drop straight into `targets` with no changes here.
+
+`raycast` is a BULLET: one line, one target, the first thing it meets.
+`sweep` is a BLADE: a short arc, everything inside it, near to far. They are
+two functions rather than one because the shapes disagree about what a miss
+is — a ray that hits a wall stops, an arc that has a wall on one side still
+opens whatever is standing on the other.
 """
 
 from __future__ import annotations
@@ -19,6 +25,19 @@ from .world import TileMap
 class RayHit:
     distance: float
     target: Optional[object]  # None => hit a wall (or reached max range)
+
+
+@dataclass
+class SweepHit:
+    """One body inside a swing's arc. `distance` is surface, not centre."""
+
+    target: object
+    distance: float
+    #: Unit vector from the swinger to it. The knockback and the wound both
+    #: want the direction the blade actually travelled into the body, which is
+    #: not the aim vector unless the target happened to be dead ahead.
+    dx: float
+    dy: float
 
 
 def raycast_tiles(
@@ -168,6 +187,71 @@ def ray_capsule(
                 consider(t)
 
     return best
+
+
+def sweep(
+    world: TileMap,
+    ox: float,
+    oy: float,
+    dx: float,
+    dy: float,
+    reach: float,
+    arc_degrees: float,
+    targets: Iterable,
+    ignore_id: Optional[str] = None,
+    limit: int = 1,
+) -> list[SweepHit]:
+    """Bodies inside a swing: within `reach` of the surface, inside the arc.
+
+    Three tests, in the order that costs least. Distance first, because it
+    rejects the whole map. Then the ANGLE off the aim vector, which is what
+    makes this a swing and not a radius — a knife does not stab the thing
+    standing behind you. Then a tile raycast toward whatever survived, so a
+    blade does not reach through a cabin wall.
+
+    Measured surface to surface: `reach` is how far past the body the blade
+    goes, not how far apart two centres may be, or a fat creature would be
+    harder to hit than a thin one standing in the same place.
+
+    Returned NEAR FIRST and cut to `limit`, so a step that may only open one
+    body opens the one actually in front of the player.
+    """
+    if limit <= 0:
+        return []
+    half = math.radians(arc_degrees) * 0.5
+    cos_half = math.cos(half)
+    found: list[SweepHit] = []
+    for t in targets:
+        if getattr(t, "id", None) == ignore_id or not getattr(t, "alive", True):
+            continue
+        radius = t.radius
+        # Closest point on the vertical capsule segment, then back off its
+        # radius: the surface, not the axis.
+        near_y = _clamp(oy, min(t.capsule_y0, t.capsule_y1), max(t.capsule_y0, t.capsule_y1))
+        vx = t.x - ox
+        vy = near_y - oy
+        centre = math.hypot(vx, vy)
+        surface = centre - radius
+        if surface > reach:
+            continue
+        if centre <= 1e-6:
+            # Standing inside each other: there is no direction to test and
+            # the swing obviously connects.
+            found.append(SweepHit(target=t, distance=0.0, dx=dx, dy=dy))
+            continue
+        nx = vx / centre
+        ny = vy / centre
+        if nx * dx + ny * dy < cos_half:
+            continue
+        if raycast_tiles(world, ox, oy, nx, ny, max(0.0, surface)) < surface - 1e-6:
+            continue
+        found.append(SweepHit(target=t, distance=max(0.0, surface), dx=nx, dy=ny))
+    found.sort(key=lambda hit: hit.distance)
+    return found[:limit]
+
+
+def _clamp(value: float, low: float, high: float) -> float:
+    return low if value < low else high if value > high else value
 
 
 def raycast(

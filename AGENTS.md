@@ -78,13 +78,24 @@ Default section order:
 
 When the user requests a durable behavior change, record it here or in the relevant child AGENTS.md
 
-- Guns are a 3-slot hotbar above the battery (keys 1/2/3, same key holsters).
-  They collect onto the belt, not the pocket. The held sprite follows the
-  mouse and flips when aiming left. No laser sight. The AWP zooms the camera
-  out while holding to shoot. Tracers start at the barrel. Hit juice (blood,
-  a small knockback, tilt) scales with the gun's damage. Repeated hits
-  slow then stop the enemy's walk. Each gun has its own weight (slows the
-  walk) and feel. Ammo types are named; magazines are not built yet.
+- The hotbar is 3 cells above the battery (keys 1/2/3, same key holsters):
+  two gun slots and then the knife. Guns collect onto the belt, not the
+  pocket. The held sprite follows the mouse and flips when aiming left. No
+  laser sight. The AWP zooms the camera out while holding to shoot. Tracers
+  start at the barrel. Hit juice (blood, a small knockback, tilt) scales
+  with the gun's damage. Repeated hits slow then stop the enemy's walk. Each
+  gun has its own weight (slows the walk) and feel. Ammo types are named;
+  magazines are not built yet.
+- The KNIFE is the last cell (key 3) and the one weapon that never changes:
+  it cannot be picked up, swapped or dropped. **A run starts with it and
+  with no gun at all.** It does not shoot — it swings a short arc that
+  leaves a WHITE PATH, and the swings chain three deep: a slash, a slash
+  the other way, and a cut. The cut is slower, wider and goes through more
+  than one body. Its damage is a floor, not a benchmark: quiet is the point
+  of it, and the first gun on the ground has to stay worth walking to.
+  It is drawn held IN against the body and a little smaller than the guns,
+  because a blade at a pistol's extension reads as a sword floating beside
+  the sprite.
 
 ## Project
 
@@ -182,14 +193,31 @@ subtree.
   off the panel sends `{type:"drop","slot"}`; the server places the
   stack on walkable floor near the player's feet. A full bag (no slot
   and no stack) keeps the drop tooltip and reads "Inventário Cheio".
-  Guns are loot too, but they land on a 3-slot HOTBAR (`server/app/weapons.py`),
-  not in the pocket — they do not stack. Everyone starts with a Glock 18.
-  1 / 2 / 3 selects a slot; the same key holsters. An empty hand does not
-  fire. The held sprite follows the mouse and flips when the cursor is left
+  Guns are loot too, but they land on the HOTBAR (`server/app/weapons.py`),
+  not in the pocket — they do not stack. Nobody starts with one: the belt
+  opens as two empty cells and the knife. 1 / 2 selects a gun slot, 3 is
+  the knife; the same key holsters. An
+  empty hand does not fire. The held sprite follows the mouse and flips
+  when the cursor is left
   of the body. There is no laser sight. The AWP eases the camera out
   (`scopeZoom`) while the trigger is held, for more forest in frame. Tracers
   start at the barrel (`gunMuzzle`). Carry weight is bag PLUS belt. Ammo
   types (pistol / rifle / awp) are named and unused.
+- **The belt's last cell is the KNIFE and it is not loot.** Nobody collects
+  it, drops it or rolls a second one — it is placed by `Hotbar` itself, and
+  that guarantee is the feature: a run OPENS with no gun, and the hand is
+  still not empty. It costs a gun slot rather than adding a fourth cell, so
+  carrying it is not free. It also does not shoot, which makes it the one
+  weapon in the game
+  that resolves as an ARC (`combat.sweep`) instead of a ray, and the only
+  one with a COMBO: slash, slash, cut. The chain is held open by a clock
+  rather than by the button, so breaking contact after two slashes starts
+  fresh instead of banking a finisher. The cut is slower, wider, opens up
+  to three bodies and ends the chain. Every step draws a white path swept
+  out of the hand — the only uncoloured effect in the game — and the whole
+  chain makes less noise than a single gunshot, which is the entire reason
+  to use it. Picking up a gun while holding the blade puts it in your hand;
+  a second gun does not.
 - Boxes, barrels and the other wood on the crate sheet are live objects
   (`server/app/crates.py`), not scenery. Scenery still places them; after
   the stamp they are pulled onto the map as crates so a smash can remove

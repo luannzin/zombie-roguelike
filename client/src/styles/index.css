@@ -119,6 +119,18 @@
   /* enemy melee: a landed claw sweep, and one the i-frames ate */
   --fx-slash: #ff9d8a;
   --fx-slash-blocked: #cfd6e6;
+
+  /*
+   * The player's blade. WHITE, and it is the only white in the effects
+   * palette: everything else that moves fast is tinted — a tracer takes the
+   * shooter's colour, a claw is red, a muzzle is warm — so an uncoloured
+   * stroke can only be one thing, and it reads instantly against a forest
+   * that has no white in it at all. `core` is the leading edge, `blade` the
+   * tail behind it, `glow` the wash the cut throws.
+   */
+  --fx-blade-core: #ffffff;
+  --fx-blade: #dfe8f4;
+  --fx-blade-glow: #a8c8e8;
   --fx-reward-text: #9ad4a0;
   --fx-gold-text: #f2a541;
   --fx-gold-a: #f2a541;

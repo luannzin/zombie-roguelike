@@ -75,6 +75,10 @@ export interface Palette {
     goldCore: string;
     slash: string;
     slashBlocked: string;
+    /** The player's blade path: leading edge, tail, and the cut's wash. */
+    bladeCore: string;
+    blade: string;
+    bladeGlow: string;
     textShadow: string;
     fallbackShot: string;
     casing: string[];
@@ -206,6 +210,9 @@ function resolve(): Palette {
       goldCore: v('--fx-gold-core'),
       slash: v('--fx-slash'),
       slashBlocked: v('--fx-slash-blocked'),
+      bladeCore: v('--fx-blade-core'),
+      blade: v('--fx-blade'),
+      bladeGlow: v('--fx-blade-glow'),
       textShadow: v('--fx-text-shadow'),
       fallbackShot: v('--fx-shot-fallback'),
       casing: [v('--fx-casing-a'), v('--fx-casing-b'), v('--fx-casing-c')],

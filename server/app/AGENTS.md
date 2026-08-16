@@ -14,14 +14,14 @@ game's scale.
 | `rooms.py` | the room registry: code generation, lookup, disposal |
 | `room.py` | authoritative state, lobby phase, tick loop, broadcasts |
 | `simulation.py` | movement + tile collision — mirrored by the client |
-| `combat.py` | hitscan raycast, entity-agnostic |
+| `combat.py` | hitscan raycast and melee arc sweep, both entity-agnostic |
 | `entities.py` | `Player`, `InputCmd` (includes the lantern switch, relayed not simulated) |
 | `enemies.py` | `EnemyType` stat blocks (incl. the sight cone, visual variants and accessory pools), live `Enemy`, `dress` |
 | `ai.py` | enemy senses, patrol/hunt/return, steering/attack, the director |
 | `pathing.py` | BFS flow field, one per player |
 | `coins.py` | dropped gold: the per-kill drop roll, burst, magnet, collection |
 | `loot.py` | world collectables: catalog, scene-context scatter, E-to-collect |
-| `weapons.py` | gun catalog (glock/deagle/famas/ak47/awp), hotbar, per-shot stats |
+| `weapons.py` | weapon catalog (glock/deagle/famas/ak47/awp + the knife), hotbar, per-shot stats, the melee combo |
 | `crates.py` | breakable boxes/barrels: extract from scenery, smash, drop roll |
 | `corpses.py` | dead enemies left on the floor: persist until the map swaps |
 | `rift.py` | the extraction point: one per forest, its plot, and the activation sequence |
@@ -216,12 +216,43 @@ game's scale.
   world drop per unit. Guns are not tossed from the belt yet.
 - **A gun is a catalog row AND a shot.** `weapons.py` owns damage, cadence,
   reach, muzzle, noise, AWP hold-to-aim (`aim_delay`) and the
-  3-slot hotbar. Everyone spawns with a Glock 18 in slot 0. Input `held`
-  is the slot in hand (-1 holstered), like the lantern switch; an empty
-  hand does not fire. Per-shot numbers ride `welcome.config.weapons`; the
+  hotbar. Nobody spawns with a gun — see the knife bullet below. Input
+  `held` is the slot in hand (-1 holstered), like the lantern switch; an
+  empty hand does not fire. A collected gun equips itself only when the
+  hand held no gun (empty, or the blade), so a first pickup arms you and a
+  second does not take the weapon you were using out of your hands. Per-shot numbers ride `welcome.config.weapons`; the
   global `FIRE_COOLDOWN` / `SHOT_DAMAGE` / `SHOT_RANGE` are leftovers for
   a client that has not seen the catalog. Snapshot `held` / `ads` are
   what remotes draw. Ammo types are named and unused.
+- **The belt has a floor, and the floor is the KNIFE.** The hotbar is three
+  cells: `GUN_SLOTS` (2) gun cells plus one fixed cell at `KNIFE_SLOT` that
+  always holds `knife`. `add` and `can_stow` only ever look at the gun
+  range, `__post_init__` puts the blade back, and `loot.py` marks the row
+  `droppable=False` so no pool can ever roll a second one. **`Hotbar.starting`
+  hands out no gun** — a run opens holding the blade, and the first firearm
+  is something you find. Do not make it collectable to "unify" it with the
+  guns, and do not give it a fourth cell of its own: the guarantee is the
+  feature and the slot it costs is the price.
+- **A gun FIRES and the knife SWINGS, and they are two resolvers.**
+  `Room.handle_attack` dispatches on the weapon's `melee` block, never on
+  its `kind` string, so a second blade is a catalog row and no code.
+  `combat.raycast` is a line that stops at the first thing it meets;
+  `combat.sweep` is an arc that takes everything inside it, near first,
+  measured SURFACE to surface so a fat creature is not harder to hit than
+  a thin one standing in the same place. A swing that landed on flesh does
+  not also take the crate behind it.
+- **The combo is three beats and the chain is held open by a CLOCK, not by
+  the button.** `ComboStep` carries its own damage, cadence, reach, arc,
+  target cap and `window`; `Player.combo_step` / `combo_left` advance
+  through them and `step_players` lets the window run out. Slash, slash,
+  cut: the finisher is slower, wider, opens up to three bodies and has
+  `window=0`, so it ENDS the chain rather than looping it. Holstering,
+  respawning and embarking all reset it. The counter is never on the wire —
+  a swing carries the step it WAS, which is all a remote needs to draw.
+- **The blade's noise radius is its whole argument.** A gunshot wakes
+  sixteen tiles; the entire knife chain wakes five, and only when it
+  CONNECTS — a whiff is silent and is not broadcast at all. Raising it to
+  match a gun would delete the reason the weapon exists.
 - **A crate is furniture you can break.** Scenery still places the pile;
   `crates.py` owns the live list. `{type:"break","id"}` smashes if the
   feet are inside `crateBreakTiles`; a bullet that hits the sprite box
@@ -282,6 +313,10 @@ game's scale.
   with `pocket="hotbar"`, a held frame in `make_guns.py` and a 16x16 icon
   in `make_loot.py`. Combat, weight and the hotbar HUD all read the
   catalog — the client needs no branch. Ammo is named and unused.
+  Adding a MELEE weapon is the same list plus a `MeleeDef` of `ComboStep`s
+  and nothing else: the swing resolver, the arc the client draws and the
+  HUD cell are all driven off that block. Append to `WEAPONS` and to both
+  generators' lists — never insert, or every existing frame index moves.
 - Adding a zone = one `zones.Zone` and whatever builds its map. Its title card,
   its safety and its lighting rules are all data; the client needs no change to
   announce or obey a new one. A forest's subtitle is `night_clock()` — a time

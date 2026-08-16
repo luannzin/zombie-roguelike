@@ -1574,6 +1574,86 @@ def sfx_crate_break(rng: random.Random, variant: int) -> tuple[Buf, int]:
     return normalize(pad(out, n), 0.9), rate
 
 
+# --- the knife --------------------------------------------------------------
+#
+# The blade's whole argument is that it is QUIET, and the mix has to say so
+# before the noise radius in `weapons.py` ever does. A gunshot sits at the top
+# of the ladder; both of these sit below a footstep's neighbours, so a player
+# who knifes their way through a camp hears themselves working rather than
+# announcing.
+
+
+def sfx_knife_swing(rng: random.Random, variant: int) -> tuple[Buf, int]:
+    """Steel cutting air. The whole sound is one narrow band arcing past you.
+
+    Same shape as the zombie's swing and deliberately so — a swing is a swing
+    — but an octave up, half as long and with none of the throat under it. A
+    blade is edge and air; the arm carrying it is not the sound.
+
+    The finisher is variant 2: slower sweep, lower centre, more weight. The
+    caller picks it by index (see `playSfx('knife-swing', {variant})`), which
+    is the same trick the rarity chimes use — one recipe, one shape, and the
+    step in the chain chooses which of them you hear.
+    """
+    rate = SFX_RATE
+    # The cut is the slow one. Two quick slashes, then something with a body.
+    heavy = variant >= 2
+    n = dur(0.26 if heavy else 0.17, rate)
+    top = 7800.0 if heavy else 9600.0
+    base = 1400.0 if heavy else 2100.0
+
+    def arc(t: float) -> float:
+        # Peaks early: the fastest part of a swing is the start of it.
+        return base + (top - base) * math.sin(min(1.0, t * 1.35) * math.pi) ** 0.6
+
+    air = biquad(white(n, rng), rate, "bandpass", arc, 3.4 if heavy else 4.2)
+    air = mul(air, env_from(n, [(0.0, 0.0), (0.12, 1.0), (0.4, 0.45), (1.0, 0.0)]))
+
+    # A second, thinner edge just behind it. One band alone is a hiss; two
+    # passing a beat apart is a thing with an edge going through the air.
+    edge = biquad(white(n, rng), rate, "bandpass", lambda t: 4200 + 5200 * t, 5.0)
+    edge = mul(edge, env_from(n, [(0.0, 0.0), (0.22, 0.7), (0.5, 0.14), (1.0, 0.0)]))
+
+    layers = [gain(air, 1.0), gain(edge, 0.5)]
+    if heavy:
+        # The cut alone gets a low push under it — the weight the two slashes
+        # do not have, which is what makes the third beat feel like the end
+        # of the chain rather than a third of the same thing.
+        body = mul(
+            tone(n, lambda t: 190.0 - 90.0 * t, rate, "sine"),
+            env_perc(n, rate, 0.004, 0.13, 2.6),
+        )
+        layers.append(gain(body, 0.34))
+
+    return normalize(softclip(mix(*layers), 1.4), 0.8), rate
+
+
+def sfx_knife_hit(rng: random.Random, variant: int) -> tuple[Buf, int]:
+    """The blade going in. Wetter and shorter than a bullet, with no crack.
+
+    `zombie-hit` opens with a dry slap because a round arrives before it does
+    anything. A knife has no arrival — it is already in contact — so this
+    starts on the squelch and the only bright layer is the edge sliding out
+    the far side.
+    """
+    rate = SFX_RATE
+    n = dur(0.26, rate)
+    squelch = biquad(white(dur(0.14, rate), rng), rate, "bandpass", lambda t: 780 - 480 * t, 2.6)
+    squelch = mul(squelch, env_perc(len(squelch), rate, 0.001, 0.12, 2.4))
+    # The withdraw: a thin band a beat later, brighter than the entry.
+    draw = biquad(white(dur(0.09, rate), rng), rate, "bandpass", lambda t: 2400 + 1600 * t, 4.0)
+    draw = mul(draw, env_perc(len(draw), rate, 0.001, 0.07, 2.8))
+    thud = mul(
+        tone(n, lambda t: 96.0 - 42.0 * t, rate, "sine"), env_perc(n, rate, 0.002, 0.1, 2.8)
+    )
+    out = mix(
+        pad(gain(squelch, 1.0), n),
+        at(silence(n), gain(draw, 0.4), int(0.05 * rate)),
+        gain(thud, 0.5),
+    )
+    return normalize(softclip(out, 1.6), 0.72), rate
+
+
 def sfx_drop(rng: random.Random) -> tuple[Buf, int]:
     """Something leaving the bag and hitting dirt."""
     rate = SFX_RATE
@@ -1642,6 +1722,12 @@ CATALOG: dict[str, tuple[object, int, float, str, bool]] = {
     "zombie-attack": (sfx_zombie_attack, 3, -4.0, "sfx", False),
     "zombie-hit": (sfx_zombie_hit, 3, -6.0, "sfx", False),
     "zombie-death": (sfx_zombie_death, 3, -5.0, "sfx", False),
+    # The knife, and its place on the ladder IS the weapon. Three variants,
+    # because the caller forces one per combo step: 0 and 1 are the slashes,
+    # 2 is the cut. Both rows sit far below the gun — a blade that read as
+    # loud as a Glock would take the reason to carry it away.
+    "knife-swing": (sfx_knife_swing, 3, -14.0, "sfx", False),
+    "knife-hit": (sfx_knife_hit, 3, -9.0, "sfx", False),
     # everything else that happens
     "step-soft": (sfx_step_soft, 4, -18.0, "misc", False),
     "step-litter": (sfx_step_litter, 4, -18.0, "misc", False),

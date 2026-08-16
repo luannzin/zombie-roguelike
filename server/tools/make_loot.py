@@ -419,6 +419,21 @@ ITEMS: list[tuple[str, Palette, Art]] = [
             "oooooo.m......",
         ],
     ),
+    # The knife. Never on the ground and never in a crate — this frame exists
+    # so the fixed hotbar cell has something to draw and the tooltip has
+    # something to name. Drawn STRAIGHT, like its held frame: every gun icon
+    # above drops a grip below the barrel, so a blade that did the same would
+    # be a sixth pistol in a row of cells. Handle, crossguard, point.
+    (
+        "knife",
+        {"b": METAL, "g": LEATHER, "c": STONE},
+        [
+            "..c........",
+            "ggcbbbbbbb.",
+            "ggcbbbbbbbb",
+            "..c........",
+        ],
+    ),
 ]
 
 

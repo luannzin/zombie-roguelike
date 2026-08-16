@@ -2,7 +2,7 @@
   "tile": 16,
   "frameWidth": 16,
   "frameHeight": 16,
-  "frames": 29,
+  "frames": 30,
   "items": {
     "old_tools": {
       "frame": 0
@@ -90,6 +90,9 @@
     },
     "awp": {
       "frame": 28
+    },
+    "knife": {
+      "frame": 29
     }
   }
 }

@@ -177,10 +177,11 @@ seam React is allowed to read.
   progress instead of watching it replay from zero.
   - **The stagger IS the effect.** The four stones catch one at a time
     (`rift.PILLAR_STAGGER`), so the light visibly runs around the ring. Firing
-    them together costs nothing and reads as a light switch. Each catch throws
-    a point light and a small trauma; the tear throws a big one. Those beats
-    fire on the frame `elapsed` CROSSES them, which is what makes each happen
-    exactly once when a frame runs long.
+    them together costs nothing and reads as a light switch. Each catch is a
+    small trauma and a chime; the tear is a bigger shove. No point-light disc
+    — a `ctx.arc` gradient in world pixels becomes a hard circle at arena zoom.
+    Those beats fire on the frame `elapsed` CROSSES them, which is what makes
+    each happen exactly once when a frame runs long.
   - Timing is ONE clock: `config.rift`, straight out of `server/app/rift.py`,
     whose sheet durations are `frames / fps` from `make_rift.py`. Three files,
     one set of numbers, the same discipline `SUMMON_TIME` already follows.
@@ -193,7 +194,10 @@ seam React is allowed to read.
     you could toggle would stop being the one irreversible decision on the map.
 - `Game.lights` is bonfires read off the tiles PLUS whatever the map's scenes
   are still burning (`world.scenery.lights`), on one list. The lighting has no
-  concept of a camp light versus a forest light and must not grow one.
+  concept of a camp light versus a forest light and must not grow one. Rebuild
+  it when that list changes: an open rift pushes a beacon onto it and a spent
+  one takes it off (`rebuildLights`). A snapshot taken only at welcome leaves
+  the pad dark after the tear.
 - VOID is a winding gap in the treeline, not a missing floor and not a
   rectangle: solid, painted as ground, crushed by a darkness falloff.
   `blocksSight` lets light fall into it so the trees do not close into a

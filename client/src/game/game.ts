@@ -647,30 +647,7 @@ export class Game {
     this.comboStep = 0;
     this.comboLeft = 0;
 
-    // Bonfires are read off the tiles, not off a message: the fire that blocks
-    // you, the fire you can see and the fire that lights you are one tile.
-    this.lights = this.world.fires.map((fire, index) => ({
-      id: index,
-      x: fire.x,
-      // Lifted off the contact row — the light comes from the flame, not from
-      // the ashes — so the pool is centred on the fire rather than in front of it.
-      y: fire.y - msg.config.tileSize * 0.5,
-      radiusTiles: msg.config.campfireLightTiles,
-    }));
-    // Whatever the map's own scenes are still burning, on the same list. The
-    // lighting has no concept of "a camp light" versus "a light out in the
-    // woods" and must not grow one: a lamp at a dead homestead throws real
-    // light, casts real shadows through the trees around it, and is the reason
-    // a player crosses half a map to find out what is under it. Ids continue
-    // past the fires so a flicker never walks when the list changes length.
-    for (const [index, light] of this.world.scenery.lights.entries()) {
-      this.lights.push({
-        id: this.world.fires.length + index,
-        x: light.x,
-        y: light.y,
-        radiusTiles: light.radiusTiles,
-      });
-    }
+    this.rebuildLights();
     // Nothing grows in the hearth: a fern in front of a player hides the
     // character somebody is looking for. Cleared here rather than left over
     // from a previous zone, since a forest wants undergrowth everywhere.
@@ -2562,6 +2539,10 @@ export class Game {
     world.setRiftState(row.state, row.t);
     this.ensureResidue();
     if (was === row.state) return;
+    // The beacon joins and leaves `scenery.lights` here. FOV reads `Game.lights`,
+    // which is a snapshot of that list — without a rebuild the pad stays dark
+    // even though the glow pass can already see the new row.
+    this.rebuildLights();
     if (row.state === 'charging') {
       // A switch being thrown. The console answering on the frame it was
       // pressed is what makes the button feel connected to the structure.
@@ -2587,6 +2568,48 @@ export class Game {
     this.residue = riftResidue(
       this.world.seed, rift, timing.boomTiles * this.world.tileSize,
     );
+  }
+
+  /**
+   * Rebuild the FOV light list from the map as it is right now.
+   *
+   * Bonfires come off the tiles; everything else comes off `scenery.lights`.
+   * That second list is live — an open rift pushes a beacon onto it, a spent
+   * one takes it off — so this has to run again whenever that membership
+   * changes, not only on welcome. A snapshot taken once at embark leaves the
+   * pad dark after the tear, which is how a 7-tile beacon produced no light.
+   */
+  private rebuildLights(): void {
+    const world = this.world;
+    const config = this.config;
+    if (!world || !config) {
+      this.lights = [];
+      return;
+    }
+    // Bonfires are read off the tiles, not off a message: the fire that blocks
+    // you, the fire you can see and the fire that lights you are one tile.
+    this.lights = world.fires.map((fire, index) => ({
+      id: index,
+      x: fire.x,
+      // Lifted off the contact row — the light comes from the flame, not from
+      // the ashes — so the pool is centred on the fire rather than in front of it.
+      y: fire.y - config.tileSize * 0.5,
+      radiusTiles: config.campfireLightTiles,
+    }));
+    // Whatever the map's own scenes are still burning, on the same list. The
+    // lighting has no concept of "a camp light" versus "a light out in the
+    // woods" and must not grow one: a lamp at a dead homestead throws real
+    // light, casts real shadows through the trees around it, and is the reason
+    // a player crosses half a map to find out what is under it. Ids continue
+    // past the fires so a flicker never walks when the list changes length.
+    for (const [index, light] of world.scenery.lights.entries()) {
+      this.lights.push({
+        id: world.fires.length + index,
+        x: light.x,
+        y: light.y,
+        radiusTiles: light.radiusTiles,
+      });
+    }
   }
 
   /**

@@ -20,6 +20,7 @@ mutation, no React.
 | `vfx.ts` | effect atlas loading: one-shot sheets (summon, kindle, wind, death) and the looping loot `aura` |
 | `rift.ts` | extraction atlas: the sigil decal, the pillar/console props with their STATES, and the four activation sheets |
 | `layers/rift.ts` | the extraction point: the whole lifecycle's timing (`riftPhase`) plus its passes — floor, depth sort, additive light |
+| `layers/corruption.ts` | the blast's mark on the ground, baked into a pair of offscreen canvases; motes over it |
 | `residue.ts` | where the extraction blast's marks land: a deterministic field derived from the map seed, never sent over the wire |
 | `loot.ts` | loot atlas: one 16x16 frame per collectable item |
 | `guns.ts` | held-gun atlas and the shared muzzle/grip pose (`gunMuzzle`) |
@@ -39,10 +40,10 @@ mutation, no React.
   in one `entities` list and are drawn by one path.
 - `renderer.ts` only sequences passes and switches spaces; drawing lives in
   `layers/`. **The pass order is the atmosphere** — ground (soil, litter, flat
-  scenery) → dust → coins and loot sprites → entities, bonfires and standing
+  scenery, then the baked rift corruption) → dust → coins and loot sprites → entities, bonfires and standing
   scenery (one depth sort by `y`, including live crates and smash sheets) →
   overgrowth → motes / rain / fog → darkness → combat effects → loot auras / motes /
-  epic-legendary beams / empty-crate wind / death burst → hunt diamond →
+  epic-legendary beams / empty-crate wind / death burst / corruption motes / rift glow → hunt diamond →
   labels → vignette. Effects and loot light go over the darkness because
   they are light, not things being lit. An unlit drop HIDES ITS SPRITE.
   Corpses hide the same way. Blood pools sit on the floor with the boot
@@ -315,14 +316,20 @@ mutation, no React.
   land and which cut lands there come out of `world.seed` hashed with the
   rift's own tile — the same trick the forest already uses for grass and prop
   variants. The server only ever says the rift went off.
-  - The marks are sorted by DISTANCE, and that is what makes the shockwave: the
-    draw loop stops at the first one the front has not reached. Each flares as
-    the wave passes and settles to a dim resting alpha it keeps forever. That
-    is the boom — hundreds of small lights coming up in a widening circle, not
-    one expanding hoop, so it has no hard edge anywhere.
+  - Placement still sorts by DISTANCE so the shockwave can reveal them. Drawing
+    does not: `CorruptionField` bakes the corrupted ground AND the residue into
+    a pair of offscreen canvases, incrementally as the front advances, then
+    blits the visible rectangle — two draw calls a frame, not one per tile.
+    A live per-tile pass at this radius cost about half the frame rate.
   - `waveRadius` is `Infinity` for a rift that is already spent when you
     arrive. The marks are simply THERE, with no replay of an explosion nobody
     was present for.
+- **`drawRiftGlow` throws a halo around the anomaly** once the tear starts.
+  Soft radial gradient, `--scene-beacon`, alpha already zero at the edge. The
+  scene-light row still feeds the fov (visibility) and `drawSceneLights`
+  (the same pool every other map lamp gets); the halo is the extra that makes
+  the hovering sphere read as the source rather than as an object sitting in
+  someone else's light.
 - **A spent rift is a condition, not a moment.** The structure goes dark, the
   console takes its third frame (driven home, every lamp dead — reusing `idle`
   would pop the plunger back up and offer the button again), the beacon comes

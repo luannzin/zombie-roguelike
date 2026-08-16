@@ -26,12 +26,11 @@ import { AtmosphereLayer } from './layers/atmosphere';
 import { DarknessLayer } from './layers/darkness';
 import { crateAnimFrame, drawFootprints, drawSceneryProp } from './layers/scenery';
 import { drawBloodPools } from './layers/corpses';
-import { drawCorruption, drawCorruptionMotes } from './layers/corruption';
+import { CorruptionField } from './layers/corruption';
 import {
   chargeHandoff,
   drawRiftGlow,
   drawRiftProp,
-  drawRiftResidue,
   drawRiftScar,
   riftPhase,
   riftStanding,
@@ -94,6 +93,11 @@ export class Renderer {
    * which the renderer already has, and nothing outside drawing reads it.
    */
   private readonly disturbance = new DisturbanceField();
+  /**
+   * The blast's mark on the world, baked into a pair of offscreen canvases.
+   * Two draw calls a frame instead of the ~1300 the per-tile version cost.
+   */
+  private readonly corruption = new CorruptionField();
   private scenery: SceneryAtlas | null = null;
   private lootAtlas: LootAtlas | null = null;
   private gunAtlas: GunAtlas | null = null;
@@ -170,6 +174,7 @@ export class Renderer {
 
   /** Release cached bitmaps. Safe to call more than once. */
   dispose(): void {
+    this.corruption.reset();
     this.terrain.reset();
     this.darkness.reset();
     this.atmosphere.reset();
@@ -209,22 +214,23 @@ export class Renderer {
     // pass — it is more of the same material, thrown further.
     if (state.world.rift) {
       const riftPhaseNow = this.riftPhaseFor(state);
-      // The GROUND first — the wash goes under the sigil and under the litter,
-      // because it is the soil itself changing rather than something lying on
-      // it. Everything the blast added is drawn on top of what it altered.
-      if (riftPhaseNow) {
-        drawCorruption(
-          ctx,
+      // The GROUND first — the corrupted floor and the litter on it both go
+      // under the sigil, because they are the soil changing rather than
+      // something lying on top of the structure.
+      if (riftPhaseNow && riftPhaseNow.waveRadius > 0) {
+        this.corruption.advance(
           this.riftAtlas,
           state.world,
           state.world.rift,
           (state.config.rift ?? RIFT_FALLBACK).boomTiles * state.world.tileSize,
           riftPhaseNow.waveRadius,
-          state.camera,
+          state.residue,
         );
+        this.corruption.draw(ctx, state.camera);
       }
       drawRiftScar(ctx, this.riftAtlas, state.world.rift, state.camera);
-      drawRiftResidue(ctx, this.riftAtlas, state.residue, riftPhaseNow, state.camera);
+    } else {
+      this.corruption.reset();
     }
     drawDust(ctx, state.effects);
 
@@ -377,11 +383,9 @@ export class Renderer {
     drawDeathBursts(ctx, this.vfx?.death ?? null, state.effects.deaths);
     // Motes off the corrupted ground, after the darkness like every other
     // light: they are coming OUT of the floor, not being lit on it.
-    if (rift && phase) {
-      drawCorruptionMotes(
-        ctx, state.world, rift,
-        (state.config.rift ?? RIFT_FALLBACK).boomTiles * state.world.tileSize,
-        phase.waveRadius, state.time, state.camera,
+    if (rift && phase && phase.waveRadius > 0) {
+      this.corruption.drawMotes(
+        ctx, state.world.tileSize, phase.waveRadius, state.time, state.camera,
       );
     }
     // The structure's own light, last of the additive passes: the stones'
@@ -394,6 +398,7 @@ export class Renderer {
       drawRiftGlow(
         ctx, this.riftAtlas, rift, phase,
         `rgb(${beacon[0]} ${beacon[1]} ${beacon[2]})`,
+        state.world.tileSize, state.time,
       );
     }
     // Hunt tell sits ON the night: a hunter you cannot see still wears the

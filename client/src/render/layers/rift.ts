@@ -26,8 +26,8 @@
  */
 
 import type { Rift } from '../../game/world';
-import type { ResidueMark } from '../residue';
 import type { RiftTimingConfig } from '../../net/protocol';
+import { palette } from '../../theme/palette';
 import type { Camera } from '../camera';
 import type { Projection } from '../projection';
 import {
@@ -43,9 +43,6 @@ const DORMANT_FRAME = 0;
 const AWAKE_FRAME = 1;
 /** Console only: driven home, every lamp on it dead. */
 const SPENT_FRAME = 2;
-
-/** How long a mark burns for as the wave passes it, in seconds. */
-const RESIDUE_FLASH = 0.45;
 
 /**
  * Tile size, for turning `boomTiles` into world pixels.
@@ -114,6 +111,11 @@ export interface RiftPhase {
   crownTime: number[];
   /** Seconds into `emerge`, or `NOT_STARTED` before the tear begins. */
   emerging: number;
+  /**
+   * 0..1 how far through `emerge` we are. The halo grows with this so the
+   * tear lights the pad as it opens rather than snapping on at `openAt`.
+   */
+  emergeProgress: number;
   /** Seconds the anomaly has been on its resting loop. Same rule as `crownTime`. */
   anomalyTime: number;
   /** The anomaly is on its resting loop. */
@@ -154,6 +156,7 @@ function dormantPhase(stones: number): RiftPhase {
     crownTime: new Array<number>(stones).fill(0),
     consoleArmed: false,
     emerging: NOT_STARTED,
+    emergeProgress: 0,
     anomalyTime: 0,
     open: false,
     waveRadius: 0,
@@ -238,6 +241,9 @@ export function riftPhase(
     // third of a second reads as a button that did not take the press.
     consoleArmed: elapsed >= 0,
     emerging: sinceTear >= 0 && elapsed < timing.openAt ? sinceTear : NOT_STARTED,
+    emergeProgress: sinceTear < 0
+      ? 0
+      : clamp01(sinceTear / Math.max(timing.emergeTime, 1e-6)),
     open: elapsed >= timing.openAt,
   };
 }
@@ -371,109 +377,6 @@ export function drawRiftScar(
 }
 
 /**
- * What the blast left on the ground, revealed as the wave reaches it.
- *
- * FLAT, under everybody, drawn with the boot prints — these are stains, and a
- * stain that sorted with the entities would stand up at ankle height.
- *
- * The wave is not a ring drawn on the screen; it is the ORDER these appear in.
- * `marks` is sorted by distance from the blast, so the loop simply stops at
- * the first mark the front has not reached — which is both the cheapest
- * possible cull and the reason the boom reads as travelling rather than as a
- * circle being switched on.
- *
- * Each mark flares as the front passes and then settles to a dim resting
- * alpha it keeps forever. That flare IS the shockwave: hundreds of small
- * lights coming up in a widening circle say "something is moving through
- * here" far better than one expanding hoop, and none of them has a hard edge.
- */
-export function drawRiftResidue(
-  ctx: CanvasRenderingContext2D,
-  atlas: RiftAtlas | null,
-  marks: readonly ResidueMark[],
-  phase: RiftPhase | null,
-  camera: Camera,
-): void {
-  const sheet = atlas?.residue;
-  if (!sheet || !phase || marks.length === 0 || phase.waveRadius <= 0) return;
-
-  const left = camera.renderX - sheet.frameWidth;
-  const top = camera.renderY - sheet.frameHeight;
-  const right = camera.renderX + camera.viewWidth + sheet.frameWidth;
-  const bottom = camera.renderY + camera.viewHeight + sheet.frameHeight;
-  const half = sheet.frameWidth / 2;
-
-  const visible: ResidueCell[] = [];
-  for (const mark of marks) {
-    if (mark.dist > phase.waveRadius) break;
-    if (mark.x < left || mark.x > right || mark.y < top || mark.y > bottom) continue;
-
-    // Fainter the further out it landed, so the blast has a falloff made of
-    // opacity as well as of density and never ends on a visible boundary.
-    // Low overall: the ground under these is what carries the change, and
-    // litter that competes with it reads as artificial.
-    const resting = 0.42 - mark.falloff * 0.24;
-    // How long ago the front went past THIS mark, not how long ago it left.
-    const since = phase.sinceBoom - timeToReach(mark.dist, phase);
-    const flare = since < RESIDUE_FLASH ? 1 - Math.max(0, since) / RESIDUE_FLASH : 0;
-    visible.push({
-      frame: mark.variant % sheet.frames,
-      x: Math.round(mark.x - half),
-      y: Math.round(mark.y - half),
-      alpha: Math.min(1, resting + flare * 0.9),
-    });
-  }
-  if (visible.length === 0) return;
-
-  // Same two-blend split as the corrupted ground, and for the same reason: a
-  // dark mark drawn `source-over` REPLACES the soil under it and reads as a
-  // sticker, where a multiplied one stains it and leaves the terrain's grain
-  // showing through. Batched per mode — flipping the composite op per mark
-  // would cost more than the drawing.
-  ctx.save();
-  ctx.globalCompositeOperation = 'multiply';
-  for (const cell of visible) {
-    ctx.globalAlpha = cell.alpha;
-    ctx.drawImage(
-      sheet.image, cell.frame * sheet.frameWidth, 0, sheet.frameWidth, sheet.frameHeight,
-      cell.x, cell.y, sheet.frameWidth, sheet.frameHeight,
-    );
-  }
-  if (sheet.lit) {
-    ctx.globalCompositeOperation = 'lighter';
-    for (const cell of visible) {
-      ctx.globalAlpha = cell.alpha;
-      ctx.drawImage(
-        sheet.lit, cell.frame * sheet.frameWidth, 0, sheet.frameWidth, sheet.frameHeight,
-        cell.x, cell.y, sheet.frameWidth, sheet.frameHeight,
-      );
-    }
-  }
-  ctx.restore();
-  ctx.globalAlpha = 1;
-}
-
-interface ResidueCell {
-  frame: number;
-  x: number;
-  y: number;
-  alpha: number;
-}
-
-/**
- * Roughly when the front crossed a given radius.
- *
- * The inverse of the wave's ease-out, which has no cheap closed form — but it
- * only decides how bright a mark is for a third of a second, so the linear
- * approximation is invisible and the exact one would cost a cube root per
- * mark per frame.
- */
-function timeToReach(dist: number, phase: RiftPhase): number {
-  if (!Number.isFinite(phase.waveRadius) || phase.waveRadius <= 0) return 0;
-  return phase.sinceBoom * (dist / phase.waveRadius);
-}
-
-/**
  * Everything about the structure that is LIGHT. World pixels, additive, drawn
  * after the darkness pass — a beacon is a light source, not a thing being lit.
  *
@@ -487,10 +390,41 @@ export function drawRiftGlow(
   rift: Rift | null,
   phase: RiftPhase,
   beacon: string,
+  tileSize: number,
+  time: number,
 ): void {
   if (!atlas || !rift || rift.state === 'dormant') return;
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
+
+  // THE ANOMALY IS A LIGHT SOURCE, and the halo is what makes it read as one.
+  //
+  // The sheet is bright, and the scene-light list makes the fov reveal the pad
+  // — but neither of those puts light IN THE AIR around it, so the rift read
+  // as a lit object sitting in the dark rather than as the thing lighting it.
+  // This is that halo: a soft radial fall to nothing, over the darkness with
+  // everything else that emits. It grows with the tear and holds while open.
+  //
+  // Gradient, never a filled arc. It has no boundary anywhere — the alpha is
+  // already zero before the radius ends — which is the whole difference
+  // between a glow and the hard disc this used to draw.
+  const halo = phase.open ? phase.fade : phase.emergeProgress;
+  if (halo > 0) {
+    // Breathes on the same beat the shell does, a full turn of the loop, so
+    // the light and the thing throwing it are visibly one object.
+    const beat = 0.92 + 0.08 * Math.sin(time * 1.1);
+    const radius = rift.lightTiles * tileSize * beat;
+    const gx = rift.anomalyX;
+    const gy = rift.anomalyY;
+    const [br, bg, bb] = palette().scene.beacon;
+    const glow = ctx.createRadialGradient(gx, gy, 0, gx, gy, radius);
+    glow.addColorStop(0, `rgb(${br} ${bg} ${bb} / ${(0.62 * halo).toFixed(3)})`);
+    glow.addColorStop(0.22, `rgb(${br} ${bg} ${bb} / ${(0.28 * halo).toFixed(3)})`);
+    glow.addColorStop(0.55, `rgb(${br} ${bg} ${bb} / ${(0.10 * halo).toFixed(3)})`);
+    glow.addColorStop(1, `rgb(${br} ${bg} ${bb} / 0)`);
+    ctx.fillStyle = glow;
+    ctx.fillRect(gx - radius, gy - radius, radius * 2, radius * 2);
+  }
 
   for (let i = 0; i < rift.pillars.length; i++) {
     const pillar = rift.pillars[i];

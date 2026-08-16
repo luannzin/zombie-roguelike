@@ -33,12 +33,14 @@
     },
     "residue": {
       "file": "residue.png",
+      "litFile": "residue-lit.png",
       "frameWidth": 16,
       "frameHeight": 16,
       "frames": 6
     },
     "corrupt": {
       "file": "corrupt.png",
+      "litFile": "corrupt-lit.png",
       "frameWidth": 16,
       "frameHeight": 16,
       "frames": 192,

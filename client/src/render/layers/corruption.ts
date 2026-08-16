@@ -31,8 +31,18 @@ import type { TileMap } from '../../game/world';
 import type { Camera } from '../camera';
 import type { RiftAtlas } from '../rift';
 
-/** Strongest coverage at the centre. The soil underneath still reads through. */
-const PEAK = 0.92;
+/**
+ * How hard the damage half bites, at its strongest.
+ *
+ * Under `multiply` this is not coverage but DEPTH: at 1 the darkest fissure
+ * pixels take the ground to near black, which is right for a crack and too
+ * much for the blotches around it. Backing it off leaves the soil legible
+ * through every mark.
+ */
+const PEAK = 0.78;
+
+/** And how hard the light half adds. Low: these are glints, not lamps. */
+const LIT = 0.62;
 
 /** Deterministic 0..1 per tile. Mirrors the residue field's hash. */
 function hash01(a: number, b: number, c: number): number {
@@ -116,6 +126,7 @@ export function drawCorruption(
     Math.ceil(Math.min(camera.renderY + camera.viewHeight, centre.y + front) / tile),
   );
 
+  const cells: CorruptCell[] = [];
   for (let ty = top; ty <= bottom; ty++) {
     for (let tx = left; tx <= right; tx++) {
       const strength = corruptionAt(world.seed, centre.x, centre.y, reach, tx, ty, tile);
@@ -134,21 +145,46 @@ export function drawCorruption(
       const roll = Math.floor(hash01(tx, ty, 31) * sheet.rolls) % sheet.rolls;
       const frame = ((dir * sheet.levels + level) * sheet.rolls + roll) % sheet.frames;
 
-      ctx.globalAlpha = Math.min(1, 0.45 + strength * 0.55) * PEAK;
+      cells.push({ frame, x: tx * tile, y: ty * tile, alpha: Math.min(1, 0.45 + strength * 0.55) });
+    }
+  }
+  if (cells.length === 0) return;
+
+  // TWO PASSES, TWO BLENDS, and batching them this way is not just tidiness:
+  // `globalCompositeOperation` is a pipeline state change, and flipping it per
+  // tile would cost more than the drawing does.
+  //
+  // The damage first, MULTIPLIED — the terrain's own grain and colour survive
+  // underneath and only lose light, which is what stains and fissures do to
+  // ground. Then the crystal, ADDED, over the top of what was darkened.
+  ctx.save();
+  ctx.globalCompositeOperation = 'multiply';
+  for (const cell of cells) {
+    ctx.globalAlpha = cell.alpha * PEAK;
+    ctx.drawImage(
+      sheet.image, cell.frame * sheet.frameWidth, 0, sheet.frameWidth, sheet.frameHeight,
+      cell.x, cell.y, tile, tile,
+    );
+  }
+  if (sheet.lit) {
+    ctx.globalCompositeOperation = 'lighter';
+    for (const cell of cells) {
+      ctx.globalAlpha = cell.alpha * LIT;
       ctx.drawImage(
-        sheet.image,
-        frame * sheet.frameWidth,
-        0,
-        sheet.frameWidth,
-        sheet.frameHeight,
-        tx * tile,
-        ty * tile,
-        tile,
-        tile,
+        sheet.lit, cell.frame * sheet.frameWidth, 0, sheet.frameWidth, sheet.frameHeight,
+        cell.x, cell.y, tile, tile,
       );
     }
   }
+  ctx.restore();
   ctx.globalAlpha = 1;
+}
+
+interface CorruptCell {
+  frame: number;
+  x: number;
+  y: number;
+  alpha: number;
 }
 
 /**

@@ -791,7 +791,58 @@ def make_scar(size: int, rng: random.Random) -> Image.Image:
 # --- a pillar's light --------------------------------------------------------
 
 
-def make_residue(size: int, variant: int, rng: random.Random) -> Image.Image:
+class GroundDecal:
+    """A ground mark split into what it DARKENS and what it ADDS.
+
+    THE BLEND IS THE WHOLE REASON THIS CLASS EXISTS. Drawn the obvious way —
+    one sheet, `source-over` — a ground decal sits ON the floor: its dark
+    pixels replace the soil instead of staining it, so the ground's own grain
+    and colour die under every mark and the field reads as stickers laid on
+    dirt. That is the single biggest thing separating "painted on top" from
+    "happened to".
+    So each mark goes to one of two images by its VALUE, and the client draws
+    them with two different blend modes:
+
+      dark   `multiply` — soil that was drained, scorched, cracked. Multiplying
+             keeps every bit of the terrain texture underneath and only takes
+             light out of it, which is what damage actually does to ground.
+      lit    `lighter` — crystal, the caught lip of a fissure, a hot speck.
+             These are LIGHT, so they add. Additive over a dark forest floor is
+             also the only way a two-pixel glint survives being composited.
+
+    Splitting by value rather than by call site means the author does not have
+    to remember which layer anything belongs to: a colour resolved out of the
+    bottom of a ramp is damage, one out of the top is light.
+    """
+
+    #: Ramp value at or above which a mark counts as light rather than damage.
+    LIT_AT = 0.55
+
+    def __init__(self, size: int) -> None:
+        self.size = size
+        self.dark = Image.new("RGBA", (size, size), TRANSPARENT)
+        self.lit = Image.new("RGBA", (size, size), TRANSPARENT)
+        self._dark = self.dark.load()
+        self._lit = self.lit.load()
+
+    def mark(self, x: int, y: int, colour: RGBA, alpha: float) -> None:
+        """A neutral, non-luminous mark. Always damage."""
+        self._put(self._dark, x, y, colour, alpha)
+
+    def stain(self, x: int, y: int, hue: int, value: float, alpha: float) -> None:
+        """A prism mark. Its ramp step decides which layer it lands on."""
+        colour = PRISM[hue][int(clamp01(value) * (len(PRISM) - 1) + 0.5)]
+        target = self._lit if value >= self.LIT_AT else self._dark
+        self._put(target, x, y, colour, alpha)
+
+    def _put(self, px, x: int, y: int, colour: RGBA, alpha: float) -> None:
+        if not (0 <= x < self.size and 0 <= y < self.size):
+            return
+        prior = px[x, y][3]
+        px[x, y] = (colour[0], colour[1], colour[2], max(prior, int(clamp01(alpha) * 255)))
+
+
+def make_residue(size: int, variant: int, rng: random.Random) -> GroundDecal:
     """What the anomaly leaves on the ground when it goes off.
 
     A DECAL, and it follows the decal rules exactly: flat, no outline, no
@@ -812,16 +863,9 @@ def make_residue(size: int, variant: int, rng: random.Random) -> Image.Image:
     the edge. `_residue_variant` is what the scatter picks by distance, so a
     field of these reads as one event fading outward and not as confetti.
     """
-    img = Image.new("RGBA", (size, size), TRANSPARENT)
-    px = img.load()
+    decal = GroundDecal(size)
+    stain = decal.stain
     centre = (size - 1) / 2.0
-
-    def stain(x: int, y: int, hue: int, value: float, alpha: float) -> None:
-        if not (0 <= x < size and 0 <= y < size):
-            return
-        prior = px[x, y][3]
-        colour = PRISM[hue][int(clamp01(value) * (len(PRISM) - 1) + 0.5)]
-        px[x, y] = (colour[0], colour[1], colour[2], max(prior, int(clamp01(alpha) * 255)))
 
     # (cells, cell radius, needles, speckle, bleach)
     cells, cell_r, needles, speckle, bleach = (
@@ -889,10 +933,10 @@ def make_residue(size: int, variant: int, rng: random.Random) -> Image.Image:
               int(round(centre + math.sin(angle) * radius)),
               hue, 0.86 if hot else rng.uniform(0.26, 0.54),
               rng.uniform(0.66, 0.95) if hot else rng.uniform(0.34, 0.62))
-    return img
+    return decal
 
 
-def make_corrupt(size: int, direction: int, level: int, rng: random.Random) -> Image.Image:
+def make_corrupt(size: int, direction: int, level: int, rng: random.Random) -> GroundDecal:
     """One tile of ground the shock front went through, aimed outward.
 
     A DECAL: flat, no outline, partly transparent, so the soil underneath still
@@ -904,8 +948,8 @@ def make_corrupt(size: int, direction: int, level: int, rng: random.Random) -> I
     floor; prism in a dozen pixels and damage in the rest makes a floor that
     something happened to.
     """
-    img = Image.new("RGBA", (size, size), TRANSPARENT)
-    px = img.load()
+    decal = GroundDecal(size)
+    mark, stain = decal.mark, decal.stain
 
     # Outward, in the sheet's own frame — same convention as `tracks.png`:
     # angle 0 is +y (down the screen), so a heading of (dx, dy) is atan2(dx, dy).
@@ -915,15 +959,6 @@ def make_corrupt(size: int, direction: int, level: int, rng: random.Random) -> I
     ax, ay = -uy, ux
 
     heavy = (1.0, 0.62, 0.30)[level]
-
-    def mark(x: int, y: int, colour: RGBA, alpha: float) -> None:
-        if not (0 <= x < size and 0 <= y < size):
-            return
-        prior = px[x, y][3]
-        px[x, y] = (colour[0], colour[1], colour[2], max(prior, int(clamp01(alpha) * 255)))
-
-    def stain(x: int, y: int, hue: int, value: float, alpha: float) -> None:
-        mark(x, y, PRISM[hue][int(clamp01(value) * (len(PRISM) - 1) + 0.5)], alpha)
 
     # --- the drained ground --------------------------------------------------
     # Blotches, never a fill. Uniform darkening is a rectangle; irregular
@@ -1002,7 +1037,7 @@ def make_corrupt(size: int, direction: int, level: int, rng: random.Random) -> I
                   0.58, rng.uniform(0.35, 0.6))
         else:
             mark(x, y, CORRUPT_GRIT, rng.uniform(0.2, 0.45) * (0.5 + heavy * 0.6))
-    return img
+    return decal
 
 
 def residue_variant(distance: float, span: float) -> int:
@@ -1688,10 +1723,13 @@ def build(args) -> Path:
     # One tile square, like every other scatter decal in the game (`debris`,
     # `tracks`). The blast lays hundreds of these; anything bigger and the
     # falloff would be built out of visible tiles rather than out of density.
+    # TWO SHEETS PER GROUND DECAL, one per blend mode — see `GroundDecal`. The
+    # `-lit` half is what the client adds; the other half is what it multiplies.
     residue_size = tile
     rng = random.Random(args.seed + 43)
     residues = [make_residue(residue_size, v, rng) for v in range(RESIDUE_VARIANTS)]
-    pack(residues, residue_size, residue_size).save(out_dir / "residue.png")
+    pack([d.dark for d in residues], residue_size, residue_size).save(out_dir / "residue.png")
+    pack([d.lit for d in residues], residue_size, residue_size).save(out_dir / "residue-lit.png")
 
     # Packed direction-major, so `corrupt_frame` is one multiply-add and the
     # client can pick a tile from an angle without a lookup table.
@@ -1702,7 +1740,8 @@ def build(args) -> Path:
         for level in range(CORRUPT_LEVELS)
         for _ in range(CORRUPT_ROLLS)
     ]
-    pack(corrupts, tile, tile).save(out_dir / "corrupt.png")
+    pack([d.dark for d in corrupts], tile, tile).save(out_dir / "corrupt.png")
+    pack([d.lit for d in corrupts], tile, tile).save(out_dir / "corrupt-lit.png")
 
     # --- a pillar's light ----------------------------------------------------
     # Wider and taller than the stone itself: the crown throws a halo past the
@@ -1794,6 +1833,8 @@ def build(args) -> Path:
             # rift went off is on the wire.
             "residue": {
                 "file": "residue.png",
+                # Drawn `lighter`, over the multiplied half.
+                "litFile": "residue-lit.png",
                 "frameWidth": residue_size,
                 "frameHeight": residue_size,
                 "frames": len(residues),
@@ -1803,6 +1844,7 @@ def build(args) -> Path:
             # away from the centre — see `corrupt_frame`.
             "corrupt": {
                 "file": "corrupt.png",
+                "litFile": "corrupt-lit.png",
                 "frameWidth": tile,
                 "frameHeight": tile,
                 "frames": len(corrupts),

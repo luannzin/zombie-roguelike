@@ -48,8 +48,24 @@ export interface RiftPropSheet {
   states: number;
 }
 
+/**
+ * A ground decal, in TWO images with two blend modes.
+ *
+ * `image` is what the mark takes OUT of the ground and is drawn `multiply`:
+ * drained soil, fissures, grit. Multiplying keeps the terrain's own texture
+ * underneath and only removes light from it, which is what damage does to
+ * ground — drawn `source-over` the dark pixels replace the soil instead, and
+ * the field reads as stickers laid on dirt.
+ *
+ * `lit` is what it ADDS and is drawn `lighter`: crystal, the caught lip of a
+ * crack, a hot speck. Additive is also the only way a two-pixel glint survives
+ * compositing over a dark forest floor.
+ *
+ * See `GroundDecal` in make_rift.py, which decides the split by ramp value.
+ */
 export interface RiftDecalSheet {
   image: HTMLImageElement;
+  lit: HTMLImageElement | null;
   frameWidth: number;
   frameHeight: number;
   frames: number;
@@ -109,6 +125,8 @@ export interface RiftAtlas {
 
 interface PropManifest {
   file: string;
+  /** The additive half, for ground decals. */
+  litFile?: string;
   frameWidth: number;
   frameHeight: number;
   frames: number;
@@ -189,8 +207,13 @@ async function loadProp(manifest: PropManifest): Promise<RiftPropSheet> {
 }
 
 async function loadDecal(manifest: PropManifest): Promise<RiftDecalSheet> {
+  const [image, lit] = await Promise.all([
+    loadImage(`${ROOT}/${manifest.file}`),
+    manifest.litFile ? loadImage(`${ROOT}/${manifest.litFile}`) : null,
+  ]);
   return {
-    image: await loadImage(`${ROOT}/${manifest.file}`),
+    image,
+    lit,
     frameWidth: manifest.frameWidth,
     frameHeight: manifest.frameHeight,
     frames: manifest.frames,

@@ -403,32 +403,61 @@ export function drawRiftResidue(
   const bottom = camera.renderY + camera.viewHeight + sheet.frameHeight;
   const half = sheet.frameWidth / 2;
 
+  const visible: ResidueCell[] = [];
   for (const mark of marks) {
     if (mark.dist > phase.waveRadius) break;
     if (mark.x < left || mark.x > right || mark.y < top || mark.y > bottom) continue;
 
     // Fainter the further out it landed, so the blast has a falloff made of
     // opacity as well as of density and never ends on a visible boundary.
-    // Low overall: the ground wash under these is what carries the change, and
+    // Low overall: the ground under these is what carries the change, and
     // litter that competes with it reads as artificial.
     const resting = 0.42 - mark.falloff * 0.24;
     // How long ago the front went past THIS mark, not how long ago it left.
     const since = phase.sinceBoom - timeToReach(mark.dist, phase);
     const flare = since < RESIDUE_FLASH ? 1 - Math.max(0, since) / RESIDUE_FLASH : 0;
-    ctx.globalAlpha = Math.min(1, resting + flare * 0.9);
+    visible.push({
+      frame: mark.variant % sheet.frames,
+      x: Math.round(mark.x - half),
+      y: Math.round(mark.y - half),
+      alpha: Math.min(1, resting + flare * 0.9),
+    });
+  }
+  if (visible.length === 0) return;
+
+  // Same two-blend split as the corrupted ground, and for the same reason: a
+  // dark mark drawn `source-over` REPLACES the soil under it and reads as a
+  // sticker, where a multiplied one stains it and leaves the terrain's grain
+  // showing through. Batched per mode — flipping the composite op per mark
+  // would cost more than the drawing.
+  ctx.save();
+  ctx.globalCompositeOperation = 'multiply';
+  for (const cell of visible) {
+    ctx.globalAlpha = cell.alpha;
     ctx.drawImage(
-      sheet.image,
-      (mark.variant % sheet.frames) * sheet.frameWidth,
-      0,
-      sheet.frameWidth,
-      sheet.frameHeight,
-      Math.round(mark.x - half),
-      Math.round(mark.y - half),
-      sheet.frameWidth,
-      sheet.frameHeight,
+      sheet.image, cell.frame * sheet.frameWidth, 0, sheet.frameWidth, sheet.frameHeight,
+      cell.x, cell.y, sheet.frameWidth, sheet.frameHeight,
     );
   }
+  if (sheet.lit) {
+    ctx.globalCompositeOperation = 'lighter';
+    for (const cell of visible) {
+      ctx.globalAlpha = cell.alpha;
+      ctx.drawImage(
+        sheet.lit, cell.frame * sheet.frameWidth, 0, sheet.frameWidth, sheet.frameHeight,
+        cell.x, cell.y, sheet.frameWidth, sheet.frameHeight,
+      );
+    }
+  }
+  ctx.restore();
   ctx.globalAlpha = 1;
+}
+
+interface ResidueCell {
+  frame: number;
+  x: number;
+  y: number;
+  alpha: number;
 }
 
 /**

@@ -492,19 +492,24 @@ class Hotbar:
         return BY_KEY.get(key)
 
     @property
-    def weight(self) -> float:
+    def held_weight(self) -> float:
+        """Kilos of the weapon IN HAND. Zero when holstered.
+
+        Only the held weapon has a weight the body pays, because only the
+        held weapon is being carried in front of you — the rest of the belt
+        is on the belt. The whole rack summed here is what used to make a
+        third gun a movement decision, which quietly punished the player for
+        picking things up in a game about picking things up.
+        """
         # Imported lazily: loot.ItemDef owns the kg number so a gun on the
         # ground and a gun in the hand are the same object.
         from .loot import BY_KEY as ITEMS
 
-        total = 0.0
-        for key in self.slots:
-            if key is None:
-                continue
-            item = ITEMS.get(key)
-            if item is not None:
-                total += item.weight
-        return total
+        weapon = self.equipped()
+        if weapon is None:
+            return 0.0
+        item = ITEMS.get(weapon.key)
+        return item.weight if item is not None else 0.0
 
     def to_payload(self) -> dict:
         return {

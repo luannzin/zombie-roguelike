@@ -32,6 +32,7 @@ import type {
   AttackEvent,
   EnemyTypeConfig,
   GameConfig,
+  HotbarState,
   InputPacket,
   KillEvent,
   CrateBreakEvent,
@@ -639,8 +640,9 @@ export class Game {
       sequence: Math.max(continued, ack),
       lastAck: ack,
     });
-    this.local.carryWeight = msg.player.inv?.w ?? 0;
     this.heldSlot = msg.player.guns?.held ?? 0;
+    this.local.carryWeight =
+      (msg.player.inv?.w ?? 0) + this.heldWeaponWeight(msg.player.guns, this.heldSlot);
     this.adsHold = 0;
     this.comboStep = 0;
     this.comboLeft = 0;
@@ -787,7 +789,7 @@ export class Game {
       const mine = this.roster.get(this.localId);
       if (mine) {
         this.localMeta = mine;
-        if (this.local && mine.inv) this.local.carryWeight = mine.inv.w;
+        if (this.local && mine.inv) this.local.carryWeight = this.moveWeight();
       }
     }
 
@@ -1278,10 +1280,23 @@ export class Game {
       sequence,
       movement: { ...this.input.movement },
       aim: { x: this.aimX, y: this.aimY },
-      shoot: this.input.shooting && this.zone?.hostile !== false,
+      shoot: this.input.shooting && this.canAttack(),
       lantern: this.lantern.on,
       held: this.heldSlot,
     };
+  }
+
+  /**
+   * Whether the trigger means anything where we are standing.
+   *
+   * `zone.hostile` gates the GUN, not the swing — the rule is "weapons fire
+   * here", and a knife does not fire. So the blade works at the campfire and
+   * a gun does not, and the mask has to agree with `Room.handle_attack` or
+   * prediction throws an arc the server never resolved.
+   */
+  private canAttack(): boolean {
+    if (this.zone?.hostile !== false) return true;
+    return !!this.heldWeapon()?.melee;
   }
 
   private updateAim(): void {
@@ -2135,7 +2150,14 @@ export class Game {
     if (this.departing || this.introLeft > 0) return;
     const nearLoot = this.nearLoot();
     if (nearLoot) {
-      if (!this.canStow(nearLoot.k)) {
+      // A full belt with a gun in hand is a TRADE, not a refusal, and it
+      // goes through the same `collect` message — the server decides
+      // whether the swap was legal (`Room.swap_weapon`), exactly as it
+      // decides whether you were close enough.
+      const trades =
+        this.config?.loot?.[nearLoot.k]?.pocket === 'hotbar' &&
+        this.swapTargetFor() !== null;
+      if (!trades && !this.canStow(nearLoot.k)) {
         this.bagRefusals += 1;
         // A refused key has to answer, for the same reason the panel kicks:
         // a control that silently does nothing reads as a broken keybind
@@ -2190,6 +2212,10 @@ export class Game {
     // Swapping weapons abandons the chain, the same way the server does it.
     this.comboStep = 0;
     this.comboLeft = 0;
+    // Only the weapon in hand is carried, so a swap changes the walk on the
+    // frame it happens. Waiting for the next roster would make the speed
+    // change arrive a fifth of a second after the keypress that caused it.
+    if (this.local) this.local.carryWeight = this.moveWeight();
     const hotbar = this.hotbarHud();
     if (hotbar) this.patchHud({ hotbar });
   }
@@ -2212,7 +2238,7 @@ export class Game {
       if (def) weight += def.weight * cell.n;
     }
     meta.inv.w = Math.round(weight * 100) / 100;
-    if (this.local) this.local.carryWeight = meta.inv.w;
+    if (this.local) this.local.carryWeight = this.moveWeight();
     const inventory = this.inventoryHud();
     if (inventory) this.patchHud({ inventory });
   }
@@ -2259,7 +2285,11 @@ export class Game {
     for (const def of Object.values(catalog)) {
       if (def.frame + 1 > frames) frames = def.frame + 1;
     }
-    let weight = this.local?.carryWeight ?? this.localMeta?.inv?.w ?? 0;
+    // The BAG's own weight, not the walk's. This bar answers "how much loot
+    // can I still carry out", so a rifle on the belt must not eat into it —
+    // guns are not what extraction is for. What actually slows the body is
+    // `moveWeight`, which is a different number and lives on prediction.
+    let weight = this.localMeta?.inv?.w ?? 0;
     let gold = 0;
     for (const slot of slots) {
       if (slot) gold += slot.value * slot.qty;
@@ -2267,8 +2297,11 @@ export class Game {
     for (const fly of listLootFlies()) {
       const def = catalog[fly.key];
       if (!def) continue;
+      // Only a bag-bound fly is missing from this total; a gun in the air
+      // was never counted in it.
+      if ((fly.dest ?? 'bag') !== 'bag') continue;
       weight -= def.weight;
-      if ((fly.dest ?? 'bag') === 'bag') gold -= def.value;
+      gold -= def.value;
     }
     if (weight < 0) weight = 0;
     if (gold < 0) gold = 0;
@@ -2412,12 +2445,45 @@ export class Game {
     this.camera.resize(this.canvas.width, this.canvas.height);
   }
 
+  /**
+   * Kilos of the weapon in `guns` at `held`. Zero for an empty hand.
+   *
+   * The catalog is the one place a weapon's kg is written, so a gun on the
+   * ground, a gun on the belt and a gun in the hand are the same number —
+   * see `ItemDef.weight` in `server/app/loot.py`.
+   */
+  private heldWeaponWeight(guns: HotbarState | undefined, held: number): number {
+    if (!guns || held < 0) return 0;
+    const key = guns.slots[held];
+    if (!key) return 0;
+    return this.config?.loot?.[key]?.weight ?? 0;
+  }
+
+  /**
+   * What the WALK carries for one player: the bag, plus only the weapon in
+   * hand. A line-for-line mirror of `Player.carry_weight` on the server.
+   *
+   * It is rebuilt here rather than sent as a field precisely because the
+   * hotbar selection is client-authored: `heldSlot` changes on the frame the
+   * key is pressed and the server learns about it a packet later, so a
+   * number computed there would be stale for exactly the frames the player
+   * is watching their own speed change. Both sides run the same sum over the
+   * same catalog instead, the way `simulation.ts` mirrors movement.
+   *
+   * Omit `id` for the local player, whose held slot is the predicted one.
+   */
+  private moveWeight(id?: string): number {
+    if (id === undefined || id === this.localId) {
+      const meta = this.localMeta;
+      return (meta?.inv?.w ?? 0) + this.heldWeaponWeight(meta?.guns, this.heldSlot);
+    }
+    const meta = this.roster.get(id);
+    return (meta?.inv?.w ?? 0) + this.heldWeaponWeight(meta?.guns, meta?.guns?.held ?? -1);
+  }
+
   private carryBurdenOf(id: string): number {
     if (!this.config) return 0;
-    const weight =
-      id === this.localId
-        ? (this.local?.carryWeight ?? 0)
-        : (this.roster.get(id)?.inv?.w ?? 0);
+    const weight = id === this.localId ? (this.local?.carryWeight ?? 0) : this.moveWeight(id);
     return carryBurden(weight, this.config);
   }
 
@@ -2686,12 +2752,40 @@ export class Game {
     if (!near || !this.config) return null;
     const def = this.config.loot?.[near.k];
     if (!def) return null;
+    if (this.canStow(near.k)) {
+      return { id: near.id, name: def.name, rarity: def.rarity, full: false };
+    }
+    // Belt full. If a gun is in hand this is a TRADE, not a refusal — the
+    // prompt names what you would be putting down, because that is the half
+    // of the decision the player cannot see from the drop's own tooltip.
+    const trade = def.pocket === 'hotbar' ? this.swapTargetFor() : null;
     return {
       id: near.id,
       name: def.name,
       rarity: def.rarity,
-      full: !this.canStow(near.k),
+      full: trade === null,
+      swap: trade ?? undefined,
     };
+  }
+
+  /**
+   * Name of the gun a pickup would trade away, or null if none can be.
+   *
+   * Mirrors `Room.swap_weapon`: the hand has to hold a GUN. The knife is not
+   * tradeable — it is the one weapon that cannot be lost, and a pickup that
+   * could consume its cell would put the floor under the whole loadout one
+   * misplaced E away. Holstered refuses too: an empty hand is not a choice
+   * about which gun to keep.
+   */
+  private swapTargetFor(): string | null {
+    const guns = this.localMeta?.guns;
+    if (!guns || this.heldSlot < 0) return null;
+    const key = guns.slots[this.heldSlot];
+    if (!key) return null;
+    const def = this.config?.loot?.[key];
+    if (!def || def.pocket !== 'hotbar') return null;
+    if (this.config?.weapons?.[key]?.melee) return null;
+    return def.name;
   }
 
   private nearLoot(): LootState | null {

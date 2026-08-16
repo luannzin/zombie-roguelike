@@ -133,10 +133,18 @@ game's scale.
   moves nobody. The zone DOES change on `embark()`: that is the walk-out, and
   it is the only legal map swap.
 - Zone rules are enforced HERE, not just described to the client. A
-  non-hostile zone runs no spawn director and drops `shoot` in
-  `handle_shooting`. A client that ignores `zone.lantern` gets light it cannot
+  non-hostile zone runs no spawn director and drops the GUN half of
+  `handle_attack`. A client that ignores `zone.lantern` gets light it cannot
   act on, which is the acceptable half of the trade; one that ignores
   `zone.hostile` gets nothing.
+- **`zone.hostile` gates the gun, not the swing.** The rule it encodes is
+  "weapons fire here", and a knife does not fire — no range, almost no
+  noise, nothing that can go off across a clearing by accident. So the blade
+  works at the campfire and that is deliberate: it makes the camp a place
+  rather than a menu. Anyone killed there is respawned onto their own seat
+  by the normal `respawn` path, and `embark` revives whoever was still down
+  when the party left, because the walk-out puppets bodies instead of
+  ticking respawn timers.
 - `Room.seating` is join order, and it is the only thing that decides who
   stands where. Seats are re-spaced by `reseat()` while the room is in `lobby`
   and never afterwards: once the simulation is running, position belongs to it.
@@ -208,12 +216,32 @@ game's scale.
   The catalog and rarity weights live in `loot.py`; the client never invents
   a name or a colour. Camp maps have none. Valuables land in the pocket
   (`player.inv`); guns land on the hotbar (`player.guns`, `weapons.py`) —
-  they do not stack, and a full belt refuses the drop the way a full bag
-  does. `ItemDef.pocket` is which. Roster `inv.w` is bag PLUS belt, so the
-  walk slows from everything you are carrying (`carry_scale`). `{type:"drop","slot"}`
+  they do not stack. `ItemDef.pocket` is which. A full bag refuses; a full
+  BELT trades instead — see `swap_weapon`. `{type:"drop","slot"}`
   pulls a bag cell back onto the ground near the feet (`inventory.take`,
   `loot.place_near`); camp and the walk-out refuse it. A stack is one
-  world drop per unit. Guns are not tossed from the belt yet.
+  world drop per unit. Guns are not tossed from the belt yet, except by
+  being traded out from under the hand.
+- **Two weights, and conflating them is the bug this split exists to fix.**
+  Roster `inv.w` is the POCKET alone — it is what the bag's `current / maxkg`
+  bar measures, so a rifle must never eat into it: that budget answers "how
+  much loot can I still carry out" and guns are not what extraction is for.
+  `Player.carry_weight` is the other number, what the WALK carries
+  (`carry_scale`): the bag plus **only the weapon in hand**
+  (`Hotbar.held_weight`), so a full rack is not a silent tax on having found
+  things and switching to the knife genuinely moves you faster. It is not on
+  the wire — the client rebuilds it from `inv.w` + `guns` against the same
+  catalog (`Game.moveWeight`), because the hotbar selection is
+  client-authored and a number computed here would be stale for exactly the
+  frames the player is watching their own speed change.
+- **A full belt is a TRADE, not a wall.** `Room.swap_weapon` puts the new gun
+  in the held slot and drops the old one at the player's feet, through the
+  same `{type:"collect"}` the client already sends. It refuses unless a GUN
+  is in hand: the knife's cell cannot be consumed by a pickup, or the one
+  weapon that cannot be lost would be one misplaced E away from being lost.
+  Holstered refuses too — an empty hand is not a choice about which gun to
+  keep. The gun you gave up lands on the floor rather than vanishing, so a
+  trade is reversible one step later.
 - **A gun is a catalog row AND a shot.** `weapons.py` owns damage, cadence,
   reach, muzzle, noise, AWP hold-to-aim (`aim_delay`) and the
   hotbar. Nobody spawns with a gun — see the knife bullet below. Input

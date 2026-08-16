@@ -15,7 +15,11 @@ export interface ControlsHintProps {
 
 export function ControlsHint({ zone }: ControlsHintProps) {
   const parts = ['WASD mover', 'mouse mirar'];
-  if (zone?.hostile !== false) parts.push('clique para atacar');
+  // Always offered, because the knife always answers — `zone.hostile` gates
+  // the gun, not the swing, so even the campfire has something on the
+  // trigger. Listing it only in the forest would teach the player that the
+  // button is dead here, which is the mistake this component exists to avoid.
+  parts.push('clique para atacar');
   parts.push('1-2 arma', '3 faca');
   if (zone?.lantern !== false) parts.push('F lanterna');
   if (zone?.kind === 'camp') parts.push('E pronto');

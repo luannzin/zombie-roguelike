@@ -66,6 +66,13 @@ and nowhere near the frame loop.
   nearby drop; `CratePrompt` is smash ("E para destruir"). A full bag keeps the pin and says "Inventário Cheio" in
   the danger tone — hiding it would look like the drop vanished. New
   items get a new caller, not a fork of the chrome.
+  `LootPrompt` has THREE states, and the middle one is why `full` is not
+  enough on its own: a full BELT with a gun in hand is a trade, so the copy
+  becomes "trocar {held} por {new}" with the gun being given up in the muted
+  tone and the one being gained in its rarity colour — the direction of the
+  trade reads before either name does. What you would pick up is on the
+  ground in front of you; what you would put down is in your hands where you
+  cannot see it, which is the whole reason it has to be named.
 - `Inventory` is the left-side pocket. Collapsed it is the backpack sprite
   and a TAB hint; TAB expands the slots in place, not a dialog. A collect
   opens it so the slot is on screen before the fly leaves the head. Slot

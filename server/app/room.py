@@ -380,6 +380,10 @@ class Room:
             dest = "hotbar"
             if slot is not None and unarmed:
                 player.hotbar.held = slot
+            elif slot is None:
+                # Belt full: trade whatever is in the hand for this. See
+                # `swap_weapon` — refuses unless a GUN is held.
+                slot = self.swap_weapon(player, drop.key)
         else:
             slot = player.inventory.add(drop.key)
         if slot is None:
@@ -392,6 +396,42 @@ class Room:
         )
         self._loot_dirty = True
         self._roster_dirty = True
+
+    def swap_weapon(self, player: Player, key: str) -> int | None:
+        """Trade the gun in hand for `key`, dropping the old one at the feet.
+
+        The way OUT of a full belt, and it is deliberately narrow: the hand
+        has to be holding a GUN. Holding the knife refuses, because the knife
+        is not yours to trade away — it is the one thing on the belt that
+        cannot be lost, and letting a pickup consume its cell would turn the
+        floor under the whole loadout into something you can stand on by
+        accident. Holstered refuses for the same reason it cannot fire: an
+        empty hand is not a choice about which gun to keep.
+
+        Returns the slot the new gun landed in, or None if no trade was legal.
+        """
+        bar = player.hotbar
+        held = bar.held
+        if held < 0 or held >= weapons.GUN_SLOTS:
+            return None
+        old = bar.slots[held]
+        if old is None or old == weapons.STARTING_MELEE:
+            return None
+
+        bar.slots[held] = key
+        # The gun you gave up lands where you are standing, not in the void:
+        # a trade you can change your mind about one step later is a trade,
+        # and one that eats the loser is a punishment for experimenting.
+        feet_y = player.y + PLAYER_HALF_HEIGHT
+        occupied = [
+            (d.x / TILE_SIZE - 0.5, d.y / TILE_SIZE - 0.5) for d in self.drops.values()
+        ]
+        pos = loot.place_near(self.world.tiles, player.x, feet_y, occupied, random.Random())
+        if pos is None:
+            pos = (player.x, feet_y)
+        drop_id = self._next_drop_id()
+        self.drops[drop_id] = Drop(id=drop_id, key=old, x=pos[0], y=pos[1])
+        return held
 
     def break_crate(self, pid: str, crate_id: str) -> None:
         """Smash a crate if this player is standing on it.
@@ -577,6 +617,15 @@ class Room:
         self.crate_break_events = []
         for player in self.players.values():
             player.ready = False
+            # Anybody who was down when the party left comes back up here.
+            # The walk-out does not tick respawn timers — it puppets bodies —
+            # so a player knifed at the fire in the last seconds before
+            # departure would otherwise arrive in the forest dead and stay
+            # that way with no enemy to have killed them.
+            player.hp = MAX_HP
+            player.alive = True
+            player.respawn_timer = 0.0
+            player.hurt_immunity = 0.0
             player.x, player.y = self.pick_spawn()
             player.vx = player.vy = 0.0
             player.aim_x = 0.0
@@ -810,20 +859,25 @@ class Room:
 
         Dispatched on the weapon's own `melee` block rather than on its `kind`
         string, so a second blade is a catalog row and nothing here changes.
+
+        `zone.hostile` gates the GUN and not the swing. The rule it encodes is
+        "weapons fire here", and a knife does not fire: it makes almost no
+        noise, has no range, and cannot go off across a clearing by accident.
+        Somebody messing about at the campfire with it is the camp behaving
+        like a place rather than like a menu — and a player who dies to it
+        walks back to their seat a couple of seconds later (`respawn`).
         """
-        # Nobody attacks in a safe zone. The camp has nothing to shoot at
-        # except the person standing next to you at the fire.
-        if not self.zone.hostile:
-            player.aim_hold = 0.0
-            player.combo_step = 0
-            player.combo_left = 0.0
-            return
         weapon = player.hotbar.equipped()
         if weapon is None or not player.alive:
             player.aim_hold = 0.0
             return
         if weapon.melee is not None:
             self.handle_melee(player, cmd, weapon)
+            return
+        if not self.zone.hostile:
+            player.aim_hold = 0.0
+            player.combo_step = 0
+            player.combo_left = 0.0
             return
         # Holstering the blade mid-chain abandons it: coming back to the knife
         # starts at the first slash rather than resuming a finisher the player

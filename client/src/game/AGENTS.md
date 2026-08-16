@@ -33,8 +33,15 @@ seam React is allowed to read.
   interpolates, smooths and renders. Do not move prediction into `rAF`.
 - `simulation.ts` is the **only** place the local player may be moved, and it
   must stay a line-for-line mirror of the Python version. Carried weight
-  scales `moveSpeed` (`carryScale`); prediction reads `LocalPlayer.carryWeight`
-  from the roster.
+  scales `moveSpeed` (`carryScale`); prediction reads `LocalPlayer.carryWeight`,
+  which is `Game.moveWeight` — **the bag plus only the weapon in hand**, a
+  mirror of `Player.carry_weight`. It is NOT roster `inv.w`: that field is
+  the pocket alone and is what the bag's `current / maxkg` bar shows, since
+  guns must not eat a budget that means "how much loot fits". The sum is
+  rebuilt here rather than sent because `heldSlot` is client-authored — a
+  server-computed number would be stale for exactly the frames the player is
+  watching their own speed change, so every path that can move it (welcome,
+  roster, a bag toss, `selectHotbar`) reassigns `carryWeight` on the spot.
 - `hud-store.ts` is the only channel to the UI for state. World tooltip
   positions travel through `tooltip-anchors.ts` (written every frame, never
   subscribed). Nothing here may touch the DOM beyond the two canvases
@@ -350,7 +357,10 @@ seam React is allowed to read.
   stay at their pre-collect state while a fly is in the air.
   Dragging a cell off the panel calls `requestInventoryDrop`; `Game`
   sends `{type:"drop","slot"}` and clears the cell until the roster
-  confirms. `lootPrompt.full` is a bag that cannot take the nearby drop.
+  confirms. `lootPrompt.full` is a bag that cannot take the nearby drop;
+  `lootPrompt.swap` is a full BELT that would trade instead, and it carries
+  the name of the gun in hand so the tooltip can say what you are putting
+  down as well as what you are picking up.
   The hotbar is `hotbar` on the same snapshot: two gun slots and the
   knife, above the lantern, always visible. 1/2/3 selects (same key
   holsters) and is patched immediately, like TAB. A gun fly uses dest

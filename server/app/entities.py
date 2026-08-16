@@ -131,8 +131,23 @@ class Player:
 
     @property
     def carry_weight(self) -> float:
-        """Bag plus every gun on the belt. The walk reads this, not the bag alone."""
-        return self.inventory.weight + self.hotbar.weight
+        """What the WALK carries: the bag, plus only the weapon in hand.
+
+        Deliberately NOT the same number as the bag's own weight, and
+        deliberately not the whole belt either. Two rules meet here:
+
+          * weapons do not eat the bag's capacity — `inv.w` on the wire is
+            the pocket alone, so `current / maxkg` answers "how much loot
+            can I still carry out" and a rifle never makes that read as
+            nearly full before you have picked anything up;
+          * only what is in your hands slows you down, so swapping to the
+            knife is a real way to move faster and a full rack is not a
+            silent tax on having found things.
+
+        The client mirrors this sum from the same catalog — see
+        `Game.moveWeight`.
+        """
+        return self.inventory.weight + self.hotbar.held_weight
 
     def snapshot_payload(self) -> dict:
         """What changes every tick. Everything else rides the roster.
@@ -185,12 +200,12 @@ class Player:
             "level": level,
             "xpInLevel": into_level,
             "xpToLevel": to_level,
-            "inv": {
-                **self.inventory.to_payload(),
-                # Total carried kg — bag plus the belt — so prediction and the
-                # weight bar agree without a second field.
-                "w": round(self.carry_weight, 2),
-            },
+            # `w` is the POCKET's own weight and nothing else. The number the
+            # walk actually reads adds the weapon in hand, and the client
+            # rebuilds that from this plus `guns` against the same catalog
+            # rather than being sent a second field that would be stale for
+            # the frames its own hotbar selection is ahead of the server's.
+            "inv": self.inventory.to_payload(),
             "guns": self.hotbar.to_payload(),
         }
 

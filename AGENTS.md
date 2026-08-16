@@ -181,7 +181,10 @@ subtree.
   it. Camp maps have none. The pocket is
   `server/app/inventory.py`: a few slots (upgradeable), stacking by key,
   and a weight in kg that may go past max. The open bag shows
-  `current / maxkg` and the bag's item-value total. Past 20% of max carry the walk slows
+  `current / maxkg` and the bag's item-value total; that budget is the
+  POCKET's alone — weapons never eat into it, because it answers "how much
+  loot can I still carry out" and guns are not what extraction is for.
+  Past 20% of max carry the walk slows
   and the footsteps read heavier.   TAB expands the bag on the left HUD. A collected item is held over the
   head, the bag opens so the slot is visible, then the sprite flies into
   that cell — the slot stays empty (border, value, weight) until the
@@ -201,8 +204,13 @@ subtree.
   when the cursor is left
   of the body. There is no laser sight. The AWP eases the camera out
   (`scopeZoom`) while the trigger is held, for more forest in frame. Tracers
-  start at the barrel (`gunMuzzle`). Carry weight is bag PLUS belt. Ammo
-  types (pistol / rifle / awp) are named and unused.
+  start at the barrel (`gunMuzzle`). What SLOWS you is the bag plus only the
+  weapon in your HAND — a full rack is not a tax on having found things, and
+  switching to the knife is a real way to move faster. A belt with no free
+  gun cell does not refuse a better gun: the drop's tooltip becomes
+  "trocar {held} por {new}" and E trades, leaving the old one at your feet.
+  That is refused while holding the knife, which is not yours to trade away.
+  Ammo types (pistol / rifle / awp) are named and unused.
 - **The belt's last cell is the KNIFE and it is not loot.** Nobody collects
   it, drops it or rolls a second one — it is placed by `Hotbar` itself, and
   that guarantee is the feature: a run OPENS with no gun, and the hand is
@@ -217,7 +225,10 @@ subtree.
   out of the hand — the only uncoloured effect in the game — and the whole
   chain makes less noise than a single gunshot, which is the entire reason
   to use it. Picking up a gun while holding the blade puts it in your hand;
-  a second gun does not.
+  a second gun does not. It is also the one weapon that works in the CAMP:
+  `zone.hostile` gates the gun, not the swing, so the fire is somewhere you
+  can mess about with a blade. Anyone killed there walks back to their seat
+  a couple of seconds later.
 - Boxes, barrels and the other wood on the crate sheet are live objects
   (`server/app/crates.py`), not scenery. Scenery still places them; after
   the stamp they are pulled onto the map as crates so a smash can remove

@@ -58,6 +58,14 @@ export interface HudLootPrompt {
   rarity: LootRarity;
   /** No empty slot and no stack of this key. The tooltip turns red. */
   full: boolean;
+  /**
+   * Set when the belt is full of guns but E would TRADE rather than refuse:
+   * the name of the weapon currently in hand, which is what collecting this
+   * one would leave on the ground. Absent when the pickup is an ordinary
+   * collect, and absent when no trade is legal — holding the knife, or
+   * holstered — which is the case that falls back to `full`.
+   */
+  swap?: string;
 }
 
 /** How often the game republishes HUD state. 5 Hz is plenty for text. */

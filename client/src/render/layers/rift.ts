@@ -38,6 +38,12 @@ import {
   type RiftEffectSheet,
 } from '../rift';
 
+/**
+ * Additive strength of the hovering sphere. The stones keep full strength —
+ * 1 here stacked with the halo and blew the lattice out to a white disc.
+ */
+const ANOMALY_GLOW = 0.72;
+
 /** Prop states. The index is the contract with `make_rift.py`. */
 const DORMANT_FRAME = 0;
 const AWAKE_FRAME = 1;
@@ -78,7 +84,7 @@ export const RIFT_FALLBACK: RiftTimingConfig = {
   emergeAt: 1.65,
   emergeTime: 1.25,
   openAt: 2.9,
-  lightTiles: 7,
+  lightTiles: 4.5,
   boomAt: 2.15,
   boomTime: 3.4,
   boomTiles: 34,
@@ -131,9 +137,9 @@ export interface RiftPhase {
   /** Seconds since the burst, for the per-mark flash as the wave passes. */
   sinceBoom: number;
   /**
-   * 1 while the rift holds, falling to 0 across the collapse. The anomaly is
-   * drawn at this alpha: it draws its own light back in rather than being
-   * switched off.
+   * 1 while the rift holds, falling to 0 across the collapse. Multiplied by
+   * `ANOMALY_GLOW` at draw time: it draws its own light back in rather than
+   * being switched off.
    */
   fade: number;
   /** Nothing left but the marks. */
@@ -399,11 +405,11 @@ export function drawRiftGlow(
 
   // THE ANOMALY IS A LIGHT SOURCE, and the halo is what makes it read as one.
   //
-  // The sheet is bright, and the scene-light list makes the fov reveal the pad
-  // — but neither of those puts light IN THE AIR around it, so the rift read
-  // as a lit object sitting in the dark rather than as the thing lighting it.
-  // This is that halo: a soft radial fall to nothing, over the darkness with
-  // everything else that emits. It grows with the tear and holds while open.
+  // The sheet and the scene-light list reveal the pad — but neither puts light
+  // IN THE AIR around the sphere, so without this it reads as a lit object
+  // sitting in the dark rather than as the thing lighting it. A whisper, never
+  // a flood: stacking a hard core on the additive sheet ate the lattice and
+  // turned the rift into a white disc.
   //
   // Gradient, never a filled arc. It has no boundary anywhere — the alpha is
   // already zero before the radius ends — which is the whole difference
@@ -418,9 +424,9 @@ export function drawRiftGlow(
     const gy = rift.anomalyY;
     const [br, bg, bb] = palette().scene.beacon;
     const glow = ctx.createRadialGradient(gx, gy, 0, gx, gy, radius);
-    glow.addColorStop(0, `rgb(${br} ${bg} ${bb} / ${(0.62 * halo).toFixed(3)})`);
-    glow.addColorStop(0.22, `rgb(${br} ${bg} ${bb} / ${(0.28 * halo).toFixed(3)})`);
-    glow.addColorStop(0.55, `rgb(${br} ${bg} ${bb} / ${(0.10 * halo).toFixed(3)})`);
+    glow.addColorStop(0, `rgb(${br} ${bg} ${bb} / ${(0.26 * halo).toFixed(3)})`);
+    glow.addColorStop(0.22, `rgb(${br} ${bg} ${bb} / ${(0.11 * halo).toFixed(3)})`);
+    glow.addColorStop(0.55, `rgb(${br} ${bg} ${bb} / ${(0.04 * halo).toFixed(3)})`);
     glow.addColorStop(1, `rgb(${br} ${bg} ${bb} / 0)`);
     ctx.fillStyle = glow;
     ctx.fillRect(gx - radius, gy - radius, radius * 2, radius * 2);
@@ -436,11 +442,13 @@ export function drawRiftGlow(
   }
 
   if (phase.open && phase.fade > 0) {
-    ctx.globalAlpha = phase.fade;
+    ctx.globalAlpha = phase.fade * ANOMALY_GLOW;
     blit(ctx, atlas.rift, rift.anomalyX, rift.anomalyY, phase.anomalyTime, beacon);
     ctx.globalAlpha = 1;
   } else if (phase.emerging >= 0) {
+    ctx.globalAlpha = ANOMALY_GLOW;
     blit(ctx, atlas.emerge, rift.anomalyX, rift.anomalyY, phase.emerging, beacon);
+    ctx.globalAlpha = 1;
   }
   ctx.restore();
 }

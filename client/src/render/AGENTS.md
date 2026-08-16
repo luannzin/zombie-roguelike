@@ -331,11 +331,12 @@ mutation, no React.
     arrive. The marks are simply THERE, with no replay of an explosion nobody
     was present for.
 - **`drawRiftGlow` throws a halo around the anomaly** once the tear starts.
-  Soft radial gradient, `--scene-beacon`, alpha already zero at the edge. The
-  scene-light row still feeds the fov (visibility) and `drawSceneLights`
-  (the same pool every other map lamp gets); the halo is the extra that makes
-  the hovering sphere read as the source rather than as an object sitting in
-  someone else's light.
+  Soft radial gradient, `--scene-beacon`, alpha already zero at the edge. A
+  whisper, never a flood — the sheet is drawn at `ANOMALY_GLOW` so the lattice
+  stays readable instead of blowing out to a white disc. The scene-light row
+  still feeds the fov (visibility) and `drawSceneLights` (the same pool every
+  other map lamp gets); the halo is the extra that makes the hovering sphere
+  read as the source rather than as an object sitting in someone else's light.
 - **A spent rift is a condition, not a moment.** The structure goes dark, the
   console takes its third frame (driven home, every lamp dead — reusing `idle`
   would pop the plunger back up and offer the button again), the beacon comes

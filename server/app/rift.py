@@ -76,13 +76,12 @@ _ANOMALY = _CENTRE
 
 #: Radius of the beacon once it is open, in tiles.
 #:
-#: BIG. Every other scene light in the game is a thing you spot across the dark
-#: and walk toward; this one is the destination itself, and while it is open it
-#: is the brightest thing on the map by a distance. It also feeds the fov, so
-#: the pad is genuinely LIT while the window is open — you can see what is
-#: coming at you, which is the difference between a beacon and a lamp.
-#: `kind` 2 is `scenery.BEACON`.
-LIGHT_TILES = 7.0
+#: Bigger than a cabin lamp, smaller than the campfire. It has to light the
+#: pad — you can see what is coming at you, which is the difference between a
+#: beacon and a lamp — without washing the forest around it. The sphere's own
+#: brightness is the client's halo and sheet, not this number; this is how far
+#: the night actually lifts. `kind` 2 is `scenery.BEACON`.
+LIGHT_TILES = 4.5
 LIGHT_KIND = 2
 
 # --- the timeline ------------------------------------------------------------

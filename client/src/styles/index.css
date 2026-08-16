@@ -411,8 +411,10 @@
    */
   --animate-lantern-refused: lantern-refused 0.3s steps(1, end) 1;
   --animate-hotbar-pick: hotbar-pick 0.18s ease-out 1;
-  --animate-quest-in: quest-in 0.28s cubic-bezier(0.23, 1, 0.32, 1) both;
-  --animate-quest-out: quest-out 0.22s cubic-bezier(0.55, 0, 1, 0.45) both;
+  --animate-quest-announce: quest-announce 0.42s cubic-bezier(0.23, 1, 0.32, 1) both;
+  --animate-quest-card: quest-card 0.28s cubic-bezier(0.23, 1, 0.32, 1) both;
+  --animate-quest-land: quest-land 0.18s cubic-bezier(0.23, 1, 0.32, 1) both;
+  --animate-quest-leave: quest-leave 0.72s cubic-bezier(0.23, 1, 0.32, 1) both;
   --animate-quest-done: quest-done 0.32s cubic-bezier(0.23, 1, 0.32, 1) 1;
 
   /*
@@ -733,24 +735,52 @@
     transform: translateY(0) scale(1);
     }
   }
-  @keyframes quest-in {
+  @keyframes quest-announce {
     from {
       opacity: 0;
-      transform: translateY(-6px) scale(0.96);
+      transform: translateY(8px) scale(0.96);
+      filter: blur(6px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+      filter: blur(0);
+    }
+  }
+  @keyframes quest-card {
+    from {
+      opacity: 0;
+      transform: translateY(-4px) scale(0.96);
     }
     to {
       opacity: 1;
       transform: translateY(0) scale(1);
     }
   }
-  @keyframes quest-out {
+  @keyframes quest-land {
     from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+  @keyframes quest-leave {
+    0% {
       opacity: 1;
       transform: translateY(0) scale(1);
     }
-    to {
+    38% {
+      opacity: 1;
+      transform: translateY(-8px) scale(1);
+    }
+    52% {
+      opacity: 1;
+      transform: translateY(-8px) scale(1);
+    }
+    100% {
       opacity: 0;
-      transform: translateY(-4px) scale(0.96);
+      transform: translateY(-22px) scale(0.96);
     }
   }
   @keyframes quest-done {
@@ -881,13 +911,16 @@
     display: none;
   }
 
-  .animate-quest-in {
+  .animate-quest-announce,
+  .animate-quest-card,
+  .animate-quest-land {
     animation-name: quest-fade-in;
     animation-duration: 160ms;
     animation-timing-function: ease;
+    filter: none;
   }
 
-  .animate-quest-out {
+  .animate-quest-leave {
     animation-name: quest-fade-out;
     animation-duration: 160ms;
     animation-timing-function: ease;

@@ -1,50 +1,61 @@
 /**
- * One run objective. Top-centre, no panel — a line, not a widget.
+ * One objective inside the quest card.
  *
- * Copy is `label: have/need`. Done recedes the words and pops the count in
- * accent (the check). Risk paints the count in the danger tone. A row that
- * the server dropped plays the leave animation here; the log unmounts it
- * when that animation ends.
+ * Ghost rows exist only so the announce has a place to land — same type, no
+ * ink. Live rows sit in the card (and play the land fade). Shown is the same
+ * without the fade, used when the whole card is already leaving. Done rows
+ * rise, hold, then leave.
  */
 
 import { cn } from '@/lib/utils';
 import type { HudQuest } from '../../game/hud-store';
 
+export type QuestRowMode = 'ghost' | 'live' | 'shown' | 'leaving';
+
 export interface QuestRowProps {
   quest: HudQuest;
-  index: number;
-  leaving: boolean;
-  onGone: (id: string) => void;
+  mode: QuestRowMode;
+  dockRef?: (node: HTMLElement | null) => void;
+  onGone?: (id: string) => void;
 }
 
-export function QuestRow({ quest, index, leaving, onGone }: QuestRowProps) {
-  const countTone = quest.done
+export function QuestRow({ quest, mode, dockRef, onGone }: QuestRowProps) {
+  const done = quest.done || mode === 'leaving';
+  const countTone = done
     ? 'text-ink-accent'
     : quest.risk
       ? 'text-hp-low'
       : 'text-ink';
 
   return (
-    <p
+    <div
       className={cn(
-        'pixel-text text-center text-[11px] leading-[17px] tracking-[0.14em] uppercase',
-        leaving ? 'animate-quest-out' : 'animate-quest-in',
+        'flex items-start justify-between gap-2 text-[11px] leading-[17px] tracking-[0.08em] uppercase',
+        mode === 'ghost' && 'opacity-0',
+        mode === 'live' && 'animate-quest-land',
+        mode === 'leaving' && 'animate-quest-leave',
       )}
-      style={leaving ? undefined : { animationDelay: `${180 + index * 55}ms` }}
       onAnimationEnd={(event) => {
-        if (!leaving) return;
         if (event.target !== event.currentTarget) return;
-        onGone(quest.id);
+        if (mode === 'leaving') onGone?.(quest.id);
       }}
     >
-      <span className={quest.done ? 'text-ink-muted' : 'text-ink'}>{quest.label}</span>
-      <span className="text-ink-muted">: </span>
       <span
-        key={quest.done ? 'done' : 'live'}
-        className={cn('inline-block', countTone, quest.done && 'animate-quest-done')}
+        ref={mode === 'ghost' ? dockRef : undefined}
+        className={cn('min-w-0 text-left', done ? 'text-ink-muted' : 'text-ink')}
+      >
+        {quest.label}
+      </span>
+      <span
+        key={done ? 'done' : 'live'}
+        className={cn(
+          'inline-block shrink-0 tabular-nums tracking-[0.08em]',
+          countTone,
+          done && mode !== 'ghost' && 'animate-quest-done',
+        )}
       >
         {quest.have}/{quest.need}
       </span>
-    </p>
+    </div>
   );
 }

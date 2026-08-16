@@ -11,7 +11,7 @@ and nowhere near the frame loop.
   `Game`; React never touches those pixels again.
 - `hud/` — ours: `Hud`, `HudScreen`, `Panel`, `Vitals`, `BatteryGauge`,
   `ProgressBar`, `StatusLine`, `NetStats`, `ControlsHint`, `ZoneTitle`,
-  `ReadyCount`, `QuestLog`, `QuestRow`, `InteractPrompt`, `LootPrompt`, `CratePrompt`, `Inventory`, `InventorySlot`,
+  `ReadyCount`, `QuestLog`, `QuestRow`, `QuestAnnounce`, `InteractPrompt`, `LootPrompt`, `CratePrompt`, `Inventory`, `InventorySlot`,
   `InventoryGold`, `WeightBar`, `LootIcon`, `CoinIcon`, `SlotValue`, `LootFly`, `LootCard`,
   `LootCardRow`, `TooltipCard`, `InventoryGhost`, `Tooltip`, `TooltipKey`,
   `Hotbar`, `HotbarSlot`.
@@ -116,12 +116,12 @@ and nowhere near the frame loop.
 - `ReadyCount` is camp-only HUD, fed from `hud-store` (`ready`). It rides the
   same chrome fade as the corners, so the walk-out (`cinematic`) takes it off
   with everything else. The ready prompt is a `Tooltip`, not a corner.
-- `QuestLog` is the forest's top-centre list, same slot as `ReadyCount`, no
-  panel. It mirrors `hud-store.quests`: `label: have/need`, done recedes the
-  words and pops the count in accent, `risk` paints the count in the danger
-  tone, and a row the server dropped plays `quest-out` then unmounts. Enter
-  is opacity + a few pixels + `scale(0.96)` — never `scale(0)` — delayed so
-  the first line lands after the woods have shut. Reduced motion fades only.
+- `QuestLog` is a Panel under the minimap, same chrome as the belt and the
+  bag. New tasks do not just appear in the list: `QuestAnnounce` puts the
+  label big at centre (22px, the HUD's 2×), holds so it can be read, then
+  FLIPs into the card. Completed rows rise, then leave — the HUD dismisses
+  them after that beat even if the server still carries `done`. `risk` still
+  paints the count in the danger tone. Reduced motion fades only; no dock.
 - Colours and type come from the tokens in `src/styles/index.css`, consumed as
   Tailwind utilities. No literal colours in components.
 - coss semantic tokens are re-pointed at the game palette in the coss skin block

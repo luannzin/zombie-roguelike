@@ -94,8 +94,14 @@ export function Hud({ snapshot, minimapRef, error }: HudProps) {
           <NetStats net={snapshot.net} />
         </div>
 
-        <div className={cn('hud-layer pixel-text top-2.5 right-3', chrome)}>
-          <MinimapCanvas ref={minimapRef} visible={snapshot.inArena} />
+        <div className="hud-layer pixel-text top-2.5 right-3 flex flex-col items-stretch gap-2">
+          <div className={chrome}>
+            <MinimapCanvas ref={minimapRef} visible={snapshot.inArena} />
+          </div>
+          <QuestLog
+            quests={snapshot.quests}
+            dimmed={snapshot.introducing || snapshot.cinematic}
+          />
         </div>
 
         <div
@@ -121,12 +127,11 @@ export function Hud({ snapshot, minimapRef, error }: HudProps) {
 
         <div
           className={cn(
-            'hud-layer pixel-text top-2.5 left-1/2 -translate-x-1/2 flex flex-col items-center gap-1',
+            'hud-layer pixel-text top-2.5 left-1/2 -translate-x-1/2',
             chrome,
           )}
         >
           <ReadyCount ready={snapshot.ready} />
-          <QuestLog quests={snapshot.quests} />
         </div>
 
         {/* Last, so the arrival card sits over every corner — it is the one thing

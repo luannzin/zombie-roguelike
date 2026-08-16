@@ -45,6 +45,7 @@ import type {
   PickupEvent,
   PlayerMeta,
   RiftStateRow,
+  RiftTimingConfig,
   QuestState,
   ServerMessage,
   SnapshotMessage,
@@ -79,6 +80,7 @@ import {
   type HudHotbar,
   type HudInventory,
   type HudLootPrompt,
+  type HudRiftPrompt,
   type HudSnapshot,
   type HudStore,
 } from './hud-store';
@@ -91,7 +93,7 @@ import { clearLootFlies, listLootFlies, spawnLootFly, stepLootFlies } from './lo
 import { warpHudPoint } from '../lib/lens';
 import { LocalPlayer } from './prediction';
 import { carryBurden } from './simulation';
-import { crateFootprint, FLOOR, hearthMask, TileMap } from './world';
+import { crateFootprint, FLOOR, hearthMask, TileMap, type Rift } from './world';
 import {
   clearTooltipAnchors,
   dropTooltipAnchor,
@@ -365,14 +367,12 @@ export class Game {
    */
   private localReady = false;
   /**
-   * What the extraction blast threw on the ground, generated ONCE.
+   * What each extraction blast threw on the ground, generated ONCE per pad.
    *
    * Deterministic from the map seed, so every client lays the same field
-   * without a byte of it crossing the wire (`render/residue.ts`). Held here
-   * rather than on `TileMap` because it is presentation: nothing collides with
-   * it, nothing queries it, and the renderer is its only reader.
+   * without a byte of it crossing the wire (`render/residue.ts`).
    */
-  private residue: readonly ResidueMark[] = [];
+  private residues: { id: string; marks: readonly ResidueMark[] }[] = [];
   /** Remaining world drops. Replaced on welcome and on a dirty snapshot. */
   private readonly loot = new Map<string, LootState>();
   /** Dead bodies on this map. Replaced on welcome; upserted from kills. */
@@ -635,7 +635,7 @@ export class Game {
     // A new map is a new forest: nothing has been explored yet, and it has its
     // own rift — so the old map's marks must not survive into it.
     this.fov = new FovField(this.world.width, this.world.height);
-    this.residue = [];
+    this.residues = [];
     this.ensureResidue();
     this.localId = msg.playerId;
     this.localMeta = msg.player;
@@ -710,6 +710,7 @@ export class Game {
     this.departing = false;
     this.arriving = msg.zone.kind === 'forest' && msg.map.entrance?.state === 'open';
     this.quests = msg.quests ?? [];
+    if (msg.blackout) this.lantern.kill();
     this.alertHeard.clear();
     this.growlLeft = GROWL_INTERVAL;
     this.dreadLeft = DREAD_INTERVAL;
@@ -894,7 +895,23 @@ export class Game {
     for (const ev of msg.lootPickups ?? []) this.onLootPickup(ev);
     if (msg.crates) this.replaceCrates(msg.crates);
     for (const ev of msg.crateBreaks ?? []) this.onCrateBreak(ev);
-    if (msg.rift) this.onRiftState(msg.rift);
+    if (msg.rifts) {
+      for (const row of msg.rifts) this.onRiftState(row);
+    }
+    if (msg.egress && this.world) {
+      this.world.setEgress({
+        side: msg.egress.side,
+        mouthX: msg.egress.mouth[0],
+        mouthY: msg.egress.mouth[1],
+        backX: msg.egress.back[0],
+        backY: msg.egress.back[1],
+        dirX: msg.egress.dir[0],
+        dirY: msg.egress.dir[1],
+        state: msg.egress.state,
+        elapsed: msg.egress.t,
+      });
+    }
+    if (msg.blackout) this.lantern.kill();
     if (msg.corpses) this.mergeCorpses(msg.corpses);
   }
 
@@ -1768,7 +1785,8 @@ export class Game {
       coins,
       loot,
       corpses,
-      residue: this.residue,
+      residues: this.residues,
+      guide: this.guidePose(),
       weather: this.zone?.weather ?? 'clear',
       effects: this.effects,
       fov: this.fov,
@@ -2202,8 +2220,13 @@ export class Game {
     }
     // Before the crate, and before the fire. If you are standing at the
     // console with a box at your elbow, you did not walk here for the box.
-    if (this.riftPrompt()) {
-      this.connection.send({ type: 'activate' });
+    const rift = this.riftPrompt();
+    if (rift) {
+      if (rift.mode === 'feed' && rift.empty) {
+        playSfx('ui-error');
+        return;
+      }
+      this.connection.send({ type: 'activate', id: rift.id });
       return;
     }
     const nearCrate = this.nearCrate();
@@ -2556,29 +2579,75 @@ export class Game {
   }
 
   /**
-   * Whether E is offering the extraction console right now.
+   * Whether E is offering an extraction pad right now.
    *
-   * Only while it is DORMANT. Once the sequence starts there is nothing left
-   * to press, and leaving a prompt on a structure that is already answering
-   * would read as the first press not having registered.
-   *
-   * Measured feet-to-console, mirroring `Room.activate_rift`, so the prompt on
-   * screen and the check on the server agree about what "close enough" means.
+   * Dormant: open the console. Open: feed the bag into it, but only once the
+   * feed quest is live. Measured feet-to-console, mirroring
+   * `Room.activate_rift`, so the prompt on screen and the check on the
+   * server agree about what "close enough" means.
    */
-  private riftPrompt(): boolean {
-    if (this.locked || this.introLeft > 0) return false;
+  private riftPrompt(): HudRiftPrompt | null {
+    if (this.locked || this.introLeft > 0) return null;
+    const rift = this.nearRift();
+    if (!rift) return null;
+    if (rift.state === 'dormant') {
+      return { id: rift.id, mode: 'open', have: 0, need: 0, empty: false };
+    }
+    const feed = this.quests.find((quest) => quest.id === 'feed');
+    if (rift.state === 'open' && feed && !feed.done) {
+      return {
+        id: rift.id,
+        mode: 'feed',
+        have: feed.have,
+        need: feed.need,
+        empty: (this.inventoryHud()?.gold ?? 0) <= 0,
+      };
+    }
+    return null;
+  }
+
+  private nearRift(): Rift | null {
     const config = this.config;
     const local = this.local;
-    const rift = this.world?.rift;
-    if (!config || !local || !rift || rift.state !== 'dormant') return false;
+    const world = this.world;
+    if (!config || !local || !world) return null;
     const range = (config.riftActivateTiles ?? 2.75) * config.tileSize;
-    const dx = rift.consoleX - local.state.x;
-    const dy = rift.consoleY - (local.state.y + config.playerHalfHeight);
-    return dx * dx + dy * dy <= range * range;
+    const feetY = local.state.y + config.playerHalfHeight;
+    let best: Rift | null = null;
+    let bestD2 = range * range;
+    for (const rift of world.rifts) {
+      const dx = rift.consoleX - local.state.x;
+      const dy = rift.consoleY - feetY;
+      const d2 = dx * dx + dy * dy;
+      if (d2 <= bestD2) {
+        bestD2 = d2;
+        best = rift;
+      }
+    }
+    return best;
   }
 
   /**
-   * The server changed the rift's state. Adopt its clock and answer with juice.
+   * Point the local player at the extraction exit while that quest is live.
+   *
+   * Drawn in world space after the darkness pass — the lamps are dead and
+   * this is how you still know where to run.
+   */
+  private guidePose(): { fromX: number; fromY: number; toX: number; toY: number } | null {
+    const exit = this.quests.find((quest) => quest.id === 'exit');
+    const egress = this.world?.egress;
+    const local = this.local;
+    if (!exit || exit.done || !egress || !local) return null;
+    return {
+      fromX: local.state.x,
+      fromY: local.state.y,
+      toX: egress.mouthX,
+      toY: egress.mouthY,
+    };
+  }
+
+  /**
+   * The server changed a pad's state. Adopt its clock and answer with juice.
    *
    * The visuals are all client-side and deliberately so: the server says WHAT
    * happened, this decides what that feels like. `elapsed` is taken from the
@@ -2587,11 +2656,12 @@ export class Game {
    */
   private onRiftState(row: RiftStateRow): void {
     const world = this.world;
-    if (!world?.rift) return;
-    const was = world.rift.state;
-    world.setRiftState(row.state, row.t);
+    if (!world) return;
+    const was = world.rifts.find((item) => item.id === row.id)?.state;
+    const closing = row.closeAt != null && was === 'open';
+    world.setRiftState(row.id, row.state, row.t, row.closeAt ?? null);
     this.ensureResidue();
-    if (was === row.state) return;
+    if (was === row.state && !closing) return;
     // The beacon joins and leaves `scenery.lights` here. FOV reads `Game.lights`,
     // which is a snapshot of that list — without a rebuild the pad stays dark
     // even though the glow pass can already see the new row.
@@ -2604,7 +2674,7 @@ export class Game {
   }
 
   /**
-   * Lay the blast's marks, once.
+   * Lay each blast's marks, once per pad.
    *
    * Called on every state change and on arrival, because the field has to
    * exist for a rift that is ALREADY open or spent when this client turns up —
@@ -2613,14 +2683,20 @@ export class Game {
    * the burst alone would leave late arrivals looking at clean ground.
    */
   private ensureResidue(): void {
-    const rift = this.world?.rift;
-    if (!rift || this.residue.length > 0) return;
-    if (rift.state === 'dormant') return;
+    const world = this.world;
     const timing = this.config?.rift ?? null;
-    if (!timing || !this.world) return;
-    this.residue = riftResidue(
-      this.world.seed, rift, timing.boomTiles * this.world.tileSize,
-    );
+    if (!world || !timing) return;
+    for (const rift of world.rifts) {
+      if (rift.state === 'dormant') continue;
+      // A pad that jumped dormant → spent never tore. Residue is the blast's
+      // mark, and inventing one here would stain a stone that never woke.
+      if (rift.state === 'spent' && rift.elapsed <= 0 && rift.closeAt === null) continue;
+      if (this.residues.some((row) => row.id === rift.id)) continue;
+      this.residues.push({
+        id: rift.id,
+        marks: riftResidue(world.seed, rift, timing.boomTiles * world.tileSize),
+      });
+    }
   }
 
   /**
@@ -2677,17 +2753,29 @@ export class Game {
    * (who starts at the server's `t`) replaying the beats it already missed.
    */
   private stepRift(dt: number): void {
-    const rift = this.world?.rift;
-    if (!rift) return;
-    const before = rift.elapsed;
+    const world = this.world;
+    if (!world || world.rifts.length === 0) return;
+    const befores = world.rifts.map((row) => row.elapsed);
     // Unconditionally, and BEFORE the charging guard: the clock keeps running
-    // once the rift is open because that is what phases the resting loop. Stop
+    // once a rift is open because that is what phases the resting loop. Stop
     // it here and the anomaly freezes on frame 0 forever.
-    this.world?.stepRift(dt);
-    if (rift.state !== 'charging' || !this.config) return;
-    const after = rift.elapsed;
+    world.stepRift(dt);
+    if (!this.config) return;
     const timing = this.config.rift ?? null;
     if (!timing) return;
+    for (let i = 0; i < world.rifts.length; i++) {
+      const rift = world.rifts[i];
+      if (rift.state !== 'charging' && rift.state !== 'open') continue;
+      this.stepRiftBeats(rift, befores[i] ?? 0, rift.elapsed, timing);
+    }
+  }
+
+  private stepRiftBeats(
+    rift: Rift,
+    before: number,
+    after: number,
+    timing: RiftTimingConfig,
+  ): void {
     const fx = palette().effects;
     const beacon = palette().scene.beacon;
     const beaconCss = `rgb(${beacon[0]} ${beacon[1]} ${beacon[2]})`;
@@ -2721,11 +2809,11 @@ export class Game {
     if (before < timing.emergeAt && after >= timing.emergeAt) {
       playSfx('summon');
     }
-    // The window closing, if it ever does. `collapseAt` is null while the rift
-    // is open-ended — a comparison against it would be false forever anyway,
-    // but saying so here is what stops the next person wiring a timer to it.
-    if (timing.collapseAt !== null
-      && before < timing.collapseAt && after >= timing.collapseAt) {
+    // Feeding is what shuts the window. `closeAt` is the pad's own deadline;
+    // `collapseAt` on the timing block is the authored fallback and is null
+    // while the rift is open-ended.
+    const collapseAt = rift.closeAt ?? timing.collapseAt;
+    if (collapseAt !== null && before < collapseAt && after >= collapseAt) {
       playSfx('lantern-off');
       this.camera.addTrauma(0.12);
     }
@@ -2736,7 +2824,7 @@ export class Game {
     // person who pressed the button.
     const reach = timing.boomTiles * (this.world?.tileSize ?? 16);
     const local = this.local;
-    if (local && rift) {
+    if (local) {
       const away = Math.hypot(rift.x - local.state.x, rift.y - local.state.y);
       if (away <= reach) {
         const front = (t: number) => {
@@ -2946,10 +3034,15 @@ export class Game {
       dropTooltipAnchor('loot');
     }
 
-    const rift = this.world?.rift;
-    if (rift && this.riftPrompt() && this.config) {
-      const lift = this.config.tileSize * RIFT_TOOLTIP_LIFT_TILES;
-      writeTooltipAnchor('rift', view.x(rift.consoleX), view.y(rift.consoleY - lift));
+    const prompt = this.riftPrompt();
+    if (prompt && this.config) {
+      const rift = this.world?.rifts.find((row) => row.id === prompt.id);
+      if (rift) {
+        const lift = this.config.tileSize * RIFT_TOOLTIP_LIFT_TILES;
+        writeTooltipAnchor('rift', view.x(rift.consoleX), view.y(rift.consoleY - lift));
+      } else {
+        dropTooltipAnchor('rift');
+      }
     } else {
       dropTooltipAnchor('rift');
     }

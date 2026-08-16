@@ -168,10 +168,16 @@ seam React is allowed to read.
   `DEATH_TIME` / `DEATH_IMPACT` mirror `make_vfx.py`; the thud in
   `zombie-death` sits on that impact. The body sheet's own `frames / fps`
   is the collapse clock.
-- **The extraction rift is the one object on the map with a STATE MACHINE, and
+- **The extraction pads are the objects on the map with a STATE MACHINE, and
   the split is: the server says WHAT, the client says what that FEELS like.**
-  Finding it is a quest (`hud-store.quests`, id `extract`), not a packet —
-  proximity on the server ticks `0/1` to `1/1`. Two snapshot rows a run — pressed, and open — and the four seconds between
+  Count scales with the day (`rift.count_for_day`). Finding them is a quest
+  (`hud-store.quests`, id `extract`, `0/N`) — proximity on the server, not
+  a packet. Pressing a dormant console starts the ceremony; feeding an open
+  one spends bag catalog value toward `feed`. Paying the quota collapses
+  every pad (`closeAt`), carves `world.egress`, kills the lantern
+  (`Lantern.kill`), and offers `exit`. Reaching the mouth is another
+  welcome, back at camp.
+  Two snapshot rows a pad — pressed, and open — and the four seconds between
   them run on this client's own render clock (`Game.stepRift`), because a
   ceremony resolved at 6 Hz would step rather than play. The server's `t` is
   adopted on every row, so somebody joining mid-sequence picks it up in
@@ -186,13 +192,17 @@ seam React is allowed to read.
   - Timing is ONE clock: `config.rift`, straight out of `server/app/rift.py`,
     whose sheet durations are `frames / fps` from `make_rift.py`. Three files,
     one set of numbers, the same discipline `SUMMON_TIME` already follows.
-  - E offers the console BEFORE a crate and before the fire: if you are
-    standing at the console with a box at your elbow, you did not walk there
-    for the box. The prompt shows only while DORMANT — once it is answering,
-    there is nothing left to press, and a prompt still hanging over a thrown
-    button reads as the press not registering.
-  - Activation is one-way. There is no packet to switch it off, because a rift
-    you could toggle would stop being the one irreversible decision on the map.
+  - E offers a pad BEFORE a crate and before the fire: if you are standing at
+    the console with a box at your elbow, you did not walk there for the box.
+    Dormant shows "abrir"; open-and-feeding shows "alimentar a fenda" with
+    the same `have/need` as the quest. An empty bag refuses audibly and does
+    not send. Spent and charging show nothing — a prompt on a structure that
+    is already answering reads as the first press not having registered.
+  - Activation is one-way. There is no packet to switch it off. Collapse is
+    the feed quota, not a timer.
+  - The exit arrow (`render/layers/guide.ts`) points the local player at
+    `world.egress.mouth` while `exit` is live. It sits on the night with the
+    hunt diamond, because the lamps are dead.
 - `Game.lights` is bonfires read off the tiles PLUS whatever the map's scenes
   are still burning (`world.scenery.lights`), on one list. The lighting has no
   concept of a camp light versus a forest light and must not grow one. Rebuild
@@ -327,6 +337,9 @@ seam React is allowed to read.
   through one refusal. A refused press is COUNTED, not ignored: the HUD reads
   at 5 Hz and has to be able to answer each keypress, because a control that
   silently does nothing reads as a broken keybind rather than as a rule.
+  Paying the feed quota is `Lantern.kill`: charge is zero and will not
+  trickle back until the next welcome. The server also strips `lantern` on
+  every input for the rest of the night, so remotes go dark with you.
 - The zone also masks `shoot` on the outgoing packet. The server drops it too,
   and the mask has to be on the packet or prediction draws a tracer that was
   never fired.
@@ -360,14 +373,15 @@ seam React is allowed to read.
   not a subscription from a component to the game. Camp ready uses `ready` and
   `prompt`; a nearby drop uses `lootPrompt`; the pocket uses `inventory`;
   the walk-out and the forest emerge use `cinematic`; a crate in reach uses
-  `cratePrompt`. Run objectives use `quests` — announced at top-centre,
+  `cratePrompt`; a pad in reach uses `riftPrompt` (`open` / `feed`). Run
+  objectives use `quests` — announced at top-centre,
   then flown into the card under the minimap the way a collect flies into
   the bag. Completed rows rise and leave; the HUD dismisses them after
   that beat.
   A world `Tooltip` also needs an `anchor` id written in `syncTooltipAnchors`
   each frame — show/hide is the store, the pixels are the camera. E is
-  interact: collect on a drop, smash a crate, ready at the fire. The
-  server validates range.
+  interact: collect on a drop, smash a crate, open or feed a rift, ready at
+  the fire. The server validates range.
   TAB toggles `inventory.open` locally and is patched immediately so the
   drawer does not wait for the 5 Hz tick. A collect fly is
   `loot-flies` + `inventory-anchors`, not a React render: hold over the

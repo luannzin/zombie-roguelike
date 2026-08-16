@@ -111,7 +111,10 @@ async def game_socket(ws: WebSocket, code: str, name: str | None = None):
                 if isinstance(crate_id, str):
                     room.break_crate(player.id, crate_id)
             elif kind == protocol.MSG_ACTIVATE:
-                room.activate_rift(player.id)
+                rift_id = msg.get("id")
+                room.activate_rift(
+                    player.id, rift_id if isinstance(rift_id, str) else None
+                )
             elif kind == protocol.MSG_DROP:
                 slot = msg.get("slot")
                 if isinstance(slot, int) and not isinstance(slot, bool):

@@ -76,8 +76,9 @@ class TileMap:
         scenery: dict | None = None,
         loot: list | None = None,
         crates: list | None = None,
-        rift: dict | None = None,
+        rifts: list | None = None,
         entrance: dict | None = None,
+        egress: dict | None = None,
     ):
         self.tiles = tiles
         # The story laid over this map: a legend plus one compact row per
@@ -92,14 +93,17 @@ class TileMap:
         # LOW tiles; this list is what the room smashes and what the client
         # draws. Forest carries it; camp maps leave it empty.
         self.crates = crates or []
-        # The extraction point's geometry, or None on a map that has none (the
-        # camp, and any forest with nowhere to put one). Held as the payload for
-        # the same reason `scenery` is: the room hydrates a live `rift.Rift`
+        # Extraction points' geometry. Empty on a map that has none (the camp,
+        # and any forest with nowhere to put one). Held as payloads for the
+        # same reason `scenery` is: the room hydrates live `rift.Rift` rows
         # from it and this copy is only ever forwarded.
-        self.rift = rift
+        self.rifts = list(rifts or [])
         # Forest arrival corridor. Geometry is placed at generation; `state`
         # is rewritten as the woods swallow it. Camp maps leave it empty.
         self.entrance = entrance
+        # Extraction exit, carved when the feed quota is paid. Absent until
+        # then, and absent on the camp. Same shape as `entrance`.
+        self.egress = egress
         # Shipped to the client, which hashes it with tile coordinates to place
         # decoration (grass tufts, prop variants). Sending a seed instead of a
         # decoration layer keeps the map payload the size of the map.
@@ -218,6 +222,7 @@ class TileMap:
             "tiles": self.tiles,
             **self.scenery,
             "crates": list(self.crates),
-            "rift": self.rift,
+            "rifts": list(self.rifts),
             "entrance": self.entrance,
+            "egress": self.egress,
         }

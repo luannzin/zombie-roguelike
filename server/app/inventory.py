@@ -61,6 +61,45 @@ class Inventory:
         self.slots[index] = None
         return slot
 
+    def spend_toward(self, remaining: int) -> int:
+        """Consume bag items until `remaining` value is paid. Returns spent.
+
+        Slot order, one unit at a time. The last item may overshoot — a ring
+        worth 70 still goes in when 10 is left, because extraction does not
+        make change. Guns stay on the belt: they are not what the fenda eats.
+        """
+        if remaining <= 0:
+            return 0
+        spent = 0
+        left = remaining
+        for index, slot in enumerate(self.slots):
+            if left <= 0:
+                break
+            if slot is None:
+                continue
+            item = BY_KEY.get(slot.key)
+            if item is None or item.pocket != "bag":
+                continue
+            while slot.qty > 0 and left > 0:
+                slot.qty -= 1
+                spent += item.value
+                left -= item.value
+            if slot.qty <= 0:
+                self.slots[index] = None
+        return spent
+
+    def bag_value(self) -> int:
+        """Catalog value still in the pocket. What a feed press would pay."""
+        total = 0
+        for slot in self.slots:
+            if slot is None:
+                continue
+            item = BY_KEY.get(slot.key)
+            if item is None or item.pocket != "bag":
+                continue
+            total += item.value * slot.qty
+        return total
+
     def can_stow(self, key: str) -> bool:
         item = BY_KEY.get(key)
         if item is None or item.pocket != "bag":

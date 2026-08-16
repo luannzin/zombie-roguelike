@@ -71,6 +71,15 @@ export interface HudLootPrompt {
   swap?: string;
 }
 
+export interface HudRiftPrompt {
+  id: string;
+  mode: 'open' | 'feed';
+  have: number;
+  need: number;
+  /** Bag is empty — the press will refuse. */
+  empty: boolean;
+}
+
 /** How often the game republishes HUD state. 5 Hz is plenty for text. */
 export const HUD_INTERVAL = 0.2;
 
@@ -160,10 +169,10 @@ export interface HudSnapshot {
   /** Proximity prompt on a crate. */
   cratePrompt: boolean;
   /**
-   * Proximity prompt on the extraction console. Only while the rift is still
-   * dormant — once it is answering there is nothing left to press.
+   * Proximity prompt on an extraction pad. `open` while dormant, `feed`
+   * once the anomaly is up and the feed quest is live.
    */
-  riftPrompt: boolean;
+  riftPrompt: HudRiftPrompt | null;
   /** The pocket. Null before welcome. Open/close is client-local (TAB). */
   inventory: HudInventory | null;
   /** The gun belt. Always on screen; 1/2/3 selects. */
@@ -191,7 +200,7 @@ export const EMPTY_HUD: HudSnapshot = {
   prompt: null,
   lootPrompt: null,
   cratePrompt: false,
-  riftPrompt: false,
+  riftPrompt: null,
   inventory: null,
   hotbar: null,
   quests: [],

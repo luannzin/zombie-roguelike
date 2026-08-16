@@ -27,6 +27,7 @@ import { DarknessLayer } from './layers/darkness';
 import { crateAnimFrame, drawFootprints, drawSceneryProp } from './layers/scenery';
 import { drawBloodPools } from './layers/corpses';
 import { CorruptionField } from './layers/corruption';
+import { drawGuide } from './layers/guide';
 import {
   chargeHandoff,
   drawRiftGlow,
@@ -94,10 +95,10 @@ export class Renderer {
    */
   private readonly disturbance = new DisturbanceField();
   /**
-   * The blast's mark on the world, baked into a pair of offscreen canvases.
-   * Two draw calls a frame instead of the ~1300 the per-tile version cost.
+   * Each blast's mark on the world, baked per pad. Two draw calls a field
+   * instead of the ~1300 the per-tile version cost.
    */
-  private readonly corruption = new CorruptionField();
+  private readonly corruptions = new Map<string, CorruptionField>();
   private scenery: SceneryAtlas | null = null;
   private lootAtlas: LootAtlas | null = null;
   private gunAtlas: GunAtlas | null = null;
@@ -146,19 +147,20 @@ export class Renderer {
   }
 
   /**
-   * What the extraction point is doing this frame.
+   * What every extraction pad is doing this frame.
    *
-   * Computed twice a frame would be harmless — it is arithmetic on one number —
-   * but the FLOOR pass and the LIGHT pass are separated by the whole entity
-   * sort, and having them read one value is what guarantees the marks the wave
-   * has revealed and the anomaly throwing that wave agree about what time it is.
+   * Computed twice a frame would be harmless — it is arithmetic on one number
+   * per pad — but the FLOOR pass and the LIGHT pass are separated by the whole
+   * entity sort, and having them read one value is what guarantees the marks
+   * the wave has revealed and the anomaly throwing that wave agree about time.
    */
-  private riftPhaseFor(state: RenderState): RiftPhase | null {
-    const rift = state.world.rift;
-    if (!rift) return null;
-    return riftPhase(
-      rift, state.config.rift ?? RIFT_FALLBACK, chargeHandoff(this.riftAtlas),
-    );
+  private riftPhasesFor(state: RenderState): { rift: NonNullable<RenderState['world']['rifts'][number]>; phase: RiftPhase }[] {
+    const timing = state.config.rift ?? RIFT_FALLBACK;
+    const handoff = chargeHandoff(this.riftAtlas);
+    return state.world.rifts.map((rift) => ({
+      rift,
+      phase: riftPhase(rift, timing, handoff),
+    }));
   }
 
   /** Call only when the canvas element actually changed size (see ResizeObserver). */
@@ -174,7 +176,8 @@ export class Renderer {
 
   /** Release cached bitmaps. Safe to call more than once. */
   dispose(): void {
-    this.corruption.reset();
+    for (const field of this.corruptions.values()) field.reset();
+    this.corruptions.clear();
     this.terrain.reset();
     this.darkness.reset();
     this.atmosphere.reset();
@@ -222,25 +225,32 @@ export class Renderer {
     // only part of the structure that is there before anything happens. The
     // blast's residue goes on top of it, for the same reason and in the same
     // pass — it is more of the same material, thrown further.
-    if (state.world.rift) {
-      const riftPhaseNow = this.riftPhaseFor(state);
-      // The GROUND first — the corrupted floor and the litter on it both go
-      // under the sigil, because they are the soil changing rather than
-      // something lying on top of the structure.
-      if (riftPhaseNow && riftPhaseNow.waveRadius > 0) {
-        this.corruption.advance(
-          this.riftAtlas,
-          state.world,
-          state.world.rift,
-          (state.config.rift ?? RIFT_FALLBACK).boomTiles * state.world.tileSize,
-          riftPhaseNow.waveRadius,
-          state.residue,
-        );
-        this.corruption.draw(ctx, state.camera);
+    const riftPhases = this.riftPhasesFor(state);
+    if (riftPhases.length > 0) {
+      const boomReach = (state.config.rift ?? RIFT_FALLBACK).boomTiles * state.world.tileSize;
+      for (const { rift, phase } of riftPhases) {
+        if (phase.waveRadius > 0) {
+          let field = this.corruptions.get(rift.id);
+          if (!field) {
+            field = new CorruptionField();
+            this.corruptions.set(rift.id, field);
+          }
+          const marks = state.residues.find((row) => row.id === rift.id)?.marks ?? [];
+          field.advance(
+            this.riftAtlas,
+            state.world,
+            rift,
+            boomReach,
+            phase.waveRadius,
+            marks,
+          );
+          field.draw(ctx, state.camera);
+        }
+        drawRiftScar(ctx, this.riftAtlas, rift, state.camera);
       }
-      drawRiftScar(ctx, this.riftAtlas, state.world.rift, state.camera);
-    } else {
-      this.corruption.reset();
+    } else if (this.corruptions.size > 0) {
+      for (const field of this.corruptions.values()) field.reset();
+      this.corruptions.clear();
     }
     drawDust(ctx, state.effects);
 
@@ -277,9 +287,7 @@ export class Renderer {
     for (const piece of state.world.scenery.standing) {
       depthProps.push({ y: piece.y, anim: 0, hitFlash: 0, piece, rift: null });
     }
-    const rift = state.world.rift;
-    const phase = this.riftPhaseFor(state);
-    if (rift && phase) {
+    for (const { rift, phase } of riftPhases) {
       for (const piece of riftStanding(rift, phase)) {
         depthProps.push({ y: piece.y, anim: 0, hitFlash: 0, piece: null, rift: piece });
       }
@@ -393,27 +401,39 @@ export class Renderer {
     drawDeathBursts(ctx, this.vfx?.death ?? null, state.effects.deaths);
     // Motes off the corrupted ground, after the darkness like every other
     // light: they are coming OUT of the floor, not being lit on it.
-    if (rift && phase && phase.waveRadius > 0) {
-      this.corruption.drawMotes(
-        ctx, state.world.tileSize, phase.waveRadius, state.time, state.camera,
-      );
+    for (const { rift, phase } of riftPhases) {
+      if (phase.waveRadius > 0) {
+        this.corruptions.get(rift.id)?.drawMotes(
+          ctx, state.world.tileSize, phase.waveRadius, state.time, state.camera,
+        );
+      }
     }
     // The structure's own light, last of the additive passes: the stones'
     // crowns and the anomaly are the brightest things on the map once they are
     // lit, and nothing after this may be drawn under them.
-    if (rift && phase) {
-      // `scene.beacon` is raw channels — the same triple `drawSceneLights`
-      // joins for its gradients. The tint cache wants a CSS colour.
+    if (riftPhases.length > 0) {
       const beacon = palette().scene.beacon;
-      drawRiftGlow(
-        ctx, this.riftAtlas, rift, phase,
-        `rgb(${beacon[0]} ${beacon[1]} ${beacon[2]})`,
-        state.world.tileSize, state.time,
-      );
+      const beaconCss = `rgb(${beacon[0]} ${beacon[1]} ${beacon[2]})`;
+      for (const { rift, phase } of riftPhases) {
+        drawRiftGlow(
+          ctx, this.riftAtlas, rift, phase,
+          beaconCss,
+          state.world.tileSize, state.time,
+        );
+      }
     }
     // Hunt tell sits ON the night: a hunter you cannot see still wears the
     // diamond, so killing the lamp does not hide that it has you.
     drawAlertMarks(entity, state.entities, state.time);
+    if (state.guide) {
+      drawGuide(
+        entity,
+        state.guide.fromX,
+        state.guide.fromY,
+        state.guide.toX,
+        state.guide.toY,
+      );
+    }
 
     // Screen space: labels, numbers, then the full-screen vignette.
     this.useScreenSpace();

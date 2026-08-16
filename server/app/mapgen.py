@@ -329,6 +329,7 @@ def build_forest(
     width: int = DEFAULT_WIDTH,
     height: int = DEFAULT_HEIGHT,
     seed: int | None = None,
+    day: int = 1,
 ) -> TileMap:
     """Generate, populate and validate. Raises rather than shipping a broken map."""
     tiles, used = generate_forest(width, height, seed)
@@ -351,19 +352,21 @@ def build_forest(
         )
     if floor < width * height * 0.35:
         raise ValueError(f"forest seed {used} is only {floor / (width * height):.0%} floor")
-    # The extraction point goes in LAST and it is the only thing here allowed
-    # to open ground back up. It clears its own plot, so it has to run after
-    # the connectivity check above has already proved the forest is sound —
-    # `_plot_open` then keeps it on ground that was mostly clearing anyway, and
-    # the floor it adds is contiguous with the tile it is centred on.
-    placed = rift.place(
+    # Extraction points go in LAST and they are the only thing here allowed
+    # to open ground back up. They clear their own plots, so they have to run
+    # after the connectivity check above has already proved the forest is
+    # sound — `_plot_open` then keeps them on ground that was mostly clearing
+    # anyway, and the floor they add is contiguous with the tile they sit on.
+    # How many is the DAY's: the first nights are one pad, later nights more.
+    placed = rift.place_many(
         tiles,
         population.route,
         [(scene.x, scene.y) for scene in population.scenes],
         origin,
         random.Random(used ^ 0x21F7),
+        rift.count_for_day(day),
     )
-    if placed is not None and count_reachable(tiles) != sum(row.count(FLOOR) for row in tiles):
+    if placed and count_reachable(tiles) != sum(row.count(FLOOR) for row in tiles):
         raise ValueError(f"forest seed {used} lost reachability placing the extraction point")
 
     drops = loot.scatter(tiles, population.scenes, random.Random(used ^ 0x1007))
@@ -374,6 +377,6 @@ def build_forest(
         scenery=scenery.to_payload(population),
         loot=[drop.to_payload() for drop in drops],
         crates=crate_rows,
-        rift=placed.geometry_payload() if placed is not None else None,
+        rifts=[row.geometry_payload() for row in placed],
         entrance=gate.geometry_payload(),
     )

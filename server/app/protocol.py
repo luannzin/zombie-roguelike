@@ -23,6 +23,9 @@ client -> server
                                         box does the same.
   {"type":"drop","slot":0}              pull a bag slot back onto the ground
                                         near the player's feet; ignored in camp
+  {"type":"activate","id":"r0"}         press a rift console or feed an open
+                                        anomaly from the bag. `id` is the pad;
+                                        omitted = nearest in range.
 
 server -> client
   {"type":"hello","playerId":"...","code":"ABC1234",
@@ -32,7 +35,8 @@ server -> client
                                         on every membership/phase change
   {"type":"error","code":"room_not_found"}  followed by a close
   {"type":"welcome","playerId":"...","player":{...},"config":{...},"map":{...},
-   "zone":{...},"ack":<last processed input seq for you>,"quests":[...]}
+   "zone":{...},"ack":<last processed input seq for you>,"quests":[...],
+   "blackout":true}
   {"type":"snapshot","tick":N,"departing":false,"arriving":false,"zoneKey":"camp-1",
    "players":[...],"enemies":[...],"coins":[...],
    "shots":[...],"swings":[...],"attacks":[...],"kills":[...],"pickups":[...],
@@ -40,6 +44,7 @@ server -> client
    "crates":[...],"crateBreaks":[...],
    "corpses":[...],
    "entrance":{...},"tilePatches":[...],"quests":[...],
+   "rifts":[...],"egress":{...},"blackout":true,
    "roster":[...]}                    only every ROSTER_EVERY_N_TICKS ticks
   {"type":"pong","t":<echoed>}
 
@@ -187,6 +192,7 @@ def welcome(
     loot: list[dict] | None = None,
     corpses: list[dict] | None = None,
     quests: list[dict] | None = None,
+    blackout: bool = False,
 ) -> dict:
     payload = {
         "type": MSG_WELCOME,
@@ -203,6 +209,8 @@ def welcome(
     }
     if quests:
         payload["quests"] = quests
+    if blackout:
+        payload["blackout"] = True
     return payload
 
 
@@ -231,10 +239,12 @@ def snapshot(
     crates: list[dict] | None = None,
     crate_breaks: list[dict] | None = None,
     corpses: list[dict] | None = None,
-    rift: dict | None = None,
+    rifts: list[dict] | None = None,
     entrance: dict | None = None,
     tile_patches: list | None = None,
     quests: list[dict] | None = None,
+    egress: dict | None = None,
+    blackout: bool | None = None,
 ) -> dict:
     payload = {
         "type": MSG_SNAPSHOT,
@@ -267,16 +277,18 @@ def snapshot(
         payload["crateBreaks"] = crate_breaks
     if corpses is not None:
         payload["corpses"] = corpses
-    # Two rows a run: one when the console is pressed, one when the sequence
-    # finishes. The client runs the four seconds in between off its own clock —
-    # `t` is there so somebody joining mid-sequence picks it up in progress
-    # instead of watching a structure snap to finished.
-    if rift is not None:
-        payload["rift"] = rift
+    # Rift rows when any pad changed state. The client runs the ceremony
+    # between those snapshots off its own clock.
+    if rifts is not None:
+        payload["rifts"] = rifts
     if entrance is not None:
         payload["entrance"] = entrance
     if tile_patches:
         payload["tilePatches"] = tile_patches
     if quests is not None:
         payload["quests"] = quests
+    if egress is not None:
+        payload["egress"] = egress
+    if blackout:
+        payload["blackout"] = True
     return payload

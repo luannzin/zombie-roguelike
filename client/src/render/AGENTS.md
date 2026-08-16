@@ -19,8 +19,9 @@ mutation, no React.
 | `scenery.ts` | scenery atlas loading: standing props and flat decals of what people left |
 | `vfx.ts` | effect atlas loading: one-shot sheets (summon, kindle, wind, death) and the looping loot `aura` |
 | `rift.ts` | extraction atlas: the sigil decal, the pillar/console props with their STATES, and the four activation sheets |
-| `layers/rift.ts` | the extraction point: the whole lifecycle's timing (`riftPhase`) plus its passes — floor, depth sort, additive light |
+| `layers/rift.ts` | extraction pads: the whole lifecycle's timing (`riftPhase`) plus its passes — floor, depth sort, additive light |
 | `layers/corruption.ts` | the blast's mark on the ground, baked into a pair of offscreen canvases; motes over it |
+| `layers/guide.ts` | extraction-exit chevron over the local player, after the darkness pass |
 | `residue.ts` | where the extraction blast's marks land: a deterministic field derived from the map seed, never sent over the wire |
 | `loot.ts` | loot atlas: one 16x16 frame per collectable item |
 | `guns.ts` | held-gun atlas and the shared muzzle/grip pose (`gunMuzzle`) |
@@ -43,7 +44,7 @@ mutation, no React.
   scenery, then the baked rift corruption) → dust → coins and loot sprites → entities, bonfires and standing
   scenery (one depth sort by `y`, including live crates and smash sheets) →
   overgrowth → motes / rain / fog → darkness → combat effects → loot auras / motes /
-  epic-legendary beams / empty-crate wind / death burst / corruption motes / rift glow → hunt diamond →
+  epic-legendary beams / empty-crate wind / death burst / corruption motes / rift glow → hunt diamond → exit arrow →
   labels → vignette. Effects and loot light go over the darkness because
   they are light, not things being lit. An unlit drop HIDES ITS SPRITE.
   Corpses hide the same way. Blood pools sit on the floor with the boot
@@ -303,6 +304,10 @@ mutation, no React.
   emerge and rift sheets are additive light after the darkness pass. Its prop
   frames are STATES, never variants — `riftPropFrame` takes the state, and
   hashing one would make the extraction point flicker between on and off.
+  A night can carry more than one pad; each has its own `CorruptionField`
+  keyed by `rift.id`. The exit chevron (`layers/guide.ts`) is world-space
+  after the hunt diamond — the lamps are dead and that is how you still
+  know where to run.
 - **Every rift sheet carries its own colour, and `tinted` is the flag that
   says so.** The whole structure is painted from ONE iridescent prism: the
   anomaly's openings, and the pillars' conduit running violet at the foot

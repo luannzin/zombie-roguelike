@@ -114,15 +114,19 @@ subtree.
   edge of the forest (the camp exit, continued). They walk out of it; the woods
   swallow the way back. Then the first objective appears: find the extraction
   point.
-- **EXTRACTION is the core loop and return is not built.** Finding the rift is:
-  after the entrance seals, the HUD quest `Encontre o ponto de extração: 0/1`
-  ticks when any living player stands near the anomaly (`quests.py`). Carrying
-  loot back through it is still later. The world is already laid out for it —
-  `server/app/scenery.py` returns the ROUTE its scenes are strung along (a walk
-  outward from the mouth ending at the landmark), `SceneLight`/`BEACON` is the
-  channel a beacon arrives on, and the boot prints players leave behind are
-  navigation for the trip back. Adding the return should be placement and
-  rules, never a rendering change.
+- **EXTRACTION is the core loop.** After the entrance seals, the HUD quest
+  `Encontre o ponto de extração` ticks `0/N` when any living player stands
+  near a pad (`quests.py`). Day 1–2 spawn one rift; day 3–4 two; day 5+
+  three (`rift.count_for_day`). Finding every pad unlocks `Alimente a
+  fenda` (`have/need` catalog value from the pocket — guns stay on the
+  belt). Paying the quota collapses every pad, carves a new exit on a
+  random edge, kills every lantern, and puts the whole pack on hunt
+  (`Encontre a saída`, risk). Reaching the mouth returns the party to
+  camp and increments the day. The world is already laid out for the
+  walk — `server/app/scenery.py` returns the ROUTE its scenes are strung
+  along (outward from the mouth ending at the landmark), `SceneLight`/
+  `BEACON` is the channel a beacon arrives on, and the boot prints
+  players leave behind are navigation for the trip back.
 - The room's ZONE (`server/app/zones.py`) says where the run is and how that
   place behaves: its title card, whether enemies spawn and guns fire
   (`hostile`), and whether the lantern may be switched on (`lantern`). The

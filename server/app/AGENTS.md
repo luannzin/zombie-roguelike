@@ -17,17 +17,17 @@ game's scale.
 | `combat.py` | hitscan raycast and melee arc sweep, both entity-agnostic |
 | `entities.py` | `Player`, `InputCmd` (includes the lantern switch, relayed not simulated) |
 | `enemies.py` | `EnemyType` stat blocks (incl. the sight cone, visual variants and accessory pools), live `Enemy`, `dress` |
-| `ai.py` | enemy senses, patrol/hunt/return, steering/attack, the director |
+| `ai.py` | enemy senses, patrol/hunt/return, steering/attack, the director; `hunt_all` is the extraction chase |
 | `pathing.py` | BFS flow field, one per player |
 | `coins.py` | dropped gold: the per-kill drop roll, burst, magnet, collection |
 | `loot.py` | world collectables: catalog, scene-context scatter, E-to-collect |
 | `weapons.py` | weapon catalog (glock/deagle/famas/ak47/awp + the knife), hotbar, per-shot stats, the melee combo |
 | `crates.py` | breakable boxes/barrels: extract from scenery, smash, drop roll |
 | `corpses.py` | dead enemies left on the floor: persist until the map swaps |
-| `rift.py` | the extraction point: one per forest, its plot, and the activation sequence |
-| `entrance.py` | forest edge VOID corridor, emerge formation, staggered seal to TREE |
+| `rift.py` | extraction pads: day-scaled count, plot, activation, feed collapse |
+| `entrance.py` | forest edge VOID corridor, emerge formation, staggered seal to TREE, extraction `open_exit` |
 | `quests.py` | run objectives: progress, done, optional risk; the HUD mirrors this list |
-| `inventory.py` | the pocket: slots, stacking, weight |
+| `inventory.py` | the pocket: slots, stacking, weight, `spend_toward` for the fenda |
 | `world.py` | tile grid, tile alphabet, collision queries |
 | `maps.py` | hand-authored maps (`from_ascii`, `from_rects`) |
 | `mapgen.py` | procedural forest, seeded and connectivity-checked |
@@ -142,11 +142,15 @@ game's scale.
   around the mouth, not the map centre.
 - **Quests are authoritative and room-wide.** `quests.py` owns the list;
   the HUD mirrors it (`have`/`need`/`done`/`risk`) and never invents a row.
-  Dropping a quest from the list is how it leaves the screen. The first
-  forest objective is finding the rift: offered the tick the entrance goes
-  `gone`, completed when any living player is inside `RIFT_FIND_TILES` of
-  the anomaly. Do not auto-remove it on complete — ticking `1/1` is the
-  check. Camp has none.
+  Dropping a quest from the list is how it leaves the screen. Forest chain:
+  find every pad (`extract`, `0/N`, offered the tick the entrance goes
+  `gone`), feed the open anomalies (`feed`, catalog value from the
+  pocket), then run for the carved exit (`exit`, `risk`). Finding is
+  proximity (`RIFT_FIND_TILES` / `EXIT_FIND_TILES`), not a packet. Paying
+  the quota collapses every pad, opens egress, blackout, and panic-hunt.
+  Reaching the mouth returns the party to camp (`Room.return_home`) and
+  increments the day. Do not auto-remove a row on complete — ticking
+  `need/need` is the check. Camp has none.
 - Zone rules are enforced HERE, not just described to the client. A
   non-hostile zone runs no spawn director and drops the GUN half of
   `handle_attack`. A client that ignores `zone.lantern` gets light it cannot
@@ -320,9 +324,9 @@ game's scale.
   until a lantern reaches them, which means a map full of stories nobody walks
   past; one lit lamp at a cabin door is visible from across the dark and the
   player CHOOSES to go to it. Radii stay small — these are things you can see
-  from far away, not areas of safety. `BEACON` is defined and unused on
-  purpose: the extraction point will be one more row on this list, and the
-  client already burns it, feeds the fov with it and draws its glow.
+  from far away, not areas of safety. `BEACON` is the extraction pad: pushed
+  onto the same `lights` list when a rift opens, taken off when it collapses.
+  The lighting has no idea it is special.
 - The camp draws from `CAMP_POOL`, not `SCENES`: firewood and a sign, nothing
   that bled, and no crate pieces. It is the one non-hostile zone, and a last
   stand outside the tent the party is about to leave from is a promise the
@@ -377,6 +381,9 @@ game's scale.
   `last_processed_seq` on embark: the client has been numbering packets since
   the camp, and `queue_input` drops anything at or below that ack. The
   welcome carries `ack` so a rebuilt `LocalPlayer` can resume above it.
+  The other hand-off is `return_home()`: reaching the carved exit swaps the
+  forest for the next day's camp, keeps guns and leftover bag, increments
+  `day`, and sends another welcome. Same sequence rule.
 - Keep the tick O(entities). Anything that scales with map size belongs in a
   cached structure (see `pathing.py`, one field per player shared by the horde).
 - New tuning goes in `config.py` in tiles/seconds, plus a `client_config()` key

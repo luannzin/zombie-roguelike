@@ -117,6 +117,8 @@ export class Lantern {
   private clock = 0;
   /** Monotonic: survives `reset()` so a refusal is never swallowed by a rejoin. */
   private refusals = 0;
+  /** Extraction chase: charge is zero and it will not trickle back. */
+  private blackout = false;
   /** Per-instance phase, so the waver is not in lockstep with anything else. */
   private readonly seed = Math.random() * 1000;
 
@@ -164,7 +166,7 @@ export class Lantern {
       this.cut();
       return;
     }
-    if (!this.allowed || this.stored <= 0) {
+    if (!this.allowed || this.stored <= 0 || this.blackout) {
       this.refusals++;
       return;
     }
@@ -182,7 +184,10 @@ export class Lantern {
 
     if (this.switchedOn && !powered) this.cut();
 
-    if (this.switchedOn) {
+    if (this.blackout) {
+      this.stored = 0;
+      if (this.switchedOn) this.cut();
+    } else if (this.switchedOn) {
       this.stored = Math.max(0, this.stored - dt / DRAIN_SECONDS);
       if (this.stored <= 0) this.cut();
     } else {
@@ -195,6 +200,17 @@ export class Lantern {
     this.emitted += (target - this.emitted) * (1 - expDamp(rate, dt));
   }
 
+  /**
+   * Kill the battery and stop it recovering. The extraction chase: every lamp
+   * on the map goes out together, and darkness is the resource you no longer
+   * have. Cleared by `reset()` on the next welcome.
+   */
+  kill(): void {
+    this.blackout = true;
+    this.stored = 0;
+    this.cut();
+  }
+
   /** Back to a fresh lamp. Called on join and on dispose. */
   reset(): void {
     this.switchedOn = false;
@@ -203,6 +219,7 @@ export class Lantern {
     this.queue.length = 0;
     this.phaseLeft = 0;
     this.dark = false;
+    this.blackout = false;
   }
 
   /** Kill the light now, whatever it was in the middle of doing. */

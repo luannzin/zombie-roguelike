@@ -382,6 +382,11 @@ RIFT_ACTIVATE_DIST = TILE_SIZE * RIFT_ACTIVATE_TILES
 # pad, longer than the console so spotting the structure counts as finding it.
 RIFT_FIND_TILES = 9.0
 RIFT_FIND_DIST = TILE_SIZE * RIFT_FIND_TILES
+# How close a living player has to get to the extraction EXIT before the
+# "Encontre a saída" quest ticks. Tighter than finding a rift: the mouth is
+# a point on an edge, and the arrow is already pointing at it.
+EXIT_FIND_TILES = 5.0
+EXIT_FIND_DIST = TILE_SIZE * EXIT_FIND_TILES
 # Quieter than a gunshot — wood giving way, not a muzzle.
 CRATE_NOISE_TILES = 5.5
 CRATE_NOISE_DIST = TILE_SIZE * CRATE_NOISE_TILES

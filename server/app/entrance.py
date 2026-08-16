@@ -122,12 +122,13 @@ def hydrate(tiles: list[list[int]], row: dict | None) -> Entrance | None:
     return placed
 
 
-def carve(tiles: list[list[int]], seed: int) -> Entrance:
+def carve(tiles: list[list[int]], seed: int, side: str | None = None) -> Entrance:
     """Punch a winding VOID corridor through a random edge. Mutates `tiles`."""
     rng = random.Random(seed ^ 0xE071)
     height = len(tiles)
     width = len(tiles[0]) if tiles else 0
-    side = rng.choice(SIDES)
+    if side not in SIDES:
+        side = rng.choice(SIDES)
     depth = min(ENTRANCE_DEPTH_TILES, (width if side in ("e", "w") else height) - BORDER * 2 - 4)
     half0 = float(CAMP_EXIT_HALF_TILES)
 
@@ -178,6 +179,57 @@ def carve(tiles: list[list[int]], seed: int) -> Entrance:
         dy=dy,
         ranks=ranks,
     )
+
+
+_SIDE_SALT = {"e": 1, "w": 2, "n": 3, "s": 4}
+
+
+def open_exit(
+    tiles: list[list[int]],
+    seed: int,
+    avoid_side: str | None = None,
+) -> tuple[Entrance, list[tuple[int, int, int]]] | None:
+    """Carve a new VOID corridor after the arrival path has already sealed.
+
+    Mutates `tiles`. Returns the exit and every cell that changed, so the
+    room can patch clients that already have the map. Tries every edge except
+    the one the party walked in through, and rolls back a side that would
+    disconnect the floor.
+
+    The mouth is FLOOR — that is where the arrow points and where E is not
+    needed: walking there is finding it. VOID behind it is the dark path out,
+    the same contract as the camp exit.
+    """
+    from .maps import count_reachable
+
+    height = len(tiles)
+    width = len(tiles[0]) if tiles else 0
+    if width == 0 or height == 0:
+        return None
+    sides = [side for side in SIDES if side != avoid_side] or list(SIDES)
+    rng = random.Random(seed ^ 0xE072)
+    rng.shuffle(sides)
+    before = [row[:] for row in tiles]
+    for side in sides:
+        for ty, row in enumerate(before):
+            tiles[ty][:] = row
+        gate = carve(tiles, seed ^ _SIDE_SALT.get(side, 0), side=side)
+        mouth_tx = int(gate.mouth_x // TILE_SIZE)
+        mouth_ty = int(gate.mouth_y // TILE_SIZE)
+        if 0 <= mouth_ty < height and 0 <= mouth_tx < width:
+            tiles[mouth_ty][mouth_tx] = FLOOR
+        floor = sum(row.count(FLOOR) for row in tiles)
+        if count_reachable(tiles) != floor:
+            continue
+        patches: list[tuple[int, int, int]] = []
+        for ty, row in enumerate(tiles):
+            for tx, kind in enumerate(row):
+                if kind != before[ty][tx]:
+                    patches.append((tx, ty, kind))
+        return gate, patches
+    for ty, row in enumerate(before):
+        tiles[ty][:] = row
+    return None
 
 
 def _inward(side: str) -> tuple[float, float]:

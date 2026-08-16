@@ -1,24 +1,53 @@
 /**
- * Activation prompt on the extraction console. One use of `Tooltip`.
+ * Interact prompt on an extraction pad. One use of `Tooltip`.
  *
- * Mounted only while the rift is DORMANT and in reach, so it disappears on the
- * frame the console is pressed — the structure answering is the confirmation,
- * and a prompt still hanging over a button that has already been thrown reads
- * as the press not having registered.
+ * Dormant: open the console. Open: feed the anomaly from the bag, with the
+ * same have/need the quest card is showing. Mounted only while in reach.
  */
 
 import { Tooltip, TooltipKey } from './Tooltip';
+import type { HudRiftPrompt } from '../../game/hud-store';
 
 export interface RiftPromptProps {
-  prompt: boolean;
+  prompt: HudRiftPrompt | null;
 }
 
 export function RiftPrompt({ prompt }: RiftPromptProps) {
   if (!prompt) return null;
 
+  if (prompt.mode === 'open') {
+    return (
+      <Tooltip anchor="rift">
+        Aperte <TooltipKey>E</TooltipKey> para abrir a fenda
+      </Tooltip>
+    );
+  }
+
+  if (prompt.empty) {
+    return (
+      <Tooltip
+        anchor="rift"
+        end={
+          <span className="text-ink-muted tabular-nums">
+            {prompt.have}/{prompt.need}
+          </span>
+        }
+      >
+        <span className="text-hp-low">Inventário vazio</span>
+      </Tooltip>
+    );
+  }
+
   return (
-    <Tooltip anchor="rift">
-      Aperte <TooltipKey>E</TooltipKey> para abrir a fenda
+    <Tooltip
+      anchor="rift"
+      end={
+        <span className="text-ink-accent tabular-nums">
+          {prompt.have}/{prompt.need}
+        </span>
+      }
+    >
+      Aperte <TooltipKey>E</TooltipKey> para alimentar a fenda
     </Tooltip>
   );
 }

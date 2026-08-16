@@ -211,8 +211,14 @@ def update(
     navigator: Navigator,
     dt: float,
     noises: Sequence[Noise] = (),
+    hunt_all: bool = False,
 ) -> Outcome:
-    """Advance every enemy one tick."""
+    """Advance every enemy one tick.
+
+    `hunt_all` is the extraction chase: every living creature commits to the
+    nearest player and does not give up. Sight still aims them; the commit
+    itself does not wait for a cone.
+    """
     pack = [e for e in enemies if e.alive]
     living = [p for p in players if p.alive]
     by_id = {p.id: p for p in living}
@@ -255,6 +261,10 @@ def update(
 
         seen = look(enemy, living, world)
 
+        if hunt_all and nearest is not None and enemy.mode != MODE_HUNT:
+            commit(enemy, nearest)
+            shouted.append((enemy, nearest))
+
         if enemy.mode != MODE_HUNT:
             if seen is not None:
                 # Noticing costs the enemy its footing: it stops, it stares, and
@@ -289,9 +299,14 @@ def update(
         target = by_id.get(enemy.target_id or "")
         if target is None:
             # Target died or left. The nearest living player is not a
-            # replacement — it never saw them.
-            give_up(enemy)
-            continue
+            # replacement — it never saw them. The extraction chase is the
+            # exception: the whole pack is already committed to the party.
+            if hunt_all and nearest is not None:
+                commit(enemy, nearest)
+                target = nearest
+            else:
+                give_up(enemy)
+                continue
 
         distance = math.hypot(target.x - enemy.x, target.y - enemy.y)
         if seen is target:
@@ -304,9 +319,12 @@ def update(
         # Two ways to end a hunt: it has been too long since you were visible,
         # or the chase has pulled the enemy off its own patch entirely.
         if (
-            enemy.lost >= ENEMY_LOSE_DELAY
-            or distance > enemy.type.aggro_range
-            or math.hypot(enemy.x - enemy.home_x, enemy.y - enemy.home_y) > ENEMY_LEASH_DIST
+            not hunt_all
+            and (
+                enemy.lost >= ENEMY_LOSE_DELAY
+                or distance > enemy.type.aggro_range
+                or math.hypot(enemy.x - enemy.home_x, enemy.y - enemy.home_y) > ENEMY_LEASH_DIST
+            )
         ):
             give_up(enemy)
             continue

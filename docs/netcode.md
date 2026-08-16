@@ -56,6 +56,14 @@ the same work. The remaining list rides
 for that tick (`drop` is `empty` / `coin` / `item`, plus `k` when an
 item fell out). The smash opens the LOW tile to floor.
 
+`{"type":"activate","id":"r0"}` — press a rift console or feed an open
+anomaly. `id` is the pad; omitted means nearest in range. The server
+ignores it unless the player is alive, the walk-out / emerge has not
+started, and their feet are inside `riftActivateTiles` of that console.
+Dormant → charging (once). Open → spend bag catalog value toward the
+night's feed quota (guns stay on the belt). Paying the quota collapses
+every pad, carves `egress`, sets `blackout`, and offers the exit quest.
+
 `{"type":"drop","slot":0}` — toss a bag slot onto the ground near the
 player's feet. The server ignores it in camp, during the walk-out, or if
 that cell is empty. A stack becomes one world drop per unit; the server
@@ -148,8 +156,14 @@ the local player must not predict. `arriving` is the forest emerge, the same
 lock walking out of the edge corridor. `ready` is camp-only. `zoneKey` is the
 zone this snapshot belongs to — drop it if it does not match the last welcome.
 `map.entrance` on welcome is the corridor's geometry; a snapshot `entrance`
-row is only the live state (`open` / `sealing` / `gone`). `tilePatches` are
-`[tx, ty, kind]` for the ranks of trees that just grew. `quests` is the run
+row is only the live state (`open` / `sealing` / `gone`). `map.rifts` is
+the pads (day-scaled count); a snapshot `rifts` list is the live half
+when one changes. `map.egress` / snapshot `egress` is the extraction
+exit, carved when the feed quota is paid — same shape as `entrance`.
+`blackout` is on welcome and on the snapshot that kills the lamps.
+`tilePatches` are
+`[tx, ty, kind]` for the ranks of trees that just grew, or the exit
+opening. `quests` is the run
 objective list (`id`, `label`, `have`, `need`, optional `done` / `risk`) —
 attached on welcome and again only when it changes.
 

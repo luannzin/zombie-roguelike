@@ -42,6 +42,7 @@ from .config import (
     MARCH_SPEED,
     RIFT_ACTIVATE_DIST,
     RIFT_FIND_DIST,
+    EXIT_FIND_DIST,
     MAX_HP,
     MAX_INPUT_QUEUE,
     MAX_INPUTS_PER_TICK,
@@ -92,13 +93,21 @@ class Room:
         self.coins: dict[str, Coin] = {}
         self.drops: dict[str, Drop] = {}
         self.crates: dict[str, Crate] = {}
-        #: The extraction point, or None on a map without one (every camp, and
-        #: any forest the generator could not fit a plot into).
-        self.rift: Rift | None = None
+        #: Extraction points, empty on a map without any (every camp, and any
+        #: forest the generator could not fit a plot into).
+        self.rifts: list[Rift] = []
         #: Forest arrival corridor. None in the camp.
         self.gate: Entrance | None = None
+        #: Extraction exit, carved when the feed quota is paid. None until then.
+        self.egress: Entrance | None = None
         #: Run objectives. Empty until the entrance seals.
         self.quests: list[Quest] = []
+        #: Catalog value paid into the rifts this night. Shared across pads.
+        self.fed = 0
+        self.feed_need = 0
+        #: Lamps are dead and the pack does not give up. Latched until return.
+        self.blackout = False
+        self.panic = False
         self.corpses: dict[str, Corpse] = {}
         self.sockets: dict[str, object] = {}
         self.director = EnemyDirector(self.spawn_points)
@@ -130,6 +139,7 @@ class Room:
         self._depart_hold = 0.0
         self._slots: dict[str, tuple[float, float]] = {}
         self._pending_embark = False
+        self._pending_return = False
         #: Forest emerge cinematic. Same lock as the camp walk-out: input is
         #: acked and dropped, bodies are slid out of the VOID corridor.
         self.arriving = False
@@ -147,12 +157,14 @@ class Room:
         self._loot_seq = 0
         self._crates_dirty = True
         self._corpses_dirty = True
-        #: Set on the two ticks the rift changes state, not every tick — the
-        #: four seconds in between are the client's own clock.
+        #: Set when any rift changes state, not every tick — the four seconds
+        #: in between are the client's own clock.
         self._rift_dirty = False
+        self._egress_dirty = False
+        self._blackout_dirty = False
         self._load_drops()
         self._load_crates()
-        self._load_rift()
+        self._load_rifts()
         self._load_entrance()
         self._rebuild_spawns()
 
@@ -178,10 +190,17 @@ class Room:
         self.crates = crates.from_payloads(self.world.crates)
         self._crates_dirty = True
 
-    def _load_rift(self) -> None:
-        """Hydrate the extraction point from the map the generator left behind."""
-        self.rift = rift.from_payload(self.world.rift)
+    def _load_rifts(self) -> None:
+        """Hydrate extraction points from the map the generator left behind."""
+        self.rifts = rift.from_payloads(self.world.rifts)
+        self.fed = 0
+        self.feed_need = rift.feed_need(self.day, len(self.rifts)) if self.rifts else 0
+        self.egress = entrance.from_payload(self.world.egress)
+        self.blackout = False
+        self.panic = False
         self._rift_dirty = False
+        self._egress_dirty = False
+        self._blackout_dirty = False
 
     def _load_entrance(self) -> None:
         """Hydrate the forest corridor from the map the generator left behind."""
@@ -316,6 +335,7 @@ class Room:
             loot=[drop.to_payload() for drop in self.drops.values()],
             corpses=[row.to_payload() for row in self.corpses.values()],
             quests=[q.payload() for q in self.quests] or None,
+            blackout=self.blackout,
         )
 
     def hello_payload(self, player: Player) -> dict:
@@ -528,43 +548,131 @@ class Room:
             ).to_payload()
         )
 
-    def activate_rift(self, pid: str) -> None:
-        """Press the console, if this player is standing at it.
+    def activate_rift(self, pid: str, rift_id: str | None = None) -> None:
+        """Press a console or feed an open anomaly, if this player is at it.
 
-        Once only. The sequence is not interruptible and not reversible —
-        there is no second state to go back to, and a rift you could switch off
-        would turn the one irreversible decision on the map into a toggle.
-
-        Measured from the FEET, the same way collect and smash are, so the
-        prompt the player is reading and the check the server runs agree.
+        Dormant → charging is once only and not reversible. Open → feed spends
+        bag items toward the night's quota. Measured from the FEET, the same
+        way collect and smash are, so the prompt and the check agree.
         """
         if self.phase != protocol.PHASE_PLAYING or self.departing or self.arriving:
-            return
-        if self.rift is None or self.rift.state != rift.DORMANT:
             return
         player = self.players.get(pid)
         if player is None or not player.alive:
             return
-        feet_y = player.y + PLAYER_HALF_HEIGHT
-        dx = self.rift.console_x - player.x
-        dy = self.rift.console_y - feet_y
-        if dx * dx + dy * dy > RIFT_ACTIVATE_DIST * RIFT_ACTIVATE_DIST:
+        target = self._rift_in_reach(player, rift_id)
+        if target is None:
             return
-        self.rift.state = rift.CHARGING
-        self.rift.elapsed = 0.0
+        if target.state == rift.DORMANT:
+            self._press_console(player, target)
+            return
+        if target.state == rift.OPEN:
+            self._feed_rift(player, target)
+
+    def _rift_in_reach(self, player: Player, rift_id: str | None) -> Rift | None:
+        feet_y = player.y + PLAYER_HALF_HEIGHT
+        reach = RIFT_ACTIVATE_DIST * RIFT_ACTIVATE_DIST
+        if rift_id:
+            for row in self.rifts:
+                if row.id != rift_id:
+                    continue
+                dx = row.console_x - player.x
+                dy = row.console_y - feet_y
+                if dx * dx + dy * dy <= reach:
+                    return row
+            return None
+        nearest: Rift | None = None
+        nearest_d = reach
+        for row in self.rifts:
+            dx = row.console_x - player.x
+            dy = row.console_y - feet_y
+            dist = dx * dx + dy * dy
+            if dist <= nearest_d:
+                nearest = row
+                nearest_d = dist
+        return nearest
+
+    def _press_console(self, player: Player, target: Rift) -> None:
+        target.state = rift.CHARGING
+        target.elapsed = 0.0
         self._rift_dirty = True
-        # It is LOUD. Four stones lighting up in the dark is the largest thing
+        # It is LOUD. Stones lighting up in the dark is the largest thing
         # that has happened on this map, and every creature that could hear a
         # crate come apart can hear this — which is the cost of calling for a
         # ride, and the reason the walk to the console is a decision.
         self.noises.append(
             ai.Noise(
-                x=self.rift.x,
-                y=self.rift.y,
+                x=target.x,
+                y=target.y,
                 radius=RIFT_ACTIVATE_DIST * 6.0,
                 source_id=player.id,
             )
         )
+
+    def _feed_rift(self, player: Player, target: Rift) -> None:
+        """Spend the pocket into this open pad. Guns stay on the belt."""
+        if any(q.id == quests.FEED and q.done for q in self.quests):
+            return
+        if not any(q.id == quests.FEED for q in self.quests):
+            return
+        remaining = self.feed_need - self.fed
+        if remaining <= 0:
+            return
+        paid = player.inventory.spend_toward(remaining)
+        if paid <= 0:
+            return
+        self.fed += paid
+        self._roster_dirty = True
+        for quest in self.quests:
+            if quest.id != quests.FEED or quest.done:
+                continue
+            quest.have = min(self.fed, quest.need)
+            if quest.have >= quest.need:
+                quest.have = quest.need
+                quest.done = True
+                self._close_extraction()
+            self._quests_dirty = True
+        self.noises.append(
+            ai.Noise(
+                x=target.x,
+                y=target.y,
+                radius=RIFT_ACTIVATE_DIST * 3.0,
+                source_id=player.id,
+            )
+        )
+
+    def _close_extraction(self) -> None:
+        """Quota paid: the pads go dark, the exit opens, the night hunts."""
+        for row in self.rifts:
+            if row.begin_collapse():
+                self._rift_dirty = True
+        self.world.rifts = [row.geometry_payload() for row in self.rifts]
+        self._open_egress()
+        self._begin_blackout()
+        self.offer_exit_quest()
+
+    def _open_egress(self) -> None:
+        if self.egress is not None:
+            return
+        avoid = self.gate.side if self.gate is not None else None
+        opened = entrance.open_exit(self.world.tiles, self.world.seed, avoid)
+        if opened is None:
+            return
+        gate, patches = opened
+        self.egress = gate
+        self.world.egress = gate.geometry_payload()
+        self._tile_patches.extend(patches)
+        self._egress_dirty = True
+        self.navigator.invalidate()
+
+    def _begin_blackout(self) -> None:
+        if self.blackout:
+            return
+        self.blackout = True
+        self.panic = True
+        self._blackout_dirty = True
+        for player in self.players.values():
+            player.last_input.lantern = False
 
     def drop_loot(self, pid: str, slot: int) -> None:
         """Toss a bag slot onto the ground near this player's feet.
@@ -632,14 +740,14 @@ class Room:
         self._depart_phase = None
         self._slots = {}
         self.zone = zones.forest(self.day)
-        self.world = mapgen.build_forest()
+        self.world = mapgen.build_forest(day=self.day)
         self.navigator = Navigator(self.world)
         self.enemies.clear()
         self.coins.clear()
         self.noises.clear()
         self._load_drops()
         self._load_crates()
-        self._load_rift()
+        self._load_rifts()
         self._load_entrance()
         self._rebuild_spawns()
         self.director = EnemyDirector(self.spawn_points)
@@ -684,12 +792,78 @@ class Room:
                     pid, socket, protocol.dumps(self.welcome_payload(player))
                 )
 
+    async def return_home(self) -> None:
+        """They made it. Swap the forest for the next day's camp.
+
+        Same phase, new zone, new map. Inventory and guns they kept (the
+        fenda ate the pocket) come back with them. Day increments so the
+        next forest is harder.
+        """
+        if self.zone.kind != zones.KIND_FOREST:
+            self._pending_return = False
+            return
+        self._pending_return = False
+        self.departing = False
+        self.arriving = False
+        self._depart_phase = None
+        self._arrive_phase = None
+        self._slots = {}
+        self.day += 1
+        self.zone = zones.camp(self.day)
+        self.world = camp.build_camp(random.randrange(1, 2**31))
+        self.navigator = Navigator(self.world)
+        self.enemies.clear()
+        self.coins.clear()
+        self.noises.clear()
+        self.drops.clear()
+        self.crates.clear()
+        self.corpses.clear()
+        self._corpses_dirty = True
+        self.crate_break_events = []
+        self.quests = []
+        self._quests_dirty = False
+        self._load_drops()
+        self._load_crates()
+        self._load_rifts()
+        self._load_entrance()
+        self._rebuild_spawns()
+        self.director = EnemyDirector(self.spawn_points)
+        total = len(self.seating)
+        for player in self.players.values():
+            player.ready = False
+            player.hp = MAX_HP
+            player.alive = True
+            player.respawn_timer = 0.0
+            player.hurt_immunity = 0.0
+            if player.id in self.seating:
+                player.x, player.y = camp.seat_position(
+                    self.world, self.seating.index(player.id), total
+                )
+            else:
+                player.x, player.y = self.pick_spawn()
+            player.vx = player.vy = 0.0
+            player.aim_x = 0.0
+            player.aim_y = 1.0
+            player.inputs.clear()
+            player.idle_ticks = 0
+            player.combo_step = 0
+            player.combo_left = 0.0
+            player.last_input = InputCmd(sequence=player.last_processed_seq)
+        for pid, socket in list(self.sockets.items()):
+            player = self.players.get(pid)
+            if player is not None:
+                await self._safe_send(
+                    pid, socket, protocol.dumps(self.welcome_payload(player))
+                )
+
     # --- input --------------------------------------------------------------
     def queue_input(self, pid: str, msg: dict) -> None:
         player = self.players.get(pid)
         if player is None:
             return
         cmd = InputCmd.from_message(msg)
+        if self.blackout:
+            cmd.lantern = False
         # Ignore out-of-order / replayed inputs.
         if cmd.sequence <= player.last_processed_seq:
             return
@@ -709,9 +883,11 @@ class Room:
         self.step_rift(dt)
 
     def step_rift(self, dt: float) -> None:
-        """Run the activation sequence. Marks dirty only on the transition."""
-        if self.rift is not None and self.rift.step(dt):
-            self._rift_dirty = True
+        """Run every pad's sequence. Marks dirty only on a transition."""
+        for row in self.rifts:
+            if row.step(dt):
+                self._rift_dirty = True
+                self.world.rifts = [item.geometry_payload() for item in self.rifts]
 
     def begin_arrive(self) -> None:
         """Lock input and line the party up inside the forest corridor."""
@@ -936,30 +1112,78 @@ class Room:
         self.world.entrance = self.gate.geometry_payload()
 
     def offer_extract_quest(self) -> None:
-        if self.rift is None:
+        if not self.rifts:
             return
         if any(q.id == quests.EXTRACT for q in self.quests):
             return
-        self.quests.append(quests.extract())
+        self.quests.append(quests.extract(need=len(self.rifts)))
+        self._quests_dirty = True
+
+    def offer_feed_quest(self) -> None:
+        if self.feed_need <= 0:
+            return
+        if any(q.id == quests.FEED for q in self.quests):
+            return
+        self.quests.append(quests.feed(self.feed_need))
+        self._quests_dirty = True
+
+    def offer_exit_quest(self) -> None:
+        if any(q.id == quests.EXIT for q in self.quests):
+            return
+        self.quests.append(quests.exit_quest())
         self._quests_dirty = True
 
     def step_quests(self) -> None:
-        """Tick progress. Finding the rift is proximity, not a packet."""
-        if not self.quests or self.rift is None:
+        """Tick progress. Finding a rift or the exit is proximity, not a packet."""
+        if self.quests:
+            self._tick_extract_quest()
+            self._tick_exit_quest()
+
+    def _tick_extract_quest(self) -> None:
+        if not self.rifts:
             return
-        for quest in self.quests:
-            if quest.id != quests.EXTRACT or quest.done:
+        quest = next((q for q in self.quests if q.id == quests.EXTRACT), None)
+        if quest is None or quest.done:
+            return
+        reach = RIFT_FIND_DIST * RIFT_FIND_DIST
+        changed = False
+        for row in self.rifts:
+            if row.found:
                 continue
-            rx, ry = self.rift.x, self.rift.y
-            reach = RIFT_FIND_DIST * RIFT_FIND_DIST
             found = any(
-                p.alive and (p.x - rx) ** 2 + (p.y - ry) ** 2 <= reach
+                p.alive and (p.x - row.x) ** 2 + (p.y - row.y) ** 2 <= reach
                 for p in self.players.values()
             )
             if found:
-                quest.have = quest.need
-                quest.done = True
-                self._quests_dirty = True
+                row.found = True
+                changed = True
+        if not changed:
+            return
+        quest.have = sum(1 for row in self.rifts if row.found)
+        if quest.have >= quest.need:
+            quest.have = quest.need
+            quest.done = True
+            self.offer_feed_quest()
+        self._quests_dirty = True
+
+    def _tick_exit_quest(self) -> None:
+        if self.egress is None or self._pending_return:
+            return
+        quest = next((q for q in self.quests if q.id == quests.EXIT), None)
+        if quest is None or quest.done:
+            return
+        mx, my = self.egress.mouth_x, self.egress.mouth_y
+        reach = EXIT_FIND_DIST * EXIT_FIND_DIST
+        reached = any(
+            p.alive and (p.x - mx) ** 2 + (p.y - my) ** 2 <= reach
+            for p in self.players.values()
+        )
+        if not reached:
+            return
+        quest.have = quest.need
+        quest.done = True
+        self._quests_dirty = True
+        self._pending_return = True
 
     def step_enemies(self, dt: float) -> None:
         """Advance the pack, resolve its swings, then top the population up."""
@@ -979,6 +1203,7 @@ class Room:
             self.navigator,
             dt,
             self.noises,
+            hunt_all=self.panic,
         )
         # Heard once. A noise that survived the tick would keep waking whatever
         # walked into its radius long after the sound was over.
@@ -1003,6 +1228,14 @@ class Room:
         enemy = Enemy(id=f"e{self._enemy_id}", type=enemy_type, x=x, y=y)
         dress(enemy)
         self.enemies[enemy.id] = enemy
+        if self.panic:
+            living = [p for p in self.players.values() if p.alive]
+            if living:
+                target = min(
+                    living,
+                    key=lambda p: (p.x - enemy.x) ** 2 + (p.y - enemy.y) ** 2,
+                )
+                ai.commit(enemy, target)
         return enemy
 
     def resolve_attack(self, attack: ai.Attack) -> None:
@@ -1386,7 +1619,9 @@ class Room:
             [row.to_payload() for row in self.corpses.values()] if self._corpses_dirty else None
         )
         self._corpses_dirty = False
-        rift_row = self.rift.state_payload() if (self.rift and self._rift_dirty) else None
+        rift_rows = (
+            [row.state_payload() for row in self.rifts] if self._rift_dirty else None
+        )
         self._rift_dirty = False
         entrance_row = (
             self.gate.state_payload() if (self.gate and self._entrance_dirty) else None
@@ -1400,6 +1635,12 @@ class Room:
         self._tile_patches = []
         quest_rows = [q.payload() for q in self.quests] if self._quests_dirty else None
         self._quests_dirty = False
+        egress_row = (
+            self.egress.geometry_payload() if (self.egress and self._egress_dirty) else None
+        )
+        self._egress_dirty = False
+        blackout_flag = True if self._blackout_dirty else None
+        self._blackout_dirty = False
         await self.broadcast(
             protocol.snapshot(
                 self.tick,
@@ -1420,10 +1661,12 @@ class Room:
                 crates=crate_rows,
                 crate_breaks=self.crate_break_events or None,
                 corpses=corpse_rows,
-                rift=rift_row,
+                rifts=rift_rows,
                 entrance=entrance_row,
                 tile_patches=tile_patches,
                 quests=quest_rows,
+                egress=egress_row,
+                blackout=blackout_flag,
             )
         )
 
@@ -1441,6 +1684,10 @@ class Room:
             self.step(DT)
             if self._pending_embark:
                 await self.embark()
+                continue
+            if self._pending_return:
+                await self.broadcast_snapshot()
+                await self.return_home()
                 continue
             if self.tick % SNAPSHOT_EVERY_N_TICKS == 0:
                 await self.broadcast_snapshot()

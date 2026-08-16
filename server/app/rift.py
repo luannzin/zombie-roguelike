@@ -1,12 +1,13 @@
-"""The extraction point: one per forest, and the only thing on a map that
-ANSWERS BACK.
+"""The extraction point: one or more per forest, scaled by the day, and the
+only thing on a map that ANSWERS BACK.
 
 Everything else the generator lays down is finished before the player arrives.
 A cabin is a cabin whether you look at it or not; a crate has exactly one thing
 left to do and then it is gone. The rift is the first object in this game with a
 STATE MACHINE: it sits dormant until somebody walks up to the console and
 presses it, and then it spends four seconds becoming something else while the
-whole party watches.
+whole party watches. Feeding the open anomaly is what shuts it; a timer never
+does.
 
 WHY THIS IS SERVER-SIDE AND WHY IT SHIPS COORDINATES
 Same reason `scenery.py` is. Placement has to know which ground is open, it
@@ -111,13 +112,9 @@ CROWNED_AT = LAST_PILLAR_AT + CHARGE_TIME
 EMERGE_AT = CROWNED_AT + SETTLE
 OPEN_AT = EMERGE_AT + EMERGE_TIME
 
-#: How long the anomaly stays. INFINITE for now.
-#:
-#: It had a 45 s window, which was a guess at a mechanic that does not exist
-#: yet — and a clock nobody has written the rules for is just a thing that
-#: takes your rift away. Once extraction actually does something, whatever
-#: closes it will close it; until then the fence stays open and the state
-#: machine below keeps the SPENT path wired but never walks it.
+#: How long the anomaly stays if nothing feeds it. INFINITE: the window
+#: closes when the party has paid the feed quota, not on a clock. `begin_collapse`
+#: is what walks the SPENT path.
 OPEN_TIME = math.inf
 #: It does not blink out. The light draws back in over this, so the last thing
 #: that happens on the pad is a thing closing rather than a sprite being
@@ -168,11 +165,19 @@ class Rift:
     anomaly_x: float
     anomaly_y: float
     pillars: tuple[tuple[float, float, int], ...]
+    id: str = "r0"
     state: str = DORMANT
-    #: Seconds since the console was pressed. Only meaningful while CHARGING,
-    #: and it is on the wire so a player who joins mid-sequence sees the rest
-    #: of it rather than a structure that snaps to finished.
+    #: Seconds since the console was pressed. Only meaningful while CHARGING
+    #: or OPEN, and it is on the wire so a player who joins mid-sequence sees
+    #: the rest of it rather than a structure that snaps to finished.
     elapsed: float = 0.0
+    #: When collapse begins, in the same clock as `elapsed`. None while the
+    #: anomaly is holding. Set by `begin_collapse` the tick the feed quota
+    #: is paid — not by a authored window.
+    close_at: float | None = None
+    #: A living player has stood on the pad. Server-only; the quest list is
+    #: what the client reads.
+    found: bool = False
 
     def step(self, dt: float) -> bool:
         """Advance the sequence. True when the state changed this tick.
@@ -185,18 +190,45 @@ class Rift:
         if self.state in (DORMANT, SPENT):
             return False
         self.elapsed += dt
+        changed = False
         if self.state == CHARGING and self.elapsed >= OPEN_AT:
             self.state = OPEN
-            return True
-        if self.state == OPEN and math.isfinite(SPENT_AT) and self.elapsed >= SPENT_AT:
+            changed = True
+        if (
+            self.state == OPEN
+            and self.close_at is not None
+            and self.elapsed >= self.close_at + COLLAPSE_TIME
+        ):
             self.state = SPENT
-            self.elapsed = SPENT_AT
+            self.elapsed = self.close_at + COLLAPSE_TIME
+            changed = True
+        return changed
+
+    def begin_collapse(self) -> bool:
+        """Start drawing the light back in. True if this call changed anything.
+
+        Feeding is what closes a rift, not a timer. A dormant stone just goes
+        dark. A charging one is jumped to open so the collapse has a sphere
+        to fade rather than a half-played ceremony.
+        """
+        if self.state == SPENT:
+            return False
+        if self.state == DORMANT:
+            self.state = SPENT
+            self.elapsed = 0.0
+            return True
+        if self.state == CHARGING and self.elapsed < OPEN_AT:
+            self.elapsed = OPEN_AT
+            self.state = OPEN
+        if self.close_at is None:
+            self.close_at = self.elapsed
             return True
         return False
 
     def geometry_payload(self) -> dict:
         """The static half: where the pieces are. Rides on the map payload."""
         return {
+            "id": self.id,
             "tx": self.tx,
             "ty": self.ty,
             "plot": PLOT,
@@ -212,12 +244,16 @@ class Rift:
 
     def state_payload(self) -> dict:
         """The live half: what it is doing. Rides on the snapshot when dirty."""
-        return {"state": self.state, "t": round(self.elapsed, 2)}
+        row = {"id": self.id, "state": self.state, "t": round(self.elapsed, 2)}
+        if self.close_at is not None:
+            row["closeAt"] = round(self.close_at, 2)
+        return row
 
 
 def from_payload(row: dict | None) -> Rift | None:
     if not row:
         return None
+    close = row.get("closeAt")
     return Rift(
         tx=int(row["tx"]),
         ty=int(row["ty"]),
@@ -228,9 +264,46 @@ def from_payload(row: dict | None) -> Rift | None:
         console_x=float(row["console"][0]),
         console_y=float(row["console"][1]),
         pillars=tuple((float(p[0]), float(p[1]), int(p[2])) for p in row["pillars"]),
+        id=str(row.get("id", "r0")),
         state=str(row.get("state", DORMANT)),
         elapsed=float(row.get("t", 0.0)),
+        close_at=None if close is None else float(close),
     )
+
+
+def from_payloads(rows: list | None) -> list[Rift]:
+    out: list[Rift] = []
+    for row in rows or []:
+        if not isinstance(row, dict):
+            continue
+        placed = from_payload(row)
+        if placed is not None:
+            out.append(placed)
+    return out
+
+
+def count_for_day(day: int) -> int:
+    """How many extraction points a forest of this day carries.
+
+    The first two nights are one pad — find it, feed it, run. After that the
+    woods grow more of them, so the walk is longer and the feed quota has
+    more mouths. Capped at three: a fourth is another errand, not a harder
+    night.
+    """
+    if day <= 2:
+        return 1
+    if day <= 4:
+        return 2
+    return 3
+
+
+def feed_need(day: int, count: int) -> int:
+    """Catalog value the party has to put into the rifts this night.
+
+    Scales with the day AND with how many pads landed, so a cramped map that
+    only fitted one still asks less than a night that found room for three.
+    """
+    return 24 * max(1, day) + 16 * max(0, count - 1)
 
 
 # --- placement ---------------------------------------------------------------
@@ -280,6 +353,38 @@ MIN_MARGIN_OPEN = 0.55
 SCENE_CLEARANCE = 13.0
 SPAWN_CLEARANCE = 20.0
 MARGIN = 3
+
+
+def place_many(
+    tiles: list[list[int]],
+    route: list[tuple[float, float]],
+    scenes: list[tuple[float, float]],
+    origin: tuple[float, float],
+    rng: random.Random,
+    count: int,
+) -> list[Rift]:
+    """Place up to `count` extraction points. The first follows the story
+    thread; the rest go as far from spawn and from each other as the
+    clearances allow. Fewer than asked is survivable — the quest need is
+    however many actually landed.
+    """
+    want = max(0, count)
+    if want == 0:
+        return []
+    placed: list[Rift] = []
+    keepout = list(scenes)
+    for index in range(want):
+        # The first pad is the end of the trail. Later ones have no thread
+        # to honour, so they fall back to "as far from spawn as possible",
+        # which is also as far from the party as the night can make them walk.
+        aim_route = route if index == 0 else []
+        row = place(tiles, aim_route, keepout, origin, rng)
+        if row is None:
+            break
+        row.id = f"r{index}"
+        placed.append(row)
+        keepout.append((row.tx + PLOT / 2.0, row.ty + PLOT / 2.0))
+    return placed
 
 
 def place(

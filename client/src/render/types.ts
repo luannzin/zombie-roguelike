@@ -166,11 +166,16 @@ export interface RenderState {
   loot: DrawableLoot[];
   corpses: DrawableCorpse[];
   /**
-   * What the extraction blast left on the ground. Empty until it goes off.
-   * Generated once, deterministically from the map seed (`render/residue.ts`)
-   * — the marks are never on the wire.
+   * What each extraction blast left on the ground. Empty until one goes off.
+   * Generated once per pad, deterministically from the map seed
+   * (`render/residue.ts`) — the marks are never on the wire.
    */
-  residue: readonly ResidueMark[];
+  residues: readonly { id: string; marks: readonly ResidueMark[] }[];
+  /**
+   * Extraction exit arrow. Points the local player at the mouth. Null until
+   * the feed quota is paid.
+   */
+  guide: { fromX: number; fromY: number; toX: number; toY: number } | null;
   /** Night coat. Drives rain/fog in the atmosphere pass. */
   weather: string;
   effects: Effects;

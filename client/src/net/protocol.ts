@@ -73,13 +73,13 @@ export interface BreakPacket {
 }
 
 /**
- * Press the extraction console. No id: there is exactly one rift on a map.
- *
- * Server ignores it unless you are close enough, alive, and the rift is still
- * dormant. There is no packet to switch it back off — see `Room.activate_rift`.
+ * Press a rift console or feed an open anomaly. `id` is the pad; omitted
+ * means nearest in range. Server ignores it unless you are close enough,
+ * alive, and the pad will take the press (dormant → open, or open → feed).
  */
 export interface ActivatePacket {
   type: 'activate';
+  id?: string;
 }
 
 export type ClientMessage =
@@ -424,15 +424,20 @@ export interface MapPayload {
    */
   crates?: CrateState[];
   /**
-   * The extraction point. Absent (or null) on a map without one — every camp,
+   * Extraction points. Absent or empty on a map without any — every camp,
    * and any forest the generator could not fit a 7x7 plot into.
    */
-  rift?: RiftPayload | null;
+  rifts?: RiftPayload[];
   /**
    * Forest arrival corridor. Absent on the camp. Geometry is placed at
    * generation; `state` is rewritten as the woods swallow the path.
    */
   entrance?: EntrancePayload | null;
+  /**
+   * Extraction exit, carved when the feed quota is paid. Absent until then.
+   * Same shape as `entrance`.
+   */
+  egress?: EntrancePayload | null;
 }
 
 /**
@@ -442,6 +447,7 @@ export interface MapPayload {
  * for the same reason it never re-derives where a cabin's door is.
  */
 export interface RiftPayload {
+  id: string;
   tx: number;
   ty: number;
   plot: number;
@@ -459,6 +465,8 @@ export interface RiftPayload {
   state: 'dormant' | 'charging' | 'open' | 'spent';
   /** Seconds into the activation sequence. */
   t: number;
+  /** When collapse begins, in the same clock as `t`. Absent while holding. */
+  closeAt?: number | null;
 }
 
 /**
@@ -821,6 +829,8 @@ export interface WelcomeMessage {
   corpses?: CorpseState[];
   /** Run objectives. Absent until the entrance seals. */
   quests?: QuestState[];
+  /** Lamps are dead. The extraction chase; latched until the next welcome. */
+  blackout?: boolean;
 }
 
 export interface SnapshotMessage {
@@ -863,24 +873,30 @@ export interface SnapshotMessage {
   /** Remaining corpses. Present only when one was added. */
   corpses?: CorpseState[];
   /**
-   * The extraction point changed state. TWO rows a run — one when the console
-   * is pressed, one when the sequence finishes — because the four seconds in
-   * between are the client's own clock, not something worth 30 Hz of wire.
+   * Extraction pads that changed state. The client runs the ceremony between
+   * these snapshots off its own clock.
    */
-  rift?: RiftStateRow;
+  rifts?: RiftStateRow[];
   /** Entrance changed state (open → sealing → gone). */
   entrance?: { state: EntranceState; t: number };
-  /** Tiles rewritten this tick — the forest swallowing the corridor. */
+  /** Extraction exit, sent once when the feed quota is paid. */
+  egress?: EntrancePayload;
+  /** Tiles rewritten this tick — the forest swallowing the corridor, or the exit opening. */
   tilePatches?: Array<[tx: number, ty: number, kind: number]>;
   /** Objectives. Present when the list changed (appear, tick, complete). */
   quests?: QuestState[];
+  /** Lamps just died. Latched locally until the next welcome. */
+  blackout?: boolean;
 }
 
-/** The live half of the extraction point. */
+/** The live half of an extraction pad. */
 export interface RiftStateRow {
+  id: string;
   state: 'dormant' | 'charging' | 'open' | 'spent';
   /** Seconds into the sequence, so a late joiner picks it up in progress. */
   t: number;
+  /** When collapse begins, in the same clock as `t`. */
+  closeAt?: number | null;
 }
 
 export interface PongMessage {

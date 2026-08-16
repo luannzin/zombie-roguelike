@@ -86,6 +86,7 @@ export interface RiftPillar {
 }
 
 export interface Rift {
+  id: string;
   x: number;
   y: number;
   /** Contact point the anomaly hovers over. */
@@ -100,6 +101,8 @@ export interface Rift {
   state: RiftState;
   /** Seconds since the console was pressed. Only meaningful while charging. */
   elapsed: number;
+  /** When collapse begins, in the same clock as `elapsed`. Null while holding. */
+  closeAt: number | null;
 }
 
 /** A light the map owns, at the point it burns from, in world pixels. */
@@ -172,10 +175,25 @@ export class TileMap {
    */
   crates: CratePiece[];
   /**
-   * The extraction point, or null on a map without one (every camp). Mutable:
-   * activating it is the one thing on this map that changes what the map IS.
+   * Extraction points, empty on a map without any (every camp). Mutable:
+   * activating one is the thing on this map that changes what the map IS.
    */
-  rift: Rift | null;
+  rifts: Rift[];
+  /**
+   * Extraction exit, or null until the feed quota is paid. Mouth / dir are
+   * world pixels; the tiles arrive as patches on the same snapshot.
+   */
+  egress: {
+    side: string;
+    mouthX: number;
+    mouthY: number;
+    backX: number;
+    backY: number;
+    dirX: number;
+    dirY: number;
+    state: 'open' | 'sealing' | 'gone';
+    elapsed: number;
+  } | null;
 
   constructor(payload: MapPayload) {
     this.tiles = payload.tiles;
@@ -190,8 +208,11 @@ export class TileMap {
     this.entrance = unpackEntrance(payload);
     this.scenery = unpackScenery(payload);
     this.crates = unpackCrates(payload);
-    this.rift = unpackRift(payload);
-    if (this.rift?.state === 'open') this.lightRift();
+    this.rifts = unpackRifts(payload);
+    this.egress = unpackCorridor(payload.egress);
+    for (const row of this.rifts) {
+      if (row.state === 'open' && row.closeAt === null) this.lightRift(row);
+    }
   }
 
   /**
@@ -201,14 +222,19 @@ export class TileMap {
    * starts the sequence — a client that joins mid-charge picks it up in
    * progress rather than replaying it from zero.
    */
-  setRiftState(state: RiftState, elapsed: number): void {
-    if (!this.rift) return;
-    this.rift.state = state;
-    this.rift.elapsed = elapsed;
-    if (state === 'open') this.lightRift();
-    // Used up: the light comes off the map for good. The marks it threw stay
-    // exactly where they are — that is the whole point of the state.
-    if (state === 'spent') this.darkenRift();
+  setRiftState(
+    id: string,
+    state: RiftState,
+    elapsed: number,
+    closeAt: number | null = null,
+  ): void {
+    const row = this.rifts.find((item) => item.id === id);
+    if (!row) return;
+    row.state = state;
+    row.elapsed = elapsed;
+    if (closeAt !== null) row.closeAt = closeAt;
+    if (state === 'open' && row.closeAt === null) this.lightRift(row);
+    if (state === 'spent' || row.closeAt !== null) this.darkenRift(row);
   }
 
   setEntranceState(state: 'open' | 'sealing' | 'gone', elapsed: number): void {
@@ -217,50 +243,47 @@ export class TileMap {
     this.entrance.elapsed = elapsed;
   }
 
+  setEgress(row: NonNullable<TileMap['egress']>): void {
+    this.egress = row;
+  }
 
   /**
-   * Advance the local ceremony clock. Called once per frame.
+   * Advance every pad's local ceremony clock. Called once per frame.
    *
-   * It keeps running AFTER the rift opens, and that is the point: `elapsed` is
+   * It keeps running AFTER a rift opens, and that is the point: `elapsed` is
    * what every loop on this structure is phased against, so the anomaly's
    * resting loop starts at frame 0 on the frame `emerge` handed over to it and
    * each stone's crown starts at frame 0 on the frame its own charge finished.
-   * Driving those off wall time instead dropped each loop in at a random point
-   * in its cycle — which is exactly what made a seam built to be byte-identical
-   * still visibly jump.
    */
   stepRift(dt: number): void {
-    const state = this.rift?.state;
-    if (this.rift && (state === 'charging' || state === 'open')) this.rift.elapsed += dt;
+    for (const row of this.rifts) {
+      if (row.state === 'charging' || row.state === 'open') row.elapsed += dt;
+    }
   }
 
-  /** Take the beacon back off the scene-light list. */
-  private darkenRift(): void {
-    const rift = this.rift;
-    if (!rift) return;
+  /** Take this pad's beacon back off the scene-light list. */
+  private darkenRift(row: Rift): void {
     const lights = this.scenery.lights as SceneryLight[];
-    const index = lights.findIndex((light) => light.x === rift.x && light.y === rift.y);
+    const index = lights.findIndex((light) => light.x === row.x && light.y === row.y);
     if (index >= 0) lights.splice(index, 1);
   }
 
   /**
-   * Put the beacon on the ONE scene-light list.
+   * Put this pad's beacon on the ONE scene-light list.
    *
    * Deliberately not a second list the lighting has to know about: the fov
    * field and the glow pass have no concept of a camp light versus a forest
    * light versus this, and must not grow one. An open rift is simply another
    * thing on the map that is burning.
    */
-  private lightRift(): void {
-    const rift = this.rift;
-    if (!rift) return;
+  private lightRift(row: Rift): void {
     const lights = this.scenery.lights as SceneryLight[];
-    if (lights.some((light) => light.x === rift.x && light.y === rift.y)) return;
+    if (lights.some((light) => light.x === row.x && light.y === row.y)) return;
     lights.push({
-      x: rift.x,
-      y: rift.y,
-      radiusTiles: rift.lightTiles,
-      kind: rift.lightKind,
+      x: row.x,
+      y: row.y,
+      radiusTiles: row.lightTiles,
+      kind: row.lightKind,
     });
   }
 
@@ -434,10 +457,10 @@ function unpackScenery(payload: MapPayload): Scenery {
   return { flat, standing, lights };
 }
 
-function unpackRift(payload: MapPayload): Rift | null {
-  const row = payload.rift;
-  if (!row) return null;
-  return {
+function unpackRifts(payload: MapPayload): Rift[] {
+  const rows = payload.rifts ?? [];
+  return rows.map((row) => ({
+    id: row.id,
     x: row.x,
     y: row.y,
     anomalyX: row.anomaly[0],
@@ -449,7 +472,8 @@ function unpackRift(payload: MapPayload): Rift | null {
     lightKind: row.lightKind,
     state: row.state,
     elapsed: row.t,
-  };
+    closeAt: row.closeAt ?? null,
+  }));
 }
 
 function unpackCrates(payload: MapPayload): CratePiece[] {
@@ -575,7 +599,12 @@ function findExitMouth(tiles: number[][], tileSize: number): { x: number; y: num
 }
 
 function unpackEntrance(payload: MapPayload): TileMap['entrance'] {
-  const row = payload.entrance;
+  return unpackCorridor(payload.entrance);
+}
+
+function unpackCorridor(
+  row: MapPayload['entrance'] | MapPayload['egress'],
+): TileMap['entrance'] {
   if (!row) return null;
   return {
     side: row.side,

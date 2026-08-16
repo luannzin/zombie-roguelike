@@ -194,12 +194,13 @@ export function riftPhase(
   // already everywhere and the fade is already zero, with no timeline behind it.
   if (rift.state === 'spent') {
     const stones = rift.pillars.length;
+    const neverTore = rift.elapsed <= 0 && rift.closeAt === null;
     return {
       ...dormantPhase(stones),
       pillarAwake: new Array<boolean>(stones).fill(false),
       consoleArmed: true,
-      waveRadius: Infinity,
-      sinceBoom: Infinity,
+      waveRadius: neverTore ? 0 : Infinity,
+      sinceBoom: neverTore ? 0 : Infinity,
       fade: 0,
       spent: true,
     };
@@ -238,9 +239,12 @@ export function riftPhase(
     // collapse. Never negative — the anomaly is simply gone at `spentAt`.
     // No deadline means it never dims. `collapseAt` is null while the rift is
     // open-ended, and dividing by a missing number would fade it out instantly.
-    fade: timing.collapseAt === null
+    fade: timing.collapseAt === null && rift.closeAt === null
       ? 1
-      : 1 - clamp01((elapsed - timing.collapseAt) / Math.max(timing.collapseTime, 1e-6)),
+      : 1 - clamp01(
+        (elapsed - (rift.closeAt ?? timing.collapseAt ?? elapsed))
+        / Math.max(timing.collapseTime, 1e-6),
+      ),
     spent: false,
     // The console answers the instant it is pressed. It is the one piece that
     // must not wait for anything: a button that visibly does nothing for a

@@ -23,6 +23,7 @@ seam React is allowed to read.
 | `lantern.ts` | four-cell battery, produces `output` 0..1 |
 | `hud-store.ts` | the only seam to React; `HUD_INTERVAL` = 0.2 s |
 | `tooltip-anchors.ts` | screen-space points for world `Tooltip`s, written every frame |
+| `exit-guide.ts` | screen-space pose for the extraction-exit caret, written every frame |
 | `inventory-anchors.ts` | screen-space centres for the HUD bag (pack + slots) |
 | `inventory-actions.ts` | bag → socket: `Game` binds `drop`; React never owns the connection |
 | `loot-flies.ts` | collect flies: hold over the head, then travel; membership is a store, pose is per-frame |
@@ -44,7 +45,8 @@ seam React is allowed to read.
   roster, a bag toss, `selectHotbar`) reassigns `carryWeight` on the spot.
 - `hud-store.ts` is the only channel to the UI for state. World tooltip
   positions travel through `tooltip-anchors.ts` (written every frame, never
-  subscribed). Nothing here may touch the DOM beyond the two canvases
+  subscribed). The exit caret pose travels through `exit-guide.ts` the same
+  way. Nothing here may touch the DOM beyond the two canvases
   `game.ts` owns.
 - **`Game` does not own its socket.** The connection is created by
   `hooks/useRoomSession` and has been carrying the lobby since before the game
@@ -171,9 +173,11 @@ seam React is allowed to read.
 - **The extraction pads are the objects on the map with a STATE MACHINE, and
   the split is: the server says WHAT, the client says what that FEELS like.**
   Count scales with the day (`rift.count_for_day`). Finding them is a quest
-  (`hud-store.quests`, id `extract`, `0/N`) — proximity on the server, not
-  a packet. Pressing a dormant console starts the ceremony; feeding an open
-  one spends bag catalog value toward `feed`. Paying the quota collapses
+  (`hud-store.quests`, id `extract`, `0/N`). The console press is the tick,
+  not standing nearby — that is when `feed` appears (catalog gold, coin
+  badge on the HUD). Pressing a dormant console starts the ceremony;
+  feeding an open one spends bag catalog value toward that quota. Paying
+  the quota collapses
   every pad (`closeAt`), carves `world.egress`, kills the lantern
   (`Lantern.kill`), and offers `exit`. Reaching the mouth is another
   welcome, back at camp.
@@ -195,14 +199,16 @@ seam React is allowed to read.
   - E offers a pad BEFORE a crate and before the fire: if you are standing at
     the console with a box at your elbow, you did not walk there for the box.
     Dormant shows "abrir"; open-and-feeding shows "alimentar a fenda" with
-    the same `have/need` as the quest. An empty bag refuses audibly and does
+    the coin badge and the same `have/need` as the quest. An empty bag refuses audibly and does
     not send. Spent and charging show nothing — a prompt on a structure that
     is already answering reads as the first press not having registered.
   - Activation is one-way. There is no packet to switch it off. Collapse is
     the feed quota, not a timer.
-  - The exit arrow (`render/layers/guide.ts`) points the local player at
-    `world.egress.mouth` while `exit` is live. It sits on the night with the
-    hunt diamond, because the lamps are dead.
+  - The exit caret (`hud/ExitGuide`) is gold HUD chrome, not a sprite in
+    the forest. Pose is written every frame (`exit-guide.ts`): halfway
+    from the player to the screen edge in the exit's direction, so it is
+    always on glass. It sits outside `HudScreen` — the fish-eye would
+    pull it off that midpoint.
 - `Game.lights` is bonfires read off the tiles PLUS whatever the map's scenes
   are still burning (`world.scenery.lights`), on one list. The lighting has no
   concept of a camp light versus a forest light and must not grow one. Rebuild
@@ -373,7 +379,8 @@ seam React is allowed to read.
   not a subscription from a component to the game. Camp ready uses `ready` and
   `prompt`; a nearby drop uses `lootPrompt`; the pocket uses `inventory`;
   the walk-out and the forest emerge use `cinematic`; a crate in reach uses
-  `cratePrompt`; a pad in reach uses `riftPrompt` (`open` / `feed`). Run
+  `cratePrompt`; a pad in reach uses `riftPrompt` (`open` / `feed`); the
+  extraction exit caret uses `exitGuide`. Run
   objectives use `quests` — announced at top-centre,
   then flown into the card under the minimap the way a collect flies into
   the bag. Completed rows rise and leave; the HUD dismisses them after

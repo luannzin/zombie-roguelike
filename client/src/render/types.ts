@@ -171,11 +171,6 @@ export interface RenderState {
    * (`render/residue.ts`) — the marks are never on the wire.
    */
   residues: readonly { id: string; marks: readonly ResidueMark[] }[];
-  /**
-   * Extraction exit arrow. Points the local player at the mouth. Null until
-   * the feed quota is paid.
-   */
-  guide: { fromX: number; fromY: number; toX: number; toY: number } | null;
   /** Night coat. Drives rain/fog in the atmosphere pass. */
   weather: string;
   effects: Effects;

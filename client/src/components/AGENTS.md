@@ -11,7 +11,7 @@ and nowhere near the frame loop.
   `Game`; React never touches those pixels again.
 - `hud/` — ours: `Hud`, `HudScreen`, `Panel`, `Vitals`, `BatteryGauge`,
   `ProgressBar`, `StatusLine`, `NetStats`, `ControlsHint`, `ZoneTitle`,
-  `ReadyCount`, `QuestLog`, `QuestRow`, `QuestAnnounce`, `InteractPrompt`, `LootPrompt`, `CratePrompt`, `RiftPrompt`, `Inventory`, `InventorySlot`,
+  `ReadyCount`, `QuestLog`, `QuestRow`, `QuestAnnounce`, `QuestCount`, `InteractPrompt`, `LootPrompt`, `CratePrompt`, `RiftPrompt`, `ExitGuide`, `PixelCaret`, `Inventory`, `InventorySlot`,
   `InventoryGold`, `WeightBar`, `LootIcon`, `CoinIcon`, `SlotValue`, `LootFly`, `LootCard`,
   `LootCardRow`, `TooltipCard`, `InventoryGhost`, `Tooltip`, `TooltipKey`,
   `Hotbar`, `HotbarSlot`.
@@ -64,10 +64,14 @@ and nowhere near the frame loop.
   Do not `setState` from that rAF — it is a transform, same idea as the
   glass burst. `InteractPrompt` is ready at the fire; `LootPrompt` is a
   nearby drop; `CratePrompt` is smash ("E para destruir"); `RiftPrompt` is
-  a pad ("abrir" while dormant, "alimentar a fenda" with `have/need` while
-  feeding, empty-bag refusal in the danger tone). A full bag keeps the pin and says "Inventário Cheio" in
+  a pad ("abrir" while dormant, "alimentar a fenda" with the coin badge
+  and `have/need` while feeding, empty-bag refusal in the danger tone).
+  A full bag keeps the pin and says "Inventário Cheio" in
   the danger tone — hiding it would look like the drop vanished. New
   items get a new caller, not a fork of the chrome.
+  `ExitGuide` is the gold caret for the extraction exit: outside the glass,
+  pose from `exit-guide.ts` every frame, halfway from the player to the
+  screen edge.
   `LootPrompt` has THREE states, and the middle one is why `full` is not
   enough on its own: a full BELT with a gun in hand is a trade, so the copy
   becomes "trocar {held} por {new}" with the gun being given up in the muted

@@ -141,12 +141,13 @@ game's scale.
   tick. The director stays off until `gate.state == gone`. Respawn rings
   around the mouth, not the map centre.
 - **Quests are authoritative and room-wide.** `quests.py` owns the list;
-  the HUD mirrors it (`have`/`need`/`done`/`risk`) and never invents a row.
+  the HUD mirrors it (`have`/`need`/`done`/`risk`/`gold`) and never invents a row.
   Dropping a quest from the list is how it leaves the screen. Forest chain:
   find every pad (`extract`, `0/N`, offered the tick the entrance goes
-  `gone`), feed the open anomalies (`feed`, catalog value from the
-  pocket), then run for the carved exit (`exit`, `risk`). Finding is
-  proximity (`RIFT_FIND_TILES` / `EXIT_FIND_TILES`), not a packet. Paying
+  `gone`, ticked when a console is pressed), feed the open anomalies
+  (`feed`, catalog gold from the pocket — the row carries `gold` so the
+  HUD draws the coin), then run for the carved exit (`exit`, `risk`).
+  The exit is proximity (`EXIT_FIND_TILES`). Paying
   the quota collapses every pad, opens egress, blackout, and panic-hunt.
   Reaching the mouth returns the party to camp (`Room.return_home`) and
   increments the day. Do not auto-remove a row on complete — ticking

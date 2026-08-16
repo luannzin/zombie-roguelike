@@ -175,8 +175,8 @@ class Rift:
     #: anomaly is holding. Set by `begin_collapse` the tick the feed quota
     #: is paid — not by a authored window.
     close_at: float | None = None
-    #: A living player has stood on the pad. Server-only; the quest list is
-    #: what the client reads.
+    #: The console has been pressed. Server-only; the extract quest ticks
+    #: off this, not off standing nearby.
     found: bool = False
 
     def step(self, dt: float) -> bool:

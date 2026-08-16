@@ -41,7 +41,6 @@ from .config import (
     LOOT_COLLECT_DIST,
     MARCH_SPEED,
     RIFT_ACTIVATE_DIST,
-    RIFT_FIND_DIST,
     EXIT_FIND_DIST,
     MAX_HP,
     MAX_INPUT_QUEUE,
@@ -608,6 +607,27 @@ class Room:
                 source_id=player.id,
             )
         )
+        self._note_rift_opened(target)
+
+    def _note_rift_opened(self, target: Rift) -> None:
+        """Extract ticks on the console press, not on walking nearby.
+
+        That is when "Alimente a fenda" appears: the pad is answering, and
+        the quota is now the job. Standing in the clearing is not enough.
+        """
+        if not target.found:
+            target.found = True
+        quest = next((q for q in self.quests if q.id == quests.EXTRACT), None)
+        if quest is None or quest.done:
+            if quest is None:
+                self.offer_extract_quest()
+            return
+        quest.have = sum(1 for row in self.rifts if row.found)
+        if quest.have >= quest.need:
+            quest.have = quest.need
+            quest.done = True
+            self.offer_feed_quest()
+        self._quests_dirty = True
 
     def _feed_rift(self, player: Player, target: Rift) -> None:
         """Spend the pocket into this open pad. Guns stay on the belt."""
@@ -1116,8 +1136,15 @@ class Room:
             return
         if any(q.id == quests.EXTRACT for q in self.quests):
             return
-        self.quests.append(quests.extract(need=len(self.rifts)))
+        quest = quests.extract(need=len(self.rifts))
+        quest.have = sum(1 for row in self.rifts if row.found)
+        if quest.have >= quest.need:
+            quest.have = quest.need
+            quest.done = True
+        self.quests.append(quest)
         self._quests_dirty = True
+        if quest.done:
+            self.offer_feed_quest()
 
     def offer_feed_quest(self) -> None:
         if self.feed_need <= 0:
@@ -1134,37 +1161,9 @@ class Room:
         self._quests_dirty = True
 
     def step_quests(self) -> None:
-        """Tick progress. Finding a rift or the exit is proximity, not a packet."""
+        """Tick progress. The exit is proximity; extract ticks on the console."""
         if self.quests:
-            self._tick_extract_quest()
             self._tick_exit_quest()
-
-    def _tick_extract_quest(self) -> None:
-        if not self.rifts:
-            return
-        quest = next((q for q in self.quests if q.id == quests.EXTRACT), None)
-        if quest is None or quest.done:
-            return
-        reach = RIFT_FIND_DIST * RIFT_FIND_DIST
-        changed = False
-        for row in self.rifts:
-            if row.found:
-                continue
-            found = any(
-                p.alive and (p.x - row.x) ** 2 + (p.y - row.y) ** 2 <= reach
-                for p in self.players.values()
-            )
-            if found:
-                row.found = True
-                changed = True
-        if not changed:
-            return
-        quest.have = sum(1 for row in self.rifts if row.found)
-        if quest.have >= quest.need:
-            quest.have = quest.need
-            quest.done = True
-            self.offer_feed_quest()
-        self._quests_dirty = True
 
     def _tick_exit_quest(self) -> None:
         if self.egress is None or self._pending_return:

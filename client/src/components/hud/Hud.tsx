@@ -44,6 +44,7 @@ import { LootFly } from './LootFly';
 import { CratePrompt } from './CratePrompt';
 import { RiftPrompt } from './RiftPrompt';
 import { LootPrompt } from './LootPrompt';
+import { ExitGuide } from './ExitGuide';
 
 export interface HudProps {
   snapshot: HudSnapshot;
@@ -149,6 +150,7 @@ export function Hud({ snapshot, minimapRef, error }: HudProps) {
       <LootPrompt prompt={snapshot.lootPrompt} />
       <CratePrompt prompt={snapshot.cratePrompt} />
       <RiftPrompt prompt={snapshot.riftPrompt} />
+      <ExitGuide visible={snapshot.exitGuide} />
       <LootFly lootFrames={snapshot.inventory?.lootFrames ?? 1} />
     </>
   );

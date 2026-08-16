@@ -115,13 +115,14 @@ subtree.
   swallow the way back. Then the first objective appears: find the extraction
   point.
 - **EXTRACTION is the core loop.** After the entrance seals, the HUD quest
-  `Encontre o ponto de extração` ticks `0/N` when any living player stands
-  near a pad (`quests.py`). Day 1–2 spawn one rift; day 3–4 two; day 5+
-  three (`rift.count_for_day`). Finding every pad unlocks `Alimente a
-  fenda` (`have/need` catalog value from the pocket — guns stay on the
-  belt). Paying the quota collapses every pad, carves a new exit on a
+  `Encontre o ponto de extração` ticks `0/N` when a console is pressed
+  (`quests.py`). Day 1–2 spawn one rift; day 3–4 two; day 5+
+  three (`rift.count_for_day`). Pressing a pad unlocks `Alimente a
+  fenda` (catalog gold from the pocket — guns stay on the
+  belt — the HUD draws the coin badge). Paying the quota collapses every pad, carves a new exit on a
   random edge, kills every lantern, and puts the whole pack on hunt
-  (`Encontre a saída`, risk). Reaching the mouth returns the party to
+  (`Encontre a saída`, risk). A gold caret on the HUD points the way,
+  halfway from the player to the screen edge. Reaching the mouth returns the party to
   camp and increments the day. The world is already laid out for the
   walk — `server/app/scenery.py` returns the ROUTE its scenes are strung
   along (outward from the mouth ending at the landmark), `SceneLight`/

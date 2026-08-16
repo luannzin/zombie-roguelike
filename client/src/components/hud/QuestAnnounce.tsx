@@ -12,6 +12,7 @@ import { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { HUD_LENS, warpHudPoint } from '@/lib/lens';
 import type { HudQuest } from '../../game/hud-store';
+import { QuestCount } from './QuestCount';
 
 /** How long the words sit at top-centre before they travel. */
 export const QUEST_FLY_HOLD = 0.7;
@@ -118,11 +119,19 @@ export function QuestAnnounce({ quest, dock, onLanded }: QuestAnnounceProps) {
   return createPortal(
     <p
       ref={nodeRef}
-      className="pixel-text text-ink pointer-events-none fixed top-0 left-0 z-20 whitespace-nowrap text-center text-[11px] leading-[17px] tracking-[0.08em] uppercase drop-shadow-[0_2px_0_var(--hud-text-shadow)]"
+      className="pixel-text text-ink pointer-events-none fixed top-0 left-0 z-20 inline-flex items-center whitespace-nowrap text-center text-[11px] leading-[17px] tracking-[0.08em] uppercase drop-shadow-[0_2px_0_var(--hud-text-shadow)]"
       style={{ visibility: 'hidden' }}
       aria-hidden="true"
     >
       {quest.label}
+      {quest.gold ? (
+        <QuestCount
+          have={quest.have}
+          need={quest.need}
+          gold
+          className="ml-1.5"
+        />
+      ) : null}
     </p>,
     document.body,
   );

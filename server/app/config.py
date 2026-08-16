@@ -377,11 +377,6 @@ CRATE_BREAK_DIST = TILE_SIZE * CRATE_BREAK_TILES
 # pixel-hunting at the worst possible moment.
 RIFT_ACTIVATE_TILES = 2.75
 RIFT_ACTIVATE_DIST = TILE_SIZE * RIFT_ACTIVATE_TILES
-# How close a living player has to get before the "find the extraction point"
-# quest ticks. Shorter than the lantern cone so you have to actually reach the
-# pad, longer than the console so spotting the structure counts as finding it.
-RIFT_FIND_TILES = 9.0
-RIFT_FIND_DIST = TILE_SIZE * RIFT_FIND_TILES
 # How close a living player has to get to the extraction EXIT before the
 # "Encontre a saída" quest ticks. Tighter than finding a rift: the mouth is
 # a point on an edge, and the arrow is already pointing at it.

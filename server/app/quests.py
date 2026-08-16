@@ -6,8 +6,9 @@ invents a quest and never ticks one off on its own.
 
 The first objective of a forest is finding the extraction point — the anomaly
 `rift.py` placed. It appears after the entrance seals, which is the moment the
-party knows they cannot leave the way they came. Finding it unlocks feeding;
-paying the quota collapses the pad and opens the way out.
+party knows they cannot leave the way they came. Pressing a console unlocks
+feeding (`gold` on the row, so the HUD shows the coin); paying the quota
+collapses the pad and opens the way out.
 """
 
 from __future__ import annotations
@@ -31,6 +32,8 @@ class Quest:
     done: bool = False
     #: Dangerous work. The HUD paints the count in the danger tone.
     risk: bool = False
+    #: Progress is catalog gold. The HUD draws the coin badge next to it.
+    gold: bool = False
 
     def payload(self) -> dict:
         row = {
@@ -43,6 +46,8 @@ class Quest:
             row["done"] = True
         if self.risk:
             row["risk"] = True
+        if self.gold:
+            row["gold"] = True
         return row
 
 
@@ -51,7 +56,7 @@ def extract(need: int = 1) -> Quest:
 
 
 def feed(need: int) -> Quest:
-    return Quest(id=FEED, label=FEED_LABEL, have=0, need=max(1, need))
+    return Quest(id=FEED, label=FEED_LABEL, have=0, need=max(1, need), gold=True)
 
 
 def exit_quest() -> Quest:
@@ -69,6 +74,7 @@ def from_payloads(rows: list[dict] | None) -> list[Quest]:
                 need=int(row.get("need", 1)),
                 done=bool(row.get("done", False)),
                 risk=bool(row.get("risk", False)),
+                gold=bool(row.get("gold", False)),
             )
         )
     return out

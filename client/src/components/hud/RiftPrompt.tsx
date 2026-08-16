@@ -7,6 +7,7 @@
 
 import { Tooltip, TooltipKey } from './Tooltip';
 import type { HudRiftPrompt } from '../../game/hud-store';
+import { QuestCount } from './QuestCount';
 
 export interface RiftPromptProps {
   prompt: HudRiftPrompt | null;
@@ -28,9 +29,7 @@ export function RiftPrompt({ prompt }: RiftPromptProps) {
       <Tooltip
         anchor="rift"
         end={
-          <span className="text-ink-muted tabular-nums">
-            {prompt.have}/{prompt.need}
-          </span>
+          <QuestCount have={prompt.have} need={prompt.need} gold />
         }
       >
         <span className="text-hp-low">Inventário vazio</span>
@@ -42,9 +41,7 @@ export function RiftPrompt({ prompt }: RiftPromptProps) {
     <Tooltip
       anchor="rift"
       end={
-        <span className="text-ink-accent tabular-nums">
-          {prompt.have}/{prompt.need}
-        </span>
+        <QuestCount have={prompt.have} need={prompt.need} gold />
       }
     >
       Aperte <TooltipKey>E</TooltipKey> para alimentar a fenda

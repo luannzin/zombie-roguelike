@@ -173,6 +173,11 @@ export interface HudSnapshot {
    * once the anomaly is up and the feed quest is live.
    */
   riftPrompt: HudRiftPrompt | null;
+  /**
+   * Extraction-exit caret. Pose is written every frame (`exit-guide.ts`);
+   * this flag only mounts the HUD node.
+   */
+  exitGuide: boolean;
   /** The pocket. Null before welcome. Open/close is client-local (TAB). */
   inventory: HudInventory | null;
   /** The gun belt. Always on screen; 1/2/3 selects. */
@@ -201,6 +206,7 @@ export const EMPTY_HUD: HudSnapshot = {
   lootPrompt: null,
   cratePrompt: false,
   riftPrompt: null,
+  exitGuide: false,
   inventory: null,
   hotbar: null,
   quests: [],

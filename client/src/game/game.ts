@@ -99,6 +99,7 @@ import {
   dropTooltipAnchor,
   writeTooltipAnchor,
 } from './tooltip-anchors';
+import { dropExitGuide, rayToScreenEdge, writeExitGuide } from './exit-guide';
 
 const MAX_TICKS_PER_FRAME = 5;
 /** Extra camera punch when local shot lands on a target. */
@@ -569,6 +570,7 @@ export class Game {
     setClimate('clear');
     this.lantern.reset();
     clearTooltipAnchors();
+    dropExitGuide();
     clearInventoryAnchors();
     clearLootFlies();
     bindInventoryDrop(null);
@@ -1786,7 +1788,6 @@ export class Game {
       loot,
       corpses,
       residues: this.residues,
-      guide: this.guidePose(),
       weather: this.zone?.weather ?? 'clear',
       effects: this.effects,
       fov: this.fov,
@@ -2181,6 +2182,7 @@ export class Game {
       lootPrompt: this.lootPromptInfo(),
       cratePrompt: this.cratePromptInfo(),
       riftPrompt: this.riftPrompt(),
+      exitGuide: this.guidePose() !== null,
       inventory: this.inventoryHud(),
       hotbar: this.hotbarHud(),
       net: {
@@ -2630,8 +2632,7 @@ export class Game {
   /**
    * Point the local player at the extraction exit while that quest is live.
    *
-   * Drawn in world space after the darkness pass — the lamps are dead and
-   * this is how you still know where to run.
+   * The HUD caret reads this pose; it is not drawn in the forest.
    */
   private guidePose(): { fromX: number; fromY: number; toX: number; toY: number } | null {
     const exit = this.quests.find((quest) => quest.id === 'exit');
@@ -3054,6 +3055,41 @@ export class Game {
     } else {
       dropTooltipAnchor('crate');
     }
+
+    this.syncExitGuide(view);
+  }
+
+  /**
+   * HUD caret: halfway from the player to the screen edge, in the exit's
+   * direction, so it is always on glass and always pointing the way out.
+   */
+  private syncExitGuide(view?: ReturnType<typeof projectionFor>): void {
+    const pose = this.guidePose();
+    if (!pose || this.introLeft > 0) {
+      dropExitGuide();
+      return;
+    }
+    const projection = view ?? projectionFor(this.camera);
+    const px = projection.rawX(pose.fromX);
+    const py = projection.rawY(pose.fromY);
+    const dx = projection.rawX(pose.toX) - px;
+    const dy = projection.rawY(pose.toY) - py;
+    const length = Math.hypot(dx, dy);
+    if (length < 1) {
+      dropExitGuide();
+      return;
+    }
+    const ux = dx / length;
+    const uy = dy / length;
+    const edge = rayToScreenEdge(
+      px,
+      py,
+      ux,
+      uy,
+      this.canvas.clientWidth,
+      this.canvas.clientHeight,
+    );
+    writeExitGuide((px + edge.x) * 0.5, (py + edge.y) * 0.5, Math.atan2(uy, ux));
   }
 
   /**

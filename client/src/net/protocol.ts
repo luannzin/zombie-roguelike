@@ -388,6 +388,8 @@ export interface QuestState {
   done?: boolean;
   /** Dangerous work — the HUD paints the count in the danger tone. */
   risk?: boolean;
+  /** Progress is catalog gold — the HUD draws the coin badge next to it. */
+  gold?: boolean;
 }
 
 export interface MapPayload {

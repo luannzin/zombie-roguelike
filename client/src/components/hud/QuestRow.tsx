@@ -9,6 +9,7 @@
 
 import { cn } from '@/lib/utils';
 import type { HudQuest } from '../../game/hud-store';
+import { QuestCount } from './QuestCount';
 
 export type QuestRowMode = 'ghost' | 'live' | 'shown' | 'leaving';
 
@@ -21,11 +22,6 @@ export interface QuestRowProps {
 
 export function QuestRow({ quest, mode, dockRef, onGone }: QuestRowProps) {
   const done = quest.done || mode === 'leaving';
-  const countTone = done
-    ? 'text-ink-accent'
-    : quest.risk
-      ? 'text-hp-low'
-      : 'text-ink';
 
   return (
     <div
@@ -46,16 +42,15 @@ export function QuestRow({ quest, mode, dockRef, onGone }: QuestRowProps) {
       >
         {quest.label}
       </span>
-      <span
+      <QuestCount
         key={done ? 'done' : 'live'}
-        className={cn(
-          'inline-block shrink-0 tabular-nums tracking-[0.08em]',
-          countTone,
-          done && mode !== 'ghost' && 'animate-quest-done',
-        )}
-      >
-        {quest.have}/{quest.need}
-      </span>
+        have={quest.have}
+        need={quest.need}
+        gold={quest.gold}
+        risk={quest.risk}
+        done={done}
+        className={done && mode !== 'ghost' ? 'animate-quest-done' : undefined}
+      />
     </div>
   );
 }

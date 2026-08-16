@@ -164,7 +164,7 @@ exit, carved when the feed quota is paid — same shape as `entrance`.
 `tilePatches` are
 `[tx, ty, kind]` for the ranks of trees that just grew, or the exit
 opening. `quests` is the run
-objective list (`id`, `label`, `have`, `need`, optional `done` / `risk`) —
+objective list (`id`, `label`, `have`, `need`, optional `done` / `risk` / `gold`) —
 attached on welcome and again only when it changes.
 
 A second `welcome` (same socket) is a new zone. The client rebuilds the map

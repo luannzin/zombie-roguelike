@@ -27,7 +27,6 @@ import { DarknessLayer } from './layers/darkness';
 import { crateAnimFrame, drawFootprints, drawSceneryProp } from './layers/scenery';
 import { drawBloodPools } from './layers/corpses';
 import { CorruptionField } from './layers/corruption';
-import { drawGuide } from './layers/guide';
 import {
   chargeHandoff,
   drawRiftGlow,
@@ -425,15 +424,6 @@ export class Renderer {
     // Hunt tell sits ON the night: a hunter you cannot see still wears the
     // diamond, so killing the lamp does not hide that it has you.
     drawAlertMarks(entity, state.entities, state.time);
-    if (state.guide) {
-      drawGuide(
-        entity,
-        state.guide.fromX,
-        state.guide.fromY,
-        state.guide.toX,
-        state.guide.toY,
-      );
-    }
 
     // Screen space: labels, numbers, then the full-screen vignette.
     this.useScreenSpace();

@@ -191,6 +191,17 @@ def from_payload(row: dict | None) -> Rift | None:
 
 #: Tiles of treeline kept clear at every edge. Matches `scenery.BORDER`.
 BORDER = 2
+
+#: KEEP-OUT FROM THE MAP'S OWN EDGE, in tiles, beyond the plot itself.
+#:
+#: `BORDER` alone is the treeline's width — enough to stop a scene hanging off
+#: the world, and nowhere near enough for this. The extraction point is a place
+#: you fight AT: you get pushed off it, you circle it, you come back to it. Two
+#: tiles of forest behind it means half of that happens against an invisible
+#: wall, and the map's edge is the one wall with nothing on screen explaining
+#: it. It is also the destination of the whole run, so landing it in a corner
+#: wastes the walk out that `route` exists to shape.
+EDGE_MARGIN = 8
 #: How much of the plot must ALREADY be open ground for a spot to qualify.
 #:
 #: This is the connectivity rule wearing a costume. Clearing a 7x7 box adds
@@ -241,8 +252,15 @@ def place(
     The clearances are RELAXED rather than absolute. A cramped map that cannot
     honour them should still get an extraction point somewhere imperfect: the
     isolation is what makes the structure read best, but having one at all is
-    what makes the run work. Each pass loosens both distances, so the first
-    attempt is the one that gets the good spot and the last one takes anything.
+    what makes the run work.
+
+    THEY DO NOT ALL GIVE WAY AT THE SAME RATE, and the order is the ranking.
+    Distance from the other scenes goes first — a rift a bit close to a cabin
+    is merely less striking. Distance from spawn goes next. The MAP EDGE holds
+    at full strength through three passes and only bends in the last two,
+    because it is the only one of the three whose failure is not cosmetic: you
+    fight at this place, and a wall the screen does not explain is worse than
+    a structure that landed nearer a campsite than you would have liked.
     """
     height = len(tiles)
     width = len(tiles[0]) if tiles else 0
@@ -250,10 +268,19 @@ def place(
         return None
 
     aim = route[-1] if route else None
-    for relax in (1.0, 0.7, 0.45, 0.0):
-        scene_clear = SCENE_CLEARANCE * relax
-        spawn_clear = SPAWN_CLEARANCE * relax
-        for tx, ty in _candidates(width, height, aim, origin, rng):
+    for scene_relax, spawn_relax, edge_relax in (
+        (1.00, 1.00, 1.00),
+        (0.70, 0.85, 1.00),
+        (0.40, 0.65, 1.00),
+        (0.15, 0.40, 0.75),
+        (0.00, 0.00, 0.50),
+    ):
+        scene_clear = SCENE_CLEARANCE * scene_relax
+        spawn_clear = SPAWN_CLEARANCE * spawn_relax
+        # Never past the treeline, whatever happens: a rift with its back to the
+        # forest is a compromise, a rift hanging off the map is broken.
+        margin = max(BORDER, round(EDGE_MARGIN * edge_relax))
+        for tx, ty in _candidates(width, height, aim, origin, rng, margin):
             if not _plot_open(tiles, tx, ty):
                 continue
             cx = tx + PLOT / 2.0
@@ -287,6 +314,7 @@ def _candidates(
     aim: tuple[float, float] | None,
     origin: tuple[float, float],
     rng: random.Random,
+    margin: int,
 ):
     """Plot corners to try, best first.
 
@@ -297,8 +325,8 @@ def _candidates(
     """
     corners = [
         (tx, ty)
-        for ty in range(BORDER, height - PLOT - BORDER)
-        for tx in range(BORDER, width - PLOT - BORDER)
+        for ty in range(margin, height - PLOT - margin)
+        for tx in range(margin, width - PLOT - margin)
     ]
     if aim is not None:
         target = (aim[0] - PLOT / 2.0, aim[1] - PLOT / 2.0)

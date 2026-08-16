@@ -41,7 +41,7 @@ from .config import (
     LOOT_COLLECT_DIST,
     MARCH_SPEED,
     RIFT_ACTIVATE_DIST,
-    EXIT_FIND_DIST,
+    EXIT_CROSS_TILES,
     MAX_HP,
     MAX_INPUT_QUEUE,
     MAX_INPUTS_PER_TICK,
@@ -64,7 +64,7 @@ from .rift import Rift
 from .loot import Drop
 from .quests import Quest
 from .enemies import Enemy, EnemyType, dress
-from .world import FLOOR
+from .world import FLOOR, VOID
 from .entities import InputCmd, Player, clean_name, pick_color, random_name
 from .pathing import Navigator
 from .simulation import apply_input
@@ -1161,7 +1161,7 @@ class Room:
         self._quests_dirty = True
 
     def step_quests(self) -> None:
-        """Tick progress. The exit is proximity; extract ticks on the console."""
+        """Tick progress. The exit is crossing the VOID; extract ticks on the console."""
         if self.quests:
             self._tick_exit_quest()
 
@@ -1171,13 +1171,23 @@ class Room:
         quest = next((q for q in self.quests if q.id == quests.EXIT), None)
         if quest is None or quest.done:
             return
-        mx, my = self.egress.mouth_x, self.egress.mouth_y
-        reach = EXIT_FIND_DIST * EXIT_FIND_DIST
-        reached = any(
-            p.alive and (p.x - mx) ** 2 + (p.y - my) ** 2 <= reach
-            for p in self.players.values()
-        )
-        if not reached:
+        ts = TILE_SIZE
+        hh = PLAYER_HALF_HEIGHT
+        crossed = False
+        for player in self.players.values():
+            if not player.alive:
+                continue
+            feet_y = player.y + hh
+            tx = int(player.x // ts)
+            ty = int(feet_y // ts)
+            if ty < 0 or tx < 0 or ty >= self.world.height or tx >= self.world.width:
+                continue
+            if self.world.tiles[ty][tx] != VOID:
+                continue
+            if self.egress.into_corridor(player.x, feet_y, EXIT_CROSS_TILES):
+                crossed = True
+                break
+        if not crossed:
             return
         quest.have = quest.need
         quest.done = True

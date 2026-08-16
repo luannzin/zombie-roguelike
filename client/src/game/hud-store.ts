@@ -174,7 +174,7 @@ export interface HudSnapshot {
    */
   riftPrompt: HudRiftPrompt | null;
   /**
-   * Extraction-exit caret. Pose is written every frame (`exit-guide.ts`);
+   * Extraction-exit arrow. Pose is written every frame (`exit-guide.ts`);
    * this flag only mounts the HUD node.
    */
   exitGuide: boolean;

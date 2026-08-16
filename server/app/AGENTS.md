@@ -146,10 +146,14 @@ game's scale.
   find every pad (`extract`, `0/N`, offered the tick the entrance goes
   `gone`, ticked when a console is pressed), feed the open anomalies
   (`feed`, catalog gold from the pocket — the row carries `gold` so the
-  HUD draws the coin), then run for the carved exit (`exit`, `risk`).
-  The exit is proximity (`EXIT_FIND_TILES`). Paying
+  HUD draws the coin),   then run for the carved exit (`exit`, `risk`).
+  The exit is a VOID corridor on a random map edge (`entrance.open_exit`),
+  the same shape as the camp walk-out. VOID is walkable only while
+  `world.egress` is set; camp and the forest arrival stay solid. The
+  quest ticks when a living player stands on VOID past the FLOOR mouth
+  (`EXIT_CROSS_TILES`), not on proximity to the threshold. Paying
   the quota collapses every pad, opens egress, blackout, and panic-hunt.
-  Reaching the mouth returns the party to camp (`Room.return_home`) and
+  Crossing the corridor returns the party to camp (`Room.return_home`) and
   increments the day. Do not auto-remove a row on complete — ticking
   `need/need` is the check. Camp has none.
 - Zone rules are enforced HERE, not just described to the client. A
@@ -333,10 +337,12 @@ game's scale.
   stand outside the tent the party is about to leave from is a promise the
   zone does not keep. Camp scenes also keep clear of the hearth and the exit
   mouth — the same two places the decoration mask and the walk-out already own.
-- VOID (`world.VOID`) is a winding path of solid forest floor between trees.
-  Players bounce off it. Only the walk-out may place a body on it. The carve
-  wanders and frays; the client paints ground and crushes a darkness falloff
-  around it — a shadowed gap, not a corridor and not a missing texture.
+- VOID (`world.VOID`) is a winding path of forest floor between trees.
+  Camp and the forest arrival keep it solid — players bounce, and only the
+  walk-out may puppet a body onto it. After the feed quota, `egress` opens
+  and VOID on that map becomes the walkable extraction corridor: find the
+  dark gap on the edge and cross it. The carve wanders and frays; the
+  client paints ground and crushes a darkness falloff around it.
 - `{type:"ready"}` toggles `Player.ready` only when the feet are inside
   `CAMP_READY_RANGE_TILES` of the fire, the zone is camp, and the room is not
   already departing. When every living player is ready, `begin_depart()` runs.

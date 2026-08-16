@@ -23,7 +23,7 @@ seam React is allowed to read.
 | `lantern.ts` | four-cell battery, produces `output` 0..1 |
 | `hud-store.ts` | the only seam to React; `HUD_INTERVAL` = 0.2 s |
 | `tooltip-anchors.ts` | screen-space points for world `Tooltip`s, written every frame |
-| `exit-guide.ts` | screen-space pose for the extraction-exit caret, written every frame |
+| `exit-guide.ts` | screen-space pose for the extraction-exit arrow, written every frame |
 | `inventory-anchors.ts` | screen-space centres for the HUD bag (pack + slots) |
 | `inventory-actions.ts` | bag → socket: `Game` binds `drop`; React never owns the connection |
 | `loot-flies.ts` | collect flies: hold over the head, then travel; membership is a store, pose is per-frame |
@@ -45,7 +45,7 @@ seam React is allowed to read.
   roster, a bag toss, `selectHotbar`) reassigns `carryWeight` on the spot.
 - `hud-store.ts` is the only channel to the UI for state. World tooltip
   positions travel through `tooltip-anchors.ts` (written every frame, never
-  subscribed). The exit caret pose travels through `exit-guide.ts` the same
+  subscribed). The exit arrow pose travels through `exit-guide.ts` the same
   way. Nothing here may touch the DOM beyond the two canvases
   `game.ts` owns.
 - **`Game` does not own its socket.** The connection is created by
@@ -204,11 +204,11 @@ seam React is allowed to read.
     is already answering reads as the first press not having registered.
   - Activation is one-way. There is no packet to switch it off. Collapse is
     the feed quota, not a timer.
-  - The exit caret (`hud/ExitGuide`) is gold HUD chrome, not a sprite in
-    the forest. Pose is written every frame (`exit-guide.ts`): halfway
-    from the player to the screen edge in the exit's direction, so it is
-    always on glass. It sits outside `HudScreen` — the fish-eye would
-    pull it off that midpoint.
+  - The exit arrow (`hud/ExitGuide`, `/hud/arrow.png`) is generated HUD
+    chrome, not a sprite in the forest. Pose is written every frame
+    (`exit-guide.ts`) onto the screen edge in the exit's direction,
+    aimed at the corridor's outer end (`egress.back`). It sits outside
+    `HudScreen` — the fish-eye would pull it off that bezel.
 - `Game.lights` is bonfires read off the tiles PLUS whatever the map's scenes
   are still burning (`world.scenery.lights`), on one list. The lighting has no
   concept of a camp light versus a forest light and must not grow one. Rebuild
@@ -216,16 +216,20 @@ seam React is allowed to read.
   one takes it off (`rebuildLights`). A snapshot taken only at welcome leaves
   the pad dark after the tear.
 - VOID is a winding gap in the treeline, not a missing floor and not a
-  rectangle: solid, painted as ground, crushed by a darkness falloff.
+  rectangle: painted as ground, crushed by a darkness falloff.
   `blocksSight` lets light fall into it so the trees do not close into a
   wall; the darkness pass then kills the warmth along the path so leaked
-  firelight never turns the mouth into a hallway. Forest `world.entrance`
+  firelight never turns the mouth into a hallway. It is solid at camp and
+  on the forest arrival; once `world.egress` is set it is the walkable
+  extraction corridor — the same dark gap the party already walked out of
+  the camp through. Forest `world.entrance`
   is the same shape on a random edge: after the emerge, `tilePatches`
   turn those tiles to TREE. `Renderer.stampTiles` paints the new trunks
   into the prop bake and `DarknessLayer.invalidatePath` lets the crush
   recede; the minimap rebuilds so the corridor filling in is visible.
   Soil under VOID was already forest floor — do not rebuild the ground
-  canvas for a slam.
+  canvas for a slam. Egress opening is the inverse: VOID appears in the
+  treeline and `stampTiles` plus `invalidatePath` bring the crush back.
 - **The summon sheet is the clock.** `SUMMON_TIME` is the sheet's
   `frames / fps` and `SUMMON_IMPACT` mirrors `IMPACT_AT` in
   `server/tools/make_vfx.py`; the body must finish resolving on the frame the
@@ -380,7 +384,7 @@ seam React is allowed to read.
   `prompt`; a nearby drop uses `lootPrompt`; the pocket uses `inventory`;
   the walk-out and the forest emerge use `cinematic`; a crate in reach uses
   `cratePrompt`; a pad in reach uses `riftPrompt` (`open` / `feed`); the
-  extraction exit caret uses `exitGuide`. Run
+  extraction exit arrow uses `exitGuide`. Run
   objectives use `quests` — announced at top-centre,
   then flown into the card under the minimap the way a collect flies into
   the bag. Completed rows rise and leave; the HUD dismisses them after

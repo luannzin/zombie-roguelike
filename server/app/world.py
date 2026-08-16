@@ -10,10 +10,12 @@ Python literals or generated procedurally.
               tree is walking on those tiles. A second TREE there is another
               trunk, not this one's leaves.
     3 FIRE    solid campfire — a lit tile, and a landmark
-    4 VOID    solid gap — winding forest floor between trees, too dark to
-              walk into. Blocks bodies, not light; the client paints ground
-              and crushes a darkness falloff around the path so it reads as
-              a hole in the woods, not as a missing texture or a corridor.
+    4 VOID    dark gap — winding forest floor between trees. Blocks light
+              never; blocks bodies UNLESS an extraction `egress` is open,
+              in which case it is the corridor you walk into to leave.
+              Camp and the forest arrival stay solid (no egress). The
+              client paints ground and crushes a darkness falloff around
+              the path so it reads as a hole in the woods.
     5 PROP    solid DOORSTEP of a BUILDING placed by scenery.py — one tile
               tall, at the contact. The client paints ground here and draws
               nothing: the cabin or tent sprite covers it, including the
@@ -27,17 +29,17 @@ Python literals or generated procedurally.
               You can see your target over the log and still not shoot through
               it, which is what cover is supposed to mean.
 
-Solidity is `!= FLOOR`, so movement, pathing and hitscan pick up a new kind for
-free. SIGHT is `blocks_sight`, which is the narrower question and has its own
-exceptions: FIRE (knee-high, and it is the thing doing the lighting), VOID (a
-gap between trees — light falls in) and LOW.
+Solidity is `!= FLOOR` with one named exception: VOID is walkable while
+`egress` is set. SIGHT is `blocks_sight`, which is the narrower question and
+has its own exceptions: FIRE (knee-high, and it is the thing doing the
+lighting), VOID (a gap between trees — light falls in) and LOW.
 
-Only FLOOR is walkable, and the solidity test is `!= FLOOR` rather than a list
-of known blockers: adding a fifth tile kind (water, rubble, a bush) is then a
-generator change and a client sprite, never a change to collision, pathing or
-raycasting. `WALL` remains as an alias for ROCK so hand-drawn ASCII maps keep
-building. VOID is the same solidity contract as a tree, with floor art and
-no prop: the camp exit is a shadowed winding path, not a black rectangle.
+FLOOR is always walkable. VOID becomes walkable only as the extraction
+corridor — camp VOID and the sealed-until-gone arrival stay solid because
+those maps have no `egress`. Adding a new blocker is still `!= FLOOR`, not a
+list. `WALL` remains as an alias for ROCK so hand-drawn ASCII maps keep
+building. VOID is floor art with no prop: a shadowed winding path, not a
+black rectangle.
 
 FIRE is a tile rather than an entity for exactly that reason. It blocks, it
 casts a shadow and it stops a shot with no special case anywhere, and the client
@@ -118,7 +120,10 @@ class TileMap:
     def is_solid_tile(self, tx: int, ty: int) -> bool:
         if tx < 0 or ty < 0 or tx >= self.width or ty >= self.height:
             return True
-        return self.tiles[ty][tx] != FLOOR
+        tile = self.tiles[ty][tx]
+        if tile == VOID:
+            return self.egress is None
+        return tile != FLOOR
 
     def is_solid_at(self, x: float, y: float) -> bool:
         return self.is_solid_tile(int(x // TILE_SIZE), int(y // TILE_SIZE))

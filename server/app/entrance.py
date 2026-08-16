@@ -95,6 +95,16 @@ class Entrance:
         along = (x - self.mouth_x) * self.dx + (y - self.mouth_y) * self.dy
         return along >= TILE_SIZE * 1.15
 
+    def into_corridor(self, x: float, y: float, depth_tiles: float) -> bool:
+        """True when a body has walked from the mouth toward the map edge.
+
+        `dx`/`dy` point inward (the emerge direction). Extraction is the
+        other way: into the VOID that still sits between the mouth and the
+        treeline. Standing on the FLOOR mouth is not crossing.
+        """
+        along = (self.mouth_x - x) * self.dx + (self.mouth_y - y) * self.dy
+        return along >= TILE_SIZE * depth_tiles
+
 
 def from_payload(row: dict | None) -> Entrance | None:
     if not row:
@@ -196,9 +206,10 @@ def open_exit(
     the one the party walked in through, and rolls back a side that would
     disconnect the floor.
 
-    The mouth is FLOOR — that is where the arrow points and where E is not
-    needed: walking there is finding it. VOID behind it is the dark path out,
-    the same contract as the camp exit.
+    The mouth is FLOOR — the threshold the forest hands you. VOID toward the
+    edge is the corridor you walk into, the same dark gap as the camp exit
+    and the forest arrive. Finding it is seeing that gap; leaving is
+    crossing it. No E.
     """
     from .maps import count_reachable
 

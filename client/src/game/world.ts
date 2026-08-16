@@ -3,8 +3,9 @@
  *
  * `moveAxis` MUST stay numerically identical to the Python version, otherwise
  * client prediction and the server disagree near walls and the local player
- * rubber-bands. VOID is solid like a tree — the camp exit is a shadowed
- * winding path in the woods, not a hole in the ground.
+ * rubber-bands. VOID is a shadowed winding path in the woods, not a hole
+ * in the ground: solid at camp and on the forest arrival, walkable only
+ * while an extraction `egress` is open.
  */
 
 import type { MapPayload } from '../net/protocol';
@@ -15,7 +16,7 @@ export const ROCK = 1;
 /** Solid trunk — one tile, the contact. The canopy is art on the tiles above. */
 export const TREE = 2;
 export const FIRE = 3;
-/** Solid gap in the trees. Painted as floor, blocks bodies, not light. */
+/** Dark gap in the trees. Painted as floor; walkable only with `egress`. */
 export const VOID = 4;
 /**
  * Solid doorstep of a BUILDING from a placed scene — one tile tall, at the
@@ -304,15 +305,17 @@ export class TileMap {
   }
 
   /**
-   * Anything that is not floor blocks movement and shots. Testing for
-   * "not floor" rather than a list of known blockers is what lets the server
-   * add a tile kind without touching collision on either side. Sight is
-   * `blocksSight` — a fire, the camp exit and waist-high cover stop a body
-   * but not a beam.
+   * Anything that is not floor blocks movement and shots, with one named
+   * exception: VOID is walkable while `egress` is set (the extraction
+   * corridor). Camp VOID and the forest arrival stay solid because those
+   * maps have no egress. Sight is `blocksSight` — a fire, the camp exit
+   * and waist-high cover stop a body but not a beam.
    */
   isSolidTile(tx: number, ty: number): boolean {
     if (tx < 0 || ty < 0 || tx >= this.width || ty >= this.height) return true;
-    return this.tiles[ty][tx] !== FLOOR;
+    const tile = this.tiles[ty][tx];
+    if (tile === VOID) return this.egress == null;
+    return tile !== FLOOR;
   }
 
   /**

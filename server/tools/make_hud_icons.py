@@ -18,6 +18,8 @@ Output (assets/processed/hud/):
     battery.png    one 10x18 frame — a single cell of the lantern's battery
     backpack.png   one 16x16 frame — the pocket on the HUD, seen from the back
     coin.png       one 8x8 frame — slot gold badge, not the world pickup
+    arrow.png      one 13x9 frame — gold pointer, authored pointing right;
+                   ExitGuide rotates it toward the extraction corridor
 
 Why one frame and not a strip of charge levels: the HUD draws this sprite FOUR
 times side by side and drains each one from the top down by clipping a
@@ -73,6 +75,18 @@ BOLT_ART = (
     ".###",
     ".##.",
     ".#..",
+)
+
+# Right-pointing HUD arrow. Authored pointing right so CSS rotate(atan2)
+# aims it; a diamond would not say "walk this way" at the bezel.
+ARROW_ART = (
+    "....#......",
+    "....##.....",
+    "....###....",
+    "###########",
+    "....###....",
+    "....##.....",
+    "....#......",
 )
 
 
@@ -164,6 +178,22 @@ def make_coin(size: int = 8) -> Image.Image:
     return paint_coin(img)
 
 
+def make_arrow() -> Image.Image:
+    """Gold pointer for the extraction exit. 13x9, pointing right, 1px pad."""
+    art_w = max(len(row) for row in ARROW_ART)
+    art_h = len(ARROW_ART)
+    img = Image.new("RGBA", (art_w + 2, art_h + 2), TRANSPARENT)
+    px = img.load()
+    for row, line in enumerate(ARROW_ART):
+        for col, char in enumerate(line):
+            if char != "#":
+                continue
+            across = col / max(1, art_w - 1)
+            px[1 + col, 1 + row] = pick(CELL, 0.42 + across * 0.52, 1 + col, 1 + row)
+    outline(img, OUTLINE)
+    return img
+
+
 def stamp(
     px,
     art: tuple[str, ...],
@@ -204,6 +234,11 @@ def build(args) -> Path:
     coin_path = out_dir / "coin.png"
     coin.save(coin_path)
     print(f"wrote {coin_path} ({coin.width}x{coin.height})")
+
+    arrow = make_arrow()
+    arrow_path = out_dir / "arrow.png"
+    arrow.save(arrow_path)
+    print(f"wrote {arrow_path} ({arrow.width}x{arrow.height})")
     return out_dir
 
 

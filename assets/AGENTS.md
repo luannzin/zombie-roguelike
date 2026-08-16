@@ -26,7 +26,7 @@ output the game actually loads.
   `/player/sheet.png`, `/backpack/sheet.png`, `/zombie-husk/sheet.png`,
   `/zhat-cap/sheet.png`, `/terrain/ground_loam.png`,
   `/scenery/cabin.png`, `/loot/sheet.png`, `/guns/sheet.png`, `/hud/backpack.png`,
-  `/hud/coin.png`, ….
+  `/hud/coin.png`, `/hud/arrow.png`, ….
 - `terrain/` is the PLACE — soil, stone, wood that grew there — and the client
   scatters it off the map seed. `scenery/` was carried in by somebody, and it
   arrives placed in groups from `server/app/scenery.py`. Two folders because

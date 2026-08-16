@@ -304,7 +304,7 @@ mutation, no React.
   frames are STATES, never variants — `riftPropFrame` takes the state, and
   hashing one would make the extraction point flicker between on and off.
   A night can carry more than one pad; each has its own `CorruptionField`
-  keyed by `rift.id`. The exit caret is HUD chrome (`hud/ExitGuide`), not
+  keyed by `rift.id`. The exit arrow is HUD chrome (`hud/ExitGuide`), not
   a world sprite.
 - **Every rift sheet carries its own colour, and `tinted` is the flag that
   says so.** The whole structure is painted from ONE iridescent prism: the

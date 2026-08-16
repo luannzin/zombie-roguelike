@@ -93,7 +93,7 @@ import { clearLootFlies, listLootFlies, spawnLootFly, stepLootFlies } from './lo
 import { warpHudPoint } from '../lib/lens';
 import { LocalPlayer } from './prediction';
 import { carryBurden } from './simulation';
-import { crateFootprint, FLOOR, hearthMask, TileMap, type Rift } from './world';
+import { crateFootprint, FLOOR, VOID, hearthMask, TileMap, type Rift } from './world';
 import {
   clearTooltipAnchors,
   dropTooltipAnchor,
@@ -805,6 +805,21 @@ export class Game {
         playSfx('void', { jitter: 0 });
       }
     }
+    // Egress before the patches: VOID is walkable only once the exit exists,
+    // and the same snapshot carves those tiles.
+    if (msg.egress && this.world) {
+      this.world.setEgress({
+        side: msg.egress.side,
+        mouthX: msg.egress.mouth[0],
+        mouthY: msg.egress.mouth[1],
+        backX: msg.egress.back[0],
+        backY: msg.egress.back[1],
+        dirX: msg.egress.dir[0],
+        dirY: msg.egress.dir[1],
+        state: msg.egress.state,
+        elapsed: msg.egress.t,
+      });
+    }
     if (msg.tilePatches && msg.tilePatches.length > 0) {
       this.applyTilePatches(msg.tilePatches);
     }
@@ -899,19 +914,6 @@ export class Game {
     for (const ev of msg.crateBreaks ?? []) this.onCrateBreak(ev);
     if (msg.rifts) {
       for (const row of msg.rifts) this.onRiftState(row);
-    }
-    if (msg.egress && this.world) {
-      this.world.setEgress({
-        side: msg.egress.side,
-        mouthX: msg.egress.mouth[0],
-        mouthY: msg.egress.mouth[1],
-        backX: msg.egress.back[0],
-        backY: msg.egress.back[1],
-        dirX: msg.egress.dir[0],
-        dirY: msg.egress.dir[1],
-        state: msg.egress.state,
-        elapsed: msg.egress.t,
-      });
     }
     if (msg.blackout) this.lantern.kill();
     if (msg.corpses) this.mergeCorpses(msg.corpses);
@@ -2632,7 +2634,7 @@ export class Game {
   /**
    * Point the local player at the extraction exit while that quest is live.
    *
-   * The HUD caret reads this pose; it is not drawn in the forest.
+   * The HUD arrow reads this pose; it is not drawn in the forest.
    */
   private guidePose(): { fromX: number; fromY: number; toX: number; toY: number } | null {
     const exit = this.quests.find((quest) => quest.id === 'exit');
@@ -2642,8 +2644,8 @@ export class Game {
     return {
       fromX: local.state.x,
       fromY: local.state.y,
-      toX: egress.mouthX,
-      toY: egress.mouthY,
+      toX: egress.backX,
+      toY: egress.backY,
     };
   }
 
@@ -3060,8 +3062,8 @@ export class Game {
   }
 
   /**
-   * HUD caret: halfway from the player to the screen edge, in the exit's
-   * direction, so it is always on glass and always pointing the way out.
+   * HUD arrow: parked on the screen edge in the exit's direction, always
+   * on the bezel and always pointing at the VOID corridor on the map edge.
    */
   private syncExitGuide(view?: ReturnType<typeof projectionFor>): void {
     const pose = this.guidePose();
@@ -3089,7 +3091,7 @@ export class Game {
       this.canvas.clientWidth,
       this.canvas.clientHeight,
     );
-    writeExitGuide((px + edge.x) * 0.5, (py + edge.y) * 0.5, Math.atan2(uy, ux));
+    writeExitGuide(edge.x, edge.y, Math.atan2(uy, ux));
   }
 
   /**
@@ -3149,29 +3151,41 @@ export class Game {
     const world = this.world;
     if (!world || patches.length === 0) return;
     const ts = world.tileSize;
-    let first = true;
+    const openingExit = patches.some(([, , kind]) => kind === VOID);
     for (const [tx, ty, kind] of patches) {
       world.setTile(tx, ty, kind);
-      const x = (tx + 0.5) * ts;
-      const y = (ty + 1) * ts;
-      this.effects.spawnDust(x, y, 0, 1, 1, 1.6);
-      this.effects.spawnDust(x, y, 0, -1, -1, 1.1);
-      if (first) {
-        this.effects.spawnWind(x, y, WIND_LIFE);
-        first = false;
-      }
     }
     const mid = patches[(patches.length / 2) | 0];
-    if (mid && throttled('seal', 0.08, this.time)) {
-      playSfxAt('crate-break', (mid[0] + 0.5) * ts, (mid[1] + 1) * ts);
-    }
-    this.camera.addTrauma(SEAL_TRAUMA);
-    // The last rank is the door shutting. A second void drone plus a harder
-    // shove, so the player feels there is no way back rather than watching
-    // trees finish appearing.
-    if (world.entrance?.state === 'gone') {
-      this.camera.addTrauma(SEAL_TRAUMA_START);
+    const mx = mid ? (mid[0] + 0.5) * ts : 0;
+    const my = mid ? (mid[1] + 1) * ts : 0;
+    if (openingExit) {
+      // A corridor appearing in the treeline, not trees slamming shut.
+      this.effects.spawnWind(mx, my, WIND_LIFE);
+      this.camera.addTrauma(SEAL_TRAUMA);
       playSfx('void', { jitter: 0 });
+    } else {
+      let first = true;
+      for (const [tx, ty] of patches) {
+        const x = (tx + 0.5) * ts;
+        const y = (ty + 1) * ts;
+        this.effects.spawnDust(x, y, 0, 1, 1, 1.6);
+        this.effects.spawnDust(x, y, 0, -1, -1, 1.1);
+        if (first) {
+          this.effects.spawnWind(x, y, WIND_LIFE);
+          first = false;
+        }
+      }
+      if (mid && throttled('seal', 0.08, this.time)) {
+        playSfxAt('crate-break', mx, my);
+      }
+      this.camera.addTrauma(SEAL_TRAUMA);
+      // The last rank is the door shutting. A second void drone plus a harder
+      // shove, so the player feels there is no way back rather than watching
+      // trees finish appearing.
+      if (world.entrance?.state === 'gone') {
+        this.camera.addTrauma(SEAL_TRAUMA_START);
+        playSfx('void', { jitter: 0 });
+      }
     }
     this.renderer?.stampTiles(world, patches);
     this.minimap.rebuildTiles();

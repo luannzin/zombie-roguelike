@@ -377,11 +377,10 @@ CRATE_BREAK_DIST = TILE_SIZE * CRATE_BREAK_TILES
 # pixel-hunting at the worst possible moment.
 RIFT_ACTIVATE_TILES = 2.75
 RIFT_ACTIVATE_DIST = TILE_SIZE * RIFT_ACTIVATE_TILES
-# How close a living player has to get to the extraction EXIT before the
-# "Encontre a saída" quest ticks. Tighter than finding a rift: the mouth is
-# a point on an edge, and the arrow is already pointing at it.
-EXIT_FIND_TILES = 5.0
-EXIT_FIND_DIST = TILE_SIZE * EXIT_FIND_TILES
+# How far into the extraction VOID a living player must walk, past the
+# FLOOR mouth toward the map edge, before "Encontre a saída" ticks.
+# Standing at the threshold is finding it; crossing the dark is leaving.
+EXIT_CROSS_TILES = 1.75
 # Quieter than a gunshot — wood giving way, not a muzzle.
 CRATE_NOISE_TILES = 5.5
 CRATE_NOISE_DIST = TILE_SIZE * CRATE_NOISE_TILES

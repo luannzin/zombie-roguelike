@@ -1,5 +1,5 @@
 /**
- * Screen-space pose for the extraction-exit caret.
+ * Screen-space pose for the extraction-exit arrow.
  *
  * The game writes this every frame from the same camera the canvas used.
  * `ExitGuide` reads it in its own rAF and sets a transform — no React state,
@@ -13,8 +13,8 @@ export interface ExitGuidePose {
   angle: number;
 }
 
-/** Keep the caret off the glass edge so it stays readable. */
-const EDGE_INSET = 28;
+/** Keep the arrow on the HUD bezel, just inside the glass edge. */
+const EDGE_INSET = 22;
 
 let pose: ExitGuidePose | null = null;
 

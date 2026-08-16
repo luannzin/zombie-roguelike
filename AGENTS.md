@@ -121,9 +121,10 @@ subtree.
   fenda` (catalog gold from the pocket — guns stay on the
   belt — the HUD draws the coin badge). Paying the quota collapses every pad, carves a new exit on a
   random edge, kills every lantern, and puts the whole pack on hunt
-  (`Encontre a saída`, risk). A gold caret on the HUD points the way,
-  halfway from the player to the screen edge. Reaching the mouth returns the party to
-  camp and increments the day. The world is already laid out for the
+  (`Encontre a saída`, risk). A gold HUD arrow (`/hud/arrow.png`) sits on
+  the screen edge and points at the VOID corridor carved on a random map
+  edge — the same dark gap as the camp exit. Crossing that corridor returns
+  the party to camp and increments the day. The world is already laid out for the
   walk — `server/app/scenery.py` returns the ROUTE its scenes are strung
   along (outward from the mouth ending at the landmark), `SceneLight`/
   `BEACON` is the channel a beacon arrives on, and the boot prints

@@ -1,15 +1,14 @@
 /**
- * Extraction-exit caret. Gold HUD chrome, not a sprite in the forest.
+ * Extraction-exit pointer. Generated HUD sprite (`/hud/arrow.png`), not a
+ * diamond in CSS and not a sprite in the forest.
  *
- * Sits OUTSIDE HudScreen: the glass would bend it off the geometric
- * midpoint, and the whole point of the pose is that it is always on
- * screen, halfway from the player to the edge in the exit's direction.
- * Show/hide is `hud-store` at 5 Hz; the pixels are rAF.
+ * Sits OUTSIDE HudScreen: the glass would bend it off the screen edge,
+ * and the whole point of the pose is that it rides the HUD bezel in the
+ * exit's direction. Show/hide is `hud-store` at 5 Hz; the pixels are rAF.
  */
 
 import { useEffect, useRef } from 'react';
 import { readExitGuide } from '../../game/exit-guide';
-import { PixelCaret } from './PixelCaret';
 
 export interface ExitGuideProps {
   visible: boolean;
@@ -48,7 +47,14 @@ export function ExitGuide({ visible }: ExitGuideProps) {
       style={{ visibility: 'hidden' }}
       aria-hidden="true"
     >
-      <PixelCaret />
+      <img
+        src="/hud/arrow.png"
+        alt=""
+        width={13}
+        height={9}
+        draggable={false}
+        className="pixelated h-[18px] w-[26px]"
+      />
     </div>
   );
 }

@@ -159,7 +159,9 @@ zone this snapshot belongs to — drop it if it does not match the last welcome.
 row is only the live state (`open` / `sealing` / `gone`). `map.rifts` is
 the pads (day-scaled count); a snapshot `rifts` list is the live half
 when one changes. `map.egress` / snapshot `egress` is the extraction
-exit, carved when the feed quota is paid — same shape as `entrance`.
+exit, carved when the feed quota is paid — same VOID corridor as
+`entrance`, walkable once that row exists. Crossing it (standing on VOID
+past the mouth, toward the map edge) returns the party to camp.
 `blackout` is on welcome and on the snapshot that kills the lamps.
 `tilePatches` are
 `[tx, ty, kind]` for the ranks of trees that just grew, or the exit

@@ -11,7 +11,7 @@ and nowhere near the frame loop.
   `Game`; React never touches those pixels again.
 - `hud/` — ours: `Hud`, `HudScreen`, `Panel`, `Vitals`, `BatteryGauge`,
   `ProgressBar`, `StatusLine`, `NetStats`, `ControlsHint`, `ZoneTitle`,
-  `ReadyCount`, `QuestLog`, `QuestRow`, `QuestAnnounce`, `QuestCount`, `InteractPrompt`, `LootPrompt`, `CratePrompt`, `RiftPrompt`, `ExitGuide`, `PixelCaret`, `Inventory`, `InventorySlot`,
+  `ReadyCount`, `QuestLog`, `QuestRow`, `QuestAnnounce`, `QuestCount`, `InteractPrompt`, `LootPrompt`, `CratePrompt`, `RiftPrompt`, `ExitGuide`, `Inventory`, `InventorySlot`,
   `InventoryGold`, `WeightBar`, `LootIcon`, `CoinIcon`, `SlotValue`, `LootFly`, `LootCard`,
   `LootCardRow`, `TooltipCard`, `InventoryGhost`, `Tooltip`, `TooltipKey`,
   `Hotbar`, `HotbarSlot`.
@@ -69,9 +69,9 @@ and nowhere near the frame loop.
   A full bag keeps the pin and says "Inventário Cheio" in
   the danger tone — hiding it would look like the drop vanished. New
   items get a new caller, not a fork of the chrome.
-  `ExitGuide` is the gold caret for the extraction exit: outside the glass,
-  pose from `exit-guide.ts` every frame, halfway from the player to the
-  screen edge.
+  `ExitGuide` is the gold arrow for the extraction exit (`/hud/arrow.png`):
+  outside the glass, pose from `exit-guide.ts` every frame, parked on the
+  screen edge in the corridor's direction.
   `LootPrompt` has THREE states, and the middle one is why `full` is not
   enough on its own: a full BELT with a gun in hand is a trade, so the copy
   becomes "trocar {held} por {new}" with the gun being given up in the muted

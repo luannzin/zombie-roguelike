@@ -36,6 +36,8 @@ own shoulders feels awful. Position = CENTRE of the collision box; the sprite
 is drawn with its bottom edge at `y + PLAYER_HALF_HEIGHT`.
 """
 
+import math
+
 # --- scale ------------------------------------------------------------------
 TILE_SIZE = 16
 
@@ -429,6 +431,11 @@ def level_progress(xp: int) -> tuple[int, int, int]:
     return MAX_LEVEL, remaining, xp_to_next(MAX_LEVEL)
 
 
+def _finite(value: float) -> float | None:
+    """`None` for an infinite deadline, so the payload stays valid JSON."""
+    return value if math.isfinite(value) else None
+
+
 def client_config() -> dict:
     """Gameplay constants mirrored by the client's prediction code."""
     # Local import: enemies.py reads TILE_SIZE from this module, so importing it
@@ -487,6 +494,20 @@ def client_config() -> dict:
             "emergeTime": rift.EMERGE_TIME,
             "openAt": rift.OPEN_AT,
             "lightTiles": rift.LIGHT_TILES,
+            # The blast that lays the residue. `boomAt` is the frame the
+            # anomaly arrives on, not the frame `emerge` starts.
+            "boomAt": rift.BOOM_AT,
+            "boomTime": rift.BOOM_TIME,
+            "boomTiles": rift.BOOM_TILES,
+            # The window, and the way it shuts. NULL means "never" — the rift
+            # stays open until some future mechanic closes it. It cannot be
+            # `inf`: Python serialises that as the bare token `Infinity`, which
+            # is not JSON and which `JSON.parse` throws on, taking the entire
+            # config payload with it.
+            "openTime": _finite(rift.OPEN_TIME),
+            "collapseAt": _finite(rift.COLLAPSE_AT),
+            "collapseTime": rift.COLLAPSE_TIME,
+            "spentAt": _finite(rift.SPENT_AT),
         },
         # Shot box on a crate, in tiles. Bottom-anchored on the contact.
         "crateHitWTiles": CRATE_HIT_W_TILES,

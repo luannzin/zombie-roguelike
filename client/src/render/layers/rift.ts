@@ -26,6 +26,7 @@
  */
 
 import type { Rift } from '../../game/world';
+import type { ResidueMark } from '../residue';
 import type { RiftTimingConfig } from '../../net/protocol';
 import type { Camera } from '../camera';
 import type { Projection } from '../projection';
@@ -40,6 +41,27 @@ import {
 /** Prop states. The index is the contract with `make_rift.py`. */
 const DORMANT_FRAME = 0;
 const AWAKE_FRAME = 1;
+/** Console only: driven home, every lamp on it dead. */
+const SPENT_FRAME = 2;
+
+/** How long a mark burns for as the wave passes it, in seconds. */
+const RESIDUE_FLASH = 0.45;
+
+/**
+ * Tile size, for turning `boomTiles` into world pixels.
+ *
+ * The config gives the blast's reach in TILES because that is how every
+ * distance in this game is authored; the marks live in world pixels.
+ */
+const TILE_PX = 16;
+
+function clamp01(value: number): number {
+  return value < 0 ? 0 : value > 1 ? 1 : value;
+}
+
+function easeOut(t: number): number {
+  return 1 - (1 - t) ** 3;
+}
 
 /** A stone that has not started waking yet. */
 const NOT_STARTED = -1;
@@ -56,10 +78,17 @@ export const RIFT_FALLBACK: RiftTimingConfig = {
   pillarStagger: 0.45,
   chargeTime: 1.0,
   settle: 0.3,
-  emergeAt: 3.0,
+  emergeAt: 1.65,
   emergeTime: 1.25,
-  openAt: 4.25,
-  lightTiles: 3.5,
+  openAt: 2.9,
+  lightTiles: 7,
+  boomAt: 2.15,
+  boomTime: 3.4,
+  boomTiles: 34,
+  openTime: null,
+  collapseAt: null,
+  collapseTime: 1.2,
+  spentAt: null,
 };
 
 export interface RiftPhase {
@@ -89,6 +118,24 @@ export interface RiftPhase {
   anomalyTime: number;
   /** The anomaly is on its resting loop. */
   open: boolean;
+  /**
+   * How far the blast has travelled, in world px. Marks inside this have been
+   * laid; everything past it has not happened yet. 0 before the burst and
+   * `Infinity` once the wave is long finished — which is what makes a rift
+   * that was already spent when you arrived simply HAVE residue, with no
+   * replay of an explosion nobody was there for.
+   */
+  waveRadius: number;
+  /** Seconds since the burst, for the per-mark flash as the wave passes. */
+  sinceBoom: number;
+  /**
+   * 1 while the rift holds, falling to 0 across the collapse. The anomaly is
+   * drawn at this alpha: it draws its own light back in rather than being
+   * switched off.
+   */
+  fade: number;
+  /** Nothing left but the marks. */
+  spent: boolean;
 }
 
 /**
@@ -109,6 +156,10 @@ function dormantPhase(stones: number): RiftPhase {
     emerging: NOT_STARTED,
     anomalyTime: 0,
     open: false,
+    waveRadius: 0,
+    sinceBoom: 0,
+    fade: 1,
+    spent: false,
   };
 }
 
@@ -128,6 +179,23 @@ export function riftPhase(
 ): RiftPhase {
   if (rift.state === 'dormant') return dormantPhase(rift.pillars.length);
 
+  // SPENT is not a moment, it is a condition. A rift that went off before this
+  // player even arrived has to look the same as one they watched go off ten
+  // minutes ago: structure dark, ground marked, nothing playing. So the wave is
+  // already everywhere and the fade is already zero, with no timeline behind it.
+  if (rift.state === 'spent') {
+    const stones = rift.pillars.length;
+    return {
+      ...dormantPhase(stones),
+      pillarAwake: new Array<boolean>(stones).fill(false),
+      consoleArmed: true,
+      waveRadius: Infinity,
+      sinceBoom: Infinity,
+      fade: 0,
+      spent: true,
+    };
+  }
+
   const elapsed = rift.elapsed;
   const pillarCharge: number[] = [];
   const pillarAwake: boolean[] = [];
@@ -143,12 +211,28 @@ export function riftPhase(
   }
 
   const sinceTear = elapsed - timing.emergeAt;
+  // The blast, easing out: it leaves fast and slows as it spreads, which is
+  // what a shock front does and what stops the marks appearing at a constant
+  // rate like a progress bar filling.
+  const sinceBoom = elapsed - timing.boomAt;
+  const boomT = clamp01(sinceBoom / Math.max(timing.boomTime, 1e-6));
+  const reach = timing.boomTiles * TILE_PX;
   return {
     pillarCharge,
     pillarAwake,
     pillarCrowned,
     crownTime,
     anomalyTime: Math.max(0, elapsed - timing.openAt),
+    waveRadius: sinceBoom <= 0 ? 0 : (boomT >= 1 ? Infinity : easeOut(boomT) * reach),
+    sinceBoom: Math.max(0, sinceBoom),
+    // Holds at 1 until the window is nearly out, then draws in over the
+    // collapse. Never negative — the anomaly is simply gone at `spentAt`.
+    // No deadline means it never dims. `collapseAt` is null while the rift is
+    // open-ended, and dividing by a missing number would fade it out instantly.
+    fade: timing.collapseAt === null
+      ? 1
+      : 1 - clamp01((elapsed - timing.collapseAt) / Math.max(timing.collapseTime, 1e-6)),
+    spent: false,
     // The console answers the instant it is pressed. It is the one piece that
     // must not wait for anything: a button that visibly does nothing for a
     // third of a second reads as a button that did not take the press.
@@ -191,7 +275,9 @@ export function riftStanding(rift: Rift, phase: RiftPhase): RiftStanding[] {
     x: rift.consoleX,
     y: rift.consoleY,
     shape: 0,
-    state: phase.consoleArmed ? AWAKE_FRAME : DORMANT_FRAME,
+    state: phase.spent
+      ? SPENT_FRAME
+      : phase.consoleArmed ? AWAKE_FRAME : DORMANT_FRAME,
   });
   pieces.sort((a, b) => a.y - b.y);
   return pieces;
@@ -285,6 +371,80 @@ export function drawRiftScar(
 }
 
 /**
+ * What the blast left on the ground, revealed as the wave reaches it.
+ *
+ * FLAT, under everybody, drawn with the boot prints — these are stains, and a
+ * stain that sorted with the entities would stand up at ankle height.
+ *
+ * The wave is not a ring drawn on the screen; it is the ORDER these appear in.
+ * `marks` is sorted by distance from the blast, so the loop simply stops at
+ * the first mark the front has not reached — which is both the cheapest
+ * possible cull and the reason the boom reads as travelling rather than as a
+ * circle being switched on.
+ *
+ * Each mark flares as the front passes and then settles to a dim resting
+ * alpha it keeps forever. That flare IS the shockwave: hundreds of small
+ * lights coming up in a widening circle say "something is moving through
+ * here" far better than one expanding hoop, and none of them has a hard edge.
+ */
+export function drawRiftResidue(
+  ctx: CanvasRenderingContext2D,
+  atlas: RiftAtlas | null,
+  marks: readonly ResidueMark[],
+  phase: RiftPhase | null,
+  camera: Camera,
+): void {
+  const sheet = atlas?.residue;
+  if (!sheet || !phase || marks.length === 0 || phase.waveRadius <= 0) return;
+
+  const left = camera.renderX - sheet.frameWidth;
+  const top = camera.renderY - sheet.frameHeight;
+  const right = camera.renderX + camera.viewWidth + sheet.frameWidth;
+  const bottom = camera.renderY + camera.viewHeight + sheet.frameHeight;
+  const half = sheet.frameWidth / 2;
+
+  for (const mark of marks) {
+    if (mark.dist > phase.waveRadius) break;
+    if (mark.x < left || mark.x > right || mark.y < top || mark.y > bottom) continue;
+
+    // Fainter the further out it landed, so the blast has a falloff made of
+    // opacity as well as of density and never ends on a visible boundary.
+    // Low overall: the ground wash under these is what carries the change, and
+    // litter that competes with it reads as artificial.
+    const resting = 0.42 - mark.falloff * 0.24;
+    // How long ago the front went past THIS mark, not how long ago it left.
+    const since = phase.sinceBoom - timeToReach(mark.dist, phase);
+    const flare = since < RESIDUE_FLASH ? 1 - Math.max(0, since) / RESIDUE_FLASH : 0;
+    ctx.globalAlpha = Math.min(1, resting + flare * 0.9);
+    ctx.drawImage(
+      sheet.image,
+      (mark.variant % sheet.frames) * sheet.frameWidth,
+      0,
+      sheet.frameWidth,
+      sheet.frameHeight,
+      Math.round(mark.x - half),
+      Math.round(mark.y - half),
+      sheet.frameWidth,
+      sheet.frameHeight,
+    );
+  }
+  ctx.globalAlpha = 1;
+}
+
+/**
+ * Roughly when the front crossed a given radius.
+ *
+ * The inverse of the wave's ease-out, which has no cheap closed form — but it
+ * only decides how bright a mark is for a third of a second, so the linear
+ * approximation is invisible and the exact one would cost a cube root per
+ * mark per frame.
+ */
+function timeToReach(dist: number, phase: RiftPhase): number {
+  if (!Number.isFinite(phase.waveRadius) || phase.waveRadius <= 0) return 0;
+  return phase.sinceBoom * (dist / phase.waveRadius);
+}
+
+/**
  * Everything about the structure that is LIGHT. World pixels, additive, drawn
  * after the darkness pass — a beacon is a light source, not a thing being lit.
  *
@@ -312,8 +472,10 @@ export function drawRiftGlow(
     }
   }
 
-  if (phase.open) {
+  if (phase.open && phase.fade > 0) {
+    ctx.globalAlpha = phase.fade;
     blit(ctx, atlas.rift, rift.anomalyX, rift.anomalyY, phase.anomalyTime, beacon);
+    ctx.globalAlpha = 1;
   } else if (phase.emerging >= 0) {
     blit(ctx, atlas.emerge, rift.anomalyX, rift.anomalyY, phase.emerging, beacon);
   }

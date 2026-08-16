@@ -26,14 +26,17 @@ import { AtmosphereLayer } from './layers/atmosphere';
 import { DarknessLayer } from './layers/darkness';
 import { crateAnimFrame, drawFootprints, drawSceneryProp } from './layers/scenery';
 import { drawBloodPools } from './layers/corpses';
+import { drawCorruption, drawCorruptionMotes } from './layers/corruption';
 import {
   chargeHandoff,
   drawRiftGlow,
   drawRiftProp,
+  drawRiftResidue,
   drawRiftScar,
   riftPhase,
   riftStanding,
   RIFT_FALLBACK,
+  type RiftPhase,
   type RiftStanding,
 } from './layers/rift';
 import { loadRift, type RiftAtlas } from './rift';
@@ -138,6 +141,22 @@ export class Renderer {
     this.terrain.setDecorationMask(mask);
   }
 
+  /**
+   * What the extraction point is doing this frame.
+   *
+   * Computed twice a frame would be harmless — it is arithmetic on one number —
+   * but the FLOOR pass and the LIGHT pass are separated by the whole entity
+   * sort, and having them read one value is what guarantees the marks the wave
+   * has revealed and the anomaly throwing that wave agree about what time it is.
+   */
+  private riftPhaseFor(state: RenderState): RiftPhase | null {
+    const rift = state.world.rift;
+    if (!rift) return null;
+    return riftPhase(
+      rift, state.config.rift ?? RIFT_FALLBACK, chargeHandoff(this.riftAtlas),
+    );
+  }
+
   /** Call only when the canvas element actually changed size (see ResizeObserver). */
   resize(): void {
     const width = Math.max(1, Math.floor(this.canvas.clientWidth));
@@ -185,9 +204,27 @@ export class Renderer {
       drawBloodPools(ctx, state.corpses, this.scenery, state.camera);
     }
     // The sigil goes on the floor with them: flat, under everybody, and the
-    // only part of the structure that is there before anything happens.
+    // only part of the structure that is there before anything happens. The
+    // blast's residue goes on top of it, for the same reason and in the same
+    // pass — it is more of the same material, thrown further.
     if (state.world.rift) {
+      const riftPhaseNow = this.riftPhaseFor(state);
+      // The GROUND first — the wash goes under the sigil and under the litter,
+      // because it is the soil itself changing rather than something lying on
+      // it. Everything the blast added is drawn on top of what it altered.
+      if (riftPhaseNow) {
+        drawCorruption(
+          ctx,
+          this.riftAtlas,
+          state.world,
+          state.world.rift,
+          (state.config.rift ?? RIFT_FALLBACK).boomTiles * state.world.tileSize,
+          riftPhaseNow.waveRadius,
+          state.camera,
+        );
+      }
       drawRiftScar(ctx, this.riftAtlas, state.world.rift, state.camera);
+      drawRiftResidue(ctx, this.riftAtlas, state.residue, riftPhaseNow, state.camera);
     }
     drawDust(ctx, state.effects);
 
@@ -225,9 +262,7 @@ export class Renderer {
       depthProps.push({ y: piece.y, anim: 0, hitFlash: 0, piece, rift: null });
     }
     const rift = state.world.rift;
-    const phase = rift
-      ? riftPhase(rift, state.config.rift ?? RIFT_FALLBACK, chargeHandoff(this.riftAtlas))
-      : null;
+    const phase = this.riftPhaseFor(state);
     if (rift && phase) {
       for (const piece of riftStanding(rift, phase)) {
         depthProps.push({ y: piece.y, anim: 0, hitFlash: 0, piece: null, rift: piece });
@@ -340,6 +375,15 @@ export class Renderer {
     drawLootBeams(ctx, this.vfx?.aura ?? null, state.loot, state.time);
     drawWindPuffs(ctx, this.vfx?.wind ?? null, state.effects.winds);
     drawDeathBursts(ctx, this.vfx?.death ?? null, state.effects.deaths);
+    // Motes off the corrupted ground, after the darkness like every other
+    // light: they are coming OUT of the floor, not being lit on it.
+    if (rift && phase) {
+      drawCorruptionMotes(
+        ctx, state.world, rift,
+        (state.config.rift ?? RIFT_FALLBACK).boomTiles * state.world.tileSize,
+        phase.waveRadius, state.time, state.camera,
+      );
+    }
     // The structure's own light, last of the additive passes: the stones'
     // crowns and the anomaly are the brightest things on the map once they are
     // lit, and nothing after this may be drawn under them.

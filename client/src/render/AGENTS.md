@@ -19,7 +19,8 @@ mutation, no React.
 | `scenery.ts` | scenery atlas loading: standing props and flat decals of what people left |
 | `vfx.ts` | effect atlas loading: one-shot sheets (summon, kindle, wind, death) and the looping loot `aura` |
 | `rift.ts` | extraction atlas: the sigil decal, the pillar/console props with their STATES, and the four activation sheets |
-| `layers/rift.ts` | the extraction point: the ceremony's timing (`riftPhase`) plus its three passes — floor, depth sort, additive light |
+| `layers/rift.ts` | the extraction point: the whole lifecycle's timing (`riftPhase`) plus its passes — floor, depth sort, additive light |
+| `residue.ts` | where the extraction blast's marks land: a deterministic field derived from the map seed, never sent over the wire |
 | `loot.ts` | loot atlas: one 16x16 frame per collectable item |
 | `guns.ts` | held-gun atlas and the shared muzzle/grip pose (`gunMuzzle`) |
 | `gore.ts` | gore atlas: small wound decals stamped on a body that has been hit |
@@ -289,6 +290,24 @@ mutation, no React.
   touches the floor because everything else touches the floor; the rift hovers,
   so `anchorY` is the centre of the sphere and it can be placed on the middle
   of its own sigil instead of a radius above it.
+- **The blast's residue is DERIVED, not transmitted.** Hundreds of marks would
+  be the largest message in the game for the least gameplay, so both where they
+  land and which cut lands there come out of `world.seed` hashed with the
+  rift's own tile — the same trick the forest already uses for grass and prop
+  variants. The server only ever says the rift went off.
+  - The marks are sorted by DISTANCE, and that is what makes the shockwave: the
+    draw loop stops at the first one the front has not reached. Each flares as
+    the wave passes and settles to a dim resting alpha it keeps forever. That
+    is the boom — hundreds of small lights coming up in a widening circle, not
+    one expanding hoop, so it has no hard edge anywhere.
+  - `waveRadius` is `Infinity` for a rift that is already spent when you
+    arrive. The marks are simply THERE, with no replay of an explosion nobody
+    was present for.
+- **A spent rift is a condition, not a moment.** The structure goes dark, the
+  console takes its third frame (driven home, every lamp dead — reusing `idle`
+  would pop the plunger back up and offer the button again), the beacon comes
+  off `scenery.lights`, and the ground keeps everything. The map remembering is
+  the whole point of the state.
 - Cached bitmaps and tints are released in `Renderer.dispose()`.
 - `imageSmoothingEnabled` stays `false` — this is pixel art.
 

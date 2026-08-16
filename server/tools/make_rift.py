@@ -126,6 +126,16 @@ IRON: Ramp = [
     rgb(c) for c in ("#15171a", "#1f2329", "#2c3138", "#3a4048", "#4a515a", "#626a75")
 ]
 
+#: The ground the blast drained, and what it cracked it into.
+#:
+#: NEUTRAL AND DARK on purpose. These do most of the work in a corrupted tile;
+#: the prism only shows up in crystal and along a crack's lip. Make these
+#: colourful and the field becomes neon — the strangeness has to come from the
+#: ground being WRONG, not from it being bright.
+CORRUPT_DARK = rgb("#181a22")
+CORRUPT_FISSURE = rgb("#0a0b10")
+CORRUPT_GRIT = rgb("#3c3f4c")
+
 #: Cut stone seen from directly above, for the sigil. Lower contrast than
 #: `ROCK_RAMP` on purpose: a decal is a mark on the floor and must never start
 #: reading as an object standing on it.
@@ -301,7 +311,53 @@ PILLAR_SHAPES = 4
 #: crate sheet uses for its kinds.
 PILLAR_STATES = 2
 
-CONSOLE_STATES = 2
+#: Idle, armed, SPENT. Three, because a used console must not look pressable:
+#: reusing `idle` would pop the plunger back up and offer the button again, and
+#: reusing `armed` would leave it lit after the light has gone out of the world.
+#: Spent is the plunger still driven home with every lamp on it dead.
+CONSOLE_STATES = 3
+CONSOLE_IDLE, CONSOLE_ARMED, CONSOLE_SPENT = range(CONSOLE_STATES)
+
+#: What the anomaly leaves on the ground when it goes off. Six cuts of the same
+#: material, scattered by the blast — see `make_residue`.
+RESIDUE_VARIANTS = 6
+
+# --- the ground the blast went through ---------------------------------------
+#
+# THE GROUND IS A TEXTURE, NOT A TINT, AND IT IS AIMED.
+#
+# The first version washed each affected tile with a colour picked by hash. It
+# was cheap and wrong twice over: a flat fill has no detail, so at any zoom it
+# reads as a coloured rectangle — and picking the hue per tile made the field a
+# patchwork of unrelated colours, neon confetti rather than a place something
+# happened to.
+#
+# So it is drawn: cracks, dark stains, grit and a little crystal, on ground that
+# has been DRAINED rather than dyed. The prism appears only in the crystal and
+# along one lip of each crack, which is what makes it read as strange instead of
+# decorated — the eye finds the colour by looking rather than having it thrown.
+#
+# And every mark is ORIENTED. The blast came out of one point and dragged
+# everything outward, so each tile is cut for the direction it sits in relative
+# to that point, the same way `tracks.png` is cut per compass heading. Marks are
+# kept SHORT: a streak spanning the tile would have to line up with its
+# neighbour's and at these angles never can. Short dashes all leaning one way
+# give the radial read with nothing to misalign.
+CORRUPT_DIRECTIONS = 8
+#: Near the centre, mid, and the fringe. Distance picks it.
+CORRUPT_LEVELS = 3
+#: EIGHT cuts of each, and it needs every one.
+#:
+#: At two, a 68-tile field alternated between the same pair inside each of the
+#: eight sectors and the whole thing came out as a lattice of identical stamps
+#: — the single most obvious way to give away that a texture is tiled. Eight
+#: rolls times three levels is enough that the eye stops finding the period.
+CORRUPT_ROLLS = 8
+
+
+def corrupt_frame(direction: int, level: int, roll: int) -> int:
+    """Index into the corrupt sheet. Mirrored by `layers/corruption.ts`."""
+    return ((direction * CORRUPT_LEVELS) + level) * CORRUPT_ROLLS + roll
 
 # One pillar waking: a spark at the foot, the light climbing the channel, the
 # crown catching. `CHARGE_CROWN` is the frame the capstone flashes on and is
@@ -543,7 +599,7 @@ def _pillar_channel(px, width: int, height: int, geo: PillarGeometry, awake: boo
 # --- console -----------------------------------------------------------------
 
 
-def make_console(width: int, height: int, armed: bool) -> Image.Image:
+def make_console(width: int, height: int, state: int) -> Image.Image:
     """The button. Idle, then slammed.
 
     Everything else in this structure is quarried stone and light. This is iron
@@ -561,6 +617,11 @@ def make_console(width: int, height: int, armed: bool) -> Image.Image:
     px = img.load()
     cx = (width - 1) / 2.0
     lip, face_top, face_bot = 5, 7, 17
+    # `armed` is "the plunger is down", `live` is "there is light in it". Spent
+    # is the one state where those disagree, and keeping them as two questions
+    # rather than one is what lets the sprite say USED instead of unpressed.
+    armed = state != CONSOLE_IDLE
+    live = state == CONSOLE_ARMED
 
     body: dict[tuple[int, int], tuple[float, str]] = {}
     for y in range(lip, height):
@@ -602,18 +663,20 @@ def make_console(width: int, height: int, armed: bool) -> Image.Image:
                 continue
             d = math.hypot((x - cx) / 3.4, (y - plunger_y) / 2.8)
             if d <= 1.0:
-                if armed:
+                if live:
                     px[x, y] = lit(CORE if d < 0.45 else CYAN, 0.55 + (1.0 - d) * 0.45)
                 else:
                     # A DOME, lit from the upper left like everything else in
                     # the game. A flat disc reads as a hole, and a hole is the
-                    # one thing a button must not look like.
+                    # one thing a button must not look like. Spent gets the same
+                    # metal, just sunk — the shape says pressed, the dark socket
+                    # around it says there is nothing left to press it for.
                     px[x, y] = pick(IRON, clamp01(
                         0.86 - d * 0.16 - (x - cx) / 3.4 * 0.24
                         - (y - plunger_y) / 2.8 * 0.28
                     ), x, y)
             elif d <= 1.36:
-                px[x, y] = lit(VIOLET, 0.62) if armed else SOCKET
+                px[x, y] = lit(VIOLET, 0.62) if live else SOCKET
 
     # Two pips flanking the plunger. Nothing says "console" at 20 pixels like a
     # pair of indicator lamps that are dead until they are not.
@@ -621,7 +684,7 @@ def make_console(width: int, height: int, armed: bool) -> Image.Image:
         for oy in range(2):
             x, y = int(round(cx + side * 6.0)), int(round(plunger_y - 0.5 + oy))
             if (x, y) in body:
-                px[x, y] = lit(MINT, 0.78) if armed else SOCKET
+                px[x, y] = lit(MINT, 0.78) if live else SOCKET
 
     if not armed:
         # A shadow under a raised button. Without it the plunger is a sticker.
@@ -629,7 +692,7 @@ def make_console(width: int, height: int, armed: bool) -> Image.Image:
             y = int(plunger_y + 3)
             if (x, y) in body and abs(x - cx) < 3.2:
                 px[x, y] = IRON[0]
-    else:
+    elif live:
         # Spill along the fold, where the live face meets its own lip. Painted
         # only on pixels the body actually owns — a highlight drawn one row
         # above the silhouette is a line floating in the air.
@@ -726,6 +789,242 @@ def make_scar(size: int, rng: random.Random) -> Image.Image:
 
 
 # --- a pillar's light --------------------------------------------------------
+
+
+def make_residue(size: int, variant: int, rng: random.Random) -> Image.Image:
+    """What the anomaly leaves on the ground when it goes off.
+
+    A DECAL, and it follows the decal rules exactly: flat, no outline, no
+    implied face, partly transparent so the soil's own grain reads through. It
+    is a stain, not an object standing at ankle height.
+
+    THIS IS THE SAME MATERIAL AS THE ANOMALY, DEAD. Same prism, same lozenge
+    cells, same needles — but resolved out of the ramps' BOTTOM half instead of
+    their top, because the light has gone out of it. Painting these bright
+    would make the aftermath more eye-catching than the event, and the whole
+    job of this art is to be found LATER: you walk back through a clearing days
+    afterward and the ground tells you something happened here.
+    A handful of pixels per mark keep a high step, and they are the ones that
+    catch a lantern — so the residue is nearly invisible in the dark and
+    unmistakable when you light it.
+
+    Six cuts, thrown by one blast: dense knots near the middle, bare flecks at
+    the edge. `_residue_variant` is what the scatter picks by distance, so a
+    field of these reads as one event fading outward and not as confetti.
+    """
+    img = Image.new("RGBA", (size, size), TRANSPARENT)
+    px = img.load()
+    centre = (size - 1) / 2.0
+
+    def stain(x: int, y: int, hue: int, value: float, alpha: float) -> None:
+        if not (0 <= x < size and 0 <= y < size):
+            return
+        prior = px[x, y][3]
+        colour = PRISM[hue][int(clamp01(value) * (len(PRISM) - 1) + 0.5)]
+        px[x, y] = (colour[0], colour[1], colour[2], max(prior, int(clamp01(alpha) * 255)))
+
+    # (cells, cell radius, needles, speckle, bleach)
+    cells, cell_r, needles, speckle, bleach = (
+        (0, 0.0, 0, 30, 0.00),   # flecks — the outermost thing the wave leaves
+        (5, 2.6, 2, 20, 0.18),   # cells — crystallised openings, fused flat
+        (1, 1.6, 4, 22, 0.10),   # needles — spines that came down and stuck
+        (2, 2.1, 1, 24, 0.85),   # bleach — ground the light scoured
+        (2, 3.6, 3, 18, 0.55),   # knot — one big cell, the densest cut
+        (0, 0.0, 0, 14, 0.00),   # dust — the last thing before nothing
+    )[variant % RESIDUE_VARIANTS]
+
+    if bleach > 0.0:
+        # Scoured ground: a pale patch with nothing in it. Drawn first so the
+        # crystal sits ON the burn rather than beside it.
+        br = size * (0.26 + bleach * 0.16)
+        for y in range(size):
+            for x in range(size):
+                d = math.hypot(x - centre, y - centre) / br
+                if d > 1.0:
+                    continue
+                edge = (1.0 - d) ** 1.4
+                stain(x, y, VIOLET, 0.10 + edge * 0.30,
+                      bleach * edge * (0.55 + hash01(x, y, 811) * 0.35))
+
+    for i in range(cells):
+        hue = (MINT, CYAN, ROSE, AMBER, VIOLET)[rng.randrange(5)]
+        cx = centre + rng.uniform(-1, 1) * size * 0.26
+        cy = centre + rng.uniform(-1, 1) * size * 0.26
+        angle = rng.uniform(0, math.tau)
+        ca, sa = math.cos(angle), math.sin(angle)
+        long_r = cell_r * rng.uniform(1.1, 1.9)
+        for y in range(int(cy - long_r) - 1, int(cy + long_r) + 2):
+            for x in range(int(cx - long_r) - 1, int(cx + long_r) + 2):
+                dx, dy = x - cx, y - cy
+                d = math.hypot((dx * ca + dy * sa) / long_r, (-dx * sa + dy * ca) / cell_r)
+                if d > 1.0:
+                    continue
+                # A dead cell is a RIM with a hollow middle: the light that was
+                # pouring out of it is the part that left. Filled ones read as
+                # gems dropped on the floor.
+                rim = max(0.0, 1.0 - abs(d - 0.74) / 0.52)
+                grain = hash01(x, y, variant * 53 + 7) * 0.24
+                stain(x, y, hue, 0.20 + rim * 0.58 + grain, 0.42 + rim * 0.45)
+
+    for i in range(needles):
+        angle = rng.uniform(0, math.tau)
+        length = size * rng.uniform(0.16, 0.34)
+        ox = centre + rng.uniform(-1, 1) * size * 0.2
+        oy = centre + rng.uniform(-1, 1) * size * 0.2
+        steps = max(2, int(length * 1.6))
+        hue = (CYAN, VIOLET)[i % 2]
+        for step in range(steps + 1):
+            t = step / steps
+            stain(int(round(ox + math.cos(angle) * length * t)),
+                  int(round(oy + math.sin(angle) * length * t)),
+                  hue, 0.68 - t * 0.34, 0.80 - t * 0.30)
+
+    for _ in range(speckle):
+        angle = rng.uniform(0, math.tau)
+        radius = rng.uniform(0.0, size * 0.46)
+        hue = (MINT, CYAN, ROSE, AMBER, VIOLET, CORE)[rng.randrange(6)]
+        # One in six specks keeps a high step. Those are what a lantern finds.
+        hot = rng.random() < 0.24
+        stain(int(round(centre + math.cos(angle) * radius)),
+              int(round(centre + math.sin(angle) * radius)),
+              hue, 0.86 if hot else rng.uniform(0.26, 0.54),
+              rng.uniform(0.66, 0.95) if hot else rng.uniform(0.34, 0.62))
+    return img
+
+
+def make_corrupt(size: int, direction: int, level: int, rng: random.Random) -> Image.Image:
+    """One tile of ground the shock front went through, aimed outward.
+
+    A DECAL: flat, no outline, partly transparent, so the soil underneath still
+    reads through as soil. The job is to CHANGE that soil, not to replace it.
+
+    The dominant note is dark. Ground the anomaly passed over is drained —
+    scorched, cracked, gone grey-violet — and the iridescence survives only as
+    crystal that grew in the fissures. Prism across the whole tile made a neon
+    floor; prism in a dozen pixels and damage in the rest makes a floor that
+    something happened to.
+    """
+    img = Image.new("RGBA", (size, size), TRANSPARENT)
+    px = img.load()
+
+    # Outward, in the sheet's own frame — same convention as `tracks.png`:
+    # angle 0 is +y (down the screen), so a heading of (dx, dy) is atan2(dx, dy).
+    angle = direction / CORRUPT_DIRECTIONS * math.tau
+    ux, uy = math.sin(angle), math.cos(angle)
+    # Across the flow: the lip on a crack, and the spread of grit.
+    ax, ay = -uy, ux
+
+    heavy = (1.0, 0.62, 0.30)[level]
+
+    def mark(x: int, y: int, colour: RGBA, alpha: float) -> None:
+        if not (0 <= x < size and 0 <= y < size):
+            return
+        prior = px[x, y][3]
+        px[x, y] = (colour[0], colour[1], colour[2], max(prior, int(clamp01(alpha) * 255)))
+
+    def stain(x: int, y: int, hue: int, value: float, alpha: float) -> None:
+        mark(x, y, PRISM[hue][int(clamp01(value) * (len(PRISM) - 1) + 0.5)], alpha)
+
+    # --- the drained ground --------------------------------------------------
+    # Blotches, never a fill. Uniform darkening is a rectangle; irregular
+    # patches stretched ALONG the flow are ground that was dragged over.
+    for _ in range(int(4 + heavy * 7)):
+        cx = rng.uniform(0, size)
+        cy = rng.uniform(0, size)
+        long_r = rng.uniform(2.0, 5.0) * (0.6 + heavy * 0.7)
+        thin_r = long_r * rng.uniform(0.35, 0.6)
+        for y in range(int(cy - long_r) - 1, int(cy + long_r) + 2):
+            for x in range(int(cx - long_r) - 1, int(cx + long_r) + 2):
+                dx, dy = x - cx, y - cy
+                d = math.hypot((dx * ux + dy * uy) / long_r, (dx * ax + dy * ay) / thin_r)
+                if d > 1.0:
+                    continue
+                mark(x, y, CORRUPT_DARK, heavy * (1.0 - d) ** 0.7 * rng.uniform(0.34, 0.62))
+
+    # --- cracks --------------------------------------------------------------
+    # They RUN OUTWARD, the way a shock front splits ground. One lip catches
+    # the light; the fissure itself is the darkest thing in the tile.
+    for _ in range(int(1 + heavy * 2.4)):
+        x = rng.uniform(0, size)
+        y = rng.uniform(0, size)
+        length = rng.uniform(4.0, 9.0) * (0.5 + heavy * 0.8)
+        wander = rng.uniform(-0.35, 0.35)
+        hue = (CYAN, VIOLET, MINT)[rng.randrange(3)]
+        steps = int(length)
+        for step in range(steps + 1):
+            t = step / max(steps, 1)
+            lean = math.sin(t * 4.0 + wander * 6.0) * wander * 2.2
+            cx = int(round(x + ux * length * t + ax * lean))
+            cy = int(round(y + uy * length * t + ay * lean))
+            mark(cx, cy, CORRUPT_FISSURE, 0.55 + heavy * 0.35)
+            # The lit lip, one pixel to one side and only sometimes: a crack
+            # outlined down its whole length reads as a drawn line.
+            if rng.random() < 0.45:
+                stain(cx + int(round(ax)), cy + int(round(ay)),
+                      hue, 0.44, (0.22 + heavy * 0.26) * (1.0 - t * 0.5))
+
+    # --- crystal -------------------------------------------------------------
+    # The only bright thing here, and there is almost none of it. Angular, and
+    # stretched along the flow, so it reads as something that grew in the
+    # direction the blast was travelling.
+    for _ in range(int(heavy * 1.7)):
+        cx = rng.uniform(2, size - 2)
+        cy = rng.uniform(2, size - 2)
+        long_r = rng.uniform(1.2, 2.6)
+        hue = (MINT, CYAN, ROSE, AMBER, VIOLET)[rng.randrange(5)]
+        for y in range(int(cy - long_r) - 1, int(cy + long_r) + 2):
+            for x in range(int(cx - long_r) - 1, int(cx + long_r) + 2):
+                dx, dy = x - cx, y - cy
+                along = (dx * ux + dy * uy) / long_r
+                across = (dx * ax + dy * ay) / (long_r * 0.42)
+                # A DIAMOND, not a disc: |a| + |b| is what makes a facet.
+                edge = abs(along) + abs(across)
+                if edge > 1.0:
+                    continue
+                stain(x, y, hue, 0.42 + (1.0 - edge) * 0.5, 0.5 + (1.0 - edge) * 0.42)
+
+    # --- grit ----------------------------------------------------------------
+    # Thrown outward and settled. Biased down-flow so the tile has a tail, but
+    # scattered from a ROLLED origin rather than from the tile's middle: fixed
+    # to the centre, every tile grew the same little rosette and the field came
+    # out as a grid of identical dots.
+    for _ in range(int(3 + heavy * 9)):
+        ox = rng.uniform(0, size)
+        oy = rng.uniform(0, size)
+        along = rng.uniform(-0.3, 1.0)
+        across = rng.uniform(-0.5, 0.5)
+        x = int(round(ox + ux * along * size * 0.35 + ax * across * size * 0.5))
+        y = int(round(oy + uy * along * size * 0.35 + ay * across * size * 0.5))
+        # One speck in nine keeps its colour. More than that and the field
+        # is confetti; the strangeness is in the damage, not the palette.
+        if rng.random() < 0.11:
+            stain(x, y, (MINT, CYAN, ROSE, AMBER)[rng.randrange(4)],
+                  0.58, rng.uniform(0.35, 0.6))
+        else:
+            mark(x, y, CORRUPT_GRIT, rng.uniform(0.2, 0.45) * (0.5 + heavy * 0.6))
+    return img
+
+
+def residue_variant(distance: float, span: float) -> int:
+    """Which cut belongs at this distance from the blast, 0..1 of its reach.
+
+    Mirrored by the client, which generates the scatter itself off the map seed
+    (see `render/residue.ts`) — the marks are not on the wire, only the fact
+    that the rift went off is. Keeping the CHOICE here means the falloff is
+    authored with the art rather than guessed at the far end.
+    """
+    t = clamp01(distance / max(span, 1e-6))
+    if t < 0.22:
+        return 4  # knot
+    if t < 0.42:
+        return 1  # cells
+    if t < 0.60:
+        return 3  # bleach
+    if t < 0.78:
+        return 2  # needles
+    if t < 0.92:
+        return 0  # flecks
+    return 5      # dust
 
 
 def _crown_paint(
@@ -1378,13 +1677,32 @@ def build(args) -> Path:
     # Wider than its tile and taller than a crate. It still claims one tile of
     # floor; the overhang is drawn, not walked into, exactly as a sign's board is.
     console_w, console_h = round(tile * 1.25), round(tile * 1.5)
-    consoles = [make_console(console_w, console_h, armed) for armed in (False, True)]
+    consoles = [make_console(console_w, console_h, state) for state in range(CONSOLE_STATES)]
     pack(consoles, console_w, console_h).save(out_dir / "console.png")
 
     # --- decal ---------------------------------------------------------------
     scar_size = tile * 4
     scars = [make_scar(scar_size, random.Random(args.seed + 31))]
     pack(scars, scar_size, scar_size).save(out_dir / "scar.png")
+
+    # One tile square, like every other scatter decal in the game (`debris`,
+    # `tracks`). The blast lays hundreds of these; anything bigger and the
+    # falloff would be built out of visible tiles rather than out of density.
+    residue_size = tile
+    rng = random.Random(args.seed + 43)
+    residues = [make_residue(residue_size, v, rng) for v in range(RESIDUE_VARIANTS)]
+    pack(residues, residue_size, residue_size).save(out_dir / "residue.png")
+
+    # Packed direction-major, so `corrupt_frame` is one multiply-add and the
+    # client can pick a tile from an angle without a lookup table.
+    rng = random.Random(args.seed + 57)
+    corrupts = [
+        make_corrupt(tile, d, level, rng)
+        for d in range(CORRUPT_DIRECTIONS)
+        for level in range(CORRUPT_LEVELS)
+        for _ in range(CORRUPT_ROLLS)
+    ]
+    pack(corrupts, tile, tile).save(out_dir / "corrupt.png")
 
     # --- a pillar's light ----------------------------------------------------
     # Wider and taller than the stone itself: the crown throws a halo past the
@@ -1470,6 +1788,28 @@ def build(args) -> Path:
                 "frameHeight": scar_size,
                 "frames": len(scars),
             },
+            # Thrown across the ground by the burst and never cleaned up. The
+            # client generates WHERE they land itself, deterministically from
+            # the map seed — see `render/residue.ts`. Only the fact that the
+            # rift went off is on the wire.
+            "residue": {
+                "file": "residue.png",
+                "frameWidth": residue_size,
+                "frameHeight": residue_size,
+                "frames": len(residues),
+            },
+            # The ground the front went over. AIMED: the frame is picked by the
+            # tile's direction from the blast, so every mark on the field leans
+            # away from the centre — see `corrupt_frame`.
+            "corrupt": {
+                "file": "corrupt.png",
+                "frameWidth": tile,
+                "frameHeight": tile,
+                "frames": len(corrupts),
+                "directions": CORRUPT_DIRECTIONS,
+                "levels": CORRUPT_LEVELS,
+                "rolls": CORRUPT_ROLLS,
+            },
         },
         # GREYSCALE, additive, after the darkness pass, tinted `--scene-beacon`.
         #
@@ -1540,6 +1880,8 @@ def build(args) -> Path:
     print(
         f"wrote {out_dir}: "
         f"scar 1x{scar_size}x{scar_size}, "
+        f"residue {RESIDUE_VARIANTS}x{residue_size}x{residue_size}, "
+        f"corrupt {CORRUPT_DIRECTIONS}x{CORRUPT_LEVELS}x{CORRUPT_ROLLS}x{tile}x{tile}, "
         f"pillar {PILLAR_SHAPES}x{PILLAR_STATES}x{pillar_w}x{pillar_h}, "
         f"console {CONSOLE_STATES}x{console_w}x{console_h}, "
         f"charge {CHARGE_FRAMES}x{glow_w}x{glow_h} @{CHARGE_FPS}fps, "

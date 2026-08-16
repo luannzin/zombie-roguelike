@@ -15,6 +15,7 @@ import type { BloodStain } from '../game/entity-visuals';
 import type { TileMap } from '../game/world';
 import type { GameConfig, LootRarity } from '../net/protocol';
 import type { Camera } from './camera';
+import type { ResidueMark } from './residue';
 import type { FovField } from './fov';
 
 export type EntityKind = 'player' | 'enemy';
@@ -164,6 +165,12 @@ export interface RenderState {
   coins: DrawableCoin[];
   loot: DrawableLoot[];
   corpses: DrawableCorpse[];
+  /**
+   * What the extraction blast left on the ground. Empty until it goes off.
+   * Generated once, deterministically from the map seed (`render/residue.ts`)
+   * — the marks are never on the wire.
+   */
+  residue: readonly ResidueMark[];
   /** Night coat. Drives rain/fog in the atmosphere pass. */
   weather: string;
   effects: Effects;

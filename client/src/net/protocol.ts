@@ -383,7 +383,7 @@ export interface RiftPayload {
   lightTiles: number;
   /** Scene-light kind. 2 is `beacon` — see `theme/palette.ts`. */
   lightKind: number;
-  state: 'dormant' | 'charging' | 'open';
+  state: 'dormant' | 'charging' | 'open' | 'spent';
   /** Seconds into the activation sequence. */
   t: number;
 }
@@ -405,6 +405,19 @@ export interface RiftTimingConfig {
   emergeTime: number;
   openAt: number;
   lightTiles: number;
+  /** The blast that lays the residue: when it starts, how long, how far. */
+  boomAt: number;
+  boomTime: number;
+  boomTiles: number;
+  /**
+   * The window, and the way it shuts. NULL means NEVER — the rift stays open
+   * until some future mechanic closes it. Not `Infinity`: that is not valid
+   * JSON and would throw on parse, taking the whole config with it.
+   */
+  openTime: number | null;
+  collapseAt: number | null;
+  collapseTime: number;
+  spentAt: number | null;
 }
 
 /** One live crate. `v` is the kind row on the crate sheet (box, barrel, …). */
@@ -748,7 +761,7 @@ export interface SnapshotMessage {
 
 /** The live half of the extraction point. */
 export interface RiftStateRow {
-  state: 'dormant' | 'charging' | 'open';
+  state: 'dormant' | 'charging' | 'open' | 'spent';
   /** Seconds into the sequence, so a late joiner picks it up in progress. */
   t: number;
 }

@@ -52,15 +52,14 @@ PLOT = 7
 #: Where each piece stands inside the plot, in TILE offsets from its top-left.
 #: Mirrors `_layout()` in server/tools/make_rift.py. A standing piece's `dy` is
 #: the BOTTOM EDGE of the row it stands on — its contact point — exactly as in
-#: `scenery.Piece`. There is no `flip`: the stones are shaded from the upper
-#: left and a mirrored one is lit from the wrong side, which is why the art
-#: ships four cuts instead of two.
-#: ONE STONE — see `_layout()` in make_rift.py. Four of them framed the
-#: anomaly symmetrically and, being symmetrical, said nothing; one off to the
-#: side reads as something driven into the ground next to a hole in the world.
+#: `scenery.Piece`. There is no `flip`: the stone is shaded from the upper left
+#: and a mirrored one is lit from the wrong side, which is why the sheet ships
+#: four cuts instead of two.
 #:
-#: The plot stays 7x7 regardless: that is the cleared ground and the isolation
-#: footprint, not the structure's own size.
+#: ONE STONE. Four framed the anomaly symmetrically and, being symmetrical,
+#: said nothing; one off to the side reads as something driven into the ground
+#: next to a hole in the world. The plot stays 7x7 regardless — that is the
+#: cleared ground and the isolation footprint, not the structure's own size.
 _PILLARS: tuple[tuple[float, float, int], ...] = (
     (1.5, PLOT - 1.0, 2),
 )
@@ -69,16 +68,21 @@ _PILLARS: tuple[tuple[float, float, int], ...] = (
 #: its trunk — straight over the one piece the player has to walk up to.
 _CONSOLE = (PLOT / 2.0, PLOT - 1.0)
 _CENTRE = (PLOT / 2.0, PLOT / 2.0)
-#: THE SAME POINT AS THE SIGIL. The anomaly's sheet is anchored on the centre
-#: of the sphere rather than on a ground contact — it hovers, so that is the
-#: point that means anything — which lets it be placed on the middle of the
-#: scar and actually sit in it.
+#: THE SAME POINT AS THE SIGIL. The anomaly's sheet is anchored on its
+#: UNDERSIDE rather than on a ground contact — it hovers over a ring cut into
+#: the floor, and the picture is that the ring is a mouth: the sphere's bottom
+#: sits in the middle of it and its top half stands clear above the far edge.
 _ANOMALY = _CENTRE
 
-#: Radius of the beacon once it is open, in tiles. Small on purpose: this is
-#: not an area of safety, it is a thing you can see from far away — which is
-#: the whole point of putting a light on it. `kind` 2 is `scenery.BEACON`.
-LIGHT_TILES = 3.5
+#: Radius of the beacon once it is open, in tiles.
+#:
+#: BIG. Every other scene light in the game is a thing you spot across the dark
+#: and walk toward; this one is the destination itself, and while it is open it
+#: is the brightest thing on the map by a distance. It also feeds the fov, so
+#: the pad is genuinely LIT while the window is open — you can see what is
+#: coming at you, which is the difference between a beacon and a lamp.
+#: `kind` 2 is `scenery.BEACON`.
+LIGHT_TILES = 7.0
 LIGHT_KIND = 2
 
 # --- the timeline ------------------------------------------------------------
@@ -108,9 +112,43 @@ CROWNED_AT = LAST_PILLAR_AT + CHARGE_TIME
 EMERGE_AT = CROWNED_AT + SETTLE
 OPEN_AT = EMERGE_AT + EMERGE_TIME
 
+#: How long the anomaly stays. INFINITE for now.
+#:
+#: It had a 45 s window, which was a guess at a mechanic that does not exist
+#: yet — and a clock nobody has written the rules for is just a thing that
+#: takes your rift away. Once extraction actually does something, whatever
+#: closes it will close it; until then the fence stays open and the state
+#: machine below keeps the SPENT path wired but never walks it.
+OPEN_TIME = math.inf
+#: It does not blink out. The light draws back in over this, so the last thing
+#: that happens on the pad is a thing closing rather than a sprite being
+#: switched off.
+COLLAPSE_TIME = 1.2
+
+#: The blast, starting the frame the anomaly arrives.
+#:
+#: THIS IS THE EVENT THAT CHANGES THE MAP, so it is deliberately enormous: a
+#: front that crosses most of the clearing and keeps going, slow enough to
+#: watch arrive and to be somewhere when it reaches you. At 13 tiles over 1.7 s
+#: it was a puff around the structure's own feet; the point is that a player
+#: standing well away from the rift still gets caught by it.
+BOOM_TIME = 3.4
+BOOM_TILES = 34.0
+
+#: Where the burst lands inside `emerge` — mirrors `EMERGE_BURST` in
+#: server/tools/make_rift.py. The boom starts on the frame the sheet flashes,
+#: not when the sheet starts playing.
+BOOM_AT = EMERGE_AT + EMERGE_TIME * 0.40
+
+COLLAPSE_AT = OPEN_AT + OPEN_TIME
+SPENT_AT = COLLAPSE_AT + COLLAPSE_TIME
+
 DORMANT = "dormant"
 CHARGING = "charging"
 OPEN = "open"
+#: Used up. The structure is dark, the console is dead, and the ground keeps
+#: the marks — the whole point of the state is that the map remembers.
+SPENT = "spent"
 
 
 def pillar_charge_at(index: int) -> float:
@@ -138,13 +176,22 @@ class Rift:
     elapsed: float = 0.0
 
     def step(self, dt: float) -> bool:
-        """Advance the sequence. True when the state changed this tick."""
-        if self.state != CHARGING:
+        """Advance the sequence. True when the state changed this tick.
+
+        One clock for the whole life of the thing: charge, open, collapse,
+        spent are all read off `elapsed`, so there is no separate timer to fall
+        out of step and a client that joins at any point can be told where it
+        is with one number.
+        """
+        if self.state in (DORMANT, SPENT):
             return False
         self.elapsed += dt
-        if self.elapsed >= OPEN_AT:
+        if self.state == CHARGING and self.elapsed >= OPEN_AT:
             self.state = OPEN
-            self.elapsed = OPEN_AT
+            return True
+        if self.state == OPEN and math.isfinite(SPENT_AT) and self.elapsed >= SPENT_AT:
+            self.state = SPENT
+            self.elapsed = SPENT_AT
             return True
         return False
 

@@ -76,7 +76,7 @@ export interface CratePiece {
  * between the two snapshots the server sends (pressed, and open), because a
  * four-second ceremony resolved at 6 Hz would step rather than play.
  */
-export type RiftState = 'dormant' | 'charging' | 'open';
+export type RiftState = 'dormant' | 'charging' | 'open' | 'spent';
 
 export interface RiftPillar {
   x: number;
@@ -190,6 +190,9 @@ export class TileMap {
     this.rift.state = state;
     this.rift.elapsed = elapsed;
     if (state === 'open') this.lightRift();
+    // Used up: the light comes off the map for good. The marks it threw stay
+    // exactly where they are — that is the whole point of the state.
+    if (state === 'spent') this.darkenRift();
   }
 
 
@@ -207,6 +210,15 @@ export class TileMap {
   stepRift(dt: number): void {
     const state = this.rift?.state;
     if (this.rift && (state === 'charging' || state === 'open')) this.rift.elapsed += dt;
+  }
+
+  /** Take the beacon back off the scene-light list. */
+  private darkenRift(): void {
+    const rift = this.rift;
+    if (!rift) return;
+    const lights = this.scenery.lights as SceneryLight[];
+    const index = lights.findIndex((light) => light.x === rift.x && light.y === rift.y);
+    if (index >= 0) lights.splice(index, 1);
   }
 
   /**

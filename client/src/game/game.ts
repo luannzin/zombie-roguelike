@@ -53,6 +53,7 @@ import { Camera } from '../render/camera';
 import { ARENA_ZOOM } from '../render/framing';
 import { gunMuzzle, loadGuns, type GunAtlas } from '../render/guns';
 import { projectionFor } from '../render/projection';
+import { riftResidue, type ResidueMark } from '../render/residue';
 import { FovField, type LightSource, type VisionConfig, type Viewer } from '../render/fov';
 import { DEATH_TIME, POOL_GROW, poolRadius, poolWetness } from '../render/layers/corpses';
 import { soilAt } from '../render/layers/terrain';
@@ -126,13 +127,13 @@ const WIND_LIFE = 8 / 14;
 /** How far above the console the activate tooltip sits, in tiles. */
 const RIFT_TOOLTIP_LIFT_TILES = 1.9;
 /**
- * Where inside its own timeline each rift sheet actually LANDS — `crownAt` and
- * `burstAt` in `assets/processed/rift/manifest.json`. The effects fired here
- * have to sit on the frame the sprite flashes, or the light arrives beside the
- * flash instead of with it.
+ * Where inside its own charge the stone actually flashes — `crownAt` in
+ * `assets/processed/rift/manifest.json`. The beat fired here has to sit on the
+ * frame the sprite whites out, or the shove arrives beside the flash instead
+ * of with it. The anomaly's equivalent is `config.rift.boomAt`, which the
+ * server computes from the same number.
  */
 const RIFT_CROWN_FRACTION = 0.55;
-const RIFT_BURST_FRACTION = 0.4;
 /** Sphere height above its anchor, in world px — where burst debris starts. */
 const RIFT_BURST_LIFT = 34;
 /** Distance between boot prints, in tiles. One stride, not one frame. */
@@ -356,6 +357,15 @@ export class Game {
    * instantly, and overwritten by the server's own row on the next snapshot.
    */
   private localReady = false;
+  /**
+   * What the extraction blast threw on the ground, generated ONCE.
+   *
+   * Deterministic from the map seed, so every client lays the same field
+   * without a byte of it crossing the wire (`render/residue.ts`). Held here
+   * rather than on `TileMap` because it is presentation: nothing collides with
+   * it, nothing queries it, and the renderer is its only reader.
+   */
+  private residue: readonly ResidueMark[] = [];
   /** Remaining world drops. Replaced on welcome and on a dirty snapshot. */
   private readonly loot = new Map<string, LootState>();
   /** Dead bodies on this map. Replaced on welcome; upserted from kills. */
@@ -596,8 +606,11 @@ export class Game {
     this.config = msg.config;
     this.zone = msg.zone;
     this.world = new TileMap(msg.map);
-    // A new map is a new forest: nothing has been explored yet.
+    // A new map is a new forest: nothing has been explored yet, and it has its
+    // own rift — so the old map's marks must not survive into it.
     this.fov = new FovField(this.world.width, this.world.height);
+    this.residue = [];
+    this.ensureResidue();
     this.localId = msg.playerId;
     this.localMeta = msg.player;
     // Seeds the cache: the first snapshot may land before the first roster.
@@ -1563,6 +1576,7 @@ export class Game {
       coins,
       loot,
       corpses,
+      residue: this.residue,
       weather: this.zone?.weather ?? 'clear',
       effects: this.effects,
       fov: this.fov,
@@ -2329,12 +2343,33 @@ export class Game {
     if (!world?.rift) return;
     const was = world.rift.state;
     world.setRiftState(row.state, row.t);
+    this.ensureResidue();
     if (was === row.state) return;
     if (row.state === 'charging') {
       // A switch being thrown. The console answering on the frame it was
       // pressed is what makes the button feel connected to the structure.
       playSfx('lantern-on');
     }
+  }
+
+  /**
+   * Lay the blast's marks, once.
+   *
+   * Called on every state change and on arrival, because the field has to
+   * exist for a rift that is ALREADY open or spent when this client turns up —
+   * they walk into a clearing that is covered in it and no wave ever plays
+   * (`riftPhase` hands back an infinite `waveRadius` for those). Generating on
+   * the burst alone would leave late arrivals looking at clean ground.
+   */
+  private ensureResidue(): void {
+    const rift = this.world?.rift;
+    if (!rift || this.residue.length > 0) return;
+    if (rift.state === 'dormant') return;
+    const timing = this.config?.rift ?? null;
+    if (!timing || !this.world) return;
+    this.residue = riftResidue(
+      this.world.seed, rift, timing.boomTiles * this.world.tileSize,
+    );
   }
 
   /**
@@ -2393,14 +2428,45 @@ export class Game {
     if (before < timing.emergeAt && after >= timing.emergeAt) {
       playSfx('summon');
     }
-    const burst = timing.emergeAt + timing.emergeTime * RIFT_BURST_FRACTION;
+    // The window closing, if it ever does. `collapseAt` is null while the rift
+    // is open-ended — a comparison against it would be false forever anyway,
+    // but saying so here is what stops the next person wiring a timer to it.
+    if (timing.collapseAt !== null
+      && before < timing.collapseAt && after >= timing.collapseAt) {
+      playSfx('lantern-off');
+      this.camera.addTrauma(0.12);
+    }
+    // THE FRONT REACHING YOU. Not the explosion going off across the clearing —
+    // the moment it arrives where this player is standing, which is a different
+    // instant for everybody in the party and is the whole reason the wave is
+    // slow and wide. Someone at the far edge feels it three seconds after the
+    // person who pressed the button.
+    const reach = timing.boomTiles * (this.world?.tileSize ?? 16);
+    const local = this.local;
+    if (local && rift) {
+      const away = Math.hypot(rift.x - local.state.x, rift.y - local.state.y);
+      if (away <= reach) {
+        const front = (t: number) => {
+          const u = Math.max(0, Math.min(1, (t - timing.boomAt) / timing.boomTime));
+          return (1 - (1 - u) ** 3) * reach;
+        };
+        if (front(before) < away && front(after) >= away) {
+          // Hardest up close and still felt at the rim, so the shove reports
+          // how much of the blast you actually took.
+          this.camera.addTrauma(0.55 * (1 - (away / reach) * 0.65));
+          playSfx('crate-break');
+        }
+      }
+    }
+
+    const burst = timing.boomAt;
     if (before < burst && after >= burst) {
       // Same reason: the sheet already whites the whole frame out on this
       // exact frame. A gradient disc on top of it only adds the one thing the
       // sheet does not have — a hard circular edge.
       this.camera.addTrauma(0.42);
       playSfx('kindle');
-      for (let i = 0; i < 22; i++) {
+      for (let i = 0; i < 30; i++) {
         const angle = Math.random() * Math.PI * 2;
         const speed = 40 + Math.random() * 90;
         this.effects.particles.push({

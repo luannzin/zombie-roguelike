@@ -19,9 +19,9 @@
       "file": "console.png",
       "frameWidth": 20,
       "frameHeight": 24,
-      "frames": 2,
+      "frames": 3,
       "sway": 0,
-      "states": 2
+      "states": 3
     }
   },
   "decals": {
@@ -30,6 +30,21 @@
       "frameWidth": 64,
       "frameHeight": 64,
       "frames": 1
+    },
+    "residue": {
+      "file": "residue.png",
+      "frameWidth": 16,
+      "frameHeight": 16,
+      "frames": 6
+    },
+    "corrupt": {
+      "file": "corrupt.png",
+      "frameWidth": 16,
+      "frameHeight": 16,
+      "frames": 192,
+      "directions": 8,
+      "levels": 3,
+      "rolls": 8
     }
   },
   "effects": {

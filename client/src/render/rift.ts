@@ -8,7 +8,9 @@
  * than more entries in `scenery.ts` or `vfx.ts`:
  *
  *   scar     a flat DECAL, drawn on the floor with the boot prints
- *   pillar   a bottom-anchored PROP with two STATES, in the depth sort
+ *   residue  hundreds more of the same, thrown outward by the blast and never
+ *            cleaned up — `render/residue.ts` decides where they land
+ *   pillar   a bottom-anchored PROP with three STATES, in the depth sort
  *   console  the same, and the only thing on the map you press
  *   charge / crown / emerge / rift
  *            effect TIMELINES anchored on `anchorY`, drawn additively after
@@ -53,6 +55,18 @@ export interface RiftDecalSheet {
   frames: number;
 }
 
+/**
+ * A decal sheet whose frame is chosen by DIRECTION rather than rolled.
+ *
+ * `frame = (direction * levels + level) * rolls + roll`. Mirrors
+ * `corrupt_frame` in make_rift.py; the heading convention is `tracks.png`'s.
+ */
+export interface RiftAimedSheet extends RiftDecalSheet {
+  directions: number;
+  levels: number;
+  rolls: number;
+}
+
 export interface RiftEffectSheet {
   image: HTMLImageElement;
   frameWidth: number;
@@ -77,6 +91,10 @@ export interface RiftEffectSheet {
 export interface RiftAtlas {
   tile: number;
   scar: RiftDecalSheet | null;
+  /** What the blast left on the ground. Six cuts; the scatter picks by distance. */
+  residue: RiftDecalSheet | null;
+  /** The ground it went through. Aimed: the frame comes from the tile's angle. */
+  corrupt: RiftAimedSheet | null;
   pillar: RiftPropSheet | null;
   console: RiftPropSheet | null;
   /** One-shot: a stone waking. Hands off to `crown` on its last frame. */
@@ -98,6 +116,12 @@ interface PropManifest {
   states?: number;
 }
 
+interface AimedManifest extends PropManifest {
+  directions: number;
+  levels: number;
+  rolls: number;
+}
+
 interface EffectManifest extends PropManifest {
   fps: number;
   anchorY: number;
@@ -110,7 +134,7 @@ interface EffectManifest extends PropManifest {
 interface RiftManifest {
   tile: number;
   props: { pillar?: PropManifest; console?: PropManifest };
-  decals: { scar?: PropManifest };
+  decals: { scar?: PropManifest; residue?: PropManifest; corrupt?: AimedManifest };
   effects: {
     charge?: EffectManifest;
     crown?: EffectManifest;
@@ -131,8 +155,11 @@ export function loadRift(): Promise<RiftAtlas | null> {
 async function fetchRift(): Promise<RiftAtlas | null> {
   try {
     const manifest = await loadJson<RiftManifest>(`${ROOT}/manifest.json`);
-    const [scar, pillar, consoleSheet, charge, crown, emerge, rift] = await Promise.all([
+    const [scar, residue, corrupt, pillar, consoleSheet, charge, crown, emerge, rift] =
+      await Promise.all([
       manifest.decals.scar ? loadDecal(manifest.decals.scar) : null,
+      manifest.decals.residue ? loadDecal(manifest.decals.residue) : null,
+      manifest.decals.corrupt ? loadAimed(manifest.decals.corrupt) : null,
       manifest.props.pillar ? loadProp(manifest.props.pillar) : null,
       manifest.props.console ? loadProp(manifest.props.console) : null,
       manifest.effects.charge ? loadEffect(manifest.effects.charge) : null,
@@ -140,7 +167,10 @@ async function fetchRift(): Promise<RiftAtlas | null> {
       manifest.effects.emerge ? loadEffect(manifest.effects.emerge) : null,
       manifest.effects.rift ? loadEffect(manifest.effects.rift) : null,
     ]);
-    return { tile: manifest.tile, scar, pillar, console: consoleSheet, charge, crown, emerge, rift };
+    return {
+      tile: manifest.tile, scar, residue, corrupt, pillar, console: consoleSheet,
+      charge, crown, emerge, rift,
+    };
   } catch (err) {
     console.warn('[rift] no atlas, extraction point not drawn:', err);
     return null;
@@ -164,6 +194,15 @@ async function loadDecal(manifest: PropManifest): Promise<RiftDecalSheet> {
     frameWidth: manifest.frameWidth,
     frameHeight: manifest.frameHeight,
     frames: manifest.frames,
+  };
+}
+
+async function loadAimed(manifest: AimedManifest): Promise<RiftAimedSheet> {
+  return {
+    ...(await loadDecal(manifest)),
+    directions: manifest.directions,
+    levels: manifest.levels,
+    rolls: manifest.rolls,
   };
 }
 

@@ -118,8 +118,9 @@ and nowhere near the frame loop.
   with everything else. The ready prompt is a `Tooltip`, not a corner.
 - `QuestLog` is a Panel under the minimap, same chrome as the belt and the
   bag, right-aligned with the map (`items-end`). New tasks do not just
-  appear in the list: `QuestAnnounce` puts the label big at top-centre
-  (22px, the HUD's 2×), holds so it can be read, then flies into the card
+  appear in the list: `QuestAnnounce` puts the label at top-centre
+  (11px, same face as the card, `whitespace-nowrap` so a long name stays
+  one line), holds so it can be read, then flies into the card
   the same way a collect flies into the bag (rAF pose, `warpHudPoint`,
   outside the glass). Completed rows rise, then leave — the HUD dismisses
   them after that beat even if the server still carries `done`. `risk`

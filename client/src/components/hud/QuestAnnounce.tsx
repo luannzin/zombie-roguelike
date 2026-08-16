@@ -1,10 +1,11 @@
 /**
- * Big top-centre beat for a new objective, then a fly into the quest card —
+ * Top-centre beat for a new objective, then a fly into the quest card —
  * the same hold-then-travel as a collect into the bag (`LootFly`).
  *
  * Pose is written in rAF, never component state. The overlay lives on
  * `document.body` so it is not warped by the HUD glass; the landing point
- * is `warpHudPoint`'d so it still hits the cell the player sees.
+ * is `warpHudPoint`'d so it still hits the cell the player sees. Type is
+ * the HUD's 11px, nowrap — a long name stays one line.
  */
 
 import { useEffect, useRef } from 'react';
@@ -20,8 +21,8 @@ export const QUEST_FLY_LIFE = QUEST_FLY_HOLD + QUEST_FLY_TRAVEL;
 
 /** Hold sits here, not on the vertical centre — a task, not a title. */
 const HOLD_Y = 0.2;
-/** 22px announce → 11px row. */
-const LAND_SCALE = 0.5;
+/** Announce is the HUD's 11px; land at the same size. */
+const LAND_SCALE = 1;
 
 export interface QuestAnnounceProps {
   quest: HudQuest;
@@ -117,7 +118,7 @@ export function QuestAnnounce({ quest, dock, onLanded }: QuestAnnounceProps) {
   return createPortal(
     <p
       ref={nodeRef}
-      className="pixel-text text-ink pointer-events-none fixed top-0 left-0 z-20 max-w-[16em] text-center text-[22px] leading-[26px] tracking-[0.18em] uppercase drop-shadow-[0_2px_0_var(--hud-text-shadow)]"
+      className="pixel-text text-ink pointer-events-none fixed top-0 left-0 z-20 whitespace-nowrap text-center text-[11px] leading-[17px] tracking-[0.08em] uppercase drop-shadow-[0_2px_0_var(--hud-text-shadow)]"
       style={{ visibility: 'hidden' }}
       aria-hidden="true"
     >

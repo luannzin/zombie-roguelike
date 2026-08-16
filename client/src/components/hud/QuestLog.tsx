@@ -1,6 +1,6 @@
 /**
  * Run objectives. A Panel under the minimap, same chrome as the belt and the
- * bag, right-aligned with the map. New tasks are announced big at top-centre,
+ * bag, right-aligned with the map. New tasks are announced at top-centre,
  * then fly into this card the way a collect flies into the bag.
  * Completed rows rise, then leave.
  *
@@ -81,12 +81,12 @@ export function QuestLog({ quests, dimmed }: QuestLogProps) {
       >
         <Panel
           className={cn(
-            'w-44 px-2.5 py-2 transition-opacity duration-700 ease-out',
+            'w-max max-w-none px-2.5 py-2 transition-opacity duration-700 ease-out',
             !lastLeaving && 'animate-quest-card',
             dimmed && 'opacity-0 duration-200',
           )}
         >
-          <div className="mb-1.5 text-[11px] leading-[11px]">
+          <div className="mb-1.5 text-[11px] leading-[11px] whitespace-nowrap">
             <span className="text-ink-muted tracking-[0.06em]">OBJETIVOS</span>
           </div>
           <div className="flex flex-col gap-1.5">

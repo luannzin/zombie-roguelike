@@ -30,7 +30,7 @@ export function QuestRow({ quest, mode, dockRef, onGone }: QuestRowProps) {
   return (
     <div
       className={cn(
-        'flex items-start justify-between gap-2 text-[11px] leading-[17px] tracking-[0.08em] uppercase',
+        'flex items-center justify-between gap-2 whitespace-nowrap text-[11px] leading-[17px] tracking-[0.08em] uppercase',
         mode === 'ghost' && 'opacity-0',
         mode === 'live' && 'animate-quest-land',
         mode === 'leaving' && 'animate-quest-leave',
@@ -42,7 +42,7 @@ export function QuestRow({ quest, mode, dockRef, onGone }: QuestRowProps) {
     >
       <span
         ref={mode === 'ghost' ? dockRef : undefined}
-        className={cn('min-w-0 text-left break-words', done ? 'text-ink-muted' : 'text-ink')}
+        className={cn('text-left whitespace-nowrap', done ? 'text-ink-muted' : 'text-ink')}
       >
         {quest.label}
       </span>

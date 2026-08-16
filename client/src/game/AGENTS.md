@@ -360,9 +360,10 @@ seam React is allowed to read.
   not a subscription from a component to the game. Camp ready uses `ready` and
   `prompt`; a nearby drop uses `lootPrompt`; the pocket uses `inventory`;
   the walk-out and the forest emerge use `cinematic`; a crate in reach uses
-  `cratePrompt`. Run objectives use `quests` — announced big at centre,
-  then docked into the card under the minimap. Completed rows rise and
-  leave; the HUD dismisses them after that beat.
+  `cratePrompt`. Run objectives use `quests` — announced big at top-centre,
+  then flown into the card under the minimap the way a collect flies into
+  the bag. Completed rows rise and leave; the HUD dismisses them after
+  that beat.
   A world `Tooltip` also needs an `anchor` id written in `syncTooltipAnchors`
   each frame — show/hide is the store, the pixels are the camera. E is
   interact: collect on a drop, smash a crate, ready at the fire. The

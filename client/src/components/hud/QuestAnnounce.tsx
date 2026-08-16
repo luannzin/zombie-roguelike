@@ -1,20 +1,27 @@
 /**
- * Big centre beat for a new objective. The words arrive large, hold so they
- * can be read, then fly into the quest card under the minimap.
+ * Big top-centre beat for a new objective, then a fly into the quest card —
+ * the same hold-then-travel as a collect into the bag (`LootFly`).
  *
- * The dock is a FLIP: one layout measure, then a transform. React is not in
- * the frame loop — the travel is a CSS transition.
+ * Pose is written in rAF, never component state. The overlay lives on
+ * `document.body` so it is not warped by the HUD glass; the landing point
+ * is `warpHudPoint`'d so it still hits the cell the player sees.
  */
 
-import { useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
+import { HUD_LENS, warpHudPoint } from '@/lib/lens';
 import type { HudQuest } from '../../game/hud-store';
 
-export const QUEST_ANNOUNCE_IN_MS = 420;
-export const QUEST_ANNOUNCE_HOLD_MS = 900;
-export const QUEST_ANNOUNCE_DOCK_MS = 560;
+/** How long the words sit at top-centre before they travel. */
+export const QUEST_FLY_HOLD = 0.7;
+/** Top-centre → card row. Same travel as a loot fly. */
+export const QUEST_FLY_TRAVEL = 0.62;
+export const QUEST_FLY_LIFE = QUEST_FLY_HOLD + QUEST_FLY_TRAVEL;
 
-/** Row type is 11px; this is 22px. Dock scale is that ratio. */
-const DOCK_SCALE = 0.5;
+/** Hold sits here, not on the vertical centre — a task, not a title. */
+const HOLD_Y = 0.2;
+/** 22px announce → 11px row. */
+const LAND_SCALE = 0.5;
 
 export interface QuestAnnounceProps {
   quest: HudQuest;
@@ -23,19 +30,17 @@ export interface QuestAnnounceProps {
 }
 
 export function QuestAnnounce({ quest, dock, onLanded }: QuestAnnounceProps) {
-  const textRef = useRef<HTMLParagraphElement>(null);
+  const nodeRef = useRef<HTMLParagraphElement>(null);
   const dockRef = useRef(dock);
   const onLandedRef = useRef(onLanded);
-  const [docking, setDocking] = useState(false);
-  const landed = useRef(false);
-
   dockRef.current = dock;
   onLandedRef.current = onLanded;
 
-  useLayoutEffect(() => {
+  useEffect(() => {
+    const el = nodeRef.current;
+    if (!el) return;
+
     const finish = () => {
-      if (landed.current) return;
-      landed.current = true;
       onLandedRef.current();
     };
 
@@ -44,53 +49,80 @@ export function QuestAnnounce({ quest, dock, onLanded }: QuestAnnounceProps) {
       return;
     }
 
-    const start = window.setTimeout(
-      () => setDocking(true),
-      QUEST_ANNOUNCE_IN_MS + QUEST_ANNOUNCE_HOLD_MS,
-    );
-    return () => window.clearTimeout(start);
-  }, []);
+    let age = 0;
+    let last = performance.now();
+    let raf = 0;
+    let done = false;
 
-  useLayoutEffect(() => {
-    if (!docking) return;
-    const text = textRef.current;
-    const finish = () => {
-      if (landed.current) return;
-      landed.current = true;
-      onLandedRef.current();
+    const tick = (now: number) => {
+      const dt = Math.min(0.05, (now - last) / 1000);
+      last = now;
+      age += dt;
+
+      const fromX = window.innerWidth / 2;
+      const fromY = window.innerHeight * HOLD_Y;
+      const box = dockRef.current?.getBoundingClientRect();
+      const ready = !!box && box.width > 1 && box.height > 1;
+      if (age >= QUEST_FLY_HOLD && !ready) {
+        age = QUEST_FLY_HOLD - 0.0001;
+      }
+
+      if (age >= QUEST_FLY_LIFE) {
+        el.style.visibility = 'hidden';
+        if (!done) {
+          done = true;
+          finish();
+        }
+        return;
+      }
+
+      let x = fromX;
+      let y = fromY;
+      let scale = 1;
+      let alpha = 1;
+
+      if (age < QUEST_FLY_HOLD) {
+        const pop = Math.min(1, age / 0.12);
+        const bob = Math.sin(age * 7.5) * 3;
+        x = fromX;
+        y = fromY + bob;
+        scale = 0.96 + 0.2 * pop;
+        alpha = pop;
+      } else if (box) {
+        const t = (age - QUEST_FLY_HOLD) / QUEST_FLY_TRAVEL;
+        const ease = 1 - (1 - t) ** 3;
+        const raw = warpHudPoint(
+          box.left + box.width / 2,
+          box.top + box.height / 2,
+          window.innerWidth,
+          window.innerHeight,
+          HUD_LENS,
+        );
+        x = fromX + (raw.x - fromX) * ease;
+        y = fromY + (raw.y - fromY) * ease;
+        scale = 1.16 - (1.16 - LAND_SCALE) * ease;
+        alpha = t > 0.82 ? 1 - (t - 0.82) / 0.18 : 1;
+      }
+
+      el.style.transform = `translate(${x}px, ${y}px) translate(-50%, -50%) scale(${scale})`;
+      el.style.opacity = String(alpha);
+      el.style.visibility = 'visible';
+      raf = requestAnimationFrame(tick);
     };
-    if (!text) {
-      finish();
-      return;
-    }
 
-    const from = text.getBoundingClientRect();
-    const to = dockRef.current?.getBoundingClientRect();
-    if (!to || to.width < 1 || to.height < 1) {
-      text.style.opacity = '0';
-      const fade = window.setTimeout(finish, 160);
-      return () => window.clearTimeout(fade);
-    }
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [quest.id]);
 
-    const dx = to.left + to.width / 2 - (from.left + from.width / 2);
-    const dy = to.top + to.height / 2 - (from.top + from.height / 2);
-    const ease = 'cubic-bezier(0.23, 1, 0.32, 1)';
-    text.style.transition = `transform ${QUEST_ANNOUNCE_DOCK_MS}ms ${ease}, opacity ${QUEST_ANNOUNCE_DOCK_MS}ms ${ease}`;
-    text.style.transform = `translate(${dx}px, ${dy}px) scale(${DOCK_SCALE})`;
-    text.style.opacity = '0';
-
-    const end = window.setTimeout(finish, QUEST_ANNOUNCE_DOCK_MS);
-    return () => window.clearTimeout(end);
-  }, [docking]);
-
-  return (
-    <div className="pointer-events-none fixed inset-0 z-10 flex items-center justify-center">
-      <p
-        ref={textRef}
-        className="animate-quest-announce pixel-text text-ink max-w-[16em] text-center text-[22px] leading-[26px] tracking-[0.18em] uppercase drop-shadow-[0_2px_0_var(--hud-text-shadow)]"
-      >
-        {quest.label}
-      </p>
-    </div>
+  return createPortal(
+    <p
+      ref={nodeRef}
+      className="pixel-text text-ink pointer-events-none fixed top-0 left-0 z-20 max-w-[16em] text-center text-[22px] leading-[26px] tracking-[0.18em] uppercase drop-shadow-[0_2px_0_var(--hud-text-shadow)]"
+      style={{ visibility: 'hidden' }}
+      aria-hidden="true"
+    >
+      {quest.label}
+    </p>,
+    document.body,
   );
 }

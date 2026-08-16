@@ -1,6 +1,7 @@
 /**
  * Run objectives. A Panel under the minimap, same chrome as the belt and the
- * bag. New tasks are announced big at centre, then fly into this card.
+ * bag, right-aligned with the map. New tasks are announced big at top-centre,
+ * then fly into this card the way a collect flies into the bag.
  * Completed rows rise, then leave.
  *
  * The store is a snapshot. This keeps departing copies until their leave
@@ -80,7 +81,7 @@ export function QuestLog({ quests, dimmed }: QuestLogProps) {
       >
         <Panel
           className={cn(
-            'w-full px-2.5 py-2 transition-opacity duration-700 ease-out',
+            'w-44 px-2.5 py-2 transition-opacity duration-700 ease-out',
             !lastLeaving && 'animate-quest-card',
             dimmed && 'opacity-0 duration-200',
           )}

@@ -94,7 +94,7 @@ export function Hud({ snapshot, minimapRef, error }: HudProps) {
           <NetStats net={snapshot.net} />
         </div>
 
-        <div className="hud-layer pixel-text top-2.5 right-3 flex flex-col items-stretch gap-2">
+        <div className="hud-layer pixel-text top-2.5 right-3 flex flex-col items-end gap-2">
           <div className={chrome}>
             <MinimapCanvas ref={minimapRef} visible={snapshot.inArena} />
           </div>

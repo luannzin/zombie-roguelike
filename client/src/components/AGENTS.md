@@ -117,11 +117,14 @@ and nowhere near the frame loop.
   same chrome fade as the corners, so the walk-out (`cinematic`) takes it off
   with everything else. The ready prompt is a `Tooltip`, not a corner.
 - `QuestLog` is a Panel under the minimap, same chrome as the belt and the
-  bag. New tasks do not just appear in the list: `QuestAnnounce` puts the
-  label big at centre (22px, the HUD's 2×), holds so it can be read, then
-  FLIPs into the card. Completed rows rise, then leave — the HUD dismisses
-  them after that beat even if the server still carries `done`. `risk` still
-  paints the count in the danger tone. Reduced motion fades only; no dock.
+  bag, right-aligned with the map (`items-end`). New tasks do not just
+  appear in the list: `QuestAnnounce` puts the label big at top-centre
+  (22px, the HUD's 2×), holds so it can be read, then flies into the card
+  the same way a collect flies into the bag (rAF pose, `warpHudPoint`,
+  outside the glass). Completed rows rise, then leave — the HUD dismisses
+  them after that beat even if the server still carries `done`. `risk`
+  still paints the count in the danger tone. Reduced motion fades only;
+  no dock.
 - Colours and type come from the tokens in `src/styles/index.css`, consumed as
   Tailwind utilities. No literal colours in components.
 - coss semantic tokens are re-pointed at the game palette in the coss skin block

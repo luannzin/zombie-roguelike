@@ -42,7 +42,7 @@ export function QuestRow({ quest, mode, dockRef, onGone }: QuestRowProps) {
     >
       <span
         ref={mode === 'ghost' ? dockRef : undefined}
-        className={cn('min-w-0 text-left', done ? 'text-ink-muted' : 'text-ink')}
+        className={cn('min-w-0 text-left break-words', done ? 'text-ink-muted' : 'text-ink')}
       >
         {quest.label}
       </span>

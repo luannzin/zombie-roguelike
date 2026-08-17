@@ -31,7 +31,10 @@ import random
 import time
 import uuid
 
-from . import ai, camp, coins, combat, crates, entrance, loot, mapgen, protocol, quests, rift, weapons, zones
+from . import (
+    ai, camp, coins, combat, crates, entrance, loot, mapgen, protocol, quests,
+    rift, store, weapons, zones,
+)
 from .ai import EnemyDirector
 from .coins import Coin
 from .config import (
@@ -42,6 +45,7 @@ from .config import (
     MARCH_SPEED,
     RIFT_ACTIVATE_DIST,
     EXIT_CROSS_TILES,
+    STORE_BUY_DIST,
     MAX_HP,
     MAX_INPUT_QUEUE,
     MAX_INPUTS_PER_TICK,
@@ -61,6 +65,7 @@ from .corpses import Corpse
 from .crates import Crate
 from .entrance import Entrance
 from .rift import Rift
+from .store import Stand
 from .loot import Drop
 from .quests import Quest
 from .enemies import Enemy, EnemyType, dress
@@ -107,6 +112,20 @@ class Room:
         #: Lamps are dead and the pack does not give up. Latched until return.
         self.blackout = False
         self.panic = False
+        #: THE PARTY'S MONEY, and it is the party's rather than a player's on
+        #: purpose. Everything else a run produces is personal — your kills,
+        #: your xp, the gun in your hands — but what comes back from a night is
+        #: what the whole group fed into the anomalies, and there is no honest
+        #: way to split a shared bill four ways after the fact. One balance,
+        #: one shop, and who spends it is a conversation the party has.
+        #:
+        #: `Player.gold` is a different number and stays one: coins picked up
+        #: off corpses, which nobody pooled.
+        self.balance = 0
+        #: The shop's tables. Empty on every map that is not the store.
+        self.stands: list[Stand] = []
+        self._stands_dirty = False
+        self._balance_dirty = False
         self.corpses: dict[str, Corpse] = {}
         self.sockets: dict[str, object] = {}
         self.director = EnemyDirector(self.spawn_points)
@@ -126,6 +145,9 @@ class Room:
         self.pickup_events: list[dict] = []
         self.loot_pickup_events: list[dict] = []
         self.crate_break_events: list[dict] = []
+        #: Purchases made this tick. The juice: the client flies the gun onto
+        #: the belt cell and counts the balance down.
+        self.buy_events: list[dict] = []
         self._shot_id = 0
         self._swing_id = 0
         self._enemy_id = 0
@@ -164,8 +186,15 @@ class Room:
         self._load_drops()
         self._load_crates()
         self._load_rifts()
+        self._load_stands()
         self._load_entrance()
         self._rebuild_spawns()
+
+    def _load_stands(self) -> None:
+        """Hydrate the shop's tables from the map the builder left behind."""
+        rows = (self.world.store or {}).get("stands")
+        self.stands = store.stands_from_payloads(rows)
+        self._stands_dirty = bool(self.stands)
 
     def _load_drops(self) -> None:
         """Hydrate live drops from the map the generator left behind."""
@@ -340,6 +369,7 @@ class Room:
             corpses=[row.to_payload() for row in self.corpses.values()],
             quests=[q.payload() for q in self.quests] or None,
             blackout=self.blackout,
+            balance=self.balance,
         )
 
     def hello_payload(self, player: Player) -> dict:
@@ -872,16 +902,107 @@ class Room:
         for player in self.players.values():
             player.last_input.lantern = False
 
+    def buy(self, pid: str, stand_id: str | None = None) -> None:
+        """Take the gun off a table and the price off the party's balance.
+
+        The mirror of `collect_loot`, and deliberately so: a bought weapon
+        lands on the belt through the same two rules a found one does — it
+        arms an empty hand, and a full belt TRADES rather than refuses,
+        leaving the old gun on the floor of the shop where its owner can
+        pick it back up if they change their mind one step later.
+
+        THE STAND SELLS ONCE. It is a specific weapon lying on a specific
+        table, not a shelf with stock behind it, so the table is empty
+        afterwards and the party can see at a glance what they have already
+        taken. Two players cannot both buy it: `sold` is checked and set on
+        the same tick, and the tick is the server's.
+
+        Measured from the FEET, like every other E in the game.
+        """
+        if self.phase != protocol.PHASE_PLAYING or self.departing or self.arriving:
+            return
+        if self.zone.kind != zones.KIND_STORE:
+            return
+        player = self.players.get(pid)
+        if player is None or not player.alive:
+            return
+        target = self._stand_in_reach(player, stand_id)
+        if target is None or target.sold:
+            return
+        if target.price > self.balance:
+            return
+
+        held = player.hotbar.equipped()
+        unarmed = held is None or held.melee is not None
+        slot = player.hotbar.add(target.key)
+        if slot is not None and unarmed:
+            player.hotbar.held = slot
+        elif slot is None:
+            # Belt full: the same trade a pickup gets. It refuses while the
+            # knife is in hand or the hand is empty, and a refused trade must
+            # not charge for a gun that was never handed over.
+            slot = self.swap_weapon(player, target.key)
+        if slot is None:
+            return
+
+        self.balance -= target.price
+        target.sold = True
+        self._balance_dirty = True
+        self._stands_dirty = True
+        self._roster_dirty = True
+        self._sync_store_payload()
+        self.buy_events.append(
+            {
+                "id": target.id,
+                "by": player.id,
+                "k": target.key,
+                "price": target.price,
+                "slot": slot,
+                "x": round(target.x, 2),
+                "y": round(target.y, 2),
+            }
+        )
+
+    def _stand_in_reach(self, player: Player, stand_id: str | None) -> Stand | None:
+        feet_y = player.y + PLAYER_HALF_HEIGHT
+        reach = STORE_BUY_DIST * STORE_BUY_DIST
+        nearest: Stand | None = None
+        nearest_d = reach
+        for row in self.stands:
+            if stand_id is not None and row.id != stand_id:
+                continue
+            dx = row.x - player.x
+            dy = row.y - feet_y
+            dist = dx * dx + dy * dy
+            if dist <= nearest_d:
+                nearest = row
+                nearest_d = dist
+        return nearest
+
+    def _sync_store_payload(self) -> None:
+        """Write the tables back onto the map, so a late join sees the gaps."""
+        if not self.world.store:
+            return
+        self.world.store["stands"] = [row.to_payload() for row in self.stands]
+
     def drop_loot(self, pid: str, slot: int) -> None:
         """Toss a bag slot onto the ground near this player's feet.
 
         Camp has none, and the walk-out is too late. A stack becomes one
         world drop per unit — the ground list has no quantity. Placement
         is walkable floor around the feet; the server picks the tiles.
+
+        The SHOP refuses too, and for a different reason than the camp: there
+        is nothing to pick a dropped relic back up for. The corridor is one
+        walk in one direction and the map is gone at the end of it, so a bag
+        emptied onto the boards is a bag deleted with a ceremony. Note this
+        does not cover a GUN traded out from under the hand at a table — that
+        one lands on the floor on purpose, so a purchase stays reversible for
+        as long as the party is still standing there.
         """
         if self.phase != protocol.PHASE_PLAYING or self.departing or self.arriving:
             return
-        if self.zone.kind == zones.KIND_CAMP:
+        if self.zone.kind in (zones.KIND_CAMP, zones.KIND_STORE):
             return
         player = self.players.get(pid)
         if player is None or not player.alive:
@@ -996,14 +1117,122 @@ class Room:
                     pid, socket, protocol.dumps(self.welcome_payload(player))
                 )
 
-    async def return_home(self) -> None:
-        """They made it. Swap the forest for the next day's camp.
+    async def advance_zone(self) -> None:
+        """Whatever comes after the map they just walked out of.
 
-        Same phase, new zone, new map. Inventory and guns they kept (the
-        fenda ate the pocket) come back with them. Day increments so the
-        next forest is harder.
+        ONE crossing, two destinations, and the dispatch lives here rather than
+        in `_tick_exit_quest` because the quest is the same mechanic both times:
+        a living body walking into the VOID at the end of the map. What is on
+        the far side of it is a property of the zone being left, not of the
+        walk.
+
+        forest -> store   the night's takings become the party's balance
+        store  -> camp    the day rolls over
+        """
+        if self.zone.kind == zones.KIND_FOREST:
+            await self.enter_store()
+            return
+        await self.return_home()
+
+    async def enter_store(self) -> None:
+        """Out of the woods and into the shop. BANK THE NIGHT ON THE WAY IN.
+
+        This is where the currency is actually created, and it is deliberately
+        the only place. Gold does not accumulate during a run — what a party
+        has at the end of a night is what they FED INTO THE ANOMALIES, because
+        that is the one number that measures the thing the night was about.
+        Loot still in the bag is not money: it is loot they failed to extract,
+        and the sweep at the blackout already said so.
+
+        The day does NOT increment here. This corridor is the end of the night
+        they just survived, not the start of the next one — see `zones.store`.
         """
         if self.zone.kind != zones.KIND_FOREST:
+            self._pending_return = False
+            return
+        earned = sum(max(0, row.fed) for row in self.rifts)
+        self.balance += earned
+        self._balance_dirty = True
+        await self._swap_map(
+            zones.store(self.day),
+            store.build_store(self.day, random.randrange(1, 2**31)),
+        )
+
+    async def _swap_map(self, zone: zones.Zone, world) -> None:
+        """Move the whole room onto a new map that is entered through a corridor.
+
+        The shape `embark` walks for the forest, factored out for the second
+        arrival that wanted it. Everything a player is CARRYING survives —
+        pocket, belt, xp — because this is one continuous run; everything the
+        MAP was holding does not.
+
+        Sequence is not reset, for the same reason it is not reset on embark:
+        the client has been numbering packets since the camp and `queue_input`
+        drops anything at or below the ack.
+        """
+        self._pending_return = False
+        self.departing = False
+        self._depart_phase = None
+        self._slots = {}
+        self.zone = zone
+        self.world = world
+        self.navigator = Navigator(self.world)
+        self.enemies.clear()
+        self.coins.clear()
+        self.noises.clear()
+        self.corpses.clear()
+        self._corpses_dirty = True
+        self.crate_break_events = []
+        self._load_drops()
+        self._load_crates()
+        self._load_rifts()
+        self._load_stands()
+        self._load_entrance()
+        self._rebuild_spawns()
+        self.director = EnemyDirector(self.spawn_points)
+        self.begin_arrive()
+        for player in self.players.values():
+            player.ready = False
+            # Anybody who was down on the way out comes back up here. The
+            # crossing does not tick respawn timers, so a body that fell in the
+            # last seconds of the run would otherwise arrive dead somewhere
+            # with nothing that could have killed it.
+            player.hp = MAX_HP
+            player.alive = True
+            player.respawn_timer = 0.0
+            player.hurt_immunity = 0.0
+            slot = self._slots.get(player.id)
+            if slot is not None:
+                player.x, player.y = slot
+            else:
+                player.x, player.y = self.pick_spawn()
+            player.vx = player.vy = 0.0
+            if self.gate is not None:
+                player.aim_x = self.gate.dx
+                player.aim_y = self.gate.dy
+            else:
+                player.aim_x = 0.0
+                player.aim_y = 1.0
+            player.inputs.clear()
+            player.idle_ticks = 0
+            player.combo_step = 0
+            player.combo_left = 0.0
+            player.last_input = InputCmd(sequence=player.last_processed_seq)
+        for pid, socket in list(self.sockets.items()):
+            player = self.players.get(pid)
+            if player is not None:
+                await self._safe_send(
+                    pid, socket, protocol.dumps(self.welcome_payload(player))
+                )
+
+    async def return_home(self) -> None:
+        """They made it. Swap the shop for the next day's camp.
+
+        Same phase, new zone, new map. Inventory and guns they kept (the
+        fenda ate the pocket, and the shop may have added to the belt) come
+        back with them. Day increments so the next forest is harder.
+        """
+        if self.zone.kind != zones.KIND_STORE:
             self._pending_return = False
             return
         self._pending_return = False
@@ -1029,6 +1258,7 @@ class Room:
         self._load_drops()
         self._load_crates()
         self._load_rifts()
+        self._load_stands()
         self._load_entrance()
         self._rebuild_spawns()
         self.director = EnemyDirector(self.spawn_points)
@@ -1103,16 +1333,25 @@ class Room:
             self.world.rifts = [item.geometry_payload() for item in self.rifts]
 
     def begin_arrive(self) -> None:
-        """Lock input and line the party up inside the forest corridor."""
+        """Lock input and line the party up inside the arrival corridor.
+
+        The formation is the ZONE's, because the two arrivals are different
+        pictures: a party coming out of a hole in a treeline should not look
+        arranged, and a party walking into a shop is walking into somewhere
+        that was arranged for them. See `store.formation_slots`.
+        """
         if self.gate is None:
             self.arriving = False
             return
         self.arriving = True
         self._arrive_phase = "hold"
         self._arrive_hold = 0.35
-        self._slots = entrance.formation_slots(
-            self.gate, self.seating, set(self.players)
+        formation = (
+            store.formation_slots
+            if self.zone.kind == zones.KIND_STORE
+            else entrance.formation_slots
         )
+        self._slots = formation(self.gate, self.seating, set(self.players))
         self._entrance_dirty = True
 
     def step_players(self, dt: float) -> None:
@@ -1316,7 +1555,14 @@ class Room:
             self._sync_entrance_payload()
             self._rebuild_spawns()
             self.director = EnemyDirector(self.spawn_points)
-            self.offer_extract_quest()
+            # The way back closing is the moment either zone gets a job. In the
+            # forest that is finding the pads; in the shop it is the doorway at
+            # the far end, which has been standing open the whole time and now
+            # has a row on the HUD saying so.
+            if self.zone.kind == zones.KIND_STORE:
+                self.offer_store_quest()
+            else:
+                self.offer_extract_quest()
 
     def _sync_entrance_payload(self) -> None:
         if self.gate is None:
@@ -1358,6 +1604,13 @@ class Room:
         if any(q.id == quests.EXIT for q in self.quests):
             return
         self.quests.append(quests.exit_quest())
+        self._quests_dirty = True
+
+    def offer_store_quest(self) -> None:
+        """The shop's only row: the doorway at the other end of the corridor."""
+        if any(q.id == quests.EXIT for q in self.quests):
+            return
+        self.quests.append(quests.store_exit_quest())
         self._quests_dirty = True
 
     def step_quests(self) -> None:
@@ -1775,9 +2028,16 @@ class Room:
             self.coins[coin.id] = coin
 
     def respawn(self, player: Player) -> None:
-        # In a safe zone you come back to your own seat at the fire, not to a
-        # ring tile somewhere in the trees.
-        if not self.zone.hostile and player.id in self.seating:
+        # In the CAMP you come back to your own seat at the fire, not to a ring
+        # tile somewhere in the trees.
+        #
+        # Keyed on the zone KIND rather than on `hostile`, and the difference
+        # is not academic: the merchant's camp is also non-hostile and also has
+        # a fire tile now, so the old test sent anyone knifed at the shop to a
+        # seat on a ring around the trader's campfire — a ring that runs
+        # straight through his treeline. Seats are the camp's, and only the
+        # camp's; everywhere else has a spawn ring for exactly this.
+        if self.zone.kind == zones.KIND_CAMP and player.id in self.seating:
             player.x, player.y = camp.seat_position(
                 self.world, self.seating.index(player.id), len(self.seating)
             )
@@ -1850,6 +2110,12 @@ class Room:
         self._egress_dirty = False
         blackout_flag = True if self._blackout_dirty else None
         self._blackout_dirty = False
+        stand_rows = (
+            [row.to_payload() for row in self.stands] if self._stands_dirty else None
+        )
+        self._stands_dirty = False
+        balance_row = self.balance if self._balance_dirty else None
+        self._balance_dirty = False
         await self.broadcast(
             protocol.snapshot(
                 self.tick,
@@ -1876,6 +2142,9 @@ class Room:
                 quests=quest_rows,
                 egress=egress_row,
                 blackout=blackout_flag,
+                stands=stand_rows,
+                buys=self.buy_events or None,
+                balance=balance_row,
             )
         )
 
@@ -1896,7 +2165,7 @@ class Room:
                 continue
             if self._pending_return:
                 await self.broadcast_snapshot()
-                await self.return_home()
+                await self.advance_zone()
                 continue
             if self.tick % SNAPSHOT_EVERY_N_TICKS == 0:
                 await self.broadcast_snapshot()
@@ -1907,6 +2176,7 @@ class Room:
                 self.pickup_events = []
                 self.loot_pickup_events = []
                 self.crate_break_events = []
+                self.buy_events = []
             delay = next_time - time.perf_counter()
             if delay > 0:
                 await asyncio.sleep(delay)

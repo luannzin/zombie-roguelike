@@ -23,6 +23,7 @@ export function ControlsHint({ zone }: ControlsHintProps) {
   parts.push('1-2 arma', '3 faca');
   if (zone?.lantern !== false) parts.push('F lanterna');
   if (zone?.kind === 'camp') parts.push('E pronto');
+  else if (zone?.kind === 'store') parts.push('E comprar');
   else if (zone?.hostile) parts.push('E coletar');
   parts.push('TAB mochila');
   // Always listed, unlike the rest: mute is the one control that works

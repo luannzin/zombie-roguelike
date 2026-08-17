@@ -22,6 +22,9 @@ mutation, no React.
 | `layers/rift.ts` | extraction pads: the whole lifecycle's timing (`riftPhase`) plus its passes — floor, depth sort, additive light |
 | `layers/corruption.ts` | the blast's mark on the ground, baked into a pair of offscreen canvases; motes over it |
 | `residue.ts` | where the extraction blast's marks land: a deterministic field derived from the map seed, never sent over the wire |
+| `store.ts` | the merchant's own kit: tables (with `topY`), torches (with `flameY`), the mat, the torch fire and the buy pool — plus the HUD coin the price tag draws |
+| `merchant.ts` | the shopkeeper's clips and the player that picks between them (`MerchantPose`, `stepMerchant`, `merchantFrame`) |
+| `layers/store.ts` | his pitch drawn: mat, depth-sorted tables / torches / merchant, stock with its lift, the fires and the price tags |
 | `loot.ts` | loot atlas: one 16x16 frame per collectable item |
 | `guns.ts` | held-gun atlas and the shared muzzle/grip pose (`gunMuzzle`) |
 | `gore.ts` | gore atlas: small wound decals stamped on a body that has been hit |
@@ -395,6 +398,37 @@ mutation, no React.
   would pop the plunger back up and offer the button again), the beacon comes
   off `scenery.lights`, and the ground keeps everything. The map remembering is
   the whole point of the state.
+- **The STORE draws almost nothing of its own, and that is the design.** It is
+  an ordinary forest map: the glade's soil, grass and trees come from
+  `layers/terrain`, the merchant's tent is a scenery prop in the standing sort,
+  his campfire is a `FIRE` tile drawn by the terrain layer like the camp's, and
+  his torches feed the same light field a cabin lamp does. Only his own kit is
+  special-cased — the mat goes flat with the boot prints, the tables, torches
+  and the merchant go IN the entity sort (each table drawing its own stock
+  immediately after itself, so a gun is never sorted away from what it is lying
+  on), the torch flames and the buy pool are additive after the darkness like
+  every other light, and the prices go last with the name labels.
+  It had a plank floor, walls, a baseboard and hanging lamps when it was an
+  interior. All of that is gone; do not reintroduce a floor override or a wall
+  pass for it. If the camp needs a new object, prefer a scenery prop or a tile
+  kind that already draws itself over a fifth entry point in `layers/store`.
+- **It runs the darkness like every other forest map.** The pitch being a pool
+  of firelight in a dark glade is the whole picture; an evenly lit clearing
+  reads as somewhere with no night in it. The lantern is off, so the torches
+  lining the lane are the only thing telling the party which way the trader is
+  — their spacing is chosen so the pools overlap into one lit path, because a
+  chain of separate islands of light reads as somewhere to be careful.
+- **A price tag is the shop talking, not an object in the room.** It is drawn
+  in the label pass so nothing can occlude it, and it is on the world rather
+  than in the HUD because "what does that cost" has to be answerable from
+  across the corridor — otherwise the zone is four identical tables you have to
+  visit in turn to compare. An unaffordable price is MUTED, never hidden: a
+  shop that greys out its own stock is telling you what to want.
+- **The merchant is not an entity and must not become one.** He has no
+  position that changes, no aim, no walk cycle — so he has a CLIP PLAYER
+  instead, and it is entirely client-side. Two players watching him see
+  different flourishes, which is fine: synchronising that would cost a message
+  per animation to buy an agreement nobody can perceive.
 - Cached bitmaps and tints are released in `Renderer.dispose()`.
 - `imageSmoothingEnabled` stays `false` — this is pixel art.
 

@@ -132,6 +132,45 @@ MARCH_SPEED = TILE_SIZE * MARCH_TILES_PER_SEC
 ENTRANCE_DEPTH_TILES = 12
 ENTRANCE_MOUTH_TILES = 4.6
 
+# --- the store (authored in tiles) ------------------------------------------
+# The night's takings, spent. A trader's pitch in a long forest GLADE, read
+# left to right: the way in at one end, the way out at the other, and his
+# tables strung between them.
+#
+# `STORE_LANE_TILES` is the load-bearing one. It is the typical height of the
+# walkable lane, not a hard width — `store._lane_half` breathes and frays
+# around it so the treeline reads as woods rather than as two drawn lines. Kept
+# narrow on purpose: this is the one zone whose whole content is "walk past
+# four tables and decide", and a glade wide enough to cut a diagonal across is
+# a glade where a party leaves without seeing half the stock.
+#
+# The map is TALLER than the lane so the treeline has depth to thicken into;
+# most of that height is woods the party never walks in.
+STORE_WIDTH_TILES = 56
+STORE_HEIGHT_TILES = 24
+STORE_LANE_TILES = 9.0
+#: VOID at each end: the way in (which seals) and the way out (which does not).
+STORE_CORRIDOR_TILES = 7
+#: How close the feet have to be for E to buy. Tighter than a crate — the
+#: tables are shoulder to shoulder and a loose radius would offer two at once.
+STORE_BUY_TILES = 1.9
+STORE_BUY_DIST = TILE_SIZE * STORE_BUY_TILES
+#: How far a weapon lifts off its table when somebody is in range, in tiles.
+#: Client-side juice, authored here so the lift and the reach cannot drift.
+STORE_LIFT_TILES = 0.4
+#: What the merchant charges, as a multiple of the gun's catalog value. He is
+#: the only place to buy one and he knows it.
+#:
+#: KEPT LOW ON PURPOSE, and the number is pinned to the first night rather than
+#: to a feeling about margins. Day one has a single pad, a single pad is always
+#: the LAST pad, and the last pad never offers to keep feeding — so a first
+#: night banks its quota (`rift.night_need`, 24) plus whatever the final item
+#: overshot by, and nothing else. At a 35% markup the cheapest gun on the
+#: cheapest table is 54 and that shop is a corridor of things nobody can buy,
+#: which is the worst possible first impression for a zone whose whole job is
+#: to make the night's take feel like it bought something.
+STORE_MARKUP = 1.15
+
 # --- vision (authored in tiles) ---------------------------------------------
 # The client draws the darkness; these numbers decide its shape. They live here
 # for the same reason every other constant does — one source of truth — and are
@@ -491,6 +530,12 @@ def client_config() -> dict:
         "crateBreakTiles": CRATE_BREAK_TILES,
         # How close to the extraction console E will activate, in tiles.
         "riftActivateTiles": RIFT_ACTIVATE_TILES,
+        # The shop. How close to a table E will buy, and how far the weapon on
+        # it lifts when somebody is in that range — the lift is the visual half
+        # of the same reach, so the two travel together or the gun rises at a
+        # distance where the key does nothing.
+        "storeBuyTiles": STORE_BUY_TILES,
+        "storeLiftTiles": STORE_LIFT_TILES,
         # The activation ceremony, in seconds. ONE clock: the client plays the
         # sheets off these numbers and the server ends the sequence on them, so
         # the stone that lights on screen is the stone the server thinks lit.

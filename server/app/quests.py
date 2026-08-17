@@ -29,6 +29,14 @@ FEED = "feed"
 FEED_LABEL = "Alimente a fenda"
 EXIT = "exit"
 EXIT_LABEL = "Encontre a saída"
+#: The store's row. Same id as the forest's, because it is the same mechanic —
+#: a living body crossing the VOID at the end of the map — and `Room` ticks it
+#: through one path. Only the wording differs, and it differs completely: the
+#: forest's exit is something you have to FIND in the dark with the pack
+#: hunting, and this one is a lit doorway forty tiles away that has been open
+#: since you walked in. Calling both "encontre a saída" would make the word
+#: mean nothing on the night it matters.
+STORE_EXIT_LABEL = "Siga para o acampamento"
 
 
 @dataclass
@@ -69,6 +77,11 @@ def feed(need: int) -> Quest:
 
 def exit_quest() -> Quest:
     return Quest(id=EXIT, label=EXIT_LABEL, have=0, need=1, risk=True)
+
+
+def store_exit_quest() -> Quest:
+    """Leave the shop. Not `risk` — there is nothing in here to be afraid of."""
+    return Quest(id=EXIT, label=STORE_EXIT_LABEL, have=0, need=1)
 
 
 def from_payloads(rows: list[dict] | None) -> list[Quest]:

@@ -182,7 +182,18 @@ seam React is allowed to read.
   `ready`, and a player shuts it by hand. Shutting the LAST pad
   carves `world.egress`, kills the lantern
   (`Lantern.kill`), and offers `exit`. Reaching the mouth is another
-  welcome, back at camp.
+  welcome — at the STORE, not at camp.
+- **The store is an arrival like the forest is, and an ordinary forest map.**
+  Same corridor, same seal, so `arriving` is true for both zone kinds and the
+  camp is the only place you simply appear in. It takes the darkness, the
+  decoration mask and the terrain bake exactly as a forest does — there is no
+  zone branch for any of it, and adding one back is how it became an interior
+  the first time. The only client-side special case is the merchant's clip
+  player, stepped on the render clock exactly like the rift's ceremony,
+  because neither has ever been on the wire.
+  `nearStand` mirrors `Room._stand_in_reach` feet-to-table, and it drives all
+  three of the lift, the pool and the prompt — a layer working it out for
+  itself would be a second opinion about what "close enough" means.
   - **The pad's whole feed state is on the wire** — `fed`, `need`, `level`,
     `ready` on `RiftStateRow` — and the client re-derives none of it. `level`
     especially: the overfeed tiers live in `server/app/rift.py` and picking
@@ -425,7 +436,8 @@ seam React is allowed to read.
   `prompt`; a nearby drop uses `lootPrompt`; the pocket uses `inventory`;
   the walk-out and the forest emerge use `cinematic`; a crate in reach uses
   `cratePrompt`; a pad in reach uses `riftPrompt`
-  (`open` / `busy` / `feed` / `over` / `close`); the
+  (`open` / `busy` / `feed` / `over` / `close`); a shop table in reach uses
+  `buyPrompt` and the party's purse uses `balance`; the
   extraction exit arrow uses `exitGuide`. Run
   objectives use `quests` — announced at top-centre,
   then flown into the card under the minimap the way a collect flies into
@@ -433,8 +445,8 @@ seam React is allowed to read.
   that beat.
   A world `Tooltip` also needs an `anchor` id written in `syncTooltipAnchors`
   each frame — show/hide is the store, the pixels are the camera. E is
-  interact: collect on a drop, smash a crate, open or feed a rift, ready at
-  the fire. The server validates range.
+  interact: collect on a drop, smash a crate, open or feed a rift, buy off a
+  shop table, ready at the fire. The server validates range.
   TAB toggles `inventory.open` locally and is patched immediately so the
   drawer does not wait for the 5 Hz tick. A collect fly is
   `loot-flies` + `inventory-anchors`, not a React render: hold over the

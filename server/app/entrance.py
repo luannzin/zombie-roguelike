@@ -118,6 +118,19 @@ class Entrance:
     #: Torch contact points in world pixels. Only an EXIT has them — an
     #: arrival is a corridor you are already inside and about to lose.
     torches: list[tuple[float, float]] = field(default_factory=list)
+    #: Tile box this corridor owns, as `(tx0, ty0, tx1, ty1)` inclusive.
+    #:
+    #: A forest map has exactly ONE corridor at a time, so its ranks can be
+    #: found by scanning the grid for VOID and nothing else needs saying. The
+    #: STORE has two — the way in and the way out, at opposite ends of the same
+    #: floor band — and that scan would hand the entrance every tile of the
+    #: exit as well, so sealing the door the party came through would brick up
+    #: the one they are meant to leave by. Set it and `_ranks` stays inside it.
+    bounds: tuple[int, int, int, int] | None = None
+    #: What VOID becomes when this corridor seals. TREE (the woods closing) is
+    #: the forest's answer; an interior seals to PROP, because a corridor that
+    #: grew trunks indoors would be a different building.
+    seal_to: int = TREE
 
     def geometry_payload(self) -> dict:
         """Static half: where the corridor is. Rides on the map payload."""
@@ -130,6 +143,10 @@ class Entrance:
         }
         if self.torches:
             row["torches"] = [[round(x, 1), round(y, 1)] for x, y in self.torches]
+        if self.bounds is not None:
+            row["bounds"] = list(self.bounds)
+        if self.seal_to != TREE:
+            row["sealTo"] = self.seal_to
         return row
 
     def state_payload(self) -> dict:
@@ -155,6 +172,7 @@ class Entrance:
 def from_payload(row: dict | None) -> Entrance | None:
     if not row:
         return None
+    box = row.get("bounds")
     return Entrance(
         side=str(row["side"]),
         mouth_x=float(row["mouth"][0]),
@@ -166,6 +184,8 @@ def from_payload(row: dict | None) -> Entrance | None:
         state=str(row.get("state", OPEN)),
         elapsed=float(row.get("t", 0.0)),
         torches=[(float(p[0]), float(p[1])) for p in row.get("torches") or []],
+        bounds=None if not box else (int(box[0]), int(box[1]), int(box[2]), int(box[3])),
+        seal_to=int(row.get("sealTo", TREE)),
     )
 
 
@@ -175,7 +195,7 @@ def hydrate(tiles: list[list[int]], row: dict | None) -> Entrance | None:
     if placed is None:
         return None
     if placed.state != GONE:
-        placed.ranks = _ranks(tiles, placed.side)
+        placed.ranks = _ranks(tiles, placed.side, placed.bounds)
     return placed
 
 
@@ -530,14 +550,33 @@ def _group_ranks(void: list[tuple[int, int]], side: str) -> list[list[tuple[int,
     return [buckets[key] for key in sorted(buckets)]
 
 
-def _ranks(tiles: list[list[int]], side: str) -> list[list[tuple[int, int]]]:
-    void = [
-        (tx, ty)
-        for ty, row in enumerate(tiles)
-        for tx, kind in enumerate(row)
-        if kind == VOID
-    ]
-    return _group_ranks(void, side)
+def _ranks(
+    tiles: list[list[int]],
+    side: str,
+    bounds: tuple[int, int, int, int] | None = None,
+) -> list[list[tuple[int, int]]]:
+    """Every VOID tile this corridor owns, bucketed by distance from the edge.
+
+    Unbounded it is every VOID on the map, which is right for a forest — there
+    is only ever one path open at a time there. `bounds` is for a map that
+    holds two of them; see `Entrance.bounds`.
+    """
+    if bounds is None:
+        cells = [
+            (tx, ty)
+            for ty, row in enumerate(tiles)
+            for tx, kind in enumerate(row)
+            if kind == VOID
+        ]
+    else:
+        tx0, ty0, tx1, ty1 = bounds
+        cells = [
+            (tx, ty)
+            for ty in range(max(0, ty0), min(len(tiles) - 1, ty1) + 1)
+            for tx in range(max(0, tx0), min(len(tiles[ty]) - 1, tx1) + 1)
+            if tiles[ty][tx] == VOID
+        ]
+    return _group_ranks(cells, side)
 
 
 def formation_slots(
@@ -601,6 +640,10 @@ def seal_rank(tiles: list[list[int]], placed: Entrance) -> list[tuple[int, int, 
     TREE is the default — the forest closing. A few ROCKS so the slam is not a
     planted row of identical trunks. Hashed, so two clients sealing the same
     map grow the same woods.
+
+    `Entrance.seal_to` overrides that wholesale for a corridor that is not in a
+    forest. The mix of trunks and boulders is what makes woods read as woods;
+    an interior wants one material and gets it with no roll at all.
     """
     if placed.rank >= len(placed.ranks):
         return []
@@ -609,12 +652,16 @@ def seal_rank(tiles: list[list[int]], placed: Entrance) -> list[tuple[int, int, 
     patches: list[tuple[int, int, int]] = []
     height = len(tiles)
     width = len(tiles[0]) if tiles else 0
+    woods = placed.seal_to == TREE
     for tx, ty in wave:
         if not (0 <= tx < width and 0 <= ty < height):
             continue
         if tiles[ty][tx] != VOID:
             continue
-        kind = ROCK if _hash(tx, ty, tx * 13 + ty, 40) > 0.86 else TREE
+        if woods:
+            kind = ROCK if _hash(tx, ty, tx * 13 + ty, 40) > 0.86 else TREE
+        else:
+            kind = placed.seal_to
         tiles[ty][tx] = kind
         patches.append((tx, ty, kind))
     return patches

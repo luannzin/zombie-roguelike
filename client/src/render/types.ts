@@ -17,6 +17,7 @@ import type { GameConfig, LootRarity } from '../net/protocol';
 import type { Camera } from './camera';
 import type { ResidueMark } from './residue';
 import type { FovField } from './fov';
+import type { StoreScene } from './layers/store';
 
 export type EntityKind = 'player' | 'enemy';
 
@@ -182,6 +183,16 @@ export interface RenderState {
   residues: readonly { id: string; marks: readonly ResidueMark[] }[];
   /** Night coat. Drives rain/fog in the atmosphere pass. */
   weather: string;
+  /**
+   * The shop, or null on every other map. Carries the fixtures, the merchant's
+   * current clip, and which stall the local player is standing at.
+   */
+  store: StoreScene | null;
+  /**
+   * The party's balance. Read by the price tags, which mute a price the group
+   * cannot meet — so it has to be here rather than fetched inside the layer.
+   */
+  balance: number;
   effects: Effects;
   /** Team light + explored memory. Null disables the darkness pass entirely. */
   fov: FovField | null;

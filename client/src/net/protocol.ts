@@ -82,6 +82,17 @@ export interface ActivatePacket {
   id?: string;
 }
 
+/**
+ * Take the weapon off a shop table. `id` is the stall; omitted means nearest
+ * in range. Server ignores it unless you are close enough, alive, in the
+ * store, the table is unsold, the party can afford it, and the belt has a
+ * cell or a legal trade.
+ */
+export interface BuyPacket {
+  type: 'buy';
+  id?: string;
+}
+
 export type ClientMessage =
   | InputPacket
   | PingPacket
@@ -90,6 +101,7 @@ export type ClientMessage =
   | CollectPacket
   | BreakPacket
   | ActivatePacket
+  | BuyPacket
   | DropPacket;
 
 /**
@@ -145,6 +157,10 @@ export interface GameConfig {
   crateHitHTiles?: number;
   /** How close to the extraction console (tiles, feet to contact) E activates. */
   riftActivateTiles?: number;
+  /** How close to a shop table (tiles, feet to contact) E will buy. */
+  storeBuyTiles?: number;
+  /** How far the weapon on that table lifts while somebody is in range, in tiles. */
+  storeLiftTiles?: number;
   /** The activation ceremony's clock. One source: `server/app/rift.py`. */
   rift?: RiftTimingConfig;
   /** Catalog of world loot. Keyed by item key; `frame` indexes the loot atlas. */
@@ -462,6 +478,70 @@ export interface MapPayload {
    * Same shape as `entrance`.
    */
   egress?: EntrancePayload | null;
+  /**
+   * The shop's fixtures. Absent on every map that is not the store.
+   *
+   * On the MAP payload rather than the snapshot for the same reason a rift's
+   * geometry is: where the merchant stands and where his tables are is decided
+   * once, when the corridor is built. Only what SELLS moves, and that rides
+   * `SnapshotMessage.stands`.
+   */
+  store?: StorePayload | null;
+}
+
+/**
+ * One table in the shop, and the weapon lying on it.
+ *
+ * `x` is the CENTRE of the table and `y` its contact — the row its feet stand
+ * on — so the client can bottom-anchor the table sprite and centre the stock
+ * over it from the same pair. Which pixel row the weapon rests at comes off
+ * the store atlas (`table.topY[v]`), not from here: the tables are three
+ * different heights on purpose and the offset belongs to the art.
+ */
+export interface StandState {
+  id: string;
+  /** Weapon catalog key — reads `welcome.config.weapons` / `.loot`. */
+  k: string;
+  price: number;
+  x: number;
+  y: number;
+  /** Which table sheet frame this stall uses. */
+  v: number;
+  /**
+   * Bought. The row STAYS — the gap where a weapon was is information, and a
+   * table that vanished when somebody took its gun would make the corridor
+   * look shorter every time the party spent something.
+   */
+  sold?: boolean;
+}
+
+/**
+ * Where the merchant's pitch stands. Placed by `server/app/store.py`.
+ *
+ * Only what is HIS is here. The glade around it — soil, trees, the tent he
+ * sleeps under — comes through the ordinary map channels (`seed` for texture,
+ * `props` for the tent), because it is the same forest as everywhere else and
+ * the client already knows how to draw all of it.
+ */
+export interface StorePayload {
+  merchant: [number, number];
+  stands: StandState[];
+  /** Torch contact points: `[x, y, variant]`. */
+  torches: [number, number, number][];
+  /** Centre of the mat the merchant trades over. */
+  rug: [number, number];
+}
+
+/** One purchase, for the frame it happened on. */
+export interface BuyEvent {
+  id: string;
+  by: string;
+  k: string;
+  price: number;
+  /** Belt cell it landed in. The client flies the sprite there. */
+  slot: number;
+  x: number;
+  y: number;
 }
 
 /**
@@ -872,6 +952,14 @@ export interface WelcomeMessage {
   quests?: QuestState[];
   /** Lamps are dead. The extraction chase; latched until the next welcome. */
   blackout?: boolean;
+  /**
+   * THE PARTY'S money — what the group fed into the anomalies, converted on the
+   * way out of the forest. Always sent, even at zero: a client that had to wait
+   * for the first change to learn it would draw an empty purse over a corridor
+   * full of price tags. `PlayerFull.gold` is the other, personal one: coins
+   * picked up off corpses, which nobody pooled.
+   */
+  balance?: number;
 }
 
 export interface SnapshotMessage {
@@ -928,6 +1016,12 @@ export interface SnapshotMessage {
   quests?: QuestState[];
   /** Lamps just died. Latched locally until the next welcome. */
   blackout?: boolean;
+  /** The shop's tables. Present only when one was bought from. */
+  stands?: StandState[];
+  /** Purchases since the last snapshot. */
+  buys?: BuyEvent[];
+  /** The party's balance. Present only when it changed. */
+  balance?: number;
 }
 
 /** The live half of an extraction pad. */

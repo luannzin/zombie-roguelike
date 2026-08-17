@@ -57,6 +57,16 @@ import { loadGore, type GoreAtlas } from './gore';
 import { loadGuns, type GunAtlas } from './guns';
 import { loadLoot, type LootAtlas } from './loot';
 import { loadScenery, type SceneryAtlas } from './scenery';
+import { loadMerchant, type MerchantAtlas } from './merchant';
+import { loadStore, type StoreAtlas } from './store';
+import {
+  drawStoreFloor,
+  drawStoreLight,
+  drawStorePrices,
+  drawStoreProp,
+  storeStanding,
+  type StoreStanding,
+} from './layers/store';
 import { loadTerrain } from './terrain';
 import { loadVfx, type VfxAtlas } from './vfx';
 import type { SpriteBook } from './sprites';
@@ -89,6 +99,7 @@ export class Renderer {
      */
     piece: SceneryPiece | null;
     rift: RiftStanding | null;
+    store: StoreStanding | null;
   }[] = [];
   /**
    * What the bodies on screen are doing to the plants around them. Owned here
@@ -107,6 +118,8 @@ export class Renderer {
   private vfx: VfxAtlas | null = null;
   private gore: GoreAtlas | null = null;
   private riftAtlas: RiftAtlas | null = null;
+  private storeAtlas: StoreAtlas | null = null;
+  private merchantAtlas: MerchantAtlas | null = null;
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
@@ -136,6 +149,12 @@ export class Renderer {
     });
     void loadRift().then((atlas) => {
       this.riftAtlas = atlas;
+    });
+    void loadStore().then((atlas) => {
+      this.storeAtlas = atlas;
+    });
+    void loadMerchant().then((atlas) => {
+      this.merchantAtlas = atlas;
     });
   }
 
@@ -215,10 +234,16 @@ export class Renderer {
     // the undergrowth bends around whatever is standing in it this frame.
     this.disturbance.update(state.entities, state.dt);
 
+    // The merchant's camp, or null everywhere else. There is no floor pass for
+    // it: the clearing is forest, painted by the terrain layer like any other.
+    const store = state.store;
+
     // World space: floor, then what is painted ON the floor — boot prints,
     // the blood pools under corpses, and footstep dust.
     this.useWorldSpace(view.zoom, view.offsetX, view.offsetY);
     this.terrain.ground(ctx, state.world, state.camera, state.time, this.disturbance);
+    // The mat goes down with the boot prints: flat, under everybody.
+    drawStoreFloor(ctx, this.storeAtlas, store);
     if (this.scenery) {
       drawFootprints(ctx, state.effects, this.scenery, state.camera);
       drawBloodPools(ctx, state.corpses, this.scenery, state.camera);
@@ -290,15 +315,21 @@ export class Renderer {
     const depthProps = this.depthProps;
     depthProps.length = 0;
     for (const piece of state.world.scenery.standing) {
-      depthProps.push({ y: piece.y, anim: 0, hitFlash: 0, piece, rift: null });
+      depthProps.push({ y: piece.y, anim: 0, hitFlash: 0, piece, rift: null, store: null });
     }
     for (const { rift, phase } of riftPhases) {
       for (const piece of riftStanding(rift, phase)) {
-        depthProps.push({ y: piece.y, anim: 0, hitFlash: 0, piece: null, rift: piece });
+        depthProps.push({ y: piece.y, anim: 0, hitFlash: 0, piece: null, rift: piece, store: null });
       }
     }
     for (const piece of egressTorches(state.world.egress)) {
-      depthProps.push({ y: piece.y, anim: 0, hitFlash: 0, piece: null, rift: piece });
+      depthProps.push({ y: piece.y, anim: 0, hitFlash: 0, piece: null, rift: piece, store: null });
+    }
+    // The tables and the merchant. In the sort for the reason everything else
+    // is: a player walking behind a stall has to disappear behind it, and the
+    // merchant is a body standing on a floor like any other.
+    for (const piece of storeStanding(store)) {
+      depthProps.push({ y: piece.y, anim: 0, hitFlash: 0, piece: null, rift: null, store: piece });
     }
     for (const crate of state.world.crates) {
       depthProps.push({
@@ -306,6 +337,7 @@ export class Renderer {
         anim: 0,
         hitFlash: 0,
         rift: null,
+        store: null,
         piece: {
           kind: 'crate',
           x: crate.x,
@@ -324,6 +356,7 @@ export class Renderer {
         anim: crateSheet ? crateAnimFrame(crateSheet, smash.age) : 0,
         hitFlash: flash,
         rift: null,
+        store: null,
         piece: {
           kind: 'crate',
           x: smash.x,
@@ -339,6 +372,9 @@ export class Renderer {
     let fire = 0;
     let prop = 0;
     const scenery = this.scenery;
+    // Authored server-side beside the reach that answers E, so the gun never
+    // rises at a distance where the key does nothing.
+    const storeLift = (state.config.storeLiftTiles ?? 0.4) * state.world.tileSize;
 
     const flushTo = (limit: number): void => {
       for (;;) {
@@ -357,6 +393,13 @@ export class Renderer {
           if (row.rift) {
             if (this.riftAtlas) {
               drawRiftProp(ctx, view, this.riftAtlas, row.rift, palette().entity.shadow);
+            }
+          } else if (row.store) {
+            if (this.storeAtlas && store) {
+              drawStoreProp(
+                ctx, view, this.storeAtlas, this.gunAtlas, this.merchantAtlas,
+                row.store, store, storeLift,
+              );
             }
           } else if (scenery && row.piece) {
             drawSceneryProp(
@@ -434,6 +477,8 @@ export class Renderer {
         );
       }
     }
+    // The lamps burning, and the pool under the weapon E is offering.
+    drawStoreLight(ctx, this.storeAtlas, store, state.time);
     // Hunt tell sits ON the night: a hunter you cannot see still wears the
     // diamond, so killing the lamp does not hide that it has you.
     drawAlertMarks(entity, state.entities, state.time);
@@ -441,6 +486,9 @@ export class Renderer {
     // Screen space: labels, numbers, then the full-screen vignette.
     this.useScreenSpace();
     drawNameLabels(entity, state.entities);
+    // Prices go with the labels: what a thing costs is the shop talking to
+    // you, not an object in the room, so nothing in the room may cover it.
+    drawStorePrices(ctx, view, this.storeAtlas, store, state.balance);
     drawTextFloats(ctx, state.effects, view);
     drawVignette(ctx, this.canvas.width, this.canvas.height, state.danger, state.time);
   }

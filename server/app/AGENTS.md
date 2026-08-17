@@ -25,7 +25,7 @@ game's scale.
 | `crates.py` | breakable boxes/barrels: extract from scenery, smash, drop roll |
 | `corpses.py` | dead enemies left on the floor: persist until the map swaps |
 | `rift.py` | extraction pads: day-scaled count, plot, activation, per-pad quota, overfeed tiers, hand-shut collapse |
-| `entrance.py` | forest edge VOID corridor, emerge formation, staggered seal to TREE, extraction `open_exit` (flared at the border) |
+| `entrance.py` | forest edge VOID corridor, emerge formation, staggered seal (`seal_to`), `bounds` for a map with two corridors, extraction `open_exit` (flared at the border) |
 | `quests.py` | run objectives: progress, done, optional risk; the HUD mirrors this list |
 | `inventory.py` | the pocket: slots, stacking, weight, `spend_toward` / `spend_all` for the fenda, per-slot value/weight overrides |
 | `world.py` | tile grid, tile alphabet, collision queries |
@@ -33,6 +33,7 @@ game's scale.
 | `mapgen.py` | procedural forest, seeded and connectivity-checked |
 | `scenery.py` | story SCENES: the layouts, the thread linking them, their lights, the wire rows |
 | `camp.py` | the camp clearing, its bonfire, the seat ring, the VOID exit, and the walk-out formation |
+| `store.py` | the merchant's glade: its treeline and lane, the two end corridors, his tent / fire / torches, the tables and the stock rolled onto them, and `price_of` |
 | `zones.py` | where a run is: title card, `hostile`, `lantern` |
 | `protocol.py` | wire message shapes — source of truth |
 | `config.py` | tuning constants + `client_config()` |
@@ -197,6 +198,66 @@ game's scale.
   the ground, the bag, a toss back onto the ground, and the tooltip. A slot
   carrying them never stacks: two cores worth 40 and 300 are not two of a
   thing, and merging them would have to invent a number for the pair.
+- **THE STORE IS WHERE MONEY IS CREATED, and it is the only place.**
+  `Room.enter_store` banks `sum(rift.fed)` into `Room.balance` on the way out
+  of the forest — so a night is worth exactly what the party FED INTO THE
+  ANOMALIES, which is the one number that measures the thing the night was
+  about. Loot still in the bag is not money; it is loot they failed to
+  extract, and `_clear_loot` already said so. Nothing else anywhere adds to
+  the balance, and no run accumulates it as it goes.
+- **`balance` is the PARTY's and `Player.gold` is a person's.** The balance is
+  a shared bill nobody can honestly split after the fact, so it is one number
+  at the top of the snapshot rather than a roster column — a field that
+  differed per recipient would cost a re-serialisation a tick. `gold` stays
+  what it was: coins somebody personally walked over. Do not merge them.
+- **`_tick_exit_quest` is one mechanic with two destinations.** A living body
+  crossing the VOID at the end of the map sets `_pending_return`; what is on
+  the far side belongs to the zone being LEFT, and `advance_zone` dispatches
+  it — forest to store, store to camp. The day increments in `return_home`
+  only: the shop is the end of the night just survived, not the start of the
+  next one, which is why its card reads "Fim do dia N".
+- **A store map has TWO corridors and the forest has one.** That is the whole
+  reason `Entrance.bounds` exists: `_ranks` finds a corridor's tiles by
+  scanning for VOID, and on this map that scan would hand the sealing entrance
+  every tile of the exit as well — bricking up the door the party is meant to
+  leave by. (`seal_to` exists for the same family of problem and is currently
+  left at its TREE default here, because the glade is woods like anywhere
+  else.)
+- **The store is a FOREST map, not a room.** It was an interior once and the
+  lesson is worth keeping: a building was the only room in the game, so it read
+  as a menu rather than as somewhere the party walked to. Its ground, trees and
+  darkness are the ordinary ones, his tent is a `scenery.Prop`, his campfire is
+  a `world.FIRE` tile, and his torches are `SceneLight`s — so almost nothing
+  about the zone needs client code. Keep it that way: a new object here should
+  be an existing prop kind or tile kind before it is a new payload field.
+- **`_tiles` clears a SPINE and that is a guarantee, not dressing.** The lane's
+  width is noise (two sines plus a hash) and a pinch plus an unlucky boulder
+  could in principle wall the glade in half. Unlike `mapgen`, this module has
+  no retry loop to fall back on — there is exactly one store map and the party
+  is already walking into it — so a narrow band down the centreline is cleared
+  unconditionally. It also reads: a trader walks that line every day.
+- **A stall sells ONCE.** It is a specific weapon on a specific table, not a
+  shelf with stock behind it, so `Stand.sold` is checked and set on the same
+  tick and the row STAYS on the wire — the gap where a gun was is information,
+  and a table that vanished would make the corridor look shorter every time
+  somebody spent something. A purchase lands on the belt through the same two
+  rules a found gun does: it arms an empty hand, and a full belt TRADES
+  (`swap_weapon`), leaving the old gun on the shop floor so the decision is
+  reversible one step later. A refused trade must not charge.
+- Prices are DERIVED — `store.price_of` is the loot catalog's `value` times
+  `STORE_MARKUP`. A hand-written price list would be a second opinion about
+  what an AK is worth and the two would drift the first time one was
+  rebalanced. Which guns are on the tables is rolled against the day
+  (`STOCK_UNLOCK`), distinct per table, cheapest first left to right.
+- **The tables are placed on a rhythm and then knocked off it.** Even spacing,
+  then a bounded jitter along and across the lane plus a shuffled table frame
+  (`TABLE_JITTER_*`). Four identical stalls at four identical intervals is the
+  loudest tell that nobody set this up by hand; scattering them properly is the
+  opposite mistake, because it turns a sequence of decisions into a search. The
+  jitter is also why the LOW footprint is derived from the sprite width rather
+  than assumed — a jittered centre no longer lands on a tile boundary — and why
+  `_torches` keeps clear of the stands that actually landed rather than of a
+  guess at where they would be.
 - Zone rules are enforced HERE, not just described to the client. A
   non-hostile zone runs no spawn director and drops the GUN half of
   `handle_attack`. A client that ignores `zone.lantern` gets light it cannot
@@ -442,6 +503,10 @@ game's scale.
   and nothing else: the swing resolver, the arc the client draws and the
   HUD cell are all driven off that block. Append to `WEAPONS` and to both
   generators' lists — never insert, or every existing frame index moves.
+- Adding a WEAPON to the shop is a row on `store.STOCK_ORDER` plus its unlock
+  day. The price, the table it lands on and the tooltip all derive; the client
+  needs no change. Keep at least three weapons unlocked on day one, or the
+  first shop is two tables and a gap.
 - Adding a zone = one `zones.Zone` and whatever builds its map. Its title card,
   its safety and its lighting rules are all data; the client needs no change to
   announce or obey a new one. A forest's subtitle is `night_clock()` — a time

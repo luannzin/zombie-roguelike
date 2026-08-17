@@ -1,60 +1,49 @@
 #!/usr/bin/env python3
-"""Asset pipeline: the STORE — the lit corridor the party spends the night's take in.
+"""Asset pipeline: the MERCHANT'S CAMP — where the night's take gets spent.
 
 Output (assets/processed/store/):
-    ground_boards.png  64x64        GROUND — one seamless plank floor, 4x4 tiles
-    wall.png     6 frames, 16x36    PROP   — the corridor's far side, tiled
-    table.png    4 frames, 32x20    PROP   — the stalls a weapon lies on
-    lamp.png     2 frames, 12x30    PROP   — what lights the place (unlit body)
-    rug.png      2 frames, 48x32    DECAL  — the mat he stands on
-    lampfire.png 10 frames, 16x26   VFX    — loop, the flame in the lamp
-    glow.png     8 frames,  32x16   VFX    — loop, under a weapon you are near
+    table.png    4 frames, 32x20    PROP   — the trestles a weapon lies on
+    torch.png    2 frames, 12x30    PROP   — the posts lighting the pitch
+    rug.png      2 frames, 48x32    DECAL  — the mat he trades over
+    torchfire.png 12 frames, 20x40  VFX    — loop, warm fire in a torch head
+    glow.png      8 frames, 32x16   VFX    — loop, under a weapon you are near
     manifest.json
 
-THE STORE IS THE FIRST INTERIOR IN THE GAME, AND THAT IS THE WHOLE BRIEF.
-Everything else the pipeline makes is outdoors and unlit: a forest at night
-where the lantern is the only reason anything is visible, drawn dark on purpose
-because the client's darkness pass multiplies over it. This corridor is the
-opposite — it is somewhere with a roof and a lamp on, the one zone in the loop
-where the party is safe and standing still, and the art has to say so before
-the title card does. So it runs WARM and a step lighter than the forest, and
-the light in it comes from a source you can see.
+IT IS OUTDOORS, AND THAT IS THE WHOLE BRIEF.
+This was an interior once — a plank corridor with walls and hanging lamps — and
+it was wrong for one reason that outweighed everything it got right: it was the
+only room in the game. Every other place the party stands is forest at night,
+so a building with a floor and a ceiling did not read as somewhere they had
+walked to, it read as a menu the game had cut to. The camp is now a CLEARING:
+the same trees, the same soil, the same dark, with a trader's pitch set up in
+the middle of it and torches keeping the night off the stock.
 
-WHAT IS HERE AND WHAT IS NOT.
-The corridor is a straight run left to right, the way in seals behind the
-party, the merchant stands at the middle of it and his tables are in front of
-him. That is a handful of pieces repeated, so this file draws the pieces and
-nothing else: a floor, a wall that tiles, a table, a lamp, a mat. It does NOT
-draw the merchant (`make_merchant.py`), the guns on the tables
-(`make_guns.py`), the coin on the price tag (`make_hud_icons.py`) or the void
-the entrance collapses into — that is the same black corridor the camp exit
-uses and it is already drawn.
+So this file no longer draws a floor, a wall or a hanging lamp. The ground is
+`make_textures.py`'s forest soil, unchanged, because it is the same forest;
+the shelter is the TENT out of `make_scenery.py`, because a trader sleeping
+under canvas in the woods is a thing that already exists in this game's world
+and a second tent sheet would only be a slightly different one.
 
-ONE FLOOR, NOT FOUR. The forest ships four soils and dissolves between them
-because a hashed material field is the only thing that hides a 4x4 repeat over
-a whole map. A built floor is one material by definition, and the corridor is
-a few tiles of it with tables standing on most of them, so a second atlas would
-buy nothing. The repeat is broken the way a real floor breaks it: the planks
-run ALONG the corridor with their butt joints staggered every other course, so
-the eye follows the boards out towards the exit instead of finding the tile
-grid.
+WHAT IS LEFT IS WHAT IS HIS. The tables, the mat under his feet, and the
+torches he drove into the ground when he pitched — plus the pool that says
+which weapon you are standing at. Everything else on that map belongs to the
+forest and comes from the forest's own generators, which is the same rule
+`server/app/scenery.py` keeps for every other scene.
 
-A WALL TILES, SO IT HAS NO SIDE KEYLINE. Every other standing prop in the game
-is one object and carries an outline all the way round. A wall segment's
-neighbours are more wall: give it vertical edges and the corridor grows a black
-stripe every sixteen pixels. It is outlined top and bottom only, and its
-variants are the interruptions — a missing board, a shelf, a hung banner, a
-doorway — because a corridor of identical panels is a corridor nobody believes.
+THE TORCH IS WARM, and it is not the extraction pad's. `make_rift.py` also
+draws a torch and its fire, but that one burns the anomaly's prism — cyan and
+violet, because it is marking a hole in the world. This one is a man's
+campfire on a stick. Sharing the sheet would have said the merchant and the
+rift are the same kind of thing, which is the one thing the scene must not say.
 
 THE TABLE SHIPS ITS SURFACE. `topY` in the manifest is the row a weapon lies
 on, in frame pixels, and it is part of the ART rather than a number the client
 picks: three of the four tables are different heights on purpose (a trestle, a
 board over crates, a board over a barrel), and a single hardcoded offset would
-float one gun and sink another. The client draws the weapon at `topY` and lifts
-it from there when somebody comes close.
+float one gun and sink another.
 
 MATERIALS COME FROM `make_scenery.py`. The stall is built out of the same
-worked timber, canvas and metal as the crates and the cabin, for the reason
+worked timber, canvas and rope as the crates and the cabin, for the reason
 there is only one blood in the game: a shop that shares no material with the
 world outside it reads as a different game's asset pack.
 
@@ -76,7 +65,6 @@ from PIL import Image
 from make_scenery import (
     CANVAS,
     CLOTH_RUST,
-    GLASS,
     LEATHER,
     METAL,
     OUTLINE_WOOD,
@@ -85,11 +73,9 @@ from make_scenery import (
     ROPE,
 )
 from make_textures import (
-    BEAM,
-    COIN_RAMP,
     DEFAULT_TILE,
+    FLAME,
     PROCESSED_DIR,
-    RGBA,
     Ramp,
     TRANSPARENT,
     add,
@@ -106,180 +92,19 @@ from make_textures import (
 )
 
 # --- palette ----------------------------------------------------------------
-# Indoor timber: the same wood as the forest's crates, dried out and standing
-# under a lamp. It is ramped brighter than anything in `terrain/` because this
-# zone is LIT — the darkness pass is off here, so a floor authored for the
-# lantern would read as a cellar.
+# Everything here stands in the forest at night and is multiplied by the same
+# darkness pass the trees are, so it is toned like scenery and not like an
+# interior. The one exception is the fire, which is drawn additively AFTER that
+# pass — see `make_torchfire`.
 
-FLOOR: Ramp = [rgb(c) for c in ("#2a2118", "#372b1e", "#453626", "#54432e", "#635038")]
-FLOOR_SEAM: Ramp = [rgb(c) for c in ("#150f0a", "#1d1610", "#261d15")]
-#: The wall behind him is a value darker than the floor. A room where the walls
-#: and the floor sit on the same step has no corner in it.
-WALL: Ramp = [rgb(c) for c in ("#201912", "#2b2118", "#362a1e", "#413425", "#4d3e2d")]
-WALL_DEEP: Ramp = [rgb(c) for c in ("#0b0806", "#120e0a", "#191410")]
-#: Brass and lamp oil. The only warm metal in the game outside the coin, and it
-#: is deliberately close to it: this is the room where gold is what matters.
-BRASS: Ramp = [rgb(c) for c in ("#3a2a12", "#584018", "#7a5a22", "#9c7530", "#c09b4a")]
+#: Iron on a torch head, and the bands lashing it to its post.
+IRON: Ramp = [rgb(c) for c in ("#1b1a1d", "#2b2a2f", "#3d3b42", "#514e57", "#6a6670")]
+#: Coals sitting in a torch head that is not currently being drawn over by its
+#: own flame. Warm, so an unlit frame still reads as something that burns.
+COALS: Ramp = [rgb(c) for c in ("#3a1608", "#6b2a0d", "#9c4415", "#c96a22")]
 
 TILE_TABLE_W = 2.0
 TILE_TABLE_H = 1.25
-
-
-def _grain_field(rng: random.Random, cells: tuple[int, ...]) -> list:
-    return [(lattice(rng, count), count) for count in cells]
-
-
-# --- the floor --------------------------------------------------------------
-
-#: Board height in pixels. Eight divides the 64px atlas, so the courses wrap.
-BOARD_H = 8
-
-
-def make_boards(size: int, seed: int) -> Image.Image:
-    """One seamless plank floor, read back by the client as a 4x4 grid of tiles.
-
-    The grain is sampled at twice the vertical frequency, which stretches every
-    feature along X: that is what makes it read as a sawn board running the
-    length of the corridor rather than as soil with lines drawn on it. It still
-    wraps, because the lattice wraps in both axes whatever rate it is read at.
-    """
-    rng = random.Random(seed)
-    field = _grain_field(rng, (8, 16, 32))
-    knots = _grain_field(rng, (5, 10))
-
-    img = Image.new("RGBA", (size, size))
-    px = img.load()
-    half = size // 2
-    for y in range(size):
-        course = y // BOARD_H
-        within = y % BOARD_H
-        # Butt joints alternate course to course. Aligned joints would draw a
-        # second grid on top of the tile grid, which is the exact thing the
-        # staggering exists to hide.
-        offset = half // 2 if course % 2 else 0
-        for x in range(size):
-            grain = fbm(field, x, y * 2, size)
-            speck = (hash01(x, y, seed) - 0.5) * 0.22
-            value = grain * 0.85 + 0.12 + speck
-
-            knot = fbm(knots, x, y * 2, size)
-            if knot > 0.80:
-                value -= (knot - 0.80) * 3.2
-
-            colour = pick(FLOOR, clamp01(value), x, y)
-
-            if within == 0:  # the seam between two courses
-                colour = pick(FLOOR_SEAM, clamp01(0.3 + grain * 0.5), x, y)
-            elif within == 1:
-                colour = pick(FLOOR, clamp01(value * 0.62), x, y)
-            elif within == BOARD_H - 1:  # the lit top edge of the board below
-                colour = pick(FLOOR, clamp01(value * 1.15 + 0.16), x, y)
-
-            if (x + offset) % half == 0 and within != 0:  # a butt joint
-                colour = pick(FLOOR_SEAM, clamp01(0.2 + grain * 0.4), x, y)
-            elif (x + offset) % half == 2 and within in (3, 4):  # nail heads
-                colour = pick(METAL, 0.55 + speck, x, y)
-
-            px[x, y] = colour
-    return img
-
-
-# --- the wall ---------------------------------------------------------------
-
-
-def _wall_boards(img: Image.Image, rng: random.Random, top: int) -> None:
-    """Vertical boarding from `top` to the floor, with a rail near the bottom."""
-    px = img.load()
-    field = _grain_field(rng, (4, 8))
-    for y in range(top, img.height):
-        for x in range(img.width):
-            grain = fbm(field, x * 2, y, img.width * 2)
-            value = grain * 0.7 + 0.18 + (hash01(x, y, 4409) - 0.5) * 0.18
-            colour = pick(WALL, clamp01(value), x, y)
-            if x % 5 == 0:  # the gap between two boards
-                colour = pick(WALL_DEEP, clamp01(0.3 + grain * 0.5), x, y)
-            elif x % 5 == 1:
-                colour = pick(WALL, clamp01(value * 1.2 + 0.1), x, y)
-            px[x, y] = colour
-    # A rail across the boarding: the one horizontal in an otherwise vertical
-    # panel, and what stops a run of wall reading as a barcode.
-    rail = img.height - 11
-    for y in range(rail, rail + 3):
-        for x in range(img.width):
-            shade = 0.7 if y == rail else (0.45 if y == rail + 2 else 0.9)
-            px[x, y] = pick(PLANK, shade, x, y)
-
-
-def make_wall(w: int, h: int, variant: int, rng: random.Random) -> Image.Image:
-    """One segment of the corridor's far side. Six of them, and they TILE.
-
-    No side keyline: the neighbour of a wall is more wall. The top edge is the
-    only outline, because that is the one edge that meets something else.
-    """
-    img = Image.new("RGBA", (w, h), TRANSPARENT)
-    px = img.load()
-    _wall_boards(img, rng, 2)
-
-    for x in range(w):  # the top edge, where the wall meets the dark above it
-        px[x, 0] = OUTLINE_WOOD
-        px[x, 1] = pick(WALL_DEEP, 0.6, x, 1)
-
-    if variant == 1:  # a board sprung off, and the dark behind it
-        for y in range(6, h - 14):
-            for x in range(5, 9):
-                px[x, y] = pick(WALL_DEEP, clamp01(0.15 + hash01(x, y, 77) * 0.3), x, y)
-        for y in range(6, 9):
-            px[9, y] = pick(PLANK, 0.8, 9, y)
-
-    elif variant == 2:  # a shelf, and what is left on it
-        shelf = 12
-        for x in range(1, w - 1):
-            px[x, shelf] = pick(PLANK, 0.85, x, shelf)
-            px[x, shelf + 1] = pick(PLANK_DARK, 0.5, x, shelf + 1)
-        for index, (cx, tall, ramp) in enumerate(
-            ((3, 4, GLASS), (7, 5, GLASS), (11, 3, METAL))
-        ):
-            for y in range(shelf - tall, shelf):
-                for x in range(cx, cx + 3):
-                    lit = 0.75 if x == cx else 0.45
-                    px[x, y] = pick(ramp, lit + (y - shelf + tall) * 0.05, x, y)
-            px[cx + 1, shelf - tall] = pick(ROPE, 0.7, cx + 1, shelf - tall)
-
-    elif variant == 3:  # a banner, the one soft thing on a hard wall
-        for y in range(3, h - 16):
-            for x in range(3, w - 3):
-                edge = x in (3, w - 4)
-                fold = math.sin((x - 3) * 0.9) * 0.16
-                value = 0.55 + fold - (0.25 if edge else 0.0)
-                px[x, y] = pick(CLOTH_RUST, clamp01(value + (y * 0.012)), x, y)
-        for x in range(3, w - 3):  # the pole it hangs from
-            px[x, 2] = pick(METAL, 0.6, x, 2)
-        tip = h - 16
-        for x in range(3, w - 3):  # a cut hem, not a straight one
-            if (x - 3) % 4 in (0, 3):
-                px[x, tip] = TRANSPARENT
-                px[x, tip - 1] = pick(CLOTH_RUST, 0.35, x, tip - 1)
-
-    elif variant == 4:  # a window, boarded over, with the night behind it
-        for y in range(5, 18):
-            for x in range(3, w - 3):
-                px[x, y] = pick(WALL_DEEP, clamp01(0.1 + hash01(x, y, 991) * 0.25), x, y)
-        for index, y in enumerate(range(6, 18, 5)):  # the boards across it
-            for x in range(1, w - 1):
-                for row in (y, y + 1):
-                    px[x, row] = pick(PLANK, 0.75 if row == y else 0.45, x, row)
-
-    elif variant == 5:  # a doorway: the corridor has to end somewhere
-        for y in range(4, h - 2):
-            for x in range(3, w - 3):
-                px[x, y] = pick(WALL_DEEP, clamp01(0.05 + hash01(x, y, 313) * 0.14), x, y)
-        for y in range(3, h - 2):  # the frame
-            for x in (2, w - 3):
-                px[x, y] = pick(PLANK, 0.8 if x == 2 else 0.5, x, y)
-        for x in range(2, w - 2):
-            px[x, 3] = pick(PLANK, 0.9, x, 3)
-
-    return img
 
 
 # --- the tables -------------------------------------------------------------
@@ -362,59 +187,98 @@ def make_table(w: int, h: int, variant: int, rng: random.Random) -> Image.Image:
 TABLE_TOP_Y = (4, 3, 1, 5)
 
 
-# --- the lamp ---------------------------------------------------------------
+# --- the torches ------------------------------------------------------------
 
 
-def make_lamp(w: int, h: int, variant: int, rng: random.Random) -> Image.Image:
-    """A lamp on a post. Its FIRE is not here — that is `lampfire.png`.
+def make_torch(w: int, h: int, variant: int) -> Image.Image:
+    """One torch post, UNLIT. The fire is `torchfire.png`.
 
-    Same split as the rift's pillar: paint the flame into the prop and the
-    light goes under whatever the client multiplies over the frame, which
-    leaves a lamp that is only lit when you are already standing in it.
+    Same split every light in this game makes, and for the same reason: paint
+    the flame into the prop and it goes under whatever the client multiplies
+    over the frame, which leaves a torch that is only lit once you are already
+    standing in its light. These exist to be seen from the far end of a dark
+    clearing, so the burning half has to be additive and drawn after the night.
+
+    Two variants because a merchant drove them in by hand: one is a straight
+    post with an iron basket, the other is a lashed bundle on a leaning stake.
+    A row of identical posts is a fence, not a camp somebody made.
     """
     img = Image.new("RGBA", (w, h), TRANSPARENT)
     px = img.load()
-    cx = w // 2
-    housing_h = 9 if variant == 0 else 7
-    post_top = 3 + housing_h
+    cx = (w - 1) / 2.0
+    head_top = 2
+    head_bottom = 9
 
-    for y in range(post_top, h - 2):  # the post
-        for x in range(cx - 1, cx + 1):
-            px[x, y] = pick(METAL, 0.55 if x == cx - 1 else 0.32, x, y)
-    for y in range(h - 3, h):  # the foot
-        span = 2 + (h - y)
-        for x in range(cx - span, cx + span):
-            px[x, y] = pick(METAL, 0.45 - (h - y) * 0.05, x, y)
+    # The post. Variant 1 leans, and the lean is applied as a per-row shift so
+    # the whole thing stays one silhouette rather than a stack of offset boxes.
+    def centre_at(y: int) -> float:
+        if variant == 0:
+            return cx
+        return cx + (y - h) * 0.055
 
-    for y in range(3, 3 + housing_h):  # the glass housing
-        for x in range(cx - 3, cx + 3):
-            frame_px = x in (cx - 3, cx + 2) or y in (3, 2 + housing_h)
-            ramp = BRASS if frame_px else GLASS
-            value = 0.6 if frame_px else 0.35 + (y - 3) * 0.05
-            px[x, y] = pick(ramp, value, x, y)
-    for x in range(cx - 4, cx + 4):  # the cap
-        px[x, 2] = pick(BRASS, 0.7, x, 2)
-        px[x, 1] = pick(BRASS, 0.45, x, 1)
-    if variant == 1:  # a hook, so it can hang off a wall instead
-        for y in range(0, 2):
-            px[cx, y] = pick(METAL, 0.6, cx, y)
+    body: dict[tuple[int, int], str] = {}
+    for y in range(head_top, h):
+        c = centre_at(y)
+        if y <= head_bottom:
+            t = (y - head_top) / max(head_bottom - head_top, 1)
+            # Wide at the lip, pinched where it meets the post: the silhouette
+            # has to say "something is held up here" at twelve pixels across.
+            half = w * 0.38 - t * (w * 0.38 - 1.3)
+            part = "head"
+        else:
+            t = (y - head_bottom) / max(h - head_bottom, 1)
+            half = 1.1 + t * 0.85  # thicker where it is driven in
+            part = "post"
+        for x in range(w):
+            if abs(x - c) <= half:
+                body[(x, y)] = part
 
-    outline(img, OUTLINE_WOOD)
+    for (x, y), part in body.items():
+        edge = any(
+            (x + ox, y + oy) not in body for ox, oy in ((1, 0), (-1, 0), (0, 1), (0, -1))
+        )
+        if edge:
+            px[x, y] = OUTLINE_WOOD
+            continue
+        across = (x - centre_at(y)) / max(w * 0.5, 0.5)
+        if part == "head":
+            ramp = IRON if variant == 0 else ROPE
+            shade = 0.62 - across * 0.28
+            px[x, y] = pick(ramp, clamp01(shade + (hash01(x, y, 907) - 0.5) * 0.14), x, y)
+        else:
+            shade = 0.55 - across * 0.26 - (y / h) * 0.18
+            px[x, y] = pick(PLANK, clamp01(shade + (hash01(x, y, 911) - 0.5) * 0.16), x, y)
+
+    # Two bands lashing the head to the post. At twelve pixels wide this is the
+    # only detail that survives, and without it the head is a blob.
+    for y in (head_bottom + 1, head_bottom + 3):
+        for x in range(w):
+            if body.get((x, y)) == "post":
+                px[x, y] = (LEATHER if variant == 1 else IRON)[1]
+
+    # Coals in the head. Scattered over two rows rather than filling one — a
+    # solid row at the lip reads as a coloured lid on the sprite, not as
+    # something burning inside a basket.
+    for y in (head_top + 1, head_top + 2):
+        for x in range(w):
+            if body.get((x, y)) != "head" or hash01(x, y, 919) > 0.5:
+                continue
+            px[x, y] = pick(COALS, 0.55 + hash01(x, y, 923) * 0.4, x, y)
     return img
 
 
-#: Where the flame sits inside the housing, per variant.
-LAMP_FLAME_Y = (7, 5)
+#: Where the flame sits inside the head, per variant, in frame pixels.
+TORCH_FLAME_Y = (3, 3)
 
 
 # --- the mat ----------------------------------------------------------------
 
 
 def make_rug(w: int, h: int, variant: int, rng: random.Random) -> Image.Image:
-    """The mat he stands on. A DECAL: flat, no outline, baked into the floor.
+    """The mat he trades over. A DECAL: flat, no outline, baked into the ground.
 
-    It is the only thing in the corridor that says a person chose to be here
-    rather than that a building happens to contain him.
+    It is the only thing on the pitch that says a person chose this spot rather
+    than that a clearing happens to contain him.
     """
     img = Image.new("RGBA", (w, h), TRANSPARENT)
     px = img.load()
@@ -444,41 +308,50 @@ def make_rug(w: int, h: int, variant: int, rng: random.Random) -> Image.Image:
 
 
 # --- light ------------------------------------------------------------------
-# Greyscale, additive, tinted by the client — the same contract as every other
-# VFX sheet. `lampfire` gets `fire.core`; `glow` gets the coin's gold, because
-# what it is marking is a price.
+# Additive, drawn after the darkness pass. `torchfire` carries its own WARM
+# colour rather than being tinted at draw time: a flame is not one hue, it is a
+# ramp from a dull red root to a white core, and a single draw-time multiply
+# cannot produce that — the same reason `make_rift.py`'s sheets are `tinted:
+# false`. `glow` stays neutral and takes the coin's gold, because what it is
+# marking is a price.
 
 
-def make_lampfire(w: int, h: int, frames: int, anchor: int) -> list[Image.Image]:
-    """The flame in the housing, as a loop.
+def make_torchfire(w: int, h: int, frames: int, anchor: int) -> list[Image.Image]:
+    """The fire in a torch head, as a loop.
 
     Every wobble is a sine of the frame phase, so the last frame hands back to
     the first with nothing to see. Rolling it per frame stutters at the wrap
     even when each frame looks right on its own.
+
+    Bigger than the head it sits in, and deliberately: this is the one thing on
+    the map that has to be legible from the far side of a dark clearing, and a
+    flame cropped to its basket is a pilot light.
     """
     out: list[Image.Image] = []
     cx = (w - 1) / 2
     for index in range(frames):
         phase = index / frames * math.tau
         field = [[0.0] * w for _ in range(h)]
-        lean = math.sin(phase) * 0.55
-        tall = 3.4 + math.sin(phase * 2.0) * 0.5
+        lean = math.sin(phase) * 0.7
+        tall = 5.2 + math.sin(phase * 2.0) * 0.8
 
-        ellipse(field, cx + lean * 0.4, anchor - 1.2, 2.2, 1.5, 0.85)
-        ellipse(field, cx + lean, anchor - tall, 1.5, tall * 0.72, 1.05)
-        ellipse(field, cx + lean * 1.5, anchor - tall - 1.4, 0.9, 1.2, 0.8)
-        # The room around the lamp: a wide, weak bloom, so the fire is a source
-        # and not a sticker.
-        ellipse(field, cx, anchor - 2.0, 7.0, 5.0, 0.28)
+        # Root, body, tip. Three ellipses up one leaning axis is the cheapest
+        # shape that reads as fire rather than as a glowing blob.
+        ellipse(field, cx + lean * 0.3, anchor - 1.0, 2.6, 1.7, 0.95)
+        ellipse(field, cx + lean, anchor - tall * 0.55, 2.0, tall * 0.6, 1.05)
+        ellipse(field, cx + lean * 1.6, anchor - tall, 1.1, 1.6, 0.85)
+        # The air around it: a wide, weak bloom, so the torch is a source and
+        # not a sticker.
+        ellipse(field, cx, anchor - 2.5, 8.5, 6.5, 0.30)
 
-        for step in range(3):  # sparks, on the same phase so they loop too
-            sway = math.sin(phase + step * 2.1)
-            rise = ((index + step * 4) % frames) / frames
-            add(field, int(round(cx + sway * 2.4)), int(anchor - 3 - rise * 7),
-                0.55 * (1.0 - rise))
+        for step in range(4):  # sparks, on the same phase so they loop too
+            sway = math.sin(phase + step * 1.7)
+            rise = ((index + step * 3) % frames) / frames
+            add(field, int(round(cx + sway * 3.0)), int(anchor - 4 - rise * 11),
+                0.5 * (1.0 - rise))
 
         img = Image.new("RGBA", (w, h), TRANSPARENT)
-        resolve(field, img, BEAM, floor=0.10, tone=0.85, gain=1.05)
+        resolve(field, img, FLAME, floor=0.09, tone=0.88, gain=1.15)
         out.append(img)
     return out
 
@@ -486,7 +359,7 @@ def make_lampfire(w: int, h: int, frames: int, anchor: int) -> list[Image.Image]
 def make_glow(w: int, h: int, frames: int, anchor: int) -> list[Image.Image]:
     """The pool under a weapon you are close enough to buy.
 
-    It is a flat ellipse on the table's surface with a slow pulse and two motes
+    A flat ellipse on the table's surface with a slow pulse and two motes
     lifting out of it — the visual half of the lift the client gives the gun.
     Deliberately low and wide: a column here would fight the weapon's own
     silhouette, which is the thing the player is being asked to look at.
@@ -509,19 +382,18 @@ def make_glow(w: int, h: int, frames: int, anchor: int) -> list[Image.Image]:
                 0.6 * (1.0 - rise) ** 0.7)
 
         img = Image.new("RGBA", (w, h), TRANSPARENT)
-        resolve(field, img, BEAM, floor=0.09, tone=0.8, gain=1.0)
+        resolve(field, img, FLAME, floor=0.09, tone=0.8, gain=1.0)
         out.append(img)
     return out
 
 
 # --- build ------------------------------------------------------------------
 
-WALL_VARIANTS = 6
 TABLE_VARIANTS = 4
-LAMP_VARIANTS = 2
+TORCH_VARIANTS = 2
 RUG_VARIANTS = 2
-LAMPFIRE_FRAMES = 10
-LAMPFIRE_FPS = 12
+TORCHFIRE_FRAMES = 12
+TORCHFIRE_FPS = 12
 GLOW_FRAMES = 8
 GLOW_FPS = 10
 
@@ -553,16 +425,6 @@ def build(args) -> Path:
     out_dir = PROCESSED_DIR / "store"
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    ground_size = tile * 4
-    make_boards(ground_size, args.seed + 3).save(out_dir / "ground_boards.png")
-
-    wall_w, wall_h = tile, round(tile * 2.25)
-    walls = [
-        make_wall(wall_w, wall_h, variant, random.Random(args.seed + 100 + variant * 7))
-        for variant in range(WALL_VARIANTS)
-    ]
-    pack(walls, wall_w, wall_h).save(out_dir / "wall.png")
-
     table_w = round(tile * TILE_TABLE_W)
     table_h = round(tile * TILE_TABLE_H)
     tables = [
@@ -571,12 +433,9 @@ def build(args) -> Path:
     ]
     pack(tables, table_w, table_h).save(out_dir / "table.png")
 
-    lamp_w, lamp_h = round(tile * 0.75), round(tile * 1.875)
-    lamps = [
-        make_lamp(lamp_w, lamp_h, variant, random.Random(args.seed + 300 + variant))
-        for variant in range(LAMP_VARIANTS)
-    ]
-    pack(lamps, lamp_w, lamp_h).save(out_dir / "lamp.png")
+    torch_w, torch_h = round(tile * 0.75), round(tile * 1.875)
+    torches = [make_torch(torch_w, torch_h, variant) for variant in range(TORCH_VARIANTS)]
+    pack(torches, torch_w, torch_h).save(out_dir / "torch.png")
 
     rug_w, rug_h = tile * 3, tile * 2
     rugs = [
@@ -585,17 +444,17 @@ def build(args) -> Path:
     ]
     pack(rugs, rug_w, rug_h).save(out_dir / "rug.png")
 
-    fire_w, fire_h = tile, round(tile * 1.625)
-    fire_anchor = fire_h - 4
-    fire = make_lampfire(fire_w, fire_h, LAMPFIRE_FRAMES, fire_anchor)
-    pack(fire, fire_w, fire_h).save(out_dir / "lampfire.png")
+    fire_w, fire_h = round(tile * 1.25), round(tile * 2.5)
+    fire_anchor = fire_h - 6
+    fire = make_torchfire(fire_w, fire_h, TORCHFIRE_FRAMES, fire_anchor)
+    pack(fire, fire_w, fire_h).save(out_dir / "torchfire.png")
 
     glow_w, glow_h = tile * 2, tile
     glow_anchor = glow_h - 4
     glow = make_glow(glow_w, glow_h, GLOW_FRAMES, glow_anchor)
     pack(glow, glow_w, glow_h).save(out_dir / "glow.png")
 
-    for name, frames in (("lampfire", fire), ("glow", glow)):
+    for name, frames in (("torchfire", fire), ("glow", glow)):
         margin = _loop_seam(frames)
         print(f"  loop {name}: wrap step vs worst inner step = {margin:+d}")
         if margin > 0:
@@ -604,61 +463,52 @@ def build(args) -> Path:
     manifest = {
         "tile": tile,
         "seed": args.seed,
-        # One built floor. See the module docstring for why there is no second.
-        "grounds": [
-            {"name": "boards", "file": "ground_boards.png", "tile": tile,
-             "cols": 4, "rows": 4}
-        ],
+        # NO GROUND. The camp stands on the forest's own soil — see the module
+        # docstring on why this stopped being an interior.
         # PROPS: bottom-anchored, depth-sorted with the party.
         "props": {
-            "wall": {
-                "file": "wall.png", "frameWidth": wall_w, "frameHeight": wall_h,
-                "frames": len(walls), "sway": 0,
-                # Tiles horizontally, so it carries no side keyline. Variant 5
-                # is the doorway the corridor ends on.
-                "tiles": True, "doorway": 5,
-            },
             "table": {
                 "file": "table.png", "frameWidth": table_w, "frameHeight": table_h,
                 "frames": len(tables), "sway": 0,
                 # The row the stock lies on, per variant. Pose, not decoration.
                 "topY": list(TABLE_TOP_Y),
             },
-            "lamp": {
-                "file": "lamp.png", "frameWidth": lamp_w, "frameHeight": lamp_h,
-                "frames": len(lamps), "sway": 0,
-                # Where `lampfire` burns inside the housing, per variant.
-                "flameY": list(LAMP_FLAME_Y),
+            "torch": {
+                "file": "torch.png", "frameWidth": torch_w, "frameHeight": torch_h,
+                "frames": len(torches), "sway": 0,
+                # Where `torchfire` burns inside the head, per variant.
+                "flameY": list(TORCH_FLAME_Y),
             },
         },
-        # DECALS: flat, centred on their point, baked into the floor canvas.
+        # DECALS: flat, centred on their point, baked into the ground canvas.
         "decals": {
             "rug": {"file": "rug.png", "frameWidth": rug_w, "frameHeight": rug_h,
                     "frames": len(rugs)},
         },
-        # VFX: greyscale, additive, tinted at draw time.
+        # VFX: additive, drawn after the darkness pass. `torchfire` carries its
+        # own warm colour — a flame is a ramp, not a hue, and a draw-time
+        # multiply cannot make one.
         "effects": {
-            "lampfire": {
-                "file": "lampfire.png", "frameWidth": fire_w, "frameHeight": fire_h,
-                "frames": LAMPFIRE_FRAMES, "fps": LAMPFIRE_FPS,
-                "anchorY": fire_anchor, "loop": True,
+            "torchfire": {
+                "file": "torchfire.png", "frameWidth": fire_w, "frameHeight": fire_h,
+                "frames": TORCHFIRE_FRAMES, "fps": TORCHFIRE_FPS,
+                "anchorY": fire_anchor, "loop": True, "tinted": False,
             },
             "glow": {
                 "file": "glow.png", "frameWidth": glow_w, "frameHeight": glow_h,
                 "frames": GLOW_FRAMES, "fps": GLOW_FPS,
-                "anchorY": glow_anchor, "loop": True,
+                "anchorY": glow_anchor, "loop": True, "tinted": False,
             },
         },
     }
     (out_dir / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
 
     print(
-        f"wrote {out_dir}: boards {ground_size}x{ground_size}, "
-        f"wall {len(walls)}x{wall_w}x{wall_h}, "
+        f"wrote {out_dir}: "
         f"table {len(tables)}x{table_w}x{table_h}, "
-        f"lamp {len(lamps)}x{lamp_w}x{lamp_h}, "
+        f"torch {len(torches)}x{torch_w}x{torch_h}, "
         f"rug {len(rugs)}x{rug_w}x{rug_h}, "
-        f"lampfire {LAMPFIRE_FRAMES}x{fire_w}x{fire_h} @{LAMPFIRE_FPS}fps, "
+        f"torchfire {TORCHFIRE_FRAMES}x{fire_w}x{fire_h} @{TORCHFIRE_FPS}fps, "
         f"glow {GLOW_FRAMES}x{glow_w}x{glow_h} @{GLOW_FPS}fps"
     )
     return out_dir
@@ -670,7 +520,7 @@ def main() -> None:
                     help="must match TILE_SIZE in server/app/config.py")
     ap.add_argument("--seed", type=int, default=1337)
     ap.add_argument("--preview", default="",
-                    help="write a scaled mock-up of the corridor HERE (outside "
+                    help="write a scaled mock-up of the pitch HERE (outside "
                          "the tree) for eyeballing the art")
     ap.add_argument("--preview-scale", type=int, default=6)
     args = ap.parse_args()
@@ -680,44 +530,50 @@ def main() -> None:
 
 
 def _preview(out_dir: Path, path: Path, scale: int, tile: int) -> None:
-    """A mock-up of the corridor: floor, wall, mat, tables, lamps, merchant.
+    """A mock-up of the pitch: soil, tent, mat, tables, torches, merchant.
 
     Not shipped, and not how the client composes the scene — this exists so the
-    art can be judged as a room rather than as seven sheets in a folder.
+    art can be judged as a place rather than as five sheets in a folder. The
+    ground and the tent are pulled from the OTHER generators on purpose: this
+    camp's whole argument is that it is made of the same forest everything else
+    is, and a preview on a flat background could not show that.
     """
     manifest = json.loads((out_dir / "manifest.json").read_text())
-    cols, rows = 20, 9
-    scene = Image.new("RGBA", (cols * tile, rows * tile), (0, 0, 0, 255))
+    cols, rows = 22, 12
+    scene = Image.new("RGBA", (cols * tile, rows * tile), (12, 14, 12, 255))
 
-    ground = Image.open(out_dir / "ground_boards.png")
-    for ty in range(rows):
-        for tx in range(cols):
-            cell = ground.crop((
-                (tx % 4) * tile, (ty % 4) * tile,
-                (tx % 4 + 1) * tile, (ty % 4 + 1) * tile,
-            ))
-            scene.paste(cell, (tx * tile, ty * tile))
+    terrain_dir = PROCESSED_DIR / "terrain"
+    if terrain_dir.exists():
+        spec = json.loads((terrain_dir / "manifest.json").read_text())
+        soil = Image.open(terrain_dir / spec["grounds"][0]["file"])
+        cells = spec["grounds"][0]
+        for ty in range(rows):
+            for tx in range(cols):
+                cell = soil.crop((
+                    (tx % cells["cols"]) * tile, (ty % cells["rows"]) * tile,
+                    (tx % cells["cols"] + 1) * tile, (ty % cells["rows"] + 1) * tile,
+                ))
+                scene.paste(cell, (tx * tile, ty * tile))
 
-    def strip(spec: dict) -> list[Image.Image]:
-        sheet = Image.open(out_dir / spec["file"])
+    def strip(spec: dict, root: Path) -> list[Image.Image]:
+        sheet = Image.open(root / spec["file"])
         w, h = spec["frameWidth"], spec["frameHeight"]
         return [sheet.crop((i * w, 0, (i + 1) * w, h)) for i in range(spec["frames"])]
 
-    walls = strip(manifest["props"]["wall"])
-    tables = strip(manifest["props"]["table"])
-    lamps = strip(manifest["props"]["lamp"])
-    rugs = strip(manifest["decals"]["rug"])
-    fire = strip(manifest["effects"]["lampfire"])
-    glow = strip(manifest["effects"]["glow"])
+    tables = strip(manifest["props"]["table"], out_dir)
+    torches = strip(manifest["props"]["torch"], out_dir)
+    rugs = strip(manifest["decals"]["rug"], out_dir)
+    fire = strip(manifest["effects"]["torchfire"], out_dir)
 
-    wall_base = 3 * tile
-    order = (5, 0, 2, 0, 3, 0, 1, 0, 4, 0, 0, 3, 0, 2, 0, 1, 0, 0, 0, 5)
-    for tx in range(cols):
-        art = walls[order[tx % len(order)]]
-        scene.paste(art, (tx * tile, wall_base - art.height), art)
+    scenery_dir = PROCESSED_DIR / "scenery"
+    if scenery_dir.exists():
+        spec = json.loads((scenery_dir / "manifest.json").read_text())
+        tents = strip(spec["props"]["tent"], scenery_dir)
+        tent = tents[0]
+        scene.paste(tent, ((cols // 2) * tile - tent.width // 2, 5 * tile - tent.height), tent)
 
     rug = rugs[0]
-    scene.paste(rug, ((cols // 2) * tile - rug.width // 2, 4 * tile), rug)
+    scene.paste(rug, ((cols // 2) * tile - rug.width // 2, 5 * tile), rug)
 
     merchant_dir = PROCESSED_DIR / "merchant"
     if merchant_dir.exists():
@@ -725,42 +581,40 @@ def _preview(out_dir: Path, path: Path, scale: int, tile: int) -> None:
         idle = Image.open(merchant_dir / "idle.png")
         mw, mh = spec["frameWidth"], spec["frameHeight"]
         art = idle.crop((0, 0, mw, mh))
-        scene.paste(art, ((cols // 2) * tile - mw // 2, 5 * tile - mh), art)
+        scene.paste(art, ((cols // 2) * tile - mw // 2, 6 * tile - mh), art)
 
     guns_dir = PROCESSED_DIR / "guns"
     gun_frames: list[Image.Image] = []
     if guns_dir.exists():
         spec = json.loads((guns_dir / "manifest.json").read_text())
-        sheet = Image.open(guns_dir / spec["sheet"])
+        sheet = Image.open(guns_dir / "sheet.png")
         gw, gh = spec["frameWidth"], spec["frameHeight"]
         gun_frames = [
             sheet.crop((i * gw, 0, (i + 1) * gw, gh)) for i in range(spec["frames"])
         ]
 
-    for index in range(4):
+    # Deliberately IRREGULAR, the way the server places them: a row on a
+    # perfect grid is the tell that nobody set these up by hand.
+    for index, (tx, dy) in enumerate(((4, 0), (9, -1), (14, 1), (18, 0))):
         table = tables[index]
-        x = (3 + index * 4) * tile
-        y = 6 * tile
+        x = tx * tile
+        y = 9 * tile + dy * 4
         scene.paste(table, (x, y - table.height), table)
         if gun_frames:
             gun = gun_frames[index % len(gun_frames)]
             top = y - table.height + manifest["props"]["table"]["topY"][index]
-            if index == 1:  # one of them lifted, with its pool under it
-                pool = glow[0]
-                scene.paste(pool, (x + table.width // 2 - pool.width // 2,
-                                   top - pool.height + 4), pool)
-                top -= 3
             scene.paste(gun, (x + table.width // 2 - gun.width // 2,
                               top - gun.height), gun)
 
-    for tx in (2, cols - 3):
-        lamp = lamps[0]
-        base = 3 * tile
-        scene.paste(lamp, (tx * tile, base - lamp.height), lamp)
-        flame = fire[0]
-        fy = base - lamp.height + manifest["props"]["lamp"]["flameY"][0]
-        scene.paste(flame, (tx * tile + lamp.width // 2 - flame.width // 2,
-                            fy - manifest["effects"]["lampfire"]["anchorY"]), flame)
+    for index, (tx, ty) in enumerate(((2, 7), (11, 4), (20, 7))):
+        torch = torches[index % len(torches)]
+        base_y = ty * tile
+        scene.paste(torch, (tx * tile, base_y - torch.height), torch)
+        flame = fire[(index * 3) % len(fire)]
+        flame_y = manifest["props"]["torch"]["flameY"][index % len(torches)]
+        fy = base_y - torch.height + flame_y
+        scene.paste(flame, (tx * tile + torch.width // 2 - flame.width // 2,
+                            fy - manifest["effects"]["torchfire"]["anchorY"]), flame)
 
     scene = scene.resize((scene.width * scale, scene.height * scale), Image.NEAREST)
     path.parent.mkdir(parents=True, exist_ok=True)

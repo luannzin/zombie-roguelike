@@ -1,0 +1,60 @@
+{
+  "tile": 16,
+  "seed": 1337,
+  "props": {
+    "table": {
+      "file": "table.png",
+      "frameWidth": 32,
+      "frameHeight": 20,
+      "frames": 4,
+      "sway": 0,
+      "topY": [
+        4,
+        3,
+        1,
+        5
+      ]
+    },
+    "torch": {
+      "file": "torch.png",
+      "frameWidth": 12,
+      "frameHeight": 30,
+      "frames": 2,
+      "sway": 0,
+      "flameY": [
+        3,
+        3
+      ]
+    }
+  },
+  "decals": {
+    "rug": {
+      "file": "rug.png",
+      "frameWidth": 48,
+      "frameHeight": 32,
+      "frames": 2
+    }
+  },
+  "effects": {
+    "torchfire": {
+      "file": "torchfire.png",
+      "frameWidth": 20,
+      "frameHeight": 40,
+      "frames": 12,
+      "fps": 12,
+      "anchorY": 34,
+      "loop": true,
+      "tinted": false
+    },
+    "glow": {
+      "file": "glow.png",
+      "frameWidth": 32,
+      "frameHeight": 16,
+      "frames": 8,
+      "fps": 10,
+      "anchorY": 12,
+      "loop": true,
+      "tinted": false
+    }
+  }
+}

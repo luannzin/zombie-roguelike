@@ -81,6 +81,7 @@ class TileMap:
         rifts: list | None = None,
         entrance: dict | None = None,
         egress: dict | None = None,
+        store: dict | None = None,
     ):
         self.tiles = tiles
         # The story laid over this map: a legend plus one compact row per
@@ -106,6 +107,12 @@ class TileMap:
         # Extraction exit, carved when the feed quota is paid. Absent until
         # then, and absent on the camp. Same shape as `entrance`.
         self.egress = egress
+        # The shop's fixtures: the merchant, his tables and what is on them,
+        # the lamps and the mat (`server/app/store.py`). Absent everywhere
+        # else. Held as the payload for the same reason `scenery` is — the
+        # room hydrates live `store.Stand` rows out of it and forwards the
+        # rest verbatim.
+        self.store = store
         # Shipped to the client, which hashes it with tile coordinates to place
         # decoration (grass tufts, prop variants). Sending a seed instead of a
         # decoration layer keeps the map payload the size of the map.
@@ -230,4 +237,5 @@ class TileMap:
             "rifts": list(self.rifts),
             "entrance": self.entrance,
             "egress": self.egress,
+            "store": self.store,
         }

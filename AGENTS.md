@@ -151,14 +151,60 @@ subtree.
   prism in two ranks of two, and cut paving with light in its seams — the exit
   opens during the blackout, so those torches are the only thing burning on the
   map and the only thing that can say "here" rather than "that way". Crossing
-  that corridor returns
-  the party to camp and increments the day. Extraction pads are on the
+  that corridor ends the night — but it does not go home yet. It opens on the
+  **STORE**, and the day increments on the way out of THAT.
+  Extraction pads are on the
   MINIMAP: dormant ones once their ground has been explored, awake ones
   always, and gold once their quota is paid. The world is already laid out for the
   walk — `server/app/scenery.py` returns the ROUTE its scenes are strung
   along (outward from the mouth ending at the landmark), `SceneLight`/
   `BEACON` is the channel a beacon arrives on, and the boot prints
   players leave behind are navigation for the trip back.
+- **The STORE is the fourth beat of the loop and the only place money exists.**
+  A trader's camp in a long forest GLADE, read left to right
+  (`server/app/store.py`): the party walks in from the west, the way back seals
+  behind them exactly as the forest's did, the merchant is pitched in the
+  middle — his tent, his campfire, his torches — and his three or four rustic
+  tables are in front of him with one gun on each. The east end stands open the
+  whole time; walking out of it is the next day.
+  - **It is OUTDOORS, and that is load-bearing.** It was an interior first, a
+    plank corridor with walls and hanging lamps, and the problem outweighed
+    everything it got right: it was the only room in the game, so it read as a
+    menu the game had cut to rather than as somewhere the party walked. A
+    clearing with a tent in it reads as a person who is also out here. The
+    glade is an ordinary forest map — the same soil, trees and darkness as
+    everywhere else — which is also why almost none of it needs special code:
+    his tent is a scenery prop, his campfire is a `FIRE` tile, and his torches
+    are `SceneLight`s like any cabin lamp.
+  - The lane is a corridor made of WOODS rather than of walls, and the shape is
+    the point: one decision repeated three or four times, so the treeline
+    squeezes the walkable ground into a lane and every table sits between the
+    way in and the way out. A round clearing lets a party cut a diagonal and
+    leave without seeing half the stock. The tables are placed on an even
+    rhythm and then pushed off it — four identical stalls at four identical
+    intervals is the loudest tell that nobody set this up by hand.
+  - **CURRENCY.** Everything the party fed into the night's anomalies becomes
+    the GROUP's balance on the way in here — nothing else, anywhere, adds to
+    it. Loot still in the bag is not money, it is loot they failed to extract.
+    The balance is the party's and survives the day; `Player.gold` is a
+    separate, personal number (coins somebody walked over) and stays that way.
+  - Each table shows a coin and a price above it. Walking close LIFTS the
+    weapon off the boards, lights a pool under it, and opens the buy tooltip;
+    E takes it. A stall sells once and the table stays there empty, because
+    the gap is what says you already bought it. Prices are the loot catalog's
+    value times a markup, never a second list. A price the party cannot cover
+    is shown anyway, in red — the AWP priced out of reach is doing more work
+    than a tutorial line about saving up would. The colour is the whole
+    message; the tooltip does not also spell out that you are short.
+  - It runs the darkness like every other forest map, because it IS one. The
+    pitch being a pool of firelight in a dark glade is the whole picture, and
+    the torches lining the lane are NAVIGATION — the lantern is off here, so
+    without them a party emerging from the west corridor would have no way of
+    knowing which direction the trader is. The merchant
+    (`server/tools/make_merchant.py`) is not an entity — he stands still and
+    plays an idle loop with three flourishes interrupting it, entirely
+    client-side, because nothing about which frame he is on has ever been
+    worth a message.
 - The room's ZONE (`server/app/zones.py`) says where the run is and how that
   place behaves: its title card, whether enemies spawn and guns fire
   (`hostile`), and whether the lantern may be switched on (`lantern`). The

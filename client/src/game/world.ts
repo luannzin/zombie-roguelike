@@ -129,6 +129,38 @@ export interface Rift {
   ready: boolean;
 }
 
+/** One table in the shop, and the weapon lying on it. */
+export interface Stand {
+  id: string;
+  /** Weapon catalog key. */
+  key: string;
+  price: number;
+  /** Centre of the table. */
+  x: number;
+  /** Contact — the row its feet stand on. */
+  y: number;
+  /** Which table sheet frame this stall uses. */
+  variant: number;
+  /** Bought. The table stays; the gap where the gun was is the information. */
+  sold: boolean;
+}
+
+/**
+ * The merchant's pitch. Null on every map that is not the store.
+ *
+ * Only what is HIS. The glade around it is an ordinary forest map — its soil
+ * is hashed from the seed and his tent is a scenery prop — so nothing about
+ * the place he is standing in needs to be here.
+ */
+export interface StoreFixtures {
+  merchantX: number;
+  merchantY: number;
+  stands: Stand[];
+  torches: readonly { x: number; y: number; variant: number }[];
+  rugX: number;
+  rugY: number;
+}
+
 /** A light the map owns, at the point it burns from, in world pixels. */
 export interface SceneryLight {
   x: number;
@@ -230,6 +262,15 @@ export class TileMap {
      */
     torches: readonly { x: number; y: number }[];
   } | null;
+  /**
+   * The shop's fixtures, or null on every map that is not the store.
+   *
+   * `stands` is mutable and the rest is not, which is the whole shape of the
+   * zone: where the merchant and his tables are was decided when the corridor
+   * was built and cannot change, and the only thing that happens in here is
+   * that a weapon leaves a table.
+   */
+  store: StoreFixtures | null;
 
   constructor(payload: MapPayload) {
     this.tiles = payload.tiles;
@@ -246,6 +287,7 @@ export class TileMap {
     this.crates = unpackCrates(payload);
     this.rifts = unpackRifts(payload);
     this.egress = unpackCorridor(payload.egress);
+    this.store = unpackStore(payload);
     // A client that arrives mid-run — or reconnects after the exit opened —
     // gets the map with the corridor already on it, and its torches have to be
     // lit here as well as in `setEgress`, or they are dark for that player
@@ -283,6 +325,22 @@ export class TileMap {
     }
     if (state === 'open' && row.closeAt === null) this.lightRift(row);
     if (state === 'spent' || row.closeAt !== null) this.darkenRift(row);
+  }
+
+  /**
+   * Adopt the server's word on which tables have been bought from.
+   *
+   * Matched by id and applied in place rather than replacing the array: the
+   * fixtures are the same objects the renderer is holding, and a purchase must
+   * not make the corridor rebuild itself.
+   */
+  setStands(rows: readonly { id: string; sold?: boolean }[]): void {
+    const store = this.store;
+    if (!store) return;
+    for (const row of rows) {
+      const stand = store.stands.find((item) => item.id === row.id);
+      if (stand) stand.sold = row.sold === true;
+    }
   }
 
   setEntranceState(state: 'open' | 'sealing' | 'gone', elapsed: number): void {
@@ -554,6 +612,27 @@ function unpackRifts(payload: MapPayload): Rift[] {
     level: row.level ?? 0,
     ready: row.ready ?? false,
   }));
+}
+
+function unpackStore(payload: MapPayload): StoreFixtures | null {
+  const row = payload.store;
+  if (!row) return null;
+  return {
+    merchantX: row.merchant[0],
+    merchantY: row.merchant[1],
+    stands: (row.stands ?? []).map((stand) => ({
+      id: stand.id,
+      key: stand.k,
+      price: stand.price,
+      x: stand.x,
+      y: stand.y,
+      variant: stand.v,
+      sold: stand.sold === true,
+    })),
+    torches: (row.torches ?? []).map(([x, y, variant]) => ({ x, y, variant })),
+    rugX: row.rug[0],
+    rugY: row.rug[1],
+  };
 }
 
 function unpackCrates(payload: MapPayload): CratePiece[] {

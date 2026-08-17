@@ -36,6 +36,7 @@ from dataclasses import dataclass
 
 KIND_CAMP = "camp"
 KIND_FOREST = "forest"
+KIND_STORE = "store"
 
 WEATHER_CLEAR = "clear"
 WEATHER_RAIN = "rain"
@@ -109,6 +110,30 @@ def camp(day: int) -> Zone:
         day=day,
         title="Preparação",
         subtitle=f"Dia {day}",
+        hostile=False,
+        lantern=False,
+        weather=WEATHER_CLEAR,
+    )
+
+
+def store(day: int) -> Zone:
+    """The merchant's corridor, between the forest and the next camp.
+
+    Safe, and lit by something you can see — which is why the lantern is off
+    here for the same reason it is off at the fire. The battery is a resource
+    the party carries OUT of a place, and this is the one zone in the loop with
+    a roof and a lamp already burning in it.
+
+    The subtitle names the DAY the party just survived, not the one they are
+    about to start: this is the end of that night, and the balance being spent
+    is the balance that night paid.
+    """
+    return Zone(
+        key=f"store-{day}",
+        kind=KIND_STORE,
+        day=day,
+        title="Mercador",
+        subtitle=f"Fim do dia {day}",
         hostile=False,
         lantern=False,
         weather=WEATHER_CLEAR,

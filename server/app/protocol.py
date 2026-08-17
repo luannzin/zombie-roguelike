@@ -26,6 +26,11 @@ client -> server
   {"type":"activate","id":"r0"}         press a rift console or feed an open
                                         anomaly from the bag. `id` is the pad;
                                         omitted = nearest in range.
+  {"type":"buy","id":"s2"}              take the weapon off a shop table and
+                                        charge the party balance. Store zone
+                                        only; ignored if too far, already
+                                        sold, unaffordable, or the belt is
+                                        full with no legal trade.
 
 server -> client
   {"type":"hello","playerId":"...","code":"ABC1234",
@@ -45,6 +50,7 @@ server -> client
    "corpses":[...],
    "entrance":{...},"tilePatches":[...],"quests":[...],
    "rifts":[...],"egress":{...},"blackout":true,
+   "stands":[...],"buys":[...],"balance":240,
    "roster":[...]}                    only every ROSTER_EVERY_N_TICKS ticks
   {"type":"pong","t":<echoed>}
 
@@ -124,6 +130,21 @@ Snapshot arrays:
                payload, and again on a snapshot only when one was smashed
   crateBreaks  crates smashed since the last snapshot (juice). `drop` is
                empty / coin / item; `k` is the catalog key when it is an item
+  stands       the shop's tables, attached like crates — on the map payload,
+               and again on a snapshot only when one was bought from. A sold
+               table keeps its row and its price; `sold` is what empties it,
+               because the gap where a weapon was is information
+  buys         purchases since the last snapshot (juice). `slot` is the belt
+               cell it landed in; the client flies the sprite there and
+               counts the balance down
+  balance      THE PARTY'S money, not a player's, so it is one number at the
+               top of the snapshot rather than a column on the roster. Sent
+               only when it changes — see `Player.gold` for the other,
+               personal, one
+
+The store's fixtures ride the MAP payload (`store`), not the snapshot: where
+the merchant stands and where his tables are is decided once when the corridor
+is built, the same as a rift's geometry. Only what SELLS moves.
 """
 
 from __future__ import annotations
@@ -138,6 +159,7 @@ MSG_COLLECT = "collect"
 MSG_BREAK = "break"
 MSG_DROP = "drop"
 MSG_ACTIVATE = "activate"
+MSG_BUY = "buy"
 
 MSG_HELLO = "hello"
 MSG_LOBBY = "lobby"
@@ -193,6 +215,7 @@ def welcome(
     corpses: list[dict] | None = None,
     quests: list[dict] | None = None,
     blackout: bool = False,
+    balance: int = 0,
 ) -> dict:
     payload = {
         "type": MSG_WELCOME,
@@ -206,6 +229,10 @@ def welcome(
         "ack": ack,
         "loot": loot or [],
         "corpses": corpses or [],
+        # Always sent, even at zero: it is the party's whole spending power and
+        # a client that had to wait for the first change to learn it would draw
+        # an empty purse over a corridor full of price tags.
+        "balance": balance,
     }
     if quests:
         payload["quests"] = quests
@@ -245,6 +272,9 @@ def snapshot(
     quests: list[dict] | None = None,
     egress: dict | None = None,
     blackout: bool | None = None,
+    stands: list[dict] | None = None,
+    buys: list[dict] | None = None,
+    balance: int | None = None,
 ) -> dict:
     payload = {
         "type": MSG_SNAPSHOT,
@@ -291,4 +321,12 @@ def snapshot(
         payload["egress"] = egress
     if blackout:
         payload["blackout"] = True
+    if stands is not None:
+        payload["stands"] = stands
+    if buys:
+        payload["buys"] = buys
+    # `is not None` rather than truthiness: spending down to nothing is the one
+    # balance change a party most needs to see land.
+    if balance is not None:
+        payload["balance"] = balance
     return payload

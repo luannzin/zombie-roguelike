@@ -19,6 +19,8 @@ imported by `app/` and never run at request time.
 | `make_gore.py` | generates final pixels | `assets/processed/gore/` (6 wound decals worn by a hit body) |
 | `make_loot.py` | generates final pixels | `assets/processed/loot/` (one 16x16 frame per item, including gun icons) |
 | `make_guns.py` | generates final pixels | `assets/processed/guns/` (held side-view, one 18x8 frame per weapon, plus its carry pose) |
+| `make_merchant.py` | generates final pixels | `assets/processed/merchant/` (the shopkeeper: `idle` loop plus three one-shot flourishes — `coat`, `beckon`, `coin` — and the manifest's `randomClips` / `randomGap` that drive them) |
+| `make_store.py` | generates final pixels | `assets/processed/store/` (the merchant's own kit: table ×4 with `topY`, torch ×2 with `flameY`, rug, torchfire, buy glow) |
 | `make_hud_icons.py` | generates final pixels | `assets/processed/hud/` (battery, backpack, coin, arrow) |
 | `make_audio.py` | generates final samples | `assets/processed/audio/` (32 sounds, 59 wavs + manifest + loudness.json) |
 
@@ -294,6 +296,33 @@ imported by `app/` and never run at request time.
 - One-shots are 22050 Hz, beds 16000 Hz, all 16-bit mono. The beds are the bulk
   of the ~2.3 MB output; if that ever needs to come down, encoding them is the
   lever, not shortening them.
+- **The store's sheets are toned like scenery, because the camp is OUTDOORS.**
+  It was an interior once and its art was authored lit; it is a clearing now,
+  so everything here stands in the same forest at night and is multiplied by
+  the same darkness pass the trees are. Only the FIRE breaks that, and only
+  because it is drawn additively after that pass.
+- **`make_store.py` draws only what the trader BROUGHT.** No ground, no walls:
+  the clearing is `make_textures.py`'s soil and trees, and the shelter is
+  `make_scenery.py`'s tent. A second tent sheet would only be a slightly
+  different one, and a store-specific floor would put a rectangle of somewhere
+  else in the middle of a forest.
+- **The camp's torch is NOT the rift's.** `make_rift.py` also draws a torch and
+  its fire, but that one burns the anomaly's prism — cyan and violet, because
+  it is marking a hole in the world. This one is warm (`FLAME`), because it is
+  a man's campfire on a stick. Sharing the sheet would say the merchant and the
+  rift are the same kind of thing, which is the one thing the scene must not
+  say. Both are `tinted: false` for the same reason: a flame is a ramp from a
+  dull red root to a white core, and a draw-time multiply is a single hue.
+- **`table.topY` is gameplay geometry living in the art, and that is correct.**
+  It is the pixel row a weapon rests on, per table frame, and the four tables
+  are deliberately three different heights (a trestle, a board over crates, a
+  board over a barrel). One hardcoded offset client-side would float one gun
+  and sink another. `lamp.flameY` is the same contract for where a lamp burns.
+- **The merchant is CLIPS, not a walk cycle.** He never moves, so he ships an
+  `idle` loop plus one-shot flourishes and a manifest that says which ones may
+  interrupt (`randomClips`) and how long the gaps are (`randomGap`). Adding a
+  fourth flourish is a recipe here plus a name on that list — the client reads
+  both and needs no change. Nothing about him is on the wire.
 
 ## Work Guidance
 
@@ -320,6 +349,8 @@ python tools/make_textures.py
 python tools/make_scenery.py
 python tools/make_vfx.py
 python tools/make_rift.py
+python tools/make_merchant.py
+python tools/make_store.py
 python tools/make_gore.py
 python tools/make_loot.py
 python tools/make_guns.py

@@ -30,6 +30,7 @@ import { clamp01, expDamp } from '../lib/math';
 import type { Connection, ConnectionStatus, Unsubscribe } from '../net/connection';
 import type {
   AttackEvent,
+  BuyEvent,
   EnemyTypeConfig,
   GameConfig,
   HotbarState,
@@ -60,6 +61,14 @@ import { gunMuzzle, loadGuns, type GunAtlas } from '../render/guns';
 import { projectionFor } from '../render/projection';
 import { riftResidue, type ResidueMark } from '../render/residue';
 import { FovField, type LightSource, type VisionConfig, type Viewer } from '../render/fov';
+import {
+  loadMerchant,
+  newMerchantPose,
+  stepMerchant,
+  type MerchantAtlas,
+  type MerchantPose,
+} from '../render/merchant';
+import type { StoreScene } from '../render/layers/store';
 import { DEATH_TIME, POOL_GROW, poolRadius, poolWetness } from '../render/layers/corpses';
 import { soilAt } from '../render/layers/terrain';
 import { setClimate } from '../render/wind';
@@ -77,6 +86,7 @@ import { EntityVisuals, hitPower, type BloodStain } from './entity-visuals';
 import {
   EMPTY_HUD,
   HUD_INTERVAL,
+  type HudBuyPrompt,
   type HudHotbar,
   type HudInventory,
   type HudLootPrompt,
@@ -93,7 +103,9 @@ import { clearLootFlies, listLootFlies, spawnLootFly, stepLootFlies } from './lo
 import { warpHudPoint } from '../lib/lens';
 import { LocalPlayer } from './prediction';
 import { carryBurden } from './simulation';
-import { crateFootprint, FLOOR, VOID, hearthMask, TileMap, type Rift } from './world';
+import {
+  crateFootprint, FLOOR, VOID, hearthMask, TileMap, type Rift, type Stand,
+} from './world';
 import {
   clearTooltipAnchors,
   dropTooltipAnchor,
@@ -134,6 +146,15 @@ const CRATE_TOOLTIP_LIFT_TILES = 1.4;
 const CRATE_BREAK_LIFE = 8 / 12;
 /** Empty-crate gust. Matches `make_vfx.py` wind (8 frames @ 14 fps). */
 const WIND_LIFE = 8 / 14;
+/**
+ * How far above a shop table the buy tooltip sits, in tiles.
+ *
+ * Higher than the others because this stall already has a price tag hanging
+ * over it: the tooltip has to clear the tag, or the two stack into one block
+ * of numbers nobody reads.
+ */
+const BUY_TOOLTIP_LIFT_TILES = 2.6;
+
 /** How far above the console the activate tooltip sits, in tiles. */
 const RIFT_TOOLTIP_LIFT_TILES = 1.9;
 /**
@@ -353,6 +374,20 @@ export class Game {
   private readonly alertSeen = new Set<string>();
   /** Team light + explored memory. Rebuilt per map, updated per frame. */
   private fov: FovField | null = null;
+  /**
+   * The party's money. Whole-group rather than per-player — see the note on
+   * `SnapshotMessage.balance`. Held here rather than on the roster because
+   * both the price tags (canvas) and the purse (React) read it, and there is
+   * only ever one of it.
+   */
+  private balance = 0;
+  /**
+   * The merchant's clip player, and the sheets it drives. He is not an entity
+   * and the server has never had an opinion about which frame he is on, so
+   * this lives entirely client-side — see `render/merchant.ts`.
+   */
+  private merchantAtlas: MerchantAtlas | null = null;
+  private merchantPose: MerchantPose = newMerchantPose(null);
   private localId = '';
   private local: LocalPlayer | null = null;
   private localMeta: PlayerMeta | null = null;
@@ -463,6 +498,12 @@ export class Game {
     this.input.onHotbar = (slot) => this.selectHotbar(slot);
     bindInventoryDrop((slot) => this.requestDrop(slot));
     this.minimap = new Minimap(options.minimapCanvas);
+    // Fire-and-forget, like every other atlas: until it lands the merchant is
+    // simply not drawn, which is better than holding up the corridor for him.
+    void loadMerchant().then((atlas) => {
+      this.merchantAtlas = atlas;
+      this.merchantPose = newMerchantPose(atlas);
+    });
   }
 
   async start(): Promise<void> {
@@ -710,7 +751,16 @@ export class Game {
     this.smoothX = msg.player.x;
     this.smoothY = msg.player.y;
     this.departing = false;
-    this.arriving = msg.zone.kind === 'forest' && msg.map.entrance?.state === 'open';
+    // Both corridor zones arrive the same way — puppeted out of a VOID path
+    // that then seals behind them. The camp is the only one you simply appear
+    // in, because you were already standing there.
+    this.arriving =
+      (msg.zone.kind === 'forest' || msg.zone.kind === 'store') &&
+      msg.map.entrance?.state === 'open';
+    this.balance = msg.balance ?? 0;
+    // A fresh performance for a fresh arrival: he should not be caught halfway
+    // through opening his coat on the frame the party walks in.
+    this.merchantPose = newMerchantPose(this.merchantAtlas);
     this.quests = msg.quests ?? [];
     if (msg.blackout) this.lantern.kill();
     this.alertHeard.clear();
@@ -762,6 +812,8 @@ export class Game {
       prompt: null,
       lootPrompt: null,
       quests: this.quests,
+      balance: this.balance,
+      buyPrompt: null,
       inventory: this.inventoryHud(),
       hotbar: this.hotbarHud(),
     });
@@ -789,7 +841,9 @@ export class Game {
     }
 
     const wasArriving = this.arriving;
-    this.arriving = Boolean(msg.arriving) && this.zone?.kind === 'forest';
+    this.arriving =
+      Boolean(msg.arriving) &&
+      (this.zone?.kind === 'forest' || this.zone?.kind === 'store');
     if (this.arriving && !wasArriving) {
       this.patchHud({ cinematic: true, prompt: null, cratePrompt: false });
     }
@@ -921,6 +975,9 @@ export class Game {
     if (msg.rifts) {
       for (const row of msg.rifts) this.onRiftState(row);
     }
+    if (msg.stands) this.world.setStands(msg.stands);
+    if (msg.balance !== undefined) this.balance = msg.balance;
+    for (const ev of msg.buys ?? []) this.onBuy(ev);
     if (msg.blackout) this.lantern.kill();
     if (msg.corpses) this.mergeCorpses(msg.corpses);
   }
@@ -1180,6 +1237,46 @@ export class Game {
         inventory: inventory ?? undefined,
         hotbar: hotbar ?? undefined,
       });
+    }
+    this.camera.addTrauma(PICKUP_TRAUMA);
+  }
+
+  /**
+   * Somebody bought a weapon off a table.
+   *
+   * Deliberately the same performance a world pickup gets — the thunk, the
+   * rarity chime, the sprite flying onto the belt cell — because it IS the
+   * same event from the player's side: a gun they did not have is now in their
+   * hands. What is different is the coin sound underneath it, which is the
+   * only part that says this one cost the party something.
+   *
+   * The table emptying is not done here. That arrives on `msg.stands` and is
+   * the server's word; drawing it off the event would leave a table looking
+   * sold to one client if the packet carrying the real state were dropped.
+   */
+  private onBuy(ev: BuyEvent): void {
+    if (ev.by !== this.localId) {
+      // Heard across the corridor, not celebrated. The party should know
+      // somebody just spent the group's money.
+      playSfxAt('coin', ev.x, ev.y, { gain: 0.6 });
+      return;
+    }
+    playSfx('coin');
+    const def = this.config?.loot?.[ev.k];
+    if (def) {
+      playSfx('loot', { delay: 0.05 });
+      playSfx('rarity', { variant: RARITY_CHIME[def.rarity], jitter: 0, delay: 0.12 });
+      if (this.heldSlot < 0) this.heldSlot = ev.slot;
+      spawnLootFly({
+        id: `buy-${ev.id}`,
+        key: ev.k,
+        frame: def.frame,
+        rarity: def.rarity,
+        slot: ev.slot,
+        dest: 'hotbar',
+      });
+      const hotbar = this.hotbarHud();
+      this.patchHud({ hotbar: hotbar ?? undefined, balance: this.balance });
     }
     this.camera.addTrauma(PICKUP_TRAUMA);
   }
@@ -1785,6 +1882,10 @@ export class Game {
     // of pure presentation between two snapshots, and stepping it at 30 Hz
     // would make the light walk around the ring in visible increments.
     this.stepRift(dt);
+    // The merchant's performance runs on the render clock for the same reason
+    // the rift's ceremony does: it is pure presentation between snapshots, and
+    // nothing about which frame he is on has ever been on the wire.
+    stepMerchant(this.merchantPose, this.merchantAtlas, dt);
     this.syncTooltipAnchors();
 
     this.renderer.draw({
@@ -1797,7 +1898,13 @@ export class Game {
       corpses,
       residues: this.residues,
       weather: this.zone?.weather ?? 'clear',
+      store: this.storeScene(),
+      balance: this.balance,
       effects: this.effects,
+      // The merchant's camp runs the darkness like every other forest map: it
+      // IS a forest map, and his torches are ordinary scene lights. The pitch
+      // being a pool of warmth in a dark glade is the whole picture — an
+      // evenly lit clearing would read as somewhere with no night in it.
       fov: this.fov,
       danger: this.dangerLevel(),
       time: this.time,
@@ -2190,6 +2297,8 @@ export class Game {
       lootPrompt: this.lootPromptInfo(),
       cratePrompt: this.cratePromptInfo(),
       riftPrompt: this.riftPrompt(),
+      buyPrompt: this.buyPrompt(),
+      balance: this.balance,
       exitGuide: this.guidePose() !== null,
       inventory: this.inventoryHud(),
       hotbar: this.hotbarHud(),
@@ -2240,6 +2349,20 @@ export class Game {
         return;
       }
       this.connection.send({ type: 'activate', id: rift.id });
+      return;
+    }
+    // The shop's table. Before the crate and the fire for the same reason the
+    // console is: there is nothing else in this corridor E could have meant.
+    const buy = this.buyPrompt();
+    if (buy) {
+      // Both dead presses buzz rather than sending a packet the server would
+      // drop on the floor: a price the party cannot cover, and a belt with no
+      // free cell and no gun in hand to trade.
+      if (!buy.afford || buy.full) {
+        playSfx('ui-error');
+        return;
+      }
+      this.connection.send({ type: 'buy', id: buy.id });
       return;
     }
     const nearCrate = this.nearCrate();
@@ -2644,6 +2767,86 @@ export class Game {
       need: rift.need,
       empty,
       level: rift.level,
+    };
+  }
+
+  /**
+   * What the renderer needs to draw the shop, or null anywhere else.
+   *
+   * `nearId` is resolved here rather than in the layer because it is a
+   * GAMEPLAY fact — it is the same test `Room.buy` runs, feet to table — and
+   * the lift, the pool and the prompt all have to agree with it. A layer that
+   * worked it out for itself would be a second opinion about what "close
+   * enough" means.
+   */
+  private storeScene(): StoreScene | null {
+    const fixtures = this.world?.store;
+    if (!fixtures) return null;
+    return {
+      fixtures,
+      pose: this.merchantPose,
+      nearId: this.nearStand()?.id ?? null,
+    };
+  }
+
+  /**
+   * The stall the local player could buy from, or null.
+   *
+   * Measured from the FEET to the table's contact, mirroring
+   * `Room._stand_in_reach`, so the prompt on screen and the check on the
+   * server agree. Sold tables are skipped: an empty table is not something to
+   * be standing at.
+   */
+  private nearStand(): Stand | null {
+    const config = this.config;
+    const local = this.local;
+    const fixtures = this.world?.store;
+    if (!config || !local || !fixtures) return null;
+    const range = (config.storeBuyTiles ?? 1.9) * config.tileSize;
+    const feetY = local.state.y + config.playerHalfHeight;
+    let best: Stand | null = null;
+    let bestD2 = range * range;
+    for (const stand of fixtures.stands) {
+      if (stand.sold) continue;
+      const dx = stand.x - local.state.x;
+      const dy = stand.y - feetY;
+      const d2 = dx * dx + dy * dy;
+      if (d2 <= bestD2) {
+        bestD2 = d2;
+        best = stand;
+      }
+    }
+    return best;
+  }
+
+  /**
+   * Whether E is offering a weapon right now, and whether it can be taken.
+   *
+   * Every refusal is NAMED rather than hidden, which is the opposite of the
+   * rule the loot prompt follows for a full bag. A price you cannot meet is
+   * the whole point of a shop — the party is supposed to look at the AWP and
+   * decide to come back for it — so the tooltip says what it costs and turns
+   * red, and the key buzzes instead of sending a packet the server would drop.
+   */
+  private buyPrompt(): HudBuyPrompt | null {
+    if (this.locked || this.introLeft > 0) return null;
+    if (this.zone?.kind !== 'store') return null;
+    const stand = this.nearStand();
+    if (!stand) return null;
+    const item = this.config?.loot?.[stand.key];
+    // A full belt is a TRADE here exactly as it is on a world drop, and the
+    // tooltip has to say whose gun is being given up — otherwise E silently
+    // costs the player the weapon in their hands.
+    const room = this.canStow(stand.key);
+    const swap = room ? null : this.swapTargetFor();
+    return {
+      id: stand.id,
+      name: item?.name ?? stand.key,
+      rarity: item?.rarity ?? 'common',
+      price: stand.price,
+      afford: stand.price <= this.balance,
+      full: !room && swap === null,
+      swap: swap ?? undefined,
     };
   }
 
@@ -3106,6 +3309,22 @@ export class Game {
       }
     } else {
       dropTooltipAnchor('rift');
+    }
+
+    const buy = this.buyPrompt();
+    if (buy && this.config) {
+      const stand = this.world?.store?.stands.find((row) => row.id === buy.id);
+      if (stand) {
+        // Above the PRICE, which is already floating above the table — a
+        // tooltip pinned to the table itself would land underneath the tag
+        // and the two would read as one stack of unrelated numbers.
+        const lift = this.config.tileSize * BUY_TOOLTIP_LIFT_TILES;
+        writeTooltipAnchor('buy', view.x(stand.x), view.y(stand.y - lift));
+      } else {
+        dropTooltipAnchor('buy');
+      }
+    } else {
+      dropTooltipAnchor('buy');
     }
 
     const crate = this.cratePromptInfo() ? this.nearCrate() : null;

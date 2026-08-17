@@ -94,6 +94,32 @@ export interface HudRiftPrompt {
   level: number;
 }
 
+/**
+ * Proximity prompt on a shop table.
+ *
+ * Every refusal is NAMED here rather than hidden, which is the opposite of
+ * what the loot prompt does for a full bag. A price the party cannot meet is
+ * the point of a shop — you are supposed to look at the AWP and decide to come
+ * back for it — so the tooltip states the price and turns red instead of
+ * quietly not appearing.
+ */
+export interface HudBuyPrompt {
+  id: string;
+  name: string;
+  rarity: LootRarity;
+  price: number;
+  /** The party can cover it. False paints the price in the danger tone. */
+  afford: boolean;
+  /** Belt full AND no legal trade — holding the knife, or holstered. */
+  full: boolean;
+  /**
+   * Set when the belt is full of guns but E would TRADE rather than refuse:
+   * the name of the weapon in hand, which is what buying this one would leave
+   * on the floor. Absent on an ordinary purchase.
+   */
+  swap?: string;
+}
+
 /** How often the game republishes HUD state. 5 Hz is plenty for text. */
 export const HUD_INTERVAL = 0.2;
 
@@ -187,6 +213,14 @@ export interface HudSnapshot {
    * once the anomaly is up and the feed quest is live.
    */
   riftPrompt: HudRiftPrompt | null;
+  /** Proximity prompt on a shop table. Null outside the store. */
+  buyPrompt: HudBuyPrompt | null;
+  /**
+   * The PARTY's money — what the group fed into the anomalies on the last
+   * night out, converted on the way to the shop. Separate from
+   * `vitals.gold`, which is the coins this player personally walked over.
+   */
+  balance: number;
   /**
    * Extraction-exit arrow. Pose is written every frame (`exit-guide.ts`);
    * this flag only mounts the HUD node.
@@ -220,6 +254,8 @@ export const EMPTY_HUD: HudSnapshot = {
   lootPrompt: null,
   cratePrompt: false,
   riftPrompt: null,
+  buyPrompt: null,
+  balance: 0,
   exitGuide: false,
   inventory: null,
   hotbar: null,

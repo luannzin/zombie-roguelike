@@ -11,7 +11,7 @@ and nowhere near the frame loop.
   `Game`; React never touches those pixels again.
 - `hud/` — ours: `Hud`, `HudScreen`, `Panel`, `Vitals`, `BatteryGauge`,
   `ProgressBar`, `StatusLine`, `NetStats`, `ControlsHint`, `ZoneTitle`,
-  `ReadyCount`, `QuestLog`, `QuestRow`, `QuestAnnounce`, `QuestCount`, `InteractPrompt`, `LootPrompt`, `CratePrompt`, `RiftPrompt`, `ExitGuide`, `Inventory`, `InventorySlot`,
+  `ReadyCount`, `Balance`, `QuestLog`, `QuestRow`, `QuestAnnounce`, `QuestCount`, `InteractPrompt`, `LootPrompt`, `CratePrompt`, `RiftPrompt`, `BuyPrompt`, `ExitGuide`, `Inventory`, `InventorySlot`,
   `InventoryGold`, `WeightBar`, `LootIcon`, `CoinIcon`, `SlotValue`, `LootFly`, `LootCard`,
   `LootCardRow`, `TooltipCard`, `InventoryGhost`, `Tooltip`, `TooltipKey`,
   `Hotbar`, `HotbarSlot`.
@@ -62,7 +62,12 @@ and nowhere near the frame loop.
   pinned to. Show/hide comes from `hud-store` at 5 Hz; the screen position
   is an `anchor` id the game loop writes every frame (`tooltip-anchors`).
   Do not `setState` from that rAF — it is a transform, same idea as the
-  glass burst. `InteractPrompt` is ready at the fire; `LootPrompt` is a
+  glass burst. The card is `whitespace-nowrap`: it is `position: fixed` with
+  no width, so its containing block is the viewport and a tooltip pinned near
+  the screen edge was wrapping mid-sentence into a two-line card that jumped
+  as the player walked. These are one-line prompts — overflowing the edge is
+  the better failure, and a caller whose copy does not fit should shorten it
+  or move a part into `start` / `end`, which are `shrink-0`. `InteractPrompt` is ready at the fire; `LootPrompt` is a
   nearby drop; `CratePrompt` is smash ("E para destruir"); `RiftPrompt` is
   a pad, and it has FIVE things to say because the one key has four different
   jobs: "abrir" while dormant, "outra fenda está aberta" while another pad is
@@ -86,6 +91,27 @@ and nowhere near the frame loop.
   trade reads before either name does. What you would pick up is on the
   ground in front of you; what you would put down is in your hands where you
   cannot see it, which is the whole reason it has to be named.
+  `BuyPrompt` is a shop table. The PRICE rides in the tooltip's `end` slot
+  rather than in the sentence, which is what keeps the card to one line
+  whatever the weapon is called. Three states in the copy: an ordinary
+  purchase, a trade when the belt is full with a gun in hand — which matters
+  more here than on a drop, because the gun being given up is being exchanged
+  for one that COSTS MONEY and a player who misses that line pays twice — and
+  a refusal when no trade is legal. AFFORDABILITY IS ONLY A COLOUR: an
+  unaffordable price turns red and says nothing else, because the number and
+  the empty purse are already the message and spelling it out made the card
+  long enough to wrap. The stall is still offered rather than hidden — a shop
+  that only shows what you can already afford has no aspirational shelf, and
+  the AWP priced out of reach is doing more work than a tutorial line about
+  saving up.
+- `Balance` is the party's purse and it is drawn ONLY in the store, sharing
+  the top-centre slot with `ReadyCount` (same kind of statement about the
+  party; the two zones never overlap). It exists from the moment the party
+  leaves the forest, but nothing in a run can spend it — a permanent gold
+  counter would sit in the corner of every expedition talking about money the
+  player cannot use, competing with the bag, which is the number that actually
+  changes while they play. `Vitals.gold` is the other one and stays: coins
+  this player personally walked over.
 - `Inventory` is the left-side pocket. Collapsed it is the backpack sprite
   and a TAB hint; TAB expands the slots in place, not a dialog. A collect
   opens it so the slot is on screen before the fly leaves the head. Slot

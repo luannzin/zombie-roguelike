@@ -115,6 +115,9 @@ async def game_socket(ws: WebSocket, code: str, name: str | None = None):
                 room.activate_rift(
                     player.id, rift_id if isinstance(rift_id, str) else None
                 )
+            elif kind == protocol.MSG_BUY:
+                stand_id = msg.get("id")
+                room.buy(player.id, stand_id if isinstance(stand_id, str) else None)
             elif kind == protocol.MSG_DROP:
                 slot = msg.get("slot")
                 if isinstance(slot, int) and not isinstance(slot, bool):

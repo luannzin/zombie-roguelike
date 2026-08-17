@@ -37,6 +37,8 @@ import { StatusLine } from './StatusLine';
 import { Vitals } from './Vitals';
 import { ZONE_INTRO_MS, ZoneTitle } from './ZoneTitle';
 import { ReadyCount } from './ReadyCount';
+import { Balance } from './Balance';
+import { BuyPrompt } from './BuyPrompt';
 import { QuestLog } from './QuestLog';
 import { InteractPrompt } from './InteractPrompt';
 import { Inventory } from './Inventory';
@@ -133,6 +135,10 @@ export function Hud({ snapshot, minimapRef, error }: HudProps) {
           )}
         >
           <ReadyCount ready={snapshot.ready} />
+          {/* Shares the slot with the ready count on purpose: they are the
+              same kind of statement about the party, and the two zones that
+              make them never overlap. */}
+          <Balance balance={snapshot.balance} visible={snapshot.zone?.kind === 'store'} />
         </div>
 
         {/* Last, so the arrival card sits over every corner — it is the one thing
@@ -150,6 +156,7 @@ export function Hud({ snapshot, minimapRef, error }: HudProps) {
       <LootPrompt prompt={snapshot.lootPrompt} />
       <CratePrompt prompt={snapshot.cratePrompt} />
       <RiftPrompt prompt={snapshot.riftPrompt} />
+      <BuyPrompt prompt={snapshot.buyPrompt} />
       <ExitGuide visible={snapshot.exitGuide} />
       <LootFly lootFrames={snapshot.inventory?.lootFrames ?? 1} />
     </>

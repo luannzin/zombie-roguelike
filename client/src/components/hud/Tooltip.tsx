@@ -70,13 +70,20 @@ export function Tooltip({ anchor, start, end, children, className }: TooltipProp
     >
       {/* 14px leading is Departure Mono's own content box at 11px (11 up, 3
           down) — the same span the lobby measures its card off, so the copy
-          sits on the card exactly the way a name does. */}
+          sits on the card exactly the way a name does.
+
+          `whitespace-nowrap` because these are ONE-LINE prompts and the card
+          is `position: fixed` with no width — so its containing block is the
+          viewport, and a tooltip pinned to something near the screen edge was
+          wrapping mid-sentence into a two-line card that jumped as the player
+          walked. Overflowing the edge is the better failure: the copy stays
+          one readable line and the card is still pointing at the thing. */}
       <p
         className={cn(
-          'world-tooltip pixel-text text-ink flex items-center gap-1.5 text-[11px] leading-[14px]',
+          'world-tooltip pixel-text text-ink flex items-center gap-1.5 whitespace-nowrap text-[11px] leading-[14px]',
         )}
       >
-        {/* `shrink-0`: the copy may wrap or be clipped, an adornment may not —
+        {/* `shrink-0`: the copy may be clipped, an adornment may not —
             half a key cap says nothing at all. */}
         {start === undefined ? null : (
           <span className="flex shrink-0 items-center">{start}</span>

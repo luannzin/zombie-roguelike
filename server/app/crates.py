@@ -227,12 +227,26 @@ def along_ray(
     return best, best_d
 
 
-def roll_drop(rng: random.Random) -> tuple[str, str | None, int]:
-    """`(kind, item_key, coin_count)`. Only one of item/coins is set."""
-    total = sum(DROP_WEIGHTS.values())
+def roll_drop(rng: random.Random, items: bool = True) -> tuple[str, str | None, int]:
+    """`(kind, item_key, coin_count)`. Only one of item/coins is set.
+
+    `items=False` is the run home. Once the last rift is shut there is nothing
+    left to spend a find on and the ground has been swept
+    (`Room._clear_loot`), so a crate must not put a fresh bottle back on a map
+    that was just cleared of them.
+
+    The item weight FOLDS INTO COIN rather than into empty. What changes is
+    what falls out, not whether anything does — a crate that mostly stopped
+    paying at the exact moment the party is running past it would read as the
+    game switching off, and coins still count on the way out.
+    """
+    weights = dict(DROP_WEIGHTS)
+    if not items:
+        weights[DROP_COIN] = weights[DROP_COIN] + weights.pop(DROP_ITEM, 0.0)
+    total = sum(weights.values())
     roll = rng.uniform(0, total)
     kind = DROP_EMPTY
-    for name, weight in DROP_WEIGHTS.items():
+    for name, weight in weights.items():
         roll -= weight
         if roll <= 0:
             kind = name

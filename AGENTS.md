@@ -278,8 +278,9 @@ subtree.
   sprite (the full box, not just the foot tile) or stand close and press
   E ("E para destruir"). A smash opens the
   LOW tile to floor and rolls empty (wind VFX), a few coins, or one
-  catalog item on that same tile. Camp maps have none. Interact is loot,
-  then crate, then ready.
+  catalog item on that same tile — coins only once the exit is open, for the
+  same reason the ground gets swept then. Camp maps have none. Interact is
+  loot, then crate, then ready.
 - **A hit shows on the body, and it keeps showing.** A landed shot throws
   debris BACK along the ray and blood FORWARD out the far side, so the two
   read as a round passing through something rather than stopping on it, and

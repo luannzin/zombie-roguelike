@@ -539,7 +539,11 @@ class Room:
             )
 
         rng = random.Random()
-        kind, item_key, coin_count = crates.roll_drop(rng)
+        # `blackout` is the run home: lanterns dead, exit open, ground already
+        # swept. A crate rolls COINS ONLY from here — putting a fresh item back
+        # on a map that was just cleared of them would undo `_clear_loot` one
+        # box at a time.
+        kind, item_key, coin_count = crates.roll_drop(rng, items=not self.blackout)
         if kind == crates.DROP_COIN:
             self.drop_coins(crate.x, crate.y, coin_count)
         elif kind == crates.DROP_ITEM and item_key:

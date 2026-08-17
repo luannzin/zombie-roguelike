@@ -353,7 +353,11 @@ game's scale.
   same — the 1×1 foot tile is walking cover, not the aim target.
   Walk-out refuses it; camp maps have none. Three rolls: empty (client plays wind), 1–3
   coins, or one catalog item (`loot.roll_item`, no scene bias) on the
-  crate's own tile — not `place_near`. Smash
+  crate's own tile — not `place_near`. During the BLACKOUT it rolls two:
+  `roll_drop(items=False)` folds the item weight into COIN, so a crate on the
+  run home is empty-or-coins and never puts a fresh item back on a map
+  `_clear_loot` just swept. Folded into coin rather than into empty on
+  purpose — what changes is what falls out, not whether anything does. Smash
   makes a quieter `ai.Noise` than a gunshot (`CRATE_NOISE_TILES`). The
   remaining list rides `welcome`/`map.crates` and a dirty snapshot
   `crates`; `crateBreaks` is the juice for that tick.

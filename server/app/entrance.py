@@ -25,6 +25,7 @@ from dataclasses import dataclass, field
 from .config import (
     CAMP_EXIT_HALF_TILES,
     ENTRANCE_DEPTH_TILES,
+    EXIT_DEPTH_TILES,
     ENTRANCE_MOUTH_TILES,
     PLAYER_HALF_HEIGHT,
     TILE_SIZE,
@@ -216,7 +217,11 @@ def carve(
     width = len(tiles[0]) if tiles else 0
     if side not in SIDES:
         side = rng.choice(SIDES)
-    depth = min(ENTRANCE_DEPTH_TILES, (width if side in ("e", "w") else height) - BORDER * 2 - 4)
+    # `flare` is only ever set by `open_exit`, so it is also what says which of
+    # the two depths applies — see EXIT_DEPTH_TILES. The two corridors are read
+    # from opposite ends and want opposite lengths.
+    want = EXIT_DEPTH_TILES if flare else ENTRANCE_DEPTH_TILES
+    depth = min(want, (width if side in ("e", "w") else height) - BORDER * 2 - 4)
     half0 = float(CAMP_EXIT_HALF_TILES)
 
     if side in ("e", "w"):

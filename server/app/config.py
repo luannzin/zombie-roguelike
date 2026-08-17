@@ -131,6 +131,20 @@ MARCH_SPEED = TILE_SIZE * MARCH_TILES_PER_SEC
 # clearing the party is marched onto before the woods swallow the way back.
 ENTRANCE_DEPTH_TILES = 12
 ENTRANCE_MOUTH_TILES = 4.6
+# THE EXIT IS SHALLOW, AND THE ARRIVAL IS DEEP, AND THEY ARE READ FROM
+# OPPOSITE ENDS — the same asymmetry `entrance.EDGE_PINCH` / `EDGE_FLARE`
+# already encodes for how the border ranks are cut.
+#
+# An arrival corridor is walked from the world's edge INWARD: its depth is the
+# length of the dark walk out of it, and twelve tiles of that is the point.
+# An exit is walked toward the edge, and what the party sees "appear" is not
+# its far end — that end is off in the dark — but its MOUTH: the floor
+# threshold with the torches and the paving. At the arrival's depth that
+# threshold lands twelve tiles inland, which on a 64-tall map reads as the way
+# out having opened in the middle of the woods rather than at the border.
+# Short, so the mouth is right against the treeline and the hole in it is the
+# thing you walk to.
+EXIT_DEPTH_TILES = 5
 
 # --- the store (authored in tiles) ------------------------------------------
 # The night's takings, spent. A trader's pitch in a long forest GLADE, read

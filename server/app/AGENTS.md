@@ -460,12 +460,20 @@ game's scale.
   light with no visible source is worse than three torches. About one map in
   ten gets three. The client turns them into scene lights and lays paving
   around the mouth; only the contact points are on the wire.
-- **The two corridors are read from opposite ends, so they taper differently.**
-  An arrival is walked outward-in and then sealed, so its border ranks pinch to
-  a crack (`EDGE_PINCH`) and the treeline stays unbroken from inside. An exit
-  has the opposite job — the only thing on screen that can say "you found it"
-  is a gap in the BORDER treeline — so `open_exit` carves with `flare`, which
-  widens those ranks (`EDGE_FLARE`) and cuts them with almost no fray.
+- **The two corridors are read from opposite ends, so they taper differently
+  AND they are different lengths.** An arrival is walked outward-in and then
+  sealed, so its border ranks pinch to a crack (`EDGE_PINCH`), the treeline
+  stays unbroken from inside, and its DEPTH (`ENTRANCE_DEPTH_TILES`, 12) is the
+  length of the dark walk out of it — the point of it. An exit has the opposite
+  job: the only thing on screen that can say "you found it" is a gap in the
+  BORDER treeline, so `open_exit` carves with `flare`, which widens those ranks
+  (`EDGE_FLARE`) and cuts them with almost no fray. It is also SHORT
+  (`EXIT_DEPTH_TILES`, 5), because what the party sees appear is not its far
+  end — that is off in the blackout — but its MOUTH, the floor threshold
+  carrying the torches and the paving. At the arrival's depth that threshold
+  landed twelve tiles inland and the way out read as having opened in the
+  middle of the woods. `flare` is what selects between the two depths in
+  `carve`, since only `open_exit` ever sets it.
 - **An exit carve asks whether the map is connected WITH the corridor counted
   as walkable** (`entrance._walkable_connected`), not `maps.count_reachable`.
   The strict FLOOR-only flood is the right question while VOID is solid; it is

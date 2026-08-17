@@ -25,7 +25,7 @@
  *   `drawRiftGlow`   after the darkness pass, additive — light, not lit
  */
 
-import type { Rift } from '../../game/world';
+import { FLOOR, VOID, type Rift, type TileMap } from '../../game/world';
 import type { RiftTimingConfig } from '../../net/protocol';
 import { palette } from '../../theme/palette';
 import type { Camera } from '../camera';
@@ -288,11 +288,34 @@ export function chargeHandoff(atlas: RiftAtlas | null): number {
 }
 
 export interface RiftStanding {
-  sheet: 'pillar' | 'console';
+  sheet: 'pillar' | 'console' | 'torch';
   x: number;
   y: number;
   shape: number;
   state: number;
+}
+
+/**
+ * The exit's torches, as standing pieces for the entity depth sort.
+ *
+ * They are in that sort and not baked into the terrain for the same reason a
+ * bonfire is: the party walks past them, and a torch that a body could not
+ * disappear behind would flatten the threshold into a backdrop. Already
+ * sorted, because the server ships them rank by rank and nothing moves.
+ */
+export function egressTorches(
+  egress: { torches: readonly { x: number; y: number }[] } | null,
+): RiftStanding[] {
+  if (!egress) return [];
+  const pieces = egress.torches.map((torch) => ({
+    sheet: 'torch' as const,
+    x: torch.x,
+    y: torch.y,
+    shape: 0,
+    state: 0,
+  }));
+  pieces.sort((a, b) => a.y - b.y);
+  return pieces;
 }
 
 /**
@@ -341,7 +364,9 @@ export function drawRiftProp(
   piece: RiftStanding,
   shadow: string,
 ): void {
-  const sheet = piece.sheet === 'pillar' ? atlas.pillar : atlas.console;
+  const sheet = piece.sheet === 'pillar'
+    ? atlas.pillar
+    : piece.sheet === 'torch' ? atlas.torch : atlas.console;
   if (!sheet) return;
   const frame = riftPropFrame(sheet, piece.shape, piece.state);
   const width = sheet.frameWidth * view.zoom;
@@ -376,6 +401,120 @@ export function drawRiftProp(
     Math.round(width),
     Math.round(height),
   );
+}
+
+/**
+ * Every torch at the exit, burning. Additive, after the darkness, world space.
+ *
+ * ON ITS OWN CLOCK AND ITS OWN PHASE. Four fires playing the same frame at the
+ * same instant read as four copies of one sprite, which is exactly what they
+ * are and exactly what the eye must not notice — so each is offset around the
+ * loop by its index. Wall time, not a corridor clock: these burn for the rest
+ * of the night and there is nothing for them to be in step with.
+ */
+export function drawEgressFire(
+  ctx: CanvasRenderingContext2D,
+  atlas: RiftAtlas | null,
+  egress: { torches: readonly { x: number; y: number }[] } | null,
+  time: number,
+): void {
+  const sheet = atlas?.torchfire;
+  if (!sheet || !egress || egress.torches.length === 0) return;
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  const period = sheet.frames / Math.max(sheet.fps, 1e-6);
+  egress.torches.forEach((torch, index) => {
+    const offset = (index / egress.torches.length) * period;
+    blit(ctx, sheet, torch.x, torch.y, time + offset, '');
+  });
+  ctx.restore();
+}
+
+/**
+ * Paving on the ground at the exit.
+ *
+ * SCATTERED HERE, not shipped: which tile got which flagstone is decidable
+ * from `(tx, ty, seed)`, so by the rule the whole world is split on it belongs
+ * to the client. The server sends where the mouth is and nothing else.
+ *
+ * Drawn live with the boot prints rather than baked, because the corridor does
+ * not exist when the ground canvas is built — it is carved into a map the
+ * client already has, and rebuilding the bake for twenty tiles would hitch the
+ * one moment of the run that must not hitch.
+ */
+export function drawEgressGround(
+  ctx: CanvasRenderingContext2D,
+  atlas: RiftAtlas | null,
+  world: TileMap,
+  camera: Camera,
+): void {
+  const sheet = atlas?.egress;
+  const egress = world.egress;
+  if (!sheet || !egress) return;
+  const tileSize = world.tileSize;
+  const seed = world.seed;
+  const mouthTx = Math.floor(egress.mouthX / tileSize);
+  const mouthTy = Math.floor(egress.mouthY / tileSize);
+  const reach = EGRESS_PAVE_TILES;
+
+  for (let dy = -reach; dy <= reach; dy++) {
+    for (let dx = -reach; dx <= reach; dx++) {
+      // Round, and thinning out toward the rim: a square of paving would read
+      // as a stamped rectangle, which is the one thing a laid floor must not.
+      const falloff = Math.hypot(dx, dy) / reach;
+      if (falloff > 1) continue;
+      const tx = mouthTx + dx;
+      const ty = mouthTy + dy;
+      // GROUND ONLY. A flagstone painted over a trunk is a decal floating up
+      // the tree, and the treeline is right there on three sides of a mouth.
+      const kind = world.tiles[ty]?.[tx];
+      if (kind !== FLOOR && kind !== VOID) continue;
+      const roll = tileHash(tx, ty, seed);
+      if (roll > 1 - falloff * falloff) continue;
+
+      const left = tx * tileSize;
+      const top = ty * tileSize;
+      if (
+        left > camera.renderX + camera.viewWidth ||
+        top > camera.renderY + camera.viewHeight ||
+        left + tileSize < camera.renderX ||
+        top + tileSize < camera.renderY
+      ) {
+        continue;
+      }
+      const cut = Math.floor(tileHash(tx, ty, seed ^ 0x5157) * sheet.frames) % sheet.frames;
+      const sx = cut * sheet.frameWidth;
+
+      // The slabs MULTIPLY and the seams ADD, the same two-pass split every
+      // ground decal in this atlas uses. Drawn `source-over` the stone would
+      // replace the soil instead of staining it and the threshold would read
+      // as a texture pasted onto the forest.
+      ctx.globalCompositeOperation = 'multiply';
+      ctx.drawImage(
+        sheet.image, sx, 0, sheet.frameWidth, sheet.frameHeight,
+        left, top, tileSize, tileSize,
+      );
+      if (sheet.lit) {
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.drawImage(
+          sheet.lit, sx, 0, sheet.frameWidth, sheet.frameHeight,
+          left, top, tileSize, tileSize,
+        );
+      }
+    }
+  }
+  ctx.globalCompositeOperation = 'source-over';
+}
+
+/** How far the paving reaches from the mouth, in tiles. */
+const EGRESS_PAVE_TILES = 5;
+
+/** Same mixer the terrain scatter uses, so the two agree about a tile. */
+function tileHash(tx: number, ty: number, seed: number): number {
+  let h = (tx * 374761393 + ty * 668265263 + seed * 2246822519) >>> 0;
+  h ^= h >>> 13;
+  h = Math.imul(h, 1274126177) >>> 0;
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967295;
 }
 
 /** Matches the scenery layer's contact shadow, so one pad has one language. */

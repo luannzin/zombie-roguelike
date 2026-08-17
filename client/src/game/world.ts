@@ -37,6 +37,18 @@ export const WALL = ROCK;
 
 const EPS = 1e-4;
 
+/**
+ * How far an exit torch lifts the night, in tiles.
+ *
+ * Smaller than the rift's beacon and much smaller than a bonfire. It has to
+ * make the threshold findable and no more: four torches that lit the clearing
+ * would undo the blackout the extraction just imposed, and the run home is
+ * supposed to be dark.
+ */
+const TORCH_LIGHT_TILES = 3.4;
+/** Scene-light kind 2 — see `theme/palette.ts` `scene`. */
+const BEACON_LIGHT = 2;
+
 /** A bonfire, at the BASE of its flame in world pixels — where the sprite sits. */
 export interface FirePlace {
   x: number;
@@ -174,6 +186,13 @@ export class TileMap {
     dirY: number;
     state: 'open' | 'sealing' | 'gone';
     elapsed: number;
+    /**
+     * Always EMPTY on an arrival — a corridor you are already inside and about
+     * to lose does not get marked. It is on the shape rather than only on
+     * `egress` because the two are one thing, unpacked by one function, and
+     * splitting the type would mean two unpackers to keep in step.
+     */
+    torches: readonly { x: number; y: number }[];
   } | null;
   /**
    * The scenes the server laid over this map, split by how they are drawn.
@@ -205,6 +224,11 @@ export class TileMap {
     dirY: number;
     state: 'open' | 'sealing' | 'gone';
     elapsed: number;
+    /**
+     * Contact points of the torches marking the way out. Exit only — an
+     * arrival corridor is one you are already inside and about to lose.
+     */
+    torches: readonly { x: number; y: number }[];
   } | null;
 
   constructor(payload: MapPayload) {
@@ -222,6 +246,11 @@ export class TileMap {
     this.crates = unpackCrates(payload);
     this.rifts = unpackRifts(payload);
     this.egress = unpackCorridor(payload.egress);
+    // A client that arrives mid-run — or reconnects after the exit opened —
+    // gets the map with the corridor already on it, and its torches have to be
+    // lit here as well as in `setEgress`, or they are dark for that player
+    // alone on a map where nothing else is burning.
+    this.lightTorches();
     for (const row of this.rifts) {
       if (row.state === 'open' && row.closeAt === null) this.lightRift(row);
     }
@@ -264,6 +293,32 @@ export class TileMap {
 
   setEgress(row: NonNullable<TileMap['egress']>): void {
     this.egress = row;
+    this.lightTorches();
+  }
+
+  /**
+   * Put the exit's torches on the ONE scene-light list.
+   *
+   * Same rule the rift's beacon follows: the lighting has no concept of a camp
+   * light versus a forest light versus a torch and must not grow one. It also
+   * matters more here than anywhere else — the exit opens during the blackout,
+   * so for the rest of that night these four are the only thing burning on the
+   * map, and a torch that only glows in the additive pass would light nothing
+   * and reveal nothing.
+   */
+  private lightTorches(): void {
+    const egress = this.egress;
+    if (!egress) return;
+    const lights = this.scenery.lights as SceneryLight[];
+    for (const torch of egress.torches) {
+      if (lights.some((light) => light.x === torch.x && light.y === torch.y)) continue;
+      lights.push({
+        x: torch.x,
+        y: torch.y,
+        radiusTiles: TORCH_LIGHT_TILES,
+        kind: BEACON_LIGHT,
+      });
+    }
   }
 
   /**
@@ -641,5 +696,6 @@ function unpackCorridor(
     dirY: row.dir[1],
     state: row.state,
     elapsed: row.t,
+    torches: (row.torches ?? []).map(([x, y]) => ({ x, y })),
   };
 }

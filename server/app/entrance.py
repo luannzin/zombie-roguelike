@@ -66,6 +66,29 @@ SEAL_RANK_TIME = 0.08
 EDGE_PINCH = 0.5
 EDGE_FLARE = 1.35
 
+# --- the torches at the exit ---------------------------------------------------
+#
+# THESE ARE NAVIGATION, and the arrangement is the whole of it. The exit opens
+# during the blackout, with every lantern dead and the pack hunting, and the
+# way out is a dark gap in a dark treeline. The HUD arrow can say "that way";
+# it cannot say "here". Four torches in TWO RANKS OF TWO, straddling the
+# centreline and stepped along it, read from a distance as a line of lights
+# leading somewhere — which is the one arrangement a pair of loose fires does
+# not give you.
+#
+# One rank stands out in the clearing on the forest side of the mouth and the
+# other inside the corridor, so the party walks BETWEEN them. They are drawn,
+# never solid: a light you can bump into at the exit of a night like that one
+# would be the worst possible place for a collision surprise.
+
+#: Rank offsets along the corridor axis, in tiles from the mouth. Positive is
+#: the forest side (where the party is coming from), negative is into the VOID.
+TORCH_RANKS = (1.9, -1.7)
+#: How far off the centreline each pair stands, in tiles, and how far in they
+#: are allowed to be pulled if the woods are in the way.
+TORCH_ACROSS = 2.0
+TORCH_ACROSS_MIN = 0.9
+
 
 def _hash(tx: int, ty: int, seed: int, salt: int = 0) -> float:
     """Deterministic 0..1 from a tile coordinate. Same mixer as camp._hash."""
@@ -92,16 +115,22 @@ class Entrance:
     #: Empty once gone. Rebuilt from the live grid if a room hydrates mid-seal.
     ranks: list[list[tuple[int, int]]] = field(default_factory=list)
     rank: int = 0
+    #: Torch contact points in world pixels. Only an EXIT has them — an
+    #: arrival is a corridor you are already inside and about to lose.
+    torches: list[tuple[float, float]] = field(default_factory=list)
 
     def geometry_payload(self) -> dict:
         """Static half: where the corridor is. Rides on the map payload."""
-        return {
+        row = {
             "side": self.side,
             "mouth": [round(self.mouth_x, 1), round(self.mouth_y, 1)],
             "back": [round(self.back_x, 1), round(self.back_y, 1)],
             "dir": [round(self.dx, 3), round(self.dy, 3)],
             **self.state_payload(),
         }
+        if self.torches:
+            row["torches"] = [[round(x, 1), round(y, 1)] for x, y in self.torches]
+        return row
 
     def state_payload(self) -> dict:
         """Live half: open / sealing / gone. Snapshot when it changes."""
@@ -136,6 +165,7 @@ def from_payload(row: dict | None) -> Entrance | None:
         dy=float(row["dir"][1]),
         state=str(row.get("state", OPEN)),
         elapsed=float(row.get("t", 0.0)),
+        torches=[(float(p[0]), float(p[1])) for p in row.get("torches") or []],
     )
 
 
@@ -278,6 +308,7 @@ def open_exit(
             tiles[mouth_ty][mouth_tx] = FLOOR
         if not _walkable_connected(tiles):
             continue
+        gate.torches = _torches(tiles, gate)
         patches: list[tuple[int, int, int]] = []
         for ty, row in enumerate(tiles):
             for tx, kind in enumerate(row):
@@ -286,6 +317,53 @@ def open_exit(
         return gate, patches
     for ty, row in enumerate(before):
         tiles[ty][:] = row
+    return None
+
+
+def _torches(tiles: list[list[int]], gate: Entrance) -> list[tuple[float, float]]:
+    """Two ranks of two, straddling the corridor's centreline. See TORCH_RANKS.
+
+    Ordered rank by rank so the client draws them in the order the party walks
+    past them, which is also the order they read in from a distance.
+    """
+    across_x, across_y = -gate.dy, gate.dx
+    placed: list[tuple[float, float]] = []
+    for along in TORCH_RANKS:
+        for side in (-1.0, 1.0):
+            spot = _torch_spot(tiles, gate, along, side, across_x, across_y)
+            if spot is not None:
+                placed.append(spot)
+    return placed
+
+
+def _torch_spot(
+    tiles: list[list[int]],
+    gate: Entrance,
+    along: float,
+    side: float,
+    across_x: float,
+    across_y: float,
+) -> tuple[float, float] | None:
+    """One torch, pulled in toward the centreline until it is out of the woods.
+
+    A torch standing inside a trunk is a light with no visible source, which is
+    worse than three torches — so a spot that cannot be found is SKIPPED rather
+    than forced. The corridor frays, and the rank that lands in a wide slice
+    gets both of its lights while a pinched one may only get the near side.
+    """
+    height = len(tiles)
+    width = len(tiles[0]) if tiles else 0
+    base_x = gate.mouth_x + gate.dx * TILE_SIZE * along
+    base_y = gate.mouth_y + gate.dy * TILE_SIZE * along
+    reach = TORCH_ACROSS
+    while reach >= TORCH_ACROSS_MIN:
+        x = base_x + across_x * TILE_SIZE * side * reach
+        y = base_y + across_y * TILE_SIZE * side * reach
+        tx = int(x // TILE_SIZE)
+        ty = int(y // TILE_SIZE)
+        if 0 <= tx < width and 0 <= ty < height and tiles[ty][tx] in (FLOOR, VOID):
+            return (x, y)
+        reach -= 0.35
     return None
 
 

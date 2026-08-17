@@ -140,6 +140,12 @@ export interface RiftAtlas {
   collapse: RiftEffectSheet | null;
   /** Loop: the rainbow band a PAID console throws until somebody shuts it. */
   aura: RiftEffectSheet | null;
+  /** The exit's torches: an unlit post in the depth sort, one cut, one state. */
+  torch: RiftPropSheet | null;
+  /** Loop: a torch burning the anomaly's fire. Anchored on the post's base. */
+  torchfire: RiftEffectSheet | null;
+  /** Paving for the threshold. Scattered client-side around the exit mouth. */
+  egress: RiftDecalSheet | null;
 }
 
 interface PropManifest {
@@ -173,8 +179,13 @@ interface EffectManifest extends PropManifest {
 
 interface RiftManifest {
   tile: number;
-  props: { pillar?: PropManifest; console?: PropManifest };
-  decals: { scar?: PropManifest; residue?: PropManifest; corrupt?: AimedManifest };
+  props: { pillar?: PropManifest; console?: PropManifest; torch?: PropManifest };
+  decals: {
+    scar?: PropManifest;
+    residue?: PropManifest;
+    corrupt?: AimedManifest;
+    egress?: PropManifest;
+  };
   effects: {
     charge?: EffectManifest;
     crown?: EffectManifest;
@@ -182,6 +193,7 @@ interface RiftManifest {
     rift?: EffectManifest;
     collapse?: EffectManifest;
     aura?: EffectManifest;
+    torchfire?: EffectManifest;
   };
 }
 
@@ -198,24 +210,28 @@ async function fetchRift(): Promise<RiftAtlas | null> {
   try {
     const manifest = await loadJson<RiftManifest>(`${ROOT}/manifest.json`);
     const [
-      scar, residue, corrupt, pillar, consoleSheet,
-      charge, crown, emerge, rift, collapse, aura,
+      scar, residue, corrupt, egress, pillar, consoleSheet, torch,
+      charge, crown, emerge, rift, collapse, aura, torchfire,
     ] = await Promise.all([
       manifest.decals.scar ? loadDecal(manifest.decals.scar) : null,
       manifest.decals.residue ? loadDecal(manifest.decals.residue) : null,
       manifest.decals.corrupt ? loadAimed(manifest.decals.corrupt) : null,
+      manifest.decals.egress ? loadDecal(manifest.decals.egress) : null,
       manifest.props.pillar ? loadProp(manifest.props.pillar) : null,
       manifest.props.console ? loadProp(manifest.props.console) : null,
+      manifest.props.torch ? loadProp(manifest.props.torch) : null,
       manifest.effects.charge ? loadEffect(manifest.effects.charge) : null,
       manifest.effects.crown ? loadEffect(manifest.effects.crown) : null,
       manifest.effects.emerge ? loadEffect(manifest.effects.emerge) : null,
       manifest.effects.rift ? loadEffect(manifest.effects.rift) : null,
       manifest.effects.collapse ? loadEffect(manifest.effects.collapse) : null,
       manifest.effects.aura ? loadEffect(manifest.effects.aura) : null,
+      manifest.effects.torchfire ? loadEffect(manifest.effects.torchfire) : null,
     ]);
     return {
-      tile: manifest.tile, scar, residue, corrupt, pillar, console: consoleSheet,
-      charge, crown, emerge, rift, collapse, aura,
+      tile: manifest.tile, scar, residue, corrupt, egress,
+      pillar, console: consoleSheet, torch,
+      charge, crown, emerge, rift, collapse, aura, torchfire,
     };
   } catch (err) {
     console.warn('[rift] no atlas, extraction point not drawn:', err);

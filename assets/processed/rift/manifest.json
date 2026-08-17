@@ -22,6 +22,14 @@
       "frames": 4,
       "sway": 0,
       "states": 4
+    },
+    "torch": {
+      "file": "torch.png",
+      "frameWidth": 14,
+      "frameHeight": 36,
+      "frames": 1,
+      "sway": 0,
+      "states": 1
     }
   },
   "decals": {
@@ -47,6 +55,13 @@
       "directions": 8,
       "levels": 3,
       "rolls": 8
+    },
+    "egress": {
+      "file": "egress.png",
+      "litFile": "egress-lit.png",
+      "frameWidth": 16,
+      "frameHeight": 16,
+      "frames": 6
     }
   },
   "effects": {
@@ -110,12 +125,22 @@
         "collapse-2.png",
         "collapse-3.png"
       ],
-      "frameWidth": 64,
-      "frameHeight": 80,
+      "frameWidth": 128,
+      "frameHeight": 144,
       "frames": 28,
       "fps": 16,
-      "anchorY": 63,
+      "anchorY": 95,
       "loop": false,
+      "tinted": false
+    },
+    "torchfire": {
+      "file": "torchfire.png",
+      "frameWidth": 28,
+      "frameHeight": 64,
+      "frames": 12,
+      "fps": 12,
+      "anchorY": 52,
+      "loop": true,
       "tinted": false
     },
     "aura": {

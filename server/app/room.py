@@ -567,18 +567,25 @@ class Room:
           dormant, nothing else awake   open it (once only, not reversible)
           dormant, another pad awake    nothing. One at a time.
           open, quota not yet paid      feed the pocket toward the quota
-          open, quota paid, bag full    KEEP feeding. Every press past the
+          open, quota paid, pads left,
+            bag has something           KEEP feeding. Every press past the
                                         quota walks the anomaly up a tier and
                                         grows the core waiting at the far end.
-          open, quota paid, bag empty   SHUT it. The console is gold by now.
+          open, quota paid, otherwise   SHUT it. The console is gold by now.
 
-        THE BAG IS WHAT DISAMBIGUATES THE LAST TWO, and it has to be something
-        rather than a second key: "alimentar além do limite" is only a real
-        choice if it is repeatable, and a press that closes the pad the instant
-        the quota lands makes the tiers unreachable — you would only ever see
-        whichever one the last item happened to overshoot into. Reading the
-        pocket gives both: the pad takes everything you have, and when you have
-        nothing left to give it, the same press lets you out.
+        THE BAG IS WHAT DISAMBIGUATES THE MIDDLE TWO, and it has to be
+        something rather than a second key: "alimentar além do limite" is only
+        a real choice if it is repeatable, and a press that closes the pad the
+        instant the quota lands makes the tiers unreachable — you would only
+        ever see whichever one the last item happened to overshoot into.
+        Reading the pocket gives both: the pad takes everything you have, and
+        when you have nothing left to give it, the same press lets you out.
+
+        THE LAST PAD OF THE NIGHT NEVER OFFERS TO KEEP FEEDING. An overpayment
+        only comes back while there is another console to carry it to
+        (`_drop_excess`), so on the final rift saturating it buys nothing and
+        the bag-reading rule would quietly eat a full pocket on the way out.
+        Paid means shut there, whatever you are carrying.
 
         Measured from the FEET, the same way collect and smash are, so the
         prompt and the check agree.
@@ -596,7 +603,9 @@ class Room:
                 self._press_console(player, target)
             return
         if target.state == rift.OPEN and target.close_at is None:
-            if target.ready and player.inventory.bag_value() <= 0:
+            if target.ready and (
+                not self._pads_left() or player.inventory.bag_value() <= 0
+            ):
                 self._shut_rift(target)
             else:
                 self._feed_rift(player, target)
@@ -723,6 +732,16 @@ class Room:
             for row in self.rifts
         )
 
+    def _pads_left(self) -> bool:
+        """Another console still waiting to be found — "faltam extrações".
+
+        DORMANT is the test, not "not spent": a pad that is awake is the one
+        being worked on and a pad that is closing is finished with. What this
+        answers is whether there is anywhere left to carry a core to, which is
+        the only thing the core exists for.
+        """
+        return any(row.state == rift.DORMANT for row in self.rifts)
+
     def _sync_feed_quest(self, target: Rift) -> None:
         """Mirror one pad's meter onto the HUD row.
 
@@ -748,31 +767,41 @@ class Room:
     def _drop_excess(self, target: Rift) -> None:
         """Pay the overpayment back as ONE object, on the ground by the console.
 
-        Four slots of loot condensed into one you carry to the next console,
-        at a weight that makes carrying it a real cost. That is what it is FOR
-        — the whole reason to keep feeding a pad that is already paid.
+        Four slots of loot condensed into one you carry to the NEXT console, at
+        a weight that makes carrying it a real cost. That is the whole of what
+        it is for, which is why it only exists while there is a next console:
+        with no pad left to explore the party is walking out, and a core would
+        be a souvenir rather than a decision.
 
-        IT ALSO PAYS OUT ON THE LAST PAD, where there is no next console. That
-        is not what the mechanic is for, and it is not decoration either: E on
-        a paid pad feeds while you are carrying anything, so a party that shuts
-        the final rift has necessarily emptied their pockets into it. Without
-        the core they would walk out of the night with nothing, having done
-        everything right. Paying it back makes overfeeding safe to learn.
+        `Room.activate_rift` is the other half of that rule. On the last pad it
+        stops offering to keep feeding at all, because saturating a rift that
+        cannot pay you back is a way to lose a full bag to a keypress.
         """
         value = target.excess
         target.excess = 0
-        if value <= 0:
+        if value <= 0 or not self._pads_left():
             return
         worth, kg, scale = loot.shard_stats(value)
-        occupied = [
-            (drop.x / TILE_SIZE - 0.5, drop.y / TILE_SIZE - 0.5)
-            for drop in self.drops.values()
-        ]
-        pos = loot.place_near(
-            self.world.tiles, target.console_x, target.console_y, occupied, random.Random()
-        )
+        # IN THE MIDDLE OF THE SIGIL, exactly where the anomaly was hanging a
+        # second ago. This is the thing that would not fit through the hole, so
+        # it lands where the hole was — not scattered onto some walkable tile
+        # near the console like a dropped bag. The plot's centre is always
+        # cleared to floor by `rift._stamp`, so the exact point is legal;
+        # `place_near` is only the fallback for a map that somehow is not.
+        pos: tuple[float, float] | None = (target.anomaly_x, target.anomaly_y)
+        tx = int(target.anomaly_x // TILE_SIZE)
+        ty = int(target.anomaly_y // TILE_SIZE)
+        tiles = self.world.tiles
+        if not (0 <= ty < len(tiles) and 0 <= tx < len(tiles[0]) and tiles[ty][tx] == FLOOR):
+            occupied = [
+                (drop.x / TILE_SIZE - 0.5, drop.y / TILE_SIZE - 0.5)
+                for drop in self.drops.values()
+            ]
+            pos = loot.place_near(
+                tiles, target.anomaly_x, target.anomaly_y, occupied, random.Random()
+            )
         if pos is None:
-            pos = (target.console_x, target.console_y)
+            pos = (target.anomaly_x, target.anomaly_y)
         drop_id = self._next_drop_id()
         self.drops[drop_id] = Drop(
             id=drop_id, key=loot.SHARD_KEY, x=pos[0], y=pos[1],

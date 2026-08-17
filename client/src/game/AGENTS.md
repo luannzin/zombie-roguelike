@@ -194,6 +194,11 @@ seam React is allowed to read.
     tier bump chimes `rarity` at the tier's own variant; the quota landing
     chimes variant 4. Both fire off a state row where the state STRING did not
     change, which is exactly why they are checked separately.
+  - `over` is NOT offered on the last pad — the overpayment is only paid back
+    while there is another console to carry a core to, so on the final rift
+    paid means shut. The prompt checks that the same way the server does (is
+    any pad still `dormant`), because a mode the server would ignore is worse
+    than no prompt at all.
   - A `busy` prompt (another pad already awake) buzzes locally instead of
     sending a packet the server would drop.
   Two snapshot rows a pad — pressed, and open — and the four seconds between
@@ -243,8 +248,14 @@ seam React is allowed to read.
   are still burning (`world.scenery.lights`), on one list. The lighting has no
   concept of a camp light versus a forest light and must not grow one. Rebuild
   it when that list changes: an open rift pushes a beacon onto it and a spent
-  one takes it off (`rebuildLights`). A snapshot taken only at welcome leaves
-  the pad dark after the tear.
+  one takes it off, and the exit's torches join it when `egress` arrives
+  (`rebuildLights`). A snapshot taken only at welcome leaves
+  the pad dark after the tear. The torches matter most of all here — the exit
+  opens during the blackout, so for the rest of that night they are the only
+  thing burning on the map, and a torch that only glowed in the additive pass
+  would light nothing and reveal nothing. `TileMap` lights them in BOTH
+  `setEgress` and its constructor, or a client that reconnects after the exit
+  opened is the one player walking home in the dark.
 - VOID is a winding gap in the treeline, not a missing floor and not a
   rectangle: painted as ground, crushed by a darkness falloff.
   `blocksSight` lets light fall into it so the trees do not close into a

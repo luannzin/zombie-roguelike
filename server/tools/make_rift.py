@@ -460,6 +460,43 @@ COLLAPSE_TEAR = 0.34
 #: By here the shell is a point. What is left is the last spark going out.
 COLLAPSE_PINCH = 0.86
 
+#: THE COLLAPSE GETS A BIGGER CANVAS THAN THE LOOP IT CONTINUES, in tiles of
+#: margin on every side.
+#:
+#: `rift.png` is sized for a sphere that breathes by a few percent. The vanish
+#: does not breathe — it lurches, shears out to a third again its width, and
+#: throws tears and a departing ring well past where the shell ever reached. On
+#: the resting sheet's frame those all hit the edge and got cut off, so the
+#: effect read as an animation happening inside an invisible box.
+#:
+#: The margin is pure padding: the anomaly is drawn at the same place relative
+#: to the ANCHOR, so a collapse frame cropped back to the resting sheet's
+#: rectangle is byte-identical to the resting frame. That is what keeps the
+#: `rift`→`collapse` seam checkable across two different frame sizes, and
+#: `_crop_to` in `build` is the check.
+COLLAPSE_MARGIN_TILES = 2
+
+# The exit torches, and their fire. LOOPING.
+#
+# THE POINT OF THESE IS NAVIGATION, NOT DECORATION. The way out is a dark gap
+# in a dark treeline, found in a blackout, with the whole pack hunting — and
+# the arrow on the HUD can say "that way" but it cannot say "here". Four
+# torches in two ranks lead INTO the corridor: from far off they are two pairs
+# of lights in a line, which is the one arrangement that reads as a way through
+# rather than as two more things burning in the woods.
+#
+# They burn the ANOMALY'S fire, not the campfire's. Everything else alight in
+# this game is orange because somebody lit it; this is the same prism the rift
+# runs, so the exit reads as belonging to the thing the party just closed.
+TORCH_FRAMES = 12
+TORCH_FPS = 12
+#: Tongues on the flame. Few enough that each is a shape at this size.
+TORCH_TONGUES = 5
+
+#: What the party paved the threshold with, in cuts. Scattered by the client
+#: over the tiles around the mouth — see `drawEgressGround`.
+EGRESS_STONES = 6
+
 # The console's aura once its pad's quota is paid. LOOPING.
 #
 # There is no other way to say "this button does something different now" from
@@ -791,6 +828,219 @@ def make_console(width: int, height: int, state: int) -> Image.Image:
             if (x, face_top) in body and abs(x - cx) < 3.4:
                 px[x, face_top] = lit(hot_hue, 0.88 if paid else 0.82)
     return img
+
+
+# --- the exit torches --------------------------------------------------------
+
+
+def make_torch(width: int, height: int) -> Image.Image:
+    """One unlit torch: a driven post with an iron basket on it. PROP.
+
+    Baked colour, bottom-anchored, in the depth sort — so a player walks behind
+    one and disappears behind it, and the night multiply lands on it like it
+    lands on every other standing object. The FIRE is not here: it is a
+    separate additive sheet drawn after the darkness pass, for the same reason
+    an awake pillar's glow is not painted into the pillar. A torch with its
+    flame baked in is a torch you can only see once you are standing at it,
+    which is the exact opposite of what these are for.
+    """
+    img = Image.new("RGBA", (width, height), TRANSPARENT)
+    px = img.load()
+    cx = (width - 1) / 2.0
+    bowl_top = 3
+    bowl_bottom = max(bowl_top + 3, round(height * 0.28))
+
+    body: dict[tuple[int, int], str] = {}
+    for y in range(bowl_top, height):
+        if y <= bowl_bottom:
+            # The basket: wide at the lip, pinched where it meets the post, so
+            # the silhouette says "something is held up here". Kept off the
+            # frame's own edges — a shape flush with the canvas comes out of
+            # `outline` unbordered on that side.
+            t = (y - bowl_top) / max(bowl_bottom - bowl_top, 1)
+            half = width * 0.40 - t * (width * 0.40 - 1.35)
+            part = "bowl"
+        else:
+            # The post, tapering the other way — thicker where it is driven in.
+            t = (y - bowl_bottom) / max(height - bowl_bottom, 1)
+            half = 1.15 + t * 0.95
+            part = "post"
+        for x in range(width):
+            if abs(x - cx) <= half:
+                body[(x, y)] = part
+
+    for (x, y), part in body.items():
+        edge = any(
+            (x + ox, y + oy) not in body for ox, oy in ((1, 0), (-1, 0), (0, 1), (0, -1))
+        )
+        if edge:
+            px[x, y] = ROCK_OUTLINE
+            continue
+        across = (x - cx) / max(width * 0.5, 0.5)
+        if part == "bowl":
+            shade = 0.66 - across * 0.30
+            px[x, y] = pick(IRON, clamp01(shade + (hash01(x, y, 907) - 0.5) * 0.14), x, y)
+        else:
+            shade = 0.52 - across * 0.28 - (y / height) * 0.16
+            px[x, y] = pick(ROCK_RAMP, clamp01(shade + (hash01(x, y, 911) - 0.5) * 0.16), x, y)
+
+    # Two bands lashing the basket to the post. At twelve pixels wide this is
+    # the only detail that survives, and without it the head is a blob.
+    for y in (bowl_bottom + 1, bowl_bottom + 3):
+        for x in range(width):
+            if body.get((x, y)) == "post":
+                px[x, y] = IRON[1]
+
+    # Embers in the basket, the one place the prop is allowed to carry the
+    # anomaly's colour: they are what the fire is coming OUT of, so a dead
+    # torch and a lit one are still recognisably the same object. Scattered
+    # across two rows rather than filling one — a solid row of them at the lip
+    # reads as a coloured lid on the sprite, not as coals in a bowl.
+    for y in (bowl_top + 1, bowl_top + 2):
+        for x in range(width):
+            if body.get((x, y)) != "bowl" or hash01(x, y, 919) > 0.45:
+                continue
+            px[x, y] = lit(CYAN if hash01(x, y, 923) > 0.5 else VIOLET, 0.28)
+    return img
+
+
+def make_torch_flame(
+    width: int, height: int, anchor_y: int, seat_y: int, index: int, total: int
+) -> Image.Image:
+    """One frame of a torch burning the anomaly's fire. LOOP.
+
+    Anchored on the torch's BASE, exactly as `charge` is anchored on a
+    pillar's, so drawing the sheet at the torch's own contact point lands the
+    flame in the basket with no second offset to keep in step. `seat_y` is the
+    row IN THIS FRAME that the fire sits on — the inside of the bowl — which is
+    why the frame is taller than the torch and `anchor_y` is not its height:
+    the flame needs rows above the post to burn into.
+
+    EVERY TERM IS A FUNCTION OF PHASE. A flame built out of `rng` looks right
+    frame by frame and stutters at the wrap — the same trap the crate sheet
+    documents — and a torch is on screen, looping, for the whole run home.
+    The hue climbs the prism up the flame the way `conduit` climbs a pillar:
+    violet where it is still under pressure, through cyan, to a white tip.
+    """
+    img = Image.new("RGBA", (width, height), TRANSPARENT)
+    prism = Prism(width, height)
+    phase = (index / total) * math.tau
+    cx = (width - 1) / 2.0
+    base = seat_y
+
+    # The body: a teardrop, breathing on two harmonics so it wanders instead of
+    # pulsing. Both are whole harmonics of the loop, so it wraps.
+    breathe = 1.0 + 0.10 * math.sin(phase) + 0.05 * math.sin(phase * 2.0)
+    tall = height * 0.30 * breathe
+    wide = width * 0.20 * breathe
+    for step in range(14):
+        t = step / 13.0
+        # Narrows and leans as it rises; the lean is what stops it reading as a
+        # symmetrical lamp.
+        y = base - t * tall
+        lean = math.sin(phase + t * 2.4) * wide * 0.42 * t
+        span = wide * (1.0 - t * 0.72)
+        hue = VIOLET if t < 0.30 else CYAN if t < 0.62 else MINT if t < 0.86 else CORE
+        # Kept well under the top of the ramps. Stacked ellipses sum, and at
+        # the strengths the anomaly uses the whole flame saturated to CORE and
+        # came out as a white pear — the hue bands were there and invisible.
+        prism.ellipse(cx + lean, y, span, span * 1.25, 0.52 - t * 0.20, hue)
+
+    # Tongues licking off the top, each on its own harmonic so they do not all
+    # flick together.
+    for i in range(TORCH_TONGUES):
+        beat = math.sin(phase * (1.0 + i * 0.5) + i * 1.9)
+        if beat < 0.1:
+            continue
+        reach = tall * (0.72 + 0.42 * beat)
+        x = cx + math.sin(phase + i * 2.3) * wide * 0.85
+        prism.ellipse(x, base - reach, wide * 0.30 * beat, wide * 0.55 * beat,
+                      0.55 * beat, CORE)
+
+    # Sparks leaving it. `drift` wraps with the phase: a spark that runs out at
+    # the top is the same spark arriving at the bottom.
+    for i in range(5):
+        drift = ((phase / math.tau) + i / 5.0) % 1.0
+        x = cx + math.sin(phase * 1.3 + i * 2.1) * wide * 1.5
+        y = base - tall * (0.6 + drift * 1.5)
+        prism.add(int(round(x)), int(round(y)), (1.0 - drift) * 0.75,
+                  MINT if i % 2 else CYAN)
+
+    # And the pool it throws on the ground at its own foot.
+    prism.ellipse(cx, anchor_y - 1.0, width * 0.34, height * 0.035,
+                  0.34 + 0.06 * math.sin(phase), CYAN)
+    prism.paint(img)
+    return img
+
+
+def make_egress_stone(size: int, variant: int, rng: random.Random) -> GroundDecal:
+    """One paving cut for the ground at the exit. DECAL.
+
+    The threshold is the one place in a forest that somebody PREPARED, and it
+    has to say so without a signpost: cut stone laid flat, worn, with the
+    anomaly's colour caught in the seams between the slabs. A player who has
+    seen these once knows what a torch-lit clearing with flagstones in it is.
+
+    Same two-layer split every ground decal here uses — the slab bodies darken
+    the soil, the seams add — so the forest floor's own grain still reads
+    through and the paving looks laid rather than pasted on.
+    """
+    decal = GroundDecal(size)
+    # Quarter the tile into slabs, offset per variant so a field of these does
+    # not line up into one grid. Two of the six are RUBBLE instead: a paved
+    # threshold with a couple of broken tiles in it reads as old.
+    broken = variant >= EGRESS_STONES - 2
+    split_x = size * (0.36 + 0.28 * ((variant % 3) / 2.0))
+    split_y = size * (0.34 + 0.30 * (((variant // 3) % 2)))
+
+    for y in range(size):
+        for x in range(size):
+            # Distance to the nearest seam, in pixels.
+            #
+            # ONLY THE LEFT AND TOP EDGES of the tile carry a border seam, not
+            # all four. These decals sit on adjacent tiles: seam both sides of
+            # every boundary and each one is drawn twice, additively, so the
+            # whole field comes out as a bright grid laid over the forest
+            # instead of grout between slabs.
+            border = min(float(x), float(y))
+            inner = min(abs(x - split_x), abs(y - split_y))
+            seam = min(border, inner)
+            grain = hash01(x, y, 1013 + variant * 7)
+            if seam < 0.9:
+                # THE SEAM. Prism, and it is the brightest thing here — the
+                # light in the ground is what makes the paving belong to the
+                # rift rather than to a road.
+                #
+                # A WHISPER, AND A BROKEN ONE. These are additive over a night
+                # forest and there are dozens of them side by side. A
+                # CONTINUOUS line at every tile boundary is a grid however
+                # faint you make it, so the grout between tiles is DASHED and
+                # only the slab's own interior split runs solid.
+                if grain > (0.34 if border <= inner else 0.10):
+                    hue = CYAN if grain > 0.55 else VIOLET
+                    decal.stain(x, y, hue, 0.58 + grain * 0.26, 0.13 + grain * 0.15)
+                    continue
+            if broken and grain > 0.80:
+                continue  # a slab that is simply gone
+            # The slab body, and it goes into BOTH halves.
+            #
+            # The dark half is the stone's own grain and the wear on it. On its
+            # own that was the whole slab, and multiplied onto an already-dark
+            # forest floor it disappeared — the seams did all the work and the
+            # paving read as a net with nothing between the strands. The faint
+            # neutral lift in the lit half is what puts the slab BACK: pale cut
+            # stone, barely above the soil, but enough that the eye reads
+            # flagstones with light in the cracks instead of cracks alone.
+            wear = 0.30 + grain * 0.34 - min(seam, 4.0) * 0.03
+            decal.mark(x, y, pick(GROOVE, clamp01(wear), x, y), 0.62 + grain * 0.22)
+            decal.stain(x, y, CORE, 0.58, 0.05 + grain * 0.05)
+
+    # A few chips and a scatter of grit, so the slabs are not four clean rects.
+    for _ in range(size // 2):
+        x = rng.randrange(size)
+        y = rng.randrange(size)
+        decal.mark(x, y, CORRUPT_GRIT, rng.uniform(0.18, 0.40))
+    return decal
 
 
 # --- the sigil ---------------------------------------------------------------
@@ -2041,10 +2291,18 @@ def build(args) -> Path:
         ]
         for level in range(RIFT_LEVELS)
     ]
+    # Same drawing, bigger sheet of paper. Shifting the contact row by the
+    # margin shifts everything `_anomaly` places by exactly the same amount,
+    # which is what makes the crop below a valid seam test.
+    margin = tile * COLLAPSE_MARGIN_TILES
+    collapse_w = rift_w + margin * 2
+    collapse_h = rift_h + margin * 2
+    collapse_anchor = rift_anchor + margin
+    collapse_core = rift_core + margin
     collapse_banks = [
         [
             make_collapse_frame(
-                rift_w, rift_h, rift_anchor, radius, i, COLLAPSE_FRAMES, level
+                collapse_w, collapse_h, collapse_anchor, radius, i, COLLAPSE_FRAMES, level
             )
             for i in range(COLLAPSE_FRAMES)
         ]
@@ -2056,7 +2314,35 @@ def build(args) -> Path:
     for name, frames in zip(rift_files, rift_banks):
         pack(frames, rift_w, rift_h).save(out_dir / name)
     for name, frames in zip(collapse_files, collapse_banks):
-        pack(frames, rift_w, rift_h).save(out_dir / name)
+        pack(frames, collapse_w, collapse_h).save(out_dir / name)
+
+    # --- the exit -------------------------------------------------------------
+    # The torch is a PROP and its fire is a VFX, split exactly the way the
+    # pillar and its crown are. `torch_anchor` is the base for both, so one
+    # contact point places the post and the flame.
+    torch_w, torch_h = round(tile * 0.9), round(tile * 2.25)
+    torch = make_torch(torch_w, torch_h)
+    pack([torch], torch_w, torch_h).save(out_dir / "torch.png")
+
+    # TALLER THAN THE TORCH, and the anchor is not the frame height. The post
+    # uses every row from the contact up to its lip; the fire has to burn ABOVE
+    # that, so the frame carries a tile of headroom and `torch_anchor` sits
+    # that far up from the bottom. `torch_seat` is where the bowl's inside
+    # lands in this frame — derived from the torch's own geometry rather than
+    # typed, or re-proportioning the post silently unseats the flame.
+    flame_w, flame_h = round(tile * 1.75), tile * 4
+    torch_anchor = torch_h + tile
+    torch_seat = torch_anchor - torch_h + 5
+    torch_frames = [
+        make_torch_flame(flame_w, flame_h, torch_anchor, torch_seat, i, TORCH_FRAMES)
+        for i in range(TORCH_FRAMES)
+    ]
+    pack(torch_frames, flame_w, flame_h).save(out_dir / "torchfire.png")
+
+    rng = random.Random(args.seed + 71)
+    stones = [make_egress_stone(tile, v, rng) for v in range(EGRESS_STONES)]
+    pack([d.dark for d in stones], tile, tile).save(out_dir / "egress.png")
+    pack([d.lit for d in stones], tile, tile).save(out_dir / "egress-lit.png")
 
     # --- the paid console's band ---------------------------------------------
     aura_w, aura_h = tile * 2, round(tile * 2.5)
@@ -2070,9 +2356,17 @@ def build(args) -> Path:
     charge_seam = _seam(charge_frames[-1], crown_frames[0])
     emerge_seam = _seam(emerge_frames[-1], rift_banks[0][0])
     # Every tier's collapse must start on that tier's resting frame 0, or the
-    # anomaly changes colour and shape on the frame the party shuts it.
+    # anomaly changes colour and shape on the frame the party shuts it. The
+    # collapse frame is bigger, so the test is on the crop that corresponds to
+    # the resting sheet's rectangle — which also proves the margin is pure
+    # padding and has not moved the anomaly inside its own frame.
     collapse_seam = max(
-        _seam(collapse_banks[level][0], rift_banks[level][0])
+        _seam(
+            collapse_banks[level][0].crop(
+                (margin, margin, margin + rift_w, margin + rift_h)
+            ),
+            rift_banks[level][0],
+        )
         for level in range(RIFT_LEVELS)
     )
     collapse_tail = max(
@@ -2105,6 +2399,17 @@ def build(args) -> Path:
                 "frames": len(consoles),
                 "sway": 0,
                 "states": CONSOLE_STATES,
+            },
+            # The exit torches. One cut, one state — a torch at the way out is
+            # always burning, and a second frame for "unlit" would be a state
+            # nothing in the game can put it in.
+            "torch": {
+                "file": "torch.png",
+                "frameWidth": torch_w,
+                "frameHeight": torch_h,
+                "frames": 1,
+                "sway": 0,
+                "states": 1,
             },
         },
         # FLAT: baked into the client's ground canvas, centred on its point.
@@ -2139,6 +2444,17 @@ def build(args) -> Path:
                 "directions": CORRUPT_DIRECTIONS,
                 "levels": CORRUPT_LEVELS,
                 "rolls": CORRUPT_ROLLS,
+            },
+            # Paving for the ground at the exit. Scattered by the CLIENT over
+            # the tiles around the mouth, deterministically from the map seed —
+            # nothing about where a flagstone landed is on the wire, the same
+            # contract the residue field has.
+            "egress": {
+                "file": "egress.png",
+                "litFile": "egress-lit.png",
+                "frameWidth": tile,
+                "frameHeight": tile,
+                "frames": len(stones),
             },
         },
         # GREYSCALE, additive, after the darkness pass, tinted `--scene-beacon`.
@@ -2214,12 +2530,28 @@ def build(args) -> Path:
                 "file": collapse_files[0],
                 "levels": RIFT_LEVELS,
                 "levelFiles": collapse_files,
-                "frameWidth": rift_w,
-                "frameHeight": rift_h,
+                # BIGGER THAN `rift`, on purpose — see COLLAPSE_MARGIN_TILES.
+                # The client places it by `anchorY` and by frame centre, both
+                # of which carry the margin, so nothing downstream cares.
+                "frameWidth": collapse_w,
+                "frameHeight": collapse_h,
                 "frames": COLLAPSE_FRAMES,
                 "fps": COLLAPSE_FPS,
-                "anchorY": rift_core,
+                "anchorY": collapse_core,
                 "loop": False,
+                "tinted": False,
+            },
+            # A torch burning at the exit. Anchored on the torch's BASE, the
+            # same way `charge` is anchored on a pillar's, so one contact point
+            # places the post and its fire.
+            "torchfire": {
+                "file": "torchfire.png",
+                "frameWidth": flame_w,
+                "frameHeight": flame_h,
+                "frames": TORCH_FRAMES,
+                "fps": TORCH_FPS,
+                "anchorY": torch_anchor,
+                "loop": True,
                 "tinted": False,
             },
             # Thrown off the CONSOLE, not off the anomaly, and anchored on the
@@ -2250,8 +2582,11 @@ def build(args) -> Path:
         f"crown {CROWN_FRAMES}x{glow_w}x{glow_h} @{CROWN_FPS}fps loop, "
         f"emerge {EMERGE_FRAMES}x{rift_w}x{rift_h} @{EMERGE_FPS}fps, "
         f"rift {RIFT_LEVELS}x{RIFT_FRAMES}x{rift_w}x{rift_h} @{RIFT_FPS}fps loop, "
-        f"collapse {RIFT_LEVELS}x{COLLAPSE_FRAMES}x{rift_w}x{rift_h} @{COLLAPSE_FPS}fps, "
+        f"collapse {RIFT_LEVELS}x{COLLAPSE_FRAMES}x{collapse_w}x{collapse_h} @{COLLAPSE_FPS}fps, "
         f"aura {AURA_FRAMES}x{aura_w}x{aura_h} @{AURA_FPS}fps loop, "
+        f"torch 1x{torch_w}x{torch_h}, "
+        f"torchfire {TORCH_FRAMES}x{flame_w}x{flame_h} @{TORCH_FPS}fps loop, "
+        f"egress {EGRESS_STONES}x{tile}x{tile}, "
         f"anchors {glow_anchor}/{rift_core} (underside, not contact), "
         f"seams charge->crown {charge_seam}, emerge->rift {emerge_seam}, "
         f"rift->collapse {collapse_seam}, collapse tail alpha {collapse_tail}"

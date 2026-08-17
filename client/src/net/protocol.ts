@@ -389,6 +389,16 @@ export interface EntrancePayload {
   dir: [number, number];
   state: EntranceState;
   t: number;
+  /**
+   * Contact points of the torches marking the way out, in world pixels.
+   *
+   * Only an EXIT has them — an arrival is a corridor you are already inside
+   * and about to lose. Two ranks of two straddling the centreline, ordered the
+   * way the party walks past them. Placed by `entrance._torches` rather than
+   * hashed, because a torch standing inside a trunk is a light with no visible
+   * source and only the server knows which tiles survived the carve.
+   */
+  torches?: [number, number][];
 }
 
 /** One run objective. The HUD mirrors this list and never invents a row. */

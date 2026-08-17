@@ -132,16 +132,22 @@ subtree.
   - E with an empty pocket SHUTS the pad. It does not blink out: `collapse.png`
     is a real timeline — the lattice goes unstable, tears at itself, implodes
     to a point and is gone. Everything paid past the quota comes back on that
-    frame as ONE condensed core (`rift_shard`) on the ground, with value,
-    weight and drawn SIZE proportional to the overpayment. That is what
-    overfeeding buys: four slots of loot become one you carry to the next
-    console, at a weight that costs real walk speed.
+    frame as ONE condensed core (`rift_shard`), dropped in the MIDDLE of the
+    sigil where the anomaly was hanging, with value, weight and drawn SIZE
+    proportional to the overpayment. That is what overfeeding buys: four slots
+    of loot become one you carry to the next console, at a weight that costs
+    real walk speed. On the LAST pad of the night there is no next console, so
+    no core is paid and the game stops offering to keep feeding at all.
   - Shutting the LAST pad carves a new exit on a random edge, kills every
     lantern, and puts the whole pack on hunt (`Encontre a saída`, risk).
   A gold HUD arrow (`/hud/arrow.png`) points at the VOID corridor carved on a
   random map edge — the same dark gap as the camp exit, and its outer end
   FLARES so the way out is a visible hole in the border treeline rather than a
-  crack. Crossing that corridor returns
+  crack. The threshold is DRESSED: four torches burning the anomaly's own
+  prism in two ranks of two, and cut paving with light in its seams — the exit
+  opens during the blackout, so those torches are the only thing burning on the
+  map and the only thing that can say "here" rather than "that way". Crossing
+  that corridor returns
   the party to camp and increments the day. Extraction pads are on the
   MINIMAP: dormant ones once their ground has been explored, awake ones
   always, and gold once their quota is paid. The world is already laid out for the

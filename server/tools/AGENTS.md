@@ -15,7 +15,7 @@ imported by `app/` and never run at request time.
 | `make_textures.py` | generates final pixels | `assets/processed/terrain/` (4 grounds, blend, patch, rock, tree, deadtree, stump, grass, bush, branch, leaves, fern, campfire) |
 | `make_scenery.py` | generates final pixels | `assets/processed/scenery/` (cabin, tent, fence, sign, logs, crate, firepit, blood, tracks, clothes, debris) |
 | `make_vfx.py` | generates final pixels | `assets/processed/vfx/` (summon, kindle, aura, wind, death) |
-| `make_rift.py` | generates final pixels | `assets/processed/rift/` (the extraction structure: scar, pillar, console, charge, crown, emerge, rift ×4 tiers, collapse ×4 tiers, aura) |
+| `make_rift.py` | generates final pixels | `assets/processed/rift/` (the extraction structure: scar, pillar, console, charge, crown, emerge, rift ×4 tiers, collapse ×4 tiers, aura; and the exit: torch, torchfire, egress paving) |
 | `make_gore.py` | generates final pixels | `assets/processed/gore/` (6 wound decals worn by a hit body) |
 | `make_loot.py` | generates final pixels | `assets/processed/loot/` (one 16x16 frame per item, including gun icons) |
 | `make_guns.py` | generates final pixels | `assets/processed/guns/` (held side-view, one 18x8 frame per weapon, plus its carry pose) |
@@ -166,6 +166,25 @@ imported by `app/` and never run at request time.
     would otherwise leave a spark burning on a dead pad. Do not fade it at draw
     time: the sheet is the vanish, and an alpha over it dims the implosion the
     whole timeline exists to arrive at.
+  - **`collapse` is on a BIGGER FRAME than the loop it continues**
+    (`COLLAPSE_MARGIN_TILES`). The resting sheet is sized for a sphere that
+    breathes; the vanish lurches, shears out a third again its width and throws
+    tears and a departing ring well past that, and on the resting frame all of
+    them were cut off at the edge — the effect read as an animation happening
+    inside an invisible box. The margin is pure PADDING: the anomaly is drawn
+    at the same place relative to the anchor, so a collapse frame cropped back
+    to the resting rectangle is byte-identical to the resting frame, and that
+    crop is how `build` still checks the seam across two frame sizes.
+  - **The exit's art lives here too**, because it is the anomaly's material and
+    not the forest's: `torch` is an unlit PROP, `torchfire` is a looping VFX in
+    the prism anchored on the post's BASE (the frame is taller than the torch
+    and `anchorY` is not its height — the fire needs rows above the post to
+    burn into), and `egress` is a ground DECAL of cut paving. The paving's
+    grout is DASHED and only its interior split runs solid: these decals sit on
+    adjacent tiles, so a continuous seam at every boundary is a bright grid
+    however faint you make it. Its slab bodies go into BOTH halves — the dark
+    grain alone vanished into a night forest and the field read as a net with
+    nothing between the strands.
   - `aura` belongs to the CONSOLE, not the anomaly, and is anchored on the
     console's contact. Its hue is a function of POSITION around the band rather
     than of what threw it — the only effect in the game that works that way,

@@ -29,9 +29,12 @@ import { drawBloodPools } from './layers/corpses';
 import { CorruptionField } from './layers/corruption';
 import {
   chargeHandoff,
+  drawEgressFire,
+  drawEgressGround,
   drawRiftGlow,
   drawRiftProp,
   drawRiftScar,
+  egressTorches,
   riftPhase,
   riftStanding,
   RIFT_FALLBACK,
@@ -251,6 +254,9 @@ export class Renderer {
       for (const field of this.corruptions.values()) field.reset();
       this.corruptions.clear();
     }
+    // The threshold's paving, with the sigil and the boot prints — it is a
+    // mark on the floor and belongs in the same pass they do.
+    drawEgressGround(ctx, this.riftAtlas, state.world, state.camera);
     drawDust(ctx, state.effects);
 
     // Screen space: coins under characters, then everything that STANDS on the
@@ -290,6 +296,9 @@ export class Renderer {
       for (const piece of riftStanding(rift, phase)) {
         depthProps.push({ y: piece.y, anim: 0, hitFlash: 0, piece: null, rift: piece });
       }
+    }
+    for (const piece of egressTorches(state.world.egress)) {
+      depthProps.push({ y: piece.y, anim: 0, hitFlash: 0, piece: null, rift: piece });
     }
     for (const crate of state.world.crates) {
       depthProps.push({
@@ -407,6 +416,10 @@ export class Renderer {
         );
       }
     }
+    // The exit's torches. Before the pads, because a rift that is still open
+    // is the brighter thing and should sit over them — and once every rift is
+    // shut these four are the only fire left on the map anyway.
+    drawEgressFire(ctx, this.riftAtlas, state.world.egress, state.time);
     // The structure's own light, last of the additive passes: the stones'
     // crowns and the anomaly are the brightest things on the map once they are
     // lit, and nothing after this may be drawn under them.

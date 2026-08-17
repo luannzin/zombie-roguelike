@@ -818,7 +818,13 @@ export class Game {
         dirY: msg.egress.dir[1],
         state: msg.egress.state,
         elapsed: msg.egress.t,
+        torches: (msg.egress.torches ?? []).map(([x, y]) => ({ x, y })),
       });
+      // `setEgress` puts the torches on `scenery.lights`, and FOV reads
+      // `Game.lights` — a snapshot of that list. Without this the way out is
+      // marked by four fires that light nothing, on the one night the party
+      // has no lantern and nothing else on the map is burning.
+      this.rebuildLights();
     }
     if (msg.tilePatches && msg.tilePatches.length > 0) {
       this.applyTilePatches(msg.tilePatches);
@@ -2624,9 +2630,13 @@ export class Game {
     // server's word for that, and it is what stops a second E from being
     // offered on a rift that is in the middle of imploding.
     if (rift.state !== 'open' || rift.closeAt !== null) return null;
-    // Same three-way split `Room.activate_rift` makes, off the same two facts:
-    // whether the quota is paid, and whether the pocket still has anything.
-    const mode = !rift.ready ? 'feed' : empty ? 'close' : 'over';
+    // Same split `Room.activate_rift` makes, off the same three facts: whether
+    // the quota is paid, whether another console is still waiting, and whether
+    // the pocket has anything. Saturating is only offered while there is a pad
+    // left to carry the core to — on the last rift the overpayment is not paid
+    // back, so the game must not invite it.
+    const padsLeft = this.world?.rifts.some((row) => row.state === 'dormant') ?? false;
+    const mode = !rift.ready ? 'feed' : (empty || !padsLeft) ? 'close' : 'over';
     return {
       id: rift.id,
       mode,

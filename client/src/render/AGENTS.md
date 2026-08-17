@@ -378,6 +378,18 @@ mutation, no React.
   turns at the same rate instead of at its own age. It is the only thing that
   can say "this button does something different now" from outside tooltip
   range.
+- **The exit is dressed in three passes, one per kind of thing.** The paving
+  (`drawEgressGround`) goes on the FLOOR with the sigil and the boot prints —
+  multiply for the slabs, `lighter` for the seams, the same split every ground
+  decal here uses — and it is SCATTERED CLIENT-SIDE: which tile got which cut
+  is decidable from `(tx, ty, seed)`, so by the rule the world is split on it
+  is the client's, and only the mouth is on the wire. It is drawn live rather
+  than baked because the corridor does not exist when the ground canvas is
+  built. The torches are PROPS in the entity depth sort (`egressTorches`), so a
+  body can disappear behind one. Their fire (`drawEgressFire`) is additive
+  after the darkness, each one offset around the loop by its index — four fires
+  playing the same frame at the same instant read as four copies of one sprite,
+  which is what they are and what the eye must not notice.
 - **A spent rift is a condition, not a moment.** The structure goes dark, the
   console takes its fourth frame (driven home, every lamp dead — reusing `idle`
   would pop the plunger back up and offer the button again), the beacon comes

@@ -169,10 +169,17 @@ game's scale.
   overfeeding is only a real choice if it is repeatable, and a press that
   closed the pad the instant the quota landed would make the tiers
   unreachable. `Rift.begin_collapse` banks the overpayment and
-  `Room._drop_excess` pays it out on the tick the pad reaches SPENT — on the
-  ground, where the party watches it land, and on every pad including the last
-  one (a party that shut the final rift has necessarily emptied their pockets
-  into it).
+  `Room._drop_excess` pays it out on the tick the pad reaches SPENT, IN THE
+  MIDDLE OF THE SIGIL — where the anomaly was hanging a second ago, because
+  the core is the thing that would not fit through the hole, not a bag somebody
+  put down near the console.
+- **A core only exists while there is a next console to carry it to.**
+  `Room._pads_left` (any pad still DORMANT) gates both halves of that rule:
+  `_drop_excess` pays nothing on the last rift of the night, and
+  `activate_rift` stops offering to keep feeding there — paid means shut,
+  whatever you are carrying. Without the second half the first is a trap: E on
+  a paid pad feeds while the pocket has anything, so a party would empty a full
+  bag into a rift that cannot pay it back on the way out.
 - **`Drop` and `Slot` carry per-item overrides, and exactly one thing sets
   them.** Everything the world scatters is worth what its catalog row says,
   which is why the catalog ships once in `welcome.config` and the wire carries
@@ -368,6 +375,17 @@ game's scale.
   and VOID on that map becomes the walkable extraction corridor: find the
   dark gap on the edge and cross it. The carve wanders and frays; the
   client paints ground and crushes a darkness falloff around it.
+- **The exit is MARKED, and the marks are why it can be found.** `open_exit`
+  places four torches (`entrance._torches`, `TORCH_RANKS`): two ranks of two
+  straddling the centreline, one rank out in the clearing and one inside the
+  corridor, so the party walks between them. Two ranks rather than a pair,
+  because a line of lights reads as a way through and two loose fires do not.
+  They are drawn, never solid — the exit of a night like that one is the worst
+  possible place for a collision surprise — and a torch whose tile is woods is
+  pulled toward the centreline and then SKIPPED rather than forced, since a
+  light with no visible source is worse than three torches. About one map in
+  ten gets three. The client turns them into scene lights and lays paving
+  around the mouth; only the contact points are on the wire.
 - **The two corridors are read from opposite ends, so they taper differently.**
   An arrival is walked outward-in and then sealed, so its border ranks pinch to
   a crack (`EDGE_PINCH`) and the treeline stays unbroken from inside. An exit

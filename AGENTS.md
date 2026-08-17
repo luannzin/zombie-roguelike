@@ -139,7 +139,11 @@ subtree.
     real walk speed. On the LAST pad of the night there is no next console, so
     no core is paid and the game stops offering to keep feeding at all.
   - Shutting the LAST pad carves a new exit on a random edge, kills every
-    lantern, and puts the whole pack on hunt (`Encontre a saída`, risk).
+    lantern, puts the whole pack on hunt (`Encontre a saída`, risk), and
+    SWEEPS EVERY REMAINING DROP OFF THE MAP. Extraction is what loot was for;
+    with no console left to feed, a bottle in the grass on the way out is only
+    a reason to stop moving while the pack hunts. Coins still fall and still
+    count — they are gold, not cargo.
   A gold HUD arrow (`/hud/arrow.png`) points at the VOID corridor carved on a
   random map edge — the same dark gap as the camp exit, and its outer end
   FLARES so the way out is a visible hole in the border treeline rather than a

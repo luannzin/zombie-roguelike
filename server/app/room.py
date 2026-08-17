@@ -822,7 +822,28 @@ class Room:
         self.world.rifts = [row.geometry_payload() for row in self.rifts]
         self._open_egress()
         self._begin_blackout()
+        self._clear_loot()
         self.offer_exit_quest()
+
+    def _clear_loot(self) -> None:
+        """Sweep every drop still lying on this map. The run home is a RUN.
+
+        Extraction is what loot was FOR. Once the last pad is shut there is no
+        console left to feed and nothing to spend a find on, so a bottle in the
+        grass on the way out is a reason to stop moving with the whole pack
+        hunting — a decision the game is offering the player where the honest
+        answer is always "no". Taking them off the map turns the last leg into
+        the one thing it should be, which is a sprint.
+
+        This runs BEFORE the last pad reaches SPENT, and that is safe rather
+        than lucky: a pad only pays out a condensed core while another console
+        is still waiting (`_drop_excess`), so the final rift never drops one
+        into a map that was just cleared.
+        """
+        if not self.drops:
+            return
+        self.drops.clear()
+        self._loot_dirty = True
 
     def _open_egress(self) -> None:
         if self.egress is not None:

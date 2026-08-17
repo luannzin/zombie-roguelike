@@ -173,6 +173,15 @@ game's scale.
   MIDDLE OF THE SIGIL — where the anomaly was hanging a second ago, because
   the core is the thing that would not fit through the hole, not a bag somebody
   put down near the console.
+- **`_close_extraction` sweeps the ground.** `Room._clear_loot` empties
+  `drops` on the tick the last pad is shut, alongside the egress carve and the
+  blackout — one beat, one change of what the map is for. Loot existed to feed
+  a console and there is no console left, so the run home is a RUN and not a
+  shopping trip with a horde behind it. Coins are NOT swept: they fall from
+  kills on the way out and they are gold rather than cargo. The empty list
+  rides the next snapshot (`payload["loot"] = []` when `loot is not None`, so
+  "nothing left" is a message and not an omission) and the client's
+  `replaceLoot` clears on it.
 - **A core only exists while there is a next console to carry it to.**
   `Room._pads_left` (any pad still DORMANT) gates both halves of that rule:
   `_drop_excess` pays nothing on the last rift of the night, and

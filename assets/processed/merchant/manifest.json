@@ -1,0 +1,44 @@
+{
+  "name": "merchant",
+  "frameWidth": 22,
+  "frameHeight": 28,
+  "anchor": {
+    "x": 0.5,
+    "y": 1.0
+  },
+  "clips": {
+    "idle": {
+      "file": "idle.png",
+      "frames": 8,
+      "fps": 6,
+      "loop": true
+    },
+    "coat": {
+      "file": "coat.png",
+      "frames": 18,
+      "fps": 12,
+      "loop": false
+    },
+    "beckon": {
+      "file": "beckon.png",
+      "frames": 14,
+      "fps": 12,
+      "loop": false
+    },
+    "coin": {
+      "file": "coin.png",
+      "frames": 16,
+      "fps": 12,
+      "loop": false
+    }
+  },
+  "randomClips": [
+    "coat",
+    "beckon",
+    "coin"
+  ],
+  "randomGap": [
+    4.0,
+    11.0
+  ]
+}

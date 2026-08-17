@@ -1052,70 +1052,18 @@ class Room:
     async def embark(self) -> None:
         """They have crossed. Swap the camp for the forest and welcome again.
 
-        Same phase, new zone, new map. The client treats a second `welcome` as
-        arriving somewhere: edge corridor, emerge march, title over the walk.
-        Nobody is persisted across this — gold and xp they have not earned yet
-        stay zero.
+        The FIRST expedition only. Every later one leaves from the shop
+        (`depart_store`) rather than from the fire, and both go through the
+        same `_swap_map` — this one exists separately because it is the end of
+        the walk-out cinematic and has to clear that state.
         """
         if self.zone.kind != zones.KIND_CAMP:
             self._pending_embark = False
             return
-        self.departing = False
         self._pending_embark = False
-        self._depart_phase = None
-        self._slots = {}
-        self.zone = zones.forest(self.day)
-        self.world = mapgen.build_forest(day=self.day)
-        self.navigator = Navigator(self.world)
-        self.enemies.clear()
-        self.coins.clear()
-        self.noises.clear()
-        self._load_drops()
-        self._load_crates()
-        self._load_rifts()
-        self._load_entrance()
-        self._rebuild_spawns()
-        self.director = EnemyDirector(self.spawn_points)
-        self.corpses.clear()
-        self._corpses_dirty = True
-        self.crate_break_events = []
-        self.begin_arrive()
-        for player in self.players.values():
-            player.ready = False
-            # Anybody who was down when the party left comes back up here.
-            # The walk-out does not tick respawn timers — it puppets bodies —
-            # so a player knifed at the fire in the last seconds before
-            # departure would otherwise arrive in the forest dead and stay
-            # that way with no enemy to have killed them.
-            player.hp = MAX_HP
-            player.alive = True
-            player.respawn_timer = 0.0
-            player.hurt_immunity = 0.0
-            slot = self._slots.get(player.id)
-            if slot is not None:
-                player.x, player.y = slot
-            else:
-                player.x, player.y = self.pick_spawn()
-            player.vx = player.vy = 0.0
-            if self.gate is not None:
-                player.aim_x = self.gate.dx
-                player.aim_y = self.gate.dy
-            else:
-                player.aim_x = 0.0
-                player.aim_y = 1.0
-            player.inputs.clear()
-            player.idle_ticks = 0
-            player.combo_step = 0
-            player.combo_left = 0.0
-            # Sequence is NOT reset. The client has been numbering packets since
-            # the camp, and queue_input drops anything ≤ last_processed_seq.
-            player.last_input = InputCmd(sequence=player.last_processed_seq)
-        for pid, socket in list(self.sockets.items()):
-            player = self.players.get(pid)
-            if player is not None:
-                await self._safe_send(
-                    pid, socket, protocol.dumps(self.welcome_payload(player))
-                )
+        await self._swap_map(
+            zones.forest(self.day), mapgen.build_forest(day=self.day)
+        )
 
     async def advance_zone(self) -> None:
         """Whatever comes after the map they just walked out of.
@@ -1127,12 +1075,20 @@ class Room:
         walk.
 
         forest -> store   the night's takings become the party's balance
-        store  -> camp    the day rolls over
+        store  -> forest  the day rolls over and the next night starts
+
+        THE LOOP DOES NOT COME BACK TO THE CAMP. `preparation` is where a run
+        BEGINS and nothing more: the party gathers at the fire once, readies
+        once, and walks out once. After that the shop is the place between
+        nights — it is already the beat that resets the party (spend, re-arm,
+        catch a breath by a fire), and routing them through an empty camp
+        afterwards made them ready up a second time to do a thing they had
+        just decided to do.
         """
         if self.zone.kind == zones.KIND_FOREST:
             await self.enter_store()
             return
-        await self.return_home()
+        await self.depart_store()
 
     async def enter_store(self) -> None:
         """Out of the woods and into the shop. BANK THE NIGHT ON THE WAY IN.
@@ -1225,70 +1181,29 @@ class Room:
                     pid, socket, protocol.dumps(self.welcome_payload(player))
                 )
 
-    async def return_home(self) -> None:
-        """They made it. Swap the shop for the next day's camp.
+    async def depart_store(self) -> None:
+        """They walked out of the shop. Straight into the next night.
 
-        Same phase, new zone, new map. Inventory and guns they kept (the
-        fenda ate the pocket, and the shop may have added to the belt) come
-        back with them. Day increments so the next forest is harder.
+        THE RUN DOES NOT GO HOME. `preparation` is the beginning of a run and
+        nothing else — see `advance_zone`. The shop is what sits between
+        nights, so leaving it is leaving for the next expedition, and the day
+        rolls over here rather than at a camp nobody visits any more.
+
+        The hand-off is the walk-out's, deliberately: same `_swap_map`, so the
+        party arrives in the new forest inside an edge corridor, is marched out
+        of it, and the woods seal behind them exactly as they do on the first
+        expedition. Leaving the merchant should feel like leaving the fire.
+
+        Everything they are CARRYING survives — the belt they just bought from,
+        whatever the fenda left in the pocket, their xp, and the party balance.
         """
         if self.zone.kind != zones.KIND_STORE:
             self._pending_return = False
             return
-        self._pending_return = False
-        self.departing = False
-        self.arriving = False
-        self._depart_phase = None
-        self._arrive_phase = None
-        self._slots = {}
         self.day += 1
-        self.zone = zones.camp(self.day)
-        self.world = camp.build_camp(random.randrange(1, 2**31))
-        self.navigator = Navigator(self.world)
-        self.enemies.clear()
-        self.coins.clear()
-        self.noises.clear()
-        self.drops.clear()
-        self.crates.clear()
-        self.corpses.clear()
-        self._corpses_dirty = True
-        self.crate_break_events = []
-        self.quests = []
-        self._quests_dirty = False
-        self._load_drops()
-        self._load_crates()
-        self._load_rifts()
-        self._load_stands()
-        self._load_entrance()
-        self._rebuild_spawns()
-        self.director = EnemyDirector(self.spawn_points)
-        total = len(self.seating)
-        for player in self.players.values():
-            player.ready = False
-            player.hp = MAX_HP
-            player.alive = True
-            player.respawn_timer = 0.0
-            player.hurt_immunity = 0.0
-            if player.id in self.seating:
-                player.x, player.y = camp.seat_position(
-                    self.world, self.seating.index(player.id), total
-                )
-            else:
-                player.x, player.y = self.pick_spawn()
-            player.vx = player.vy = 0.0
-            player.aim_x = 0.0
-            player.aim_y = 1.0
-            player.inputs.clear()
-            player.idle_ticks = 0
-            player.combo_step = 0
-            player.combo_left = 0.0
-            player.last_input = InputCmd(sequence=player.last_processed_seq)
-        for pid, socket in list(self.sockets.items()):
-            player = self.players.get(pid)
-            if player is not None:
-                await self._safe_send(
-                    pid, socket, protocol.dumps(self.welcome_payload(player))
-                )
+        await self._swap_map(
+            zones.forest(self.day), mapgen.build_forest(day=self.day)
+        )
 
     # --- input --------------------------------------------------------------
     def queue_input(self, pid: str, msg: dict) -> None:

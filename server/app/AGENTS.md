@@ -159,9 +159,9 @@ game's scale.
   quest ticks when a living player stands on VOID past the FLOOR mouth
   (`EXIT_CROSS_TILES`), not on proximity to the threshold. Shutting the LAST
   pad opens egress, blackout, and panic-hunt.
-  Crossing the corridor returns the party to camp (`Room.return_home`) and
-  increments the day. Do not auto-remove a row on complete — ticking
-  `need/need` is the check. Camp has none.
+  Crossing the corridor takes the party to the SHOP (`Room.enter_store`), not
+  home. Do not auto-remove a row on complete — ticking `need/need` is the
+  check. Camp has none.
 - **One pad at a time, and the PLAYER shuts it.** `Room._awake_rift` is the
   gate: a dormant console refuses while another anomaly is charging or open.
   `activate_rift` is a four-way switch on the pad's state plus what is in the
@@ -213,9 +213,19 @@ game's scale.
 - **`_tick_exit_quest` is one mechanic with two destinations.** A living body
   crossing the VOID at the end of the map sets `_pending_return`; what is on
   the far side belongs to the zone being LEFT, and `advance_zone` dispatches
-  it — forest to store, store to camp. The day increments in `return_home`
-  only: the shop is the end of the night just survived, not the start of the
-  next one, which is why its card reads "Fim do dia N".
+  it — forest to store, store to the NEXT FOREST. The day increments in
+  `depart_store` only: the shop is the end of the night just survived, not the
+  start of the next one, which is why its card reads "Fim do dia N".
+- **THE LOOP NEVER RETURNS TO THE CAMP.** `preparation` is where a run BEGINS
+  and nothing more — the party gathers at the fire once, readies once, walks
+  out once (`begin_depart` → `embark`). From then on the SHOP is the place
+  between nights: it already resets the party (spend, re-arm, a fire to stand
+  at), and routing them through an empty camp afterwards made them ready up a
+  second time for a decision they had just made. `depart_store` is therefore
+  the same hand-off `embark` is — both go through `_swap_map`, so leaving the
+  merchant arrives in an edge corridor and seals behind them exactly as
+  leaving the fire does. There is no `return_home`; do not add one back
+  without a reason the camp has to exist mid-run.
 - **A store map has TWO corridors and the forest has one.** That is the whole
   reason `Entrance.bounds` exists: `_ranks` finds a corridor's tiles by
   scanning for VOID, and on this map that scan would hand the sealing entrance
@@ -532,9 +542,11 @@ game's scale.
   `last_processed_seq` on embark: the client has been numbering packets since
   the camp, and `queue_input` drops anything at or below that ack. The
   welcome carries `ack` so a rebuilt `LocalPlayer` can resume above it.
-  The other hand-off is `return_home()`: reaching the carved exit swaps the
-  forest for the next day's camp, keeps guns and leftover bag, increments
-  `day`, and sends another welcome. Same sequence rule.
+  The other two hand-offs are the same shape and share `_swap_map` with it:
+  `enter_store()` swaps the forest for the merchant's glade (and banks the
+  night), and `depart_store()` swaps that for the NEXT night's forest,
+  incrementing `day`. All three keep guns, the leftover bag, xp and the party
+  balance, and all three obey the same sequence rule.
 - Keep the tick O(entities). Anything that scales with map size belongs in a
   cached structure (see `pathing.py`, one field per player shared by the horde).
 - New tuning goes in `config.py` in tiles/seconds, plus a `client_config()` key

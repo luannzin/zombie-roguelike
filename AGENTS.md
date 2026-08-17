@@ -107,13 +107,18 @@ subtree.
 - Open a link, pick a name, create or join a room by its 7-character code, wait
   at the campfire, start. One socket (`/ws/{code}`) carries the lobby and the
   run; rooms live in memory and die with their last player.
-- A run is an **expedition loop**: prepare at the camp, go out to a level,
-  extract with what you found, spend it, and go again. The first lap's hand-off
-  exists — in `Preparação` the party readies at the fire, files through the
-  black exit, and a second `welcome` drops them in a VOID corridor on a random
+- A run is an **expedition loop**, and after the first lap it is a CYCLE OF
+  TWO: forest, shop, forest, shop. `Preparação` is where a run BEGINS and
+  nothing more — the party readies at the fire once, files through the black
+  exit once, and a second `welcome` drops them in a VOID corridor on a random
   edge of the forest (the camp exit, continued). They walk out of it; the woods
   swallow the way back. Then the first objective appears: find the extraction
-  point.
+  point. From then on the SHOP is the place between nights: walking out of it
+  goes straight to the next day's forest, through the same hand-off leaving the
+  fire uses. **The run never goes back to the camp** — the shop already resets
+  the party (spend, re-arm, a fire to stand at), and sending them home
+  afterwards made them ready up a second time for a decision they had just
+  made.
 - **EXTRACTION is the core loop, and a night's pads are a QUEUE.** After the
   entrance seals, the HUD quest `Encontre o ponto de extração` ticks `0/N` when
   a console is pressed (`quests.py`). Day 1–2 spawn one rift; day 3–4 two;
@@ -166,7 +171,9 @@ subtree.
   behind them exactly as the forest's did, the merchant is pitched in the
   middle — his tent, his campfire, his torches — and his three or four rustic
   tables are in front of him with one gun on each. The east end stands open the
-  whole time; walking out of it is the next day.
+  whole time; walking out of it is the next day — straight into the next
+  night's forest, arriving through an edge corridor that seals behind them,
+  exactly as leaving the campfire does.
   - **It is OUTDOORS, and that is load-bearing.** It was an interior first, a
     plank corridor with walls and hanging lamps, and the problem outweighed
     everything it got right: it was the only room in the game, so it read as a

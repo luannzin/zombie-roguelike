@@ -182,10 +182,13 @@ seam React is allowed to read.
   `ready`, and a player shuts it by hand. Shutting the LAST pad
   carves `world.egress`, kills the lantern
   (`Lantern.kill`), and offers `exit`. Reaching the mouth is another
-  welcome — at the STORE, not at camp.
+  welcome — at the STORE, not at camp. Leaving the store is another welcome
+  again, at the NEXT night's forest: after the first expedition the run is a
+  two-zone cycle and never comes back to the camp.
 - **The store is an arrival like the forest is, and an ordinary forest map.**
   Same corridor, same seal, so `arriving` is true for both zone kinds and the
-  camp is the only place you simply appear in. It takes the darkness, the
+  camp is the only place you simply appear in — and only ever once, at the
+  start of the run. It takes the darkness, the
   decoration mask and the terrain bake exactly as a forest does — there is no
   zone branch for any of it, and adding one back is how it became an interior
   the first time. The only client-side special case is the merchant's clip

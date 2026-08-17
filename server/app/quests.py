@@ -33,10 +33,15 @@ EXIT_LABEL = "Encontre a saída"
 #: a living body crossing the VOID at the end of the map — and `Room` ticks it
 #: through one path. Only the wording differs, and it differs completely: the
 #: forest's exit is something you have to FIND in the dark with the pack
-#: hunting, and this one is a lit doorway forty tiles away that has been open
-#: since you walked in. Calling both "encontre a saída" would make the word
-#: mean nothing on the night it matters.
-STORE_EXIT_LABEL = "Siga para o acampamento"
+#: hunting, and this one is a lit gap at the end of the glade that has been
+#: open since they walked in. Calling both "encontre a saída" would make the
+#: word mean nothing on the night it matters.
+#:
+#: It names the NIGHT rather than the exit, because crossing it is not arriving
+#: anywhere restful — the run does not go back to the camp, it goes straight
+#: out again (`Room.depart_store`). The row is the last thing the party reads
+#: before the next expedition and it should say so.
+STORE_EXIT_LABEL = "Parta para a próxima noite"
 
 
 @dataclass

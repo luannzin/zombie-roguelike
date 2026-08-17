@@ -114,17 +114,37 @@ subtree.
   edge of the forest (the camp exit, continued). They walk out of it; the woods
   swallow the way back. Then the first objective appears: find the extraction
   point.
-- **EXTRACTION is the core loop.** After the entrance seals, the HUD quest
-  `Encontre o ponto de extração` ticks `0/N` when a console is pressed
-  (`quests.py`). Day 1–2 spawn one rift; day 3–4 two; day 5+
-  three (`rift.count_for_day`). Pressing a pad unlocks `Alimente a
-  fenda` (catalog gold from the pocket — guns stay on the
-  belt — the HUD draws the coin badge). Paying the quota collapses every pad, carves a new exit on a
-  random edge, kills every lantern, and puts the whole pack on hunt
-  (`Encontre a saída`, risk). A gold HUD arrow (`/hud/arrow.png`) sits on
-  the screen edge and points at the VOID corridor carved on a random map
-  edge — the same dark gap as the camp exit. Crossing that corridor returns
-  the party to camp and increments the day. The world is already laid out for the
+- **EXTRACTION is the core loop, and a night's pads are a QUEUE.** After the
+  entrance seals, the HUD quest `Encontre o ponto de extração` ticks `0/N` when
+  a console is pressed (`quests.py`). Day 1–2 spawn one rift; day 3–4 two;
+  day 5+ three (`rift.count_for_day`). **Only one anomaly may be awake at a
+  time** — a second console refuses while another is open, so three pads is
+  three walks rather than an errand list a party splits up. Each pad carries
+  its OWN quota (`rift.pad_need`, the night's bill divided between them) and
+  its own `Alimente a fenda` row (catalog gold from the pocket — guns stay on
+  the belt — the HUD draws the coin badge).
+  - The quota is a FLOOR, not a ceiling. E on a paid pad keeps feeding while
+    the pocket has anything, and the anomaly walks up three overfeed TIERS,
+    each a different baked colour scheme (`LEVEL_HUES` in `make_rift.py`), so
+    how much has gone in is readable from across the clearing. The console
+    goes GOLD the moment the quota lands and throws a rainbow band
+    (`aura.png`) until somebody deals with it.
+  - E with an empty pocket SHUTS the pad. It does not blink out: `collapse.png`
+    is a real timeline — the lattice goes unstable, tears at itself, implodes
+    to a point and is gone. Everything paid past the quota comes back on that
+    frame as ONE condensed core (`rift_shard`) on the ground, with value,
+    weight and drawn SIZE proportional to the overpayment. That is what
+    overfeeding buys: four slots of loot become one you carry to the next
+    console, at a weight that costs real walk speed.
+  - Shutting the LAST pad carves a new exit on a random edge, kills every
+    lantern, and puts the whole pack on hunt (`Encontre a saída`, risk).
+  A gold HUD arrow (`/hud/arrow.png`) points at the VOID corridor carved on a
+  random map edge — the same dark gap as the camp exit, and its outer end
+  FLARES so the way out is a visible hole in the border treeline rather than a
+  crack. Crossing that corridor returns
+  the party to camp and increments the day. Extraction pads are on the
+  MINIMAP: dormant ones once their ground has been explored, awake ones
+  always, and gold once their quota is paid. The world is already laid out for the
   walk — `server/app/scenery.py` returns the ROUTE its scenes are strung
   along (outward from the mouth ending at the landmark), `SceneLight`/
   `BEACON` is the channel a beacon arrives on, and the boot prints

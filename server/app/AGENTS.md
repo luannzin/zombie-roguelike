@@ -24,10 +24,10 @@ game's scale.
 | `weapons.py` | weapon catalog (glock/deagle/famas/ak47/awp + the knife), hotbar, per-shot stats, the melee combo |
 | `crates.py` | breakable boxes/barrels: extract from scenery, smash, drop roll |
 | `corpses.py` | dead enemies left on the floor: persist until the map swaps |
-| `rift.py` | extraction pads: day-scaled count, plot, activation, feed collapse |
-| `entrance.py` | forest edge VOID corridor, emerge formation, staggered seal to TREE, extraction `open_exit` |
+| `rift.py` | extraction pads: day-scaled count, plot, activation, per-pad quota, overfeed tiers, hand-shut collapse |
+| `entrance.py` | forest edge VOID corridor, emerge formation, staggered seal to TREE, extraction `open_exit` (flared at the border) |
 | `quests.py` | run objectives: progress, done, optional risk; the HUD mirrors this list |
-| `inventory.py` | the pocket: slots, stacking, weight, `spend_toward` for the fenda |
+| `inventory.py` | the pocket: slots, stacking, weight, `spend_toward` / `spend_all` for the fenda, per-slot value/weight overrides |
 | `world.py` | tile grid, tile alphabet, collision queries |
 | `maps.py` | hand-authored maps (`from_ascii`, `from_rects`) |
 | `mapgen.py` | procedural forest, seeded and connectivity-checked |
@@ -144,18 +144,43 @@ game's scale.
   the HUD mirrors it (`have`/`need`/`done`/`risk`/`gold`) and never invents a row.
   Dropping a quest from the list is how it leaves the screen. Forest chain:
   find every pad (`extract`, `0/N`, offered the tick the entrance goes
-  `gone`, ticked when a console is pressed), feed the open anomalies
+  `gone`, ticked when a console is pressed), feed the open anomaly
   (`feed`, catalog gold from the pocket — the row carries `gold` so the
-  HUD draws the coin),   then run for the carved exit (`exit`, `risk`).
+  HUD draws the coin), then run for the carved exit (`exit`, `risk`).
+  There is only ever ONE feed row, because there is only ever one awake pad:
+  it carries THAT pad's quota, is dropped when the pad is shut, and a fresh
+  one goes up at the next console. Its `have` is allowed PAST `need` while
+  staying done — the overshoot is the size of the core coming out the far
+  end, and clamping it hides the only number that says so.
   The exit is a VOID corridor on a random map edge (`entrance.open_exit`),
   the same shape as the camp walk-out. VOID is walkable only while
   `world.egress` is set; camp and the forest arrival stay solid. The
   quest ticks when a living player stands on VOID past the FLOOR mouth
-  (`EXIT_CROSS_TILES`), not on proximity to the threshold. Paying
-  the quota collapses every pad, opens egress, blackout, and panic-hunt.
+  (`EXIT_CROSS_TILES`), not on proximity to the threshold. Shutting the LAST
+  pad opens egress, blackout, and panic-hunt.
   Crossing the corridor returns the party to camp (`Room.return_home`) and
   increments the day. Do not auto-remove a row on complete — ticking
   `need/need` is the check. Camp has none.
+- **One pad at a time, and the PLAYER shuts it.** `Room._awake_rift` is the
+  gate: a dormant console refuses while another anomaly is charging or open.
+  `activate_rift` is a four-way switch on the pad's state plus what is in the
+  pocket — open it, feed toward the quota, keep feeding past it, or shut it
+  with an empty bag. The bag is what disambiguates the last two on purpose:
+  overfeeding is only a real choice if it is repeatable, and a press that
+  closed the pad the instant the quota landed would make the tiers
+  unreachable. `Rift.begin_collapse` banks the overpayment and
+  `Room._drop_excess` pays it out on the tick the pad reaches SPENT — on the
+  ground, where the party watches it land, and on every pad including the last
+  one (a party that shut the final rift has necessarily emptied their pockets
+  into it).
+- **`Drop` and `Slot` carry per-item overrides, and exactly one thing sets
+  them.** Everything the world scatters is worth what its catalog row says,
+  which is why the catalog ships once in `welcome.config` and the wire carries
+  a key. A condensed core out of an overfed rift is worth whatever was
+  overpaid, so `value` / `weight` / `scale` travel WITH the object — through
+  the ground, the bag, a toss back onto the ground, and the tooltip. A slot
+  carrying them never stacks: two cores worth 40 and 300 are not two of a
+  thing, and merging them would have to invent a number for the pair.
 - Zone rules are enforced HERE, not just described to the client. A
   non-hostile zone runs no spawn director and drops the GUN half of
   `handle_attack`. A client that ignores `zone.lantern` gets light it cannot
@@ -339,10 +364,25 @@ game's scale.
   mouth — the same two places the decoration mask and the walk-out already own.
 - VOID (`world.VOID`) is a winding path of forest floor between trees.
   Camp and the forest arrival keep it solid — players bounce, and only the
-  walk-out may puppet a body onto it. After the feed quota, `egress` opens
+  walk-out may puppet a body onto it. Once the last pad is shut, `egress` opens
   and VOID on that map becomes the walkable extraction corridor: find the
   dark gap on the edge and cross it. The carve wanders and frays; the
   client paints ground and crushes a darkness falloff around it.
+- **The two corridors are read from opposite ends, so they taper differently.**
+  An arrival is walked outward-in and then sealed, so its border ranks pinch to
+  a crack (`EDGE_PINCH`) and the treeline stays unbroken from inside. An exit
+  has the opposite job — the only thing on screen that can say "you found it"
+  is a gap in the BORDER treeline — so `open_exit` carves with `flare`, which
+  widens those ranks (`EDGE_FLARE`) and cuts them with almost no fray.
+- **An exit carve asks whether the map is connected WITH the corridor counted
+  as walkable** (`entrance._walkable_connected`), not `maps.count_reachable`.
+  The strict FLOOR-only flood is the right question while VOID is solid; it is
+  the wrong one here, because an egress corridor only ever exists alongside an
+  open `egress` and bodies may walk it. Asking it rejected any side whose path
+  happened to cut a floor region in two — even though the path itself is the
+  seam between the halves — and about one night in twenty came out with no way
+  off the map at all. The arrival's side is also a preference now rather than a
+  rule: it goes to the END of the try list instead of being struck off it.
 - `{type:"ready"}` toggles `Player.ready` only when the feet are inside
   `CAMP_READY_RANGE_TILES` of the fire, the zone is camp, and the room is not
   already departing. When every living player is ready, `begin_depart()` runs.

@@ -64,14 +64,21 @@ and nowhere near the frame loop.
   Do not `setState` from that rAF — it is a transform, same idea as the
   glass burst. `InteractPrompt` is ready at the fire; `LootPrompt` is a
   nearby drop; `CratePrompt` is smash ("E para destruir"); `RiftPrompt` is
-  a pad ("abrir" while dormant, "alimentar a fenda" with the coin badge
-  and `have/need` while feeding, empty-bag refusal in the danger tone).
+  a pad, and it has FIVE things to say because the one key has four different
+  jobs: "abrir" while dormant, "outra fenda está aberta" while another pad is
+  awake, "alimentar a fenda" under the quota, "saturar a fenda · nível N" past
+  it, and "fechar a fenda" once the pocket is empty. All but the first carry
+  the coin badge and the pad's own `have/need` — which is allowed to read past
+  `need`, because the overshoot is the size of the core coming out the far end.
+  Empty-bag refusal at a hungry pad is in the danger tone.
   A full bag keeps the pin and says "Inventário Cheio" in
   the danger tone — hiding it would look like the drop vanished. New
   items get a new caller, not a fork of the chrome.
   `ExitGuide` is the gold arrow for the extraction exit (`/hud/arrow.png`):
-  outside the glass, pose from `exit-guide.ts` every frame, parked on the
-  screen edge in the corridor's direction.
+  outside the glass, halfway between the player and the screen edge in the
+  corridor's direction, positioned by `stepExitGuide` in its own rAF. The
+  transform is sub-pixel `translate3d` on purpose — rounding it undoes the
+  smoothing that module exists for.
   `LootPrompt` has THREE states, and the middle one is why `full` is not
   enough on its own: a full BELT with a gun in hand is a trade, so the copy
   becomes "trocar {held} por {new}" with the gun being given up in the muted

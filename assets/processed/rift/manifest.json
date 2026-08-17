@@ -19,9 +19,9 @@
       "file": "console.png",
       "frameWidth": 20,
       "frameHeight": 24,
-      "frames": 3,
+      "frames": 4,
       "sway": 0,
-      "states": 3
+      "states": 4
     }
   },
   "decals": {
@@ -86,11 +86,45 @@
     },
     "rift": {
       "file": "rift.png",
+      "levels": 4,
+      "levelFiles": [
+        "rift.png",
+        "rift-1.png",
+        "rift-2.png",
+        "rift-3.png"
+      ],
       "frameWidth": 64,
       "frameHeight": 80,
       "frames": 64,
       "fps": 16,
       "anchorY": 63,
+      "loop": true,
+      "tinted": false
+    },
+    "collapse": {
+      "file": "collapse.png",
+      "levels": 4,
+      "levelFiles": [
+        "collapse.png",
+        "collapse-1.png",
+        "collapse-2.png",
+        "collapse-3.png"
+      ],
+      "frameWidth": 64,
+      "frameHeight": 80,
+      "frames": 28,
+      "fps": 16,
+      "anchorY": 63,
+      "loop": false,
+      "tinted": false
+    },
+    "aura": {
+      "file": "aura.png",
+      "frameWidth": 32,
+      "frameHeight": 40,
+      "frames": 16,
+      "fps": 12,
+      "anchorY": 40,
       "loop": true,
       "tinted": false
     }

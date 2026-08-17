@@ -73,11 +73,25 @@ export interface HudLootPrompt {
 
 export interface HudRiftPrompt {
   id: string;
-  mode: 'open' | 'feed';
+  /**
+   * What E does at this console right now.
+   *
+   *   open   nothing has happened here yet
+   *   busy   another pad is already awake — one at a time, so this one refuses
+   *   feed   the anomaly is open and under its quota
+   *   over   the quota is paid and the bag still has something. E keeps
+   *          feeding: the anomaly walks up a tier and the core waiting at the
+   *          far end grows.
+   *   close  the quota is paid and the pocket is empty. E SHUTS it, and
+   *          everything past the quota comes back as one condensed core.
+   */
+  mode: 'open' | 'busy' | 'feed' | 'over' | 'close';
   have: number;
   need: number;
   /** Bag is empty — the press will refuse. */
   empty: boolean;
+  /** Overfeed tier, 0..3. Colours the count once the quota is past. */
+  level: number;
 }
 
 /** How often the game republishes HUD state. 5 Hz is plenty for text. */

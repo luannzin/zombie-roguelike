@@ -2,7 +2,7 @@
   "tile": 16,
   "frameWidth": 16,
   "frameHeight": 16,
-  "frames": 30,
+  "frames": 31,
   "items": {
     "old_tools": {
       "frame": 0
@@ -93,6 +93,9 @@
     },
     "knife": {
       "frame": 29
+    },
+    "rift_shard": {
+      "frame": 30
     }
   }
 }

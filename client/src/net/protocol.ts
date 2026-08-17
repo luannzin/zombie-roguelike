@@ -250,6 +250,18 @@ export interface LootState {
   k: string;
   x: number;
   y: number;
+  /**
+   * PER-DROP OVERRIDES, and the catalog is the default for all three.
+   *
+   * Everything the world scatters is worth what its `LootItemConfig` row says,
+   * which is why the catalog ships once in `welcome.config` and the wire only
+   * carries a key. A condensed core out of an overfed rift is worth whatever
+   * was overpaid into it, so those numbers travel with the object instead.
+   */
+  v?: number;
+  w?: number;
+  /** Sprite multiplier. Only a core sets it; everything else draws at 1. */
+  s?: number;
 }
 
 /** A drop that just entered a player's pocket. */
@@ -469,6 +481,13 @@ export interface RiftPayload {
   t: number;
   /** When collapse begins, in the same clock as `t`. Absent while holding. */
   closeAt?: number | null;
+  /** Catalog value put into THIS pad, and what it asked for. */
+  fed?: number;
+  need?: number;
+  /** Overfeed tier, 0..3. See `RiftStateRow`. */
+  level?: number;
+  /** Quota paid and still holding. */
+  ready?: boolean;
 }
 
 /**
@@ -582,10 +601,20 @@ export interface PlayerMeta {
   guns?: HotbarState;
 }
 
-/** One bag slot on the wire. `n` is the stack. */
+/**
+ * One bag slot on the wire. `n` is the stack.
+ *
+ * `v` / `w` / `s` are the same per-item overrides `LootState` carries, kept on
+ * the slot so a condensed core is still worth what it was worth after it has
+ * been picked up. A slot carrying them never stacks — see
+ * `server/app/inventory.py`.
+ */
 export interface InventorySlotState {
   k: string;
   n: number;
+  v?: number;
+  w?: number;
+  s?: number;
 }
 
 export interface InventoryState {
@@ -899,6 +928,17 @@ export interface RiftStateRow {
   t: number;
   /** When collapse begins, in the same clock as `t`. */
   closeAt?: number | null;
+  /** Catalog value put into THIS pad, and what it asked for. */
+  fed?: number;
+  need?: number;
+  /**
+   * Overfeed tier, 0..3. Derived on the server from `fed` against `need` — the
+   * tiers live in `server/app/rift.py` and are not re-derived here, the same
+   * rule the ceremony timings follow.
+   */
+  level?: number;
+  /** Quota paid and still holding: the console is a close button now. */
+  ready?: boolean;
 }
 
 export interface PongMessage {

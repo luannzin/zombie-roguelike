@@ -99,7 +99,7 @@ import {
   dropTooltipAnchor,
   writeTooltipAnchor,
 } from './tooltip-anchors';
-import { dropExitGuide, rayToScreenEdge, writeExitGuide } from './exit-guide';
+import { dropExitGuide, guidePoint, writeExitGuide } from './exit-guide';
 
 const MAX_TICKS_PER_FRAME = 5;
 /** Extra camera punch when local shot lands on a target. */
@@ -2226,7 +2226,10 @@ export class Game {
     // console with a box at your elbow, you did not walk here for the box.
     const rift = this.riftPrompt();
     if (rift) {
-      if (rift.mode === 'feed' && rift.empty) {
+      // Two dead presses, and both get the buzz rather than a packet the
+      // server would drop on the floor: an empty bag at a hungry pad, and a
+      // second console while another anomaly is already awake.
+      if ((rift.mode === 'feed' && rift.empty) || rift.mode === 'busy') {
         playSfx('ui-error');
         return;
       }
@@ -2292,7 +2295,7 @@ export class Game {
     for (const cell of meta.inv.bag) {
       if (!cell) continue;
       const def = catalog[cell.k];
-      if (def) weight += def.weight * cell.n;
+      if (def) weight += (cell.w ?? def.weight) * cell.n;
     }
     meta.inv.w = Math.round(weight * 100) / 100;
     if (this.local) this.local.carryWeight = this.moveWeight();
@@ -2312,7 +2315,12 @@ export class Game {
     if (!inv) return true;
     for (let i = 0; i < inv.cap; i++) {
       const slot = inv.bag[i];
-      if (!slot || slot.k === key) return true;
+      // A slot carrying its own numbers is not a stack anything can join —
+      // two cores worth 40 and 300 are not two of a thing. Mirrors
+      // `Inventory.can_stow` on the server.
+      if (!slot || (slot.k === key && slot.v === undefined && slot.w === undefined)) {
+        return true;
+      }
     }
     return false;
   }
@@ -2334,8 +2342,11 @@ export class Game {
         name: def.name,
         rarity: def.rarity,
         frame: def.frame,
-        value: def.value,
-        weight: def.weight,
+        // The SLOT's numbers win over the catalog's. Everything the world
+        // scatters leaves these unset and reads its row; a condensed core out
+        // of an overfed rift carries what it is actually worth.
+        value: row.v ?? def.value,
+        weight: row.w ?? def.weight,
       };
     });
     let frames = 0;
@@ -2583,31 +2594,47 @@ export class Game {
   }
 
   /**
-   * Whether E is offering an extraction pad right now.
+   * Whether E is offering an extraction pad right now, and for what.
    *
-   * Dormant: open the console. Open: feed the bag into it, but only once the
-   * feed quest is live. Measured feet-to-console, mirroring
-   * `Room.activate_rift`, so the prompt on screen and the check on the
-   * server agree about what "close enough" means.
+   * Every branch is measured feet-to-console, mirroring `Room.activate_rift`,
+   * so the prompt on screen and the check on the server agree about what
+   * "close enough" means. The MODES mirror it too — including `busy`, which is
+   * the client's copy of the one-pad-at-a-time rule: without it, walking up to
+   * a second console offers a press the server will silently ignore.
    */
   private riftPrompt(): HudRiftPrompt | null {
     if (this.locked || this.introLeft > 0) return null;
     const rift = this.nearRift();
     if (!rift) return null;
+    const empty = (this.inventoryHud()?.gold ?? 0) <= 0;
     if (rift.state === 'dormant') {
-      return { id: rift.id, mode: 'open', have: 0, need: 0, empty: false };
-    }
-    const feed = this.quests.find((quest) => quest.id === 'feed');
-    if (rift.state === 'open' && feed && !feed.done) {
+      const busy = this.world?.rifts.some(
+        (row) => row.id !== rift.id && (row.state === 'charging' || row.state === 'open'),
+      ) ?? false;
       return {
         id: rift.id,
-        mode: 'feed',
-        have: feed.have,
-        need: feed.need,
-        empty: (this.inventoryHud()?.gold ?? 0) <= 0,
+        mode: busy ? 'busy' : 'open',
+        have: 0,
+        need: 0,
+        empty: false,
+        level: 0,
       };
     }
-    return null;
+    // A pad that is already collapsing takes no more presses. `closeAt` is the
+    // server's word for that, and it is what stops a second E from being
+    // offered on a rift that is in the middle of imploding.
+    if (rift.state !== 'open' || rift.closeAt !== null) return null;
+    // Same three-way split `Room.activate_rift` makes, off the same two facts:
+    // whether the quota is paid, and whether the pocket still has anything.
+    const mode = !rift.ready ? 'feed' : empty ? 'close' : 'over';
+    return {
+      id: rift.id,
+      mode,
+      have: rift.fed,
+      need: rift.need,
+      empty,
+      level: rift.level,
+    };
   }
 
   private nearRift(): Rift | null {
@@ -2641,9 +2668,14 @@ export class Game {
     const egress = this.world?.egress;
     const local = this.local;
     if (!exit || exit.done || !egress || !local) return null;
+    // Anchored on the UPPER HALF of the body, not its centre and not its feet.
+    // The arrow sits halfway out along this ray, and a ray leaving the feet
+    // puts it over the ground the player is about to walk onto; leaving the
+    // head it rides above the action, which is where a marker belongs.
+    const lift = (this.config?.playerHalfHeight ?? 0) * 0.5;
     return {
       fromX: local.state.x,
-      fromY: local.state.y,
+      fromY: local.state.y - lift,
       toX: egress.backX,
       toY: egress.backY,
     };
@@ -2660,10 +2692,25 @@ export class Game {
   private onRiftState(row: RiftStateRow): void {
     const world = this.world;
     if (!world) return;
-    const was = world.rifts.find((item) => item.id === row.id)?.state;
+    const before = world.rifts.find((item) => item.id === row.id);
+    const was = before?.state;
+    const wasLevel = before?.level ?? 0;
+    const wasReady = before?.ready ?? false;
     const closing = row.closeAt != null && was === 'open';
-    world.setRiftState(row.id, row.state, row.t, row.closeAt ?? null);
+    world.setRiftState(row.id, row.state, row.t, row.closeAt ?? null, {
+      fed: row.fed ?? 0,
+      need: row.need ?? 0,
+      level: row.level ?? 0,
+      ready: row.ready ?? false,
+    });
     this.ensureResidue();
+    // The quota being met is an EVENT even though the state string does not
+    // change: the console goes gold, the aura starts, and the button stops
+    // meaning "feed" and starts meaning "shut it". It has to be as loud as the
+    // press was or nobody notices the pad is waiting on them.
+    const level = row.level ?? 0;
+    if ((row.ready ?? false) && !wasReady) playSfx('rarity', { variant: 4 });
+    else if (level > wasLevel) playSfx('rarity', { variant: Math.min(4, level) });
     if (was === row.state && !closing) return;
     // The beacon joins and leaves `scenery.lights` here. FOV reads `Game.lights`,
     // which is a snapshot of that list — without a rebuild the pad stays dark
@@ -2999,6 +3046,7 @@ export class Game {
         visibility,
         animTime: this.visuals.advanceAnim(drop.id, true, dt),
         phase: hashLootId(drop.id),
+        scale: drop.s ?? 1,
       });
     }
     return out;
@@ -3062,8 +3110,12 @@ export class Game {
   }
 
   /**
-   * HUD arrow: parked on the screen edge in the exit's direction, always
-   * on the bezel and always pointing at the VOID corridor on the map edge.
+   * HUD arrow: halfway from the player to the screen edge, pointing at the
+   * VOID corridor carved on the map edge.
+   *
+   * This writes a TARGET only. Where it is actually drawn — and the smoothing
+   * that stops the target's per-frame rounding jitter reaching the screen —
+   * belongs to `game/exit-guide`.
    */
   private syncExitGuide(view?: ReturnType<typeof projectionFor>): void {
     const pose = this.guidePose();
@@ -3083,7 +3135,7 @@ export class Game {
     }
     const ux = dx / length;
     const uy = dy / length;
-    const edge = rayToScreenEdge(
+    const point = guidePoint(
       px,
       py,
       ux,
@@ -3091,7 +3143,7 @@ export class Game {
       this.canvas.clientWidth,
       this.canvas.clientHeight,
     );
-    writeExitGuide(edge.x, edge.y, Math.atan2(uy, ux));
+    writeExitGuide(point.x, point.y, Math.atan2(uy, ux));
   }
 
   /**

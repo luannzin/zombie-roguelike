@@ -434,6 +434,26 @@ ITEMS: list[tuple[str, Palette, Art]] = [
             "..c........",
         ],
     ),
+    # The condensed core. Never scattered and never in a crate: the only thing
+    # that makes one is overfeeding a rift and shutting it, and what it is
+    # WORTH comes off that rift rather than off the catalog — so this frame is
+    # the only fixed thing about it. The drop and the bag slot carry the value,
+    # the weight, and the SCALE this sprite is drawn at, which is why the art
+    # is a cut shard with no baseline detail: it has to survive being drawn at
+    # twice the size without reading as a boulder.
+    (
+        "rift_shard",
+        {"c": CRYSTAL, "v": PEARL, "s": STONE},
+        [
+            "...cc...",
+            "..cccc..",
+            ".cvvvcc.",
+            "cvvccvvc",
+            ".cvvvcc.",
+            "..svvs..",
+            "...ss...",
+        ],
+    ),
 ]
 
 

@@ -23,7 +23,7 @@ seam React is allowed to read.
 | `lantern.ts` | four-cell battery, produces `output` 0..1 |
 | `hud-store.ts` | the only seam to React; `HUD_INTERVAL` = 0.2 s |
 | `tooltip-anchors.ts` | screen-space points for world `Tooltip`s, written every frame |
-| `exit-guide.ts` | screen-space pose for the extraction-exit arrow, written every frame |
+| `exit-guide.ts` | extraction-exit arrow: where on screen it belongs, and the smoothing between the raw target and what is drawn |
 | `inventory-anchors.ts` | screen-space centres for the HUD bag (pack + slots) |
 | `inventory-actions.ts` | bag → socket: `Game` binds `drop`; React never owns the connection |
 | `loot-flies.ts` | collect flies: hold over the head, then travel; membership is a store, pose is per-frame |
@@ -172,15 +172,30 @@ seam React is allowed to read.
   is the collapse clock.
 - **The extraction pads are the objects on the map with a STATE MACHINE, and
   the split is: the server says WHAT, the client says what that FEELS like.**
-  Count scales with the day (`rift.count_for_day`). Finding them is a quest
+  Count scales with the day (`rift.count_for_day`), but only ONE may be awake
+  at a time. Finding them is a quest
   (`hud-store.quests`, id `extract`, `0/N`). The console press is the tick,
   not standing nearby — that is when `feed` appears (catalog gold, coin
-  badge on the HUD). Pressing a dormant console starts the ceremony;
-  feeding an open one spends bag catalog value toward that quota. Paying
-  the quota collapses
-  every pad (`closeAt`), carves `world.egress`, kills the lantern
+  badge on the HUD), carrying THAT pad's quota. Pressing a dormant console
+  starts the ceremony; feeding an open one spends bag catalog value toward
+  its quota. Paying the quota does not close anything: it makes the pad
+  `ready`, and a player shuts it by hand. Shutting the LAST pad
+  carves `world.egress`, kills the lantern
   (`Lantern.kill`), and offers `exit`. Reaching the mouth is another
   welcome, back at camp.
+  - **The pad's whole feed state is on the wire** — `fed`, `need`, `level`,
+    `ready` on `RiftStateRow` — and the client re-derives none of it. `level`
+    especially: the overfeed tiers live in `server/app/rift.py` and picking
+    which colour bank to draw from is a lookup, not arithmetic, for the same
+    reason the ceremony timings are.
+  - Overfeeding is REPEATABLE and the pocket is what says so. E on a ready pad
+    feeds while the bag has value and shuts it when the bag is empty
+    (`riftPrompt` modes `over` / `close`, mirroring `Room.activate_rift`). A
+    tier bump chimes `rarity` at the tier's own variant; the quota landing
+    chimes variant 4. Both fire off a state row where the state STRING did not
+    change, which is exactly why they are checked separately.
+  - A `busy` prompt (another pad already awake) buzzes locally instead of
+    sending a packet the server would drop.
   Two snapshot rows a pad — pressed, and open — and the four seconds between
   them run on this client's own render clock (`Game.stepRift`), because a
   ceremony resolved at 6 Hz would step rather than play. The server's `t` is
@@ -198,17 +213,32 @@ seam React is allowed to read.
     one set of numbers, the same discipline `SUMMON_TIME` already follows.
   - E offers a pad BEFORE a crate and before the fire: if you are standing at
     the console with a box at your elbow, you did not walk there for the box.
-    Dormant shows "abrir"; open-and-feeding shows "alimentar a fenda" with
-    the coin badge and the same `have/need` as the quest. An empty bag refuses audibly and does
-    not send. Spent and charging show nothing — a prompt on a structure that
-    is already answering reads as the first press not having registered.
-  - Activation is one-way. There is no packet to switch it off. Collapse is
-    the feed quota, not a timer.
+    Dormant shows "abrir" (or "outra fenda está aberta"); under quota shows
+    "alimentar a fenda"; past it shows "saturar a fenda" with the tier; with an
+    empty pocket it shows "fechar a fenda". All four carry the coin badge and
+    the pad's own `have/need`. An empty bag at a hungry pad refuses audibly and
+    does not send. Spent, charging and collapsing show nothing — a prompt on a
+    structure that is already answering reads as the first press not having
+    registered.
+  - Activation is one-way. There is no packet to switch a pad back off, and
+    collapse is a player's second press, never a timer.
   - The exit arrow (`hud/ExitGuide`, `/hud/arrow.png`) is generated HUD
-    chrome, not a sprite in the forest. Pose is written every frame
-    (`exit-guide.ts`) onto the screen edge in the exit's direction,
-    aimed at the corridor's outer end (`egress.back`). It sits outside
-    `HudScreen` — the fish-eye would pull it off that bezel.
+    chrome, not a sprite in the forest. It sits outside `HudScreen` — the
+    fish-eye would pull it off the glass — and it rides HALFWAY between the
+    player and the screen edge rather than on the bezel: on the bezel it is
+    furthest from the thing it is about, it fights the hotbar and the minimap
+    for the corner, and it is where the jitter is worst because the ray is
+    longest there. The ray leaves the player's UPPER half, so the arrow rides
+    above the action instead of over the ground they are walking onto.
+  - **The arrow's target is not smooth and cannot be made smooth upstream.**
+    `projectionFor` rounds the camera offset to a whole screen pixel, so the
+    projected player position twitches every frame, and a ray cast from it
+    multiplies the twitch by the distance to the edge. `game.ts` writes a
+    TARGET; `exit-guide.ts` owns a second, smoothed pose (`stepExitGuide`,
+    exponential in `exp(-dt/tau)` so it is frame-rate independent, shortest-arc
+    on the angle so it never spins the long way round the ±pi seam) and
+    `ExitGuide` applies it as a sub-pixel `translate3d`. Do not round that
+    transform — it puts the jitter straight back.
 - `Game.lights` is bonfires read off the tiles PLUS whatever the map's scenes
   are still burning (`world.scenery.lights`), on one list. The lighting has no
   concept of a camp light versus a forest light and must not grow one. Rebuild
@@ -383,7 +413,8 @@ seam React is allowed to read.
   not a subscription from a component to the game. Camp ready uses `ready` and
   `prompt`; a nearby drop uses `lootPrompt`; the pocket uses `inventory`;
   the walk-out and the forest emerge use `cinematic`; a crate in reach uses
-  `cratePrompt`; a pad in reach uses `riftPrompt` (`open` / `feed`); the
+  `cratePrompt`; a pad in reach uses `riftPrompt`
+  (`open` / `busy` / `feed` / `over` / `close`); the
   extraction exit arrow uses `exitGuide`. Run
   objectives use `quests` — announced at top-centre,
   then flown into the card under the minimap the way a collect flies into

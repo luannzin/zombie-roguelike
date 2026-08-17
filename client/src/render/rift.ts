@@ -12,7 +12,7 @@
  *            cleaned up — `render/residue.ts` decides where they land
  *   pillar   a bottom-anchored PROP with three STATES, in the depth sort
  *   console  the same, and the only thing on the map you press
- *   charge / crown / emerge / rift
+ *   charge / crown / emerge / rift / collapse / aura
  *            effect TIMELINES anchored on `anchorY`, drawn additively after
  *            the darkness pass
  *
@@ -85,6 +85,17 @@ export interface RiftAimedSheet extends RiftDecalSheet {
 
 export interface RiftEffectSheet {
   image: HTMLImageElement;
+  /**
+   * One bitmap per OVERFEED TIER, `image` first.
+   *
+   * Only the anomaly's own sheets have these. A tier is a whole different
+   * colour scheme for the same lattice (see `LEVEL_HUES` in make_rift.py), and
+   * a colour scheme is not something a draw-time multiply can produce — so
+   * they are baked, and they are separate files because four tiers of a
+   * 64-frame loop in one strip is 16384px wide, right on the maximum texture
+   * dimension a lot of hardware accepts. Empty for every other sheet.
+   */
+  levelImages: HTMLImageElement[];
   frameWidth: number;
   frameHeight: number;
   frames: number;
@@ -121,6 +132,14 @@ export interface RiftAtlas {
   emerge: RiftEffectSheet | null;
   /** Loop: the anomaly at rest, and it never looks restful. */
   rift: RiftEffectSheet | null;
+  /**
+   * One-shot: the anomaly going out. Starts on `rift` frame 0 of the same
+   * tier and ends on an empty frame — it hands off to NOTHING, which is why
+   * the caller must not also fade it out. The sheet is the vanish.
+   */
+  collapse: RiftEffectSheet | null;
+  /** Loop: the rainbow band a PAID console throws until somebody shuts it. */
+  aura: RiftEffectSheet | null;
 }
 
 interface PropManifest {
@@ -147,6 +166,9 @@ interface EffectManifest extends PropManifest {
   tinted?: boolean;
   crownAt?: number;
   burstAt?: number;
+  /** Overfeed tiers, and the file for each. `levelFiles[0]` repeats `file`. */
+  levels?: number;
+  levelFiles?: string[];
 }
 
 interface RiftManifest {
@@ -158,6 +180,8 @@ interface RiftManifest {
     crown?: EffectManifest;
     emerge?: EffectManifest;
     rift?: EffectManifest;
+    collapse?: EffectManifest;
+    aura?: EffectManifest;
   };
 }
 
@@ -173,8 +197,10 @@ export function loadRift(): Promise<RiftAtlas | null> {
 async function fetchRift(): Promise<RiftAtlas | null> {
   try {
     const manifest = await loadJson<RiftManifest>(`${ROOT}/manifest.json`);
-    const [scar, residue, corrupt, pillar, consoleSheet, charge, crown, emerge, rift] =
-      await Promise.all([
+    const [
+      scar, residue, corrupt, pillar, consoleSheet,
+      charge, crown, emerge, rift, collapse, aura,
+    ] = await Promise.all([
       manifest.decals.scar ? loadDecal(manifest.decals.scar) : null,
       manifest.decals.residue ? loadDecal(manifest.decals.residue) : null,
       manifest.decals.corrupt ? loadAimed(manifest.decals.corrupt) : null,
@@ -184,10 +210,12 @@ async function fetchRift(): Promise<RiftAtlas | null> {
       manifest.effects.crown ? loadEffect(manifest.effects.crown) : null,
       manifest.effects.emerge ? loadEffect(manifest.effects.emerge) : null,
       manifest.effects.rift ? loadEffect(manifest.effects.rift) : null,
+      manifest.effects.collapse ? loadEffect(manifest.effects.collapse) : null,
+      manifest.effects.aura ? loadEffect(manifest.effects.aura) : null,
     ]);
     return {
       tile: manifest.tile, scar, residue, corrupt, pillar, console: consoleSheet,
-      charge, crown, emerge, rift,
+      charge, crown, emerge, rift, collapse, aura,
     };
   } catch (err) {
     console.warn('[rift] no atlas, extraction point not drawn:', err);
@@ -230,9 +258,14 @@ async function loadAimed(manifest: AimedManifest): Promise<RiftAimedSheet> {
 }
 
 async function loadEffect(manifest: EffectManifest): Promise<RiftEffectSheet> {
-  const image = await loadImage(`${ROOT}/${manifest.file}`);
+  const files = manifest.levelFiles?.length ? manifest.levelFiles : [manifest.file];
+  const levelImages = await Promise.all(
+    files.map((file) => loadImage(`${ROOT}/${file}`)),
+  );
+  const image = levelImages[0];
   return {
     image,
+    levelImages,
     frameWidth: manifest.frameWidth,
     frameHeight: manifest.frameHeight,
     frames: manifest.frames,
@@ -254,6 +287,21 @@ async function loadEffect(manifest: EffectManifest): Promise<RiftEffectSheet> {
  */
 export function riftImage(sheet: RiftEffectSheet, color: string | null): CanvasImageSource {
   return sheet.tinted && color ? sheet.tints.get(color) : sheet.image;
+}
+
+/**
+ * The bitmap for one overfeed tier of a sheet that has them.
+ *
+ * Clamped rather than checked: the server owns the tier count and the art owns
+ * how many were baked, and a mismatch between the two must degrade to the
+ * hottest sheet that exists rather than draw nothing on a pad the party is
+ * standing at.
+ */
+export function riftLevelImage(sheet: RiftEffectSheet, level: number): CanvasImageSource {
+  const banks = sheet.levelImages;
+  if (banks.length <= 1) return sheet.image;
+  const index = Math.max(0, Math.min(banks.length - 1, Math.floor(level)));
+  return banks[index];
 }
 
 /** Frame index for a sheet, held on the last frame once a one-shot is over. */

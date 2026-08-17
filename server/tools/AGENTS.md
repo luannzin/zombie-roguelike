@@ -15,7 +15,7 @@ imported by `app/` and never run at request time.
 | `make_textures.py` | generates final pixels | `assets/processed/terrain/` (4 grounds, blend, patch, rock, tree, deadtree, stump, grass, bush, branch, leaves, fern, campfire) |
 | `make_scenery.py` | generates final pixels | `assets/processed/scenery/` (cabin, tent, fence, sign, logs, crate, firepit, blood, tracks, clothes, debris) |
 | `make_vfx.py` | generates final pixels | `assets/processed/vfx/` (summon, kindle, aura, wind, death) |
-| `make_rift.py` | generates final pixels | `assets/processed/rift/` (the extraction structure: scar, pillar, console, charge, crown, emerge, rift) |
+| `make_rift.py` | generates final pixels | `assets/processed/rift/` (the extraction structure: scar, pillar, console, charge, crown, emerge, rift ×4 tiers, collapse ×4 tiers, aura) |
 | `make_gore.py` | generates final pixels | `assets/processed/gore/` (6 wound decals worn by a hit body) |
 | `make_loot.py` | generates final pixels | `assets/processed/loot/` (one 16x16 frame per item, including gun icons) |
 | `make_guns.py` | generates final pixels | `assets/processed/guns/` (held side-view, one 18x8 frame per weapon, plus its carry pose) |
@@ -122,6 +122,13 @@ imported by `app/` and never run at request time.
   drawn without a player tint. `death` is the same family: dirt and air
   kicked when a body hits the floor. `sfx_zombie_death` puts its thud on
   `DEATH_IMPACT`.
+- **The HUD arrow is an ARROW.** `make_hud_icons.make_arrow` draws a
+  triangular head on a shaft with a small nock flare, procedurally, so the head
+  and the shaft are DIFFERENT WIDTHS — that is the only thing that keeps it
+  legible at 26 screen pixels while it rotates. The sprite it replaced was a
+  caret (a wedge crossed by a bar), and a rotating caret reads as a cross or a
+  plus rather than as something with a front and a back. Authored pointing
+  RIGHT; `ExitGuide` applies the `atan2`.
 - **`make_rift.py` is the EXTRACTION STRUCTURE, and it is the one generator that
   writes into all three shapes at once**, because the thing it draws is made of
   three kinds of object: `scar` is a flat DECAL baked into the ground, `pillar`
@@ -139,8 +146,30 @@ imported by `app/` and never run at request time.
     structure grows two greens.
   - The prop frames are STATES, not variants. `pillar` is
     `shape * states + state` packed shape-major (four cuts, one per corner,
-    dormant then awake); `console` is idle then armed. The index is
-    authoritative — nothing here may be rolled, unlike a crate kind.
+    dormant then awake); `console` is idle, armed, READY, spent. The index is
+    authoritative — nothing here may be rolled, unlike a crate kind. READY is
+    the quota-paid console: same lectern, same plunger, same pips, only the
+    light in them moved to the warm end of the prism — so it reads as this
+    console having changed its mind rather than as a different object.
+  - **The overfeed TIERS are baked, and they are separate files.** `rift` and
+    `collapse` each ship four sheets (`rift.png`, `rift-1.png`, …) indexed by
+    `levelFiles` in the manifest. A tier is a remap of the RESOLVED hue index
+    (`LEVEL_HUES`, applied in `Prism.paint`) rather than of the input hues:
+    remapping the inputs would change how shapes blend with each other and
+    every tier would come out a different SHAPE, instead of the same lattice in
+    a different key. Four tiers of a 64-frame loop in one strip would be a
+    16384px bitmap, right on the maximum texture dimension a lot of hardware
+    accepts, which is why they are files and not one sheet.
+  - `collapse` is the one sheet here that hands off to NOTHING. It starts on
+    `rift` frame 0 of its own tier and ends on an EMPTY frame — `build` checks
+    both, and the empty tail matters because a client holding the final frame
+    would otherwise leave a spark burning on a dead pad. Do not fade it at draw
+    time: the sheet is the vanish, and an alpha over it dims the implosion the
+    whole timeline exists to arrive at.
+  - `aura` belongs to the CONSOLE, not the anomaly, and is anchored on the
+    console's contact. Its hue is a function of POSITION around the band rather
+    than of what threw it — the only effect in the game that works that way,
+    which is what makes it look like nothing else on the map.
   - **`crownAt` / `burstAt` are where the prop underneath changes state**, as
     well as where a sound puts its impact. The stone flips dormant → awake on
     the frame `charge` whites out the capstone, because the flash is what hides
@@ -303,9 +332,10 @@ python tools/make_audio.py
   the shared helpers is proved safe — move a ramp or a field primitive, re-run
   every generator, and nothing under `assets/processed/` may move.
 - `make_rift.py` checks its own seams: it prints the worst channel difference
-  between each one-shot's last frame and its loop's first, and exits non-zero
-  if either is anything but 0. A handoff that pops is the one artifact that
-  gives away that the rift is a sprite.
+  at every handoff — `charge`→`crown`, `emerge`→`rift`, and `rift`→`collapse`
+  for each tier — and exits non-zero if any is anything but 0. It also refuses
+  a `collapse` whose last frame is not fully transparent. A handoff that pops
+  is the one artifact that gives away that the rift is a sprite.
 - Audio has no eyes to check it with, so check it with numbers: a wav must have
   a peak in range, no DC offset, both edges at zero, no samples pinned at the
   rail, and — for a bed — a wrap discontinuity small against its own local RMS.

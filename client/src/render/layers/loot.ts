@@ -85,6 +85,11 @@ export function drawLootSprites(
   for (const drop of drops) {
     if (drop.visibility <= 0.01) continue;
     const bob = Math.sin(drop.animTime * 3.2 + drop.phase) * 0.6;
+    // Scaled about its CONTACT, not its centre: a bigger drop grows upward and
+    // outward from the ground it is lying on, the same way a bigger prop
+    // would. Growing about the middle would sink half of it into the floor.
+    const w = frameWidth * drop.scale;
+    const h = frameHeight * drop.scale;
     ctx.globalAlpha = drop.visibility;
     ctx.drawImage(
       image,
@@ -92,10 +97,10 @@ export function drawLootSprites(
       0,
       frameWidth,
       frameHeight,
-      view.x(drop.x - frameWidth / 2),
-      view.y(drop.y - frameHeight + 0.6 + bob),
-      view.size(frameWidth),
-      view.size(frameHeight),
+      view.x(drop.x - w / 2),
+      view.y(drop.y - h + 0.6 + bob),
+      view.size(w),
+      view.size(h),
     );
   }
   ctx.globalAlpha = 1;

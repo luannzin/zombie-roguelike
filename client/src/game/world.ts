@@ -104,6 +104,17 @@ export interface Rift {
   elapsed: number;
   /** When collapse begins, in the same clock as `elapsed`. Null while holding. */
   closeAt: number | null;
+  /** Catalog value put into THIS pad, and the quota it asked for. */
+  fed: number;
+  need: number;
+  /**
+   * Overfeed tier, 0..3, straight off the server. The anomaly's resting sheet
+   * has one baked colour scheme per tier, so this is a frame-bank index and
+   * not a hint — see `render/rift.ts` `riftLevelImage`.
+   */
+  level: number;
+  /** Quota paid and still holding: the console is a close button now. */
+  ready: boolean;
 }
 
 /** A light the map owns, at the point it burns from, in world pixels. */
@@ -228,12 +239,19 @@ export class TileMap {
     state: RiftState,
     elapsed: number,
     closeAt: number | null = null,
+    feed?: { fed: number; need: number; level: number; ready: boolean },
   ): void {
     const row = this.rifts.find((item) => item.id === id);
     if (!row) return;
     row.state = state;
     row.elapsed = elapsed;
     if (closeAt !== null) row.closeAt = closeAt;
+    if (feed) {
+      row.fed = feed.fed;
+      row.need = feed.need;
+      row.level = feed.level;
+      row.ready = feed.ready;
+    }
     if (state === 'open' && row.closeAt === null) this.lightRift(row);
     if (state === 'spent' || row.closeAt !== null) this.darkenRift(row);
   }
@@ -476,6 +494,10 @@ function unpackRifts(payload: MapPayload): Rift[] {
     state: row.state,
     elapsed: row.t,
     closeAt: row.closeAt ?? null,
+    fed: row.fed ?? 0,
+    need: row.need ?? 0,
+    level: row.level ?? 0,
+    ready: row.ready ?? false,
   }));
 }
 

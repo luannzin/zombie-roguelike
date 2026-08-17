@@ -49,6 +49,23 @@ EMERGE_PAST = 2.4
 #: that each rank of trees is a beat rather than a pop.
 SEAL_RANK_TIME = 0.08
 
+#: How the corridor's outermost ranks — the ones ON the map's border — are
+#: scaled, and it is TWO numbers because the two corridors are read from
+#: opposite ends.
+#:
+#: An ARRIVAL corridor is walked outward-in and then sealed; nobody ever has to
+#: find its far end, so it tapers to a crack at the world's edge and the
+#: treeline stays unbroken from inside.
+#:
+#: An EXIT corridor has the opposite job. The party is somewhere in the woods
+#: looking for a way out, and the only thing on screen that can tell them they
+#: found it is a GAP IN THE BORDER TREELINE — the same read the camp's exit
+#: gives from the fire. Pinched to a crack it looked like every other dark
+#: pocket in the forest, so the exit's border ranks FLARE instead: the mouth of
+#: the path is the widest part of it, and it is visibly the edge of the world.
+EDGE_PINCH = 0.5
+EDGE_FLARE = 1.35
+
 
 def _hash(tx: int, ty: int, seed: int, salt: int = 0) -> float:
     """Deterministic 0..1 from a tile coordinate. Same mixer as camp._hash."""
@@ -132,8 +149,18 @@ def hydrate(tiles: list[list[int]], row: dict | None) -> Entrance | None:
     return placed
 
 
-def carve(tiles: list[list[int]], seed: int, side: str | None = None) -> Entrance:
-    """Punch a winding VOID corridor through a random edge. Mutates `tiles`."""
+def carve(
+    tiles: list[list[int]],
+    seed: int,
+    side: str | None = None,
+    flare: bool = False,
+) -> Entrance:
+    """Punch a winding VOID corridor through a random edge. Mutates `tiles`.
+
+    `flare` opens the ranks that sit ON the map's border instead of pinching
+    them — see `EDGE_FLARE`. The exit uses it so its beginning is a readable
+    hole in the border treeline; the arrival does not, because it seals.
+    """
     rng = random.Random(seed ^ 0xE071)
     height = len(tiles)
     width = len(tiles[0]) if tiles else 0
@@ -160,7 +187,18 @@ def carve(tiles: list[list[int]], seed: int, side: str | None = None) -> Entranc
         elif centre > hi:
             centre = hi
 
-        pinch = 0.5 if step < BORDER else 1.0
+        pinch = 1.0
+        # How much of the slice is cut with no argument, before the frayed band
+        # starts. On the border ranks of an EXIT that band is what was hiding
+        # the way out: a third of the opening survived as trunks and the gap
+        # read as another thicket. Cut those wide open and let the fray happen
+        # further in, where it is texture rather than the answer to "where?".
+        core = 0.5
+        if step < BORDER:
+            if flare:
+                pinch, core = EDGE_FLARE, 0.82
+            else:
+                pinch = EDGE_PINCH
         half = (
             half0 * (0.72 + (1.0 - t) * 0.38)
             + (rng.random() - 0.5) * 0.7
@@ -169,7 +207,7 @@ def carve(tiles: list[list[int]], seed: int, side: str | None = None) -> Entranc
             half = 0.8
 
         tx, ty = _along(side, step, centre, width, height)
-        painted = _paint_slice(tiles, tx, ty, side, half, seed, step)
+        painted = _paint_slice(tiles, tx, ty, side, half, seed, step, core)
         void.extend(painted)
 
     mouth_step = depth - 1
@@ -210,27 +248,35 @@ def open_exit(
     edge is the corridor you walk into, the same dark gap as the camp exit
     and the forest arrive. Finding it is seeing that gap; leaving is
     crossing it. No E.
-    """
-    from .maps import count_reachable
 
+    Carved with `flare`, so the end that sits on the world's border opens out
+    rather than tapering shut. That hole in the border treeline is the only
+    thing the screen can say "this is the way out" with.
+    """
     height = len(tiles)
     width = len(tiles[0]) if tiles else 0
     if width == 0 or height == 0:
         return None
-    sides = [side for side in SIDES if side != avoid_side] or list(SIDES)
+    sides = [side for side in SIDES if side != avoid_side]
     rng = random.Random(seed ^ 0xE072)
     rng.shuffle(sides)
+    # THE ARRIVAL'S SIDE IS A PREFERENCE, NOT A RULE. Coming out somewhere new
+    # is the better story, but a night that cannot honour it on any of the
+    # other three edges must not end with a party sealed in a forest with no
+    # way out — so the sealed side goes on the end of the list rather than
+    # being struck off it. Roughly one map in twenty needs it.
+    if avoid_side in SIDES:
+        sides.append(avoid_side)
     before = [row[:] for row in tiles]
     for side in sides:
         for ty, row in enumerate(before):
             tiles[ty][:] = row
-        gate = carve(tiles, seed ^ _SIDE_SALT.get(side, 0), side=side)
+        gate = carve(tiles, seed ^ _SIDE_SALT.get(side, 0), side=side, flare=True)
         mouth_tx = int(gate.mouth_x // TILE_SIZE)
         mouth_ty = int(gate.mouth_y // TILE_SIZE)
         if 0 <= mouth_ty < height and 0 <= mouth_tx < width:
             tiles[mouth_ty][mouth_tx] = FLOOR
-        floor = sum(row.count(FLOOR) for row in tiles)
-        if count_reachable(tiles) != floor:
+        if not _walkable_connected(tiles):
             continue
         patches: list[tuple[int, int, int]] = []
         for ty, row in enumerate(tiles):
@@ -241,6 +287,49 @@ def open_exit(
     for ty, row in enumerate(before):
         tiles[ty][:] = row
     return None
+
+
+def _walkable_connected(tiles: list[list[int]]) -> bool:
+    """Every FLOOR tile still reachable, WITH the corridor counted as walkable.
+
+    `maps.count_reachable` floods FLOOR alone, which is the right question
+    while VOID is solid — at the camp and on the forest arrival nobody may
+    step into the dark path. It is the wrong question here: an exit corridor
+    only ever exists alongside an open `egress`, and `world.blocks` lets
+    bodies walk VOID for exactly as long as that lasts. Asking the strict
+    question rejected a side whenever the new path happened to cut a floor
+    region in two, even though the path itself is the seam between the halves
+    — which is how one night in twenty came out with no way off the map.
+    """
+    height = len(tiles)
+    width = len(tiles[0]) if tiles else 0
+    start = None
+    floor_tiles = 0
+    for ty in range(height):
+        for tx in range(width):
+            if tiles[ty][tx] == FLOOR:
+                floor_tiles += 1
+                if start is None:
+                    start = (tx, ty)
+    if start is None:
+        return False
+
+    seen = {start}
+    stack = [start]
+    reached = 0
+    while stack:
+        x, y = stack.pop()
+        if tiles[y][x] == FLOOR:
+            reached += 1
+        for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            nx, ny = x + dx, y + dy
+            if not (0 <= nx < width and 0 <= ny < height):
+                continue
+            if tiles[ny][nx] not in (FLOOR, VOID) or (nx, ny) in seen:
+                continue
+            seen.add((nx, ny))
+            stack.append((nx, ny))
+    return reached == floor_tiles
 
 
 def _inward(side: str) -> tuple[float, float]:
@@ -273,8 +362,13 @@ def _paint_slice(
     half: float,
     seed: int,
     step: int,
+    core: float = 0.5,
 ) -> list[tuple[int, int]]:
-    """VOID a cross-section of the corridor, frayed like the camp exit."""
+    """VOID a cross-section of the corridor, frayed like the camp exit.
+
+    `core` is the fraction of `half` cut unconditionally. Everything past it is
+    the fray — trunks the path was allowed to leave standing.
+    """
     height = len(tiles)
     width = len(tiles[0]) if tiles else 0
     painted: list[tuple[int, int]] = []
@@ -289,7 +383,7 @@ def _paint_slice(
             continue
         dist = abs(d)
         mark = False
-        if dist <= half * 0.5:
+        if dist <= half * core:
             mark = True
         elif dist <= half + 0.2:
             mark = not (tiles[ty][tx] == TREE and _hash(tx, ty, seed, 23 + step) > 0.68)

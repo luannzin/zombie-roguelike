@@ -132,6 +132,15 @@ export interface DrawableLoot {
   animTime: number;
   /** Stable phase so neighbouring auras do not pulse together. */
   phase: number;
+  /**
+   * Sprite multiplier, 1 for everything the world scatters.
+   *
+   * Only a condensed core out of an overfed rift sets it, and it is
+   * proportional to what was overpaid — so "how much did we bank" is legible
+   * from the size of the thing lying in the grass, before anyone walks close
+   * enough to read a tooltip.
+   */
+  scale: number;
 }
 
 /**

@@ -6,8 +6,18 @@ A cabin is a cabin whether you look at it or not; a crate has exactly one thing
 left to do and then it is gone. The rift is the first object in this game with a
 STATE MACHINE: it sits dormant until somebody walks up to the console and
 presses it, and then it spends four seconds becoming something else while the
-whole party watches. Feeding the open anomaly is what shuts it; a timer never
-does.
+whole party watches.
+
+ONE PAD AT A TIME, AND THE PLAYER SHUTS IT
+A night's rifts are a queue, not a menu: `Room` refuses a console while another
+anomaly is awake, so three pads is three separate walks. Each carries its own
+quota (`pad_need`). Paying it does not close the pad — it ARMS the console,
+which goes gold and starts throwing an aura, and pressing it again is what
+begins the collapse. That extra press is what makes overfeeding possible at
+all: the window between "paid" and "closed" is time the party chooses to spend,
+and everything they put in during it comes back out as one dense object at the
+far end (see `LEVEL_STEPS` and `Room._drop_excess`). A timer never closes a
+rift and never did.
 
 WHY THIS IS SERVER-SIDE AND WHY IT SHIPS COORDINATES
 Same reason `scenery.py` is. Placement has to know which ground is open, it
@@ -113,13 +123,15 @@ EMERGE_AT = CROWNED_AT + SETTLE
 OPEN_AT = EMERGE_AT + EMERGE_TIME
 
 #: How long the anomaly stays if nothing feeds it. INFINITE: the window
-#: closes when the party has paid the feed quota, not on a clock. `begin_collapse`
-#: is what walks the SPENT path.
+#: closes when a player shuts it, not on a clock. `begin_collapse` is what
+#: walks the SPENT path.
 OPEN_TIME = math.inf
-#: It does not blink out. The light draws back in over this, so the last thing
-#: that happens on the pad is a thing closing rather than a sprite being
-#: switched off.
-COLLAPSE_TIME = 1.2
+#: It does not blink out, and it does not simply fade either. `collapse.png`
+#: out of make_rift.py is a real timeline — the lattice goes unstable, tears at
+#: itself, then implodes to a point and is gone — and this is that sheet's
+#: `frames / fps`. Change one and change the other, the same contract every
+#: other duration in this file has with the art.
+COLLAPSE_TIME = 28 / 16
 
 #: The blast, starting the frame the anomaly arrives.
 #:
@@ -147,6 +159,37 @@ OPEN = "open"
 SPENT = "spent"
 
 
+# --- overfeeding ---------------------------------------------------------------
+#
+# THE QUOTA IS A FLOOR, NOT A CEILING, and that is the whole decision the pad
+# exists to offer. Paying exactly what it asks closes it. Keeping the bag going
+# past that does not — the anomaly takes everything, and it CHANGES as it takes:
+# three visible tiers past the quota, each a different colour, so a party can
+# read from across the clearing how much has gone in.
+#
+# What buys that back is `excess_item` in `room.py`: what you overpaid comes
+# out the far side of the collapse as one dense object you carry to the NEXT
+# pad. Overfeeding is therefore never a donation, it is moving value forward
+# through a bag that has a slot count — which is the only reason it is worth
+# doing at all.
+
+#: How many tiers past the quota the colour walks before it stops.
+MAX_LEVEL = 3
+#: Where each tier starts, as a fraction of the quota paid ON TOP of it. The
+#: first is any overpayment at all, so a single item past the line already says
+#: something on screen; the two above it are half again and double.
+LEVEL_STEPS: tuple[float, ...] = (0.0, 0.5, 1.0)
+
+
+def level_for(fed: int, need: int) -> int:
+    """Which overfeed tier `fed` sits in against a quota of `need`. 0..MAX_LEVEL."""
+    if need <= 0 or fed <= need:
+        return 0
+    over = (fed - need) / need
+    level = sum(1 for step in LEVEL_STEPS if over >= step)
+    return min(MAX_LEVEL, max(1, level))
+
+
 def pillar_charge_at(index: int) -> float:
     """When stone `index` starts waking, in seconds after the press."""
     return CONSOLE_LAG + index * PILLAR_STAGGER
@@ -172,12 +215,35 @@ class Rift:
     #: the rest of it rather than a structure that snaps to finished.
     elapsed: float = 0.0
     #: When collapse begins, in the same clock as `elapsed`. None while the
-    #: anomaly is holding. Set by `begin_collapse` the tick the feed quota
-    #: is paid — not by a authored window.
+    #: anomaly is holding. Set by `begin_collapse` on the tick a player shuts
+    #: the pad — not by an authored window.
     close_at: float | None = None
     #: The console has been pressed. Server-only; the extract quest ticks
     #: off this, not off standing nearby.
     found: bool = False
+    #: Catalog value THIS pad asks for. Per-pad rather than per-night: only one
+    #: anomaly may be open at a time, so a night with three of them is three
+    #: separate walks and three separate bills.
+    need: int = 0
+    #: Catalog value put into it. May go past `need` — see `level_for`.
+    fed: int = 0
+    #: What the overpayment condensed into, banked when the collapse starts and
+    #: spent when it finishes. Zero once the drop has been placed, so a pad
+    #: cannot pay out twice however the room ticks.
+    excess: int = 0
+
+    @property
+    def ready(self) -> bool:
+        """Quota paid and still holding: the console is now a close button."""
+        return self.state == OPEN and self.close_at is None and self.fed >= self.need
+
+    @property
+    def level(self) -> int:
+        return level_for(self.fed, self.need)
+
+    def feed(self, value: int) -> None:
+        if value > 0:
+            self.fed += value
 
     def step(self, dt: float) -> bool:
         """Advance the sequence. True when the state changed this tick.
@@ -205,11 +271,15 @@ class Rift:
         return changed
 
     def begin_collapse(self) -> bool:
-        """Start drawing the light back in. True if this call changed anything.
+        """Start the vanish. True if this call changed anything.
 
-        Feeding is what closes a rift, not a timer. A dormant stone just goes
-        dark. A charging one is jumped to open so the collapse has a sphere
-        to fade rather than a half-played ceremony.
+        A player closing a fed pad is what ends a rift, not a timer. A dormant
+        stone just goes dark. A charging one is jumped to open so the collapse
+        has a sphere to tear apart rather than a half-played ceremony.
+
+        The overpayment is BANKED HERE and paid out at SPENT, because the drop
+        belongs to the moment the anomaly is gone — it is what would not fit
+        through the hole.
         """
         if self.state == SPENT:
             return False
@@ -222,12 +292,22 @@ class Rift:
             self.state = OPEN
         if self.close_at is None:
             self.close_at = self.elapsed
+            self.excess = max(0, self.fed - self.need)
             return True
         return False
 
     def geometry_payload(self) -> dict:
-        """The static half: where the pieces are. Rides on the map payload."""
+        """The static half: where the pieces are. Rides on the map payload.
+
+        Also the room's STORE — `Room._load_rifts` hydrates straight back out
+        of it — which is why `found` and `excess` ride along here and not on
+        the snapshot's state row. They reach the client as a side effect of
+        that and neither is a secret: `found` is a pad the client can already
+        see is not dormant, and `excess` is the core it is about to watch land.
+        """
         return {
+            "found": self.found,
+            "excess": self.excess,
             "id": self.id,
             "tx": self.tx,
             "ty": self.ty,
@@ -243,10 +323,25 @@ class Rift:
         }
 
     def state_payload(self) -> dict:
-        """The live half: what it is doing. Rides on the snapshot when dirty."""
-        row = {"id": self.id, "state": self.state, "t": round(self.elapsed, 2)}
+        """The live half: what it is doing. Rides on the snapshot when dirty.
+
+        `level` is derived and shipped anyway. The client picks a colour off it
+        every frame and re-deriving the tiers there would put `LEVEL_STEPS` in
+        two files, which is the rule this module already keeps for the ceremony
+        timings.
+        """
+        row = {
+            "id": self.id,
+            "state": self.state,
+            "t": round(self.elapsed, 2),
+            "fed": self.fed,
+            "need": self.need,
+            "level": self.level,
+        }
         if self.close_at is not None:
             row["closeAt"] = round(self.close_at, 2)
+        if self.ready:
+            row["ready"] = True
         return row
 
 
@@ -268,6 +363,10 @@ def from_payload(row: dict | None) -> Rift | None:
         state=str(row.get("state", DORMANT)),
         elapsed=float(row.get("t", 0.0)),
         close_at=None if close is None else float(close),
+        need=int(row.get("need", 0)),
+        fed=int(row.get("fed", 0)),
+        excess=int(row.get("excess", 0)),
+        found=bool(row.get("found", False)),
     )
 
 
@@ -297,13 +396,26 @@ def count_for_day(day: int) -> int:
     return 3
 
 
-def feed_need(day: int, count: int) -> int:
-    """Catalog value the party has to put into the rifts this night.
+def night_need(day: int, count: int) -> int:
+    """Catalog value the party has to put into the rifts across the whole night.
 
     Scales with the day AND with how many pads landed, so a cramped map that
     only fitted one still asks less than a night that found room for three.
     """
     return 24 * max(1, day) + 16 * max(0, count - 1)
+
+
+def pad_need(day: int, count: int) -> int:
+    """What ONE pad asks for.
+
+    The night's bill split evenly, because only one anomaly may be open at a
+    time: three pads is three walks and three separate payments, not one pot
+    you can empty at whichever console you reached first. Rounded up, so the
+    pads together never ask for less than the night was supposed to cost.
+    """
+    pads = max(1, count)
+    total = night_need(day, pads)
+    return max(1, -(-total // pads))
 
 
 # --- placement ---------------------------------------------------------------

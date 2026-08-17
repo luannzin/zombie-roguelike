@@ -7,8 +7,16 @@ invents a quest and never ticks one off on its own.
 The first objective of a forest is finding the extraction point — the anomaly
 `rift.py` placed. It appears after the entrance seals, which is the moment the
 party knows they cannot leave the way they came. Pressing a console unlocks
-feeding (`gold` on the row, so the HUD shows the coin); paying the quota
-collapses the pad and opens the way out.
+feeding (`gold` on the row, so the HUD shows the coin); paying that pad's quota
+arms its console, and shutting it by hand collapses the pad. When the last one
+is shut the way out opens.
+
+THE FEED ROW IS PER-PAD AND IT MAY OVERSHOOT. Only one anomaly is ever awake,
+so there is only ever one feed row, carrying that pad's quota; it is dropped
+when the pad is shut and a fresh one goes up at the next console. `have` is
+deliberately allowed past `need` while it stays done — the overshoot is what
+the party is choosing to build, and clamping it would hide the number that says
+how big the core coming out the other side will be.
 """
 
 from __future__ import annotations

@@ -33,6 +33,7 @@ import type { Projection } from '../projection';
 import {
   riftFrame,
   riftImage,
+  riftLevelImage,
   riftPropFrame,
   type RiftAtlas,
   type RiftEffectSheet,
@@ -47,8 +48,10 @@ const ANOMALY_GLOW = 0.72;
 /** Prop states. The index is the contract with `make_rift.py`. */
 const DORMANT_FRAME = 0;
 const AWAKE_FRAME = 1;
+/** Console only: quota paid, plunger gold, pressing now SHUTS the rift. */
+const READY_FRAME = 2;
 /** Console only: driven home, every lamp on it dead. */
-const SPENT_FRAME = 2;
+const SPENT_FRAME = 3;
 
 /**
  * Tile size, for turning `boomTiles` into world pixels.
@@ -90,7 +93,7 @@ export const RIFT_FALLBACK: RiftTimingConfig = {
   boomTiles: 34,
   openTime: null,
   collapseAt: null,
-  collapseTime: 1.2,
+  collapseTime: 28 / 16,
   spentAt: null,
 };
 
@@ -137,11 +140,20 @@ export interface RiftPhase {
   /** Seconds since the burst, for the per-mark flash as the wave passes. */
   sinceBoom: number;
   /**
-   * 1 while the rift holds, falling to 0 across the collapse. Multiplied by
-   * `ANOMALY_GLOW` at draw time: it draws its own light back in rather than
-   * being switched off.
+   * 1 while the rift holds, falling to 0 across the collapse.
+   *
+   * THE HALO'S ONLY, now. It used to fade the anomaly's sprite as well, which
+   * was the right answer when the vanish was a fade — but `collapse.png` IS
+   * the vanish, and multiplying an alpha over a sheet that already ends on an
+   * empty frame would dim the implosion flash out of existence.
    */
   fade: number;
+  /** Seconds into `collapse`, or NOT_STARTED while it is still holding. */
+  collapsing: number;
+  /** Overfeed tier, 0..3. Picks which colour bank the anomaly draws from. */
+  level: number;
+  /** Quota paid and still holding: gold console, rainbow band. */
+  ready: boolean;
   /** Nothing left but the marks. */
   spent: boolean;
 }
@@ -168,6 +180,9 @@ function dormantPhase(stones: number): RiftPhase {
     waveRadius: 0,
     sinceBoom: 0,
     fade: 1,
+    collapsing: NOT_STARTED,
+    level: 0,
+    ready: false,
     spent: false,
   };
 }
@@ -202,6 +217,7 @@ export function riftPhase(
       waveRadius: neverTore ? 0 : Infinity,
       sinceBoom: neverTore ? 0 : Infinity,
       fade: 0,
+      level: rift.level,
       spent: true,
     };
   }
@@ -221,6 +237,9 @@ export function riftPhase(
   }
 
   const sinceTear = elapsed - timing.emergeAt;
+  // The vanish runs on the same one clock everything else does, measured from
+  // the tick the server said a player shut the pad.
+  const sinceClose = rift.closeAt === null ? NOT_STARTED : elapsed - rift.closeAt;
   // The blast, easing out: it leaves fast and slows as it spreads, which is
   // what a shock front does and what stops the marks appearing at a constant
   // rate like a progress bar filling.
@@ -245,6 +264,11 @@ export function riftPhase(
         (elapsed - (rift.closeAt ?? timing.collapseAt ?? elapsed))
         / Math.max(timing.collapseTime, 1e-6),
       ),
+    collapsing: sinceClose >= 0 ? sinceClose : NOT_STARTED,
+    level: rift.level,
+    // A pad that is already closing is not waiting on anybody, so the gold
+    // console and the band both stop the instant it is shut.
+    ready: rift.ready && rift.closeAt === null,
     spent: false,
     // The console answers the instant it is pressed. It is the one piece that
     // must not wait for anything: a button that visibly does nothing for a
@@ -293,7 +317,9 @@ export function riftStanding(rift: Rift, phase: RiftPhase): RiftStanding[] {
     shape: 0,
     state: phase.spent
       ? SPENT_FRAME
-      : phase.consoleArmed ? AWAKE_FRAME : DORMANT_FRAME,
+      : phase.ready
+        ? READY_FRAME
+        : phase.consoleArmed ? AWAKE_FRAME : DORMANT_FRAME,
   });
   pieces.sort((a, b) => a.y - b.y);
   return pieces;
@@ -426,7 +452,10 @@ export function drawRiftGlow(
     const radius = rift.lightTiles * tileSize * beat;
     const gx = rift.anomalyX;
     const gy = rift.anomalyY;
-    const [br, bg, bb] = palette().scene.beacon;
+    // The light in the air follows the SPHERE'S tier. Leaving it mint while
+    // the anomaly went gold put a cold halo around a hot object, which reads
+    // as two light sources instead of one thing lighting a clearing.
+    const [br, bg, bb] = haloTone(phase.level);
     const glow = ctx.createRadialGradient(gx, gy, 0, gx, gy, radius);
     glow.addColorStop(0, `rgb(${br} ${bg} ${bb} / ${(0.26 * halo).toFixed(3)})`);
     glow.addColorStop(0.22, `rgb(${br} ${bg} ${bb} / ${(0.11 * halo).toFixed(3)})`);
@@ -445,16 +474,79 @@ export function drawRiftGlow(
     }
   }
 
-  if (phase.open && phase.fade > 0) {
-    ctx.globalAlpha = phase.fade * ANOMALY_GLOW;
-    blit(ctx, atlas.rift, rift.anomalyX, rift.anomalyY, phase.anomalyTime, beacon);
+  // THE VANISH IS A SHEET, NOT A FADE, and it takes priority over the resting
+  // loop the moment a player shuts the pad. It is drawn at FULL alpha on
+  // purpose: `collapse.png` ends on an empty frame, so it disappears itself,
+  // and multiplying `fade` over it would dim the implosion — the one frame the
+  // whole timeline is built to arrive at — down to nothing.
+  if (phase.collapsing >= 0) {
+    ctx.globalAlpha = ANOMALY_GLOW;
+    blitLevel(
+      ctx, atlas.collapse, rift.anomalyX, rift.anomalyY, phase.collapsing, phase.level,
+    );
+    ctx.globalAlpha = 1;
+  } else if (phase.open) {
+    ctx.globalAlpha = ANOMALY_GLOW;
+    blitLevel(
+      ctx, atlas.rift, rift.anomalyX, rift.anomalyY, phase.anomalyTime, phase.level,
+    );
     ctx.globalAlpha = 1;
   } else if (phase.emerging >= 0) {
     ctx.globalAlpha = ANOMALY_GLOW;
     blit(ctx, atlas.emerge, rift.anomalyX, rift.anomalyY, phase.emerging, beacon);
     ctx.globalAlpha = 1;
   }
+
+  // The paid console's band. On the CONSOLE, not on the anomaly: it is the
+  // thing that changed, and it is the thing the player has to walk back to.
+  // Wall time rather than the pad's clock, so every armed console in a party's
+  // night turns at the same rate instead of at its own age.
+  if (phase.ready) {
+    blit(ctx, atlas.aura, rift.consoleX, rift.consoleY, time, beacon);
+  }
   ctx.restore();
+}
+
+/**
+ * The colour of the light an anomaly of this tier puts in the air.
+ *
+ * Mint at rest and amber when it is gorged, mixed rather than switched so a
+ * pad crossing a tier does not snap the whole clearing to a new colour.
+ */
+function haloTone(level: number): readonly [number, number, number] {
+  const tone = palette().scene;
+  const t = Math.max(0, Math.min(1, level / 3));
+  const [cr, cg, cb] = tone.beacon;
+  const [hr, hg, hb] = tone.ember;
+  return [
+    Math.round(cr + (hr - cr) * t),
+    Math.round(cg + (hg - cg) * t),
+    Math.round(cb + (hb - cb) * t),
+  ];
+}
+
+/** Same blit, reading the overfeed tier's own bitmap instead of the tint. */
+function blitLevel(
+  ctx: CanvasRenderingContext2D,
+  sheet: RiftEffectSheet | null,
+  x: number,
+  y: number,
+  elapsed: number,
+  level: number,
+): void {
+  if (!sheet) return;
+  const frame = riftFrame(sheet, elapsed);
+  ctx.drawImage(
+    riftLevelImage(sheet, level),
+    frame * sheet.frameWidth,
+    0,
+    sheet.frameWidth,
+    sheet.frameHeight,
+    Math.round(x - sheet.frameWidth / 2),
+    Math.round(y - sheet.anchorY),
+    sheet.frameWidth,
+    sheet.frameHeight,
+  );
 }
 
 function blit(

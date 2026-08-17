@@ -101,9 +101,9 @@ class Room:
         self.egress: Entrance | None = None
         #: Run objectives. Empty until the entrance seals.
         self.quests: list[Quest] = []
-        #: Catalog value paid into the rifts this night. Shared across pads.
-        self.fed = 0
-        self.feed_need = 0
+        #: What ONE pad asks for tonight. Each rift carries its own `fed`
+        #: against this; the night's bill is this times however many landed.
+        self.pad_need = 0
         #: Lamps are dead and the pack does not give up. Latched until return.
         self.blackout = False
         self.panic = False
@@ -192,8 +192,13 @@ class Room:
     def _load_rifts(self) -> None:
         """Hydrate extraction points from the map the generator left behind."""
         self.rifts = rift.from_payloads(self.world.rifts)
-        self.fed = 0
-        self.feed_need = rift.feed_need(self.day, len(self.rifts)) if self.rifts else 0
+        self.pad_need = rift.pad_need(self.day, len(self.rifts)) if self.rifts else 0
+        for row in self.rifts:
+            # A hydrated map may already carry a quota (the room stores the
+            # geometry payload back after every state change). Only a pad that
+            # has never been priced takes tonight's number.
+            if row.need <= 0:
+                row.need = self.pad_need
         self.egress = entrance.from_payload(self.world.egress)
         self.blackout = False
         self.panic = False
@@ -444,7 +449,13 @@ class Room:
                 # `swap_weapon` — refuses unless a GUN is held.
                 slot = self.swap_weapon(player, drop.key)
         else:
-            slot = player.inventory.add(drop.key)
+            # A condensed core carries its own value, weight and drawn size —
+            # they came off the rift that made it, not off the catalog — so
+            # they go into the slot with it. Everything else passes None and
+            # reads its row.
+            slot = player.inventory.add(
+                drop.key, value=drop.value, weight=drop.weight, scale=drop.scale
+            )
         if slot is None:
             return
         del self.drops[drop_id]
@@ -548,11 +559,29 @@ class Room:
         )
 
     def activate_rift(self, pid: str, rift_id: str | None = None) -> None:
-        """Press a console or feed an open anomaly, if this player is at it.
+        """Press a console, feed an open anomaly, or shut a paid one.
 
-        Dormant → charging is once only and not reversible. Open → feed spends
-        bag items toward the night's quota. Measured from the FEET, the same
-        way collect and smash are, so the prompt and the check agree.
+        FOUR PRESSES, ONE BUTTON, and which one you get is the pad's state
+        and what is in your pocket:
+
+          dormant, nothing else awake   open it (once only, not reversible)
+          dormant, another pad awake    nothing. One at a time.
+          open, quota not yet paid      feed the pocket toward the quota
+          open, quota paid, bag full    KEEP feeding. Every press past the
+                                        quota walks the anomaly up a tier and
+                                        grows the core waiting at the far end.
+          open, quota paid, bag empty   SHUT it. The console is gold by now.
+
+        THE BAG IS WHAT DISAMBIGUATES THE LAST TWO, and it has to be something
+        rather than a second key: "alimentar além do limite" is only a real
+        choice if it is repeatable, and a press that closes the pad the instant
+        the quota lands makes the tiers unreachable — you would only ever see
+        whichever one the last item happened to overshoot into. Reading the
+        pocket gives both: the pad takes everything you have, and when you have
+        nothing left to give it, the same press lets you out.
+
+        Measured from the FEET, the same way collect and smash are, so the
+        prompt and the check agree.
         """
         if self.phase != protocol.PHASE_PLAYING or self.departing or self.arriving:
             return
@@ -563,10 +592,27 @@ class Room:
         if target is None:
             return
         if target.state == rift.DORMANT:
-            self._press_console(player, target)
+            if self._awake_rift() is None:
+                self._press_console(player, target)
             return
-        if target.state == rift.OPEN:
-            self._feed_rift(player, target)
+        if target.state == rift.OPEN and target.close_at is None:
+            if target.ready and player.inventory.bag_value() <= 0:
+                self._shut_rift(target)
+            else:
+                self._feed_rift(player, target)
+
+    def _awake_rift(self) -> Rift | None:
+        """The pad currently answering, if any.
+
+        ONE AT A TIME is the rule the whole night hangs off. Three consoles
+        open at once turns a night into an errand list the party splits up and
+        does in parallel; one at a time makes it a route, and makes the
+        overpayment you carry forward worth carrying.
+        """
+        for row in self.rifts:
+            if row.state in (rift.CHARGING, rift.OPEN):
+                return row
+        return None
 
     def _rift_in_reach(self, player: Player, rift_id: str | None) -> Rift | None:
         feet_y = player.y + PLAYER_HALF_HEIGHT
@@ -613,45 +659,39 @@ class Room:
         """Extract ticks on the console press, not on walking nearby.
 
         That is when "Alimente a fenda" appears: the pad is answering, and
-        the quota is now the job. Standing in the clearing is not enough.
+        its quota is now the job. Standing in the clearing is not enough.
         """
         if not target.found:
             target.found = True
         quest = next((q for q in self.quests if q.id == quests.EXTRACT), None)
-        if quest is None or quest.done:
-            if quest is None:
-                self.offer_extract_quest()
-            return
-        quest.have = sum(1 for row in self.rifts if row.found)
-        if quest.have >= quest.need:
-            quest.have = quest.need
-            quest.done = True
-            self.offer_feed_quest()
-        self._quests_dirty = True
+        if quest is None:
+            self.offer_extract_quest()
+        else:
+            quest.have = min(quest.need, sum(1 for row in self.rifts if row.found))
+            quest.done = quest.have >= quest.need
+            self._quests_dirty = True
+        self.offer_feed_quest(target)
 
     def _feed_rift(self, player: Player, target: Rift) -> None:
-        """Spend the pocket into this open pad. Guns stay on the belt."""
-        if any(q.id == quests.FEED and q.done for q in self.quests):
-            return
-        if not any(q.id == quests.FEED for q in self.quests):
-            return
-        remaining = self.feed_need - self.fed
+        """Spend the pocket into this open pad. Guns stay on the belt.
+
+        Under the quota this pays TOWARD it and stops on the nose, so a bag
+        full of relics is not swallowed whole to settle a bill of 30. Once
+        the quota is met the pad is `ready` and this is not reached — a second
+        press shuts it (`_shut_rift`), and only a player who deliberately keeps
+        feeding an armed pad goes past the line, which is the `over` path.
+        """
+        remaining = target.need - target.fed
         if remaining <= 0:
-            return
-        paid = player.inventory.spend_toward(remaining)
+            paid = player.inventory.spend_all()
+        else:
+            paid = player.inventory.spend_toward(remaining)
         if paid <= 0:
             return
-        self.fed += paid
+        target.fed += paid
+        self._rift_dirty = True
         self._roster_dirty = True
-        for quest in self.quests:
-            if quest.id != quests.FEED or quest.done:
-                continue
-            quest.have = min(self.fed, quest.need)
-            if quest.have >= quest.need:
-                quest.have = quest.need
-                quest.done = True
-                self._close_extraction()
-            self._quests_dirty = True
+        self._sync_feed_quest(target)
         self.noises.append(
             ai.Noise(
                 x=target.x,
@@ -661,10 +701,94 @@ class Room:
             )
         )
 
+    def _shut_rift(self, target: Rift) -> None:
+        """A paid pad, closed by hand. Starts the vanish; banks the overpayment.
+
+        The DROP is not made here — it is made when the anomaly is actually
+        gone (`step_rift`), because the core is what would not fit through the
+        hole and it has to land on ground the party can see it land on.
+        """
+        if not target.begin_collapse():
+            return
+        self._rift_dirty = True
+        self.world.rifts = [row.geometry_payload() for row in self.rifts]
+        self._drop_feed_quest()
+        if self._all_pads_shut():
+            self._close_extraction()
+
+    def _all_pads_shut(self) -> bool:
+        """Every pad on the map either gone or on its way out."""
+        return all(
+            row.state == rift.SPENT or row.close_at is not None
+            for row in self.rifts
+        )
+
+    def _sync_feed_quest(self, target: Rift) -> None:
+        """Mirror one pad's meter onto the HUD row.
+
+        `have` is allowed PAST `need` and the row stays done — that overshoot
+        is the whole reason to keep feeding, and clamping it would hide the
+        only number that says how big the core is going to be.
+        """
+        quest = next((q for q in self.quests if q.id == quests.FEED), None)
+        if quest is None:
+            return
+        quest.have = target.fed
+        quest.need = target.need
+        quest.done = target.fed >= target.need
+        self._quests_dirty = True
+
+    def _drop_feed_quest(self) -> None:
+        """Take the feed row off the HUD. The next pad puts a fresh one up."""
+        before = len(self.quests)
+        self.quests = [q for q in self.quests if q.id != quests.FEED]
+        if len(self.quests) != before:
+            self._quests_dirty = True
+
+    def _drop_excess(self, target: Rift) -> None:
+        """Pay the overpayment back as ONE object, on the ground by the console.
+
+        Four slots of loot condensed into one you carry to the next console,
+        at a weight that makes carrying it a real cost. That is what it is FOR
+        — the whole reason to keep feeding a pad that is already paid.
+
+        IT ALSO PAYS OUT ON THE LAST PAD, where there is no next console. That
+        is not what the mechanic is for, and it is not decoration either: E on
+        a paid pad feeds while you are carrying anything, so a party that shuts
+        the final rift has necessarily emptied their pockets into it. Without
+        the core they would walk out of the night with nothing, having done
+        everything right. Paying it back makes overfeeding safe to learn.
+        """
+        value = target.excess
+        target.excess = 0
+        if value <= 0:
+            return
+        worth, kg, scale = loot.shard_stats(value)
+        occupied = [
+            (drop.x / TILE_SIZE - 0.5, drop.y / TILE_SIZE - 0.5)
+            for drop in self.drops.values()
+        ]
+        pos = loot.place_near(
+            self.world.tiles, target.console_x, target.console_y, occupied, random.Random()
+        )
+        if pos is None:
+            pos = (target.console_x, target.console_y)
+        drop_id = self._next_drop_id()
+        self.drops[drop_id] = Drop(
+            id=drop_id, key=loot.SHARD_KEY, x=pos[0], y=pos[1],
+            value=worth, weight=kg, scale=scale,
+        )
+        self._loot_dirty = True
+
     def _close_extraction(self) -> None:
-        """Quota paid: the pads go dark, the exit opens, the night hunts."""
+        """Every pad shut: the exit opens and the night hunts.
+
+        The pads are already collapsing on their own clocks — this does not
+        touch them. What it does is the map-level consequence, and it is the
+        one moment in a run where the world changes shape around the party.
+        """
         for row in self.rifts:
-            if row.begin_collapse():
+            if row.state == rift.DORMANT and row.begin_collapse():
                 self._rift_dirty = True
         self.world.rifts = [row.geometry_payload() for row in self.rifts]
         self._open_egress()
@@ -724,7 +848,13 @@ class Room:
             px, py = pos
             occupied.append((px / TILE_SIZE - 0.5, py / TILE_SIZE - 0.5))
             drop_id = self._next_drop_id()
-            self.drops[drop_id] = Drop(id=drop_id, key=taken.key, x=px, y=py)
+            # Whatever the slot was carrying goes back on the ground with it.
+            # A core tossed out of the bag has to still be worth what it was
+            # worth, or dropping one would launder it into a catalog default.
+            self.drops[drop_id] = Drop(
+                id=drop_id, key=taken.key, x=px, y=py,
+                value=taken.value, weight=taken.weight, scale=taken.scale,
+            )
         self._loot_dirty = True
         self._roster_dirty = True
 
@@ -903,11 +1033,20 @@ class Room:
         self.step_rift(dt)
 
     def step_rift(self, dt: float) -> None:
-        """Run every pad's sequence. Marks dirty only on a transition."""
+        """Run every pad's sequence. Marks dirty only on a transition.
+
+        SPENT is where an overpayment turns into an object. Not on the press
+        that shut the pad: the core is what the anomaly could not swallow, so
+        it appears when the anomaly does not — on the frame the sphere finishes
+        imploding, on ground somebody is standing on watching it happen.
+        """
         for row in self.rifts:
-            if row.step(dt):
-                self._rift_dirty = True
-                self.world.rifts = [item.geometry_payload() for item in self.rifts]
+            if not row.step(dt):
+                continue
+            self._rift_dirty = True
+            if row.state == rift.SPENT:
+                self._drop_excess(row)
+            self.world.rifts = [item.geometry_payload() for item in self.rifts]
 
     def begin_arrive(self) -> None:
         """Lock input and line the party up inside the forest corridor."""
@@ -1137,22 +1276,29 @@ class Room:
         if any(q.id == quests.EXTRACT for q in self.quests):
             return
         quest = quests.extract(need=len(self.rifts))
-        quest.have = sum(1 for row in self.rifts if row.found)
-        if quest.have >= quest.need:
-            quest.have = quest.need
-            quest.done = True
+        quest.have = min(quest.need, sum(1 for row in self.rifts if row.found))
+        quest.done = quest.have >= quest.need
         self.quests.append(quest)
         self._quests_dirty = True
-        if quest.done:
-            self.offer_feed_quest()
+        awake = self._awake_rift()
+        if awake is not None:
+            self.offer_feed_quest(awake)
 
-    def offer_feed_quest(self) -> None:
-        if self.feed_need <= 0:
+    def offer_feed_quest(self, target: Rift) -> None:
+        """Put the feed row up for the pad that just woke.
+
+        ONE ROW AT A TIME, matching the one pad. It carries THAT pad's quota
+        and is dropped when the pad is shut, so walking to the next console
+        puts a fresh 0/need on the HUD rather than continuing somebody else's
+        meter.
+        """
+        if target.need <= 0:
             return
         if any(q.id == quests.FEED for q in self.quests):
+            self._sync_feed_quest(target)
             return
-        self.quests.append(quests.feed(self.feed_need))
-        self._quests_dirty = True
+        self.quests.append(quests.feed(target.need))
+        self._sync_feed_quest(target)
 
     def offer_exit_quest(self) -> None:
         if any(q.id == quests.EXIT for q in self.quests):

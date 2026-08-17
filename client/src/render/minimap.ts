@@ -10,11 +10,19 @@
  * it. Teammates are always shown — they are your team, you know where they are,
  * and the whole point of shared vision is that their light is your light.
  *
+ * EXTRACTION POINTS ARE ON IT, and they obey a different rule from an enemy for
+ * the same reason a teammate does: what the party KNOWS is not what the party
+ * can currently see. A dormant pad has to be found, so it appears once somebody
+ * has explored its ground and then stays. A pad that is awake appears whatever
+ * the fog says — it is a beacon burning in a dark forest and there is nobody on
+ * the map it is a secret from. A spent one keeps a dead mark, because the whole
+ * point of a spent pad is that the map remembers.
+ *
  * Visibility of the canvas itself is NOT managed here — the React HUD decides
  * whether to mount it. This class only owns pixels.
  */
 
-import { FLOOR, TREE, VOID, type TileMap } from '../game/world';
+import { FLOOR, TREE, VOID, type Rift, type TileMap } from '../game/world';
 import { createSurface, get2d } from '../lib/canvas';
 import { floorColor, palette } from '../theme/palette';
 import type { FovField } from './fov';
@@ -32,6 +40,19 @@ const ENEMY_DOT_R = 1.6;
 const LOCAL_RING_R = 4;
 /** Light at or above this counts as "the team can see that". */
 const SEEN_LIGHT = 0.12;
+
+/**
+ * The extraction mark: a DIAMOND, and it is the only diamond on this widget.
+ *
+ * Players are round and enemies are round, so a rotated square is the shape
+ * with the most silhouette left over — readable at four pixels, on a fogged
+ * ground, next to two sizes of dot, with nothing else to confuse it with.
+ */
+const RIFT_R = 4;
+/** The dead mark a used pad leaves. Smaller, because it is history. */
+const RIFT_SPENT_R = 2.5;
+/** Full turn of the awake pad's pulse, in ms. */
+const RIFT_PULSE_MS = 1400;
 
 export interface MinimapPlayer {
   id: string;
@@ -117,6 +138,10 @@ export class Minimap {
     const sy = height / world.pixelHeight;
     const ts = world.tileSize;
 
+    // Under the bodies. A pad is a place, and a place does not cover a person
+    // standing on it.
+    for (const rift of world.rifts) this.paintRift(rift, sx, sy, ts, fov);
+
     for (const player of players) {
       // An enemy the team has no light on is not on the map. A teammate always
       // is, whether or not anyone can currently see them.
@@ -156,6 +181,75 @@ export class Minimap {
   }
 
   /**
+   * One extraction pad, as a diamond on the ground it stands on.
+   *
+   * The colour is the pad's own story and matches what the clearing looks
+   * like: mint while it is dormant or waking, GOLD once its quota is paid and
+   * the console is waiting to be shut — the same gold the console itself takes
+   * — and a flat dead grey once it is gone. An awake pad breathes; nothing
+   * else on this widget does, so movement alone says "that one is live".
+   */
+  private paintRift(
+    rift: Rift,
+    sx: number,
+    sy: number,
+    ts: number,
+    fov: FovField | null,
+  ): void {
+    const { ctx } = this;
+    const awake = rift.state === 'charging' || rift.state === 'open';
+    if (!awake && fov) {
+      // Dormant or spent: it is knowledge, not light. Show it once the team
+      // has been there.
+      const tx = Math.floor(rift.x / ts);
+      const ty = Math.floor(rift.y / ts);
+      if (!fov.isExplored(tx, ty) && fov.lightAt(tx, ty) < SEEN_LIGHT) return;
+    }
+
+    const tone = palette().scene;
+    const [r, g, b] = rift.ready ? tone.ember : tone.beacon;
+    const px = rift.x * sx;
+    const py = rift.y * sy;
+
+    if (rift.state === 'spent') {
+      ctx.globalAlpha = 0.5;
+      diamond(ctx, px, py, RIFT_SPENT_R);
+      ctx.strokeStyle = palette().minimap.fog;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+      return;
+    }
+
+    const beat = awake
+      ? 0.8 + 0.2 * Math.sin((performance.now() / RIFT_PULSE_MS) * Math.PI * 2)
+      : 1;
+    const radius = RIFT_R * (awake ? beat : 0.8);
+
+    if (awake) {
+      // A halo, so a live pad is findable in one glance at a fogged map.
+      ctx.globalAlpha = 0.28 * beat;
+      diamond(ctx, px, py, radius * 2.1);
+      ctx.fillStyle = `rgb(${r} ${g} ${b})`;
+      ctx.fill();
+    }
+
+    ctx.globalAlpha = awake ? 1 : 0.7;
+    diamond(ctx, px, py, radius);
+    // Hollow while dormant, filled once it is answering: the same "found it /
+    // switched it on" split the console sprite draws.
+    if (awake) {
+      ctx.fillStyle = `rgb(${r} ${g} ${b})`;
+      ctx.fill();
+    } else {
+      ctx.strokeStyle = `rgb(${r} ${g} ${b})`;
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  /**
    * One pixel per tile, written straight into ImageData and blitted. A rect per
    * tile would be thousands of fill calls a frame for the same picture.
    */
@@ -176,6 +270,16 @@ export class Minimap {
     fogCtx.putImageData(fogData, 0, 0);
     this.ctx.drawImage(fog, 0, 0, width, height);
   }
+}
+
+/** Path a square standing on one corner. Caller fills or strokes it. */
+function diamond(ctx: CanvasRenderingContext2D, x: number, y: number, r: number): void {
+  ctx.beginPath();
+  ctx.moveTo(x, y - r);
+  ctx.lineTo(x + r, y);
+  ctx.lineTo(x, y + r);
+  ctx.lineTo(x - r, y);
+  ctx.closePath();
 }
 
 /** One pixel per tile; scaling to the display size happens at draw time. */

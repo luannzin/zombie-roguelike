@@ -109,6 +109,13 @@ ITEMS: tuple[ItemDef, ...] = (
     # useful half by being the cheapest common in the game, and `scatter`
     # only ever reaches it through a tag overlap it does not have.
     ItemDef("knife", "Faca", "common", ("combat",), 0.5, 12, "hotbar", droppable=False),
+    # WHAT THE ANOMALY GAVE BACK. Never scattered, never rolled, never in a
+    # crate: the only thing that makes one is overfeeding a rift and then
+    # closing it (`Room._drop_excess`). Its catalog `value` and `weight` are a
+    # BASE — the real ones ride on the drop, because what it is worth is
+    # whatever the party overpaid. See `Drop.value` and `SHARD_*` below.
+    ItemDef("rift_shard", "Núcleo condensado", "legendary", ("relics",), 1.0, 100,
+            droppable=False),
 )
 
 BY_KEY: dict[str, ItemDef] = {item.key: item for item in ITEMS}
@@ -149,20 +156,73 @@ SEARCH_RADIUS = 4.0
 MIN_SEPARATION = 1.2
 
 
+#: THE CONDENSED CORE, and the three numbers that turn a value into an object.
+#:
+#: Overfeeding a rift is only worth doing if what comes back is CARRYABLE, and
+#: carryable is a bag with a slot count and a weight bar. So the excess comes
+#: out as ONE item in ONE slot — which is the win, four slots of loot becoming
+#: one — and pays for that in kilos and in how much of the ground it covers.
+#: A shard worth 300 is not a free ride to the next pad; it is most of your
+#: walk speed.
+#:
+#: THE RATE IS DELIBERATELY WORSE THAN THE CATALOG'S. A crown carries 400
+#: points in 1.8 kg and a ring carries 70 in 0.15 — call it 0.004 kg a point
+#: across the good end of the table. Condensing runs at half again that, so
+#: putting four slots through a rift and carrying the result costs real walk
+#: speed: the win is the SLOTS, and it has to be paid for somewhere or
+#: overfeeding is just free storage. Tried at 0.010 first and a big core was
+#: 82% of max carry on its own, which is not a trade-off, it is a refusal.
+SHARD_KEY = "rift_shard"
+SHARD_KG_PER_VALUE = 0.006
+#: Drawn size, as a multiplier on the sprite. Clamped at both ends: below the
+#: floor a shard is a speck nobody finds in a blackout, above the ceiling it
+#: stops reading as something you pick up.
+SHARD_SCALE_SPAN = (0.8, 2.0)
+SHARD_SCALE_FULL = 400.0
+
+
+def shard_stats(value: int) -> tuple[int, float, float]:
+    """`(value, kg, scale)` for a core condensed out of `value` overpaid."""
+    worth = max(1, int(value))
+    kg = round(worth * SHARD_KG_PER_VALUE, 2)
+    low, high = SHARD_SCALE_SPAN
+    scale = low + (high - low) * min(1.0, worth / SHARD_SCALE_FULL)
+    return worth, kg, round(scale, 3)
+
+
 @dataclass
 class Drop:
     id: str
     key: str
     x: float
     y: float
+    #: PER-DROP OVERRIDES, and the catalog is the default for all three.
+    #:
+    #: Every other item in the game is worth what its row says it is worth,
+    #: which is why the catalog ships once in `welcome.config` and the wire
+    #: carries a key. A condensed core breaks that on purpose: what it is worth
+    #: is whatever was overpaid into the rift that made it, so those numbers
+    #: have to travel WITH the object — through the ground, through the bag,
+    #: and into the tooltip.
+    value: int | None = None
+    weight: float | None = None
+    #: Sprite multiplier. Only ever set on a shard; everything else draws at 1.
+    scale: float | None = None
 
     def to_payload(self) -> dict:
-        return {
+        row = {
             "id": self.id,
             "k": self.key,
             "x": round(self.x, 1),
             "y": round(self.y, 1),
         }
+        if self.value is not None:
+            row["v"] = self.value
+        if self.weight is not None:
+            row["w"] = round(self.weight, 2)
+        if self.scale is not None:
+            row["s"] = round(self.scale, 3)
+        return row
 
 
 @dataclass
@@ -209,7 +269,18 @@ def catalog_payload() -> dict:
 def from_payloads(rows: list[dict]) -> dict[str, Drop]:
     drops: dict[str, Drop] = {}
     for row in rows:
-        drop = Drop(id=str(row["id"]), key=str(row["k"]), x=float(row["x"]), y=float(row["y"]))
+        value = row.get("v")
+        weight = row.get("w")
+        scale = row.get("s")
+        drop = Drop(
+            id=str(row["id"]),
+            key=str(row["k"]),
+            x=float(row["x"]),
+            y=float(row["y"]),
+            value=None if value is None else int(value),
+            weight=None if weight is None else float(weight),
+            scale=None if scale is None else float(scale),
+        )
         if drop.key in BY_KEY:
             drops[drop.id] = drop
     return drops

@@ -18,7 +18,7 @@ mutation, no React.
 | `terrain.ts` | terrain atlas loading (4 grounds, blend stencils, props, flat decals, the animated campfire) |
 | `scenery.ts` | scenery atlas loading: standing props and flat decals of what people left |
 | `vfx.ts` | effect atlas loading: one-shot sheets (summon, kindle, wind, death) and the looping loot `aura` |
-| `rift.ts` | extraction atlas: the sigil decal, the pillar/console props with their STATES, and the four activation sheets |
+| `rift.ts` | extraction atlas: the sigil decal, the pillar/console props with their STATES, the activation sheets, the anomaly's per-tier colour banks, the vanish and the paid console's band |
 | `layers/rift.ts` | extraction pads: the whole lifecycle's timing (`riftPhase`) plus its passes — floor, depth sort, additive light |
 | `layers/corruption.ts` | the blast's mark on the ground, baked into a pair of offscreen canvases; motes over it |
 | `residue.ts` | where the extraction blast's marks land: a deterministic field derived from the map seed, never sent over the wire |
@@ -56,6 +56,12 @@ mutation, no React.
   take raw world pixels — `view.x` there would project them a second time,
   off the map. Every rarity throws specks; epic and legendary keep the
   looping column as well.
+  A drop's `scale` is 1 for everything the world scatters; only a condensed
+  core out of an overfed rift sets it, proportional to the overpayment, so
+  "how much did we bank" is legible from the size of the thing lying in the
+  grass before anyone is close enough to read a tooltip. Scaling happens about
+  the CONTACT, not the centre — a bigger drop grows upward off the ground it is
+  lying on, the way a bigger prop would.
   The hunt diamond goes AFTER the darkness on purpose, see below.
 - **`fov.ts` is what the PLAYERS can see; `layers/vision.ts` is the ENEMY hunt
   tell.** Unrelated systems: the first is a client-side tile field that decides
@@ -88,6 +94,18 @@ mutation, no React.
 - The minimap repaints on its own cadence, not the render clock: `Minimap.draw`
   is safe to call every frame and throttles itself. `rebuildTiles()` is the
   contract when kinds change (the forest swallowing the arrival corridor).
+- **Extraction pads are on the minimap, and they obey a different vision rule
+  from an enemy** — the same reason a teammate does: what the party KNOWS is
+  not what the party can currently see. A dormant pad appears once its ground
+  is explored and then stays; an AWAKE one appears whatever the fog says,
+  because it is a beacon burning in a dark forest and there is nobody on the
+  map it is a secret from; a spent one keeps a dead mark, because the point of
+  a spent pad is that the map remembers. The mark is a DIAMOND and it is the
+  only diamond on the widget — players and enemies are round, so a rotated
+  square is the shape with the most silhouette left over at four pixels. It is
+  mint while dormant or waking and GOLD once the quota is paid, matching the
+  console; only a live one breathes, so movement alone says which to walk to.
+  Pads draw UNDER the bodies: a place does not cover a person standing on it.
 - **`Renderer.stampTiles` is the slam.** New TREE/ROCK on tiles that were VOID
   go into the prop bake (`TerrainLayer.stampProps`) without rebuilding soil —
   the corridor was already forest floor. `DarknessLayer.invalidatePath` drops
@@ -334,14 +352,34 @@ mutation, no React.
     arrive. The marks are simply THERE, with no replay of an explosion nobody
     was present for.
 - **`drawRiftGlow` throws a halo around the anomaly** once the tear starts.
-  Soft radial gradient, `--scene-beacon`, alpha already zero at the edge. A
+  Soft radial gradient, alpha already zero at the edge. A
   whisper, never a flood — the sheet is drawn at `ANOMALY_GLOW` so the lattice
-  stays readable instead of blowing out to a white disc. The scene-light row
+  stays readable instead of blowing out to a white disc. Its tone follows the
+  pad's overfeed TIER (`haloTone`, `--scene-beacon` mixed toward
+  `--scene-ember`), mixed rather than switched: a cold halo around a gorged
+  gold sphere reads as two light sources instead of one thing lighting a
+  clearing. The scene-light row
   still feeds the fov (visibility) and `drawSceneLights` (the same pool every
   other map lamp gets); the halo is the extra that makes the hovering sphere
   read as the source rather than as an object sitting in someone else's light.
+- **The overfeed tier picks a BITMAP, not a tint.** `riftLevelImage` swaps
+  which of the four baked banks `rift` / `collapse` read from; the frame index
+  is untouched, so a pad crossing a tier does not restart or rephase its loop.
+  A draw-time multiply cannot produce a colour scheme — that is the same
+  reason these sheets are `tinted: false` in the first place.
+- **The vanish is a sheet and must not be faded.** Once `closeAt` is set,
+  `phase.collapsing` takes priority over the resting loop and `collapse.png`
+  plays at full alpha. It ends on an empty frame, so it disappears itself;
+  multiplying `phase.fade` over it would dim the implosion — the one frame the
+  whole timeline is built to arrive at — out of existence. `fade` is the
+  HALO's alone now.
+- **The paid console throws a band** (`aura`), drawn on the CONSOLE and on
+  wall time rather than the pad's clock, so every armed console in a night
+  turns at the same rate instead of at its own age. It is the only thing that
+  can say "this button does something different now" from outside tooltip
+  range.
 - **A spent rift is a condition, not a moment.** The structure goes dark, the
-  console takes its third frame (driven home, every lamp dead — reusing `idle`
+  console takes its fourth frame (driven home, every lamp dead — reusing `idle`
   would pop the plunger back up and offer the button again), the beacon comes
   off `scenery.lights`, and the ground keeps everything. The map remembering is
   the whole point of the state.

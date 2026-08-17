@@ -18,7 +18,7 @@ Output (assets/processed/hud/):
     battery.png    one 10x18 frame — a single cell of the lantern's battery
     backpack.png   one 16x16 frame — the pocket on the HUD, seen from the back
     coin.png       one 8x8 frame — slot gold badge, not the world pickup
-    arrow.png      one 13x9 frame — gold pointer, authored pointing right;
+    arrow.png      one 21x13 frame — gold dart, authored pointing right;
                    ExitGuide rotates it toward the extraction corridor
 
 Why one frame and not a strip of charge levels: the HUD draws this sprite FOUR
@@ -77,17 +77,10 @@ BOLT_ART = (
     ".#..",
 )
 
-# Right-pointing HUD arrow. Authored pointing right so CSS rotate(atan2)
-# aims it; a diamond would not say "walk this way" at the bezel.
-ARROW_ART = (
-    "....#......",
-    "....##.....",
-    "....###....",
-    "###########",
-    "....###....",
-    "....##.....",
-    "....#......",
-)
+# The pointer's own gold. Deeper at the tail than the battery's electrolyte and
+# hotter at the tip, because this sprite is read as ONE shape at a glance and
+# the whole job of the ramp is to say which end is the front.
+POINT: Ramp = [rgb(c) for c in ("#7a3d0c", "#b96c1c", "#e89a30", "#ffcc63", "#fff0b4")]
 
 
 def make_battery(width: int, height: int) -> Image.Image:
@@ -178,18 +171,60 @@ def make_coin(size: int = 8) -> Image.Image:
     return paint_coin(img)
 
 
-def make_arrow() -> Image.Image:
-    """Gold pointer for the extraction exit. 13x9, pointing right, 1px pad."""
-    art_w = max(len(row) for row in ARROW_ART)
-    art_h = len(ARROW_ART)
-    img = Image.new("RGBA", (art_w + 2, art_h + 2), TRANSPARENT)
+#: Where the head starts, as a fraction of the sprite's length. The rest is
+#: shaft. Just over half: a head much shorter than this stops being the thing
+#: the eye lands on, and much longer swallows the shaft and the sprite is a
+#: triangle again.
+ARROW_HEAD_AT = 0.55
+#: Half-thickness of the shaft in pixels. 1.5 is three rows — the thinnest a
+#: bar can be and still have a lit centreline with a darker edge either side.
+ARROW_SHAFT_HALF = 1.5
+#: The nock: how much the last few pixels of the tail flare out. Small, because
+#: it is punctuation. Without it the back of the arrow is a cut-off bar and the
+#: sprite looks like it continues off screen.
+ARROW_NOCK = 0.62
+ARROW_NOCK_LEN = 3.0
+
+
+def make_arrow(width: int = 19, height: int = 11) -> Image.Image:
+    """Gold pointer for the extraction exit. Points RIGHT, 1px pad for the keyline.
+
+    AN ARROW: a triangular head on a shaft, with a small flare at the nock.
+    The sprite this replaced was a caret — a wedge crossed by a bar — and
+    rotating a caret around the screen reads as a cross or a plus, not as
+    something with a front and a back. What makes this one legible at 26
+    screen pixels while spinning is that the head and the shaft are DIFFERENT
+    WIDTHS: the eye finds the wide end, and the thin end tells it which way the
+    wide end is facing.
+    """
+    img = Image.new("RGBA", (width + 2, height + 2), TRANSPARENT)
     px = img.load()
-    for row, line in enumerate(ARROW_ART):
-        for col, char in enumerate(line):
-            if char != "#":
+    cy = (height - 1) / 2.0
+    tip = float(width - 1)
+    head_at = tip * ARROW_HEAD_AT
+
+    for y in range(height):
+        dy = abs(y - cy)
+        for x in range(width):
+            # The head, tapering from full height at its base to the tip.
+            head = (tip - x) / max(tip - head_at, 1.0) * cy if x >= head_at else 0.0
+            # The shaft, running the whole length under it, with the nock flare
+            # on its last few pixels.
+            shaft = ARROW_SHAFT_HALF
+            if x < ARROW_NOCK_LEN:
+                shaft += (ARROW_NOCK_LEN - x) * ARROW_NOCK
+            if x > head_at:
+                shaft = 0.0
+            if dy > max(head, shaft):
                 continue
-            across = col / max(1, art_w - 1)
-            px[1 + col, 1 + row] = pick(CELL, 0.42 + across * 0.52, 1 + col, 1 + row)
+            # Hot toward the tip and along the centreline, deep at the nock.
+            # A flat fill at this size loses the silhouette into the keyline;
+            # the gradient is what keeps the tip the brightest pixel on the HUD
+            # after the sprite has been rotated somewhere unhelpful.
+            ahead = x / tip
+            spine = 1.0 - (dy / max(cy, 0.5))
+            value = 0.18 + ahead * 0.60 + spine * 0.28
+            px[1 + x, 1 + y] = pick(POINT, value, 1 + x, 1 + y)
     outline(img, OUTLINE)
     return img
 

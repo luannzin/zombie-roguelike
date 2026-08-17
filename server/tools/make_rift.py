@@ -192,6 +192,32 @@ PRISM: tuple[Ramp, ...] = tuple(
 )
 
 
+#: THE OVERFEED TIERS, as a remap of the resolved hue index.
+#:
+#: A pad's quota is a floor, not a ceiling (`server/app/rift.py`), and what a
+#: party keeps pouring into an anomaly past that has to be VISIBLE from across
+#: the clearing — that is the whole payoff for choosing to overpay. So each tier
+#: is the same lattice in a different key, walked steadily WARMER: the authored
+#: violet-and-cyan is a thing that does not belong here, and by tier three it is
+#: gorged, amber and near-white, which is the one direction that reads as
+#: "full" rather than as "different".
+#:
+#: CORE stays CORE at every tier. It is the white a crossing goes when two
+#: openings sum past the end of their ramp, and re-tinting it would take the
+#: hot spots out of the lattice and flatten the sphere into a painted ball.
+LEVEL_HUES: tuple[tuple[int, ...], ...] = (
+    (ROSE, VIOLET, CYAN, MINT, AMBER, CORE),
+    (VIOLET, CYAN, MINT, MINT, AMBER, CORE),
+    (CYAN, MINT, MINT, AMBER, AMBER, CORE),
+    (MINT, AMBER, AMBER, AMBER, CORE, CORE),
+)
+RIFT_LEVELS = len(LEVEL_HUES)
+
+
+def level_hues(level: int) -> tuple[int, ...]:
+    return LEVEL_HUES[max(0, min(RIFT_LEVELS - 1, level))]
+
+
 def conduit(up: float) -> int:
     """Which prism ramp the structure's own light is in, `up` = 0 at the foot.
 
@@ -274,7 +300,16 @@ class Prism:
     def paint(
         self, image: Image.Image, floor: float = 0.08,
         tone: float = 1.04, gain: float = 1.05,
+        hues: tuple[int, ...] | None = None,
     ) -> None:
+        """Resolve the field onto `image`.
+
+        `hues` remaps the RESOLVED hue index, which is what an overfeed tier
+        is. Remapping the input hues instead would change how shapes blend
+        with each other — two cells crossing would land somewhere different —
+        and the whole lattice would come out a different SHAPE per tier rather
+        than the same shape in a different colour. See `LEVEL_HUES`.
+        """
         px = image.load()
         top = len(PRISM) - 1
         for y in range(self.height):
@@ -288,7 +323,8 @@ class Prism:
                 # lets the ordered dither in `pick` do the mixing, which is the
                 # same way every other surface in this game blends.
                 index = int(self.tone[y][x] / value + 0.5)
-                ramp = PRISM[0 if index < 0 else top if index > top else index]
+                index = 0 if index < 0 else top if index > top else index
+                ramp = PRISM[hues[index] if hues else index]
                 colour: RGBA = pick(ramp, clamp01(value * tone), x, y)
                 px[x, y] = (colour[0], colour[1], colour[2], quantize_alpha(value * gain))
 
@@ -311,12 +347,19 @@ PILLAR_SHAPES = 4
 #: crate sheet uses for its kinds.
 PILLAR_STATES = 2
 
-#: Idle, armed, SPENT. Three, because a used console must not look pressable:
-#: reusing `idle` would pop the plunger back up and offer the button again, and
-#: reusing `armed` would leave it lit after the light has gone out of the world.
-#: Spent is the plunger still driven home with every lamp on it dead.
-CONSOLE_STATES = 3
-CONSOLE_IDLE, CONSOLE_ARMED, CONSOLE_SPENT = range(CONSOLE_STATES)
+#: Idle, armed, READY, spent. Four, and each one is a different sentence the
+#: button is saying:
+#:
+#:   idle   nothing has happened here. Press me.
+#:   armed  the anomaly is open and hungry. Feed me.
+#:   READY  the quota is paid. The plunger is GOLD, and pressing now shuts the
+#:          rift rather than feeding it — a different verb needs a different
+#:          sprite, or the one press in the game that ends an extraction looks
+#:          identical to the press before it.
+#:   spent  the plunger still driven home with every lamp on it dead. A used
+#:          console must not look pressable.
+CONSOLE_STATES = 4
+CONSOLE_IDLE, CONSOLE_ARMED, CONSOLE_READY, CONSOLE_SPENT = range(CONSOLE_STATES)
 
 #: What the anomaly leaves on the ground when it goes off. Six cuts of the same
 #: material, scattered by the blast — see `make_residue`.
@@ -397,6 +440,42 @@ EMERGE_SETTLE = 0.82
 # degrees a step, and the whole sequence moves at one rate.
 RIFT_FRAMES = 64
 RIFT_FPS = 16
+
+# The rift going out. ONE-SHOT, and it is the one sheet in this file that ends
+# on NOTHING rather than handing over to a loop.
+#
+# It is in three acts and the order matters. First the lattice loses its
+# composure — it was always unstable, and now the lurches come one on top of
+# another and it starts tearing light out of itself. Then it PULLS IN: the
+# shell contracts and everything it was holding gets brighter as it goes,
+# because the light is not leaving, it is being concentrated. Then it is a
+# point, and then it is not there. A fade would have said "switched off"; this
+# says the hole in the world closed, which is what actually happened.
+#
+# `frames / fps` is mirrored by `COLLAPSE_TIME` in server/app/rift.py.
+COLLAPSE_FRAMES = 28
+COLLAPSE_FPS = 16
+#: Where the unrest peaks and the contraction takes over.
+COLLAPSE_TEAR = 0.34
+#: By here the shell is a point. What is left is the last spark going out.
+COLLAPSE_PINCH = 0.86
+
+# The console's aura once its pad's quota is paid. LOOPING.
+#
+# There is no other way to say "this button does something different now" from
+# outside a tooltip's range. The console's own sprite goes gold, which is worth
+# nothing at all until you are standing at it — so the pad also starts throwing
+# a band of the anomaly's own colours off the console, slowly, on a full rainbow
+# turn. It is the one effect in the game whose hue is a function of POSITION
+# rather than of what threw it, and it looks like nothing else on the map for
+# exactly that reason.
+AURA_FRAMES = 16
+AURA_FPS = 12
+#: Motes in the band. Enough that it reads as continuous colour at 12 fps.
+AURA_MOTES = 22
+#: Specks rising off it, so the band is a thing shedding light rather than a
+#: painted ellipse.
+AURA_SPARKS = 9
 
 #: Openings on the shell. Enough that the sphere reads as a lattice, few enough
 #: that at 64px each one is still a shape rather than a speck.
@@ -600,7 +679,7 @@ def _pillar_channel(px, width: int, height: int, geo: PillarGeometry, awake: boo
 
 
 def make_console(width: int, height: int, state: int) -> Image.Image:
-    """The button. Idle, then slammed.
+    """The button. Idle, slammed, paid, dead.
 
     Everything else in this structure is quarried stone and light. This is iron
     on a stone footing, and it is the only piece the player is meant to walk up
@@ -621,7 +700,16 @@ def make_console(width: int, height: int, state: int) -> Image.Image:
     # is the one state where those disagree, and keeping them as two questions
     # rather than one is what lets the sprite say USED instead of unpressed.
     armed = state != CONSOLE_IDLE
-    live = state == CONSOLE_ARMED
+    live = state in (CONSOLE_ARMED, CONSOLE_READY)
+    # PAID swaps the fitting's hues to the warm end of the prism and nothing
+    # else. Same lectern, same plunger, same pips — only the light in them
+    # changes, so it reads as this console having changed its mind rather than
+    # as a different object standing in the same place.
+    paid = state == CONSOLE_READY
+    core_hue = CORE
+    hot_hue = AMBER if paid else CYAN
+    ring_hue = AMBER if paid else VIOLET
+    pip_hue = AMBER if paid else MINT
 
     body: dict[tuple[int, int], tuple[float, str]] = {}
     for y in range(lip, height):
@@ -664,7 +752,10 @@ def make_console(width: int, height: int, state: int) -> Image.Image:
             d = math.hypot((x - cx) / 3.4, (y - plunger_y) / 2.8)
             if d <= 1.0:
                 if live:
-                    px[x, y] = lit(CORE if d < 0.45 else CYAN, 0.55 + (1.0 - d) * 0.45)
+                    px[x, y] = lit(
+                        core_hue if d < 0.45 else hot_hue,
+                        (0.62 if paid else 0.55) + (1.0 - d) * 0.45,
+                    )
                 else:
                     # A DOME, lit from the upper left like everything else in
                     # the game. A flat disc reads as a hole, and a hole is the
@@ -676,7 +767,7 @@ def make_console(width: int, height: int, state: int) -> Image.Image:
                         - (y - plunger_y) / 2.8 * 0.28
                     ), x, y)
             elif d <= 1.36:
-                px[x, y] = lit(VIOLET, 0.62) if live else SOCKET
+                px[x, y] = lit(ring_hue, 0.70 if paid else 0.62) if live else SOCKET
 
     # Two pips flanking the plunger. Nothing says "console" at 20 pixels like a
     # pair of indicator lamps that are dead until they are not.
@@ -684,7 +775,7 @@ def make_console(width: int, height: int, state: int) -> Image.Image:
         for oy in range(2):
             x, y = int(round(cx + side * 6.0)), int(round(plunger_y - 0.5 + oy))
             if (x, y) in body:
-                px[x, y] = lit(MINT, 0.78) if live else SOCKET
+                px[x, y] = lit(pip_hue, 0.86 if paid else 0.78) if live else SOCKET
 
     if not armed:
         # A shadow under a raised button. Without it the plunger is a sticker.
@@ -698,7 +789,7 @@ def make_console(width: int, height: int, state: int) -> Image.Image:
         # above the silhouette is a line floating in the air.
         for x in range(width):
             if (x, face_top) in body and abs(x - cx) < 3.4:
-                px[x, face_top] = lit(CYAN, 0.82)
+                px[x, face_top] = lit(hot_hue, 0.88 if paid else 0.82)
     return img
 
 
@@ -1503,7 +1594,8 @@ def _rift_state(phase: float) -> tuple[float, float, float, float, float]:
 
 
 def make_rift_frame(
-    width: int, height: int, contact_y: int, radius: float, index: int, total: int
+    width: int, height: int, contact_y: int, radius: float, index: int, total: int,
+    level: int = 0,
 ) -> Image.Image:
     """One frame of the rift at rest. LOOP."""
     img = Image.new("RGBA", (width, height), TRANSPARENT)
@@ -1514,6 +1606,154 @@ def make_rift_frame(
         prism, width, contact_y, _hover_y(contact_y, radius), radius, spin,
         stretch_x, stretch_y, bright, instability * 2.0, phase, 1.0, 1.0,
     )
+    prism.paint(img, hues=level_hues(level))
+    return img
+
+
+def make_collapse_frame(
+    width: int, height: int, contact_y: int, radius: float, index: int, total: int,
+    level: int = 0,
+) -> Image.Image:
+    """One frame of the rift going out. ONE-SHOT, and it ends on an empty frame.
+
+    Frame 0 IS `rift` frame 0 of the same tier, byte for byte, so the client
+    can cut from the resting loop to this without a pop — the same contract
+    `emerge` has with `rift`, run the other way. Everything this adds is scaled
+    by a term that is exactly 0 at t=0, which is what makes that true by
+    construction rather than by eyeballing it.
+    """
+    img = Image.new("RGBA", (width, height), TRANSPARENT)
+    t = index / max(total - 1, 1)
+    if t >= 1.0:
+        # Nothing left. The sheet has to END on empty or the last frame stays
+        # on screen as a bright speck for as long as the caller holds it.
+        return img
+
+    prism = Prism(width, height)
+    cx = (width - 1) / 2.0
+    cy = _hover_y(contact_y, radius)
+
+    # The lattice keeps TURNING into its own collapse, at the resting loop's
+    # own angular rate. Freezing the spin here would make the sphere stop the
+    # instant it started dying, and a thing that stops moving before it
+    # disappears reads as a paused animation.
+    step = math.tau * RIFT_FPS / (COLLAPSE_FPS * RIFT_FRAMES)
+    phase = index * step
+    spin, base_x, base_y, base_bright, instability = _rift_state(phase)
+
+    unrest = ease_in(clamp01(t / COLLAPSE_TEAR))
+    shrink = ease_in(clamp01((t - COLLAPSE_TEAR) / (COLLAPSE_PINCH - COLLAPSE_TEAR)))
+    left = 1.0 - shrink
+
+    # THE SHELL SWELLS BEFORE IT GOES IN. A thing that only ever contracts
+    # reads as a zoom-out; the small overshoot first is what makes the pull
+    # afterwards feel like a pull.
+    shell = radius * (1.0 + 0.16 * unrest) * left
+    stretch_x = base_x * (1.0 + 0.34 * unrest * math.sin(t * math.tau * 5.5))
+    stretch_y = base_y * (1.0 - 0.26 * unrest * math.sin(t * math.tau * 4.0))
+    # Brighter all the way down: the light is not draining out of it, it is
+    # being squeezed into less and less room.
+    bright = base_bright * (1.0 + 1.10 * unrest + 2.60 * shrink)
+    shear = instability * 2.0 + 6.5 * unrest
+    reach = 1.0 + 1.6 * unrest
+
+    if shell > 0.6:
+        _anomaly(
+            prism, width, contact_y, cy, shell, spin,
+            stretch_x, stretch_y, bright, shear, phase, reach, left,
+        )
+
+    # Tears: hairlines of raw CORE thrown off the shell while it is failing.
+    # They come and go on their own clock so the failure stutters instead of
+    # ramping, which is what `_rift_state` already says instability looks like.
+    if unrest > 0.0:
+        for i in range(14):
+            flick = math.sin(t * math.tau * (3.0 + i * 0.7) + i * 2.1)
+            if flick < 0.45:
+                continue
+            angle = hash01(i, 5, 71) * math.tau + spin * 0.4
+            far = shell * (0.85 + hash01(i, 6, 131) * 0.9) + radius * 0.25 * unrest
+            length = radius * 0.30 * unrest * flick
+            for k in range(4):
+                reach_k = far + length * (k / 3.0)
+                prism.add(
+                    int(round(cx + math.cos(angle) * reach_k)),
+                    int(round(cy + math.sin(angle) * reach_k * 0.9)),
+                    unrest * flick * (1.0 - k / 4.0) * 1.5,
+                    CORE,
+                )
+
+    # NO SEPARATE FLOOR POOL HERE. `_anomaly` already casts one and scales it
+    # by `opened`, which is `left` — so the light on the ground draws in with
+    # the shell for free. A second ellipse on top of it was the one term in
+    # this function that was not zero at t=0, and it put 199 levels of
+    # difference into a seam that has to be exact.
+
+    # The last spark, and a thin ring leaving the point it went out at. Only
+    # inside the final act, so nothing here can reach frame 0.
+    if shrink > 0.55:
+        out = clamp01((shrink - 0.55) / 0.45)
+        prism.ellipse(cx, cy, 1.4 + 2.2 * (1.0 - out), 1.4 + 2.2 * (1.0 - out),
+                      3.2 * (1.0 - out) + 0.8, CORE)
+        ring = ease_out(out)
+        prism.ellipse(cx, cy, radius * (0.2 + ring * 1.5), radius * (0.18 + ring * 1.35),
+                      1.7 * (1.0 - out) ** 2, VIOLET, hollow=0.72)
+
+    prism.paint(img, hues=level_hues(level))
+    return img
+
+
+def make_aura_frame(width: int, height: int, anchor_y: int, index: int, total: int) -> Image.Image:
+    """One frame of the paid console's rainbow band. LOOP.
+
+    EVERY TERM IS A FUNCTION OF PHASE, so frame 0 and the last frame meet with
+    nothing to hide — the same rule `crown` and `rift` are built on. The hue of
+    a mote comes from WHERE IT IS on the band rather than from when it was
+    spawned, which is what keeps the colours standing still while the band
+    turns under them, instead of the whole ring strobing through the spectrum.
+    """
+    img = Image.new("RGBA", (width, height), TRANSPARENT)
+    prism = Prism(width, height)
+    phase = (index / total) * math.tau
+    cx = (width - 1) / 2.0
+    # Around the console's head, not around its feet: the band belongs to the
+    # part of the object the player is looking at.
+    ring_y = anchor_y - height * 0.42
+    rx = width * 0.40
+    ry = height * 0.10
+    top = len(PRISM) - 1
+
+    for i in range(AURA_MOTES):
+        around = i / AURA_MOTES * math.tau
+        turned = around + phase
+        x = cx + math.cos(turned) * rx
+        y = ring_y + math.sin(turned) * ry
+        # Front of the band is nearer the camera and brighter; the back half
+        # stays faint, which is what makes a flat ellipse read as a ring around
+        # something rather than as a painted oval.
+        front = 0.42 + 0.58 * (0.5 + 0.5 * math.sin(turned))
+        # Hue by ANGLE, so the spectrum is nailed to the world and the motes
+        # slide through it.
+        hue = (turned % math.tau) / math.tau * top
+        prism.ellipse(x, y, 1.9 * front, 1.5 * front, 1.85 * front, hue)
+
+    # Specks lifting off the band. `drift` wraps with the phase, so a speck
+    # that runs out at the top is the same speck arriving at the bottom.
+    for i in range(AURA_SPARKS):
+        drift = ((phase / math.tau) + i / AURA_SPARKS) % 1.0
+        around = i / AURA_SPARKS * math.tau + phase * 0.6
+        x = cx + math.cos(around) * rx * 0.8
+        y = ring_y - drift * height * 0.34
+        fade = (1.0 - drift) * (0.35 + 0.65 * (0.5 + 0.5 * math.sin(around)))
+        prism.add(int(round(x)), int(round(y)), fade * 1.45,
+                  (around % math.tau) / math.tau * top)
+
+    # A soft pool on the ground so the band is lighting something. Kept a few
+    # rows clear of the frame's bottom edge — an ellipse centred on the anchor
+    # is cut in half by the frame and comes out as an arc, which reads as a
+    # bowl the console is standing in rather than as light on dirt.
+    prism.ellipse(cx, anchor_y - 4.0, rx * 0.92, ry * 0.85,
+                  0.60 + 0.12 * math.sin(phase), AMBER)
     prism.paint(img)
     return img
 
@@ -1642,6 +1882,11 @@ def make_emerge_frame(
 
 
 # --- build -------------------------------------------------------------------
+
+
+def _level_file(stem: str, level: int) -> str:
+    """`rift.png`, `rift-1.png`, … — tier 0 keeps the plain name."""
+    return f"{stem}.png" if level == 0 else f"{stem}-{level}.png"
 
 
 def _seam(one_shot: Image.Image, loop: Image.Image) -> int:
@@ -1783,15 +2028,58 @@ def build(args) -> Path:
         make_emerge_frame(rift_w, rift_h, rift_anchor, radius, i, EMERGE_FRAMES)
         for i in range(EMERGE_FRAMES)
     ]
-    rift_frames = [
-        make_rift_frame(rift_w, rift_h, rift_anchor, radius, i, RIFT_FRAMES)
-        for i in range(RIFT_FRAMES)
+    # ONE SHEET PER OVERFEED TIER, and they are separate FILES rather than one
+    # long strip. Four tiers of a 64-frame loop packed together is a bitmap
+    # 16384 pixels wide, which is exactly the maximum dimension a good number
+    # of GPUs will accept — a sheet that decodes on the author's machine and
+    # comes out blank on somebody's laptop is the worst possible way to find
+    # that out. `levelFiles` in the manifest is the index.
+    rift_banks = [
+        [
+            make_rift_frame(rift_w, rift_h, rift_anchor, radius, i, RIFT_FRAMES, level)
+            for i in range(RIFT_FRAMES)
+        ]
+        for level in range(RIFT_LEVELS)
     ]
+    collapse_banks = [
+        [
+            make_collapse_frame(
+                rift_w, rift_h, rift_anchor, radius, i, COLLAPSE_FRAMES, level
+            )
+            for i in range(COLLAPSE_FRAMES)
+        ]
+        for level in range(RIFT_LEVELS)
+    ]
+    rift_files = [_level_file("rift", level) for level in range(RIFT_LEVELS)]
+    collapse_files = [_level_file("collapse", level) for level in range(RIFT_LEVELS)]
     pack(emerge_frames, rift_w, rift_h).save(out_dir / "emerge.png")
-    pack(rift_frames, rift_w, rift_h).save(out_dir / "rift.png")
+    for name, frames in zip(rift_files, rift_banks):
+        pack(frames, rift_w, rift_h).save(out_dir / name)
+    for name, frames in zip(collapse_files, collapse_banks):
+        pack(frames, rift_w, rift_h).save(out_dir / name)
+
+    # --- the paid console's band ---------------------------------------------
+    aura_w, aura_h = tile * 2, round(tile * 2.5)
+    aura_anchor = aura_h
+    aura_frames = [
+        make_aura_frame(aura_w, aura_h, aura_anchor, i, AURA_FRAMES)
+        for i in range(AURA_FRAMES)
+    ]
+    pack(aura_frames, aura_w, aura_h).save(out_dir / "aura.png")
 
     charge_seam = _seam(charge_frames[-1], crown_frames[0])
-    emerge_seam = _seam(emerge_frames[-1], rift_frames[0])
+    emerge_seam = _seam(emerge_frames[-1], rift_banks[0][0])
+    # Every tier's collapse must start on that tier's resting frame 0, or the
+    # anomaly changes colour and shape on the frame the party shuts it.
+    collapse_seam = max(
+        _seam(collapse_banks[level][0], rift_banks[level][0])
+        for level in range(RIFT_LEVELS)
+    )
+    collapse_tail = max(
+        (collapse_banks[level][-1].getchannel("A").getextrema()[1]
+         for level in range(RIFT_LEVELS)),
+        default=0,
+    )
 
     manifest = {
         "tile": tile,
@@ -1905,12 +2193,44 @@ def build(args) -> Path:
                 "tinted": False,
             },
             "rift": {
-                "file": "rift.png",
+                "file": rift_files[0],
+                # ONE FILE PER OVERFEED TIER. `levelFiles[level]` is the sheet
+                # to draw; the frame index inside it is unchanged, so a pad
+                # changing tier does not restart or rephase its loop — the
+                # client swaps which bitmap it is reading and nothing else.
+                "levels": RIFT_LEVELS,
+                "levelFiles": rift_files,
                 "frameWidth": rift_w,
                 "frameHeight": rift_h,
                 "frames": RIFT_FRAMES,
                 "fps": RIFT_FPS,
                 "anchorY": rift_core,
+                "loop": True,
+                "tinted": False,
+            },
+            # The vanish. Starts on `rift` frame 0 of the SAME tier and ends on
+            # an empty frame — it hands off to nothing, which is the point.
+            "collapse": {
+                "file": collapse_files[0],
+                "levels": RIFT_LEVELS,
+                "levelFiles": collapse_files,
+                "frameWidth": rift_w,
+                "frameHeight": rift_h,
+                "frames": COLLAPSE_FRAMES,
+                "fps": COLLAPSE_FPS,
+                "anchorY": rift_core,
+                "loop": False,
+                "tinted": False,
+            },
+            # Thrown off the CONSOLE, not off the anomaly, and anchored on the
+            # console's contact rather than on the sphere's underside.
+            "aura": {
+                "file": "aura.png",
+                "frameWidth": aura_w,
+                "frameHeight": aura_h,
+                "frames": AURA_FRAMES,
+                "fps": AURA_FPS,
+                "anchorY": aura_anchor,
                 "loop": True,
                 "tinted": False,
             },
@@ -1929,15 +2249,25 @@ def build(args) -> Path:
         f"charge {CHARGE_FRAMES}x{glow_w}x{glow_h} @{CHARGE_FPS}fps, "
         f"crown {CROWN_FRAMES}x{glow_w}x{glow_h} @{CROWN_FPS}fps loop, "
         f"emerge {EMERGE_FRAMES}x{rift_w}x{rift_h} @{EMERGE_FPS}fps, "
-        f"rift {RIFT_FRAMES}x{rift_w}x{rift_h} @{RIFT_FPS}fps loop, "
+        f"rift {RIFT_LEVELS}x{RIFT_FRAMES}x{rift_w}x{rift_h} @{RIFT_FPS}fps loop, "
+        f"collapse {RIFT_LEVELS}x{COLLAPSE_FRAMES}x{rift_w}x{rift_h} @{COLLAPSE_FPS}fps, "
+        f"aura {AURA_FRAMES}x{aura_w}x{aura_h} @{AURA_FPS}fps loop, "
         f"anchors {glow_anchor}/{rift_core} (underside, not contact), "
-        f"seams charge->crown {charge_seam}, emerge->rift {emerge_seam}"
+        f"seams charge->crown {charge_seam}, emerge->rift {emerge_seam}, "
+        f"rift->collapse {collapse_seam}, collapse tail alpha {collapse_tail}"
     )
-    if charge_seam or emerge_seam:
+    if charge_seam or emerge_seam or collapse_seam:
         raise SystemExit(
             f"handoff is not seamless (charge->crown {charge_seam}, "
-            f"emerge->rift {emerge_seam}): a one-shot's last frame must BE its "
-            f"loop's frame 0, or the effect pops when the client swaps sheets"
+            f"emerge->rift {emerge_seam}, rift->collapse {collapse_seam}): a "
+            f"sheet that continues another must START on, or END as, that "
+            f"sheet's own frame, or the effect pops when the client swaps"
+        )
+    if collapse_tail:
+        raise SystemExit(
+            f"collapse ends on {collapse_tail} alpha: the vanish hands off to "
+            f"NOTHING, so its last frame has to be empty or a client holding "
+            f"the final frame leaves a spark burning on a dead pad"
         )
     return out_dir
 

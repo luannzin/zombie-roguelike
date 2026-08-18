@@ -20,7 +20,9 @@ output the game actually loads.
   `coin/`, `backpack/`
   (`sheet.png` + `manifest.json`), `terrain/`, `scenery/`, `vfx/`, `gore/`,
   `rift/` (the extraction console and the threshold torches), `platform/` (the
-  cargo skid, inbound lift drones, corner lamps, imprint), `merchant/`, `store/`,
+  cargo skid, inbound lift drones, corner lamps, imprint), `merchant/`, `store/`
+  (his tables, his gear, his torches and mat), `machine/` (the upgrade cabinet
+  and its lights), `skills/` (skill icons and the canisters they come out in),
   `loot/`, `guns/` (held side-view), `hud/`, and `audio/` (16-bit mono wavs +
   `manifest.json`) — the folder is art too,
   generated the same way, and `/audio/shot-0.wav` is served like any sprite.
@@ -43,6 +45,14 @@ output the game actually loads.
   down/side/up, col 1 idle. Exact creatures and zhat-* / zcloth-* also write
   an N-column `<name>-death.png` (last column is the prone rest). Terrain,
   HUD icons and the world coin have no raw stage.
+- **RARITY IS ONE LADDER AND IT IS PAINTED THE SAME EVERYWHERE.** `loot/`'s
+  aura, `skills/`'s canisters, `machine/`'s reel faces and the HUD's borders
+  are four sheets showing the same five grades, and they use the same five
+  colours as `--rarity-*` in `client/src/styles/index.css`. The generators
+  duplicate those hex values rather than importing them — they are offline
+  scripts and the CSS is the client's — so the lists must be kept identical by
+  hand. A canister painted a purple the bag does not use would be a second
+  colour language for one idea.
 - **TWO CURRENCIES ARE STRUCK FROM ONE DISC.** `paint_coin` is the whole
   shape; `ramp` picks the metal. GOLD (`COIN_RAMP`) is the group's and only
   ever appears as `hud/coin.png` — catalog value, a platform's quota, a shop

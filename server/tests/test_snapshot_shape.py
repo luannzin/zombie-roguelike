@@ -30,10 +30,12 @@ MOVING = {
 }
 # What rides the 5 Hz roster. `ammo` is here and not above on purpose: the
 # client predicts its own trigger and this is the resync, so paying for three
-# integers thirty times a second would buy nothing.
+# integers thirty times a second would buy nothing. `skills` / `spins` / `mods`
+# are the same call taken further: they change once a day, in a shop, in front
+# of a machine.
 IDENTITY = {
     "name", "color", "kills", "deaths", "xp", "gold", "level", "xpInLevel",
-    "xpToLevel", "inv", "guns", "ammo",
+    "xpToLevel", "inv", "guns", "ammo", "skills", "spins", "mods",
 }
 
 
@@ -51,6 +53,10 @@ def main() -> None:
     assert full["inv"]["bag"] == [None] * INVENTORY_SLOTS
     # A run opens with no rounds, because it opens with no gun.
     assert full["ammo"] == {"pistol": 0, "rifle": 0, "awp": 0}, full["ammo"]
+    # ...and with no skills and nothing owed. The first spin is paid by the
+    # first level, and level 1 is where everybody starts.
+    assert full["skills"] == [] and full["spins"] == 0, full["skills"]
+    assert full["mods"]["speed"] == 1.0 and full["mods"]["slots"] == 0, full["mods"]
 
     packet = protocol.snapshot(1, [row], [], [], [], [], [], [])
     assert "ack" not in packet, "per-recipient field would force a dump per socket"

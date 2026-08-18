@@ -201,15 +201,35 @@ subtree.
     with no console left to load, a bottle in the grass on the way out is only
     a reason to stop moving while the pack hunts. Coins still fall and still
     count — they are gold, not cargo.
-  A gold HUD arrow (`/hud/arrow.png`) points at the VOID corridor carved on a
-  random map edge — the same dark gap as the camp exit, and its outer end
-  FLARES so the way out is a visible hole in the border treeline rather than a
-  crack. The threshold is DRESSED: four torches in two ranks of two, and cut
-  paving with light in its seams — the exit opens during the blackout, so those
-  torches and the pads' own are the only thing burning on the map and the only
-  thing that can say "here" rather than "that way". Crossing
-  that corridor ends the night — but it does not go home yet. It opens on the
-  **STORE**, and the day increments on the way out of THAT.
+  - **THE PACK REACTS OUTWARD FROM THE PAD, AND THE PAUSE IS THE MESSAGE.**
+    `hunt_all` commits every creature on the map on one frame, and a hundred
+    bodies that all start walking together reads as a switch being thrown. So
+    a creature the alarm reaches TURNS TO FACE THE PLATFORM and stands
+    (`ai.startle`) for a beat scaled by how far the sound had to travel — near
+    ones snap round first, distant ones a moment later. It is hunting the whole
+    time, so the diamond is already lit: what the player watches from the
+    console they just pressed is every mark in the clearing come up, hold, and
+    then start moving toward them in the order the noise reached them. The
+    snarls are queued client-side and drained nearest-first for the same
+    reason — eight of them stacked on one tick is a wall of noise that says
+    nothing about how many there are or where they are.
+  **THE WAY OUT IS FOUND, NOT FOLLOWED, AND THAT IS FOUR CHANNELS.** The exit
+  is a VOID corridor carved on a random map edge — the same dark gap as the
+  camp exit, and its outer end FLARES so it is a visible hole in the border
+  treeline rather than a crack. The threshold is DRESSED: four torches in two
+  ranks of two, and cut paving with light in its seams. Over all of it stands a
+  COLUMN of light thrown straight up over the trees, hard for its first few
+  seconds and then a steady pulse — drawn in WORLD space, so it is only on
+  screen when the camera is pointed somewhere it can be seen, which is what
+  makes finding it a matter of looking. A slow spatial PING sounds from the
+  mouth every few seconds, and that is the channel that still works while the
+  player is facing the other way. The gold HUD chevron (`/hud/arrow.png`) is
+  the fourth and it is now TEMPORARY: it burns while the news is news and then
+  fades out. It used to be permanent, which meant the world never had to say
+  anything — a marker that answers "which way out" forever turns a column of
+  fire over a black forest into decoration.
+  Crossing that corridor ends the night — but it does not go home yet. It opens
+  on the **STORE**, and the day increments on the way out of THAT.
   Extraction pads are on the
   MINIMAP: dormant ones once their ground has been explored, awake ones
   always, gold once their quota is paid, and RED and breathing on the siren's
@@ -220,13 +240,43 @@ subtree.
   players leave behind are navigation for the trip back.
 - **The STORE is the fourth beat of the loop and the only place money exists.**
   A trader's camp in a long forest GLADE, read left to right
-  (`server/app/store.py`): the party walks in from the west, the way back seals
-  behind them exactly as the forest's did, the merchant is pitched in the
-  middle — his tent, his campfire, his torches — and his three or four rustic
-  tables are in front of him with one gun on each. The east end stands open the
-  whole time; walking out of it is the next day — straight into the next
-  night's forest, arriving through an edge corridor that seals behind them,
-  exactly as leaving the campfire does.
+  (`server/app/store.py`), and it is READ IN THREE BEATS in that order: the
+  party walks in from the west and the night's PLATFORMS are being lowered into
+  the apron in front of them; past that the merchant is pitched in the middle —
+  his tent, his campfire, his torches, his own crates and racks behind the
+  counter — with his three or four rustic tables in front of him, one gun on
+  each; and past HIM, alone at the far end on the walk to the way out, the
+  upgrade MACHINE. Get paid, see what it buys, spend a level, leave. The way
+  back seals behind them exactly as the forest's did; the east end stands open
+  the whole time, and walking out of it is the next day — straight into the
+  next night's forest, arriving through an edge corridor that seals behind
+  them, exactly as leaving the campfire does.
+  - **IT IS THE ONE LIT PLACE, AND THAT IS THE ZONE'S JOB.** Everywhere else a
+    party goes is a black wood with a torch in it somewhere; here they can see
+    the treeline, the far end of the lane and each other. `Zone.ambient` is
+    how — a floor under the darkness pass, zero in every zone somebody can be
+    killed in and `zones.STORE_AMBIENT` here. It is well under 1: the glade is
+    visible, not daylit, and his fire, the lane torches and the machine's
+    marquee are still the brightest things in it. The contrast is the reward —
+    a night is only frightening if there is somewhere that is not.
+  - **THE NIGHT'S PLATFORMS COME HOME WITH THE PARTY, AND GETTING PAID IS AN
+    EVENT.** The same four aircraft that took the skids set them down on the
+    apron, the lines let go, the drones climb out, and the cargo on the decks
+    becomes GOLD: a spray of coins off each platform arcing to the balance on
+    the HUD, counting it up, with a large `+N` over the middle that shrinks
+    into that number rather than simply vanishing. It is the ONE place group
+    gold is ever an object — the moment it is created — because a currency that
+    only appears as a HUD digit is a score, and one that visibly comes off a
+    machine that visibly came back is money. The balance itself is credited
+    server-side on the crossing (`Room.enter_store`); everything above is
+    presentation, so a reconnect mid-animation cannot pay anybody twice.
+  - **HIS GEAR IS BEHIND THE COUNTER AND NONE OF IT OPENS.** Crates, a barrel
+    of rods, a rack of spare barrels, a shelf of tins, a padlocked strongbox —
+    all on the NORTH side with his tent and his fire, because everything a
+    party may touch is on the SOUTH side. That split teaches which half of the
+    glade answers E in one visit. The art carries the other half of it: every
+    frame is drawn roped, strapped and padlocked, because the player spent the
+    previous night learning that a box in this game is a thing you open.
   - **It is OUTDOORS, and that is load-bearing.** It was an interior first, a
     plank corridor with walls and hanging lamps, and the problem outweighed
     everything it got right: it was the only room in the game, so it read as a
@@ -271,19 +321,58 @@ subtree.
     is shown anyway, in red — the AWP priced out of reach is doing more work
     than a tutorial line about saving up would. The colour is the whole
     message; the tooltip does not also spell out that you are short.
-  - It runs the darkness like every other forest map, because it IS one. The
-    pitch being a pool of firelight in a dark glade is the whole picture, and
-    the torches lining the lane are NAVIGATION — the lantern is off here, so
-    without them a party emerging from the west corridor would have no way of
-    knowing which direction the trader is. The merchant
+  - It runs the darkness like every other forest map, because it IS one — the
+    ambient floor above is a value on the zone, not a branch in the renderer.
+    The pitch being the brightest pool in a lit-but-dim glade is the whole
+    picture, and the torches lining the lane are still NAVIGATION: the lantern
+    is off here, and they are what point a party emerging from the west
+    corridor at the trader. The merchant
     (`server/tools/make_merchant.py`) is not an entity — he stands still and
     plays an idle loop with three flourishes interrupting it, entirely
     client-side, because nothing about which frame he is on has ever been
     worth a message.
+- **A LEVEL IS A TOKEN AND THE MACHINE IS THE ONLY THING THAT TAKES IT.**
+  xp used to be a bar that filled and changed nothing. A level now pays one
+  SPIN (`server/app/skills.py`), spins bank across nights, and the only place
+  one can be spent is a scavenged slot cabinet standing alone at the far end of
+  the merchant's glade — dented, chrome gone, one corner of its marquee smashed
+  off, wired to a car battery on the ground beside it. That battery is the
+  whole answer to "why is there a slot machine in a forest".
+  - **IT IS A ROLL, NOT A MENU.** A list of upgrades with prices is a
+    spreadsheet the player solves once and then executes every run afterwards;
+    a roll is a moment. The ladder is the SAME five rarities loot already uses,
+    so a purple canister means here what a purple aura means in the woods and
+    nobody learns a second colour language.
+  - **THE THIRD REEL IS THE DESIGN.** Two reels stop on a fixed rhythm the
+    player learns in two visits; the third holds for longer the better the pull
+    was (`machine.REEL_HOLD`). The roll is already resolved server-side when
+    the lever moves, so that wait is honest — the machine is taking its time
+    telling them, not deciding late. By the third shop a long third reel is
+    good news before the colour lands, and that is the whole feeling.
+  - **RARITY IS A MULTIPLIER, NOT A SECOND CEREMONY.** One curve (`pullGain`)
+    scales the burst, the marquee tint, the canister's glow and the camera
+    shove; the sounds ladder the same way, and the `jackpot` flourish is EPIC
+    AND UP only, because a celebration that fires on every pull stops being one.
+  - What comes out is a physical CANISTER — the machine's tray fires it, it
+    arcs, it lands, it sits there being looked at, then it flies into the tray
+    ABOVE the bag on the HUD, where it is one tile: icon, rarity border, stack
+    count, name on hover. A skill is a stack, so a duplicate is a smaller pull
+    rather than a dead one.
+  - **A SKILL HAS TO ACTUALLY DO SOMETHING**, and `skills.Mods` is the one
+    place a player's numbers diverge from `config.py`. Speed, carry ceiling,
+    health ceiling, gun and blade damage, xp, dark-gold odds, lantern life and
+    what a platform credits for a loaded item all read it. A site still reading
+    the raw constant is a site where a skill silently does nothing — see
+    `server/app/AGENTS.md`.
+  - The cabinet's MARQUEE burns harder for a player holding an unspent level.
+    That is the only teaching in the zone that happens at a distance, it costs
+    one float, and it is the thing a HUD line could never do from the far end
+    of a glade.
 - The room's ZONE (`server/app/zones.py`) says where the run is and how that
   place behaves: its title card, whether enemies spawn and guns fire
-  (`hostile`), and whether the lantern may be switched on (`lantern`). The
-  client is told all three and infers none of them from the map.
+  (`hostile`), whether the lantern may be switched on (`lantern`), and how much
+  light the place has of its own (`ambient` — zero everywhere but the shop).
+  The client is told all of it and infers none of it from the map.
 - **The camp is one place, not two.** The lobby draws the map the server sent
   in `hello`, with every player on the coordinates the simulation is holding
   for them; starting the run changes what answers your input, not where anybody
@@ -319,6 +408,14 @@ subtree.
   past things, which is the game refusing its own content.
 - All colours and type live in `client/src/styles/index.css`, read by the canvas
   through `client/src/theme/`.
+- **A SOUND IS PER EVENT, NEVER PER CATEGORY.** The object vocabulary was
+  undone once already by three different containers all playing the inventory
+  panel's UI tick, and the same trap caught the upgrade machine (built out of
+  `object-heavy` and `object-open` first, and reading as a car boot). A lever,
+  a reel detent, a canister landing in a steel tray and a container that turned
+  out to be empty are four events and they have four recipes. Reaching for an
+  existing sound because it is roughly the right shape is how the loudest
+  channel in the game ends up saying every object is the same object.
 - **Sound is generated art, like every pixel.** `server/tools/make_audio.py`
   synthesises the whole catalog into `assets/processed/audio/` — deterministic,
   stdlib only, one DSP vocabulary at the top that every recipe is written in —
@@ -358,7 +455,11 @@ subtree.
   POCKET's alone — weapons never eat into it, because it answers "how much
   loot can I still carry out" and guns are not what extraction is for.
   Past 20% of max carry the walk slows
-  and the footsteps read heavier.   TAB expands the bag on the left HUD. A collected item is held over the
+  and the footsteps read heavier. The bag's ceiling and the walk's are both
+  a PLAYER's now rather than the config's — a skill moves them, and so it
+  moves max health, damage, xp, dark-gold odds and lantern life. Anything
+  still reading the raw constant is a skill silently doing nothing.
+    TAB expands the bag on the left HUD. A collected item is held over the
   head, the bag opens so the slot is visible, then the sprite flies into
   that cell — the slot stays empty (border, value, weight) until the
   fly lands, so the roster cannot pop a second copy. Hovering a filled
@@ -437,8 +538,14 @@ subtree.
   because a boot does not come open because somebody shot near it and one
   stray round popping every container on the map would delete the walk.
   Using an object frees EVERY tile it stood on — a vehicle claims four — and
-  rolls empty (wind VFX), coins, or one item, which JUMPS out of the opening
-  and lands. **The coin slice is the thinnest one on every object in the game**,
+  rolls empty, coins, or one item, which JUMPS out of the opening and lands.
+  **AN EMPTY ONE SAYS SO OUT LOUD, ON EVERY VERB** — a dry hollow knock and a
+  puff of air out of the opening. It used to be a gust on a break and silence
+  on an open, which meant an opened chest that paid nothing was
+  indistinguishable from a press the server dropped, and those are opposite
+  feelings. The sound is well down the mix on purpose: it reports that nothing
+  happened, and a disappointment as loud as a find teaches people to stop
+  opening things. **The coin slice is the thinnest one on every object in the game**,
   because what an explorable is FOR is the item: that is what gets carried to a
   platform and becomes the group's balance, which is the number a night is
   scored on. Coins only once the exit is open, for the same reason the ground
@@ -460,6 +567,18 @@ subtree.
   can leave a permanent mark on the map or the minimap. A silhouette in the
   dark that could be a tree, a car or a body is worth more than any of the
   three would be lit.
+- **SOME SCENES KEPT THEIR DEAD.** Every wreck on the map is a story about
+  people who did not make it, and for a long time none of them had anybody in
+  it — the scene said "something happened here" and the forest answered "and
+  nothing is here now". The scenes that are specifically about somebody DYING
+  (`mapgen.HAUNT_SCENES`: the ambulance, the last stand, the checkpoint, the
+  crash, the bus stop) now stand one or two creatures in the wreck at map build
+  time, idle until they notice you. It is not a difficulty change — it is the
+  answer to "why is this dangerous", and it is what turns opening the third car
+  of the night into a decision. The QUIET scenes are deliberately left empty: a
+  deadfall is a tree that came down, and putting a creature in it would say the
+  map is a list of encounters. The stretches with nothing in them are what make
+  the ones with something in them land.
 - **ONE LANDMARK, AND IT IS THE ONE THING SOMEBODY BUILT.** The `sanctuary`:
   carved stone in a ring — totems, idols, a robed figure, a skull post, a
   monolith — with bones on the floor inside it and an ALTAR in the middle

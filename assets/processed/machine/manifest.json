@@ -1,0 +1,93 @@
+{
+  "seed": 1337,
+  "cabinet": {
+    "file": "cabinet.png",
+    "frameWidth": 36,
+    "frameHeight": 50,
+    "frames": 2,
+    "reels": [
+      [
+        6,
+        14
+      ],
+      [
+        15,
+        14
+      ],
+      [
+        24,
+        14
+      ]
+    ],
+    "reelWidth": 8,
+    "reelHeight": 12,
+    "lever": [
+      29,
+      19
+    ],
+    "trayMouth": [
+      17,
+      39
+    ],
+    "crown": [
+      18,
+      4
+    ]
+  },
+  "reel": {
+    "file": "reel.png",
+    "frameWidth": 8,
+    "frameHeight": 12,
+    "frames": 9,
+    "spinFrames": 4,
+    "rarities": [
+      "common",
+      "uncommon",
+      "rare",
+      "epic",
+      "legendary"
+    ]
+  },
+  "lever": {
+    "file": "lever.png",
+    "frameWidth": 12,
+    "frameHeight": 26,
+    "frames": 5,
+    "pivot": [
+      2,
+      13
+    ]
+  },
+  "effects": {
+    "marquee": {
+      "file": "marquee.png",
+      "frameWidth": 40,
+      "frameHeight": 18,
+      "frames": 8,
+      "fps": 14,
+      "anchorY": 9,
+      "loop": true,
+      "tinted": true
+    },
+    "window": {
+      "file": "window.png",
+      "frameWidth": 30,
+      "frameHeight": 14,
+      "frames": 6,
+      "fps": 8,
+      "anchorY": 7,
+      "loop": true,
+      "tinted": true
+    },
+    "burst": {
+      "file": "burst.png",
+      "frameWidth": 48,
+      "frameHeight": 48,
+      "frames": 10,
+      "fps": 18,
+      "anchorY": 24,
+      "loop": false,
+      "tinted": true
+    }
+  }
+}

@@ -84,15 +84,21 @@ class CoinStepResult:
     collected: list[PickupEvent] = field(default_factory=list)
 
 
-def roll_drop(points: int) -> int:
+def roll_drop(points: int, chance: float | None = None) -> int:
     """How many coins a corpse actually pays, out of `points` it could pay.
 
     Each point is its own coin-flip at COIN_DROP_CHANCE, so a 3-gold zombie
     lands on 0..3 with the ends rare (~9% for three, ~17% for none) and the
     middle common. Rolled per point rather than picked from a weight table so
     the shape holds for a creature worth one coin or worth ten.
+
+    `chance` overrides the constant for a killer carrying luck skills — see
+    `skills.luck_chance`, which is also what clamps it. The odds are the
+    KILLER's, not the corpse's: two players standing over the same zombie
+    would otherwise have to agree on whose bonus applied.
     """
-    return sum(1 for _ in range(max(0, points)) if random.random() < COIN_DROP_CHANCE)
+    odds = COIN_DROP_CHANCE if chance is None else chance
+    return sum(1 for _ in range(max(0, points)) if random.random() < odds)
 
 
 def spawn_burst(coin_id: str, x: float, y: float, index: int, total: int) -> Coin:

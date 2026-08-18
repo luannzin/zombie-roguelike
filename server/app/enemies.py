@@ -268,6 +268,21 @@ class Enemy:
     wander_x: float | None = None
     wander_y: float | None = None
     wander_wait: float = 0.0
+    #: Seconds left STANDING STILL after the extraction alarm reached it.
+    #:
+    #: THE PAUSE IS THE MESSAGE. When a pickup is called the whole map commits
+    #: at once, and a hundred bodies that all start walking on the same frame
+    #: reads as a switch being thrown rather than as something having heard
+    #: something. So a creature the alarm reaches stops, turns toward the
+    #: noise, and stands — hunt diamond already lit, because it HAS committed —
+    #: for a beat scaled by how far the sound had to travel. Near ones snap
+    #: round first and distant ones a moment later, which is the sound moving
+    #: outward, and the player watches the reaction spread from the platform
+    #: they just pressed. See `ai.startle`.
+    startle: float = 0.0
+    #: What it turned to look at. Only meaningful while `startle` is running.
+    startle_x: float = 0.0
+    startle_y: float = 0.0
     #: Seconds since a hunter last had eyes on its target. It keeps walking to
     #: the last known position for the whole window, so breaking line of sight
     #: buys distance, not an instant off-switch.

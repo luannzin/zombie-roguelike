@@ -121,6 +121,17 @@ export class Lantern {
   private blackout = false;
   /** Per-instance phase, so the waver is not in lockstep with anything else. */
   private readonly seed = Math.random() * 1000;
+  /**
+   * How much longer the cell lasts than stock, out of `Bateria Fria`.
+   *
+   * THE BATTERY IS THE ONE CLIENT-LOCAL RESOURCE — the server does not
+   * simulate charge, only the switch — so the skill has to be applied here
+   * rather than at the constant. It divides the drain and leaves the recharge
+   * alone: what the skill buys is a longer burn, not a faster recovery, and
+   * making it do both would quietly turn a small row into the best one in the
+   * catalog.
+   */
+  private endurance = 1;
 
   get on(): boolean {
     return this.switchedOn;
@@ -128,6 +139,17 @@ export class Lantern {
 
   get charge(): number {
     return this.stored;
+  }
+
+  /**
+   * Adopt the owner's lamp mod off the roster. 1 is stock.
+   *
+   * Clamped at the bottom because a value under 1 would mean a skill that made
+   * the lantern worse, and nothing in the catalog does that — a bad number
+   * arriving on the wire should be ignored, not obeyed.
+   */
+  setEndurance(scale: number): void {
+    this.endurance = Number.isFinite(scale) ? Math.max(1, scale) : 1;
   }
 
   /** Cells with any juice left. */
@@ -188,7 +210,7 @@ export class Lantern {
       this.stored = 0;
       if (this.switchedOn) this.cut();
     } else if (this.switchedOn) {
-      this.stored = Math.max(0, this.stored - dt / DRAIN_SECONDS);
+      this.stored = Math.max(0, this.stored - dt / (DRAIN_SECONDS * this.endurance));
       if (this.stored <= 0) this.cut();
     } else {
       this.stored = Math.min(1, this.stored + dt / RECHARGE_SECONDS);

@@ -24,11 +24,13 @@ seam React is allowed to read.
 | `lantern.ts` | four-cell battery, produces `output` 0..1 |
 | `hud-store.ts` | the only seam to React; `HUD_INTERVAL` = 0.2 s |
 | `tooltip-anchors.ts` | screen-space points for world `Tooltip`s, written every frame |
-| `exit-guide.ts` | extraction-exit arrow: where on screen it belongs, and the smoothing between the raw target and what is drawn |
+| `exit-guide.ts` | extraction-exit chevron: where on screen it belongs, and the smoothing between the raw target and what is drawn. It FADES — see the exit contract below |
 | `inventory-anchors.ts` | screen-space centres for the HUD bag (pack + slots) |
 | `inventory-actions.ts` | bag → socket: `Game` binds `drop`; React never owns the connection |
 | `loot-flies.ts` | collect flies: hold over the head, then travel; membership is a store, pose is per-frame |
 | `pad-cargo.ts` | the POUR's other half: items in the air out of a backpack, and the pile they become on a platform's deck. Deck-relative, so the load leaves with the skid |
+| `machine.ts` | the upgrade machine's CEREMONY: one lever pull as beats, reel poses, the arm, and where the canister is. Timing comes from `config.machine` — a mirror of `server/app/machine.py` |
+| `payout.ts` | the night's platforms being lowered into the shop, and the gold coming off them. Presentation only; the balance was credited server-side |
 
 ## Local Contracts
 
@@ -310,6 +312,49 @@ seam React is allowed to read.
   on whoever is sitting closer to the camera. The card is the roster row in
   pixels — inset fill, hairline border, 2px colour bar — and every measurement
   is a whole multiple of one design pixel so it stays on the font's grid.
+- **A LEVER PULL IS THE MACHINE'S OWN CEREMONY, and the split is the rift's.**
+  The server resolves the roll in one frame and ships one `spins` row; this
+  side flies four seconds off it plus `config.machine` on the RENDER clock
+  (`Game.stepMachine`). Beats fire on the frame `elapsed` CROSSES them, so each
+  happens exactly once when a frame runs long. Every client in the glade runs
+  it — a slot machine going off is the loudest thing in the shop and the party
+  should be able to look over at somebody else's legendary — and only the
+  PULLER's client claims the canister into its HUD tray.
+  - THE THIRD REEL IS THE DESIGN. Two stop on a fixed rhythm; the third holds
+    for `reelHold[rarity]`, longer the better the pull was. Because the roll
+    already happened the wait is honest — the machine is taking its time
+    telling them, not deciding late.
+  - RARITY IS A MULTIPLIER, NOT A SECOND ANIMATION. `pullGain` scales the
+    burst, the marquee and the canister's glow off ONE curve, and the sounds
+    ladder the same way (`reel` pitched with the tier, `rarity` behind it,
+    `jackpot` only at epic and up). Five hand-authored ceremonies would be five
+    things to learn instead of one.
+- **THE PAYOUT IS AN ARRIVAL, NOT A TRANSACTION** (`payout.ts`). The balance is
+  already credited when the party crosses the corridor; this owns the two
+  seconds between the number being true and the player believing it. It starts
+  in `onWelcome` off `world.store.payout`, and `Game.balanceShown` is what the
+  HUD is allowed to SAY while gold is still in the air — driven off the
+  ceremony's own clock rather than off however many coin sprites got drawn, so
+  the number is exactly right when it stops.
+- **THE EXIT IS FOUND, NOT FOLLOWED.** The chevron used to be permanent, which
+  made every other channel the exit has into decoration. It now burns for
+  `EXIT_GUIDE_HOLD` and fades (`Game.guideStrength`; `hud-store.exitGuide` is a
+  0..1 number, not a flag), and the three channels that carry it afterwards
+  are: the COLUMN of light over the treeline (`drawEgressBeacon`, world space,
+  so it is only on screen when you look toward it), the four torches at the
+  threshold, and a slow spatial PING from the mouth (`Game.stepBeacon`) — which
+  is the one that still works while the player is looking the other way.
+- **A SNARL IS QUEUED, NOT PLAYED** (`Game.drainAlertQueue`). One creature
+  noticing you is one snarl; the extraction alarm commits everything in earshot
+  on the same frame, and stacking those is a wall of noise that says nothing
+  about how many there are or where. Draining nearest-first at
+  `ALERT_SNARL_GAP` turns it into heads turning one after another around you,
+  and it is tuned against the server's own startle wave (`ai.STARTLE_*`).
+- **AN EMPTY CONTAINER SAYS SO, ON EVERY VERB.** It used to be a gust on a
+  break and silence on an open, so an opened chest that paid nothing was
+  indistinguishable from a press the server dropped — and those are opposite
+  feelings. `onCrateBreak` now plays `empty` and puffs on both, which closes
+  the interaction: I opened this, it worked, there was nothing inside.
 - `dispose()` releases every timer, listener, observer and rAF handle created in
   this folder.
 - **Sound is driven from two places and the split is deliberate.** EVENTS (a

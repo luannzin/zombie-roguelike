@@ -33,8 +33,9 @@ import uuid
 
 from . import (
     ai, ammo, camp, coins, combat, crates, entrance, loot, mapgen, protocol,
-    quests, rift, store, weapons, zones,
+    quests, rift, skills, store, weapons, zones,
 )
+from . import machine
 from .ai import EnemyDirector
 from .coins import Coin
 from .config import (
@@ -45,7 +46,9 @@ from .config import (
     MARCH_SPEED,
     RIFT_ACTIVATE_DIST,
     EXIT_CROSS_TILES,
+    INVENTORY_SLOTS,
     STORE_BUY_DIST,
+    STORE_SPIN_DIST,
     MAX_HP,
     MAX_INPUT_QUEUE,
     MAX_INPUTS_PER_TICK,
@@ -61,6 +64,7 @@ from .config import (
     SPAWN_SEPARATION,
     TILE_SIZE,
     client_config,
+    level_progress,
 )
 from .corpses import Corpse
 from .crates import VERB_BREAK, Crate
@@ -168,6 +172,16 @@ class Room:
         #: Purchases made this tick. The juice: the client flies the gun onto
         #: the belt cell and counts the balance down.
         self.buy_events: list[dict] = []
+        #: Lever pulls made this tick. One row is a whole four-second ceremony:
+        #: the roll is already decided, and every client in the glade flies the
+        #: reels, the eject and the settle off it plus `config.machine`.
+        self.spin_events: list[dict] = []
+        #: Seconds left on the cabinet's own ceremony. ONE machine, one lever:
+        #: a second player pulling into somebody else's spin would have to
+        #: interrupt an animation everybody in the glade is already watching.
+        #: A countdown rather than a deadline because the room has no wall
+        #: clock — every other timer here is `-= dt` too.
+        self._machine_busy = 0.0
         self._shot_id = 0
         self._swing_id = 0
         self._enemy_id = 0
@@ -720,6 +734,13 @@ class Room:
         They are dropped in loose and left ALONE: no commit, no alarm. A nest
         that started hunting would walk off its own ground and turn the
         landmark back into an empty clearing before the party ever saw it.
+
+        TWO SIZES, AND THE MAP SAYS WHICH. A count of 0 means "the landmark's
+        guard", which is `NEST_PACK` and is the only real fight the map places;
+        anything else is a scene that simply kept one or two of its dead
+        standing in it (see `mapgen.HAUNT_SCENES`). Those are not a difficulty
+        change — they are the answer to "why is this wreck dangerous", and the
+        loot inside it stops being a chore the moment there is one.
         """
         nests = getattr(self.world, "nests", None)
         if not nests or not self.zone.hostile:
@@ -728,10 +749,17 @@ class Room:
         if not types:
             return
         rng = random.Random(self.world.seed ^ 0x4E57)
-        for x, y in nests:
-            for _ in range(rng.randint(*NEST_PACK)):
+        for row in nests:
+            x, y = row[0], row[1]
+            asked = row[2] if len(row) > 2 else 0
+            count = rng.randint(*NEST_PACK) if asked <= 0 else asked
+            # A pair standing in a wreck belongs IN the wreck; a shrine's guard
+            # has to stay off the altar. Same two numbers, scaled to the group.
+            spread = NEST_SPREAD if asked <= 0 else NEST_SPREAD * 0.55
+            inner = NEST_INNER if asked <= 0 else 0.6
+            for _ in range(count):
                 angle = rng.uniform(0, math.tau)
-                radius = rng.uniform(NEST_INNER, NEST_SPREAD) * TILE_SIZE
+                radius = rng.uniform(inner, spread) * TILE_SIZE
                 spot = loot.place_near(
                     self.world.tiles,
                     x + math.cos(angle) * radius,
@@ -1009,7 +1037,8 @@ class Room:
         span = math.hypot(dx, dy)
         if span <= 1.0:
             return True
-        speed = MOVE_SPEED * carry_scale(player.carry_weight)
+        mods = player.skills.mods
+        speed = MOVE_SPEED * mods.speed * carry_scale(player.carry_weight, mods.carry)
         step = min(span, speed * dt)
         player.vx = dx / span * speed
         player.vy = dy / span * speed
@@ -1037,7 +1066,14 @@ class Room:
         slot = player.inventory.tip_one()
         if slot is None:
             return False
-        value = slot.unit_value()
+        # THE HAUL SKILLS PAY HERE AND NOWHERE ELSE. What a scavenger's eye is
+        # worth is what the platform credits for the thing he loaded, not what
+        # the catalog says it is: the bag, the tooltip and the drop on the
+        # ground all keep saying the honest number, and the bonus shows up as
+        # the quota filling faster than the pocket emptied. A skill that
+        # rewrote the item's value would have to rewrite it in five places and
+        # would make two players carrying the same ring disagree about it.
+        value = round(slot.unit_value() * player.skills.mods.haul)
         pour.paid += value
         target.feed(value)
         row = {
@@ -1283,6 +1319,89 @@ class Room:
             }
         )
 
+    def _sync_spins(self, player: Player) -> int:
+        """Pay out any levels this player has crossed. Returns how many.
+
+        Called wherever xp moves rather than once a tick, because a level is a
+        thing the player should hear land — the client reads the count off the
+        roster and the level-up chime is what tells somebody in the middle of a
+        fight that there is a pull waiting for them at the shop.
+        """
+        level, _, _ = level_progress(player.xp)
+        gained = player.skills.sync_level(level)
+        if gained:
+            self._roster_dirty = True
+        return gained
+
+    def _machine_spot(self) -> tuple[float, float] | None:
+        """Where the cabinet is standing, or None off the shop map."""
+        row = (self.world.store or {}).get("machine")
+        if not isinstance(row, (list, tuple)) or len(row) < 2:
+            return None
+        return float(row[0]), float(row[1])
+
+    def spin(self, pid: str) -> None:
+        """Pull the lever. Spend one level, take one skill.
+
+        THE ROLL HAPPENS NOW AND THE SHOW HAPPENS AFTER. Everything the client
+        is about to spend four seconds on — the arm, the reels, which one stops
+        late, the colour of the canister — is decided on this frame and shipped
+        as one row. The alternative is a machine whose result arrives at
+        snapshot rate somewhere in the middle of its own animation, which is
+        how a reel ends up visibly changing its mind.
+
+        REFUSALS ARE SILENT HERE AND LOUD ON THE CLIENT. Standing too far away,
+        having no spin left, or arriving while somebody else's pull is still
+        running are all things the HUD already knows — the prompt says which —
+        so a packet that would be dropped is not sent, and one that slips
+        through a race simply does nothing.
+        """
+        if self.phase != protocol.PHASE_PLAYING or self.departing or self.arriving:
+            return
+        if self.zone.kind != zones.KIND_STORE:
+            return
+        player = self.players.get(pid)
+        if player is None or not player.alive:
+            return
+        if player.skills.spins <= 0:
+            return
+        spot = self._machine_spot()
+        if spot is None:
+            return
+        feet_y = player.y + PLAYER_HALF_HEIGHT
+        dx = spot[0] - player.x
+        dy = spot[1] - feet_y
+        if dx * dx + dy * dy > STORE_SPIN_DIST * STORE_SPIN_DIST:
+            return
+        if self._machine_busy > 0.0:
+            return
+
+        rolled = skills.roll(random.Random(), player.skills.stacks)
+        player.skills.spins -= 1
+        held = player.skills.add(rolled.key)
+        # A slot skill has to actually widen the bag, and it has to do it here
+        # rather than in `flatten`: `Mods` is a value and the pocket is state.
+        player.inventory.grow(INVENTORY_SLOTS + player.skills.mods.slots)
+        # More health means more health NOW, not after the next respawn — a
+        # ceiling that only applied tomorrow would make the tile lie for a
+        # whole night. Only the ceiling moves; a hurt player stays hurt.
+        player.hp = min(player.hp + max(0, player.skills.mods.max_hp - MAX_HP), player.max_hp)
+        self._machine_busy = machine.duration(rolled.rarity)
+        self._roster_dirty = True
+        self.spin_events.append(
+            {
+                "by": player.id,
+                "k": rolled.key,
+                "r": rolled.rarity,
+                # Copies held AFTER this one. The HUD tile counts to it, and a
+                # pull past the cap still counts — see `skills.Loadout.add`.
+                "n": held,
+                "left": player.skills.spins,
+                "x": round(spot[0], 1),
+                "y": round(spot[1], 1),
+            }
+        )
+
     def _stand_in_reach(self, player: Player, stand_id: str | None) -> Stand | None:
         feet_y = player.y + PLAYER_HALF_HEIGHT
         reach = STORE_BUY_DIST * STORE_BUY_DIST
@@ -1429,12 +1548,18 @@ class Room:
         if self.zone.kind != zones.KIND_FOREST:
             self._pending_return = False
             return
-        earned = sum(max(0, row.fed) for row in self.rifts)
+        takes = [max(0, row.fed) for row in self.rifts]
+        earned = sum(takes)
         self.balance += earned
         self._balance_dirty = True
+        # The night's platforms come home with the party. `takes` only decides
+        # what lands on the shop's apron and what each skid is worth on screen
+        # — the balance above is the transaction, and the ceremony the client
+        # runs off this is presentation. Keeping the two apart is what stops a
+        # reconnect halfway through the animation paying anybody twice.
         await self._swap_map(
             zones.store(self.day),
-            store.build_store(self.day, random.randrange(1, 2**31)),
+            store.build_store(self.day, random.randrange(1, 2**31), takes),
         )
 
     async def _swap_map(self, zone: zones.Zone, world) -> None:
@@ -1463,6 +1588,8 @@ class Room:
         self._corpses_dirty = True
         self.crate_break_events = []
         self.pour_events = []
+        self.spin_events = []
+        self._machine_busy = 0.0
         for player in self.players.values():
             player.pour = None
         self._load_drops()
@@ -1480,7 +1607,7 @@ class Room:
             # crossing does not tick respawn timers, so a body that fell in the
             # last seconds of the run would otherwise arrive dead somewhere
             # with nothing that could have killed it.
-            player.hp = MAX_HP
+            player.hp = player.max_hp
             player.alive = True
             player.respawn_timer = 0.0
             player.hurt_immunity = 0.0
@@ -1554,6 +1681,11 @@ class Room:
 
     # --- simulation ---------------------------------------------------------
     def step(self, dt: float) -> None:
+        # The cabinet's lockout. Off the shop map it is already zero and this
+        # is one float subtraction a tick, which is cheaper than branching on
+        # the zone to find out whether to do it.
+        if self._machine_busy > 0.0:
+            self._machine_busy = max(0.0, self._machine_busy - dt)
         self.step_players(dt)
         self.step_seal(dt)
         self.step_quests()
@@ -1588,6 +1720,21 @@ class Room:
     def sirening(self) -> bool:
         """Any pad has called for a pickup and the aircraft are still working."""
         return any(row.alarm for row in self.rifts)
+
+    @property
+    def alarm_point(self) -> tuple[float, float] | None:
+        """The pad whose pickup is sounding, or None.
+
+        It is what the pack turns to LOOK at when the alarm reaches it (see
+        `ai.startle`). Facing the noise rather than the party is the whole
+        difference between "everything switched to hunt" and "everything heard
+        the platform" — and the party is standing at that platform, so it costs
+        them nothing in fairness and buys the beat its entire meaning.
+        """
+        for row in self.rifts:
+            if row.alarm:
+                return row.x, row.y
+        return None
 
     def _siren(self, target: Rift) -> None:
         """The pickup, heard from anywhere on the map.
@@ -1989,6 +2136,7 @@ class Room:
             # nearest living player and starts walking, and the party has to
             # stand next to the pad for thirteen seconds while they arrive.
             hunt_all=self.panic or self.sirening,
+            alarm_at=self.alarm_point,
         )
         # Heard once. A noise that survived the tick would keep waking whatever
         # walked into its radius long after the sound was over.
@@ -2170,10 +2318,13 @@ class Room:
         if not hits:
             crate, _ = crates.along_ray(self.crates, attacker.x, attacker.y, dx, dy, step.reach)
 
+        # Same rule the gun keeps: fold the blade skills in once, above the
+        # event and the resolution both.
+        damage = max(1, round(step.damage * attacker.skills.mods.melee))
         self._swing_id += 1
         rows = []
         for hit in hits:
-            rows.append({"id": hit.target.id, "dmg": step.damage})
+            rows.append({"id": hit.target.id, "dmg": damage})
         self.swing_events.append(
             {
                 "id": self._swing_id,
@@ -2205,9 +2356,9 @@ class Room:
         for hit in hits:
             victim = hit.target
             if isinstance(victim, Enemy):
-                self.damage_enemy(victim, step.damage, attacker, hit.dx, hit.dy)
+                self.damage_enemy(victim, damage, attacker, hit.dx, hit.dy)
             else:
-                self.damage_player(victim, step.damage, attacker)
+                self.damage_player(victim, damage, attacker)
 
     def fire(self, shooter: Player, dx: float, dy: float, weapon: weapons.WeaponDef) -> None:
         ox = shooter.x + dx * weapon.muzzle
@@ -2221,6 +2372,11 @@ class Room:
         # Players and enemies share one target list: the capsule contract is
         # identical, so the ray does not care which kind it hits.
         targets = [*self.players.values(), *self.enemies.values()]
+        # The shooter's skills are folded in ONCE, here, so the number the
+        # client draws over the body (`dmg` on the shot event) and the number
+        # the body actually loses are the same number. Rolling it a second time
+        # at the damage call is how a hit marker starts lying.
+        damage = max(1, round(weapon.damage * shooter.skills.mods.gun))
         hit = combat.raycast(
             self.world,
             ox,
@@ -2249,15 +2405,15 @@ class Room:
                 "dy": round(dy, 3),
                 "dist": round(dist, 2),
                 "hit": victim.id if victim is not None else None,
-                "dmg": weapon.damage if victim is not None else 0,
+                "dmg": damage if victim is not None else 0,
             }
         )
         if crate is not None:
             self.smash_crate(crate, shooter)
         elif isinstance(victim, Enemy):
-            self.damage_enemy(victim, weapon.damage, shooter, dx, dy)
+            self.damage_enemy(victim, damage, shooter, dx, dy)
         elif victim is not None:
-            self.damage_player(victim, weapon.damage, shooter)
+            self.damage_player(victim, damage, shooter)
 
     def damage_player(self, target: Player, amount: int, source: Player | None) -> None:
         if not target.alive:
@@ -2311,12 +2467,18 @@ class Room:
         self.enemies.pop(target.id, None)
 
         reward = target.type
+        paid_xp = reward.xp
         if source is not None:
             source.kills += 1
-            source.xp += reward.xp
+            paid_xp = max(1, round(reward.xp * source.skills.mods.xp))
+            source.xp += paid_xp
+            self._sync_spins(source)
         # xp is what the kill is worth and never varies; coins are what fell
         # out of this particular corpse, which does.
-        dropped = coins.roll_drop(reward.gold)
+        dropped = coins.roll_drop(
+            reward.gold,
+            skills.luck_chance(source.skills.mods) if source is not None else None,
+        )
         self.drop_coins(target.x, target.y, dropped)
         length = math.hypot(dx, dy)
         fall_x = dx / length if length > 0.001 else target.aim_x
@@ -2342,7 +2504,7 @@ class Room:
             "victim": target.id,
             "x": round(target.x, 2),
             "y": round(target.y, 2),
-            "xp": reward.xp,
+            "xp": paid_xp,
             "gold": dropped,
             "t": reward.key,
             "v": target.variant,
@@ -2381,7 +2543,7 @@ class Room:
             )
         else:
             player.x, player.y = self.pick_spawn()
-        player.hp = MAX_HP
+        player.hp = player.max_hp
         player.alive = True
         player.vx = player.vy = 0.0
         player.respawn_timer = 0.0
@@ -2483,6 +2645,7 @@ class Room:
                 blackout=blackout_flag,
                 stands=stand_rows,
                 buys=self.buy_events or None,
+                spins=self.spin_events or None,
                 balance=balance_row,
             )
         )
@@ -2517,6 +2680,7 @@ class Room:
                 self.pour_events = []
                 self.crate_break_events = []
                 self.buy_events = []
+                self.spin_events = []
             delay = next_time - time.perf_counter()
             if delay > 0:
                 await asyncio.sleep(delay)

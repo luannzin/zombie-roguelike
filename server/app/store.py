@@ -53,6 +53,7 @@ from .config import (
     STORE_CORRIDOR_TILES,
     STORE_HEIGHT_TILES,
     STORE_LANE_TILES,
+    STORE_MACHINE_LIGHT_TILES,
     STORE_MARKUP,
     STORE_WIDTH_TILES,
     TILE_SIZE,
@@ -126,6 +127,73 @@ TORCH_LIGHT_TILES = 6.5
 TORCH_SPACING = 8
 #: How far a lane torch has to stay from any table, in tiles.
 TORCH_CLEAR = 3.5
+
+#: HIS GEAR, and where each piece goes is the composition.
+#:
+#: `(column, row)` offsets from the centre of the map, in tiles, against the
+#: lane's centreline. They sit BEHIND him — north of the counter, on the same
+#: side as his tent and his fire — because everything a party may touch is on
+#: the south side and everything that is only scenery is on the north. That
+#: separation is doing more work than any prompt could: a player learns in one
+#: visit which half of the glade answers E.
+#:
+#: The row is DELIBERATELY UNEVEN. Four pieces on one line behind a trader is a
+#: shelf; four pieces stepped back and forth around his tent is a camp somebody
+#: has been living in. The variants are pinned rather than rolled so the pitch
+#: is the same pitch every night — the stock rolls, the man's own belongings do
+#: not, and a shop whose furniture rearranged itself nightly would be the one
+#: thing in the loop that felt generated.
+KIT_SPOTS: tuple[tuple[float, float, int], ...] = (
+    (-9.5, -3.0, 0),   # crates, out past the tent
+    (-2.2, -5.2, 3),   # the shelf of tins, tucked behind him
+    (2.6, -4.4, 1),    # the barrel of rods
+    (6.8, -5.0, 2),    # the rack, at the far end of his pitch
+    (9.6, -3.4, 4),    # the strongbox, furthest from the lane
+)
+
+#: WHERE THE NIGHT'S PLATFORMS COME DOWN, in tiles from the west edge, with
+#: the row measured off the lane's centreline.
+#:
+#: THE APRON IS THE FIRST BEAT OF THE ZONE. The party walks out of the corridor
+#: and the skids they loaded an hour ago are being lowered into the clearing in
+#: front of them — before a single price tag is on screen. That order is the
+#: whole reason the glade got wider (`config.STORE_WIDTH_TILES`): a reward that
+#: arrives while somebody is already reading the AWP's price is a reward that
+#: happened to them rather than one they watched.
+#:
+#: They land OFF THE SPINE (|row| > `SPINE_TILES`), alternating sides, because
+#: they are solid once they are down and the walk from one mouth to the other
+#: has to stay unconditional. Alternating also makes the apron a slalom rather
+#: than a wall, which is what stops three identical skids reading as a fence.
+PAYOUT_SPOTS: tuple[tuple[float, float], ...] = (
+    (13.0, 3.6),
+    (18.5, -3.6),
+    (24.0, 3.4),
+)
+#: Footprint of a landed skid, in tiles. Mirrors the deck in `rift.py`.
+PAYOUT_TILES_W = 3.0
+
+#: How wide one piece of kit is, in tiles. Mirrors `TILE_KIT_W` in
+#: server/tools/make_store.py — the art and the cover it provides are the same
+#: object, so they are the same number.
+KIT_TILES_W = 1.6
+
+#: THE MACHINE, and where it stands is the whole reason it works.
+#:
+#: LAST, past the final table, on the walk to the way out. The glade is read
+#: once, left to right, and every other thing in it is a decision about money —
+#: so the one thing that is not about money goes at the end, where the party
+#: has already spent and is on their way into the next night. A cabinet in the
+#: middle of the stalls competes with the prices; a cabinet after them is the
+#: last thing anybody sees before the woods, and it is lit.
+#:
+#: It sits SOUTH of the centreline, opposite the merchant, so the two of them
+#: are not a row: he is behind his tables on one side and it is standing on its
+#: own on the other, which is what stops it reading as one more thing he sells.
+MACHINE_COL = 15.5
+MACHINE_ROW = 1.4
+#: Its footprint in tiles. Solid — you walk up to a machine, not through it.
+MACHINE_TILES_W = 2.0
 
 #: How many stalls. Rolled, because a night with three is a night with less to
 #: choose between and that should be something the player notices.
@@ -452,8 +520,52 @@ def _place_stands(
     return stands
 
 
+def payout_spots(height: int, count: int) -> list[tuple[float, float]]:
+    """Landing points for `count` platforms, in world pixels.
+
+    Measured from the WEST edge rather than from the centre, because what has
+    to be guaranteed is the relationship to the way IN: the party walks out of
+    that corridor and the skids are already coming down in front of them.
+    """
+    mid = (height - 1) / 2.0
+    return [
+        ((col + 0.5) * TILE_SIZE, (mid + row + 1.0) * TILE_SIZE)
+        for col, row in PAYOUT_SPOTS[: max(0, count)]
+    ]
+
+
+def payload_kit(width: int, height: int) -> list[tuple[float, float, int]]:
+    """His gear, in world pixels. One list, read twice.
+
+    Built here rather than inline so the tiles it makes solid and the rows the
+    client draws come out of the same call — a footprint derived from a second
+    copy of the offsets is a footprint that drifts the first time somebody
+    nudges the tent.
+    """
+    mid = (height - 1) / 2.0
+    centre = width / 2.0
+    return [
+        ((centre + col) * TILE_SIZE, (mid + row + 1.0) * TILE_SIZE, variant)
+        for col, row, variant in KIT_SPOTS
+    ]
+
+
+def _machine_spot(width: int, height: int) -> tuple[float, float]:
+    """Contact point of the cabinet, in world pixels.
+
+    Measured back from the EAST mouth rather than out from the centre, because
+    what has to be guaranteed is the relationship to the way out: the machine
+    is the last thing on the walk, and on a glade whose lane wanders it must
+    not end up level with the final table on one seed and inside the corridor
+    on another.
+    """
+    mid = (height - 1) / 2.0
+    tx = width - STORE_CORRIDOR_TILES - MACHINE_COL
+    return (tx + 0.5) * TILE_SIZE, (mid + MACHINE_ROW + 1.0) * TILE_SIZE
+
+
 def _torches(
-    width: int, height: int, seed: int, stands: list[Stand]
+    width: int, height: int, seed: int, stands: list[Stand], machine_x: float
 ) -> list[tuple[float, float, int]]:
     """Torch contact points, in world pixels.
 
@@ -481,6 +593,12 @@ def _torches(
         # A lane torch standing in the stock is one more thing between the
         # player and the thing they are trying to read. The pitch lights
         # itself; the lane only has to get them there.
+        # The machine lights its own end of the glade — see
+        # `STORE_MACHINE_LIGHT_TILES` — so a torch beside it is one more post
+        # in front of the one object here that is supposed to be looked at.
+        if abs(x - machine_x) <= keep_out:
+            tx += TORCH_SPACING
+            continue
         if all(abs(x - stand.x) > keep_out for stand in stands):
             side = 1 if index % 2 else -1
             ty = mid + side * (_lane_half(tx, seed) - 1.4)
@@ -499,7 +617,12 @@ def _torches(
     return placed
 
 
-def _dress(width: int, height: int, torches: list[tuple[float, float, int]]) -> dict:
+def _dress(
+    width: int,
+    height: int,
+    torches: list[tuple[float, float, int]],
+    machine: tuple[float, float],
+) -> dict:
     """The scenery half of the pitch: his tent, and the lights on the map.
 
     Shipped through `scenery.to_payload` rather than through the store's own
@@ -525,19 +648,43 @@ def _dress(width: int, height: int, torches: list[tuple[float, float, int]]) -> 
         scenery.PlacedLight(x=x, y=y, radius_tiles=TORCH_LIGHT_TILES, kind=scenery.EMBER)
         for x, y, _ in torches
     ]
+    # The machine's marquee. A `SceneLight` like every other lit thing, so the
+    # lighting has no idea one of its sources is electric — but it is placed
+    # ABOVE the cabinet's contact rather than on it, because the bulbs are on
+    # the crown and a pool centred on the floor would light the tray and leave
+    # the thing that is actually glowing in the dark.
+    lights.append(
+        scenery.PlacedLight(
+            x=machine[0],
+            y=machine[1] - TILE_SIZE * 1.6,
+            radius_tiles=STORE_MACHINE_LIGHT_TILES,
+            kind=scenery.NEON,
+        )
+    )
     population = scenery.Population(props=props, lights=lights, scenes=[], route=[])
     return scenery.to_payload(population)
 
 
-def build_store(day: int, seed: int) -> TileMap:
-    """Generate the merchant's camp. One shape every night; the details roll."""
+def build_store(day: int, seed: int, takes: list[int] | None = None) -> TileMap:
+    """Generate the merchant's camp. One shape every night; the details roll.
+
+    `takes` is what each of the night's platforms carried, in the order they
+    were loaded. It only decides how many skids come down on the apron and how
+    much each one is worth on screen — the BALANCE has already been credited by
+    `Room.enter_store`, and the ceremony the client runs off this is pure
+    presentation. Keeping the two apart is what stops a party who reconnected
+    halfway through the animation from being paid twice.
+    """
     rng = random.Random(seed ^ 0x5709E)
     width = STORE_WIDTH_TILES
     height = STORE_HEIGHT_TILES
     grid = _tiles(width, height, seed)
     west, east = _carve_ends(grid, width, height)
     stands = _place_stands(width, height, day, rng)
-    torches = _torches(width, height, seed, stands)
+    machine = _machine_spot(width, height)
+    paid = [value for value in (takes or []) if value > 0][: len(PAYOUT_SPOTS)]
+    landings = payout_spots(height, len(paid))
+    torches = _torches(width, height, seed, stands, machine[0])
 
     # Tables are cover. Claiming the tiles under each one is what stops a
     # player walking through the stock to stand inside the merchant, and it is
@@ -582,12 +729,60 @@ def build_store(day: int, seed: int) -> TileMap:
             round(centre * TILE_SIZE, 1),
             round((mid + MERCHANT_ROW + 1.6) * TILE_SIZE, 1),
         ],
+        "machine": [round(machine[0], 1), round(machine[1], 1)],
+        "kit": [
+            [round(kx, 1), round(ky, 1), variant]
+            for kx, ky, variant in payload_kit(width, height)
+        ],
+        # The apron. One row per platform that came home tonight: where it sets
+        # down and what it was carrying. Absent (empty) on a night nobody
+        # extracted, which is the one case where there is nothing to show.
+        "payout": [
+            [round(x, 1), round(y, 1), value]
+            for (x, y), value in zip(landings, paid)
+        ],
     }
+
+    # His gear is solid too, and it is what actually makes the pitch a PLACE:
+    # a party cannot walk through the crates to stand inside the tent, so the
+    # north side of the glade reads as somebody's camp rather than as painted
+    # scenery. LOW like the tables — waist-high, seen over, not seen through.
+    for kx, ky, _variant in payload_kit(width, height):
+        ty = int((ky - 1e-6) // TILE_SIZE)
+        left = int((kx - KIT_TILES_W / 2.0 * TILE_SIZE) // TILE_SIZE)
+        right = int((kx + KIT_TILES_W / 2.0 * TILE_SIZE - 1e-6) // TILE_SIZE)
+        for cell in range(left, right + 1):
+            if 0 <= cell < width and 0 <= ty < height:
+                grid[ty][cell] = LOW
+
+    # A landed skid is solid, exactly as it is out in the woods: it is a
+    # loading deck and the party does not stand on it. They are placed off the
+    # spine (see `PAYOUT_SPOTS`), so the walk down the glade is still open.
+    half_pad = PAYOUT_TILES_W / 2.0
+    for px, py in landings:
+        ty = int((py - 1e-6) // TILE_SIZE)
+        left = int((px - half_pad * TILE_SIZE) // TILE_SIZE)
+        right = int((px + half_pad * TILE_SIZE - 1e-6) // TILE_SIZE)
+        for cell in range(left, right + 1):
+            if 0 <= cell < width and 0 <= ty < height:
+                grid[ty][cell] = LOW
+
+    # The cabinet is cover, the same way a table is, and for the same reason:
+    # a body standing inside the one object in the glade that is supposed to be
+    # looked at is the loudest possible bug. LOW rather than PROP — you can see
+    # over it, and its own crown lights are above that line.
+    half = MACHINE_TILES_W / 2.0
+    machine_ty = int((machine[1] - 1e-6) // TILE_SIZE)
+    left = int((machine[0] - half * TILE_SIZE) // TILE_SIZE)
+    right = int((machine[0] + half * TILE_SIZE - 1e-6) // TILE_SIZE)
+    for cell in range(left, right + 1):
+        if 0 <= cell < width and 0 <= machine_ty < height:
+            grid[machine_ty][cell] = LOW
 
     return TileMap(
         grid,
         seed=seed,
-        scenery=_dress(width, height, torches),
+        scenery=_dress(width, height, torches, machine),
         entrance=west.geometry_payload(),
         egress=east.geometry_payload(),
         store=payload,

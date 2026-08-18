@@ -128,6 +128,37 @@ export interface HudBuyPrompt {
   swap?: string;
 }
 
+/**
+ * Proximity prompt on the upgrade machine.
+ *
+ * `spins` is what the press would spend, and it is on the prompt rather than
+ * left to the tray because the answer to "can I pull this" is a number the
+ * player has to be able to read while standing at the lever, not one they have
+ * to go and find in a corner.
+ *
+ *   ready   a level is owed and the cabinet is free — E pulls
+ *   empty   nothing owed. The lever is shown refusing rather than hidden: a
+ *           machine that vanished when you were broke would never teach
+ *           anybody what it was for.
+ *   busy    somebody else's pull is still running
+ */
+export interface HudMachinePrompt {
+  mode: 'ready' | 'empty' | 'busy';
+  spins: number;
+}
+
+/** One skill the local player holds, for the tray above the bag. */
+export interface HudSkill {
+  key: string;
+  name: string;
+  blurb: string;
+  rarity: LootRarity;
+  frame: number;
+  qty: number;
+  /** Copies past this one stop moving the number. The tile says so. */
+  cap: number;
+}
+
 /** How often the game republishes HUD state. 5 Hz is plenty for text. */
 export const HUD_INTERVAL = 0.2;
 
@@ -227,6 +258,29 @@ export interface HudSnapshot {
   riftPrompt: HudRiftPrompt | null;
   /** Proximity prompt on a shop table. Null outside the store. */
   buyPrompt: HudBuyPrompt | null;
+  /** Proximity prompt on the upgrade machine. Null outside the store. */
+  machinePrompt: HudMachinePrompt | null;
+  /**
+   * What the levels bought, for the tray ABOVE the bag.
+   *
+   * It sits there rather than in a corner of its own because a skill is the
+   * same kind of statement the pocket is — this is what I am carrying — and
+   * the two being one column is what stops the HUD growing a fifth region.
+   * Empty until the first pull, and an empty tray draws nothing at all.
+   */
+  skills: HudSkill[];
+  /**
+   * Pulls owed. Drawn on the tray as a badge, so a player who levelled in the
+   * woods is reminded there is something waiting for them at the shop —
+   * which is most of what makes the walk out worth looking forward to.
+   */
+  spins: number;
+  /**
+   * The skill that just came out of the machine, or null. Set on the frame the
+   * canister is claimed and cleared a beat later; the tray plays its entry off
+   * the key changing, exactly the way `arrival` works for a zone.
+   */
+  reward: HudSkill | null;
   /**
    * The PARTY's money — what the group loaded onto the platforms on the last
    * night out, converted on the way to the shop. Separate from
@@ -234,10 +288,16 @@ export interface HudSnapshot {
    */
   balance: number;
   /**
-   * Extraction-exit arrow. Pose is written every frame (`exit-guide.ts`);
-   * this flag only mounts the HUD node.
+   * Extraction-exit chevron, 0..1. Pose is written every frame
+   * (`exit-guide.ts`); this is only how strongly to draw it.
+   *
+   * IT IS A NUMBER RATHER THAN A FLAG because the arrow FADES. It burns for a
+   * few seconds after the exit opens and then leaves — the column of light
+   * over the treeline, the torches at the threshold and the ping from the
+   * mouth are what carry navigation from there, and none of them means
+   * anything while a chevron is answering the same question for free.
    */
-  exitGuide: boolean;
+  exitGuide: number;
   /** The pocket. Null before welcome. Open/close is client-local (TAB). */
   inventory: HudInventory | null;
   /** The gun belt. Always on screen; 1/2/3 selects. */
@@ -267,8 +327,12 @@ export const EMPTY_HUD: HudSnapshot = {
   cratePrompt: null,
   riftPrompt: null,
   buyPrompt: null,
+  machinePrompt: null,
+  skills: [],
+  spins: 0,
+  reward: null,
   balance: 0,
-  exitGuide: false,
+  exitGuide: 0,
   inventory: null,
   hotbar: null,
   quests: [],

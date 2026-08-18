@@ -122,9 +122,11 @@ export interface Palette {
   /**
    * Lights the MAP owns out in the forest. Bare channels: the layer computes
    * alpha from its own flicker. `beacon` is the extraction rift — cold pale
-   * cyan, the same end of the prism its art is painted in.
+   * cyan, the same end of the prism its art is painted in. `neon` is the
+   * upgrade machine's marquee, the only electric light in the game and the
+   * only one that is neither fire nor beacon.
    */
-  scene: { lamp: Channels; ember: Channels; beacon: Channels };
+  scene: { lamp: Channels; ember: Channels; beacon: Channels; neon: Channels };
 
   /** The lobby campfire — the only light in that scene. */
   fire: {
@@ -266,6 +268,7 @@ function resolve(): Palette {
       lamp: rgb('--scene-lamp'),
       ember: rgb('--scene-ember'),
       beacon: rgb('--scene-beacon'),
+      neon: rgb('--scene-neon'),
     },
 
     fire: {

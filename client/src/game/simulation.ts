@@ -33,9 +33,17 @@ export function moveDir(input: InputPacket): { dx: number; dy: number } {
 /**
  * How much of `moveSpeed` a body gets at this carried weight.
  * Mirror of `carry_scale` in server/app/simulation.py.
+ *
+ * `maxWeight` overrides the config ceiling, because a skill moves it
+ * (`skills.Mods.carry`, shipped on the roster as `mods.carry`). The curve is
+ * still one decision; only where the free band ends slides.
  */
-export function carryScale(weight: number, config: GameConfig): number {
-  const max = config.carryMaxWeight ?? 10;
+export function carryScale(
+  weight: number,
+  config: GameConfig,
+  maxWeight?: number,
+): number {
+  const max = maxWeight ?? config.carryMaxWeight ?? 10;
   const start = config.carrySlowStart ?? 0.2;
   const atMax = config.carrySlowAtMax ?? 0.55;
   const floor = config.carrySlowFloor ?? 0.35;
@@ -53,8 +61,12 @@ export function carryScale(weight: number, config: GameConfig): number {
  * 1 at max weight, and it keeps climbing if they go over. Footprints and
  * dust read this; speed uses `carryScale`.
  */
-export function carryBurden(weight: number, config: GameConfig): number {
-  const max = config.carryMaxWeight ?? 10;
+export function carryBurden(
+  weight: number,
+  config: GameConfig,
+  maxWeight?: number,
+): number {
+  const max = maxWeight ?? config.carryMaxWeight ?? 10;
   const start = config.carrySlowStart ?? 0.2;
   if (max <= 0) return 0;
   const ratio = weight / max;
@@ -70,9 +82,16 @@ export function applyInput(
   config: GameConfig,
   dt: number,
   weight = 0,
+  /**
+   * The owner's flattened skill mods. Mirror of `player.skills.mods` on the
+   * server — a default of 1 / undefined is a body with no skills, which is
+   * every body on the opening night.
+   */
+  mods?: { speed: number; carry: number },
 ): void {
   const { dx, dy } = moveDir(input);
-  const speed = config.moveSpeed * carryScale(weight, config);
+  const speed =
+    config.moveSpeed * (mods?.speed ?? 1) * carryScale(weight, config, mods?.carry);
   state.vx = dx * speed;
   state.vy = dy * speed;
 

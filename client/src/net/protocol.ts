@@ -93,6 +93,19 @@ export interface BuyPacket {
   id?: string;
 }
 
+/**
+ * Pull the upgrade machine's lever. No id: there is exactly one cabinet in the
+ * glade, so naming it would be a field that could only ever hold one value.
+ *
+ * The server refuses silently when the feet are out of range, when no level is
+ * owed, or while somebody else's pull is still running — all three are things
+ * the HUD already knows, so the prompt is what says which and this packet is
+ * simply not sent.
+ */
+export interface SpinPacket {
+  type: 'spin';
+}
+
 export type ClientMessage =
   | InputPacket
   | PingPacket
@@ -102,6 +115,7 @@ export type ClientMessage =
   | BreakPacket
   | ActivatePacket
   | BuyPacket
+  | SpinPacket
   | DropPacket;
 
 /**
@@ -165,6 +179,12 @@ export interface GameConfig {
   storeBuyTiles?: number;
   /** How far the weapon on that table lifts while somebody is in range, in tiles. */
   storeLiftTiles?: number;
+  /** How close to the upgrade machine (tiles, feet to contact) E pulls. */
+  storeSpinTiles?: number;
+  /** The upgrade machine's clock. One source: `server/app/machine.py`. */
+  machine?: MachineTimingConfig;
+  /** Catalog of skills. Keyed by key; `frame` indexes the skill icon atlas. */
+  skills?: Record<string, SkillConfig>;
   /** The extraction platform's clock. One source: `server/app/rift.py`. */
   rift?: RiftTimingConfig;
   /** Catalog of world loot. Keyed by item key; `frame` indexes the loot atlas. */
@@ -388,6 +408,16 @@ export interface ZoneInfo {
   /** The lantern switch works. False in the camp: the bonfire is the light. */
   lantern: boolean;
   /**
+   * How much light this PLACE has of its own, 0..1, under the darkness pass.
+   *
+   * Zero everywhere a player can be killed — a forest with a floor under its
+   * darkness is a forest with no reason to own a lantern. The shop is the one
+   * exception and it is what the shop is for: walking out of a black wood into
+   * somewhere with visible edges is the reward, and the contrast only exists
+   * because everywhere else is at zero.
+   */
+  ambient?: number;
+  /**
    * Night coat, rolled with the clock. `clear` is a dry forest; `rain` and
    * `fog` are the same map in a different coat, so day 2 can feel like
    * somewhere else without a new generator. Camp is always `clear`.
@@ -591,6 +621,46 @@ export interface StandState {
 }
 
 /**
+ * One skill, out of `welcome.config.skills`. Mirror of `skills.catalog_payload`.
+ *
+ * The server only ever names a skill by KEY — on the roster and on a spin
+ * event — and everything drawable about it is here, exactly the way the loot
+ * catalog works. `frame` indexes `/skills/sheet.png`.
+ */
+export interface SkillConfig {
+  name: string;
+  rarity: LootRarity;
+  /** One line stating the effect, in the player's language. */
+  blurb: string;
+  frame: number;
+  /** How many copies still move the number. Past it a pull still counts. */
+  cap: number;
+}
+
+/**
+ * The upgrade machine's timeline, in seconds from the lever coming down.
+ * Mirror of `server/app/machine.py`; the client flies the whole four seconds
+ * off these plus the one spin event, on its own render clock.
+ */
+export interface MachineTimingConfig {
+  armTime: number;
+  spinUp: number;
+  reelOne: number;
+  reelTwo: number;
+  /**
+   * Extra spin on the THIRD reel, per rarity. This is the anticipation, and it
+   * is the only part of the clock that varies: two reels have already agreed
+   * and the last one is taking its time, longer the better the pull was.
+   */
+  reelHold: Record<string, number>;
+  ejectLag: number;
+  ejectFlight: number;
+  holdTime: number;
+  resetTime: number;
+  reachTiles: number;
+}
+
+/**
  * Where the merchant's pitch stands. Placed by `server/app/store.py`.
  *
  * Only what is HIS is here. The glade around it — soil, trees, the tent he
@@ -605,6 +675,54 @@ export interface StorePayload {
   torches: [number, number, number][];
   /** Centre of the mat the merchant trades over. */
   rug: [number, number];
+  /**
+   * Contact point of the upgrade machine, at the far end of the lane. Absent
+   * on a map built before the cabinet existed, which the layer treats as "no
+   * machine here" rather than as an error.
+   */
+  machine?: [number, number];
+  /**
+   * His own gear: `[x, y, variant]` per piece, all of it BEHIND the counter.
+   *
+   * It is on the store payload rather than in `props` because it is his, the
+   * same way the tables and the torches are — and because the south side of
+   * the lane is the half that answers E. Nothing here is interactive; the art
+   * is drawn roped and padlocked so the silhouette says so.
+   */
+  kit?: [number, number, number][];
+  /**
+   * THE APRON: one row per platform that came home tonight, as
+   * `[x, y, value]` — where it sets down and what it was carrying.
+   *
+   * Empty on a night nobody extracted, which is the one case with nothing to
+   * show. The BALANCE is not derived from this: the server credited it when
+   * the party crossed the corridor, and everything the client does with these
+   * rows is presentation. See `client/src/game/payout.ts`.
+   */
+  payout?: [number, number, number][];
+}
+
+/**
+ * One lever pull, for the frame it happened on — and the whole ceremony.
+ *
+ * Everything the next four seconds look like is decided from this row: which
+ * reel face the strip lands on, how long the third one holds, what colour the
+ * canister is, and which icon is stamped on it. The roll is already resolved
+ * server-side, so the reels are TELLING the player something rather than
+ * deciding it while they watch.
+ */
+export interface SpinEvent {
+  /** Who pulled. Only their own client flies the canister into the HUD tray. */
+  by: string;
+  /** Skill key — index it against `config.skills`. */
+  k: string;
+  r: LootRarity;
+  /** Copies held after this one. The tray tile counts up to it. */
+  n: number;
+  /** Pulls still banked afterwards. */
+  left: number;
+  x: number;
+  y: number;
 }
 
 /** One purchase, for the frame it happened on. */
@@ -814,6 +932,43 @@ export interface PlayerMeta {
    * counter. A run opens at all zeroes because it opens with no gun.
    */
   ammo?: Record<string, number>;
+  /**
+   * What the levels bought: `{k, n}` per skill, sorted by catalog order.
+   *
+   * On the roster for the same reason `ammo` is, taken further — a stack
+   * changes once a day, in a shop, in front of a machine. Names and icons are
+   * not here: `config.skills` has them, keyed by `k`.
+   */
+  skills?: SkillStackState[];
+  /** Pulls owed to the machine. One per level gained, spendable any night. */
+  spins?: number;
+  /**
+   * The flattened numbers the OWNER's client has to mirror. Movement and carry
+   * scale are predicted locally and the health bar and the battery are drawn
+   * locally, so a client that had to guess at its own ceiling would draw the
+   * wrong bar for exactly the frames somebody just changed it.
+   */
+  mods?: PlayerMods;
+}
+
+/** One skill and how many copies of it are held. */
+export interface SkillStackState {
+  k: string;
+  n: number;
+}
+
+/** Mirror of `skills.Mods.payload()` — see `server/app/skills.py`. */
+export interface PlayerMods {
+  /** Move speed multiplier, on top of the carry scale. */
+  speed: number;
+  /** This body's health ceiling. `config.maxHp` is only where a run OPENS. */
+  maxHp: number;
+  /** Carry capacity in kg. Replaces `config.carryMaxWeight` for this player. */
+  carry: number;
+  /** Extra bag cells already granted. The server has grown the pocket. */
+  slots: number;
+  /** How much longer the lantern lasts. The battery is client-local. */
+  lamp: number;
 }
 
 /**
@@ -1147,6 +1302,7 @@ export interface SnapshotMessage {
   stands?: StandState[];
   /** Purchases since the last snapshot. */
   buys?: BuyEvent[];
+  spins?: SpinEvent[];
   /** The party's balance. Present only when it changed. */
   balance?: number;
 }

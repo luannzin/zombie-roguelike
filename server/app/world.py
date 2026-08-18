@@ -82,7 +82,7 @@ class TileMap:
         entrance: dict | None = None,
         egress: dict | None = None,
         store: dict | None = None,
-        nests: list[tuple[float, float]] | None = None,
+        nests: list[tuple[float, float, int]] | None = None,
     ):
         self.tiles = tiles
         # The story laid over this map: a legend plus one compact row per
@@ -114,10 +114,14 @@ class TileMap:
         # room hydrates live `store.Stand` rows out of it and forwards the
         # rest verbatim.
         self.store = store
-        # Where the map wants creatures STANDING when the party arrives, in
-        # world pixels. Never on the wire: the enemies themselves ride the
-        # snapshot like any other, and a client that was told where the nests
-        # are would be told where the shrine is before it can see it.
+        # Where the map wants creatures STANDING when the party arrives, as
+        # `(x, y, count)` in world pixels. `count` is 0 for a landmark whose
+        # guard is the room's to size (the sanctuary) and a small number for a
+        # scene that simply kept its dead — see `mapgen.HAUNT_SCENES`.
+        #
+        # Never on the wire: the enemies themselves ride the snapshot like any
+        # other, and a client that was told where the nests are would be told
+        # where the shrine is before it can see it.
         self.nests = list(nests or [])
         # Shipped to the client, which hashes it with tile coordinates to place
         # decoration (grass tufts, prop variants). Sending a seed instead of a

@@ -35,6 +35,10 @@ client -> server
   {"type":"activate","id":"r0"}         press a rift console or feed an open
                                         platform from the bag. `id` is the pad;
                                         omitted = nearest in range.
+  {"type":"spin"}                       pull the upgrade machine's lever.
+                                        Store zone only; ignored if too far,
+                                        if no level is owed, or while another
+                                        player's pull is still running
   {"type":"buy","id":"s2"}              take the weapon off a shop table and
                                         charge the party balance. Store zone
                                         only; ignored if too far, already
@@ -59,7 +63,7 @@ server -> client
    "corpses":[...],
    "entrance":{...},"tilePatches":[...],"quests":[...],
    "rifts":[...],"egress":{...},"blackout":true,
-   "stands":[...],"buys":[...],"balance":240,
+   "stands":[...],"buys":[...],"balance":240,"spins":[...],
    "roster":[...]}                    only every ROSTER_EVERY_N_TICKS ticks
   {"type":"pong","t":<echoed>}
 
@@ -160,6 +164,16 @@ Snapshot arrays:
   buys         purchases since the last snapshot (juice). `slot` is the belt
                cell it landed in; the client flies the sprite there and
                counts the balance down
+  spins        lever pulls since the last snapshot (juice). ONE ROW IS A
+               WHOLE CEREMONY: `k` is the skill that came out, `r` its
+               rarity, `n` how many copies the puller holds now, `left`
+               how many pulls they have banked after it. Everything the
+               four seconds of reels, eject and settle look like is flown
+               by each client off this row plus `config.machine` — the
+               roll is already decided, so the reels are telling the
+               player something rather than deciding it. The stacks and
+               the spin count also ride the ROSTER (`skills`, `spins`),
+               which is what a client that joined mid-pull reads
   balance      THE PARTY'S money, not a player's, so it is one number at the
                top of the snapshot rather than a column on the roster. Sent
                only when it changes — see `Player.gold` for the other,
@@ -183,6 +197,7 @@ MSG_BREAK = "break"
 MSG_DROP = "drop"
 MSG_ACTIVATE = "activate"
 MSG_BUY = "buy"
+MSG_SPIN = "spin"
 
 MSG_HELLO = "hello"
 MSG_LOBBY = "lobby"
@@ -299,6 +314,7 @@ def snapshot(
     stands: list[dict] | None = None,
     buys: list[dict] | None = None,
     balance: int | None = None,
+    spins: list[dict] | None = None,
 ) -> dict:
     payload = {
         "type": MSG_SNAPSHOT,
@@ -351,6 +367,8 @@ def snapshot(
         payload["stands"] = stands
     if buys:
         payload["buys"] = buys
+    if spins:
+        payload["spins"] = spins
     # `is not None` rather than truthiness: spending down to nothing is the one
     # balance change a party most needs to see land.
     if balance is not None:

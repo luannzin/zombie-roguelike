@@ -10,13 +10,21 @@
  * composited layer — rounding the translate would put the per-frame jitter
  * straight back after the smoothing had just taken it out, which is what the
  * old version did.
+ *
+ * IT IS NO LONGER PERMANENT, and that is the important part. `strength` is a
+ * number the game fades to zero a few seconds after the exit opens — the
+ * chevron is there to turn the party around on the frame the news lands, and
+ * then it gets out of the way so the column over the treeline, the torches at
+ * the threshold and the ping from the mouth are the things being read. A
+ * marker that answers "which way out" forever means the world never has to.
  */
 
 import { useEffect, useRef } from 'react';
 import { stepExitGuide } from '../../game/exit-guide';
 
 export interface ExitGuideProps {
-  visible: boolean;
+  /** 0..1. Zero unmounts it; anything else is the chevron's own opacity. */
+  strength: number;
 }
 
 /** Source pixels of `/hud/arrow.png`, drawn at 2x so the grid stays crisp. */
@@ -24,8 +32,13 @@ const ARROW_W = 21;
 const ARROW_H = 13;
 const ARROW_SCALE = 2;
 
-export function ExitGuide({ visible }: ExitGuideProps) {
+export function ExitGuide({ strength }: ExitGuideProps) {
   const ref = useRef<HTMLDivElement>(null);
+  const visible = strength > 0;
+  // Read through a ref so the rAF loop below sees the current value without
+  // being torn down and rebuilt five times a second as the fade ticks.
+  const level = useRef(strength);
+  level.current = strength;
 
   useEffect(() => {
     if (!visible) return;
@@ -41,7 +54,7 @@ export function ExitGuide({ visible }: ExitGuideProps) {
         el.style.transform =
           `translate3d(${pose.x.toFixed(2)}px, ${pose.y.toFixed(2)}px, 0)`
           + ` translate(-50%, -50%) rotate(${pose.angle.toFixed(4)}rad)`;
-        el.style.opacity = '1';
+        el.style.opacity = level.current.toFixed(3);
       } else {
         el.style.opacity = '0';
       }

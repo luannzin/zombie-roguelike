@@ -21,9 +21,12 @@ mutation, no React.
 | `rift.ts` | threshold atlas: the console prop with its four STATES, the torch prop and its fire, the paid console's band, the exit's paving |
 | `platform.ts` | extraction atlas: the cargo skid (cold / green standby / red alarm) and lift drone (hover / cruise) props, rotor / strobe / standby / siren / downwash / burst effect sheets, the imprint decal, and the `layout` block the ropes and lamps are drawn from |
 | `layers/rift.ts` | extraction pads: the whole rig's timing (`riftPhase`) plus its four passes — floor, depth sort, the air, additive light — and the deck's LOAD, both the pile at rest and what is still falling into it |
-| `store.ts` | the merchant's own kit: tables (with `topY`), torches (with `flameY`), the mat, the torch fire and the buy pool — plus the HUD coin the price tag draws |
+| `store.ts` | the merchant's own kit: tables (with `topY`), his gear (`kit`), torches (with `flameY`), the mat, the torch fire and the buy pool — plus the HUD coin the price tag draws |
+| `machine.ts` | the upgrade cabinet's atlas: body, reels, lever, and the three greyscale lights (marquee, reel backlight, payout burst) the layer tints |
+| `skills.ts` | skill icons and the canister, plus `drawCanister` — body, icon, emissive pass, in that unnegotiable order |
 | `merchant.ts` | the shopkeeper's clips and the player that picks between them (`MerchantPose`, `stepMerchant`, `merchantFrame`) |
-| `layers/store.ts` | his pitch drawn: mat, depth-sorted tables / torches / merchant, stock with its lift, the fires and the price tags |
+| `layers/store.ts` | his pitch drawn: mat, depth-sorted tables / gear / torches / merchant / MACHINE, stock with its lift, the fires, the cabinet's tinted light and the price tags |
+| `layers/payout.ts` | the night's platforms being lowered into the shop's apron, the drones leaving, and the gold flying to the HUD balance |
 | `loot.ts` | loot atlas: one 16x16 frame per collectable item |
 | `guns.ts` | held-gun atlas and the shared muzzle/grip pose (`gunMuzzle`) |
 | `gore.ts` | gore atlas: small wound decals stamped on a body that has been hit |

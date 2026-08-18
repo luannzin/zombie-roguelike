@@ -1726,6 +1726,207 @@ def sfx_object_heavy(rng: random.Random, variant: int) -> tuple[Buf, int]:
     return normalize(pad(out, n), 0.9), rate
 
 
+
+
+def sfx_empty(rng: random.Random) -> tuple[Buf, int]:
+    """NOTHING IN HERE — the sound of an opened container that did not pay.
+
+    THIS IS THE ONE SOUND IN THE GAME WHOSE JOB IS TO REPORT AN ABSENCE, and it
+    exists because an empty interaction and a FAILED one were audibly the same
+    thing. A chest whose lid came up on nothing played the lid and then silence,
+    which is exactly what a press the server dropped sounds like — so a player
+    who found nothing could not tell whether they had found nothing or whether
+    the game had ignored them.
+
+    A hollow box knocked once, and dry air coming out of it. Low, short and
+    QUIET: it has to be legible without being a punishment, because a run is
+    made of these and a disappointment that stings every time teaches people to
+    stop opening things.
+    """
+    rate = SFX_RATE
+    n = dur(0.34, rate)
+
+    # The box itself: a low resonance with nothing damping it, which is what
+    # "hollow" is. Two partials rather than one — a single sine reads as a
+    # tone rather than as a struck object.
+    body_n = dur(0.26, rate)
+    body = mix(
+        mul(tone(body_n, lambda t: 132.0 - 26.0 * t, rate, "sine"),
+            env_perc(body_n, rate, 0.002, 0.16, 2.6)),
+        gain(mul(tone(body_n, 197.0, rate, "sine"),
+                 env_perc(body_n, rate, 0.002, 0.1, 3.2)), 0.45),
+    )
+
+    # The air. A short filtered breath sliding down, so the box reads as having
+    # had something in it once rather than as never having been sealed.
+    air_n = dur(0.30, rate)
+    air = biquad(pink(air_n, rng), rate, "bandpass",
+                 lambda t: 900.0 - 480.0 * t, 1.1)
+    air = mul(air, env_from(air_n, [(0.0, 0.0), (0.16, 1.0), (1.0, 0.0)]))
+
+    out = pad(gain(body, 0.9), n)
+    out = mix(out, gain(pad(air, n), 0.4))
+    return normalize(reflections(out, rate, [(0.023, 0.16)]), 0.88), rate
+
+
+# --- the upgrade machine ----------------------------------------------------
+#
+# THE CABINET NEEDED ITS OWN VOCABULARY AND THIS IS WHY. The pull was built out
+# of `object-heavy` and `object-open` first, and it worked in the sense that
+# sounds came out — which is exactly the failure mode the object vocabulary was
+# written to stop. A car boot and a slot machine's lever are not the same
+# event, and a machine assembled out of borrowed container noises reads as a
+# container, whatever it looks like.
+#
+# Four sounds, and each one is a beat of the ceremony:
+#
+#   LEVER   a sprung arm going over centre. Ratchet, spring, and the clunk of
+#           the mechanism catching at the bottom of its travel.
+#   REEL    a detent landing. Three variants, and the client pitches the third
+#           one up with the rarity — so the tier is audible a beat before the
+#           canister exists.
+#   CAN     a hollow metal tube hitting a steel tray. Deliberately not `drop`:
+#           that one is loot landing on soil, and this has to ring.
+#   JACKPOT the flourish, and it is only played for the top of the ladder. A
+#           celebration on every pull is a celebration on none of them.
+
+
+def sfx_lever(rng: random.Random) -> tuple[Buf, int]:
+    """A sprung arm thrown over centre.
+
+    Three parts and the order is the mechanism: the RATCHET as the arm is
+    hauled down (hard clicks slowing as the spring loads), the SPRING itself (a
+    short pitched ring bending as it stretches), and the CLUNK of the whole
+    cabinet taking the stop. The clunk is low and has a body resonance on it,
+    because what is being struck is a steel box with air in it — and that is
+    the difference between a lever and a light switch.
+    """
+    rate = SFX_RATE
+    n = dur(0.70, rate)
+
+    def click(local_rng: random.Random, _index: int) -> Buf:
+        m = dur(0.012, rate)
+        tick = biquad(white(m, local_rng), rate, "bandpass",
+                      1800 + local_rng.random() * 1400, 6.0)
+        return gain(mul(tick, env_perc(m, rate, 0.0004, 0.008, 3.4)), 0.5)
+
+    ratchet = scatter(dur(0.30, rate), rate, rng, 9, click, spread=(0.0, 0.85))
+
+    spring_n = dur(0.26, rate)
+    spring = mix(
+        mul(tone(spring_n, lambda t: 620.0 - 210.0 * t, rate, "sine"),
+            env_perc(spring_n, rate, 0.004, 0.2, 2.4)),
+        gain(mul(tone(spring_n, lambda t: 1240.0 - 380.0 * t, rate, "sine"),
+                 env_perc(spring_n, rate, 0.004, 0.12, 3.0)), 0.35),
+    )
+
+    clunk_n = dur(0.34, rate)
+    clunk = mix(
+        mul(tone(clunk_n, lambda t: 96.0 - 26.0 * t, rate, "sine"),
+            env_perc(clunk_n, rate, 0.001, 0.2, 2.6)),
+        mul(tone(clunk_n, 174.0, rate, "sine"), env_perc(clunk_n, rate, 0.001, 0.13, 3.2)),
+        mul(biquad(white(clunk_n, rng), rate, "bandpass", 2100.0, 2.0),
+            env_perc(clunk_n, rate, 0.0004, 0.045, 4.0)),
+    )
+
+    out = pad(gain(ratchet, 0.8), n)
+    out = at(out, gain(spring, 0.5), dur(0.08, rate))
+    out = at(out, gain(clunk, 0.95), dur(0.30, rate))
+    out = reflections(softclip(out, 1.15), rate, [(0.026, 0.2), (0.055, 0.1)])
+    return normalize(pad(out, n), 0.92), rate
+
+
+def sfx_reel(rng: random.Random, variant: int) -> tuple[Buf, int]:
+    """A reel dropping into its detent.
+
+    Short, hard and PITCHED, because the client plays the third one at a rate
+    that climbs with the rarity — a reel stop made of pure noise would take
+    that channel away, and the pitch climbing under the third stop is most of
+    what makes the wait worth having.
+    """
+    rate = SFX_RATE
+    n = dur(0.20, rate)
+    base = 340.0 + variant * 46.0 + rng.random() * 24.0
+
+    body = mix(
+        mul(tone(n, lambda t: base * (1.0 - 0.18 * t), rate, "sine"),
+            env_perc(n, rate, 0.0008, 0.09, 3.2)),
+        mul(tone(n, base * 2.51, rate, "sine"), env_perc(n, rate, 0.0006, 0.05, 3.8)),
+    )
+    edge = mul(biquad(white(n, rng), rate, "bandpass", 3200.0, 3.0),
+               env_perc(n, rate, 0.0003, 0.022, 4.2))
+    return normalize(mix(gain(body, 0.85), gain(edge, 0.5)), 0.9), rate
+
+
+def sfx_can(rng: random.Random) -> tuple[Buf, int]:
+    """A hollow tube landing in a steel tray, and rocking to a stop.
+
+    It RINGS, which is the whole reason it is not `drop`. Loot landing on soil
+    is a thud with grit in it; this is metal on metal inside a box, so it gets
+    a long thin partial over the impact and two lighter taps behind it as the
+    canister settles onto its side.
+    """
+    rate = SFX_RATE
+    n = dur(0.56, rate)
+
+    hit_n = dur(0.30, rate)
+    hit = mix(
+        mul(tone(hit_n, 208.0, rate, "sine"), env_perc(hit_n, rate, 0.0008, 0.1, 3.0)),
+        mul(tone(hit_n, 1470.0, rate, "sine"), env_perc(hit_n, rate, 0.0006, 0.26, 2.2)),
+        mul(biquad(white(hit_n, rng), rate, "bandpass", 2600.0, 2.4),
+            env_perc(hit_n, rate, 0.0003, 0.03, 4.0)),
+    )
+
+    def rock(local_rng: random.Random, _index: int) -> Buf:
+        m = dur(0.09, rate)
+        tap = mix(
+            mul(tone(m, 1180.0 + local_rng.random() * 320.0, rate, "sine"),
+                env_perc(m, rate, 0.0006, 0.06, 2.8)),
+            mul(biquad(white(m, local_rng), rate, "bandpass", 3000.0, 3.0),
+                env_perc(m, rate, 0.0003, 0.015, 4.0)),
+        )
+        return gain(tap, 0.22 + local_rng.random() * 0.16)
+
+    out = pad(gain(hit, 0.95), n)
+    out = mix(out, scatter(n, rate, rng, 3, rock, spread=(0.34, 0.8)))
+    return normalize(reflections(out, rate, [(0.019, 0.24), (0.041, 0.13)]), 0.92), rate
+
+
+def sfx_jackpot(rng: random.Random) -> tuple[Buf, int]:
+    """The flourish, and it is reserved for the top of the ladder.
+
+    A rising four-note figure over a bed of small bright grains — the machine's
+    bulbs all coming on at once. It is played ONLY behind an epic or a
+    legendary, because a celebration that fires on every pull stops being one
+    by the third shop; it is the audio half of the rule `pullGain` keeps on
+    screen.
+    """
+    rate = SFX_RATE
+    n = dur(1.30, rate)
+
+    steps = (523.25, 659.25, 783.99, 1046.50)
+    out = silence(n)
+    for index, freq in enumerate(steps):
+        note_n = dur(0.55, rate)
+        note = mix(
+            mul(tone(note_n, freq, rate, "sine"), env_perc(note_n, rate, 0.004, 0.34, 2.4)),
+            gain(mul(tone(note_n, freq * 2.0, rate, "sine"),
+                     env_perc(note_n, rate, 0.003, 0.18, 3.0)), 0.35),
+            gain(mul(tone(note_n, freq * 3.01, rate, "sine"),
+                     env_perc(note_n, rate, 0.002, 0.1, 3.6)), 0.14),
+        )
+        out = at(out, gain(note, 0.7 - index * 0.06), dur(0.09 * index, rate))
+
+    def spark(local_rng: random.Random, _index: int) -> Buf:
+        m = dur(0.07, rate)
+        grain = mul(tone(m, 1800.0 + local_rng.random() * 2600.0, rate, "sine"),
+                    env_perc(m, rate, 0.001, 0.045, 3.4))
+        return gain(grain, 0.1 + local_rng.random() * 0.14)
+
+    out = mix(out, scatter(n, rate, rng, 14, spark, spread=(0.05, 0.7)))
+    return normalize(reverb(out, rate, room=0.7, damp=0.4, wet=0.16), 0.92), rate
+
+
 # --- the knife --------------------------------------------------------------
 #
 # The blade's whole argument is that it is QUIET, and the mix has to say so
@@ -1907,6 +2108,21 @@ CATALOG: dict[str, tuple[object, int, float, str, bool]] = {
     "object-open": (sfx_object_open, 3, -9.0, "misc", False),
     "object-heavy": (sfx_object_heavy, 3, -7.0, "misc", False),
     "drop": (sfx_drop, 1, -13.0, "misc", False),
+    # WELL DOWN THE LADDER, and deliberately. It reports that nothing
+    # happened, and a disappointment that is as loud as a find teaches
+    # people to stop opening things. Quiet enough to be information.
+    "empty": (sfx_empty, 1, -16.0, "misc", False),
+    # THE UPGRADE MACHINE. `misc`, because it is neither combat nor the
+    # interface, and it sits a step ABOVE the containers: the cabinet is the
+    # loudest thing in a zone with no threat in it, and the whole ceremony is
+    # supposed to make a party at the other end of the glade look over.
+    "lever": (sfx_lever, 1, -6.0, "misc", False),
+    "reel": (sfx_reel, 3, -10.0, "misc", False),
+    "can": (sfx_can, 1, -9.0, "misc", False),
+    # The one sound in the game that is deliberately rare: epic and legendary
+    # only. Loud enough to be an event, short enough not to sit on top of the
+    # rarity chime it plays behind.
+    "jackpot": (sfx_jackpot, 1, -5.0, "misc", False),
 }
 
 #: Base for every per-sound seed. Changing it reshuffles every variant in the

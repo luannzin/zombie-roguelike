@@ -1161,6 +1161,86 @@ export function drawEgressFire(
   ctx.restore();
 }
 
+/** How tall the exit's signal column stands, in tiles. */
+const BEACON_TILES_H = 15;
+/** How wide it is at the base, in tiles. */
+const BEACON_TILES_W = 2.6;
+/** How long the launch flare burns brighter than the steady column, seconds. */
+const BEACON_FLARE = 4.0;
+
+/**
+ * THE SIGNAL OVER THE TREES — how a party finds the way out without an arrow.
+ *
+ * When the last platform is called the woods go dark and a new corridor opens
+ * on a random edge. The problem that creates is navigational and it used to be
+ * answered by a permanent gold chevron pinned to the HUD, which works and is
+ * also the least interesting possible version of it: the player never
+ * DISCOVERS anything, they follow a marker.
+ *
+ * So the exit throws a column of light straight up over the treeline. It is
+ * drawn in WORLD space, which is the whole design: it is only on screen when
+ * the camera is pointed somewhere it can be seen, so finding it is a matter of
+ * looking — "what is that?" then "that's the way out" then "I need to get
+ * there". A screen-space marker can never produce the first of those three.
+ *
+ * It BURNS HARD for the first few seconds and then settles to a steady pulse,
+ * because the moment it opens is an event and the ten minutes afterwards are
+ * navigation. The column narrows as it rises and never reaches the top of its
+ * own box, so it reads as light thrown up out of a hole rather than as a bar
+ * drawn on the scene.
+ */
+export function drawEgressBeacon(
+  ctx: CanvasRenderingContext2D,
+  egress: { mouthX: number; mouthY: number } | null,
+  tileSize: number,
+  time: number,
+  since: number,
+  tone: readonly number[],
+): void {
+  if (!egress) return;
+  const flare = since < BEACON_FLARE ? 1 - since / BEACON_FLARE : 0;
+  // A slow breath under a fast flicker: the fast one alone reads as a broken
+  // lamp and the slow one alone reads as a gradient somebody left on.
+  const beat =
+    0.72 + 0.18 * Math.sin(time * 1.35) + 0.1 * Math.sin(time * 7.4 + 1.1);
+  const strength = 0.34 + flare * 0.66;
+  const height = tileSize * BEACON_TILES_H * (0.82 + flare * 0.35);
+  const halfWidth = tileSize * BEACON_TILES_W * 0.5;
+  const css = `${tone[0]} ${tone[1]} ${tone[2]}`;
+
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+
+  // The column. Four narrowing bands rather than one gradient rectangle: a
+  // linear gradient at arena zoom comes out as a visible ramp with banding on
+  // it, and stacked hard bands read as pixel art.
+  const bands = 5;
+  for (let index = 0; index < bands; index++) {
+    const t = index / bands;
+    const top = egress.mouthY - height * (t + 1 / bands);
+    const bottom = egress.mouthY - height * t;
+    const spread = halfWidth * (1 - t * 0.62);
+    ctx.fillStyle = `rgb(${css} / ${(strength * beat * (0.2 - t * 0.032)).toFixed(3)})`;
+    ctx.fillRect(egress.mouthX - spread, top, spread * 2, bottom - top);
+  }
+
+  // The root: a bright disc sitting in the mouth itself, so the column has
+  // something to be coming out of.
+  const root = tileSize * (1.4 + flare * 1.1);
+  const glow = ctx.createRadialGradient(
+    egress.mouthX, egress.mouthY, 1, egress.mouthX, egress.mouthY, root,
+  );
+  glow.addColorStop(0, `rgb(${css} / ${(0.5 * strength * beat).toFixed(3)})`);
+  glow.addColorStop(0.45, `rgb(${css} / ${(0.18 * strength * beat).toFixed(3)})`);
+  glow.addColorStop(1, `rgb(${css} / 0)`);
+  ctx.fillStyle = glow;
+  ctx.fillRect(
+    egress.mouthX - root, egress.mouthY - root, root * 2, root * 2,
+  );
+
+  ctx.restore();
+}
+
 /**
  * Paving on the ground at the exit.
  *

@@ -51,6 +51,8 @@ import type {
   QuestState,
   ServerMessage,
   SnapshotMessage,
+  SkillConfig,
+  SpinEvent,
   SwingEvent,
   WelcomeMessage,
   WeaponConfig,
@@ -96,7 +98,9 @@ import {
   type HudHotbar,
   type HudInventory,
   type HudLootPrompt,
+  type HudMachinePrompt,
   type HudRiftPrompt,
+  type HudSkill,
   type HudSnapshot,
   type HudStore,
 } from './hud-store';
@@ -133,6 +137,19 @@ import {
   writeTooltipAnchor,
 } from './tooltip-anchors';
 import { dropExitGuide, guidePoint, writeExitGuide } from './exit-guide';
+import {
+  beginPull,
+  pullFinished,
+  stepPull,
+  type MachineBeat,
+  type MachinePull,
+} from './machine';
+import {
+  beginPayout,
+  payoutFinished,
+  stepPayout,
+  type Payout,
+} from './payout';
 
 const MAX_TICKS_PER_FRAME = 5;
 /** Extra camera punch when local shot lands on a target. */
@@ -147,6 +164,39 @@ const PICKUP_TRAUMA = 0.06;
  * bag would shake the camera off the map.
  */
 const POUR_LAND_TRAUMA = 0.012;
+/**
+ * Camera shove when a returning platform hits the shop's apron.
+ *
+ * An order of magnitude above a crate landing on a deck and still well under a
+ * gunshot's, because several tonnes of iron touching down twenty tiles away is
+ * a big event happening at a distance — a shake sized like the thing rather
+ * than like the room would make the safest zone in the game the loudest.
+ */
+const PAYOUT_LAND_TRAUMA = 0.09;
+
+/**
+ * How long the exit chevron stays at full strength, and how long it takes to
+ * leave, in seconds.
+ *
+ * IT LEAVES. The arrow used to be permanent, which made every other channel
+ * the exit has — a column of light over the treeline, four torches burning on
+ * a map with nothing else alight, a ping from the mouth — decoration nobody
+ * had a reason to read. The hold is long enough to point somebody the right
+ * way out of the clearing they are standing in; after that the world says it.
+ */
+const EXIT_GUIDE_HOLD = 7;
+const EXIT_GUIDE_FADE = 3.5;
+/** Seconds between the exit's distant signal pings. See `stepBeacon`. */
+const BEACON_PING_INTERVAL = 3.4;
+/**
+ * Shortest gap between two snarls, in seconds. See `drainAlertQueue`.
+ *
+ * Tuned against the startle wave on the server (`ai.STARTLE_SPREAD_TILES`), so
+ * the noises arrive at roughly the rate the bodies actually start moving —
+ * a queue that drained faster than the pack turned would be a soundtrack
+ * playing over the event rather than the event.
+ */
+const ALERT_SNARL_GAP = 0.18;
 /** Where the held bag's mouth is, in world px out along aim and up from the feet. */
 const POUR_MOUTH_OUT = 5.5;
 const POUR_MOUTH_UP = 15;
@@ -203,6 +253,15 @@ const WIND_LIFE = 8 / 14;
  * of numbers nobody reads.
  */
 const BUY_TOOLTIP_LIFT_TILES = 2.6;
+
+/**
+ * How far above the machine's contact the lever tooltip sits, in tiles.
+ *
+ * The tallest lift in the game, because the cabinet is the tallest object a
+ * player stands at: anything lower lands over the tray, which is exactly the
+ * part of it they are watching while the canister comes out.
+ */
+const MACHINE_TOOLTIP_LIFT_TILES = 3.4;
 
 /** How far above the console the activate tooltip sits, in tiles. */
 const RIFT_TOOLTIP_LIFT_TILES = 1.9;
@@ -440,6 +499,40 @@ export class Game {
    */
   private balance = 0;
   /**
+   * The lever pull running in the glade, or null. ONE at a time, because the
+   * server refuses a second — so this is a field rather than a list, and a
+   * spin event arriving over a live pull replaces it rather than queueing,
+   * which can only happen after a reconnect.
+   */
+  private pull: MachinePull | null = null;
+  /** Pulls the local player has banked. Read off the roster. */
+  private spins = 0;
+  /** This player's skills, keyed by catalog key. Read off the roster. */
+  private skillStacks: Record<string, number> = {};
+  /** The skill that just landed, held for a beat so the tray can play it in. */
+  private reward: HudSkill | null = null;
+  /**
+   * The night's platforms being set down in the shop, or null.
+   *
+   * Pure presentation: the balance was already credited when the party crossed
+   * the corridor, and nothing here can move it. What this owns is the two
+   * seconds between the number being true and the player believing it.
+   */
+  private payout: Payout | null = null;
+  /**
+   * What the HUD is allowed to SAY the balance is.
+   *
+   * It trails `this.balance` while the gold is in the air and equals it every
+   * other frame. A shop that opened with the full number already printed would
+   * spend its whole ceremony animating coins toward a total that had visibly
+   * been there since before they left the deck.
+   */
+  private balanceShown = 0;
+  /** Render-clock time the extraction exit opened. Drives the beacon's flare. */
+  private egressAt = 0;
+  /** Seconds until the next spatial ping from the exit's mouth. */
+  private beaconLeft = 0;
+  /**
    * The merchant's clip player, and the sheets it drives. He is not an entity
    * and the server has never had an opinion about which frame he is on, so
    * this lives entirely client-side — see `render/merchant.ts`.
@@ -549,6 +642,10 @@ export class Game {
   private dreadLeft = DREAD_INTERVAL;
   /** Enemies already heard alerting, so one hunt makes one snarl. */
   private alertHeard = new Set<string>();
+  /** Snarls waiting to be heard, nearest first. See `drainAlertQueue`. */
+  private alertQueue: Array<{ x: number; y: number }> = [];
+  /** Seconds until the next queued snarl may play. */
+  private alertGap = 0;
 
   constructor(options: GameOptions) {
     this.canvas = options.canvas;
@@ -682,6 +779,7 @@ export class Game {
     this.snapshots.clear();
     this.alertSeen.clear();
     this.alertHeard.clear();
+    this.alertQueue.length = 0;
     // The beds are the one part of the audio graph that outlives a single
     // sound, so they are the one part with a release here. One-shots already
     // in the air are left to finish; cutting them would click.
@@ -847,6 +945,15 @@ export class Game {
       (msg.zone.kind === 'forest' || msg.zone.kind === 'store') &&
       msg.map.entrance?.state === 'open';
     this.balance = msg.balance ?? 0;
+    // THE NIGHT'S PLATFORMS COME HOME. Started here rather than on a snapshot
+    // because it belongs to the ARRIVAL: the skids are already in the air when
+    // the corridor opens, so the first thing the party sees in this glade is
+    // the thing they spent the night earning.
+    this.payout = beginPayout(this.world.store?.payout ?? []);
+    // The HUD is told a balance that has not been paid yet, so the count-up
+    // has somewhere to climb from. With no ceremony running it is simply the
+    // real number — see `balanceShown`.
+    this.balanceShown = this.balance - (this.payout?.total ?? 0);
     // A fresh performance for a fresh arrival: he should not be caught halfway
     // through opening his coat on the frame the party walks in.
     this.merchantPose = newMerchantPose(this.merchantAtlas);
@@ -951,6 +1058,7 @@ export class Game {
     // Egress before the patches: VOID is walkable only once the exit exists,
     // and the same snapshot carves those tiles.
     if (msg.egress && this.world) {
+      const opening = this.world.egress === null;
       this.world.setEgress({
         side: msg.egress.side,
         mouthX: msg.egress.mouth[0],
@@ -968,6 +1076,7 @@ export class Game {
       // marked by four fires that light nothing, on the one night the party
       // has no lantern and nothing else on the map is burning.
       this.rebuildLights();
+      if (opening) this.onExitOpened();
     }
     if (msg.tilePatches && msg.tilePatches.length > 0) {
       this.applyTilePatches(msg.tilePatches);
@@ -985,6 +1094,7 @@ export class Game {
         // server has dropped to zero has to come back as zero, not survive
         // as whatever the prediction last left behind.
         if (mine.ammo) this.ammo = { ...mine.ammo };
+        this.adoptMods(mine);
         if (this.local && mine.inv) this.local.carryWeight = this.moveWeight();
       }
     }
@@ -1071,8 +1181,16 @@ export class Game {
       for (const row of msg.rifts) this.onRiftState(row);
     }
     if (msg.stands) this.world.setStands(msg.stands);
-    if (msg.balance !== undefined) this.balance = msg.balance;
+    if (msg.balance !== undefined) {
+      const delta = msg.balance - this.balance;
+      this.balance = msg.balance;
+      // A purchase (or any other change) while gold is still in the air moves
+      // the shown number with it, so the count-up keeps climbing toward a
+      // total that already has the spend taken off it.
+      this.balanceShown += delta;
+    }
     for (const ev of msg.buys ?? []) this.onBuy(ev);
+    for (const ev of msg.spins ?? []) this.onSpin(ev);
     if (msg.blackout) this.lantern.kill();
     if (msg.corpses) this.mergeCorpses(msg.corpses);
   }
@@ -1422,6 +1540,311 @@ export class Game {
       this.patchHud({ hotbar: hotbar ?? undefined, balance: this.balance });
     }
     this.camera.addTrauma(PICKUP_TRAUMA);
+  }
+
+  /**
+   * Take the skills, the spins and the movement mods off a roster row.
+   *
+   * The MODS are the load-bearing half: the server multiplies move speed and
+   * carry capacity by them, so prediction has to hold the same numbers or the
+   * local body drifts from the authoritative one for the rest of the run. The
+   * stacks and the spin count are HUD state and could have waited; they are
+   * read in the same place because they arrive on the same row and splitting
+   * them would mean two things to remember.
+   */
+  private adoptMods(meta: PlayerMeta): void {
+    const stacks: Record<string, number> = {};
+    for (const row of meta.skills ?? []) stacks[row.k] = row.n;
+    this.skillStacks = stacks;
+    this.spins = meta.spins ?? 0;
+    if (this.local) {
+      this.local.mods = meta.mods ? { speed: meta.mods.speed, carry: meta.mods.carry } : null;
+    }
+    this.lantern.setEndurance(meta.mods?.lamp ?? 1);
+  }
+
+  /**
+   * A lever came down. Start the ceremony; the roll is already resolved.
+   *
+   * EVERY CLIENT IN THE GLADE RUNS THIS, not just the puller's, because a slot
+   * machine going off is the loudest thing in the shop and a party should be
+   * able to look over at somebody else's legendary. What is local-only is the
+   * CLAIM — the canister flying into a HUD tray — which is why that beat
+   * checks `by` and the rest do not.
+   */
+  private onSpin(ev: SpinEvent): void {
+    this.pull = beginPull(ev, this.config?.machine);
+    if (ev.by === this.localId) {
+      this.spins = ev.left;
+      this.skillStacks = { ...this.skillStacks, [ev.k]: ev.n };
+      this.patchHud({ spins: this.spins, machinePrompt: this.machinePrompt() });
+    }
+  }
+
+  /**
+   * Run the pull a frame further and play the beats it crossed.
+   *
+   * THE SOUND IS THE ANTICIPATION. The reels stop left to right, each with its
+   * own click, and the gap before the third is where the whole thing lives —
+   * so the third click is pitched up with the rarity and the payout chime
+   * behind it is the same five-step ladder loot already uses. A player learns
+   * that ladder in the woods and gets to use it here.
+   */
+  private stepMachine(dt: number): void {
+    const pull = this.pull;
+    if (!pull) return;
+    const world = this.world;
+    const spot = world?.store;
+    const x = spot?.machineX ?? this.smoothX;
+    const y = spot?.machineY ?? this.smoothY;
+    for (const beat of stepPull(pull, dt)) this.playMachineBeat(beat, pull, x, y);
+    if (pullFinished(pull)) {
+      this.pull = null;
+      // The reward card is a beat, not a state: the tile it flew into is the
+      // permanent record, and leaving the banner up would make a HUD region
+      // that only ever grows.
+      this.reward = null;
+    }
+  }
+
+  private playMachineBeat(
+    beat: MachineBeat,
+    pull: MachinePull,
+    x: number,
+    y: number,
+  ): void {
+    const tier = RARITY_CHIME[pull.rarity] ?? 0;
+    switch (beat) {
+      case 'arm':
+        // The cabinet's own lever, not a container's lid. See the machine
+        // block in `server/tools/make_audio.py` — borrowing `object-heavy`
+        // here made a slot machine sound like a car boot.
+        playSfxAt('lever', x, y, { gain: 0.95 });
+        break;
+      case 'reel0':
+        playSfxAt('reel', x, y, { variant: 0, jitter: 0 });
+        break;
+      case 'reel1':
+        playSfxAt('reel', x, y, { variant: 1, jitter: 0 });
+        break;
+      case 'reel2':
+        // The one that matters. Pitched with the tier, and the rarity chime
+        // rides right behind it — by the third shop the pitch alone has
+        // already told the player what they got.
+        playSfxAt('reel', x, y, { variant: 2, jitter: 0, rate: 1 + tier * 0.13 });
+        playSfxAt('rarity', x, y, { variant: tier, jitter: 0, delay: 0.06 });
+        // The flourish is EPIC AND UP only. A celebration on every pull is a
+        // celebration on none of them, and this is the audio half of the same
+        // ladder `pullGain` draws.
+        if (tier >= 3) playSfxAt('jackpot', x, y, { gain: 0.9, delay: 0.1 });
+        this.camera.addTrauma(PICKUP_TRAUMA * (1 + tier * 0.8));
+        break;
+      case 'eject':
+        playSfxAt('lever', x, y, { gain: 0.4, rate: 1.6 });
+        break;
+      case 'settle':
+        // Metal in a steel tray. Deliberately not `drop`, which is loot
+        // landing on soil.
+        playSfxAt('can', x, y, { gain: 0.85 });
+        break;
+      case 'claim':
+        if (pull.by !== this.localId) break;
+        // It goes into the tray the way a collect goes into the bag, because
+        // it is the same statement: this is mine now.
+        playSfx('bag-open', { gain: 0.7 });
+        this.reward = this.skillRow(pull.key, pull.copies);
+        this.patchHud({
+          skills: this.skillList(),
+          reward: this.reward,
+          spins: this.spins,
+          machinePrompt: this.machinePrompt(),
+        });
+        break;
+    }
+  }
+
+  /**
+   * Run the payout a frame further and play the beats it crossed.
+   *
+   * THE SOUND IS THE SEQUENCE. A siren would be wrong — nothing is coming for
+   * them here — so it is rotors settling, a heavy landing per skid, the lines
+   * letting go, and then a stream of coin ticks as the gold arrives. The last
+   * of those is deliberately the same `coin` sound a dark-gold pickup makes:
+   * a party has been hearing that noise mean "money" all night, and this is
+   * the payoff for it.
+   */
+  private stepPayout(dt: number): void {
+    const payout = this.payout;
+    if (!payout) return;
+    for (const { pad, beat } of stepPayout(payout, dt)) {
+      switch (beat) {
+        case 'touch':
+          // The one beat that earns a real camera shove: several tonnes of
+          // iron arriving on soil, close enough to feel.
+          playSfxAt('object-heavy', pad.x, pad.y, { gain: 1 });
+          this.camera.addTrauma(PAYOUT_LAND_TRAUMA);
+          this.effects.spawnImpact(pad.x, pad.y, 0, -1, false, 1.4);
+          break;
+        case 'release':
+          playSfxAt('drop', pad.x, pad.y, { gain: 0.7, rate: 0.8 });
+          break;
+        case 'cash':
+          // Not spatial: the gold is going to a number on the glass, not to a
+          // place in the world, so a coin stream that panned with the deck
+          // would be arriving somewhere the player is not looking.
+          playSfx('coin', { gain: 0.9 });
+          playSfx('rarity', { variant: 4, jitter: 0, delay: 0.12 });
+          break;
+        case 'done':
+          playSfx('coin', { gain: 0.6, rate: 1.25 });
+          break;
+      }
+    }
+    // The shown balance is driven off the ceremony's own clock rather than off
+    // however many coin sprites happened to be spawned: the number has to be
+    // exactly right when it stops, and a counter tied to the draw would land a
+    // few gold short on a slow frame.
+    this.balanceShown = this.balance - payout.total + payout.paid;
+    if (payoutFinished(payout)) {
+      this.payout = null;
+      this.balanceShown = this.balance;
+    }
+  }
+
+  /**
+   * THE EXIT OPENED. Three channels, and the split is the whole point.
+   *
+   * WORLD    a column of light straight up over the treeline
+   *          (`drawEgressBeacon`), plus the four torches at the threshold. It
+   *          is drawn in world space, so it is only on screen when the camera
+   *          is pointed at it — which is what turns finding the way out into
+   *          looking for something rather than following a marker.
+   * HUD      the quest row announces itself at top-centre and flies into the
+   *          card, exactly as every other objective does, and the chevron
+   *          burns for a few seconds and then FADES OUT. It is a statement,
+   *          not a compass; see `guideStrength`.
+   * AUDIO    a launch, and then a slow spatial ping FROM the mouth. That is
+   *          the channel that actually carries navigation, because it works
+   *          while the player is looking the other way — which is exactly the
+   *          moment they need it.
+   */
+  private onExitOpened(): void {
+    this.egressAt = this.time;
+    playSfx('siren', { jitter: 0, rate: 0.72, gain: 0.55 });
+    playSfx('void', { jitter: 0, delay: 0.25 });
+    this.beaconLeft = BEACON_PING_INTERVAL;
+  }
+
+  /**
+   * The distant signal, repeating, FROM the mouth.
+   *
+   * Spatial, so it pans and thins with distance — which makes it navigation
+   * rather than an alarm: a player who has lost the column behind a stand of
+   * trees can still hear which way it is. It is slow on purpose. A ping every
+   * couple of seconds is a landmark; a ping every half second is a countdown,
+   * and the pack hunting them is already doing that job.
+   */
+  private stepBeacon(dt: number): void {
+    const egress = this.world?.egress;
+    if (!egress) return;
+    this.beaconLeft -= dt;
+    if (this.beaconLeft > 0) return;
+    this.beaconLeft = BEACON_PING_INTERVAL;
+    playSfxAt('void', egress.mouthX, egress.mouthY, { gain: 0.5, rate: 1.4 });
+  }
+
+  /**
+   * How strongly to draw the exit chevron, 0..1.
+   *
+   * IT FADES, and that is the change. A permanent arrow answers "where is the
+   * exit" forever, which means the world never has to — the column over the
+   * trees, the torches at the threshold and the ping from the mouth all become
+   * decoration the moment a chevron is doing their job. So it burns while the
+   * news is news and then leaves, and everything after that is the map.
+   */
+  private guideStrength(): number {
+    if (!this.world?.egress) return 0;
+    const since = this.time - this.egressAt;
+    if (since <= EXIT_GUIDE_HOLD) return 1;
+    const fade = 1 - (since - EXIT_GUIDE_HOLD) / EXIT_GUIDE_FADE;
+    return fade > 0 ? fade : 0;
+  }
+
+  /**
+   * Let one queued snarl through per `ALERT_SNARL_GAP`, nearest first.
+   *
+   * The queue is sorted every drain rather than on push because it is nearly
+   * always empty or one deep — the only thing that ever fills it is a pickup
+   * being called, and on that frame the sort is over a handful of entries and
+   * buys the wave its direction: the ones on top of you answer first and the
+   * ones out in the trees a beat later.
+   */
+  private drainAlertQueue(dt: number): void {
+    if (this.alertQueue.length === 0) {
+      this.alertGap = 0;
+      return;
+    }
+    this.alertGap -= dt;
+    if (this.alertGap > 0) return;
+    this.alertQueue.sort(
+      (a, b) =>
+        Math.hypot(a.x - this.smoothX, a.y - this.smoothY) -
+        Math.hypot(b.x - this.smoothX, b.y - this.smoothY),
+    );
+    const next = this.alertQueue.shift();
+    if (next) playSfxAt('zombie-alert', next.x, next.y);
+    this.alertGap = ALERT_SNARL_GAP;
+  }
+
+  /** One tray tile, built from the catalog. Null for a key nobody shipped. */
+  private skillRow(key: string, qty: number): HudSkill | null {
+    const def: SkillConfig | undefined = this.config?.skills?.[key];
+    if (!def) return null;
+    return {
+      key,
+      name: def.name,
+      blurb: def.blurb,
+      rarity: def.rarity,
+      frame: def.frame,
+      qty,
+      cap: def.cap,
+    };
+  }
+
+  /** The whole tray, in catalog order. Empty until the first pull. */
+  private skillList(): HudSkill[] {
+    const out: HudSkill[] = [];
+    for (const [key, qty] of Object.entries(this.skillStacks)) {
+      const row = this.skillRow(key, qty);
+      if (row) out.push(row);
+    }
+    out.sort((a, b) => a.frame - b.frame);
+    return out;
+  }
+
+  /**
+   * Whether the local body is standing at the cabinet, and what E would do.
+   *
+   * Measured feet to contact against `storeSpinTiles`, mirroring `Room.spin`,
+   * so the prompt on screen and the check on the server agree. It answers even
+   * with nothing to spend — a machine that only spoke to somebody who could
+   * already afford it would never teach anybody what it was.
+   */
+  private machinePrompt(): HudMachinePrompt | null {
+    if (this.locked || this.introLeft > 0) return null;
+    if (this.zone?.kind !== 'store') return null;
+    const config = this.config;
+    const local = this.local;
+    const fixtures = this.world?.store;
+    if (!config || !local || !fixtures) return null;
+    const { machineX, machineY } = fixtures;
+    if (machineX === null || machineY === null) return null;
+    const range = (config.storeSpinTiles ?? 2.2) * config.tileSize;
+    const dx = machineX - local.state.x;
+    const dy = machineY - (local.state.y + config.playerHalfHeight);
+    if (dx * dx + dy * dy > range * range) return null;
+    const mode = this.pull !== null ? 'busy' : this.spins > 0 ? 'ready' : 'empty';
+    return { mode, spins: this.spins };
   }
 
   // --- loop ----------------------------------------------------------------
@@ -1922,10 +2345,18 @@ export class Game {
         live.add(entity.id);
         if (!this.alertHeard.has(entity.id)) {
           this.alertHeard.add(entity.id);
-          playSfxAt('zombie-alert', entity.x, entity.y);
+          // QUEUED, NOT PLAYED. One creature noticing you is one snarl; the
+          // extraction alarm commits everything within earshot on the SAME
+          // frame, and eight of these stacked on one tick is a wall of noise
+          // that says nothing about how many there are or where. Draining the
+          // queue nearest-first at a fixed gap turns the same event into heads
+          // turning one after another around you — which is the beat, and it
+          // is the sound of the pack noticing rather than of a switch flipping.
+          this.alertQueue.push({ x: entity.x, y: entity.y });
         }
       }
     }
+    this.drainAlertQueue(dt);
     // Calming down re-arms the snarl, the same way it drops the hunt diamond.
     for (const id of this.alertHeard) {
       if (!live.has(id)) this.alertHeard.delete(id);
@@ -2067,6 +2498,14 @@ export class Game {
     // the rift's ceremony does: it is pure presentation between snapshots, and
     // nothing about which frame he is on has ever been on the wire.
     stepMerchant(this.merchantPose, this.merchantAtlas, dt);
+    // The lever pull, on the same render clock and for the same reason: four
+    // seconds of pure presentation between two snapshots, and the reels would
+    // visibly step if they were resolved at 30 Hz.
+    this.stepMachine(dt);
+    // The night's platforms landing, and the gold coming off them.
+    this.stepPayout(dt);
+    // The exit's distant signal, once it exists.
+    this.stepBeacon(dt);
     this.syncTooltipAnchors();
 
     this.renderer.draw({
@@ -2078,7 +2517,12 @@ export class Game {
       loot,
       corpses,
       weather: this.zone?.weather ?? 'clear',
+      // How much light this PLACE has of its own. Zero everywhere but the
+      // shop; see `server/app/zones.py`.
+      ambient: this.zone?.ambient ?? 0,
       store: this.storeScene(),
+      payout: this.payout,
+      egressAge: this.world?.egress ? this.time - this.egressAt : 0,
       balance: this.balance,
       effects: this.effects,
       // The merchant's camp runs the darkness like every other forest map: it
@@ -2498,7 +2942,7 @@ export class Game {
     const local = this.local;
     const config = this.config;
     if (!local || !config || !local.alive) return 0;
-    const ratio = local.hp / config.maxHp;
+    const ratio = local.hp / (this.localMeta?.mods?.maxHp ?? config.maxHp);
     if (ratio >= DANGER_START) return 0;
     if (ratio <= DANGER_CRITICAL) {
       return 0.72 + (1 - ratio / DANGER_CRITICAL) * 0.28;
@@ -2534,7 +2978,10 @@ export class Game {
               kills: meta.kills,
               deaths: meta.deaths,
               hp: local.hp,
-              maxHp: config.maxHp,
+              // THIS BODY'S ceiling, not the run's opening one — a skill moves
+              // it, and a bar drawn against the constant would read as full
+              // while the player was thirty points down.
+              maxHp: meta.mods?.maxHp ?? config.maxHp,
               alive: local.alive,
               level: meta.level,
               xpInLevel: meta.xpInLevel,
@@ -2551,8 +2998,14 @@ export class Game {
       cratePrompt: this.cratePromptInfo(),
       riftPrompt: this.riftPrompt(),
       buyPrompt: this.buyPrompt(),
-      balance: this.balance,
-      exitGuide: this.guidePose() !== null,
+      machinePrompt: this.machinePrompt(),
+      skills: this.skillList(),
+      spins: this.spins,
+      reward: this.reward,
+      // What the HUD may SAY. It trails the real number only while a payout is
+      // running; see `balanceShown`.
+      balance: this.payout ? this.balanceShown : this.balance,
+      exitGuide: this.guidePose() !== null ? this.guideStrength() : 0,
       inventory: this.inventoryHud(),
       hotbar: this.hotbarHud(),
       net: {
@@ -2616,6 +3069,20 @@ export class Game {
         return;
       }
       this.connection.send({ type: 'buy', id: buy.id });
+      return;
+    }
+    // The lever. After the tables because the cabinet stands past the last of
+    // them, so the two reaches never overlap and the order is only a rule for
+    // the frame somebody is standing exactly between them.
+    const lever = this.machinePrompt();
+    if (lever) {
+      // Both dead presses buzz rather than sending a packet the server would
+      // drop: no level owed, and somebody else's pull still running.
+      if (lever.mode !== 'ready') {
+        playSfx('ui-error');
+        return;
+      }
+      this.connection.send({ type: 'spin' });
       return;
     }
     const nearCrate = this.nearCrate();
@@ -2778,7 +3245,9 @@ export class Game {
       cap,
       slots,
       weight: Math.round(weight * 100) / 100,
-      maxWeight: config.carryMaxWeight ?? 10,
+      // The pocket's own ceiling, which a skill moves. `config.carryMaxWeight`
+      // is only where a run opens, exactly as `maxHp` is.
+      maxWeight: this.localMeta?.mods?.carry ?? config.carryMaxWeight ?? 10,
       gold,
       lootFrames: Math.max(1, frames),
       catches: this.bagCatches,
@@ -2987,7 +3456,10 @@ export class Game {
   private carryBurdenOf(id: string): number {
     if (!this.config) return 0;
     const weight = id === this.localId ? (this.local?.carryWeight ?? 0) : this.moveWeight(id);
-    return carryBurden(weight, this.config);
+    // THAT BODY'S ceiling, off THAT body's roster row. Reading the local
+    // player's would make everybody else's footsteps read as heavy the moment
+    // this client pulled a carry skill.
+    return carryBurden(weight, this.config, this.roster.get(id)?.mods?.carry);
   }
 
   private nearFire(): boolean {
@@ -3098,10 +3570,17 @@ export class Game {
   private storeScene(): StoreScene | null {
     const fixtures = this.world?.store;
     if (!fixtures) return null;
+    const skills = this.config?.skills;
     return {
       fixtures,
       pose: this.merchantPose,
       nearId: this.nearStand()?.id ?? null,
+      pull: this.pull,
+      // The cabinet burns harder for somebody holding an unspent level. It is
+      // the only piece of teaching in this zone that happens at a distance,
+      // and it costs one float.
+      invite: this.spins > 0 ? 1 : 0,
+      iconOf: (key: string) => skills?.[key]?.frame ?? 0,
     };
   }
 
@@ -3524,9 +4003,25 @@ export class Game {
     // threw away the object vocabulary on the one channel that reaches a
     // player who is looking somewhere else.
     playSfxAt(crateOpenSound(ev.t, verb), ev.x, ev.y);
-    // The gust is the sound of nothing being in there, and it is only honest
-    // on a break: a lid coming up on an empty boot has already said it.
-    if (empty && verb === 'break') this.effects.spawnWind(ev.x, ev.y, WIND_LIFE);
+    // NOTHING IN HERE, and it is said out loud on EVERY verb.
+    //
+    // It used to be a gust on a break and silence on an open, on the reasoning
+    // that a lid coming up on an empty boot had already said it. It had not:
+    // an opened chest that pays nothing looks and sounds exactly like a press
+    // the server dropped, so the player cannot tell "I found nothing" from
+    // "the game ignored me" — and those are opposite feelings. The dry knock
+    // and the puff of air out of the opening are what close the interaction:
+    // I opened this, it worked, there was nothing inside.
+    if (empty) {
+      playSfxAt('empty', ev.x, ev.y, { delay: verb === 'break' ? 0.06 : 0.16 });
+      // A gust off a shattered barrel; a smaller puff out of a hinge, because
+      // the opening is smaller and a lid does not throw its contents about.
+      this.effects.spawnWind(
+        ev.x,
+        ev.y,
+        verb === 'break' ? WIND_LIFE : WIND_LIFE * 0.7,
+      );
+    }
     // THE ITEM JUMPS. The drop itself already exists on the ground — the
     // server placed it — so this is pure presentation over the top of it, and
     // it is what turns a find into a moment the player watches instead of a
@@ -3695,6 +4190,18 @@ export class Game {
       }
     } else {
       dropTooltipAnchor('buy');
+    }
+
+    const lever = this.machinePrompt();
+    const fixtures = this.world?.store;
+    if (lever && this.config && fixtures?.machineX != null && fixtures.machineY != null) {
+      // Above the CROWN rather than above the contact: the cabinet is three
+      // tiles tall and a tooltip pinned to its feet would land behind the
+      // tray, which is the one part of it the player is watching.
+      const lift = this.config.tileSize * MACHINE_TOOLTIP_LIFT_TILES;
+      writeTooltipAnchor('machine', view.x(fixtures.machineX), view.y(fixtures.machineY - lift));
+    } else {
+      dropTooltipAnchor('machine');
     }
 
     const crate = this.cratePromptInfo() !== null ? this.nearCrate() : null;

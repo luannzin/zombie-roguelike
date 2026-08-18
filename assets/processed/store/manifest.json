@@ -15,6 +15,13 @@
         5
       ]
     },
+    "kit": {
+      "file": "kit.png",
+      "frameWidth": 26,
+      "frameHeight": 24,
+      "frames": 5,
+      "sway": 0
+    },
     "torch": {
       "file": "torch.png",
       "frameWidth": 12,

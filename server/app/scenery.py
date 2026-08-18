@@ -123,6 +123,11 @@ EMBER = 1
 #: same list and the lighting burns it, feeds the fov with it and draws its
 #: glow with no idea that it is special. That was not a rendering change.
 BEACON = 2
+#: The upgrade machine's marquee in the shop — the only ELECTRIC light in the
+#: game, and the reason it gets its own kind rather than borrowing EMBER. It
+#: has to read as neither fire nor extraction: everything warm out here is
+#: something burning, and the one cold light already means "a platform".
+NEON = 3
 
 
 @dataclass(frozen=True)

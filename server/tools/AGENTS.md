@@ -22,9 +22,11 @@ imported by `app/` and never run at request time.
 | `make_loot.py` | generates final pixels | `assets/processed/loot/` (one 16x16 frame per item, including gun icons) |
 | `make_guns.py` | generates final pixels | `assets/processed/guns/` (held side-view, one 18x8 frame per weapon, plus its carry pose) |
 | `make_merchant.py` | generates final pixels | `assets/processed/merchant/` (the shopkeeper: `idle` loop plus three one-shot flourishes — `coat`, `beckon`, `coin` — and the manifest's `randomClips` / `randomGap` that drive them) |
-| `make_store.py` | generates final pixels | `assets/processed/store/` (the merchant's own kit: table ×4 with `topY`, torch ×2 with `flameY`, rug, torchfire, buy glow) |
+| `make_store.py` | generates final pixels | `assets/processed/store/` (the merchant's own kit: table ×4 with `topY`, `kit` ×5 — crates, a barrel of rods, a rack, a shelf, a padlocked strongbox, all drawn SHUT because nothing in this zone opens — torch ×2 with `flameY`, rug, torchfire, buy glow) |
+| `make_machine.py` | generates final pixels | `assets/processed/machine/` (the upgrade cabinet: body ×2 idle/settled with the reel windows, lever pivot and tray mouth in its manifest; reel ×9 — 4 spin-blur then 5 rarity faces; lever ×5 sweeping on a real angle; marquee, reel backlight and payout burst, all greyscale so the client can tint them by rarity) |
+| `make_skills.py` | generates final pixels | `assets/processed/skills/` (one 16x16 icon per skill in catalog order, plus the CANISTER in five rarity colourways — a dark pass and an emissive pass, with the icon window's rectangle on the manifest) |
 | `make_hud_icons.py` | generates final pixels | `assets/processed/hud/` (battery, backpack, coin, darkcoin, arrow) |
-| `make_audio.py` | generates final samples | `assets/processed/audio/` (35 sounds, 66 wavs + manifest + loudness.json) |
+| `make_audio.py` | generates final samples | `assets/processed/audio/` (42 sounds, 78 wavs + manifest + loudness.json) |
 
 ## Local Contracts
 
@@ -340,6 +342,26 @@ imported by `app/` and never run at request time.
   `make_scenery.py`'s tent. A second tent sheet would only be a slightly
   different one, and a store-specific floor would put a rectangle of somewhere
   else in the middle of a forest.
+- **HIS GEAR IS DRAWN SHUT, and that is a gameplay contract in the art.** The
+  player spent the previous night learning that a box in this game is a thing
+  you open, so every frame of `kit.png` is roped, strapped, lidded or padlocked
+  — a silhouette that reads "closed" is what keeps a safe zone from reading as
+  unclaimed loot, and it is cheaper than any amount of prompt suppression.
+- **THE MACHINE IS A WRECK SOMEBODY WIRED UP.** `make_machine.py` draws a
+  dented cabinet with its chrome gone, one corner of the marquee smashed off,
+  and a car battery on the ground beside it with a cable running into the base.
+  That cable is the whole answer to "why is there a slot machine in a forest",
+  and it costs eleven pixels. What may NOT be subtle is the vocabulary: three
+  lit windows in a row, a crown of bulbs, a lever on the right and a tray at
+  the bottom, because a player has to read it from the far end of the glade,
+  before any prompt, and think *that thing is for me*.
+- **RARITY IS THE METAL AND THE LIGHT, NEVER THE SHAPE.** A legendary canister
+  is the same tube as a common one and a legendary reel face is the same
+  lozenge; only the ramp changes. `make_skills.py` and `make_machine.py` both
+  duplicate the five `--rarity-*` colours from `client/src/styles/index.css`
+  rather than importing them (these are offline scripts), and the two lists
+  must stay identical — a canister that is not the colour the bag paints the
+  same grade would be a second colour language for one idea.
 - **The camp's torch is NOT the threshold torch.** `make_rift.py` also draws a
   torch and its fire, but that one burns the prism — cyan and violet, because
   it marks a way through: the exit corridor and every extraction pad. This one
@@ -387,6 +409,8 @@ python tools/make_rift.py
 python tools/make_platform.py
 python tools/make_merchant.py
 python tools/make_store.py
+python tools/make_machine.py
+python tools/make_skills.py
 python tools/make_gore.py
 python tools/make_loot.py
 python tools/make_guns.py

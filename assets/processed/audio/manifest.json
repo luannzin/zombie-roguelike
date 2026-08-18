@@ -298,6 +298,43 @@
       ],
       "bus": "misc",
       "gain": 0.2032
+    },
+    "empty": {
+      "files": [
+        "empty.wav"
+      ],
+      "bus": "misc",
+      "gain": 0.1193
+    },
+    "lever": {
+      "files": [
+        "lever.wav"
+      ],
+      "bus": "misc",
+      "gain": 0.3282
+    },
+    "reel": {
+      "files": [
+        "reel-0.wav",
+        "reel-1.wav",
+        "reel-2.wav"
+      ],
+      "bus": "misc",
+      "gain": 0.4495
+    },
+    "can": {
+      "files": [
+        "can.wav"
+      ],
+      "bus": "misc",
+      "gain": 0.2292
+    },
+    "jackpot": {
+      "files": [
+        "jackpot.wav"
+      ],
+      "bus": "misc",
+      "gain": 0.3144
     }
   }
 }

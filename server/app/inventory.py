@@ -102,6 +102,20 @@ class Inventory:
                 return index
         return None
 
+    def grow(self, cap: int) -> bool:
+        """Widen the bag to `cap` cells. Returns whether anything changed.
+
+        ONLY OUTWARDS. A skill can add a slot and nothing in the game takes one
+        away, so this refuses to shrink rather than deciding which stack to
+        throw on the floor — a bag that could get smaller would need an answer
+        to that question, and there is no caller that wants one.
+        """
+        if cap <= self.cap:
+            return False
+        self.slots.extend([None] * (cap - self.cap))
+        self.cap = cap
+        return True
+
     def take(self, index: int) -> Slot | None:
         """Pull the whole stack out of `index`. None if that cell is empty."""
         if index < 0 or index >= len(self.slots):

@@ -20,6 +20,7 @@ from .config import (
     level_progress,
 )
 from .inventory import Inventory
+from .skills import Loadout
 from .weapons import Hotbar
 
 # Imported after `weapons` on purpose: `ammo` reads the weapon catalog to
@@ -166,10 +167,25 @@ class Player:
     hurt_immunity: float = 0.0
     #: Camp only. Toggled by `{type:"ready"}` while standing at the fire.
     ready: bool = False
+    #: What the levels bought. Stacks, the flattened `Mods` every other
+    #: module multiplies by, and the spins still owed to the machine in the
+    #: shop. It is the ONE place a player's own numbers diverge from
+    #: `config.py`, which is why nothing here reads MAX_HP directly any more.
+    skills: Loadout = field(default_factory=Loadout)
     #: Mid-pour, or None. While this is set the body is a puppet: input is
     #: acked and dropped, the walk is driven by `Room._step_pour`, and the only
     #: thing a key can still do is cancel.
     pour: "Pour | None" = None
+
+    @property
+    def max_hp(self) -> int:
+        """This body's ceiling, which is no longer everybody's.
+
+        `config.MAX_HP` is the value a run OPENS at; a skill moves it, so every
+        heal, respawn and HUD bar reads this instead. A site that still reads
+        the constant is a site where Couro Grosso silently does nothing.
+        """
+        return self.skills.mods.max_hp
 
     @property
     def capsule_y0(self) -> float:
@@ -258,6 +274,16 @@ class Player:
             "level": level,
             "xpInLevel": into_level,
             "xpToLevel": to_level,
+            # Skills ride the ROSTER, not the tick. They change once a day, in
+            # a shop, in front of a machine — five times a second is already
+            # four and a half more than that moment needs.
+            "skills": self.skills.to_payload(),
+            "spins": self.skills.spins,
+            # The flattened numbers the OWNER's client mirrors: it predicts its
+            # own movement and carry scale and draws its own health bar, so a
+            # ceiling it had to guess at would be a bar that reads wrong for
+            # exactly the frames somebody just changed it.
+            "mods": self.skills.mods.payload(),
             # `w` is the POCKET's own weight and nothing else. The number the
             # walk actually reads adds the weapon in hand, and the client
             # rebuilds that from this plus `guns` against the same catalog

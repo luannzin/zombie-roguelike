@@ -11,7 +11,7 @@ and nowhere near the frame loop.
   `Game`; React never touches those pixels again.
 - `hud/` — ours: `Hud`, `HudScreen`, `Panel`, `Vitals`, `BatteryGauge`,
   `ProgressBar`, `StatusLine`, `NetStats`, `ControlsHint`, `ZoneTitle`,
-  `ReadyCount`, `Balance`, `QuestLog`, `QuestRow`, `QuestAnnounce`, `QuestCount`, `InteractPrompt`, `LootPrompt`, `CratePrompt`, `RiftPrompt`, `BuyPrompt`, `ExitGuide`, `Inventory`, `InventorySlot`,
+  `ReadyCount`, `Balance`, `QuestLog`, `QuestRow`, `QuestAnnounce`, `QuestCount`, `InteractPrompt`, `LootPrompt`, `CratePrompt`, `RiftPrompt`, `BuyPrompt`, `MachinePrompt`, `ExitGuide`, `SkillTray`, `SkillIcon`, `Inventory`, `InventorySlot`,
   `InventoryGold`, `WeightBar`, `LootIcon`, `CoinIcon`, `DarkCoinIcon`, `SlotValue`, `LootFly`, `LootCard`,
   `LootCardRow`, `TooltipCard`, `InventoryGhost`, `Tooltip`, `TooltipKey`,
   `Hotbar`, `HotbarSlot`.
@@ -129,6 +129,32 @@ and nowhere near the frame loop.
   changes while they play. `Vitals.gold` is the other one and stays up the
   whole run, because it is the currency the player is actually collecting out
   there: purple coins they walked over, one at a time.
+- `SkillTray` sits ABOVE the bag, in the same column, and that is the whole
+  placement argument: a skill and a pocket are the same kind of statement —
+  *this is what I am carrying* — one you can still lose tonight and one you
+  keep, and stacking them is what stops the HUD growing a fifth region. It is
+  EMPTY until the first pull and draws nothing at all when it is; a run opens
+  with no skills, and a frame labelled "skills" over nothing would be the HUD
+  explaining a system the player has not met. One tile per skill: icon, rarity
+  border, stack count, and the NAME only on hover — eighteen labelled rows
+  would be a spreadsheet in the corner of a horror game. A tile at its cap says
+  so, because a number that silently stopped meaning anything is worse than no
+  number. The `spins guardados` badge is the one piece of it that exists purely
+  to cross a zone boundary: a level earned in the woods is spendable only at
+  the machine in the shop, so something has to carry that fact through a night.
+- `MachinePrompt` answers even when the player has NOTHING to spend, which is
+  why it has three states rather than one. A machine that only spoke to
+  somebody already holding a level would be scenery for the whole first shop —
+  and the connection between killing zombies in the woods and the lever in the
+  glade would never get made. The empty copy states the CURRENCY ("suba de
+  nível para girar") rather than the refusal, because where a spin comes from
+  is the one thing a player standing at the cabinet does not know yet.
+- `ExitGuide` is a 0..1 STRENGTH, not a flag. It burns for a few seconds after
+  the exit opens and then fades out — the column of light over the treeline,
+  the torches at the threshold and the ping from the mouth are what carry
+  navigation from there, and none of them means anything while a chevron is
+  answering the same question for free. It still sits outside `HudScreen`: the
+  glass would bend it off the screen edge.
 - `Inventory` is the left-side pocket. Collapsed it is the backpack sprite
   and a TAB hint; TAB expands the slots in place, not a dialog. A collect
   opens it so the slot is on screen before the fly leaves the head. Slot

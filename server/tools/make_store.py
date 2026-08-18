@@ -3,6 +3,7 @@
 
 Output (assets/processed/store/):
     table.png    4 frames, 32x20    PROP   — the trestles a weapon lies on
+    kit.png      5 frames, 26x24    PROP   — his own gear, and NOT for sale
     torch.png    2 frames, 12x30    PROP   — the posts lighting the pitch
     rug.png      2 frames, 48x32    DECAL  — the mat he trades over
     torchfire.png 12 frames, 20x40  VFX    — loop, warm fire in a torch head
@@ -29,6 +30,16 @@ torches he drove into the ground when he pitched — plus the pool that says
 which weapon you are standing at. Everything else on that map belongs to the
 forest and comes from the forest's own generators, which is the same rule
 `server/app/scenery.py` keeps for every other scene.
+
+THE KIT IS THE STORY, AND IT IS DELIBERATELY NOT INTERACTIVE.
+Four tables in a clearing is a shop. Four tables with crates roped up behind
+them, a rack of spare barrels, a plank shelf of tins and a padlocked strongbox
+is somebody LIVING out here and selling out of what they have. Nothing in
+`kit.png` can be opened, bought or broken — and the ART has to say so, because
+the player spent the whole previous night learning that a box in this game is a
+thing you open. So every frame is drawn SHUT: roped, strapped, lidded,
+padlocked. A silhouette that reads "closed" is what stops a safe zone reading
+as unclaimed loot, and it is cheaper than any amount of prompt suppression.
 
 THE TORCH IS WARM, and it is not the extraction pad's. `make_rift.py` also
 draws a torch and its fire, but that one burns the anomaly's prism — cyan and
@@ -185,6 +196,120 @@ def make_table(w: int, h: int, variant: int, rng: random.Random) -> Image.Image:
 #: The row a weapon lies on, per table variant. Part of the art: the four
 #: stalls are deliberately different heights.
 TABLE_TOP_Y = (4, 3, 1, 5)
+
+
+# --- his own kit ------------------------------------------------------------
+# Five props standing around the pitch. See the module docstring for why none
+# of them opens: this is the one zone in the game where a box is furniture.
+#
+# THEY SHARE THE TABLES' MATERIALS on purpose. The stalls, the crates and the
+# shelf are the same worked timber, canvas and rope, so they read as one
+# person's belongings rather than as five things that happened to land in one
+# clearing.
+
+TILE_KIT_W = 26
+TILE_KIT_H = 24
+
+
+def make_kit(w: int, h: int, variant: int, rng: random.Random) -> Image.Image:
+    """One piece of the trader's own gear. Bottom-anchored, outlined."""
+    img = Image.new("RGBA", (w, h), TRANSPARENT)
+    px = img.load()
+
+    def box(x0: int, y0: int, x1: int, y1: int, ramp, base: float, salt: int) -> None:
+        for y in range(y0, y1 + 1):
+            for x in range(x0, x1 + 1):
+                if not (0 <= x < w and 0 <= y < h):
+                    continue
+                edge = x in (x0, x1) or y in (y0, y1)
+                value = base - (0.22 if edge else 0.0) - hash01(x, y, salt) * 0.14
+                px[x, y] = pick(ramp, value, x, y)
+
+    if variant == 0:  # crates, stacked and roped shut
+        box(2, h - 11, 14, h - 1, PLANK, 0.62, 11)
+        box(13, h - 9, 24, h - 1, PLANK, 0.54, 23)
+        box(4, h - 19, 15, h - 12, PLANK, 0.68, 37)
+        # The rope over the top box. It is the entire "shut" statement, and it
+        # is why this reads as stock rather than as three things to open.
+        for x in range(4, 16):
+            px[x, h - 16] = pick(ROPE, 0.8 - hash01(x, 0, 41) * 0.2, x, h - 16)
+        for y in range(h - 19, h - 12):
+            px[9, y] = pick(ROPE, 0.72, 9, y)
+
+    elif variant == 1:  # a barrel with rods and tools fanned out of it
+        cx = 9
+        for y in range(h - 15, h):
+            span = 7 - abs(y - (h - 8)) // 6
+            for x in range(cx - span, cx + span):
+                hoop = y in (h - 14, h - 8, h - 2)
+                curve = 1.0 - abs(x - cx + 0.5) / (span + 1.0)
+                value = 0.3 if hoop else 0.32 + curve * 0.48
+                px[x, y] = pick(PLANK, value - hash01(x, y, 71) * 0.1, x, y)
+        for y in (h - 14, h - 8, h - 2):
+            for x in range(cx - 7, cx + 7):
+                if 0 <= x < w and px[x, y][3]:
+                    px[x, y] = pick(METAL, 0.52 + hash01(x, y, 19) * 0.2, x, y)
+        # The rods. The one vertical in an otherwise low, heavy piece — and
+        # what stops the barrel reading as one more thing you can break.
+        for index, lean in enumerate((-3, -1, 2, 4)):
+            for step in range(9 + index % 3):
+                x = cx + lean + (step * (1 if lean > 0 else -1)) // 3
+                y = h - 15 - step
+                if 0 <= x < w and 0 <= y < h:
+                    px[x, y] = pick(METAL, 0.6 - step * 0.02, x, y)
+
+    elif variant == 2:  # a rack of spare barrels and stocks
+        for foot in (3, w - 5):  # the A-frame
+            for step in range(h - 6):
+                y = 4 + step
+                x = foot + (step * (1 if foot < w // 2 else -1)) // 6
+                if 0 <= x < w:
+                    px[x, y] = pick(PLANK, 0.58 - step * 0.012, x, y)
+        for x in range(3, w - 3):  # the crossbar
+            px[x, 9] = pick(PLANK, 0.7, x, 9)
+        for index, slot in enumerate(range(5, w - 5, 5)):
+            length = 12 + (index % 3) * 3
+            for y in range(6, 6 + length):
+                px[slot, y] = pick(METAL, 0.62 - (y - 6) * 0.02, slot, y)
+                if slot + 1 < w:
+                    px[slot + 1, y] = pick(METAL, 0.42, slot + 1, y)
+            for x in range(slot - 1, slot + 3):  # the strap holding it on
+                if 0 <= x < w:
+                    px[x, 9] = pick(LEATHER, 0.7, x, 9)
+
+    elif variant == 3:  # planks on blocks, with tins standing on them
+        box(1, h - 6, 7, h - 1, METAL, 0.34, 91)
+        box(w - 8, h - 6, w - 2, h - 1, METAL, 0.34, 97)
+        for x in range(w):  # the shelf board
+            for y in range(h - 9, h - 6):
+                lit = 0.9 if y == h - 9 else 0.55
+                px[x, y] = pick(PLANK, lit - hash01(x, y, 53) * 0.16, x, y)
+        for index, tin in enumerate(range(2, w - 4, 5)):
+            tall = 5 + (index % 3)
+            box(tin, h - 9 - tall, tin + 3, h - 10, METAL, 0.6 + (index % 2) * 0.12, 61)
+            band = h - 12 + (index % 2)
+            for x in range(tin, tin + 4):  # a paper label round each one
+                if 0 <= x < w and 0 <= band < h and px[x, band][3]:
+                    px[x, band] = pick(CLOTH_RUST, 0.72, x, band)
+
+    else:  # a strongbox under a tarp, padlocked
+        box(3, h - 12, w - 4, h - 2, METAL, 0.5, 101)
+        for x in range(3, w - 3):  # the lid's lip
+            px[x, h - 12] = pick(METAL, 0.78, x, h - 12)
+        # The hasp and the lock: small, central, and the reason this piece
+        # reads as CLOSED from the far end of the glade.
+        for y in range(h - 13, h - 9):
+            px[w // 2, y] = pick(METAL, 0.85, w // 2, y)
+        box(w // 2 - 2, h - 10, w // 2 + 1, h - 7, METAL, 0.86, 7)
+        # The tarp thrown half over it, hanging off the back-left corner. One
+        # soft shape against four hard ones, so the group has a silhouette.
+        for y in range(h - 17, h - 9):
+            for x in range(1, 13 - (y - (h - 17))):
+                fold = math.sin(x * 0.8 + y * 0.3) * 0.1
+                px[x, y] = pick(CANVAS, 0.56 + fold - hash01(x, y, 83) * 0.12, x, y)
+
+    outline(img, OUTLINE_WOOD)
+    return img
 
 
 # --- the torches ------------------------------------------------------------
@@ -460,6 +585,12 @@ def build(args) -> Path:
         if margin > 0:
             raise SystemExit(f"{name} snaps at the wrap — phase it, do not roll it")
 
+    kits = [
+        make_kit(TILE_KIT_W, TILE_KIT_H, index, random.Random(args.seed + 900 + index))
+        for index in range(5)
+    ]
+    pack(kits, TILE_KIT_W, TILE_KIT_H).save(out_dir / "kit.png")
+
     manifest = {
         "tile": tile,
         "seed": args.seed,
@@ -472,6 +603,13 @@ def build(args) -> Path:
                 "frames": len(tables), "sway": 0,
                 # The row the stock lies on, per variant. Pose, not decoration.
                 "topY": list(TABLE_TOP_Y),
+            },
+            # His gear. Five frames, none of them a container — see the module
+            # docstring. Placed by `server/app/store.py` as ordinary scenery
+            # props, so nothing on the client knows they are special.
+            "kit": {
+                "file": "kit.png", "frameWidth": TILE_KIT_W,
+                "frameHeight": TILE_KIT_H, "frames": len(kits), "sway": 0,
             },
             "torch": {
                 "file": "torch.png", "frameWidth": torch_w, "frameHeight": torch_h,

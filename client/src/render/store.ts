@@ -67,6 +67,8 @@ export interface StoreEffect {
 
 export interface StoreAtlas {
   table: StoreProp;
+  /** His gear: crates, a barrel, a rack, a shelf, a strongbox. Never opened. */
+  kit: StoreProp;
   torch: StoreProp;
   rug: StoreDecal;
   torchfire: StoreEffect;
@@ -100,7 +102,7 @@ interface SheetManifest {
 
 interface StoreManifest {
   tile: number;
-  props: Record<'table' | 'torch', SheetManifest>;
+  props: Record<'table' | 'kit' | 'torch', SheetManifest>;
   decals: Record<'rug', SheetManifest>;
   effects: Record<'torchfire' | 'glow', SheetManifest>;
 }
@@ -122,8 +124,9 @@ export function loadStore(): Promise<StoreAtlas | null> {
 async function fetchStore(): Promise<StoreAtlas | null> {
   try {
     const manifest = await loadJson<StoreManifest>(`${ROOT}/manifest.json`);
-    const [table, torch, rug, torchfire, glow, coin] = await Promise.all([
+    const [table, kit, torch, rug, torchfire, glow, coin] = await Promise.all([
       loadProp(manifest.props.table),
+      loadProp(manifest.props.kit),
       loadProp(manifest.props.torch),
       loadDecal(manifest.decals.rug),
       loadEffect(manifest.effects.torchfire),
@@ -131,7 +134,7 @@ async function fetchStore(): Promise<StoreAtlas | null> {
       // Not fatal: a price with no coin beside it is still a price.
       loadImage('/hud/coin.png').catch(() => null),
     ]);
-    return { table, torch, rug, torchfire, glow, coin };
+    return { table, kit, torch, rug, torchfire, glow, coin };
   } catch (err) {
     console.warn('[store] no store atlas:', err);
     // Not memoized as a permanent failure: the next day should get another go.

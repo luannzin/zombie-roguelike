@@ -160,7 +160,15 @@ EXIT_DEPTH_TILES = 5
 #
 # The map is TALLER than the lane so the treeline has depth to thicken into;
 # most of that height is woods the party never walks in.
-STORE_WIDTH_TILES = 56
+#
+# IT GOT WIDER WHEN THE PAYOUT LANDED IN IT, and those are one decision. The
+# night's platforms are set down at the WEST end, in front of the party, before
+# the first table — so the glade is read as three beats rather than one: you
+# get paid, you see what it buys, you leave. At the old width the skids came
+# down on top of the stalls and the two events happened in the same square of
+# ground, which is how a reward becomes a thing that happened while you were
+# reading a price tag.
+STORE_WIDTH_TILES = 68
 STORE_HEIGHT_TILES = 24
 STORE_LANE_TILES = 9.0
 #: VOID at each end: the way in (which seals) and the way out (which does not).
@@ -172,6 +180,18 @@ STORE_BUY_DIST = TILE_SIZE * STORE_BUY_TILES
 #: How far a weapon lifts off its table when somebody is in range, in tiles.
 #: Client-side juice, authored here so the lift and the reach cannot drift.
 STORE_LIFT_TILES = 0.4
+#: How close the feet have to be for E to pull the machine's lever, in tiles.
+#: Wider than a table, narrower than a rift console: the cabinet is a big
+#: object and standing at it should be unambiguous, but the last table in the
+#: glade must never be offering itself at the same time as the lever.
+STORE_SPIN_TILES = 2.2
+STORE_SPIN_DIST = TILE_SIZE * STORE_SPIN_TILES
+#: How far the machine's own marquee throws, in tiles. It is a LIT OBJECT — the
+#: only electrical thing in the game — and it is placed at the far end of the
+#: glade, so its pool is what tells a party there is one more thing down there
+#: after the last table.
+STORE_MACHINE_LIGHT_TILES = 7.5
+
 #: What the merchant charges, as a multiple of the gun's catalog value. He is
 #: the only place to buy one and he knows it.
 #:
@@ -534,7 +554,8 @@ def client_config() -> dict:
     # Local import: enemies.py reads TILE_SIZE from this module, so importing it
     # at module scope would be a cycle. Enemy stat blocks still reach the client
     # through this one function, which stays the single client-config contract.
-    from . import ammo, rift
+    from . import ammo, rift, skills
+    from .machine import client_payload as machine_payload
     from .crates import catalog_payload as objects_payload
     from .enemies import enemy_types_payload
     from .loot import catalog_payload
@@ -581,6 +602,15 @@ def client_config() -> dict:
         # distance where the key does nothing.
         "storeBuyTiles": STORE_BUY_TILES,
         "storeLiftTiles": STORE_LIFT_TILES,
+        # The upgrade machine: how close E answers, and the clock the whole
+        # pull runs on. Same discipline as `rift` above — the client flies the
+        # reels, the lamps, the eject and the settle off these plus the one
+        # `pullAt` on the wire, and the server ends the sequence on them.
+        "storeSpinTiles": STORE_SPIN_TILES,
+        "machine": machine_payload(),
+        # Skills: name, rarity, blurb, icon frame, stack cap. The tray above
+        # the bag draws a tile the server only ever names by key.
+        "skills": skills.catalog_payload(),
         # The extraction platform's clock, in seconds. ONE clock: the client
         # flies the whole pickup off these numbers plus the one `closeAt` on
         # the wire, and the server ends the sequence on them. See

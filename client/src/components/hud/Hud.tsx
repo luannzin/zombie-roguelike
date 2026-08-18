@@ -39,6 +39,8 @@ import { ZONE_INTRO_MS, ZoneTitle } from './ZoneTitle';
 import { ReadyCount } from './ReadyCount';
 import { Balance } from './Balance';
 import { BuyPrompt } from './BuyPrompt';
+import { MachinePrompt } from './MachinePrompt';
+import { SkillTray } from './SkillTray';
 import { QuestLog } from './QuestLog';
 import { InteractPrompt } from './InteractPrompt';
 import { Inventory } from './Inventory';
@@ -47,6 +49,17 @@ import { CratePrompt } from './CratePrompt';
 import { RiftPrompt } from './RiftPrompt';
 import { LootPrompt } from './LootPrompt';
 import { ExitGuide } from './ExitGuide';
+
+/**
+ * How many frames `/skills/sheet.png` holds.
+ *
+ * A constant rather than a field on the snapshot: the tray needs it only to
+ * size a CSS background, the catalog is fixed at build time, and threading it
+ * through the store would put a number that never changes on a payload that is
+ * republished five times a second. It must match `SKILLS` in
+ * `server/app/skills.py`.
+ */
+const SKILL_FRAMES = 18;
 
 export interface HudProps {
   snapshot: HudSnapshot;
@@ -124,6 +137,16 @@ export function Hud({ snapshot, minimapRef, error }: HudProps) {
             chrome,
           )}
         >
+          {/* ABOVE the bag, because the two are the same statement about what
+              you are carrying — one you can still lose tonight and one you
+              keep. Stacking them is also what stops the HUD growing a fifth
+              region for a system that is empty until the first shop. */}
+          <SkillTray
+            skills={snapshot.skills}
+            spins={snapshot.spins}
+            reward={snapshot.reward}
+            frames={SKILL_FRAMES}
+          />
           <Inventory inventory={snapshot.inventory} />
           <ControlsHint zone={snapshot.zone} />
         </div>
@@ -157,7 +180,8 @@ export function Hud({ snapshot, minimapRef, error }: HudProps) {
       <CratePrompt prompt={snapshot.cratePrompt} />
       <RiftPrompt prompt={snapshot.riftPrompt} />
       <BuyPrompt prompt={snapshot.buyPrompt} />
-      <ExitGuide visible={snapshot.exitGuide} />
+      <MachinePrompt prompt={snapshot.machinePrompt} />
+      <ExitGuide strength={snapshot.exitGuide} />
       <LootFly lootFrames={snapshot.inventory?.lootFrames ?? 1} />
     </>
   );

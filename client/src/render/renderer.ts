@@ -27,6 +27,7 @@ import { DarknessLayer } from './layers/darkness';
 import { crateAnimFrame, drawFootprints, drawSceneryProp } from './layers/scenery';
 import { drawBloodPools } from './layers/corpses';
 import {
+  drawEgressBeacon,
   drawEgressFire,
   drawEgressGround,
   drawRiftAir,
@@ -61,6 +62,14 @@ import { loadLoot, type LootAtlas } from './loot';
 import { loadScenery, type SceneryAtlas } from './scenery';
 import { loadMerchant, type MerchantAtlas } from './merchant';
 import { loadStore, type StoreAtlas } from './store';
+import { loadMachine, type MachineAtlas } from './machine';
+import {
+  drawPayoutCoins,
+  drawPayoutLight,
+  drawPayoutRigs,
+  drawPayoutTotal,
+} from './layers/payout';
+import { loadSkills, type SkillAtlas } from './skills';
 import {
   drawStoreFloor,
   drawStoreLight,
@@ -118,6 +127,8 @@ export class Renderer {
   private platformAtlas: PlatformAtlas | null = null;
   private storeAtlas: StoreAtlas | null = null;
   private merchantAtlas: MerchantAtlas | null = null;
+  private machineAtlas: MachineAtlas | null = null;
+  private skillAtlas: SkillAtlas | null = null;
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
@@ -153,6 +164,12 @@ export class Renderer {
     });
     void loadStore().then((atlas) => {
       this.storeAtlas = atlas;
+    });
+    void loadMachine().then((atlas) => {
+      this.machineAtlas = atlas;
+    });
+    void loadSkills().then((atlas) => {
+      this.skillAtlas = atlas;
     });
     void loadMerchant().then((atlas) => {
       this.merchantAtlas = atlas;
@@ -281,6 +298,11 @@ export class Renderer {
       state.effects.lootPops,
       (key) => state.config.loot?.[key]?.frame ?? null,
     );
+    // The night's platforms coming home. Drawn with the props rather than in
+    // the depth sort: they land off the lane's spine (see `store.PAYOUT_SPOTS`)
+    // so no body ever has to pass behind one, and a descending skid three
+    // hundred pixels in the air has no honest contact row to sort by.
+    drawPayoutRigs(ctx, view, this.platformAtlas, state.payout);
     drawCorpseSprites(entity, state.corpses);
 
     // Scratch array, reused every frame: this list is rebuilt and re-sorted
@@ -400,7 +422,7 @@ export class Renderer {
             if (this.storeAtlas && store) {
               drawStoreProp(
                 ctx, view, this.storeAtlas, this.gunAtlas, this.merchantAtlas,
-                row.store, store, storeLift,
+                row.store, store, storeLift, this.machineAtlas, this.skillAtlas,
               );
             }
           } else if (scenery && row.piece) {
@@ -444,7 +466,7 @@ export class Renderer {
     this.terrain.overgrowth(ctx, state.world, state.camera, state.time, this.disturbance);
     this.atmosphere.setWeather(state.weather);
     this.atmosphere.draw(ctx, state.camera, state.dt);
-    if (state.fov) this.darkness.draw(ctx, state.world, state.fov);
+    if (state.fov) this.darkness.draw(ctx, state.world, state.fov, state.ambient);
     this.darkness.drawFires(
       ctx,
       state.world.fires,
@@ -470,6 +492,17 @@ export class Renderer {
     // them — and once every pad has flown these are the only fire left burning
     // anyway.
     drawEgressFire(ctx, this.riftAtlas, state.world.egress, state.time);
+    // The column over the treeline. Before the pads' own light, because a
+    // platform under power is the brighter thing and should sit over it —
+    // though by the time this exists every pad has already flown.
+    drawEgressBeacon(
+      ctx,
+      state.world.egress,
+      state.world.tileSize,
+      state.time,
+      state.egressAge,
+      palette().scene.beacon,
+    );
     drawRiftFire(ctx, this.riftAtlas, state.world.rifts, state.time);
     // The rigs' own light, last of the additive passes: rotor wash, the burst
     // and four sets of nav lights are the brightest things on the map once a
@@ -484,8 +517,11 @@ export class Renderer {
         );
       }
     }
+    // Rotor wash, discs and nav lights over the apron. Same additive pass as
+    // the extraction's, because it is the same machinery.
+    drawPayoutLight(ctx, this.platformAtlas, state.payout, state.time);
     // The lamps burning, and the pool under the weapon E is offering.
-    drawStoreLight(ctx, this.storeAtlas, store, state.time);
+    drawStoreLight(ctx, this.storeAtlas, store, state.time, this.machineAtlas);
     // Hunt tell sits ON the night: a hunter you cannot see still wears the
     // diamond, so killing the lamp does not hide that it has you.
     drawAlertMarks(entity, state.entities, state.time);
@@ -497,6 +533,14 @@ export class Renderer {
     // you, not an object in the room, so nothing in the room may cover it.
     drawStorePrices(ctx, view, this.storeAtlas, store, state.balance);
     drawTextFloats(ctx, state.effects, view);
+    // The gold, on its way to the balance, and the number it is going into.
+    // Last of the screen pass and over everything: this is the one moment the
+    // whole night resolves into, and nothing may sit on top of it.
+    drawPayoutCoins(
+      ctx, view, this.storeAtlas?.coin ?? null, state.payout,
+      this.canvas.width, this.canvas.height,
+    );
+    drawPayoutTotal(ctx, state.payout, this.canvas.width, this.canvas.height);
     drawVignette(ctx, this.canvas.width, this.canvas.height, state.danger, state.time);
   }
 

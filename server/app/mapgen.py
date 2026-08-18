@@ -86,6 +86,58 @@ PASSES = 12
 #: decision, it would be an errand.
 NEST_SCENES = frozenset({"sanctuary"})
 
+#: SOME OF THEM STAYED, and this is the smallest possible version of that idea.
+#:
+#: Every scene on this map is a story about people who did not make it, and
+#: until now none of them had anybody in it: the wreck said "something happened
+#: here" and the forest answered "and nothing is here now". So the scenes that
+#: are specifically about somebody DYING keep one or two of them, standing in
+#: the thing that killed them, idle until they notice you.
+#:
+#: IT IS NOT A DIFFICULTY CHANGE, it is an answer to "why is this dangerous".
+#: One or two bodies is a thing a party walks up to and deals with in a few
+#: seconds — the sanctuary's five to eight is the fight, and it stays the only
+#: one. What this buys is that the loot in a wreck is guarded by the reason the
+#: wreck exists, so opening an ambulance is a decision rather than a chore.
+#:
+#: The quiet scenes are deliberately NOT on this list. A deadfall is a tree
+#: that came down and a dumpsite is where somebody left rubbish; putting a
+#: creature in either would say that the map is a list of encounters, and the
+#: stretches with nothing in them are what make the ones with something in them
+#: land.
+HAUNT_SCENES: dict[str, tuple[int, int]] = {
+    "medevac": (1, 2),
+    "last_stand": (2, 3),
+    "checkpoint": (1, 2),
+    "flight": (1, 2),
+    "busstop": (1, 1),
+}
+
+
+def _nests(population, rng: random.Random) -> list[tuple[float, float, int]]:
+    """Where creatures are STANDING when the map is built, and how many.
+
+    Two kinds and one list. The sanctuary gets a pack, because the whole
+    bargain it offers is guarded loot; the scenes in `HAUNT_SCENES` get one or
+    two, because the story they tell has bodies in it. Everything else on the
+    map gets nobody, and that emptiness is load-bearing — see `HAUNT_SCENES`.
+
+    Zero is returned for the sanctuary's count rather than a number, because
+    the pack size for a shrine is `room.NEST_PACK` and belongs to the room: how
+    big a landmark's guard is is a tuning decision about the fight, not about
+    where the fight is.
+    """
+    out: list[tuple[float, float, int]] = []
+    for scene in population.scenes:
+        if scene.kind in NEST_SCENES:
+            count = 0
+        elif scene.kind in HAUNT_SCENES:
+            count = rng.randint(*HAUNT_SCENES[scene.kind])
+        else:
+            continue
+        out.append((scene.x * TILE_SIZE, scene.y * TILE_SIZE, count))
+    return out
+
 
 def _fade(t: float) -> float:
     return t * t * (3.0 - 2.0 * t)
@@ -482,9 +534,5 @@ def build_forest(
         crates=crate_rows,
         rifts=[row.geometry_payload() for row in placed],
         entrance=gate.geometry_payload(),
-        nests=[
-            (scene.x * TILE_SIZE, scene.y * TILE_SIZE)
-            for scene in population.scenes
-            if scene.kind in NEST_SCENES
-        ],
+        nests=_nests(population, random.Random(used ^ 0x4E5D)),
     )

@@ -212,12 +212,18 @@ def update(
     dt: float,
     noises: Sequence[Noise] = (),
     hunt_all: bool = False,
+    alarm_at: tuple[float, float] | None = None,
 ) -> Outcome:
     """Advance every enemy one tick.
 
     `hunt_all` is the extraction chase: every living creature commits to the
     nearest player and does not give up. Sight still aims them; the commit
     itself does not wait for a cone.
+
+    `alarm_at` is WHERE that chase came from — the platform whose pickup was
+    called. It is what a creature turns to look at during its startle, and it
+    is why the pack visibly reacts outward from the pad instead of everything
+    simply facing the party. See `startle`.
     """
     pack = [e for e in enemies if e.alive]
     living = [p for p in players if p.alive]
@@ -264,6 +270,15 @@ def update(
         if hunt_all and nearest is not None and enemy.mode != MODE_HUNT:
             commit(enemy, nearest)
             shouted.append((enemy, nearest))
+            # It has committed. It has not moved. See `startle`.
+            if alarm_at is not None:
+                startle(
+                    enemy,
+                    alarm_at[0],
+                    alarm_at[1],
+                    math.hypot(alarm_at[0] - enemy.x, alarm_at[1] - enemy.y),
+                    world.tile_size,
+                )
 
         if enemy.mode != MODE_HUNT:
             if seen is not None:
@@ -296,6 +311,17 @@ def update(
                 continue
 
         # --- hunting ---------------------------------------------------------
+        # THE HELD BEAT. Committed, diamond lit, facing the noise, not walking.
+        # It runs before the target lookup on purpose: a creature standing and
+        # staring does not need a path, and stepping the chase for a body that
+        # is not moving would spend a navigator query per frame on every enemy
+        # on the map at exactly the tick the map is busiest.
+        if enemy.startle > 0.0:
+            enemy.startle = max(0.0, enemy.startle - dt)
+            enemy.vx = enemy.vy = 0.0
+            face(enemy, enemy.startle_x, enemy.startle_y)
+            continue
+
         target = by_id.get(enemy.target_id or "")
         if target is None:
             # Target died or left. The nearest living player is not a
@@ -433,6 +459,40 @@ def notice_time(enemy: Enemy, target: Player) -> float:
         return ENEMY_NOTICE_NEAR
     ratio = min(1.0, math.hypot(target.x - enemy.x, target.y - enemy.y) / reach)
     return ENEMY_NOTICE_NEAR + (ENEMY_NOTICE_FAR - ENEMY_NOTICE_NEAR) * ratio
+
+
+#: How long a creature stands after the extraction alarm reaches it, before
+#: the smallest of them: the beat where nothing moves is the one that says
+#: HEARD. Under about a third of a second it reads as network lag; much over a
+#: second and the party has already run past them.
+STARTLE_BASE = 0.35
+#: How fast the alarm travels outward, in tiles per second. Not the speed of
+#: sound — it is a READING speed. The whole point is that the player, standing
+#: at the console they just pressed, watches the reaction spread away from them
+#: rather than happen everywhere at once, so it moves slowly enough to see.
+STARTLE_SPREAD_TILES = 44.0
+#: Longest anything will stand, however far away it is. Past this the pause
+#: stops being a beat and becomes a creature that failed to notice.
+STARTLE_MAX = 2.2
+
+
+def startle(enemy: Enemy, x: float, y: float, distance: float, tile: float) -> None:
+    """Freeze a creature that has just heard the extraction, facing the noise.
+
+    Called from `commit` under `hunt_all` and nowhere else. It is deliberately
+    NOT a mode: the enemy is already hunting on the frame this runs, its
+    awareness is already pinned, and the hunt diamond is already lit — what it
+    is not doing yet is walking. A player watching a clearing sees every mark
+    in it come up, hold, and only then start moving toward them, which is a
+    sentence about cause and effect that no HUD warning can say.
+    """
+    if enemy.startle > 0.0:
+        return
+    delay = STARTLE_BASE + (distance / max(1.0, tile)) / STARTLE_SPREAD_TILES
+    enemy.startle = min(STARTLE_MAX, delay)
+    enemy.startle_x = x
+    enemy.startle_y = y
+    face(enemy, x, y)
 
 
 def commit(enemy: Enemy, target: Player) -> None:

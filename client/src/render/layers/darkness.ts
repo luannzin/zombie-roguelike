@@ -47,6 +47,8 @@ import type { FovField } from '../fov';
 
 /** Kind index of a steady lamp — see `server/app/scenery.py`. */
 const LIGHT_LAMP = 0;
+/** The upgrade machine's marquee — see `--scene-neon`. */
+const LIGHT_NEON = 3;
 
 /** Darkness over ground nobody has ever seen. */
 const UNSEEN_ALPHA = 0.9;
@@ -106,6 +108,8 @@ export class DarknessLayer {
   private stale = true;
   /** Last shadow red channel drawn with — cheap "did the tokens change". */
   private tone = -1;
+  /** Zone light floor last drawn with — a change forces a full repaint. */
+  private ambient = -1;
   /** 0..1 falloff around VOID. Rebuilt when the map identity changes. */
   private pathCrush: Float32Array | null = null;
   private crushFor: TileMap | null = null;
@@ -198,7 +202,7 @@ export class DarknessLayer {
   ): void {
     if (lights.length === 0) return;
     const tones = palette().scene;
-    const table = [tones.lamp, tones.ember, tones.beacon];
+    const table = [tones.lamp, tones.ember, tones.beacon, tones.neon];
 
     ctx.globalCompositeOperation = 'lighter';
     for (let i = 0; i < lights.length; i++) {
@@ -206,9 +210,20 @@ export class DarknessLayer {
       const tone = (table[light.kind] ?? tones.lamp).join(' ');
       // A lamp barely moves; embers pulse. Phase is per-light so two of them on
       // screen never breathe together.
+      // Three behaviours, and they are the light SAYING what it is before
+      // the player is close enough to see the object. A lamp barely moves;
+      // embers breathe deep and slow; the machine's marquee buzzes fast and
+      // shallow, which is what mains current looks like and what nothing else
+      // out here does.
       const steady = light.kind === LIGHT_LAMP;
-      const beat = 0.5 + 0.5 * Math.sin(time * (steady ? 1.7 : 0.9) + i * 2.4);
-      const pulse = steady ? 0.9 + beat * 0.1 : 0.62 + beat * 0.38;
+      const electric = light.kind === LIGHT_NEON;
+      const rate = electric ? 6.5 : steady ? 1.7 : 0.9;
+      const beat = 0.5 + 0.5 * Math.sin(time * rate + i * 2.4);
+      const pulse = electric
+        ? 0.86 + beat * 0.14
+        : steady
+          ? 0.9 + beat * 0.1
+          : 0.62 + beat * 0.38;
       const radius = tileSize * light.radiusTiles * (0.62 + pulse * 0.14);
       const gradient = ctx.createRadialGradient(light.x, light.y, 1, light.x, light.y, radius);
       gradient.addColorStop(0, `rgb(${tone} / ${(0.26 * pulse).toFixed(3)})`);
@@ -220,8 +235,27 @@ export class DarknessLayer {
     ctx.globalCompositeOperation = 'source-over';
   }
 
-  /** Caller must have applied the world-space transform. */
-  draw(ctx: CanvasRenderingContext2D, world: TileMap, fov: FovField): void {
+  /**
+   * Caller must have applied the world-space transform.
+   *
+   * `ambient` is the ZONE's own light floor (`welcome.zone.ambient`), 0 in
+   * every hostile place and well under 1 in the shop. It is folded into the
+   * per-tile light rather than subtracted from the shadow alpha, because that
+   * is what makes it behave like light: the torches, the fire and the
+   * machine's marquee still add on top of it and still read as the brightest
+   * things in the glade. Subtracting from the alpha would flatten the pools
+   * out and leave a uniformly grey field.
+   *
+   * It also forces EXPLORED. A lit place the player has to walk around to
+   * uncover is a lit place with fog of war on it, which is a contradiction the
+   * eye reads instantly.
+   */
+  draw(
+    ctx: CanvasRenderingContext2D,
+    world: TileMap,
+    fov: FovField,
+    ambient = 0,
+  ): void {
     this.resize(fov.width, fov.height);
     const night = this.nightCtx;
     const warm = this.warmCtx;
@@ -243,6 +277,12 @@ export class DarknessLayer {
       this.tone = shadowR;
       this.stale = true;
     }
+    // A change in the floor is the same kind of event a token edit is: every
+    // tile's alpha depends on it, and the dirty box knows nothing about it.
+    if (ambient !== this.ambient) {
+      this.ambient = ambient;
+      this.stale = true;
+    }
     const box = this.stale
       ? { x0: 0, y0: 0, x1: fov.width - 1, y1: fov.height - 1 }
       : fov.dirty;
@@ -252,9 +292,14 @@ export class DarknessLayer {
       const row = ty * fov.width;
       for (let tx = box.x0; tx <= box.x1; tx++) {
         const i = row + tx;
-        const lit = fov.light[i];
+        // The floor never reaches into the VOID corridors: the way in and the
+        // way out are supposed to be black gaps in the treeline at both ends
+        // of the lane, and a lit doorway is not a doorway.
         const path = onPath ? crush[i] : 0;
-        const fog = fov.explored[i] === 1 ? FOG_ALPHA : UNSEEN_ALPHA;
+        const floor = ambient * (1 - path);
+        const lit = Math.max(fov.light[i], floor);
+        const fog =
+          fov.explored[i] === 1 || floor > 0 ? FOG_ALPHA : UNSEEN_ALPHA;
         const base = fog + (VOID_NIGHT - fog) * path;
         const leak = 1 - (1 - VOID_LIGHT_LEAK) * path;
         const offset = i * 4;

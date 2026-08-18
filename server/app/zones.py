@@ -19,6 +19,15 @@ and they are deliberately not the same field:
                      not: the bonfire is the light, and the battery is a
                      resource you carry OUT of here, not one you burn standing
                      in it.
+  AMBIENT            how much light the PLACE has of its own, 0..1. It is zero
+                     everywhere a player can be killed, and that is the rule
+                     rather than a tuning value: darkness hiding information is
+                     what makes exploring mean anything, and a forest with an
+                     ambient floor is a forest with no reason to own a lantern.
+                     The SHOP is the exception and it is the whole point of the
+                     shop — a party walks out of a black wood into somewhere
+                     they can see the edges of, and that contrast is the beat
+                     the zone exists for. See `store`.
 
 The client is told all of it in `welcome.zone` and never infers any of it from
 the map. A zone that reads as safe but simulates as hostile is the kind of bug
@@ -44,6 +53,13 @@ WEATHER_FOG = "fog"
 
 # 20:00 through 03:00 inclusive, in minutes from 20:00.
 _NIGHT_SPAN_MINUTES = 7 * 60 + 1
+
+#: How much light the merchant's glade has of its own. See `store`.
+#:
+#: TUNED AGAINST THE TORCHES, not against a screenshot of an empty map. At this
+#: value the lane is legible end to end and the pitch is still visibly the
+#: brightest thing in it; a step higher and the fire stops reading as a fire.
+STORE_AMBIENT = 0.55
 
 # Most nights are dry. Rain is common enough that a second expedition often
 # feels like a different place; fog is the rarer coat.
@@ -86,6 +102,8 @@ class Zone:
     hostile: bool
     #: The lantern switch works.
     lantern: bool
+    #: Floor under the darkness pass, 0..1. Zero in every hostile place.
+    ambient: float = 0.0
     #: Night coat. `clear` / `rain` / `fog`. Camp is always clear.
     weather: str = WEATHER_CLEAR
 
@@ -98,6 +116,7 @@ class Zone:
             "subtitle": self.subtitle,
             "hostile": self.hostile,
             "lantern": self.lantern,
+            "ambient": round(self.ambient, 3),
             "weather": self.weather,
         }
 
@@ -117,12 +136,26 @@ def camp(day: int) -> Zone:
 
 
 def store(day: int) -> Zone:
-    """The merchant's corridor, between the forest and the next camp.
+    """The merchant's glade, between one night and the next.
 
-    Safe, and lit by something you can see — which is why the lantern is off
-    here for the same reason it is off at the fire. The battery is a resource
-    the party carries OUT of a place, and this is the one zone in the loop with
-    a roof and a lamp already burning in it.
+    THE ONE LIT PLACE, and that is the zone's entire job. Everywhere else a
+    party goes is a black wood with a torch in it somewhere; here they can see
+    the treeline, the far end of the lane and each other. The contrast is the
+    reward — a night is only frightening if there is somewhere that is not —
+    and it is why `ambient` is a property of the ZONE rather than a pile of
+    extra torches: fourteen lamps to fill in the gaps between six would read as
+    a lighting rig, and the honest statement is "this place is safe", which is
+    a fact about the place.
+
+    It is still a NIGHT and it is still a forest. The floor is well under one:
+    the glade is visible, not daylit, and the fire, the torches and the
+    machine's marquee still draw the eye by being brighter than it. Push this
+    to 1 and the pitch stops being a pool of warmth in a clearing and becomes a
+    flat green field with a tent on it.
+
+    The lantern stays OFF for the same reason it is off at the fire: the
+    battery is a resource carried OUT of a place, and there is nothing here to
+    need it for.
 
     The subtitle names the DAY the party just survived, not the one they are
     about to start: this is the end of that night, and the balance being spent
@@ -136,6 +169,7 @@ def store(day: int) -> Zone:
         subtitle=f"Fim do dia {day}",
         hostile=False,
         lantern=False,
+        ambient=STORE_AMBIENT,
         weather=WEATHER_CLEAR,
     )
 

@@ -178,6 +178,20 @@ export interface StoreFixtures {
   torches: readonly { x: number; y: number; variant: number }[];
   rugX: number;
   rugY: number;
+  /**
+   * Contact point of the upgrade machine, at the far end of the lane. Null on
+   * a payload with no cabinet — the layer draws nothing rather than guessing a
+   * position, the same way it treats a missing atlas.
+   */
+  machineX: number | null;
+  machineY: number | null;
+  /** His own gear, standing behind the counter. Never interactive. */
+  kit: readonly { x: number; y: number; variant: number }[];
+  /**
+   * The night's platforms coming home: `[x, y, value]` per skid. Empty on a
+   * night nobody extracted. Presentation only — see `game/payout.ts`.
+   */
+  payout: readonly [number, number, number][];
 }
 
 /** A light the map owns, at the point it burns from, in world pixels. */
@@ -185,7 +199,7 @@ export interface SceneryLight {
   x: number;
   y: number;
   radiusTiles: number;
-  /** 0 lamp, 1 ember, 2 beacon — see `theme/palette.ts` `scene`. */
+  /** 0 lamp, 1 ember, 2 beacon, 3 neon — see `theme/palette.ts` `scene`. */
   kind: number;
 }
 
@@ -668,6 +682,10 @@ function unpackStore(payload: MapPayload): StoreFixtures | null {
     torches: (row.torches ?? []).map(([x, y, variant]) => ({ x, y, variant })),
     rugX: row.rug[0],
     rugY: row.rug[1],
+    machineX: row.machine ? row.machine[0] : null,
+    machineY: row.machine ? row.machine[1] : null,
+    kit: (row.kit ?? []).map(([x, y, variant]) => ({ x, y, variant })),
+    payout: row.payout ?? [],
   };
 }
 

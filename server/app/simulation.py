@@ -26,16 +26,20 @@ from .world import TileMap
 _SQRT1_2 = 0.7071067811865476
 
 
-def carry_scale(weight: float) -> float:
+def carry_scale(weight: float, max_weight: float = CARRY_MAX_WEIGHT) -> float:
     """How much of MOVE_SPEED a body gets at this carried weight.
 
     Full speed up to CARRY_SLOW_START of max. Then a straight line down to
     CARRY_SLOW_AT_MAX at the cap, and it keeps falling if they go over,
     never below CARRY_SLOW_FLOOR. Mirror: client/src/game/simulation.ts.
+
+    `max_weight` is a PARAMETER rather than the constant because a skill moves
+    it (`skills.Mods.carry`). The shape of the curve is still one decision —
+    only where the free band ends slides.
     """
-    if CARRY_MAX_WEIGHT <= 0.0:
+    if max_weight <= 0.0:
         return 1.0
-    ratio = weight / CARRY_MAX_WEIGHT
+    ratio = weight / max_weight
     if ratio <= CARRY_SLOW_START:
         return 1.0
     span = 1.0 - CARRY_SLOW_START
@@ -55,7 +59,8 @@ def move_dir(cmd: InputCmd) -> tuple[float, float]:
 
 def apply_input(player: Player, cmd: InputCmd, world: TileMap, dt: float) -> None:
     dx, dy = move_dir(cmd)
-    speed = MOVE_SPEED * carry_scale(player.carry_weight)
+    mods = player.skills.mods
+    speed = MOVE_SPEED * mods.speed * carry_scale(player.carry_weight, mods.carry)
     player.vx = dx * speed
     player.vy = dy * speed
 

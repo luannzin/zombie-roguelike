@@ -1,0 +1,49 @@
+{
+  "tile": 16,
+  "icons": {
+    "file": "sheet.png",
+    "frameWidth": 16,
+    "frameHeight": 16,
+    "frames": 18
+  },
+  "frames": {
+    "passo_leve": 0,
+    "forro_reforcado": 1,
+    "mao_firme": 2,
+    "couro_grosso": 3,
+    "dedos_rapidos": 4,
+    "lamina_afiada": 5,
+    "bateria_fria": 6,
+    "pulmao_fundo": 7,
+    "costura_grossa": 8,
+    "veterano": 9,
+    "mira_apurada": 10,
+    "pele_dura": 11,
+    "olho_de_sucateiro": 12,
+    "acougueiro": 13,
+    "bolsos_fundos": 14,
+    "faro_de_ouro": 15,
+    "coracao_de_ferro": 16,
+    "rei_do_ferro_velho": 17
+  },
+  "can": {
+    "file": "can.png",
+    "litFile": "cap.png",
+    "frameWidth": 16,
+    "frameHeight": 24,
+    "frames": 5,
+    "rarities": [
+      "common",
+      "uncommon",
+      "rare",
+      "epic",
+      "legendary"
+    ],
+    "window": [
+      3,
+      8,
+      10,
+      10
+    ]
+  }
+}

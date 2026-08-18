@@ -17,7 +17,7 @@ game's scale.
 | `combat.py` | hitscan raycast and melee arc sweep, both entity-agnostic |
 | `entities.py` | `Player`, `Pour` (a body emptying its pocket into a platform), `InputCmd` (includes the lantern switch, relayed not simulated) |
 | `enemies.py` | `EnemyType` stat blocks (incl. the sight cone, visual variants and accessory pools), live `Enemy`, `dress` |
-| `ai.py` | enemy senses, patrol/hunt/return, steering/attack, the director; `hunt_all` is the extraction chase |
+| `ai.py` | enemy senses, patrol/hunt/return, steering/attack, the director; `hunt_all` is the extraction chase and `startle` is the beat where it visibly spreads outward from the pad |
 | `pathing.py` | BFS flow field, one per player |
 | `coins.py` | DARK GOLD, the player's purple coin: drop roll, burst, magnet, collection |
 | `loot.py` | world collectables: catalog, scene-context scatter, E-to-collect |
@@ -31,11 +31,13 @@ game's scale.
 | `inventory.py` | the pocket: slots, stacking, weight, `tip_one` (one unit out of the bag per pour beat), per-slot value/weight overrides |
 | `world.py` | tile grid, tile alphabet, collision queries |
 | `maps.py` | hand-authored maps (`from_ascii`, `from_rects`) |
-| `mapgen.py` | procedural forest, seeded and connectivity-checked |
+| `mapgen.py` | procedural forest, seeded and connectivity-checked; `NEST_SCENES` / `HAUNT_SCENES` decide which scenes have creatures standing in them before anyone arrives |
 | `scenery.py` | story SCENES: the layouts, the thread linking them, their lights, the wire rows |
 | `camp.py` | the camp clearing, its bonfire, the seat ring, the VOID exit, and the walk-out formation |
-| `store.py` | the merchant's glade: its treeline and lane, the two end corridors, his tent / fire / torches, the tables and the stock rolled onto them, and `price_of` |
-| `zones.py` | where a run is: title card, `hostile`, `lantern` |
+| `store.py` | the merchant's glade: its treeline and lane, the two end corridors, his tent / fire / torches, his own gear (`KIT_SPOTS`), the tables and the stock rolled onto them, `price_of`, the upgrade machine's spot, and the apron the night's platforms land on (`PAYOUT_SPOTS`) |
+| `zones.py` | where a run is: title card, `hostile`, `lantern`, `ambient` (zero everywhere but the shop) |
+| `skills.py` | what a LEVEL buys: the catalog, the rarity roll, `Loadout` (stacks + spins owed) and `Mods`, the flattened numbers every other module multiplies by |
+| `machine.py` | the upgrade machine's TIMELINE — one clock shared with `client/src/game/machine.ts`, including the third reel's per-rarity hold |
 | `protocol.py` | wire message shapes — source of truth |
 | `config.py` | tuning constants + `client_config()` |
 
@@ -611,6 +613,55 @@ game's scale.
 - Player-supplied values (the `name` query parameter) are sanitised in
   `entities.clean_name` before they enter room state, because they are echoed
   to every other player.
+- **A LEVEL IS A TOKEN, AND THE ONLY THING THAT SPENDS IT IS A MACHINE IN THE
+  SHOP** (`skills.py`, `machine.py`). xp used to be a bar that filled and
+  changed nothing; a level now pays one SPIN into `Player.skills`
+  (`Loadout.sync_level`, called from `Room._sync_spins` wherever xp moves), and
+  spins are banked until somebody stands at the cabinet at the far end of the
+  merchant's glade and presses E. Nothing else in the game consumes one.
+  - `Loadout.mods` is the flattened result and it is the ONLY place a player's
+    numbers diverge from `config.py`. Every site that used to read a constant
+    now reads it: `simulation.apply_input` (speed, carry ceiling), `Player.max_hp`
+    (every heal and respawn), `Room.fire` / `Room.swing` (damage — folded in
+    ONCE, above both the event and the resolution, so the number drawn over a
+    body is the number it lost), `damage_enemy` (xp and `coins.roll_drop`'s
+    odds), `Room._tip_item` (what a platform credits for a loaded item), and
+    the client's own battery. A site still reading `MAX_HP` is a site where a
+    skill silently does nothing.
+  - The ROLL happens on the press and the SHOW happens after. One
+    `spin` event carries the whole four seconds — which skill, which rarity,
+    how many copies, how many pulls are left — and every client flies the
+    reels, the eject and the settle off it plus `machine.client_payload()`. A
+    result that arrived mid-animation is a reel that visibly changes its mind.
+  - ONE LEVER. `Room._machine_busy` is a countdown, not a deadline, because
+    this room has no wall clock; a second press while it runs is refused.
+- **THE SHOP IS THE ONE LIT PLACE, AND `Zone.ambient` IS HOW.** It is zero in
+  every zone a player can be killed in — darkness hiding information is what
+  makes exploring mean anything — and `zones.STORE_AMBIENT` in the merchant's
+  glade, which is the contrast the whole zone exists for. It is a floor under
+  the client's darkness pass, not a replacement for the lights: the fire, the
+  torches and the machine's marquee still read as the brightest things in it.
+- **THE NIGHT'S PLATFORMS COME HOME WITH THE PARTY.** `Room.enter_store` credits
+  the balance and hands `store.build_store` the per-pad takes; the map answers
+  with a `payout` row per skid — where it sets down on the apron and what it
+  carried. The BALANCE and the CEREMONY are deliberately separate: the client
+  animates gold off those decks, and a party that reconnected halfway through
+  it must not be paid twice.
+- **THE PACK REACTS OUTWARD FROM THE PAD.** `hunt_all` commits every creature
+  on the map at once; `ai.startle` is what stops that reading as a switch. A
+  creature the alarm reaches turns to face `Room.alarm_point`, holds still for
+  a beat scaled by its distance from it, and only then walks. It is hunting the
+  whole time — the awareness is pinned and the client's diamond is already lit
+  — so what the player watches is every mark in the clearing come up, hold, and
+  start moving toward them in order of how far the sound had to travel.
+- **SOME SCENES KEEP THEIR DEAD** (`mapgen.HAUNT_SCENES`). The scenes that are
+  about somebody dying stand one or two creatures in the wreck at map build
+  time, through the same `nests` channel the sanctuary's pack uses — the row is
+  `(x, y, count)` and a count of 0 means "the landmark's guard", which is
+  `room.NEST_PACK`. It is not a difficulty change; it is the answer to "why is
+  this dangerous", and it is what stops the loot in a wreck being a chore. The
+  quiet scenes are deliberately left empty: the stretches with nothing in them
+  are what make the ones with something in them land.
 
 ## Work Guidance
 

@@ -4,12 +4,8 @@ only thing on a map that ANSWERS BACK.
 WHAT IT IS
 An abandoned cargo skid — an iron box open at the front, still half loaded with
 crates nobody came back for — with four dead lift drones parked at its corners
-on the ropes they were rigged with. Pressing the console wakes the first drone:
-it spools up, climbs until its line comes straight, and holds there. Every
-overfeed tier past the quota wakes another one. Pressing a paid console makes
-the woken drones take the weight: the skid strains, breaks ground, and flies
-off along a heading the map rolled when it placed the pad, climbing until it is
-gone. What is left is the hole it was sitting in.
+on the ropes they were rigged with. What is left when it goes is the hole it
+was sitting in.
 
 The name `rift` is what this module was called when the extraction point was a
 tear in the world with stones around it. The wire, the config and twenty client
@@ -17,22 +13,32 @@ files still say `rift`, and renaming them buys nothing a line here cannot say.
 The art it used to draw is still in `assets/processed/rift/` — this pad borrows
 its CONSOLE and its TORCH, and nothing else.
 
+THREE PRESSES, AND EACH ONE BUYS THE NEXT
+    press    Power to the deck and GREEN on the four corner lamps: found,
+             running, safe to use. Nothing is in the air and nothing has heard
+             anything. What the party has bought is the right to load the thing.
+    load     Catalog gold out of the pocket until the quota is settled, and
+             then as much past it as they feel like risking.
+    call     THE EXPENSIVE ONE. The lamps go RED, the pad starts sweeping a
+             siren across a black forest, and `Room._siren` throws a map-wide
+             noise every `SIREN_PULSE` for the whole thirteen seconds that
+             follow. Four drones come in from one treeline, take a corner
+             each, drop their lines, and lift. The party cannot leave and
+             cannot take it back.
+
+THE PICKUP IS THE ONLY THING IN THIS GAME THAT COSTS TIME
+Everything else resolves in under a second. This one is a decision the party
+has already made and now has to survive standing next to, which is the whole
+reason it is thirteen seconds long and the whole reason the siren is loud.
+
 ONE PAD AT A TIME, AND THE PLAYER SENDS IT
 A night's pads are a queue, not a menu: `Room` refuses a console while another
 platform is awake, so three pads is three separate walks. Each carries its own
-quota (`pad_need`). Paying it does not launch the platform — it ARMS the
-console, which goes gold, and pressing again is what starts the lift. That
-extra press is what makes overfeeding possible at all: the window between
-"paid" and "gone" is time the party chooses to spend, and everything they load
-during it comes back at the far end as one dense object (`LEVEL_STEPS` and
-`Room._drop_excess`). A timer never launched a platform and never did.
-
-THE DRONES ARE THE METER
-`level_for` is the overfeed tier and `awake` is `1 + tier`, capped at four. So
-how much has gone into a pad is legible from across the clearing without a
-number: one drone turning is the minimum, four is a party that emptied their
-bags into it. That is the same job the anomaly's colour tiers used to do, moved
-onto something with moving parts.
+quota (`pad_need`). Paying it does not call the pickup, and that separation is
+what makes overfeeding possible at all: the window between "paid" and "called"
+is time the party chooses to spend, and everything they load during it comes
+back at the far end as one dense object (`Room._drop_excess`). A timer never
+called a pickup and never will.
 
 WHY THIS IS SERVER-SIDE AND WHY IT SHIPS COORDINATES
 Same reason `scenery.py` is. Placement has to know which ground is open, it
@@ -88,18 +94,13 @@ _PLATFORM = (PLOT / 2.0, 5.0)
 #: second physics problem for no gameplay.
 _DECK = (1, 3, 5, 2)
 
-#: The four drones, in the DIAGONAL order the art and the client both use:
-#: front-left, back-right, front-right, back-left. Parked outside the skid's
-#: own columns, so a body can still walk down either side of the pad — and
-#: opposite corners first, so a platform lifting on two drones hangs level
-#: instead of hinging.
-_DRONES: tuple[tuple[float, float], ...] = (
-    (0.5, 5.0),
-    (PLOT - 0.5, 3.0),
-    (PLOT - 0.5, 5.0),
-    (0.5, 3.0),
-)
-DRONES = len(_DRONES)
+#: How many corners the lift takes, and therefore how many aircraft answer the
+#: call. THE DRONES ARE NOT PART OF THIS STRUCTURE and the server ships no
+#: position for them: they arrive from off-map along `approach` when the pad
+#: calls, take a corner each in the DIAGONAL order the art uses (front-left,
+#: back-right, front-right, back-left) and are gone with the platform. Opposite
+#: corners first, so a rig part-way through tying on holds a level load.
+DRONES = 4
 
 #: On the approach row, in front of the skid. The console is the one piece the
 #: player has to walk up to; out on the plot's own south edge a tree growing
@@ -129,51 +130,88 @@ LIGHT_KIND = 2
 
 # --- the timeline ------------------------------------------------------------
 
-#: The console answers before anything else does. Without this beat the press
-#: and the first rotor are the same instant and the button reads as decoration.
+#: The console answers before anything else does, and then the deck's lamps
+#: come up GREEN. Without this beat the press and the light are the same
+#: instant and the button reads as decoration rather than as a switch.
 CONSOLE_LAG = 0.30
-#: Rotors from dead to lift speed. THE SINGLE MOST LOAD-BEARING NUMBER HERE: at
-#: 0 a drone switches on, at 0.85 it winds up, and winding up is the difference
-#: between a prop that changed frame and a machine that started.
-DRONE_SPOOL = 0.85
-#: The climb, from the ground to wherever its own rope runs out. The rope
-#: coming STRAIGHT is the end of this — the client eases the drone up until the
-#: line has no sag left, which is why the hover height is not a number here.
-DRONE_RISE = 0.85
-#: One drone's whole wake-up, and the beat every later drone repeats when an
-#: overfeed tier lands.
-DRONE_WAKE = DRONE_SPOOL + DRONE_RISE
-#: Held between two drones woken by the SAME press. See `sync_drones`.
-DRONE_LAG = 0.34
+OPEN_AT = CONSOLE_LAG + 0.55
 
-OPEN_AT = CONSOLE_LAG + DRONE_WAKE
-
-#: How long the platform waits if nothing feeds it. INFINITE: the window closes
-#: when a player launches it, not on a clock. `begin_collapse` walks the SPENT
-#: path.
+#: How long the platform waits if nothing loads it. INFINITE: the window closes
+#: when a player calls for the pickup, not on a clock. `begin_collapse` walks
+#: the SPENT path.
 OPEN_TIME = math.inf
 
-# --- the lift ----------------------------------------------------------------
+# --- the pickup ----------------------------------------------------------------
 #
-# THE LAUNCH IS THREE BEATS AND THEY ARE NOT INTERCHANGEABLE. A platform that
-# simply rose would be an elevator; what makes this land is that the ground
-# argues first.
+# THIS IS THE SET PIECE OF THE NIGHT AND IT IS DELIBERATELY LONG.
+#
+# Every other interaction in this game resolves in under a second. This one
+# takes thirteen, and the party cannot leave, because what it actually is is a
+# decision they have already made and now have to survive: the lamps go from
+# green to RED, the pad starts sweeping a siren across a black forest, and
+# every creature on the map turns toward it (`Room._siren`). The drones are
+# still two clearings away.
+#
+# The beats, in order, and none of them is interchangeable:
+#
+#   ALARM     Sirens, and nothing else. The aircraft have not even launched.
+#             This is the beat that costs — a party that pressed the button
+#             without clearing the clearing first finds out here.
+#   INBOUND   Four drones come in from one bearing, staggered, and each takes
+#             a corner. Staggered because four aircraft arriving on the same
+#             frame is one sprite drawn four times.
+#   DROP      Each pays out a line to its eye. It is only tied when the end
+#             gets there, and the lift waits for the LAST one.
+#   STRAIN    Rotors to maximum, lines taut, the skid rattling in its own hole
+#             and not moving. The beat that says the thing is HEAVY.
+#   BREAK     It comes free. The ground under it is uncovered, the deck's tiles
+#             go walkable, and the burst fires.
+#   CLIMB     Up and away along `heading`, accelerating, shrinking, gone.
 
-#: Rotors to maximum, lines taut, the skid rattling in its own hole and not
-#: moving. Everything the party can see is straining and nothing has happened
-#: yet — this is the beat that says the thing is HEAVY.
+#: Sirens alone, before anything is in the air.
+LIFT_ALARM = 3.20
+#: Between one drone leaving the treeline and the next.
+DRONE_STAGGER = 0.55
+#: One drone's flight from the edge of sight to its corner.
+DRONE_INBOUND = 2.40
+#: Paying the line out until the end reaches the eye.
+DRONE_DROP = 1.00
+#: Rotors to maximum against ground that will not let go.
 LIFT_STRAIN = 1.10
-#: It breaks ground. The ground under it is uncovered on the first frame of
-#: this window, the deck's tiles go walkable, and the burst fires.
+#: Coming free.
 LIFT_BREAK = 0.45
-#: The flight: up and away along `heading`, accelerating, shrinking, gone.
-LIFT_CLIMB = 3.30
+#: The flight out.
+LIFT_CLIMB = 3.40
 
+#: When each drone leaves the treeline, arrives, and finishes tying on.
+def drone_departs(index: int) -> float:
+    return LIFT_ALARM + index * DRONE_STAGGER
+
+
+def drone_arrives(index: int) -> float:
+    return drone_departs(index) + DRONE_INBOUND
+
+
+def drone_tied(index: int) -> float:
+    return drone_arrives(index) + DRONE_DROP
+
+
+#: All four on, and the lift can start. Derived, never typed: adding a corner
+#: re-times the whole sequence and the client reads the result through
+#: `client_config`, so all three stay in step.
+TIED_AT = drone_tied(DRONES - 1)
 #: When the skid comes free, measured from the launch press.
-BREAK_AT = LIFT_STRAIN
-#: The whole launch. Named `COLLAPSE_TIME` because `Rift.step` and the client
+BREAK_AT = TIED_AT + LIFT_STRAIN
+#: The whole pickup. Named `COLLAPSE_TIME` because `Rift.step` and the client
 #: both time the pad's end off one number and this is it.
-COLLAPSE_TIME = LIFT_STRAIN + LIFT_BREAK + LIFT_CLIMB
+COLLAPSE_TIME = BREAK_AT + LIFT_BREAK + LIFT_CLIMB
+
+#: How often the siren throws a noise event while the pickup runs, and how far
+#: it carries in tiles. THE RADIUS IS THE WHOLE POINT: a gunshot is a local
+#: problem, this is a map-wide announcement, and the party has to feel that
+#: they have just told everything in the forest exactly where they are.
+SIREN_PULSE = 0.75
+SIREN_TILES = 46.0
 
 COLLAPSE_AT = OPEN_AT + OPEN_TIME
 SPENT_AT = COLLAPSE_AT + COLLAPSE_TIME
@@ -189,32 +227,20 @@ SPENT = "spent"
 # --- overfeeding ---------------------------------------------------------------
 #
 # THE QUOTA IS A FLOOR, NOT A CEILING, and that is the whole decision the pad
-# exists to offer. Paying exactly what it asks lets you launch. Keeping the bag
-# going past that does not — the platform takes everything, and it WAKES
-# ANOTHER DRONE for each tier, so a party can read from across the clearing how
-# much has gone in.
+# exists to offer. Paying exactly what it asks is what puts the crew in the air
+# and makes the console a launch button. Keeping the bag going past that does
+# not close anything — the platform takes everything, and what you overpaid
+# comes back as one dense object you carry to the NEXT pad (`Room._drop_excess`).
+# Overfeeding is therefore never a donation, it is moving value forward through
+# a bag that has a slot count, which is the only reason it is worth doing.
 #
-# What buys that back is `excess_item` in `room.py`: what you overpaid comes
-# back as one dense object you carry to the NEXT pad. Overfeeding is therefore
-# never a donation, it is moving value forward through a bag that has a slot
-# count — which is the only reason it is worth doing at all.
-
-#: How many tiers past the quota the rig walks before it stops. One per extra
-#: drone, so the art and the economy cannot disagree about the ceiling.
-MAX_LEVEL = DRONES - 1
-#: Where each tier starts, as a fraction of the quota paid ON TOP of it. The
-#: first is any overpayment at all, so a single item past the line already wakes
-#: something; the two above it are half again and double.
-LEVEL_STEPS: tuple[float, ...] = (0.0, 0.5, 1.0)
-
-
-def level_for(fed: int, need: int) -> int:
-    """Which overfeed tier `fed` sits in against a quota of `need`. 0..MAX_LEVEL."""
-    if need <= 0 or fed <= need:
-        return 0
-    over = (fed - need) / need
-    level = sum(1 for step in LEVEL_STEPS if over >= step)
-    return min(MAX_LEVEL, max(1, level))
+# THERE ARE NO TIERS AND THE DRONES ARE NOT A METER. They were once: each
+# overpayment step woke one more of them, so a saturated pad had four turning
+# and an untouched one had a single machine. It read well and it made the quota
+# feel optional — a rig with one drone on it looks like a rig that will fly, so
+# there was no moment where the platform was visibly NOT READY. What the pad
+# says now is simpler and harder: green means loading, red means the aircraft
+# are coming, and the party chooses when to cross that line.
 
 
 @dataclass
@@ -232,12 +258,14 @@ class Rift:
     #: Contact point of the skid — the row its beams stand on.
     deck_x: float
     deck_y: float
-    #: Ground contact of each parked drone, in `_DRONES` order.
-    drones: tuple[tuple[float, float], ...]
-    #: Which way it leaves, in radians. Rolled at placement rather than at
-    #: launch so it rides on the map payload: every client has to agree about
-    #: where a departing platform went, and a client that joined during the
-    #: climb has to be able to place it.
+    #: The bearing the drones come in on, in radians. Rolled at placement
+    #: rather than at the call so it rides on the map payload: every client has
+    #: to agree about which treeline four aircraft appeared over, and a client
+    #: that joined mid-pickup has to be able to place them.
+    approach: float = 0.0
+    #: Which way the loaded platform leaves, in radians. Set opposite the
+    #: approach, so the flight reads as ONE PASS — in over that treeline, out
+    #: over the far one — rather than as a round trip that turned around.
     heading: float = 0.0
     id: str = "r0"
     state: str = DORMANT
@@ -249,11 +277,11 @@ class Rift:
     #: platform is holding. Set by `begin_collapse` on the tick a player sends
     #: it — not by an authored window.
     close_at: float | None = None
-    #: `elapsed` at which each drone started spooling, in `_DRONES` order. The
-    #: length IS how many are awake, and shipping the times rather than a count
-    #: is what lets a drone that woke thirty seconds ago be already hovering
-    #: while the one that woke this tick is still winding up.
-    woke: list[float] = field(default_factory=list)
+    #: Which siren pulse has already been thrown, as an index into the pickup's
+    #: own clock. Server-only and NOT on the wire: it exists so `Room._siren`
+    #: fires once per pulse rather than once per tick, and a rehydrate that
+    #: resets it costs one extra noise nobody can distinguish from the rest.
+    siren_pulse: int = -1
     #: The deck's tiles have been handed back to the floor. Server-side truth
     #: about the map, and it rides on the geometry payload because that payload
     #: is also the room's STORE — a rehydrate must not re-free ground that is
@@ -275,19 +303,20 @@ class Rift:
 
     @property
     def ready(self) -> bool:
-        """Quota paid and still on the ground: the console is a launch button."""
+        """The quota is settled: the console is a CALL button now.
+
+        Nothing about this is automatic. A paid pad sits there with green lamps
+        for as long as the party wants — they can keep loading it, or walk off
+        and clear the clearing first, or fight next to it. Pressing again is
+        what brings the aircraft, and that press is the loudest thing anybody
+        does on a night.
+        """
         return self.state == OPEN and self.close_at is None and self.fed >= self.need
 
     @property
-    def level(self) -> int:
-        return level_for(self.fed, self.need)
-
-    @property
-    def awake(self) -> int:
-        """How many drones should be turning. One, plus one per overfeed tier."""
-        if self.state in (DORMANT, SPENT):
-            return 0
-        return min(DRONES, 1 + self.level)
+    def alarm(self) -> bool:
+        """The pickup has been called: lamps red, siren sweeping, drones coming."""
+        return self.close_at is not None and self.state != SPENT
 
     @property
     def lifted(self) -> bool:
@@ -299,50 +328,36 @@ class Rift:
             self.fed += value
 
     def press(self) -> None:
-        """Wake the pad: power up, first drone spooling after `CONSOLE_LAG`.
+        """Wake the pad: power to the deck, green lamps, light on the clearing.
 
-        The lag lives HERE rather than in the room, because it is a fact about
-        this rig — the console answers, and a moment later something on the
-        skid starts turning. Waking the first drone on the same tick as the
-        press makes the button read as a light switch.
+        NOTHING FLIES YET, and that restraint is the whole shape of the pad.
+        The console answers, the corner lamps come up green and the ground
+        around it is lit — which is everything the party needs to work here and
+        none of what they need to leave. The aircraft are a separate decision
+        and a much more expensive one.
         """
         self.state = CHARGING
         self.elapsed = 0.0
-        self.woke = [CONSOLE_LAG]
-
-    def sync_drones(self) -> bool:
-        """Wake whatever the current tier is owed. True if anything changed.
-
-        Each new drone starts its spool at the moment the tier landed, so two
-        drones woken by two different presses are never in phase — which is
-        what makes a four-drone rig look like four machines rather than one
-        sprite drawn four times.
-        """
-        want = self.awake
-        if len(self.woke) >= want:
-            return False
-        added = 0
-        # A bag big enough to cross two tiers on one press wakes two drones,
-        # and they must not wake on the same frame: two identical machines
-        # spooling in perfect sync read as one sprite drawn twice. A third of a
-        # second apart is enough that the ear and the eye both get two events.
-        while len(self.woke) < want:
-            self.woke.append(round(self.elapsed + added * DRONE_LAG, 2))
-            added += 1
-        return True
 
     def step(self, dt: float) -> bool:
         """Advance the sequence. True when the state changed this tick.
 
-        One clock for the whole life of the thing: spool, hold, launch and gone
-        are all read off `elapsed`, so there is no separate timer to fall out of
-        step and a client that joins at any point can be told where it is with
-        one number.
+        One clock for the whole life of the thing: power-up, hold, the whole
+        thirteen-second pickup and gone are all read off `elapsed`, so there is
+        no separate timer to fall out of step and a client that joins at any
+        point can be told where it is with one number.
+
+        `ready` is watched here as well as the state string. The quota can be
+        settled by a press (an event `Room` already reports) but it can also
+        become the thing that matters on a tick where nothing was pressed at
+        all, and a console that changed its mind without the row going dirty is
+        a button the client draws wrong until something else happens.
         """
         if self.state in (DORMANT, SPENT):
             return False
+        was_ready = self.ready
         self.elapsed += dt
-        changed = False
+        changed = self.ready != was_ready
         if self.state == CHARGING and self.elapsed >= OPEN_AT:
             self.state = OPEN
             changed = True
@@ -359,9 +374,10 @@ class Rift:
     def begin_collapse(self) -> bool:
         """Start the launch. True if this call changed anything.
 
-        A player sending a paid platform is what ends a pad, not a timer. A
-        dormant one just stays dead. A pad still spooling is jumped to open so
-        the lift has a rig to strain against rather than a half-played wake-up.
+        A player calling for the pickup is what ends a pad, not a timer. A
+        dormant one just stays dead. A pad still powering up is jumped to open,
+        so the sequence has a lit platform to run on rather than a half-played
+        switch-on.
 
         The overpayment is BANKED HERE and paid out at SPENT, because the drop
         belongs to the moment the skid is gone — it is what did not fit aboard.
@@ -378,7 +394,6 @@ class Rift:
         if self.close_at is None:
             self.close_at = self.elapsed
             self.excess = max(0, self.fed - self.need)
-            self.sync_drones()
             return True
         return False
 
@@ -412,7 +427,7 @@ class Rift:
             "deck": [round(self.deck_x, 1), round(self.deck_y, 1)],
             "console": [round(self.console_x, 1), round(self.console_y, 1)],
             "torch": [round(self.torch_x, 1), round(self.torch_y, 1)],
-            "drones": [[round(dx, 1), round(dy, 1)] for dx, dy in self.drones],
+            "approach": round(self.approach, 3),
             "heading": round(self.heading, 3),
             "lightTiles": LIGHT_TILES,
             "lightKind": LIGHT_KIND,
@@ -422,9 +437,12 @@ class Rift:
     def state_payload(self) -> dict:
         """The live half: what it is doing. Rides on the snapshot when dirty.
 
-        `level` is derived and shipped anyway, and `woke` is shipped because
-        the client cannot derive it: a tier's wake time is the moment somebody
-        pressed a button, which is not a function of anything the client holds.
+        There is nothing here about the aircraft. `closeAt` is the moment the
+        pickup was called and every drone's whole flight — when it leaves the
+        treeline, when it reaches its corner, when its line is tied — is that
+        one number plus the constants in `client_config`. Shipping four flight
+        plans at 6 Hz to describe something already fully determined would be
+        the largest message in the game for no information at all.
         """
         row = {
             "id": self.id,
@@ -432,8 +450,6 @@ class Rift:
             "t": round(self.elapsed, 2),
             "fed": self.fed,
             "need": self.need,
-            "level": self.level,
-            "woke": list(self.woke),
         }
         if self.close_at is not None:
             row["closeAt"] = round(self.close_at, 2)
@@ -457,13 +473,12 @@ def from_payload(row: dict | None) -> Rift | None:
         console_y=float(row["console"][1]),
         torch_x=float(row["torch"][0]),
         torch_y=float(row["torch"][1]),
-        drones=tuple((float(p[0]), float(p[1])) for p in row["drones"]),
+        approach=float(row.get("approach", 0.0)),
         heading=float(row.get("heading", 0.0)),
         id=str(row.get("id", "r0")),
         state=str(row.get("state", DORMANT)),
         elapsed=float(row.get("t", 0.0)),
         close_at=None if close is None else float(close),
-        woke=[float(v) for v in row.get("woke") or []],
         freed=bool(row.get("freed", False)),
         need=int(row.get("need", 0)),
         fed=int(row.get("fed", 0)),
@@ -754,9 +769,9 @@ def _stamp(tiles: list[list[int]], tx: int, ty: int, rng: random.Random) -> Rift
     party fights in would take away. The console is `LOW` for the same reason:
     waist-high cover on the tile everyone is standing at.
 
-    The drones and the torch claim NOTHING. A drone is knee-high and about to
-    fly away, and a torch you can walk through is the same torch the exit
-    corridor uses.
+    The torch claims NOTHING — a torch you can walk through is the same torch
+    the exit corridor uses. Neither do the drones, and they could not: they are
+    not on this map until the pad calls them.
     """
     for oy in range(PLOT):
         for ox in range(PLOT):
@@ -771,6 +786,7 @@ def _stamp(tiles: list[list[int]], tx: int, ty: int, rng: random.Random) -> Rift
     cy = int(math.floor(ty + _CONSOLE[1] - 1e-6))
     tiles[cy][cx] = LOW
 
+    approach = rng.uniform(0.0, math.tau)
     return Rift(
         tx=tx,
         ty=ty,
@@ -782,11 +798,14 @@ def _stamp(tiles: list[list[int]], tx: int, ty: int, rng: random.Random) -> Rift
         console_y=(ty + _CONSOLE[1]) * TILE_SIZE,
         torch_x=(tx + _TORCH[0]) * TILE_SIZE,
         torch_y=(ty + _TORCH[1]) * TILE_SIZE,
-        drones=tuple(
-            ((tx + ox) * TILE_SIZE, (ty + oy) * TILE_SIZE) for ox, oy in _DRONES
-        ),
-        # Where it goes when it goes. Rolled here so it is decided once, by the
-        # map, and every client watching the same launch watches it leave in
-        # the same direction.
-        heading=rng.uniform(0.0, math.tau),
+        # Which treeline the aircraft come over, and which one they leave over.
+        # Rolled HERE so the whole thing is decided once, by the map, and every
+        # client watching the same pickup watches the same four machines arrive
+        # from the same direction.
+        #
+        # The departure is the approach CONTINUED, not reversed: they fly in,
+        # take the load, and carry on the way they were already going. A round
+        # trip out of the same trees they came from reads as a delivery van.
+        approach=approach,
+        heading=approach + math.pi + rng.uniform(-0.45, 0.45),
     )

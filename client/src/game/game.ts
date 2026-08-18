@@ -165,6 +165,14 @@ const RIFT_TOOLTIP_LIFT_TILES = 1.9;
  * be part of read as a second, unrelated effect going off underneath it.
  */
 const RIFT_BURST_SPEED = 110;
+/**
+ * Seconds per turn of the corner sirens, and therefore per audible tick.
+ *
+ * Read off the art rather than chosen: `siren.png` is 12 frames at 16 fps, so
+ * the lamp comes back round every 0.75s. A tick that did not land on the sweep
+ * would be a second, unrelated alarm playing underneath the one on screen.
+ */
+const SIREN_SWEEP = 12 / 16;
 /** Distance between boot prints, in tiles. One stride, not one frame. */
 const FOOTPRINT_STRIDE = 0.9;
 /**
@@ -2329,8 +2337,8 @@ export class Game {
     const rift = this.riftPrompt();
     if (rift) {
       // Two dead presses, and both get the buzz rather than a packet the
-      // server would drop on the floor: an empty bag at a hungry pad, and a
-      // second console while another platform is already running.
+      // server would drop on the floor: an empty bag at a pad still under its
+      // quota, and a second console while another platform is already running.
       if ((rift.mode === 'feed' && rift.empty) || rift.mode === 'busy') {
         playSfx('ui-error');
         return;
@@ -2733,18 +2741,18 @@ export class Game {
         have: 0,
         need: 0,
         empty: false,
-        level: 0,
       };
     }
     // A pad that is already collapsing takes no more presses. `closeAt` is the
     // server's word for that, and it is what stops a second E from being
     // offered on a rift that is in the middle of imploding.
     if (rift.state !== 'open' || rift.closeAt !== null) return null;
-    // Same split `Room.activate_rift` makes, off the same three facts: whether
-    // the quota is paid, whether another console is still waiting, and whether
-    // the pocket has anything. Saturating is only offered while there is a pad
-    // left to carry the core to — on the last rift the overpayment is not paid
-    // back, so the game must not invite it.
+    // Same split `Room.activate_rift` makes, off the same facts: whether the
+    // quota is paid, whether the crew is up, whether another console is still
+    // waiting, and whether the pocket has anything. Saturating is only offered
+    // while there is a pad left to carry the core to — on the last pad the
+    // overpayment is not paid back, so the game must not invite it.
+    //
     const padsLeft = this.world?.rifts.some((row) => row.state === 'dormant') ?? false;
     const mode = !rift.ready ? 'feed' : (empty || !padsLeft) ? 'close' : 'over';
     return {
@@ -2753,7 +2761,6 @@ export class Game {
       have: rift.fed,
       need: rift.need,
       empty,
-      level: rift.level,
     };
   }
 
@@ -2894,23 +2901,18 @@ export class Game {
     if (!world) return;
     const before = world.rifts.find((item) => item.id === row.id);
     const was = before?.state;
-    const wasLevel = before?.level ?? 0;
     const wasReady = before?.ready ?? false;
     const closing = row.closeAt != null && was === 'open';
     world.setRiftState(row.id, row.state, row.t, row.closeAt ?? null, {
       fed: row.fed ?? 0,
       need: row.need ?? 0,
-      level: row.level ?? 0,
       ready: row.ready ?? false,
-      woke: row.woke,
     });
-    // The quota being met is an EVENT even though the state string does not
-    // change: the console goes gold, the band starts, and the button stops
-    // meaning "load" and starts meaning "send it". It has to be as loud as the
-    // press was or nobody notices the pad is waiting on them.
-    const level = row.level ?? 0;
+    // The quota landing is an EVENT the state string does not name: the console
+    // goes gold, the band starts, and the button stops meaning "load" and
+    // starts meaning "call it in". It has to be as loud as the press was or
+    // nobody notices the pad is waiting on them.
     if ((row.ready ?? false) && !wasReady) playSfx('rarity', { variant: 4 });
-    else if (level > wasLevel) playSfx('rarity', { variant: Math.min(4, level) });
     if (was === row.state && !closing) return;
     // The beacon joins and leaves `scenery.lights` here. FOV reads `Game.lights`,
     // which is a snapshot of that list — without a rebuild the pad stays dark
@@ -3002,44 +3004,66 @@ export class Game {
   ): void {
     const fx = palette().effects;
 
-    // A DRONE COMING UP TO SPEED, and then its rope coming straight. Two beats
-    // per drone rather than one, because they are two different pieces of
-    // information: the first says the machine started, the second says it has
-    // taken the weight and there is one more of them than there was.
+    // Everything here is the PICKUP, and none of it exists until somebody has
+    // called for one. `closeAt` is that press.
     //
-    // NO POINT LIGHT on either. `Effects.spawnLight` is a `ctx.arc` radial
+    // NO POINT LIGHT anywhere in it. `Effects.spawnLight` is a `ctx.arc` radial
     // gradient in WORLD pixels and the world is drawn at `ARENA_ZOOM`, so a
     // radius that reads as modest here arrives on screen multiplied by the
     // zoom and covers half the viewport as a hard-edged disc. Every existing
     // caller gets away with it by being over in a tenth of a second; a beat
-    // you are meant to WATCH cannot hide behind that. The light belongs to the
-    // sheets, which are pixel art and lit like everything else.
-    for (const woke of rift.woke) {
-      if (before < woke && after >= woke) {
-        this.camera.addTrauma(0.05);
-        playSfx('lantern-on');
-      }
-      const station = woke + timing.droneSpool + timing.droneRise;
-      if (before < station && after >= station) {
-        this.camera.addTrauma(0.09);
-        // Each drone a step higher than the last, so four of them coming up is
-        // a rising figure. Borrowed from the loot-reveal chime for now — the
-        // rig has no voice of its own in `make_audio.py` yet.
-        playSfx('rarity', { variant: Math.min(4, rift.woke.indexOf(woke) + 1) });
-      }
-    }
-
-    // From here down is the launch, and it only exists once somebody has sent
-    // the platform. `closeAt` is that press.
+    // you are meant to WATCH for thirteen seconds cannot hide behind that. The
+    // light belongs to the sheets, which are pixel art and lit like everything
+    // else — see `siren.png`.
     const launch = rift.closeAt;
     if (launch === null) return;
+
+    // THE CALL. The single most expensive press in the game, so it gets the
+    // hardest single hit: the lamps go red on this frame and the server has
+    // already put every creature on the map on hunt.
+    if (before < launch && after >= launch) {
+      this.camera.addTrauma(0.30);
+      playSfx('kindle');
+    }
+
+    // THE SIREN, once per sweep, for as long as the aircraft are working. A
+    // repeating tick under a scene nobody can leave is the whole tension of
+    // the beat — it is a countdown the party can hear but cannot read, and it
+    // keeps not stopping while things walk in out of the dark.
+    const sweep = SIREN_SWEEP;
+    const first = Math.ceil((before - launch) / sweep);
+    const last = Math.floor((after - launch) / sweep);
+    for (let n = Math.max(0, first); n <= last; n++) {
+      if ((launch + n * sweep) <= before) continue;
+      playSfx('siren');
+      this.camera.addTrauma(0.04);
+    }
+
+    // EACH AIRCRAFT ARRIVING, and then its line reaching the eye. Two beats
+    // per drone because they are two different pieces of information: one more
+    // machine is here, and one more corner is taking load.
+    for (let i = 0; i < timing.drones; i++) {
+      const arrives = launch + timing.liftAlarm + i * timing.droneStagger + timing.droneInbound;
+      if (before < arrives && after >= arrives) {
+        this.camera.addTrauma(0.07);
+        playSfx('lantern-on');
+      }
+      const tied = arrives + timing.droneDrop;
+      if (before < tied && after >= tied) {
+        this.camera.addTrauma(0.10);
+        // Each corner a step higher than the last, so four of them tying on is
+        // a rising figure. Borrowed from the loot-reveal chime for now — the
+        // rig has no voice of its own in `make_audio.py` yet.
+        playSfx('rarity', { variant: Math.min(4, i + 1) });
+      }
+    }
 
     // THE STRAIN. Rotors to maximum against ground that will not let go: a
     // shove that GROWS rather than a single hit, because what the beat has to
     // communicate is effort, and effort is the one thing a one-frame impulse
     // cannot say.
-    const strainFrom = launch;
-    const strainTo = launch + timing.liftStrain;
+    const strainFrom = launch + timing.tiedAt;
+    const strainTo = launch + timing.breakAt;
     if (before < strainFrom && after >= strainFrom) playSfx('kindle');
     if (after > strainFrom && after < strainTo) {
       const climb = (after - strainFrom) / Math.max(timing.liftStrain, 1e-6);
@@ -3048,7 +3072,7 @@ export class Game {
 
     // THE GROUND LETTING GO. The largest thing that happens on this map and
     // the only beat here that earns a real shove.
-    const broke = launch + timing.liftStrain;
+    const broke = launch + timing.breakAt;
     if (before < broke && after >= broke) {
       this.camera.addTrauma(0.55);
       playSfx('crate-break');

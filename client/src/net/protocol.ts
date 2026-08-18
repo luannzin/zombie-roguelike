@@ -564,9 +564,12 @@ export interface RiftPayload {
   console: [number, number];
   /** The torch that marks the pad. Burning from the moment the map is built. */
   torch: [number, number];
-  /** Ground contact of each parked drone, front-left / back-right / … */
-  drones: [number, number][];
-  /** Which way the platform leaves, in radians. Rolled by the map. */
+  /**
+   * The bearing the drones come in on, in radians, and the one the loaded
+   * platform leaves on. Rolled by the map, and the departure is the approach
+   * CONTINUED — the flight is one pass, not a round trip.
+   */
+  approach: number;
   heading: number;
   lightTiles: number;
   /** Scene-light kind. 2 is `beacon` — see `theme/palette.ts`. */
@@ -576,14 +579,10 @@ export interface RiftPayload {
   t: number;
   /** When the launch begins, in the same clock as `t`. Absent while holding. */
   closeAt?: number | null;
-  /** `t` at which each drone started spooling. Its LENGTH is how many woke. */
-  woke?: number[];
   /** Catalog value put into THIS pad, and what it asked for. */
   fed?: number;
   need?: number;
-  /** Overfeed tier, 0..3. See `RiftStateRow`. */
-  level?: number;
-  /** Quota paid and still on the ground. */
+  /** Quota settled and the pickup not yet called. */
   ready?: boolean;
 }
 
@@ -599,21 +598,31 @@ export interface RiftPayload {
  */
 export interface RiftTimingConfig {
   consoleLag: number;
-  /** One drone waking: rotors to speed, then the climb until its rope is taut. */
-  droneSpool: number;
-  droneRise: number;
-  /** How many corners the rig has. Four. */
-  drones: number;
   openAt: number;
   lightTiles: number;
+  /** How many corners the lift takes, and so how many aircraft answer. Four. */
+  drones: number;
   /**
-   * The launch, in three beats: straining against ground that will not let go,
-   * breaking free, and the flight out. `liftStrain` is also the moment the
-   * deck's tiles become walkable — the server patches them on that tick.
+   * THE PICKUP. The client flies the whole thing off these plus the single
+   * `closeAt` on the wire — sirens alone for `liftAlarm`, then drone `i` leaves
+   * the treeline at `liftAlarm + i * droneStagger`, crosses in `droneInbound`,
+   * and spends `droneDrop` paying its line down to its corner. `tiedAt` is
+   * when the last of them is on and the lift can start.
+   */
+  liftAlarm: number;
+  droneStagger: number;
+  droneInbound: number;
+  droneDrop: number;
+  tiedAt: number;
+  /**
+   * Then the lift: straining against ground that will not let go, breaking
+   * free, and the flight out. `breakAt` is also the moment the deck's tiles
+   * become walkable — the server patches them on that tick.
    */
   liftStrain: number;
   liftBreak: number;
   liftClimb: number;
+  breakAt: number;
   /**
    * The window, and the way it ends. NULL means NEVER — the platform waits
    * until a player launches it. Not `Infinity`: that is not valid JSON and
@@ -1045,23 +1054,14 @@ export interface RiftStateRow {
   t: number;
   /** When the launch begins, in the same clock as `t`. */
   closeAt?: number | null;
-  /**
-   * `t` at which each drone started spooling, in corner order. Its LENGTH is
-   * how many are awake. Shipped rather than derived because a wake time is the
-   * moment somebody pressed a button, which is not a function of anything the
-   * client holds.
-   */
-  woke?: number[];
   /** Catalog value put into THIS pad, and what it asked for. */
   fed?: number;
   need?: number;
   /**
-   * Overfeed tier, 0..3. Derived on the server from `fed` against `need` — the
-   * tiers live in `server/app/rift.py` and are not re-derived here, the same
-   * rule the platform's timings follow.
+   * The quota is settled and the pickup has not been called: the console is a
+   * CALL button now. Nothing about it is automatic — a paid pad waits as long
+   * as the party wants.
    */
-  level?: number;
-  /** Quota paid and still on the ground: the console is a launch button now. */
   ready?: boolean;
 }
 

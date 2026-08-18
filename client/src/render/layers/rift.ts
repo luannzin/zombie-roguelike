@@ -1,27 +1,35 @@
 /**
- * The extraction point: an abandoned cargo skid, four lift drones on ropes, a
+ * The extraction point: an abandoned cargo skid with four corner lamps on it, a
  * console, and a torch that has been burning since the map was built.
  *
- * THIS FILE OWNS THE RIG'S TIMING and nothing else does. `riftPhase` turns two
- * numbers — seconds since the console was pressed, and the moment each drone
- * woke — into where every piece of this machine is on this frame, and the draw
- * functions only read it. Splitting "what is happening" from "what is drawn"
- * is what keeps the drone that is turning on screen the drone the server
- * thinks woke: both sides run the same arithmetic off the same constants in
+ * THIS FILE OWNS THE PAD'S TIMING and nothing else does. `riftPhase` turns two
+ * numbers — seconds since the console was pressed, and the moment somebody
+ * called the pickup — into where every piece of this scene is on this frame,
+ * and the draw functions only read it. Splitting "what is happening" from
+ * "what is drawn" is what keeps the aircraft on screen the aircraft the server
+ * believes in: both sides run the same arithmetic off the same constants in
  * `server/app/rift.py`, shipped through `config.rift`.
  *
- * THE DRONES ARE THE METER. One is turning the moment the pad is awake, and
- * each overfeed tier wakes another, so how much a party has poured into a
- * platform is legible from across the clearing without a number on screen.
- * They wake in the DIAGONAL order the server places them, so a rig running on
- * two is running on opposite corners and hangs level.
+ * THE LAMPS ARE THE STATE, AND THERE ARE ONLY TWO THINGS THEY SAY. Green: this
+ * pad is found, powered and taking cargo, and nothing out there has heard
+ * anything. Red: somebody has called for a pickup, the corners are sweeping a
+ * siren across a black forest, and the server has put every creature on the map
+ * on hunt (`Room.sirening`). Everything else on this pad is detail; those two
+ * colours are the whole decision the extraction offers.
  *
- * THE ROPES ARE DRAWN, NOT BAKED. A line between a fixed eye on the skid and a
- * drone that climbs, strains and then flies off cannot be a sprite — so the
- * art ships the eye positions (`layout.eyes`) and how much line each drone was
- * rigged with (`layout.rope`), and this file draws the catenary between them.
- * Slack while a drone is parked, straight once it has taken up its station,
- * and it is the STRAIGHTENING that says the machine is about to pull.
+ * THE DRONES ARE NOT ON THIS MAP UNTIL THEY ARE CALLED. Nothing is parked at
+ * the corners — the pad is a loading dock, not a complete machine — so there is
+ * no drone geometry on the wire at all. Four aircraft come in over one treeline
+ * on `rift.approach`, staggered, take a corner each, lower a line, and the
+ * whole thing is one `closeAt` plus the constants. Four flight plans at 6 Hz to
+ * describe something fully determined would be the largest message in the game
+ * for no information.
+ *
+ * THE ROPES ARE DRAWN, NOT BAKED, and they are what makes the tie-on read as
+ * something happening rather than something switching on. The art ships where
+ * each line ends (`layout.eyes`) and how much of it there is (`layout.rope`);
+ * this file pays it out of the drone's winch under gravity, lets the free end
+ * swing, catches it on the eye, and only then lets the slack come out of it.
  *
  * The passes go in four different places in the frame, because they are four
  * different kinds of thing:
@@ -29,12 +37,13 @@
  *                     skid uncovers when it finally comes free
  *   `riftStanding`    merged into the entity depth sort, so a player walks
  *                     behind the platform and disappears behind it
- *   `drawRiftAir`     after that sort and before the darkness: ropes, drones
- *                     in the air, and a platform that is no longer on the
- *                     ground. Still dimmed by the night, which is what lets it
- *                     fade into the sky as it climbs
- *   `drawRiftGlow`    after the darkness pass, additive — rotor discs, nav
- *                     lights, rotor wash, the burst, the console's band
+ *   `drawRiftAir`     after that sort and before the darkness: the ropes, the
+ *                     aircraft, and a platform that is no longer on the ground.
+ *                     Still dimmed by the night, which is what lets an inbound
+ *                     drone resolve out of the dark instead of appearing
+ *   `drawRiftGlow`    after the darkness pass, additive — corner lamps, rotor
+ *                     discs, nav lights, rotor wash, the burst, and the red
+ *                     wash the siren throws over the whole clearing
  */
 
 import { FLOOR, VOID, type Rift, type TileMap } from '../../game/world';
@@ -65,13 +74,24 @@ import {
  */
 const TILE_PX = 16;
 
-/** Prop states. The index is the contract with the generators. */
+/** Platform states. The index is the contract with `make_platform.py`. */
 const COLD_FRAME = 0;
-const LIVE_FRAME = 1;
-/** Console only: quota paid, plunger gold, pressing now LAUNCHES the platform. */
-const READY_FRAME = 2;
-/** Console only: driven home, every lamp on it dead. */
-const SPENT_FRAME = 3;
+/** Powered and taking cargo: green corner lamps. */
+const STANDBY_FRAME = 1;
+/** The pickup has been called: red corner lamps, sirens sweeping. */
+const ALARM_FRAME = 2;
+
+/** Drone cuts. Level and holding, or pitched forward and travelling. */
+const HOVER_FRAME = 0;
+const CRUISE_FRAME = 1;
+
+/** Console states, out of `make_rift.py`. */
+const CONSOLE_IDLE = 0;
+const CONSOLE_ARMED = 1;
+/** Quota settled, plunger gold: pressing now CALLS THE PICKUP. */
+const CONSOLE_READY = 2;
+/** Driven home, every lamp on it dead. */
+const CONSOLE_SPENT = 3;
 
 /**
  * How high the rig climbs before it is out of sight, in tiles.
@@ -98,6 +118,22 @@ const FLIGHT_MIN_SCALE = 0.42;
 const STATION_SPREAD = 0.34;
 /** Extra climb a straining drone steals from a rope that will not stretch. */
 const STRAIN_PULL = 0.13;
+/**
+ * How far out an inbound drone starts, in tiles.
+ *
+ * Comfortably past the far edge of any viewport at arena zoom, so the aircraft
+ * are NOT on screen when the siren starts. The whole point of the alarm beat is
+ * that the party has called for something that is not here yet, and a drone
+ * already visible at the treeline gives that away before the beat can land.
+ */
+const INBOUND_TILES = 38;
+/**
+ * How far apart the four hold in formation on the way in, in tiles.
+ *
+ * They arrive as a GROUP and split at the last moment — four machines crossing
+ * a clearing on four separate bearings is four events, and this is one.
+ */
+const FORMATION_TILES = 1.7;
 
 function clamp01(value: number): number {
   return value < 0 ? 0 : value > 1 ? 1 : value;
@@ -120,48 +156,60 @@ function easeIn(t: number): number {
  */
 export const RIFT_FALLBACK: RiftTimingConfig = {
   consoleLag: 0.3,
-  droneSpool: 0.85,
-  droneRise: 0.85,
-  drones: 4,
-  openAt: 2.0,
+  openAt: 0.85,
   lightTiles: 4.0,
+  drones: 4,
+  liftAlarm: 3.2,
+  droneStagger: 0.55,
+  droneInbound: 2.4,
+  droneDrop: 1.0,
+  tiedAt: 8.25,
   liftStrain: 1.1,
   liftBreak: 0.45,
-  liftClimb: 3.3,
+  liftClimb: 3.4,
+  breakAt: 9.35,
   openTime: null,
   collapseAt: null,
-  collapseTime: 4.85,
+  collapseTime: 13.2,
   spentAt: null,
 };
 
-/** One drone, on this frame. */
+/** One inbound aircraft, on this frame. */
 export interface DronePhase {
-  /** Corner index — into `rift.drones` and the atlas's eye list. */
+  /** Corner index — into the atlas's eye list. */
   index: number;
-  /** Seconds since it started spooling. */
+  /** Seconds since it left the treeline. Phases its own rotors. */
   age: number;
-  /** Rotors turning. A drone the party never paid for is dead weight. */
-  live: boolean;
-  /** Rotor speed, 0..1. Below 1 it is still winding up. */
-  spool: number;
-  /** How far along its climb to station, 0..1. */
-  rise: number;
-  /** World position of its skids. */
+  /** World position of its hull. */
   x: number;
   y: number;
-  /** The eye its rope is tied to, in world pixels. */
+  /** Still crossing the clearing: draw the pitched cut, not the level one. */
+  cruising: boolean;
+  /** The eye its line ends at, in world pixels. */
   eyeX: number;
   eyeY: number;
-  /** Off the ground: draw it in the air pass, not in the depth sort. */
-  flying: boolean;
+  /**
+   * How much line is out, in world pixels. 0 before the drop starts, and the
+   * full rope once the end has reached the eye.
+   */
+  rope: number;
+  /** The end of the line has reached its eye and the corner is taking load. */
+  tied: boolean;
+  /** Where the free end of the line is while it is still falling. */
+  endX: number;
+  endY: number;
 }
 
 export interface RiftPhase {
-  /** The deck's lamps and strip are lit. */
+  /** The deck is powered: corner lamps lit, strip on. */
   powered: boolean;
+  /** The pickup has been called: lamps red, siren sweeping, aircraft coming. */
+  alarm: boolean;
+  /** The platform's own frame — cold, green standby, red alarm. */
+  platformState: number;
   /** The console's own frame. */
   consoleState: number;
-  /** Every drone that has woken, in corner order. */
+  /** Every aircraft currently in the air. Empty except during a pickup. */
   drones: DronePhase[];
   /** Where the platform's contact point is drawn, in world pixels. */
   deckX: number;
@@ -175,15 +223,13 @@ export interface RiftPhase {
   airborne: boolean;
   /** How high off the ground it is, in world pixels. Feeds the shadow. */
   altitude: number;
-  /** 0..1 through the strain — rotors at maximum, ropes straight, stuck. */
+  /** 0..1 through the strain — rotors at maximum, lines taut, stuck. */
   strain: number;
   /** Seconds since the ground let go, or -1 before it does. */
   sinceBreak: number;
   /** Opacity of the imprint. 0 while the skid is still covering it. */
   imprint: number;
-  /** Overfeed tier, 0..3. */
-  level: number;
-  /** Quota paid and still on the ground: gold console, band turning. */
+  /** The quota is settled: gold console, band turning, E calls the pickup. */
   ready: boolean;
   /** The pad is finished with. */
   spent: boolean;
@@ -191,34 +237,14 @@ export interface RiftPhase {
   launched: boolean;
 }
 
-/**
- * Nothing has happened yet — and the ropes are already tied.
- *
- * A dormant pad is not an empty pad: four dead drones are parked at the
- * corners on the lines they were rigged with, and those lines are what tell a
- * player who has never seen one what this machine is going to do. So the
- * dormant phase carries the same four drone rows the running one does, all of
- * them on the ground with the slack still in their rope.
- */
-function dormantPhase(rift: Rift, eyes: readonly PlatformPoint[], rope: number): RiftPhase {
+/** Nothing has happened here yet: a cold skid, and not an aircraft in sight. */
+function restingPhase(rift: Rift): RiftPhase {
   return {
     powered: false,
-    consoleState: COLD_FRAME,
-    drones: rift.drones.map((parked, i) => {
-      const eye = eyes[i] ?? { dx: 0, dy: -rope * 0.5 };
-      return {
-        index: i,
-        age: 0,
-        live: false,
-        spool: 0,
-        rise: 0,
-        x: parked.x,
-        y: parked.y,
-        eyeX: rift.deckX + eye.dx,
-        eyeY: rift.deckY + eye.dy,
-        flying: false,
-      };
-    }),
+    alarm: false,
+    platformState: COLD_FRAME,
+    consoleState: CONSOLE_IDLE,
+    drones: [],
     deckX: rift.deckX,
     deckY: rift.deckY,
     scale: 1,
@@ -229,7 +255,6 @@ function dormantPhase(rift: Rift, eyes: readonly PlatformPoint[], rope: number):
     strain: 0,
     sinceBreak: -1,
     imprint: 0,
-    level: 0,
     ready: false,
     spent: false,
     launched: false,
@@ -239,10 +264,10 @@ function dormantPhase(rift: Rift, eyes: readonly PlatformPoint[], rope: number):
 /**
  * What every piece is doing, from the clock the server and client share.
  *
- * `time` is wall time and is only used for the SHUDDER — a rig straining
- * against ground that will not let go has to be visibly vibrating, and a
- * vibration keyed off the pad's own elapsed seconds would be identical on
- * every pad in the night.
+ * `time` is wall time and is used for the two things that must NOT be in step
+ * across a night: the shudder of a rig straining against the ground, and the
+ * swing of a line still falling. Keyed off the pad's own elapsed seconds, two
+ * pads mid-pickup would shake and swing identically.
  */
 export function riftPhase(
   rift: Rift,
@@ -251,27 +276,24 @@ export function riftPhase(
   time: number,
 ): RiftPhase {
   const layout = atlas?.layout;
-  const rope = layout?.ropeLength ?? 64;
+  const ropeLength = layout?.ropeLength ?? 64;
   const eyes = layout?.eyes ?? [];
 
-  if (rift.state === 'dormant') return dormantPhase(rift, eyes, rope);
+  if (rift.state === 'dormant') return restingPhase(rift);
 
   // SPENT is not a moment, it is a condition. A pad that flew before this
   // player even arrived has to look the same as one they watched leave ten
-  // minutes ago: no skid, no drones, a dead console, and the hole in the
-  // ground. A pad the END OF THE NIGHT killed never flew at all — its
-  // platform is still sitting there, cold, and its ground is still under it.
+  // minutes ago: no skid, nothing in the air, a dead console, and the hole in
+  // the ground. A pad the END OF THE NIGHT killed never flew at all — its
+  // platform is still sitting there cold with its ground still under it.
   if (rift.state === 'spent') {
     const launched = rift.closeAt !== null || rift.elapsed > 0;
-    const base = dormantPhase(rift, eyes, rope);
     return {
-      ...base,
-      drones: launched ? [] : base.drones,
-      consoleState: SPENT_FRAME,
+      ...restingPhase(rift),
+      consoleState: CONSOLE_SPENT,
       imprint: launched ? 1 : 0,
       airborne: launched,
       alpha: 0,
-      level: rift.level,
       spent: true,
       launched,
     };
@@ -279,10 +301,14 @@ export function riftPhase(
 
   const elapsed = rift.elapsed;
 
-  // --- the launch ----------------------------------------------------------
-  const sinceLaunch = rift.closeAt === null ? -1 : elapsed - rift.closeAt;
-  const strain = sinceLaunch < 0 ? 0 : clamp01(sinceLaunch / Math.max(timing.liftStrain, 1e-6));
-  const sinceBreak = sinceLaunch < 0 ? -1 : sinceLaunch - timing.liftStrain;
+  // --- the pickup ----------------------------------------------------------
+  const since = rift.closeAt === null ? -1 : elapsed - rift.closeAt;
+  const alarm = since >= 0;
+  const sinceStrain = alarm ? since - timing.tiedAt : -1;
+  const strain = sinceStrain < 0
+    ? 0
+    : clamp01(sinceStrain / Math.max(timing.liftStrain, 1e-6));
+  const sinceBreak = alarm ? since - timing.breakAt : -1;
   const flightSpan = Math.max(timing.liftBreak + timing.liftClimb, 1e-6);
   const flight = sinceBreak <= 0 ? 0 : clamp01(sinceBreak / flightSpan);
 
@@ -305,79 +331,20 @@ export function riftPhase(
 
   const deckX = rift.deckX + driftX + shakeX;
   const deckY = rift.deckY + driftY - altitude + shakeY;
-
-  // --- the drones ----------------------------------------------------------
-  //
-  // ALL FOUR, ALWAYS — not only the ones the party paid for. A drone nobody
-  // woke is still tied to the skid, so when the skid leaves it goes with it,
-  // hanging off its own rope as dead weight. That detail is free and it is the
-  // thing that makes the rig read as ONE machine somebody rigged rather than
-  // as four independent sprites that happen to be nearby.
   const airborne = sinceBreak > 0;
-  const drones: DronePhase[] = [];
-  for (let i = 0; i < rift.drones.length; i++) {
-    const woke = i < rift.woke.length ? rift.woke[i] : null;
-    const local = woke === null ? -1 : elapsed - woke;
-    const live = local >= 0;
-    const eye = eyes[i] ?? { dx: 0, dy: -rope * 0.5 };
-    const eyeX = deckX + eye.dx;
-    const eyeY = deckY + eye.dy;
-    // Station: mostly straight above its own eye and a little outboard, at
-    // exactly the rope's length away — which is what makes the line come
-    // STRAIGHT at the top of the climb instead of the drone stopping at an
-    // arbitrary height with slack still in it.
-    const spread = rope * STATION_SPREAD * (eye.dx >= 0 ? 1 : -1);
-    const parked = rift.drones[i];
 
-    if (!live) {
-      if (!airborne) {
-        drones.push({
-          index: i, age: 0, live: false, spool: 0, rise: 0,
-          x: parked.x, y: parked.y, eyeX, eyeY, flying: false,
-        });
-        continue;
-      }
-      // Dragged. It swings under its own eye on the full length of the rope,
-      // on a slow beat of its own — a dead weight on a line does not hang
-      // still under something that is accelerating away.
-      const swing = Math.sin(time * 2.1 + i * 1.7) * 0.42 + (eye.dx >= 0 ? 0.22 : -0.22);
-      drones.push({
-        index: i, age: 0, live: false, spool: 0, rise: 1,
-        x: eyeX + Math.sin(swing) * rope,
-        y: eyeY + Math.cos(swing) * rope,
-        eyeX, eyeY, flying: true,
-      });
-      continue;
-    }
-
-    const spool = clamp01(local / Math.max(timing.droneSpool, 1e-6));
-    const rise = clamp01((local - timing.droneSpool) / Math.max(timing.droneRise, 1e-6));
-    const lift = Math.sqrt(Math.max(0, rope * rope - spread * spread));
-    // A straining drone steals height the rope cannot give it. The platform
-    // has not moved yet, so the only place that pull can go is upward — and
-    // seeing the drones climb while the skid stays put is the picture.
-    const pull = 1 + strain * STRAIN_PULL * (airborne ? 0 : 1);
-    const t = easeOut(rise);
-    drones.push({
-      index: i,
-      age: local,
-      live: true,
-      spool,
-      rise,
-      x: parked.x + (eyeX + spread - parked.x) * t,
-      y: parked.y + (eyeY - lift * pull - parked.y) * t,
-      eyeX,
-      eyeY,
-      flying: rise > 0,
-    });
-  }
+  const drones = alarm
+    ? inbound(rift, timing, eyes, ropeLength, since, deckX, deckY, strain, airborne, time)
+    : [];
 
   const powered = elapsed >= timing.consoleLag;
   return {
     powered,
-    consoleState: rift.ready && rift.closeAt === null
-      ? READY_FRAME
-      : powered ? LIVE_FRAME : COLD_FRAME,
+    alarm,
+    platformState: alarm ? ALARM_FRAME : powered ? STANDBY_FRAME : COLD_FRAME,
+    consoleState: alarm
+      ? CONSOLE_READY
+      : rift.ready ? CONSOLE_READY : powered ? CONSOLE_ARMED : CONSOLE_IDLE,
     drones,
     deckX,
     deckY,
@@ -391,13 +358,112 @@ export function riftPhase(
     strain,
     sinceBreak,
     imprint: sinceBreak <= 0 ? 0 : clamp01(sinceBreak / 0.30),
-    level: rift.level,
-    // A pad already launching is not waiting on anybody, so the gold console
-    // and the band both stop the instant it is sent.
-    ready: rift.ready && rift.closeAt === null,
+    // A pad already calling is not waiting on anybody, so the band stops the
+    // instant the pickup is called.
+    ready: rift.ready && !alarm,
     spent: false,
-    launched: rift.closeAt !== null,
+    launched: alarm,
   };
+}
+
+/**
+ * The four aircraft, flown entirely off `since` and the constants.
+ *
+ * THEY ARRIVE AS A GROUP AND SPLIT AT THE LAST MOMENT. Each one starts well
+ * off-screen on `rift.approach`, holds a formation slot on the way in, and
+ * only peels to its own corner over the last third of the crossing — four
+ * machines on four separate bearings across a clearing is four events, and
+ * this has to be one. They leave the treeline `droneStagger` apart for the
+ * opposite reason: arriving on the same frame is one sprite drawn four times.
+ *
+ * THE LINE IS PAID OUT, NOT SNAPPED ON. It falls out of the winch under its
+ * own weight, swings while it falls, and the corner is only tied when the END
+ * gets there — which is the difference between machinery doing a job and a
+ * rope appearing.
+ */
+function inbound(
+  rift: Rift,
+  timing: RiftTimingConfig,
+  eyes: readonly PlatformPoint[],
+  ropeLength: number,
+  since: number,
+  deckX: number,
+  deckY: number,
+  strain: number,
+  airborne: boolean,
+  time: number,
+): DronePhase[] {
+  const out: DronePhase[] = [];
+  const count = Math.max(1, Math.min(eyes.length || timing.drones, timing.drones));
+  // Straight out along the approach, foreshortened like every ground distance.
+  const farX = Math.cos(rift.approach) * INBOUND_TILES * TILE_PX;
+  const farY = Math.sin(rift.approach) * INBOUND_TILES * TILE_PX * GROUND_SQUASH;
+  // Across the approach, for the formation slots.
+  const acrossX = -Math.sin(rift.approach) * FORMATION_TILES * TILE_PX;
+  const acrossY = Math.cos(rift.approach) * FORMATION_TILES * TILE_PX * GROUND_SQUASH;
+
+  for (let i = 0; i < count; i++) {
+    const departs = timing.liftAlarm + i * timing.droneStagger;
+    const local = since - departs;
+    if (local < 0) continue;
+
+    const eye = eyes[i] ?? { dx: 0, dy: -ropeLength * 0.5 };
+    const eyeX = deckX + eye.dx;
+    const eyeY = deckY + eye.dy;
+    // Station: mostly straight above its own eye and a little outboard, at
+    // exactly the line's length away, so a taut rope is a straight one.
+    const spread = ropeLength * STATION_SPREAD * (eye.dx >= 0 ? 1 : -1);
+    const lift = Math.sqrt(Math.max(0, ropeLength * ropeLength - spread * spread));
+    // A straining drone steals height the line cannot give it. The platform has
+    // not moved yet, so the only place that pull can go is upward — and seeing
+    // the aircraft climb while the skid stays put is the picture.
+    const pull = 1 + strain * STRAIN_PULL * (airborne ? 0 : 1);
+    const stationX = eyeX + spread;
+    const stationY = eyeY - lift * pull;
+
+    // The crossing. Eased OUT: an aircraft arriving somewhere decelerates into
+    // its hover, and easing in would have it accelerate into the platform.
+    const cross = clamp01(local / Math.max(timing.droneInbound, 1e-6));
+    const t = easeOut(cross);
+    // The slot it holds on the way in, gone by the time it is on station. It
+    // decays on the SAME `t` the approach does, and it has to: on any other
+    // curve the formation offset outlives the approach, and the drone slides
+    // past its own corner and drifts back out to it. One easing, one path.
+    const slot = (i - (count - 1) / 2) * (1 - t);
+    const x = stationX + farX * (1 - t) + acrossX * slot;
+    const y = stationY + farY * (1 - t) + acrossY * slot;
+
+    // The line. It starts falling the moment the aircraft is on station and
+    // reaches the eye `droneDrop` later, under gravity rather than linearly —
+    // rope that is being let out accelerates, and a constant-rate line looks
+    // like a bar being extruded.
+    const dropping = clamp01((local - timing.droneInbound) / Math.max(timing.droneDrop, 1e-6));
+    const paid = easeIn(dropping) * ropeLength;
+    const tied = dropping >= 1;
+    // The free end swings under the winch while it falls, on its own slow beat.
+    const swing = Math.sin(time * 3.1 + i * 1.9) * 0.30 * (1 - dropping);
+    // AND IT HOMES ON THE EYE. A line dropped straight down would finish a
+    // rope's length below the drone, which is NOT where its eye is — the
+    // station is offset outboard — so a "tied" flag that snapped the end onto
+    // the eye would jump it two tiles sideways on one frame. Blending the free
+    // hang into the eye's position on the same curve the rope pays out is what
+    // makes the last moment of the drop read as somebody catching the hook.
+    const settle = easeIn(dropping);
+    out.push({
+      index: i,
+      age: local,
+      x,
+      y,
+      cruising: cross < 1,
+      eyeX,
+      eyeY,
+      rope: tied ? ropeLength : paid,
+      tied,
+      endX: (x + Math.sin(swing) * paid) * (1 - settle) + eyeX * settle,
+      endY: (y + Math.cos(swing) * paid) * (1 - settle) + eyeY * settle,
+    });
+  }
+  return out;
 }
 
 export interface RiftStanding {
@@ -437,10 +503,12 @@ export function egressTorches(
  * Handed to the renderer to merge into the entity depth sort. THE TORCH AND
  * THE CONSOLE ARE ALWAYS HERE, in every state including spent: the console is
  * the thing a player walks up to and the torch is how they found the place,
- * and neither leaves with the platform. The skid and its parked drones drop
- * out of this list the moment they are in the air — `drawRiftAir` takes them,
- * because something twenty tiles up has no business being sorted against the
- * feet of people standing on the ground.
+ * and neither leaves with the platform. The skid drops out the moment it is in
+ * the air — `drawRiftAir` takes it, because something twenty tiles up has no
+ * business being sorted against the feet of people standing on the ground.
+ *
+ * NO DRONES, EVER. Nothing about the aircraft touches the floor: they arrive
+ * flying, they leave flying, and the whole of their existence is the air pass.
  */
 export function riftStanding(rift: Rift, phase: RiftPhase): RiftStanding[] {
   const pieces: RiftStanding[] = [
@@ -459,23 +527,7 @@ export function riftStanding(rift: Rift, phase: RiftPhase): RiftStanding[] {
       x: phase.deckX,
       y: phase.deckY,
       shape: 0,
-      state: phase.powered ? LIVE_FRAME : COLD_FRAME,
-    });
-  }
-  // Only what is still on the ground. A drone at station is `drawRiftAir`'s,
-  // and a pad that has FLOWN hands back no drone rows at all — every one of
-  // them went with the skid, including the ones nobody woke, because they were
-  // tied to it. There is deliberately no fallback to "draw them where the map
-  // parked them": that would leave four airframes sitting on the ground beside
-  // the hole they are supposed to have left in.
-  for (const drone of phase.drones) {
-    if (drone.flying) continue;
-    pieces.push({
-      sheet: 'drone',
-      x: drone.x,
-      y: drone.y,
-      shape: 0,
-      state: drone.live ? LIVE_FRAME : COLD_FRAME,
+      state: phase.platformState,
     });
   }
   pieces.sort((a, b) => a.y - b.y);
@@ -493,7 +545,7 @@ export function riftStanding(rift: Rift, phase: RiftPhase): RiftStanding[] {
  *
  * TWO ATLASES, because the pad is made of two generators' output: the console
  * and the torch are `make_rift.py`'s (the pad borrows the exit's torch on
- * purpose — one torch, one meaning: a threshold), the skid and its drones are
+ * purpose — one torch, one meaning: a threshold), the skid is
  * `make_platform.py`'s.
  */
 export function drawRiftProp(
@@ -504,15 +556,14 @@ export function drawRiftProp(
   piece: RiftStanding,
   shadow: string,
 ): void {
-  if (piece.sheet === 'platform' || piece.sheet === 'drone') {
-    const sheet = piece.sheet === 'platform' ? platform?.platform : platform?.drone;
+  if (piece.sheet === 'platform') {
+    const sheet = platform?.platform;
     if (!sheet) return;
     drawSprite(
       ctx, view, sheet.image,
       platformPropFrame(sheet, piece.state) * sheet.frameWidth,
       sheet.frameWidth, sheet.frameHeight,
-      piece.x, piece.y, 1, 1, 0, shadow,
-      piece.sheet === 'platform' ? 0.74 : 0.5,
+      piece.x, piece.y, 1, 1, 0, shadow, 0.74,
     );
     return;
   }
@@ -527,15 +578,16 @@ export function drawRiftProp(
 }
 
 /**
- * Everything about the rig that is OFF THE GROUND: the ropes, the drones that
- * have taken up station, and a skid that has broken free.
+ * Everything that is OFF THE GROUND: the lines, the aircraft, and a skid that
+ * has broken free.
  *
  * Screen space, run right after the entity depth sort and BEFORE the darkness.
  * Both halves of that matter. After the sort, because nothing standing on the
  * floor can plausibly be in front of a machine hanging over it. Before the
- * darkness, because a platform is a lit object and not a light — which is also
- * what lets it dissolve into the night as it climbs out of the party's own
- * lantern reach, instead of staying crisp and bright at twenty tiles up.
+ * darkness, because a drone is a lit object and not a light — which is what
+ * lets one resolve OUT OF THE DARK as it crosses into the pad's own glow
+ * instead of popping into existence at full brightness, and what lets the
+ * loaded platform dissolve into the night as it climbs away.
  */
 export function drawRiftAir(
   ctx: CanvasRenderingContext2D,
@@ -544,11 +596,8 @@ export function drawRiftAir(
   atlas: PlatformAtlas | null,
   shadow: string,
 ): void {
-  // No state guard beyond the atlas. A pad that has flown hands back an empty
-  // drone list and `alpha` 0, so every block below skips itself; a pad the end
-  // of the night killed never flew and still has four dead drones tied to it,
-  // and its slack ropes are part of that picture. Testing `spent` here would
-  // take those ropes away and leave the rig looking untied.
+  // No state guard beyond the atlas. Outside a pickup the drone list is empty
+  // and `airborne` is false, so every block below skips itself on its own.
   if (!atlas) return;
 
   // The shadow the rig throws on the ground it is leaving. It stays on the
@@ -568,14 +617,14 @@ export function drawRiftAir(
   }
 
   for (const drone of phase.drones) {
-    drawRope(ctx, view, drone, atlas.layout.ropeLength, phase.alpha);
+    drawRope(ctx, view, drone, phase.alpha);
   }
 
   if (phase.airborne && atlas.platform) {
     const sheet = atlas.platform;
     drawSprite(
       ctx, view, sheet.image,
-      platformPropFrame(sheet, LIVE_FRAME) * sheet.frameWidth,
+      platformPropFrame(sheet, ALARM_FRAME) * sheet.frameWidth,
       sheet.frameWidth, sheet.frameHeight,
       phase.deckX, phase.deckY, phase.scale, phase.alpha, phase.tilt, null, 0,
     );
@@ -584,10 +633,9 @@ export function drawRiftAir(
   const sheet = atlas.drone;
   if (!sheet) return;
   for (const drone of phase.drones) {
-    if (!drone.flying) continue;
     drawSprite(
       ctx, view, sheet.image,
-      platformPropFrame(sheet, drone.live ? LIVE_FRAME : COLD_FRAME) * sheet.frameWidth,
+      platformPropFrame(sheet, drone.cruising ? CRUISE_FRAME : HOVER_FRAME) * sheet.frameWidth,
       sheet.frameWidth, sheet.frameHeight,
       drone.x, drone.y, phase.airborne ? phase.scale : 1, phase.alpha, 0, null, 0,
     );
@@ -595,15 +643,18 @@ export function drawRiftAir(
 }
 
 /**
- * One rope, eye to airframe.
+ * One line, winch to whatever its free end has reached.
  *
- * A CATENARY, not a straight line, and the sag is the difference between the
- * rope length and how far apart the two ends actually are. That single number
- * does the whole job: a parked drone sits well inside its own rope and the
- * line pools between them, a drone at station has used all of it and the line
- * is dead straight, and the frames in between are the rope coming up off the
- * ground. It is also what makes the strain read — the rope has nothing left to
- * give and the drone is still pulling.
+ * TWO DIFFERENT PICTURES OUT OF ONE ROUTINE, and the difference is where the
+ * far end is. While the line is falling the end is hanging in the air below
+ * the drone, swinging, and only as much rope as has been paid out is drawn —
+ * so what the player watches is a cable coming down, not a cable that exists.
+ * Once it is tied the end IS the eye, and from that frame on the curve is
+ * governed by SLACK: how much more rope there is than there is distance to
+ * cover. That single number does the rest of the job — a fresh tie still has
+ * plenty of line in it and pools, and by the time the rig is straining there
+ * is none left and it is dead straight, which is what says the machine is
+ * pulling.
  *
  * Two passes, dark then light, so the line has a lit edge. One flat colour at
  * this width vanishes against a night forest.
@@ -612,17 +663,16 @@ function drawRope(
   ctx: CanvasRenderingContext2D,
   view: Projection,
   drone: DronePhase,
-  ropeLength: number,
   alpha: number,
 ): void {
-  if (alpha <= 0.02) return;
-  const ax = view.rawX(drone.eyeX);
-  const ay = view.rawY(drone.eyeY);
+  if (alpha <= 0.02 || drone.rope <= 0.5) return;
+  const ax = view.rawX(drone.endX);
+  const ay = view.rawY(drone.endY);
   const bx = view.rawX(drone.x);
   const by = view.rawY(drone.y);
-  const span = Math.hypot(drone.x - drone.eyeX, drone.y - drone.eyeY);
-  const slack = Math.max(0, ropeLength - span);
-  const sag = Math.min(slack * 0.55, ropeLength * 0.42) * view.zoom;
+  const span = Math.hypot(drone.x - drone.endX, drone.y - drone.endY);
+  const slack = Math.max(0, drone.rope - span);
+  const sag = Math.min(slack * 0.55, drone.rope * 0.42) * view.zoom;
 
   ctx.save();
   ctx.globalAlpha = alpha;
@@ -634,6 +684,16 @@ function drawRope(
     ctx.moveTo(ax, ay);
     ctx.quadraticCurveTo((ax + bx) / 2, (ay + by) / 2 + sag, bx, by);
     ctx.stroke();
+  }
+  // The hook on the end while it is still falling. Two pixels, and they are
+  // what the eye tracks down the screen — a line with nothing on its end reads
+  // as a crack in the image rather than as something being lowered.
+  if (!drone.tied) {
+    ctx.fillStyle = ROPE_STROKES[1][1];
+    const r = Math.max(1, 1.4 * view.zoom);
+    ctx.beginPath();
+    ctx.arc(ax, ay, r, 0, Math.PI * 2);
+    ctx.fill();
   }
   ctx.restore();
 }
@@ -775,8 +835,9 @@ export function drawRiftGround(
  * the darkness pass — a rotor disc catching a torch is light, not a thing
  * being lit.
  *
- * The order inside is the order of loudness: the wash on the ground first, the
- * burst over it, then the rotors and the nav lights, then the console's band.
+ * The order inside is the order of loudness: the light the pad puts on its own
+ * clearing, the corner lamps, the wash on the ground, the burst over it, the
+ * aircraft, and the console's band.
  */
 export function drawRiftGlow(
   ctx: CanvasRenderingContext2D,
@@ -792,33 +853,53 @@ export function drawRiftGlow(
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
 
-  // THE POWERED DECK IS A LIGHT SOURCE, and this halo is what makes it read as
-  // one. The scene-light list reveals the pad, but it puts no light IN THE AIR
-  // around the skid — so without this the platform reads as a lit object in
-  // the dark rather than as the thing lighting the clearing. A whisper, never
-  // a flood: gradient, never a filled arc, so the alpha is already zero before
-  // the radius ends and the glow has no boundary anywhere.
+  // THE PAD PUTS LIGHT IN THE AIR, and this halo is what makes it read as the
+  // source rather than as a lit object in somebody else's light. Green while it
+  // is loading; once the pickup is called it goes RED AND BREATHES ON THE
+  // SIREN'S OWN BEAT, so the whole clearing pulses with the corners and the
+  // party is standing inside the alarm rather than beside it. A gradient, never
+  // a filled arc — the alpha is already zero before the radius ends, so the
+  // glow has no boundary anywhere.
   if (phase.powered && phase.alpha > 0 && !phase.airborne) {
-    const beat = 0.92 + 0.08 * Math.sin(time * 1.6);
-    const radius = rift.lightTiles * tileSize * beat;
-    const [r, g, b] = palette().scene.beacon;
+    const siren = atlas.siren;
+    const beat = phase.alarm
+      ? 0.72 + 0.55 * Math.abs(Math.sin(time * Math.PI * sirenRate(siren)))
+      : 0.92 + 0.08 * Math.sin(time * 1.6);
+    const radius = rift.lightTiles * tileSize * (phase.alarm ? 1.35 : 1.0);
+    const [r, g, b] = phase.alarm ? ALARM_TONE : palette().scene.beacon;
+    const peak = phase.alarm ? 0.30 : 0.20;
     const glow = ctx.createRadialGradient(rift.x, rift.y, 0, rift.x, rift.y, radius);
-    glow.addColorStop(0, `rgb(${r} ${g} ${b} / 0.20)`);
-    glow.addColorStop(0.24, `rgb(${r} ${g} ${b} / 0.09)`);
-    glow.addColorStop(0.58, `rgb(${r} ${g} ${b} / 0.03)`);
+    glow.addColorStop(0, `rgb(${r} ${g} ${b} / ${(peak * beat).toFixed(3)})`);
+    glow.addColorStop(0.24, `rgb(${r} ${g} ${b} / ${(peak * 0.45 * beat).toFixed(3)})`);
+    glow.addColorStop(0.58, `rgb(${r} ${g} ${b} / ${(peak * 0.15 * beat).toFixed(3)})`);
     glow.addColorStop(1, `rgb(${r} ${g} ${b} / 0)`);
     ctx.fillStyle = glow;
     ctx.fillRect(rift.x - radius, rift.y - radius, radius * 2, radius * 2);
   }
 
-  // Rotor wash. It exists whenever a rotor is turning over ground and it goes
-  // to maximum through the strain, which is what says the machine is pulling
-  // rather than idling. Gone the moment the skid is off the floor: dust needs
-  // something to blow off, and there is nothing left under it but the hole.
+  // THE FOUR CORNER LAMPS, each turning on its own phase. This is the pad's
+  // whole vocabulary: a slow green breath while it is taking cargo, and four
+  // red beams sweeping out of step once the pickup is called. Out of step is
+  // load-bearing — four beams in lockstep read as one flashing rectangle,
+  // four running at their own offsets read as four machines on a structure.
+  const lamp = phase.alarm ? atlas.siren : atlas.standby;
+  if (lamp && !phase.airborne && phase.powered) {
+    const period = lamp.frames / Math.max(lamp.fps, 1e-6);
+    atlas.layout.lamps.forEach((point, i) => {
+      const offset = (i / Math.max(atlas.layout.lamps.length, 1)) * period;
+      blit(ctx, lamp, phase.deckX + point.dx, phase.deckY + point.dy, time + offset);
+    });
+  }
+
+  // Rotor wash. Only once something is actually holding station over the pad,
+  // and it goes to maximum through the strain, which is what says the machines
+  // are pulling rather than hovering. Gone the moment the skid is off the
+  // floor: dust needs something to blow off, and there is nothing left under it
+  // but the hole.
   const wash = atlas.downwash;
-  if (wash && !phase.airborne) {
-    const running = phase.drones.reduce((sum, d) => sum + d.spool * d.rise, 0);
-    const idle = Math.min(1, running / 4) * 0.30;
+  if (wash && !phase.airborne && phase.drones.length > 0) {
+    const holding = phase.drones.reduce((sum, d) => sum + (d.cruising ? 0 : 1), 0);
+    const idle = (holding / Math.max(timing_drones(atlas), 1)) * 0.30;
     ctx.globalAlpha = Math.min(0.95, idle + phase.strain * 0.70);
     blit(ctx, wash, rift.x, rift.y, time);
     ctx.globalAlpha = 1;
@@ -830,24 +911,23 @@ export function drawRiftGlow(
     blit(ctx, burst, rift.x, rift.y, phase.sinceBreak);
   }
 
-  // Rotors and nav lights, per drone, EACH ON ITS OWN CLOCK. Four machines
+  // Rotors and nav lights, per aircraft, EACH ON ITS OWN CLOCK. Four machines
   // playing the same frame on the same tick are four copies of one sprite,
   // which is exactly what they are and exactly what the eye must not notice —
-  // so each is phased by its own age, which the stagger in `sync_drones`
-  // already made different.
+  // so each is phased by its own age, which the departure stagger already made
+  // different.
   const rotor = atlas.rotor;
   const strobe = atlas.strobe;
   const rotorY = atlas.layout.rotorY;
   for (const drone of phase.drones) {
-    if (!drone.live) continue;
     if (rotor) {
-      // A rotor that is still spooling turns SLOWER and is fainter. Playing
-      // the loop at full rate from frame one is the single tell that would
-      // give away that the wind-up is a fade rather than a machine starting.
-      ctx.globalAlpha = phase.alpha * (0.25 + drone.spool * 0.75);
-      blit(ctx, rotor, drone.x, drone.y - rotorY, drone.age * (0.35 + drone.spool * 0.65));
+      // A machine crossing a clearing has its rotors HARDER over than one
+      // holding station — that is what forward flight costs — so an inbound
+      // drone's discs are brighter and turning faster than a hovering one's.
+      ctx.globalAlpha = phase.alpha * (drone.cruising ? 1 : 0.78);
+      blit(ctx, rotor, drone.x, drone.y - rotorY, drone.age * (drone.cruising ? 1.25 : 1));
     }
-    if (strobe && drone.spool >= 1) {
+    if (strobe) {
       ctx.globalAlpha = phase.alpha;
       blit(ctx, strobe, drone.x, drone.y, drone.age);
     }
@@ -862,6 +942,28 @@ export function drawRiftGlow(
     riftBlit(ctx, riftAtlas.aura, rift.consoleX, rift.consoleY, time, beacon);
   }
   ctx.restore();
+}
+
+/**
+ * The colour the clearing goes once the pickup is called.
+ *
+ * Hardcoded rather than pulled off the palette, and for once that is right:
+ * every other light in this game belongs to the theme, but this one has to be
+ * the SAME RED as `RED_GLARE` in `make_platform.py`, because the corner lamps
+ * and the wash they throw on the ground are one light source. A themed red
+ * would drift away from the baked one the first time the palette moved.
+ */
+const ALARM_TONE: readonly [number, number, number] = [232, 60, 48];
+
+/** Turns of the siren per second — the beat the whole clearing pulses on. */
+function sirenRate(siren: PlatformEffectSheet | null): number {
+  if (!siren) return 1.3;
+  return siren.fps / Math.max(siren.frames, 1);
+}
+
+/** How many lamps the rig has, which is how many aircraft it takes. */
+function timing_drones(atlas: PlatformAtlas): number {
+  return Math.max(1, atlas.layout.lamps.length);
 }
 
 /**

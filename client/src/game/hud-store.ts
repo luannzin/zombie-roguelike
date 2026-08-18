@@ -78,20 +78,19 @@ export interface HudRiftPrompt {
    *
    *   open   nothing has happened here yet
    *   busy   another pad is already awake — one at a time, so this one refuses
-   *   feed   the platform is running and under its quota
-   *   over   the quota is paid and the bag still has something. E keeps
-   *          loading: another drone comes up and the core waiting at the far
-   *          end grows.
-   *   close  the quota is paid and the pocket is empty. E LAUNCHES it, and
-   *          everything past the quota comes back as one condensed core.
+   *   feed   the platform is powered, lamps green, and under its quota
+   *   over   the quota is settled and the bag still has something. E keeps
+   *          loading: the core waiting at the far end grows.
+   *   close  the quota is settled and the pocket is empty. E CALLS THE
+   *          PICKUP — lamps red, siren, and every creature on the map turns
+   *          toward the clearing. Everything past the quota comes back as one
+   *          condensed core once the platform is gone.
    */
   mode: 'open' | 'busy' | 'feed' | 'over' | 'close';
   have: number;
   need: number;
   /** Bag is empty — the press will refuse. */
   empty: boolean;
-  /** Overfeed tier, 0..3. Colours the count once the quota is past. */
-  level: number;
 }
 
 /**

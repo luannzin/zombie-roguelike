@@ -53,6 +53,19 @@ const RIFT_R = 4;
 const RIFT_SPENT_R = 2.5;
 /** Full turn of the awake pad's pulse, in ms. */
 const RIFT_PULSE_MS = 1400;
+/**
+ * And of a pad that has called for a pickup. It is the corner sirens' own
+ * period (12 frames at 16 fps out of `siren.png`), so the dot on the map and
+ * the lamps in the clearing are the same alarm rather than two.
+ */
+const RIFT_ALARM_MS = 750;
+/**
+ * The red a called pad takes. Hardcoded to match `RED_GLARE` in
+ * `make_platform.py` for the same reason the world's alarm wash is: the lamp,
+ * the glare it throws and this dot are ONE light, and a themed red would drift
+ * from the baked one the first time the palette moved.
+ */
+const RIFT_ALARM_TONE: readonly [number, number, number] = [232, 60, 48];
 
 export interface MinimapPlayer {
   id: string;
@@ -184,11 +197,12 @@ export class Minimap {
    * One extraction pad, as a diamond on the ground it stands on.
    *
    * The colour is the pad's own story and matches what the clearing looks
-   * like: mint while it is dormant or waking, GOLD once its quota is paid and
-   * the console is waiting to be pressed again — the same gold the console
-   * itself takes — and a flat dead grey once the platform has flown. A running
-   * pad breathes; nothing else on this widget does, so movement alone says
-   * "that one is live".
+   * like: mint while it is dormant or loading, GOLD once its quota is settled
+   * and the console is waiting to be pressed again — the same gold the console
+   * itself takes — RED for the thirteen seconds a pickup is running, and a flat
+   * dead grey once the platform has flown. A live pad breathes; nothing else on
+   * this widget does, so movement alone says "that one is doing something", and
+   * a pad under alarm breathes FAST for the same reason the clearing does.
    */
   private paintRift(
     rift: Rift,
@@ -199,6 +213,7 @@ export class Minimap {
   ): void {
     const { ctx } = this;
     const awake = rift.state === 'charging' || rift.state === 'open';
+    const alarm = awake && rift.closeAt !== null;
     if (!awake && fov) {
       // Dormant or spent: it is knowledge, not light. Show it once the team
       // has been there.
@@ -208,7 +223,9 @@ export class Minimap {
     }
 
     const tone = palette().scene;
-    const [r, g, b] = rift.ready ? tone.ember : tone.beacon;
+    const [r, g, b] = alarm
+      ? RIFT_ALARM_TONE
+      : rift.ready ? tone.ember : tone.beacon;
     const px = rift.x * sx;
     const py = rift.y * sy;
 
@@ -222,8 +239,10 @@ export class Minimap {
       return;
     }
 
+    const period = alarm ? RIFT_ALARM_MS : RIFT_PULSE_MS;
     const beat = awake
-      ? 0.8 + 0.2 * Math.sin((performance.now() / RIFT_PULSE_MS) * Math.PI * 2)
+      ? (alarm ? 0.62 : 0.8)
+        + (alarm ? 0.38 : 0.2) * Math.sin((performance.now() / period) * Math.PI * 2)
       : 1;
     const radius = RIFT_R * (awake ? beat : 0.8);
 

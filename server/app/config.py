@@ -556,21 +556,27 @@ def client_config() -> dict:
         # server thinks woke. See server/app/rift.py.
         "rift": {
             "consoleLag": rift.CONSOLE_LAG,
-            # One drone waking: rotors to lift speed, then the climb until its
-            # rope comes straight. Every later drone repeats this beat off its
-            # own entry in the pad's `woke` list.
-            "droneSpool": rift.DRONE_SPOOL,
-            "droneRise": rift.DRONE_RISE,
-            "drones": rift.DRONES,
             "openAt": rift.OPEN_AT,
             "lightTiles": rift.LIGHT_TILES,
-            # The launch, in three beats: the rig straining against ground that
-            # will not let go, the skid breaking free, and the flight out.
-            # `liftStrain` is also when the deck's tiles become walkable — the
-            # server patches them on that tick.
+            "drones": rift.DRONES,
+            # THE PICKUP, and the client flies the whole thing off these plus
+            # the one `closeAt` on the wire. Sirens alone first; then drone `i`
+            # leaves the treeline at `liftAlarm + i * droneStagger`, crosses in
+            # `droneInbound`, and spends `droneDrop` paying its line down to
+            # its corner. `tiedAt` is when the last of them is on.
+            "liftAlarm": rift.LIFT_ALARM,
+            "droneStagger": rift.DRONE_STAGGER,
+            "droneInbound": rift.DRONE_INBOUND,
+            "droneDrop": rift.DRONE_DROP,
+            "tiedAt": rift.TIED_AT,
+            # Then the lift: straining against ground that will not let go, the
+            # skid breaking free, and the flight out. `breakAt` is also when
+            # the deck's tiles become walkable — the server patches them on
+            # that tick — so it is shipped rather than re-derived.
             "liftStrain": rift.LIFT_STRAIN,
             "liftBreak": rift.LIFT_BREAK,
             "liftClimb": rift.LIFT_CLIMB,
+            "breakAt": rift.BREAK_AT,
             # The window, and the way it ends. NULL means "never" — the
             # platform waits until a player launches it. It cannot be `inf`:
             # Python serialises that as the bare token `Infinity`, which is not

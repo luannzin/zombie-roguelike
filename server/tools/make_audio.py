@@ -832,6 +832,53 @@ def sfx_void(rng: random.Random) -> tuple[Buf, int]:
     return normalize(mix(drone, gain(air, 0.5)), 0.66), rate
 
 
+def sfx_siren(rng: random.Random) -> tuple[Buf, int]:
+    """One turn of an extraction pad's alarm.
+
+    THE ONLY REPEATING ONE-SHOT IN THE CATALOG. It plays once per sweep of the
+    corner lamps for the whole thirteen seconds of a pickup, so its length is
+    not a taste decision: 12 frames at 16 fps out of `siren.png` is 0.75s, and
+    a tick that did not land on the sweep would be a second alarm playing under
+    the one on screen.
+
+    It is a MECHANICAL siren, not an electronic one — a rotor forcing air
+    through a horn, which is why the pitch glides rather than steps and why the
+    horn's own resonance is a swept bandpass rather than a fixed tone. Two
+    partials a fifth apart is what stops it reading as a test tone; the tiny
+    tremolo is the rotor's blades passing the port, and it is the single detail
+    that makes the sound feel like it is coming out of a machine bolted to
+    something.
+
+    It has to survive being heard from across a dark map with a horde walking
+    in, so it is deliberately mid-forward and a little harsh. This is the sound
+    of the party having told the forest exactly where they are.
+    """
+    rate = SFX_RATE
+    n = dur(0.75, rate)
+    # Up fast, down slower: a rotor spun up by a motor that then coasts. A
+    # symmetric sweep is a police car; this one has weight in it.
+    def glide(t: float) -> float:
+        rise = 1.0 - (1.0 - min(t / 0.42, 1.0)) ** 2 if t < 0.42 else 1.0
+        fall = 0.0 if t < 0.42 else ((t - 0.42) / 0.58) ** 1.4
+        return 300.0 + 340.0 * rise - 300.0 * fall
+
+    body = mix(
+        gain(tone(n, glide, rate, "saw"), 0.62),
+        gain(tone(n, lambda t: glide(t) * 1.5, rate, "tri"), 0.30),
+        gain(tone(n, lambda t: glide(t) * 0.5, rate, "sine"), 0.34),
+    )
+    # The horn: a resonance that tracks the pitch, which is what a flared throat
+    # does to whatever is driven through it.
+    body = biquad(body, rate, "bandpass", lambda t: glide(t) * 1.15, 0.9)
+    # Blades passing the port. Fast, shallow, and the whole reason it sounds
+    # driven rather than played.
+    body = mul(body, lfo(n, rate, 34.0, 0.14, 0.86))
+    body = mul(body, env_from(n, [(0.0, 0.0), (0.10, 1.0), (0.62, 0.92), (1.0, 0.0)]))
+    # It is outdoors and it is loud, so it comes back off the treeline.
+    body = reflections(body, rate, [(0.11, 0.24), (0.19, 0.14)])
+    return normalize(softclip(body, 1.35), 0.88), rate
+
+
 def sfx_arrive(rng: random.Random) -> tuple[Buf, int]:
     """The day names itself. One deep hit with the wood of the forest in it."""
     rate = SFX_RATE
@@ -1737,6 +1784,14 @@ CATALOG: dict[str, tuple[object, int, float, str, bool]] = {
     "kindle": (sfx_kindle, 1, -4.0, "misc", False),
     "summon": (sfx_summon, 1, -16.0, "misc", False),
     "arrive": (sfx_arrive, 1, -3.0, "misc", False),
+    # NEAR THE TOP OF `misc` ON PURPOSE, and above `arrive`. It repeats every
+    # 0.75s for a whole pickup, which normally argues for going quiet — but
+    # this is the one sound in the game whose job is to be the reason the
+    # player cannot think about anything else, and a siren the horde can
+    # clearly hear while the party can barely tell is the wrong way round. It
+    # is in `misc` rather than `sfx` because somebody who turned combat down
+    # must not be able to turn the alarm off with it.
+    "siren": (sfx_siren, 1, -2.0, "misc", False),
     "dread": (sfx_dread, 3, -11.0, "misc", False),
     "loot": (sfx_loot, 1, -11.0, "misc", False),
     "rarity": (sfx_rarity, 5, -9.0, "misc", False),

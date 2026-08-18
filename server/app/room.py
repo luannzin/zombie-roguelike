@@ -593,27 +593,28 @@ class Room:
         )
 
     def activate_rift(self, pid: str, rift_id: str | None = None) -> None:
-        """Wake a platform, load an awake one, or launch a paid one.
+        """Wake a platform, load a running one, or call the pickup.
 
         FOUR PRESSES, ONE BUTTON, and which one you get is the pad's state
         and what is in your pocket:
 
-          dormant, nothing else awake   wake it (once only, not reversible)
+          dormant, nothing else awake   wake it (once only, not reversible).
+                                        Green lamps, lit clearing, nothing in
+                                        the air and nothing has heard anything.
           dormant, another pad awake    nothing. One at a time.
           open, quota not yet paid      load the pocket toward the quota
           open, quota paid, pads left,
-            bag has something           KEEP loading. Every press past the
-                                        quota wakes another drone and grows
-                                        the core waiting at the far end.
-          open, quota paid, otherwise   LAUNCH it. The console is gold by now.
+            bag has something           KEEP loading. Everything past the quota
+                                        grows the core waiting at the far end.
+          open, quota paid, otherwise   CALL THE PICKUP. The lamps go red, the
+                                        siren starts, and the whole map comes.
 
-        THE BAG IS WHAT DISAMBIGUATES THE MIDDLE TWO, and it has to be
-        something rather than a second key: "carregar além do limite" is only
-        a real choice if it is repeatable, and a press that launches the pad
-        the instant the quota lands makes the tiers unreachable — you would
-        only ever see whichever one the last item happened to overshoot into.
+        THE BAG IS WHAT DISAMBIGUATES THE LAST TWO, and it has to be something
+        rather than a second key: "carregar além do limite" is only a real
+        choice if it is repeatable, and a press that called the pickup the
+        instant the quota landed would leave no window to spend at all.
         Reading the pocket gives both: the pad takes everything you have, and
-        when you have nothing left to give it, the same press sends it.
+        when you have nothing left to give it, the same press calls it in.
 
         THE LAST PAD OF THE NIGHT NEVER OFFERS TO KEEP LOADING. An overpayment
         only comes back while there is another console to carry it to
@@ -718,11 +719,10 @@ class Room:
         """Load the pocket onto this platform. Guns stay on the belt.
 
         Under the quota this pays TOWARD it and stops on the nose, so a bag
-        full of relics is not swallowed whole to settle a bill of 30. Once
-        the quota is met the pad is `ready` and this is not reached — a second
-        press launches it (`_shut_rift`), and only a player who deliberately
-        keeps loading an armed pad goes past the line, which is the `over`
-        path.
+        full of relics is not swallowed whole to settle a bill of 30. Past it
+        the pad takes the lot: that is the `over` path, and it is only reached
+        by a player who keeps pressing a console that is already offering to
+        launch.
         """
         remaining = target.need - target.fed
         if remaining <= 0:
@@ -732,10 +732,6 @@ class Room:
         if paid <= 0:
             return
         target.fed += paid
-        # An overfeed tier is a DRONE, so the tier landing has to wake one here
-        # and now — the wake time is the moment somebody pressed a button and
-        # is not derivable from anything the client holds.
-        target.sync_drones()
         self._rift_dirty = True
         self._roster_dirty = True
         self._sync_feed_quest(target)
@@ -1247,6 +1243,7 @@ class Room:
         """
         for row in self.rifts:
             changed = row.step(dt)
+            self._siren(row)
             if self._free_deck(row):
                 changed = True
             if not changed:
@@ -1255,6 +1252,43 @@ class Room:
             if row.state == rift.SPENT:
                 self._drop_excess(row)
             self.world.rifts = [item.geometry_payload() for item in self.rifts]
+
+    @property
+    def sirening(self) -> bool:
+        """Any pad has called for a pickup and the aircraft are still working."""
+        return any(row.alarm for row in self.rifts)
+
+    def _siren(self, target: Rift) -> None:
+        """The pickup, heard from anywhere on the map.
+
+        THIS IS THE COST OF CALLING FOR EXTRACTION and it is the only thing in
+        the game that makes a noise on a repeating clock. A gunshot is a local
+        problem somebody nearby investigates; this is a red light sweeping a
+        black forest for thirteen seconds with a `SIREN_TILES` radius on every
+        pulse, which in practice is the whole map. The party chose to press
+        that button, they cannot un-press it, and everything out there is now
+        walking toward the one clearing they are standing in.
+
+        `source_id` is None on purpose. A noise belongs to whoever made it so
+        the pack chases the person who fired — but nobody made this one, the
+        machine did. What actually sends the horde is `hunt_all` (see
+        `step_enemies`); this is what turns the heads of everything that was
+        facing the other way, including whatever is already on top of the pad.
+        """
+        if not target.alarm:
+            return
+        since = target.elapsed - (target.close_at or 0.0)
+        pulse = int(since / rift.SIREN_PULSE)
+        if pulse <= target.siren_pulse:
+            return
+        target.siren_pulse = pulse
+        self.noises.append(
+            ai.Noise(
+                x=target.x,
+                y=target.y,
+                radius=rift.SIREN_TILES * TILE_SIZE,
+            )
+        )
 
     def _free_deck(self, target: Rift) -> bool:
         """Hand the platform's tiles back to the floor. True the tick it fires.
@@ -1608,7 +1642,14 @@ class Room:
             self.navigator,
             dt,
             self.noises,
-            hunt_all=self.panic,
+            # THE SIREN IS A PANIC ON ITS OWN. `self.panic` is the permanent
+            # one the last pad's blackout sets; a pickup adds a temporary one
+            # for exactly as long as the lamps are red. Calling for extraction
+            # is the loudest thing anybody does on a night and it has to cost
+            # what that sounds like: every creature on the map commits to the
+            # nearest living player and starts walking, and the party has to
+            # stand next to the pad for thirteen seconds while they arrive.
+            hunt_all=self.panic or self.sirening,
         )
         # Heard once. A noise that survived the tick would keep waking whatever
         # walked into its radius long after the sound was over.

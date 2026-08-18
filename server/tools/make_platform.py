@@ -8,15 +8,28 @@ crates nobody came back for, with four dead lift drones parked at its corners
 on the ropes they were rigged to.
 
 Output (assets/processed/platform/):
-    platform.png  2 frames,  80x64  PROP  — the skid, cold then powered
-    drone.png     2 frames,  24x16  PROP  — a lift drone, dead then live
+    platform.png  3 frames,  80x64  PROP  — the skid: cold, green standby, red
+                                            alarm. The corner lamps are the
+                                            only thing that changes.
+    drone.png     2 frames,  24x16  PROP  — a lift drone, hovering then cruising
     rotor.png     8 frames,  28x12  VFX   — loop: four discs turning
-    strobe.png    8 frames,  24x16  VFX   — loop: a live drone's nav lights
+    strobe.png    8 frames,  24x16  VFX   — loop: a drone's nav lights
+    standby.png   12 frames, 48x48  VFX   — loop: a corner lamp breathing green
+    siren.png     12 frames, 48x48  VFX   — loop: the alarm sweeping red
     imprint.png   1 frame,   80x48  DECAL — the hole in the ground it left
     downwash.png  12 frames, 112x56 VFX   — loop: rotor wash under a straining
                                             platform
     burst.png     12 frames, 128x64 VFX   — one-shot: the ground letting go
     manifest.json
+
+THE DRONES DO NOT LIVE HERE
+They used to be parked at the skid's corners, which made the pad look like a
+complete machine sitting in the woods waiting to be switched on. It is not one:
+it is a LOADING DOCK, and the aircraft come when it calls them. So this file
+draws a drone in the two postures a flight has — pitched forward crossing the
+clearing, level once it is holding station over its corner — and nothing that
+implies one was ever standing on the ground here. The four ropes are the only
+part of them the structure owns, and even those are paid out on arrival.
 
 THE THREE SHAPES, THE SAME SPLIT `make_rift.py` DOCUMENTS
 `platform` and `drone` are PROPS: baked colour, bottom-anchored, in the depth
@@ -105,8 +118,21 @@ HAZARD: Ramp = [rgb(c) for c in ("#4a3a10", "#7d6117", "#b89122", "#e5bb3a")]
 #: compete with it.
 STATUS: Ramp = [rgb(c) for c in ("#0c2415", "#155c30", "#27a557", "#63e894", "#c8ffdd")]
 
-#: A live drone's tail light. Red, and dim: a marker, not a lamp.
+#: A drone's tail light, and the pad's ALARM lamp. Red, and dim at the bottom:
+#: a marker, not a floodlight.
 STROBE: Ramp = [rgb(c) for c in ("#2a0808", "#6e1414", "#c02424", "#ff6a5a")]
+
+#: What the corner lamps throw into the air, one ramp each. These top out much
+#: brighter than the baked lamps do, for the same reason `FLAME` does: they are
+#: drawn ADDITIVELY after the night multiply, so their job is to be light
+#: rather than to be a lit surface, and a glare in the forest's own value range
+#: would have nothing left to read as glare.
+GREEN_GLARE: Ramp = [
+    rgb(c) for c in ("#0a2414", "#12522c", "#1f9450", "#4fd489", "#a8ffcc", "#e8fff2")
+]
+RED_GLARE: Ramp = [
+    rgb(c) for c in ("#250606", "#5e0f0f", "#a81c1c", "#e83c30", "#ff8a70", "#ffdcd0")
+]
 
 #: Rope. Three usable steps is all a two-pixel line can spend, and the client
 #: draws the rigging from these rather than from a sprite — see `layout.rope`.
@@ -136,26 +162,44 @@ GRIT: Ramp = [rgb(c) for c in ("#3a3428", "#4a4234", "#5b5142")]
 PLATFORM_TILES_W = 5
 PLATFORM_TILES_H = 4
 
-#: Cold, powered. STATES, never variants — the frame index says whether the
-#: thing is switched on, and rolling one would make the pad flicker.
-PLATFORM_STATES = 2
-PLATFORM_COLD, PLATFORM_LIVE = range(PLATFORM_STATES)
+#: THREE STATES, AND THE CORNER LAMPS ARE THE WHOLE DIFFERENCE BETWEEN THEM.
+#: Cold is a dead machine in the woods. STANDBY is green — found, powered, safe
+#: to load, and green because green is the only colour in this game that has
+#: ever meant "nothing is wrong". ALARM is red, and it means the party has
+#: called for a pickup: from that press the pad is a siren in a dark forest and
+#: every creature on the map is walking toward it.
+#:
+#: STATES, never variants — the frame index says what the machine is doing, and
+#: rolling one would make the pad flicker between calm and emergency.
+PLATFORM_STATES = 3
+PLATFORM_COLD, PLATFORM_STANDBY, PLATFORM_ALARM = range(PLATFORM_STATES)
 
-#: Dead, live. Same rule.
+#: Cruising and holding station. The drones are not part of the structure any
+#: more — they fly in from off-map when the pad calls them — so there is no
+#: parked pose to draw. A machine crossing a clearing at speed is PITCHED
+#: FORWARD and one holding a hover is level, and those two silhouettes are the
+#: only thing that says which it is doing at 24 pixels.
 DRONE_STATES = 2
-DRONE_DEAD, DRONE_LIVE = range(DRONE_STATES)
+DRONE_HOVER, DRONE_CRUISE = range(DRONE_STATES)
 
-#: Four corners, and THE ORDER IS THE CONTRACT — `layout.eyes` here, `_DRONES`
-#: in `server/app/rift.py` and the order the client wakes them are one list. It
-#: runs on the DIAGONAL (front-left, back-right, front-right, back-left) rather
-#: than around the rim, so a platform lifting on two drones is lifting on
-#: opposite corners and hangs level instead of hinging.
+#: Four corners, and THE ORDER IS THE CONTRACT — `layout.eyes` here and
+#: `server/app/rift.py`'s corner order are one list. It runs on the DIAGONAL
+#: (front-left, back-right, front-right, back-left) rather than around the rim,
+#: so a rig part-way through tying on is holding opposite corners and the load
+#: hangs level instead of hinging.
 DRONES = 4
 
 ROTOR_FRAMES = 8
 ROTOR_FPS = 24
 STROBE_FRAMES = 8
 STROBE_FPS = 8
+#: The calm lamp: a slow breath, closer to a pilot light than to a signal.
+STANDBY_FRAMES = 12
+STANDBY_FPS = 10
+#: The siren: a bar of light going round, fast, with a hard leading edge. It is
+#: the loudest thing this generator draws and it is meant to be.
+SIREN_FRAMES = 12
+SIREN_FPS = 16
 DOWNWASH_FRAMES = 12
 DOWNWASH_FPS = 12
 BURST_FRAMES = 12
@@ -242,7 +286,7 @@ def make_platform(width: int, height: int, state: int, rng: random.Random) -> Im
     px = img.load()
     r = _rows(height)
     cx = (width - 1) / 2.0
-    live = state == PLATFORM_LIVE
+    live = state != PLATFORM_COLD
     wall = max(3.0, width * 0.062)
 
     # --- the body ------------------------------------------------------------
@@ -381,7 +425,7 @@ def make_platform(width: int, height: int, state: int, rng: random.Random) -> Im
                 continue
             px[x, y] = pick(HAZARD, clamp01(0.30 + wear * 0.72), x, y)
 
-    _posts(px, body, width, height, live)
+    _posts(px, body, width, height, state)
 
     # --- feet ----------------------------------------------------------------
     # Four blocks under the beams. The imprint is a picture of these, so they
@@ -404,11 +448,12 @@ def make_platform(width: int, height: int, state: int, rng: random.Random) -> Im
     # an unlit fitting has to read as switched OFF rather than as a hole
     # punched in the sprite, which is the whole reason `SOCKET` exists.
     strip_y = int(r["lip_top"]) - 1
+    strip = STATUS if state == PLATFORM_STANDBY else STROBE
     for x in range(width):
         if body.get((x, strip_y)) not in ("floor", "lip"):
             continue
         if (x + strip_y) % 3 == 0:
-            px[x, strip_y] = pick(STATUS, 0.86, x, strip_y) if live else SOCKET
+            px[x, strip_y] = pick(strip, 0.86, x, strip_y) if live else SOCKET
 
     _outline(px, body, width, height)
     return img
@@ -518,12 +563,19 @@ def _cargo(px, body: dict, width: int, height: int) -> None:
                 px[x, y] = pick(ROPE, 0.4 + ring * 0.2, x, y)
 
 
-def _posts(px, body: dict, width: int, height: int, live: bool) -> None:
-    """Four corner posts, each with the eye a rope is tied through.
+def _posts(px, body: dict, width: int, height: int, state: int) -> None:
+    """Four corner posts: the eye a rope is tied through, and the lamp under it.
 
     They stand PROUD of the walls on purpose. The eyes are the only part of the
     prop the ropes touch, so they have to survive in silhouette — a lift point
     flush with the rim leaves four ropes apparently tied to nothing.
+
+    THE LAMPS ARE THE PAD'S WHOLE VOCABULARY. Dead, green, red, and each one is
+    the entire state of the night in two pixels seen from across a clearing:
+    nobody has been here, this one is open for business, and this one has
+    called for a pickup and is screaming about it. They are baked because a
+    prop's colour is its material; the GLARE around them is additive and lives
+    in `standby.png` / `siren.png`, because light is not a thing being lit.
     """
     r = _rows(height)
     cx = (width - 1) / 2.0
@@ -562,14 +614,28 @@ def _posts(px, body: dict, width: int, height: int, live: bool) -> None:
                     px[x, y] = EDGE
                 else:
                     px[x, y] = pick(IRON, clamp01(1.0 - oy * 0.10 - ox * 0.05), x, y)
-        # The post's status lamp, just under the eye.
-        lamp_y = row + int(ring) + 1
-        if 0 <= lamp_y < height:
-            for ox in range(-1, 1):
-                x = col + ox
-                if 0 <= x < width:
-                    px[x, lamp_y] = pick(STATUS, 0.88, x, lamp_y) if live else SOCKET
-                    body[(x, lamp_y)] = "post"
+        # The lamp, in a shallow hood just under the eye. The hood matters: a
+        # bare lit pixel is a pixel, a lit pixel with a dark lip over it is a
+        # FITTING, and only the second one reads as something that was
+        # installed here to be looked at.
+        lamp_y = row + int(ring) + 2
+        if not (0 <= lamp_y < height):
+            continue
+        for ox in range(-thickness - 1, thickness + 2):
+            x = col + ox
+            if not (0 <= x < width):
+                continue
+            if 0 <= lamp_y - 1 < height:
+                px[x, lamp_y - 1] = EDGE
+                body[(x, lamp_y - 1)] = "post"
+            if abs(ox) > thickness:
+                continue
+            if state == PLATFORM_COLD:
+                px[x, lamp_y] = SOCKET
+            else:
+                ramp = STATUS if state == PLATFORM_STANDBY else STROBE
+                px[x, lamp_y] = pick(ramp, 0.92 - abs(ox) * 0.14, x, lamp_y)
+            body[(x, lamp_y)] = "post"
 
 
 def _outline(px, body: dict, width: int, height: int) -> None:
@@ -599,19 +665,21 @@ def make_drone(width: int, height: int, state: int) -> Image.Image:
 
     A QUADCOPTER READ FROM ABOVE AND IN FRONT, which is the only angle that
     fits four motors and a hull into 24 pixels. Two states, and the difference
-    between them is POSTURE rather than detail: dead it has settled and tipped,
-    with its blades hanging; live it sits level with its lights on and no
-    blades drawn at all — the blades are the `rotor` sheet's job, because a
-    drone whose props are painted on is a drone that never actually spins.
+    between them is POSTURE rather than detail: CRUISE is pitched nose-down,
+    which is the only way a multirotor can go anywhere and the only way this
+    sprite can say it is travelling; HOVER is level and holding station. The
+    blades are never drawn in either — that is the `rotor` sheet's job, because
+    a drone whose props are painted on is a drone that never actually spins.
     """
     img = Image.new("RGBA", (width, height), TRANSPARENT)
     px = img.load()
-    live = state == DRONE_LIVE
+    cruise = state == DRONE_CRUISE
     cx = (width - 1) / 2.0
-    # Dead, it has settled onto the ground and tipped; live, it hangs level.
-    # The tip is a pixel and a half, and it is the whole read.
-    tilt = 0.0 if live else 0.14
-    cy = height * (0.44 if live else 0.56)
+    # A machine going somewhere has its nose down and its tail up, and it rides
+    # a little higher in its own frame because nothing is under it. The pitch is
+    # a pixel and a half and it is the whole read.
+    tilt = -0.16 if cruise else 0.0
+    cy = height * (0.40 if cruise else 0.44)
     arm = width * 0.375
     reach = height * 0.22
     pods = [
@@ -643,14 +711,20 @@ def make_drone(width: int, height: int, state: int) -> Image.Image:
     for pod_x, pod_y in pods:
         blob(pod_x, pod_y, width * 0.10, height * 0.10, "pod")
     blob(cx, cy, width * 0.20, height * 0.19, "hull")
-    # Skids: why it can stand on the ground at all, and the pixels that make
-    # the dead pose read as parked rather than as crashed.
-    skid_y = height - 2 if not live else height - 1
+    # Skids, and the winch drum between them. The drum is what the rope pays
+    # out of — without something under the hull for a line to come from, a
+    # rope appearing below a drone reads as a bug.
+    skid_y = height - 1
     for side in (-1, 1):
         for ox in range(int(width * 0.16)):
             x = int(round(cx + side * (width * 0.10 + ox)))
             if 0 <= x < width and 0 <= skid_y < height:
                 body[(x, skid_y)] = "skid"
+    for ox in range(-1, 2):
+        for oy in range(0, 2):
+            x, y = int(round(cx)) + ox, int(round(cy + height * 0.22)) + oy
+            if 0 <= x < width and 0 <= y < height:
+                body[(x, y)] = "winch"
 
     for (x, y), part in body.items():
         u = (x - cx) / max(width / 2.0, 1.0)
@@ -661,41 +735,28 @@ def make_drone(width: int, height: int, state: int) -> Image.Image:
             shade = 0.52 - u * 0.14 - v * 0.18
         elif part == "arm":
             shade = 0.36 - u * 0.10
+        elif part == "winch":
+            shade = 0.44
         else:
             shade = 0.20
         px[x, y] = pick(IRON, clamp01(shade + (hash01(x, y, 431) - 0.5) * 0.10), x, y)
 
-    if live:
-        # Nav lights: green forward, red aft. Two pixels each, and the only
-        # thing on a 24px sprite that says which way it is facing.
-        for pod_x, pod_y in pods[:2]:
-            x, y = int(round(pod_x)), int(round(pod_y))
-            if (x, y) in body:
-                px[x, y] = pick(STATUS, 0.92, x, y)
-        for pod_x, pod_y in pods[2:]:
-            x, y = int(round(pod_x)), int(round(pod_y))
-            if (x, y) in body:
-                px[x, y] = pick(STROBE, 0.86, x, y)
-        # A lit eye on the hull, so a hovering drone still reads as switched on
-        # when its rotors are lost against the treeline.
-        hx, hy = int(round(cx)), int(round(cy))
-        if (hx, hy) in body:
-            px[hx, hy] = pick(STATUS, 0.70, hx, hy)
-    else:
-        # Dead: the blades hang. Drawn only in this state, through the pods, so
-        # a parked drone has something to have stopped.
-        span = int(width * 0.13)
-        for pod_x, pod_y in pods:
-            for ox in range(-span, span + 1):
-                x = int(round(pod_x + ox))
-                y = int(round(pod_y + abs(ox) * 0.35))
-                if 0 <= x < width and 0 <= y < height and (x, y) not in body:
-                    px[x, y] = IRON[1]
-                    body[(x, y)] = "blade"
-        for pod_x, pod_y in pods:
-            x, y = int(round(pod_x)), int(round(pod_y))
-            if (x, y) in body:
-                px[x, y] = SOCKET
+    # Nav lights: green forward, red aft. Two pixels each, and the only thing
+    # on a 24px sprite that says which way it is facing — which matters far
+    # more now that these arrive across a clearing instead of sitting still.
+    for pod_x, pod_y in pods[:2]:
+        x, y = int(round(pod_x)), int(round(pod_y))
+        if (x, y) in body:
+            px[x, y] = pick(STATUS, 0.92, x, y)
+    for pod_x, pod_y in pods[2:]:
+        x, y = int(round(pod_x)), int(round(pod_y))
+        if (x, y) in body:
+            px[x, y] = pick(STROBE, 0.86, x, y)
+    # A lit eye on the hull, so a drone still reads as switched on when its
+    # rotors are lost against the treeline.
+    hx, hy = int(round(cx)), int(round(cy))
+    if (hx, hy) in body:
+        px[hx, hy] = pick(STATUS, 0.70, hx, hy)
 
     _outline(px, body, width, height)
     return img
@@ -773,6 +834,93 @@ def make_strobe_frame(width: int, height: int, index: int, total: int) -> Image.
         ellipse(field, sx, sy, width * 0.13, height * 0.13, 0.75 * gain)
         add(field, int(round(sx)), int(round(sy)), 0.55 * gain)
     resolve(field, img, BEAM, floor=0.06, tone=0.85, gain=0.62)
+    return img
+
+
+# --- the corner lamps ----------------------------------------------------------
+#
+# TWO SHEETS, NOT ONE WITH A TINT, and the reason is that they are not the same
+# light doing different colours — they are different KINDS of light.
+#
+# Standby breathes. It is a lamp somebody left on, and everything about it is
+# soft: no edge, no rhythm you could count, a glare that is always there and
+# never demands anything. It says the pad is found and working.
+#
+# The siren SWEEPS. A hard bar of light going round with a bright leading edge
+# and a dark side, fast enough that you catch it out of the corner of your eye
+# from across a clearing. It says the party has just told the whole forest
+# where they are, which is the single most dangerous thing they can do on a
+# night, and it has to feel like that before a single zombie has moved.
+#
+# A draw-time tint could turn one of these into the other's colour and never
+# into its shape, which is the same argument every `tinted: false` sheet in
+# this game makes.
+
+
+def _lamp_field(width: int, height: int):
+    return [[0.0] * width for _ in range(height)]
+
+
+def make_standby_frame(width: int, height: int, index: int, total: int) -> Image.Image:
+    """The calm lamp, breathing. VFX, additive, LOOPING.
+
+    A sine of the frame phase and nothing else, so the wrap cannot snap. It is
+    deliberately the quietest sheet this generator writes: the pad spends most
+    of the night in this state and a glare that pulsed hard would turn the
+    place a party works at into a place a party is warned away from.
+    """
+    img = Image.new("RGBA", (width, height), TRANSPARENT)
+    field = _lamp_field(width, height)
+    cx = (width - 1) / 2.0
+    cy = (height - 1) / 2.0
+    beat = 0.72 + 0.28 * math.sin(index / total * math.tau)
+    ellipse(field, cx, cy, width * 0.44, height * 0.44, 0.34 * beat)
+    ellipse(field, cx, cy, width * 0.20, height * 0.20, 0.55 * beat)
+    add(field, int(round(cx)), int(round(cy)), 0.50 * beat)
+    resolve(field, img, GREEN_GLARE, floor=0.06, tone=0.86, gain=0.58)
+    return img
+
+
+def make_siren_frame(width: int, height: int, index: int, total: int) -> Image.Image:
+    """The alarm, sweeping. VFX, additive, LOOPING.
+
+    A ROTATING BAR, not a flash. A lamp that simply blinks reads as a fault
+    light; a beam going round reads as a machine broadcasting, and broadcasting
+    is exactly what has just happened — the pad has called for a pickup and
+    every creature on this map heard it.
+    """
+    img = Image.new("RGBA", (width, height), TRANSPARENT)
+    field = _lamp_field(width, height)
+    cx = (width - 1) / 2.0
+    cy = (height - 1) / 2.0
+    angle = (index / total) * math.tau
+    reach = width * 0.70
+
+    # The bulb never goes out — a siren has a hot lamp behind the sweep, and
+    # without it the corner disappears entirely between passes.
+    ellipse(field, cx, cy, width * 0.22, height * 0.22, 0.55)
+    ellipse(field, cx, cy, width * 0.10, height * 0.10, 0.85)
+    add(field, int(round(cx)), int(round(cy)), 1.0)
+
+    # The beam: a SOLID WEDGE thrown from the bulb, not a line. Sampled densely
+    # enough that the field has no holes in it — a beam you can see gaps in
+    # reads as sparks rather than as light, and this is the one sheet in the
+    # game whose whole job is to be impossible to ignore. Foreshortened
+    # vertically like every other ground quantity, so it lies ACROSS the
+    # clearing instead of standing up in it.
+    steps = 22
+    for step in range(steps):
+        along = (step + 1) / steps
+        spread = 0.13 + along * 0.30
+        for i in range(9):
+            side = (i / 4.0) - 1.0
+            a = angle + side * spread
+            # Hot along the centreline and at the near end, dying at the rim.
+            fade = (1.0 - along * 0.66) * (1.0 - abs(side) ** 1.6 * 0.62)
+            x = cx + math.cos(a) * reach * along
+            y = cy + math.sin(a) * reach * along * 0.45
+            add(field, int(round(x)), int(round(y)), 0.42 * fade)
+    resolve(field, img, RED_GLARE, floor=0.07, tone=0.72, gain=0.86)
     return img
 
 
@@ -989,23 +1137,26 @@ def _layout(plot: int, width: int, height: int) -> dict:
         # THE PLAYER MAY NOT GET ON IT — the two rows the box actually sits on
         # are made solid. See `_stamp` in server/app/rift.py.
         "footprint": {"x": 1, "y": 3, "w": PLATFORM_TILES_W, "h": 2},
-        # The four drones, parked outside the skid's own columns so a body can
-        # still walk down either side of the pad. Diagonal order.
-        "drones": [
-            {"dx": 0.5, "dy": deck, "corner": 0},
-            {"dx": plot - 0.5, "dy": deck - 2.0, "corner": 1},
-            {"dx": plot - 0.5, "dy": deck, "corner": 2},
-            {"dx": 0.5, "dy": deck - 2.0, "corner": 3},
-        ],
-        # Lift eyes, in pixels from the platform's contact point. Same order.
+        # Lift eyes, in pixels from the platform's contact point, in the
+        # diagonal corner order. THERE IS NO PARKED-DRONE LIST any more: the
+        # drones are not part of this structure, they fly in from off-map when
+        # the pad calls them, so the only thing the art has to say about them is
+        # where their ropes end up.
         "eyes": [
             {"dx": round(ex - (width - 1) / 2.0, 1), "dy": round(ey - height, 1)}
             for ex, ey in eyes
         ],
-        # How much rope each drone was rigged with, in pixels. It is what sets
-        # the hover height: a live drone climbs until its line is straight and
-        # holds there, so this number alone decides how high over the pad the
-        # rig ends up sitting.
+        # The corner lamps, in the same pixel frame and the same order. They sit
+        # just under their eye — close enough that the glare reads as belonging
+        # to the post rather than floating beside it.
+        "lamps": [
+            {"dx": round(ex - (width - 1) / 2.0, 1), "dy": round(ey + 4 - height, 1)}
+            for ex, ey in eyes
+        ],
+        # How much line a drone pays out, in pixels. It is what sets the hover
+        # height: an arriving drone stations itself and lowers a rope until the
+        # end reaches its eye, so this number alone decides how high over the
+        # pad the rig ends up sitting.
         "rope": {"length": round(height * 1.05, 1)},
         # Flat, centred on the skid's own footprint — this is a picture of what
         # stood there, so it is the same rectangle.
@@ -1048,6 +1199,20 @@ def build(args) -> Path:
         make_strobe_frame(drone_w, drone_h, i, STROBE_FRAMES) for i in range(STROBE_FRAMES)
     ]
     pack(strobes, drone_w, drone_h).save(out_dir / "strobe.png")
+
+    # The corner lamps' glare. Square and centred on the lamp, and BIG relative
+    # to a two-pixel fitting — a siren is mostly the light it throws, and a
+    # glare cropped to the lamp's own size is just a brighter lamp.
+    lamp_size = tile * 3
+    standbys = [
+        make_standby_frame(lamp_size, lamp_size, i, STANDBY_FRAMES)
+        for i in range(STANDBY_FRAMES)
+    ]
+    pack(standbys, lamp_size, lamp_size).save(out_dir / "standby.png")
+    sirens = [
+        make_siren_frame(lamp_size, lamp_size, i, SIREN_FRAMES) for i in range(SIREN_FRAMES)
+    ]
+    pack(sirens, lamp_size, lamp_size).save(out_dir / "siren.png")
 
     imp_w, imp_h = tile * PLATFORM_TILES_W, tile * 3
     imprint = make_imprint(imp_w, imp_h, random.Random(args.seed + 29))
@@ -1121,6 +1286,26 @@ def build(args) -> Path:
                 "loop": True,
                 "tinted": False,
             },
+            "standby": {
+                "file": "standby.png",
+                "frameWidth": lamp_size,
+                "frameHeight": lamp_size,
+                "frames": STANDBY_FRAMES,
+                "fps": STANDBY_FPS,
+                "anchorY": lamp_size / 2.0,
+                "loop": True,
+                "tinted": False,
+            },
+            "siren": {
+                "file": "siren.png",
+                "frameWidth": lamp_size,
+                "frameHeight": lamp_size,
+                "frames": SIREN_FRAMES,
+                "fps": SIREN_FPS,
+                "anchorY": lamp_size / 2.0,
+                "loop": True,
+                "tinted": False,
+            },
             "downwash": {
                 "file": "downwash.png",
                 "frameWidth": wash_w,
@@ -1152,6 +1337,8 @@ def build(args) -> Path:
         f"drone {DRONE_STATES}x{drone_w}x{drone_h}, "
         f"rotor {ROTOR_FRAMES}x{rotor_w}x{rotor_h} @{ROTOR_FPS}fps loop, "
         f"strobe {STROBE_FRAMES}x{drone_w}x{drone_h} @{STROBE_FPS}fps loop, "
+        f"standby {STANDBY_FRAMES}x{lamp_size}x{lamp_size} @{STANDBY_FPS}fps loop, "
+        f"siren {SIREN_FRAMES}x{lamp_size}x{lamp_size} @{SIREN_FPS}fps loop, "
         f"imprint 1x{imp_w}x{imp_h}, "
         f"downwash {DOWNWASH_FRAMES}x{wash_w}x{wash_h} @{DOWNWASH_FPS}fps loop, "
         f"burst {BURST_FRAMES}x{burst_w}x{burst_h} @{BURST_FPS}fps, "

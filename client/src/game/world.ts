@@ -86,18 +86,12 @@ export interface CratePiece {
  * The extraction point, placed by `server/app/rift.py`: an abandoned cargo
  * platform, four lift drones on ropes, a console and a torch.
  *
- * Geometry arrives once on the map payload and never moves; `state`, `elapsed`
- * and `woke` are the live half. The client runs `elapsed` on its OWN clock
+ * Geometry arrives once on the map payload and never moves; `state` and
+ * `elapsed` are the live half. The client runs `elapsed` on its OWN clock
  * between the snapshots the server sends, because a rig winding up and a
  * platform flying away resolved at 6 Hz would step rather than play.
  */
 export type RiftState = 'dormant' | 'charging' | 'open' | 'spent';
-
-export interface RiftDrone {
-  /** Ground contact of the parked airframe. */
-  x: number;
-  y: number;
-}
 
 export interface Rift {
   id: string;
@@ -113,9 +107,12 @@ export interface Rift {
   /** The torch marking the pad. Burning from the moment the map is built. */
   torchX: number;
   torchY: number;
-  /** The four parked drones, in the corner order the server wakes them. */
-  drones: readonly RiftDrone[];
-  /** Which way the platform leaves, in radians. Rolled once, by the map. */
+  /**
+   * The bearing the aircraft come in on, and the one the loaded platform
+   * leaves on. Rolled once, by the map. The departure is the approach
+   * CONTINUED: one pass over the clearing, not a round trip.
+   */
+  approach: number;
   heading: number;
   lightTiles: number;
   lightKind: number;
@@ -124,17 +121,10 @@ export interface Rift {
   elapsed: number;
   /** When the launch begins, in the same clock as `elapsed`. Null while holding. */
   closeAt: number | null;
-  /**
-   * `elapsed` at which each drone started spooling. Its LENGTH is how many are
-   * awake — one for the pad being open, one more per overfeed tier.
-   */
-  woke: number[];
   /** Catalog value put into THIS pad, and the quota it asked for. */
   fed: number;
   need: number;
-  /** Overfeed tier, 0..3, straight off the server. */
-  level: number;
-  /** Quota paid and still on the ground: the console is a launch button now. */
+  /** Quota paid, crew holding station, still on the ground: E launches it. */
   ready: boolean;
 }
 
@@ -325,7 +315,7 @@ export class TileMap {
     state: RiftState,
     elapsed: number,
     closeAt: number | null = null,
-    feed?: { fed: number; need: number; level: number; ready: boolean; woke?: number[] },
+    feed?: { fed: number; need: number; ready: boolean },
   ): void {
     const row = this.rifts.find((item) => item.id === id);
     if (!row) return;
@@ -335,9 +325,7 @@ export class TileMap {
     if (feed) {
       row.fed = feed.fed;
       row.need = feed.need;
-      row.level = feed.level;
       row.ready = feed.ready;
-      if (feed.woke) row.woke = [...feed.woke];
     }
     if (state === 'charging' || state === 'open') this.lightRift(row);
     if (state === 'spent') this.darkenRift(row);
@@ -397,10 +385,10 @@ export class TileMap {
    * Advance every pad's local clock. Called once per frame.
    *
    * It keeps running AFTER the platform is awake, and that is the point:
-   * `elapsed` is what every moving part of this rig is phased against. A
-   * drone's spool is measured from its own entry in `woke`, the launch from
-   * `closeAt`, and both are in this clock — so one number kept in step between
-   * snapshots animates the whole machine.
+   * `elapsed` is what every moving part of this pad is phased against, and
+   * the pickup is phased against `closeAt` in that same clock — so one number
+   * kept in step between snapshots flies four aircraft, drops four ropes and
+   * carries a platform out of the frame.
    */
   stepRift(dt: number): void {
     for (const row of this.rifts) {
@@ -618,17 +606,15 @@ function unpackRifts(payload: MapPayload): Rift[] {
     consoleY: row.console[1],
     torchX: row.torch[0],
     torchY: row.torch[1],
-    drones: row.drones.map(([x, y]) => ({ x, y })),
+    approach: row.approach ?? 0,
     heading: row.heading ?? 0,
     lightTiles: row.lightTiles,
     lightKind: row.lightKind,
     state: row.state,
     elapsed: row.t,
     closeAt: row.closeAt ?? null,
-    woke: [...(row.woke ?? [])],
     fed: row.fed ?? 0,
     need: row.need ?? 0,
-    level: row.level ?? 0,
     ready: row.ready ?? false,
   }));
 }

@@ -7,28 +7,32 @@
  * THIS ATLAS SPANS ALL THREE SHAPES, which is why it is its own module rather
  * than more entries in `scenery.ts` or `vfx.ts`:
  *
- *   platform  a bottom-anchored PROP with two STATES, in the depth sort
- *   drone     the same, four of them, parked or turning
+ *   platform  a bottom-anchored PROP with three STATES, in the depth sort:
+ *             cold, green standby, red alarm. Only the corner lamps differ.
+ *   drone     the same, two cuts: pitched forward crossing the clearing, level
+ *             once it is holding station over its corner
  *   imprint   a flat DECAL, uncovered the frame the skid breaks ground
- *   rotor / strobe / downwash / burst
+ *   rotor / strobe / standby / siren / downwash / burst
  *             effect TIMELINES anchored on `anchorY`, drawn additively after
  *             the darkness pass
  *
  * The prop frames are STATES, not variants. Nothing here may be rolled: the
- * frame index says what the machine IS, and picking one by hash would make the
- * rig flicker between running and dead.
+ * frame index says what the machine IS, and picking one by hash would flicker
+ * a pad between "safe to load" and "every zombie on the map is coming".
  *
  * EVERY SHEET HERE BAKES ITS OWN COLOUR (`tinted: false`). A rotor disc is
- * white-hot dust and a nav light is red; a draw-time multiply is a single hue
- * and could produce neither. The tint machinery in `vfx.ts` is not reached
- * from this module at all.
+ * white-hot dust, a standby lamp is green and a siren is red; a draw-time
+ * multiply is a single hue and could produce none of them. The tint machinery
+ * in `vfx.ts` is not reached from this module at all.
  *
- * THE LAYOUT BLOCK IS PART OF THE ART. `eyes` is where on the platform sprite
- * each rope is tied and `rope.length` is how much line each drone was rigged
- * with — the client draws the rigging from those two numbers, because a rope
- * between a fixed eye and a drone that climbs, strains and then flies off
- * cannot be a sprite. `server/app/rift.py` ships the world positions; this
- * ships the pixels inside them.
+ * THE LAYOUT BLOCK IS PART OF THE ART. `eyes` is where on the sprite each line
+ * ends, `lamps` is where the corner glare goes, and `rope.length` is how much
+ * line a drone pays out — which is also what sets its hover height, since it
+ * stations itself exactly one rope above its eye. The client flies the rigging
+ * off those numbers because a line between a fixed eye and an aircraft that
+ * arrives, ties on, strains and then leaves cannot be a sprite.
+ * `server/app/rift.py` ships the world positions; this ships the pixels inside
+ * them.
  *
  * Loading is best-effort: a missing atlas resolves to `null` and callers skip
  * the structure, so the game still runs with no assets built.
@@ -82,9 +86,11 @@ export interface PlatformPoint {
 }
 
 export interface PlatformLayout {
-  /** The four lift eyes, in the same corner order the server places drones. */
+  /** The four lift eyes, in corner order, in pixels from the deck's contact. */
   eyes: PlatformPoint[];
-  /** How much line each drone was rigged with, in pixels. Sets hover height. */
+  /** The four corner lamps, same order and same frame. Where the glare goes. */
+  lamps: PlatformPoint[];
+  /** How much line a drone pays out, in pixels. Sets its hover height. */
   ropeLength: number;
   /** Where the rotor plane sits above a drone's own contact point. */
   rotorY: number;
@@ -95,10 +101,14 @@ export interface PlatformAtlas {
   platform: PlatformPropSheet | null;
   drone: PlatformPropSheet | null;
   imprint: PlatformDecalSheet | null;
-  /** Loop: four discs turning. Drawn over every drone that is running. */
+  /** Loop: four discs turning. Drawn over every drone in the air. */
   rotor: PlatformEffectSheet | null;
-  /** Loop: a live drone's nav lights, blinking. */
+  /** Loop: a drone's nav lights, blinking. */
   strobe: PlatformEffectSheet | null;
+  /** Loop: a corner lamp breathing GREEN. The pad is loading. */
+  standby: PlatformEffectSheet | null;
+  /** Loop: the alarm sweeping RED. The pickup has been called. */
+  siren: PlatformEffectSheet | null;
   /** Loop: rotor wash under a rig that is straining against the ground. */
   downwash: PlatformEffectSheet | null;
   /** One-shot: the ground letting go. Ends on an empty frame. */
@@ -124,6 +134,7 @@ interface EffectManifest extends PropManifest {
 
 interface LayoutManifest {
   eyes?: PlatformPoint[];
+  lamps?: PlatformPoint[];
   rope?: { length: number };
 }
 
@@ -134,6 +145,8 @@ interface PlatformManifest {
   effects: {
     rotor?: EffectManifest;
     strobe?: EffectManifest;
+    standby?: EffectManifest;
+    siren?: EffectManifest;
     downwash?: EffectManifest;
     burst?: EffectManifest;
   };
@@ -152,10 +165,16 @@ const ROOT = '/platform';
  */
 const LAYOUT_FALLBACK: PlatformLayout = {
   eyes: [
-    { dx: -33, dy: -37 },
-    { dx: 27, dy: -59 },
-    { dx: 33, dy: -37 },
-    { dx: -27, dy: -59 },
+    { dx: -31, dy: -35 },
+    { dx: 26, dy: -57 },
+    { dx: 31, dy: -35 },
+    { dx: -26, dy: -57 },
+  ],
+  lamps: [
+    { dx: -31, dy: -31 },
+    { dx: 26, dy: -53 },
+    { dx: 31, dy: -31 },
+    { dx: -26, dy: -53 },
   ],
   ropeLength: 67,
   rotorY: 9,
@@ -171,16 +190,20 @@ export function loadPlatform(): Promise<PlatformAtlas | null> {
 async function fetchPlatform(): Promise<PlatformAtlas | null> {
   try {
     const manifest = await loadJson<PlatformManifest>(`${ROOT}/manifest.json`);
-    const [platform, drone, imprint, rotor, strobe, downwash, burst] = await Promise.all([
-      manifest.props.platform ? loadProp(manifest.props.platform) : null,
-      manifest.props.drone ? loadProp(manifest.props.drone) : null,
-      manifest.decals.imprint ? loadDecal(manifest.decals.imprint) : null,
-      manifest.effects.rotor ? loadEffect(manifest.effects.rotor) : null,
-      manifest.effects.strobe ? loadEffect(manifest.effects.strobe) : null,
-      manifest.effects.downwash ? loadEffect(manifest.effects.downwash) : null,
-      manifest.effects.burst ? loadEffect(manifest.effects.burst) : null,
-    ]);
+    const [platform, drone, imprint, rotor, strobe, standby, siren, downwash, burst] =
+      await Promise.all([
+        manifest.props.platform ? loadProp(manifest.props.platform) : null,
+        manifest.props.drone ? loadProp(manifest.props.drone) : null,
+        manifest.decals.imprint ? loadDecal(manifest.decals.imprint) : null,
+        manifest.effects.rotor ? loadEffect(manifest.effects.rotor) : null,
+        manifest.effects.strobe ? loadEffect(manifest.effects.strobe) : null,
+        manifest.effects.standby ? loadEffect(manifest.effects.standby) : null,
+        manifest.effects.siren ? loadEffect(manifest.effects.siren) : null,
+        manifest.effects.downwash ? loadEffect(manifest.effects.downwash) : null,
+        manifest.effects.burst ? loadEffect(manifest.effects.burst) : null,
+      ]);
     const eyes = manifest.layout?.eyes;
+    const lamps = manifest.layout?.lamps;
     return {
       tile: manifest.tile,
       platform,
@@ -188,10 +211,13 @@ async function fetchPlatform(): Promise<PlatformAtlas | null> {
       imprint,
       rotor,
       strobe,
+      standby,
+      siren,
       downwash,
       burst,
       layout: {
         eyes: eyes?.length ? eyes : LAYOUT_FALLBACK.eyes,
+        lamps: lamps?.length ? lamps : LAYOUT_FALLBACK.lamps,
         ropeLength: manifest.layout?.rope?.length ?? LAYOUT_FALLBACK.ropeLength,
         rotorY: manifest.props.drone?.rotorY ?? LAYOUT_FALLBACK.rotorY,
       },

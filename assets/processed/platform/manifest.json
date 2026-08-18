@@ -10,9 +10,9 @@
       "file": "platform.png",
       "frameWidth": 80,
       "frameHeight": 64,
-      "frames": 2,
+      "frames": 3,
       "shapes": 1,
-      "states": 2
+      "states": 3
     },
     "drone": {
       "file": "drone.png",
@@ -54,6 +54,26 @@
       "loop": true,
       "tinted": false
     },
+    "standby": {
+      "file": "standby.png",
+      "frameWidth": 48,
+      "frameHeight": 48,
+      "frames": 12,
+      "fps": 10,
+      "anchorY": 24.0,
+      "loop": true,
+      "tinted": false
+    },
+    "siren": {
+      "file": "siren.png",
+      "frameWidth": 48,
+      "frameHeight": 48,
+      "frames": 12,
+      "fps": 16,
+      "anchorY": 24.0,
+      "loop": true,
+      "tinted": false
+    },
     "downwash": {
       "file": "downwash.png",
       "frameWidth": 112,
@@ -86,28 +106,6 @@
       "w": 5,
       "h": 2
     },
-    "drones": [
-      {
-        "dx": 0.5,
-        "dy": 5.0,
-        "corner": 0
-      },
-      {
-        "dx": 6.5,
-        "dy": 3.0,
-        "corner": 1
-      },
-      {
-        "dx": 6.5,
-        "dy": 5.0,
-        "corner": 2
-      },
-      {
-        "dx": 0.5,
-        "dy": 3.0,
-        "corner": 3
-      }
-    ],
     "eyes": [
       {
         "dx": -30.8,
@@ -124,6 +122,24 @@
       {
         "dx": -27.2,
         "dy": -59.0
+      }
+    ],
+    "lamps": [
+      {
+        "dx": -30.8,
+        "dy": -33.0
+      },
+      {
+        "dx": 27.2,
+        "dy": -55.0
+      },
+      {
+        "dx": 30.8,
+        "dy": -33.0
+      },
+      {
+        "dx": -27.2,
+        "dy": -55.0
       }
     ],
     "rope": {

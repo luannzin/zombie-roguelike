@@ -224,6 +224,13 @@
       "bus": "misc",
       "gain": 0.2256
     },
+    "siren": {
+      "files": [
+        "siren.wav"
+      ],
+      "bus": "misc",
+      "gain": 0.3666
+    },
     "dread": {
       "files": [
         "dread-0.wav",

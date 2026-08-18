@@ -3,11 +3,15 @@
  *
  * FIVE THINGS THE BUTTON CAN BE SAYING, and they are not interchangeable: wake
  * the platform, wait (another pad is already running), load it, keep loading
- * past the quota, or SEND it. The last one is the one that matters most and
- * the one a player will not guess — the quota is paid, the console has gone
- * gold, and pressing now flies the platform out rather than adding to it.
- * Everything loaded past the quota before that press comes back as one
- * condensed core once the skid is gone.
+ * past the quota, or CALL THE PICKUP.
+ *
+ * THAT LAST ONE IS THE MOST EXPENSIVE PRESS IN THE GAME and the line has to
+ * say so before it happens, not after. Everything up to it is quiet and
+ * reversible; that one turns four green lamps red, starts a siren in a black
+ * forest, and puts every creature on the map on hunt for thirteen seconds
+ * while the party stands next to the pad waiting for aircraft. So it is the
+ * one prompt in the game drawn in the danger tone, and it names the
+ * consequence rather than the verb.
  *
  * Mounted only while in reach.
  */
@@ -44,7 +48,8 @@ export function RiftPrompt({ prompt }: RiftPromptProps) {
   if (prompt.mode === 'close') {
     return (
       <Tooltip anchor="rift" end={count}>
-        Aperte <TooltipKey>E</TooltipKey> para lançar a plataforma
+        Aperte <TooltipKey>E</TooltipKey> para chamar a extração
+        <span className="text-hp-low"> · o barulho atrai tudo</span>
       </Tooltip>
     );
   }
@@ -52,12 +57,11 @@ export function RiftPrompt({ prompt }: RiftPromptProps) {
   // Past the quota with a bag that still has something in it. The press is the
   // same key doing the same verb — the platform is just no longer counting —
   // so the line says what it BUYS rather than repeating the instruction. The
-  // level is the number of drones that will be carrying it out.
+  // overshoot itself is on the count beside it.
   if (prompt.mode === 'over') {
     return (
       <Tooltip anchor="rift" end={count}>
         Aperte <TooltipKey>E</TooltipKey> para sobrecarregar a plataforma
-        <span className="text-ink-muted"> · nível {prompt.level}</span>
       </Tooltip>
     );
   }

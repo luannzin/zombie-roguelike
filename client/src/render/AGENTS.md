@@ -233,9 +233,11 @@ mutation, no React.
 - A prop sheet's frames are VARIANTS unless its manifest entry carries `fps`
   (only the campfire does), in which case they are an animation loop. Playing a
   variant sheet makes the boulders twitch.
-- The world coin is `make_coin.py`: the HUD disc, eight Y-axis frames, one
-  row. `drawCoins` plays `walkFrameOrder` at the sheet's `fps`. Do not
-  hardcode a 3-frame ping-pong — the sheet owns the spin.
+- The world coin is `make_coin.py`: the PURPLE dark gold disc, eight Y-axis
+  frames, one row. `drawCoins` plays `walkFrameOrder` at the sheet's `fps`. Do
+  not hardcode a 3-frame ping-pong — the sheet owns the spin. It is the only
+  currency with a world sprite; the group's gold is a number, and the one place
+  it is drawn out here is the spark burst off a launching platform.
 - **The floor is FOUR soils, mixed by a client-side material field.** One ground
   texture over a whole map is the loudest tell that a forest was generated —
   the eye finds the 4x4 atlas repeat in seconds. The field is two octaves of

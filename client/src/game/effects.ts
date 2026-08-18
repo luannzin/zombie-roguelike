@@ -149,8 +149,14 @@ export interface Footprint {
   life: number;
 }
 
-/** Damage numbers and pickup/reward text share one rising-float list. */
-export type FloatTone = 'damage' | 'reward' | 'gold';
+/**
+ * Damage numbers and pickup/reward text share one rising-float list.
+ *
+ * There is no `gold` tone, and that is not an omission: group gold is never
+ * picked up off the ground, so nothing in the world ever floats a number in it.
+ * `darkGold` is the purple coin, the only currency with a sprite.
+ */
+export type FloatTone = 'damage' | 'reward' | 'darkGold';
 
 export interface TextFloat {
   x: number;
@@ -789,9 +795,14 @@ export class Effects {
     this.pushFloat(x, y - 6, text, 'reward', 0.9);
   }
 
-  /** Gold pickup float + sparkle burst. */
-  spawnGoldPickup(x: number, y: number, amount: number): void {
-    this.pushFloat(x, y - 4, `+${amount}`, 'gold', 0.7);
+  /**
+   * Dark gold pickup: float + sparkle burst, in the coin's own purple.
+   *
+   * The burst is the disc's ramp rather than a generic sparkle — it is the
+   * coin coming apart, so it has to be made of the coin.
+   */
+  spawnDarkGoldPickup(x: number, y: number, amount: number): void {
+    this.pushFloat(x, y - 4, `+${amount}`, 'darkGold', 0.7);
     const fx = palette().effects;
     for (let i = 0; i < 8; i++) {
       const angle = Math.random() * Math.PI * 2;
@@ -802,7 +813,7 @@ export class Effects {
         vx: Math.cos(angle) * speed,
         vy: Math.sin(angle) * speed * 0.75,
         size: 0.9 + Math.random() * 1.4,
-        color: pick(fx.goldParticles),
+        color: pick(fx.darkGoldParticles),
         age: 0,
         life: 0.22 + Math.random() * 0.2,
         gy: 30,
@@ -814,11 +825,11 @@ export class Effects {
       vx: 0,
       vy: 0,
       size: 2.2,
-      color: fx.goldCore,
+      color: fx.darkGoldCore,
       age: 0,
       life: 0.08,
     });
-    this.spawnLight(x, y, 34, 0.42, fx.goldCore, 0.14);
+    this.spawnLight(x, y, 34, 0.42, fx.darkGoldCore, 0.14);
   }
 
   private pushFloat(x: number, y: number, text: string, tone: FloatTone, life: number): void {

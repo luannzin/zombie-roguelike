@@ -11,7 +11,7 @@ imported by `app/` and never run at request time.
 | --- | --- | --- |
 | `make_placeholder_sheet.py` | generates raw art | `assets/raw/<name>.png` (player, zombie variants, backpack, zhat-*, zcloth-*) plus `<name>-death.png` for exact creatures and their overlays |
 | `process_sprites.py` | raw → production | `assets/processed/<name>/` |
-| `make_coin.py` | generates final pixels | `assets/processed/coin/` (8-frame Y-spin, same disc as the HUD badge) |
+| `make_coin.py` | generates final pixels | `assets/processed/coin/` (8-frame Y-spin of the PURPLE dark gold disc — the player's currency, and the only one with a world sprite) |
 | `make_textures.py` | generates final pixels | `assets/processed/terrain/` (4 grounds, blend, patch, rock, tree, deadtree, stump, grass, bush, branch, leaves, fern, campfire) |
 | `make_scenery.py` | generates final pixels | `assets/processed/scenery/` (tent, fence, sign, logs, firepit, blood, tracks, clothes, debris) — and PACKS what `make_objects.py` drew into the same folder and the one manifest |
 | `make_objects.py` | draws only; `make_scenery.build()` packs it | the INTERACTIVE objects and the tribal ground: barrel, box, chest, stash, vehicle, altar, statue, bones, oil |
@@ -23,7 +23,7 @@ imported by `app/` and never run at request time.
 | `make_guns.py` | generates final pixels | `assets/processed/guns/` (held side-view, one 18x8 frame per weapon, plus its carry pose) |
 | `make_merchant.py` | generates final pixels | `assets/processed/merchant/` (the shopkeeper: `idle` loop plus three one-shot flourishes — `coat`, `beckon`, `coin` — and the manifest's `randomClips` / `randomGap` that drive them) |
 | `make_store.py` | generates final pixels | `assets/processed/store/` (the merchant's own kit: table ×4 with `topY`, torch ×2 with `flameY`, rug, torchfire, buy glow) |
-| `make_hud_icons.py` | generates final pixels | `assets/processed/hud/` (battery, backpack, coin, arrow) |
+| `make_hud_icons.py` | generates final pixels | `assets/processed/hud/` (battery, backpack, coin, darkcoin, arrow) |
 | `make_audio.py` | generates final samples | `assets/processed/audio/` (35 sounds, 66 wavs + manifest + loudness.json) |
 
 ## Local Contracts
@@ -38,6 +38,14 @@ imported by `app/` and never run at request time.
   writes `<name>-death.png`: an N-column collapse timeline, last column the
   prone rest. Process that with the same `--exact --side-facing right`
   command. Never rotate a 16px walk frame to fake a corpse.
+- `paint_coin` strikes BOTH currencies and `ramp` is the only thing that
+  differs: `COIN_RAMP` is the group's gold (`hud/coin.png` alone), and
+  `DARK_COIN_RAMP` is the player's dark gold (`coin/` plus `hud/darkcoin.png`).
+  The purple ramp has five steps to gold's four because purple has less
+  luminance to spend, and it is held below `--rarity-epic`'s brightness so a
+  coin on the ground cannot be mistaken for an epic drop's aura. `groove`
+  sinks a struck ring in NORMALISED radius, so it squashes with the spin
+  instead of sliding off the face.
 - Terrain, HUD icons and the world coin have **no raw stage** — they are
   generated straight into `assets/processed/`. The coin disc is `paint_coin`
   in `make_textures.py`; the HUD badge is that disc face-on, the pickup

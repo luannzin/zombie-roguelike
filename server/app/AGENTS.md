@@ -19,7 +19,7 @@ game's scale.
 | `enemies.py` | `EnemyType` stat blocks (incl. the sight cone, visual variants and accessory pools), live `Enemy`, `dress` |
 | `ai.py` | enemy senses, patrol/hunt/return, steering/attack, the director; `hunt_all` is the extraction chase |
 | `pathing.py` | BFS flow field, one per player |
-| `coins.py` | dropped gold: the per-kill drop roll, burst, magnet, collection |
+| `coins.py` | DARK GOLD, the player's purple coin: drop roll, burst, magnet, collection |
 | `loot.py` | world collectables: catalog, scene-context scatter, E-to-collect |
 | `weapons.py` | weapon catalog (glock/deagle/famas/ak47/awp + the knife), hotbar, per-shot stats, the melee combo |
 | `crates.py` | INTERACTIVE OBJECTS: the type table (barrels, boxes, chests, stashes, vehicles, altars), their verbs, drop tables, ambush odds and hit boxes; extract from scenery, use, roll |
@@ -246,11 +246,14 @@ game's scale.
   about. Loot still in the bag is not money; it is loot they failed to
   extract, and `_clear_loot` already said so. Nothing else anywhere adds to
   the balance, and no run accumulates it as it goes.
-- **`balance` is the PARTY's and `Player.gold` is a person's.** The balance is
-  a shared bill nobody can honestly split after the fact, so it is one number
-  at the top of the snapshot rather than a roster column — a field that
-  differed per recipient would cost a re-serialisation a tick. `gold` stays
-  what it was: coins somebody personally walked over. Do not merge them.
+- **`balance` is the PARTY's and `Player.gold` is a person's, and they are two
+  different currencies.** The balance is GOLD: a shared bill nobody can
+  honestly split after the fact, so it is one number at the top of the snapshot
+  rather than a roster column — a field that differed per recipient would cost
+  a re-serialisation a tick. `Player.gold` is DARK GOLD: the purple coins
+  somebody personally walked over, per-player, spent on nothing yet and
+  deliberately scarce (see the corpse roll below and `crates.BASE_DROPS`). Do
+  not merge them, and do not let one pay for the other.
 - **`_tick_exit_quest` is one mechanic with two destinations.** A living body
   crossing the VOID at the end of the map sets `_pending_return`; what is on
   the far side belongs to the zone being LEFT, and `advance_zone` dispatches
@@ -387,10 +390,13 @@ game's scale.
   second pass over `scenes` (`loot.scatter`) — a drop belongs to the place
   it sits in, not to a hash. Do not delete them for being unused.
 - **A corpse pays a ROLL, not a receipt.** A creature's `gold` is the most it
-  can drop; each point is flipped on its own at `COIN_DROP_CHANCE`
-  (`coins.roll_drop`), so a 3-gold zombie lands on 0..3 with both ends rare
-  and nothing is credited — the coins hit the ground and somebody has to walk
-  over them. xp is the opposite and stays fixed: what the kill was worth does
+  can drop in DARK GOLD; each point is flipped on its own at
+  `COIN_DROP_CHANCE` (`coins.roll_drop`), and that chance sits below half, so
+  a 3-gold zombie pays nothing about half the time and three about once in a
+  hundred. Nothing is credited — the coins hit the ground and somebody has to
+  walk over them. `COIN_DROP_CHANCE` and `crates.DROP_COIN` are the only two
+  taps on this currency and they are set together; turning one alone just
+  moves where the same money comes from. xp is the opposite and stays fixed: what the kill was worth does
   not vary, what fell out of it does. `kills[].gold` is what actually fell,
   `enemyTypes[*].goldMax` is the ceiling; the client displays neither as a
   promise. The body STAYS: `corpses.py` keeps one row per kill, shipped like
@@ -499,7 +505,9 @@ game's scale.
   `roll_drop(items=False)` folds the item weight into COIN, so nothing puts a
   fresh item back on a map `_clear_loot` just swept; folded into coin rather
   than into empty on purpose, because what changes is what falls out, not
-  whether anything does. Noise is per type (`ObjectType.noise_tiles`) — a
+  whether anything does. That fold makes the run for the exit the one stretch
+  of a night where dark gold really accumulates, which is the place for it:
+  every coin table on the way in is deliberately thin. Noise is per type (`ObjectType.noise_tiles`) — a
   mailbox and a lorry bonnet are not the same event.
 - **AND SOMETIMES SOMEBODY IS STILL IN THE CAR.** `ObjectType.ambush` is
   rolled in `Room.smash_crate` AFTER the loot and independent of it, so a boot

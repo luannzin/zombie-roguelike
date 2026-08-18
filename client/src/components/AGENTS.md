@@ -12,7 +12,7 @@ and nowhere near the frame loop.
 - `hud/` — ours: `Hud`, `HudScreen`, `Panel`, `Vitals`, `BatteryGauge`,
   `ProgressBar`, `StatusLine`, `NetStats`, `ControlsHint`, `ZoneTitle`,
   `ReadyCount`, `Balance`, `QuestLog`, `QuestRow`, `QuestAnnounce`, `QuestCount`, `InteractPrompt`, `LootPrompt`, `CratePrompt`, `RiftPrompt`, `BuyPrompt`, `ExitGuide`, `Inventory`, `InventorySlot`,
-  `InventoryGold`, `WeightBar`, `LootIcon`, `CoinIcon`, `SlotValue`, `LootFly`, `LootCard`,
+  `InventoryGold`, `WeightBar`, `LootIcon`, `CoinIcon`, `DarkCoinIcon`, `SlotValue`, `LootFly`, `LootCard`,
   `LootCardRow`, `TooltipCard`, `InventoryGhost`, `Tooltip`, `TooltipKey`,
   `Hotbar`, `HotbarSlot`.
 - `lobby/` — `CampfireCanvas` (mounts `LobbyScene`; owns the rest-shot fire
@@ -110,14 +110,25 @@ and nowhere near the frame loop.
   that only shows what you can already afford has no aspirational shelf, and
   the AWP priced out of reach is doing more work than a tutorial line about
   saving up.
+- **TWO CURRENCIES, TWO BADGES, AND THE BADGE IS HOW THE PLAYER TELLS THEM
+  APART.** `CoinIcon` (`/hud/coin.png`, gold) is the GROUP's, and it goes
+  everywhere the group's money is quoted: `Balance`, `SlotValue`,
+  `InventoryGold`, the gold `QuestCount` rows, the store's prices.
+  `DarkCoinIcon` (`/hud/darkcoin.png`, purple) is the PLAYER's dark gold and
+  appears in exactly one place — the `GOLD` row of `Vitals`. The two icons
+  share a silhouette on purpose: at 8px the metal is the whole message, and
+  two different shapes would read as two unrelated icons rather than two kinds
+  of money. Do not put the gold coin on a personal number or the purple one on
+  a party number.
 - `Balance` is the party's purse and it is drawn ONLY in the store, sharing
   the top-centre slot with `ReadyCount` (same kind of statement about the
   party; the two zones never overlap). It exists from the moment the party
   leaves the forest, but nothing in a run can spend it — a permanent gold
   counter would sit in the corner of every expedition talking about money the
   player cannot use, competing with the bag, which is the number that actually
-  changes while they play. `Vitals.gold` is the other one and stays: coins
-  this player personally walked over.
+  changes while they play. `Vitals.gold` is the other one and stays up the
+  whole run, because it is the currency the player is actually collecting out
+  there: purple coins they walked over, one at a time.
 - `Inventory` is the left-side pocket. Collapsed it is the backpack sprite
   and a TAB hint; TAB expands the slots in place, not a dialog. A collect
   opens it so the slot is on screen before the fly leaves the head. Slot

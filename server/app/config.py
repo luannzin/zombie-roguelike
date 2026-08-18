@@ -394,12 +394,22 @@ XP_BASE = 40                 # xp required for level 2
 XP_GROWTH = 1.4              # each level costs this much more than the last
 MAX_LEVEL = 30
 
-# --- coins (authored in tiles) ----------------------------------------------
-# A creature's gold is how many coins it CAN drop, not how many it does: each
-# point is rolled on its own at COIN_DROP_CHANCE, so a 3-gold zombie pays 0..3
-# on a curve with both ends rare and one or two in the middle. A fixed payout
-# makes every corpse the same corpse; a roll makes a good one worth noticing.
-COIN_DROP_CHANCE = 0.45
+# --- dark gold (authored in tiles) ------------------------------------------
+# The purple coin, and the PLAYER's own currency — see `coins.py`. A creature's
+# gold is how many coins it CAN drop, not how many it does: each point is
+# rolled on its own at COIN_DROP_CHANCE, so a 3-gold zombie pays 0..3. A fixed
+# payout makes every corpse the same corpse; a roll makes a good one worth
+# noticing.
+#
+# THIS NUMBER IS THE FAUCET, and it is deliberately set below the halfway mark:
+# most corpses pay NOTHING now. Dark gold is not the resource a night is scored
+# on — that is group gold, and the party earns it by carrying loot to a
+# platform — so a coin every second kill would make the currency the party is
+# actually playing for the quieter of the two. At 0.22 a 3-gold zombie pays
+# nothing about half the time, one coin most of the rest, and three about once
+# in a hundred. Move this and `crates.DROP_COIN` together: they are the two
+# taps, and turning one alone just changes where the same money comes from.
+COIN_DROP_CHANCE = 0.22
 COIN_MAGNET_TILES = 2.4
 COIN_COLLECT_TILES = 0.4
 COIN_BURST_TILES_PER_SEC = 5.5    # pop off the corpse

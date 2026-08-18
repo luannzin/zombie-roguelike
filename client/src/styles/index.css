@@ -48,6 +48,12 @@
   --ink: #d8d8e4;
   --ink-muted: #6f6f85;
   --ink-accent: #f2a541;
+  /*
+   * The player's dark gold on a panel. Lighter than the coin's own mass has to
+   * be — a disc can afford to sit deep in the dark because it has an outline
+   * and a highlight doing the reading; a row of digits on #0a0a10 has neither.
+   */
+  --ink-dark-gold: #a862e6;
 
   /* loot rarity — tooltip copy and the aura the canvas tints */
   --rarity-common: #e8e8f0;
@@ -132,12 +138,31 @@
   --fx-blade: #dfe8f4;
   --fx-blade-glow: #a8c8e8;
   --fx-reward-text: #9ad4a0;
+  /*
+   * GOLD is the GROUP's — catalog value, a platform's quota, a shop price. It
+   * is a number, never an object, so nothing in the world is drawn in it; these
+   * steps are `make_textures.COIN_RAMP` and exist for the panel.
+   */
   --fx-gold-text: #f2a541;
   --fx-gold-a: #f2a541;
   --fx-gold-b: #ffd678;
   --fx-gold-c: #fff1c2;
   --fx-gold-d: #c47a28;
   --fx-gold-core: #ffe9a8;
+  /*
+   * DARK GOLD is the PLAYER's, and the only currency that falls on the floor.
+   * These are `make_textures.DARK_COIN_RAMP` — the pickup burst has to be the
+   * same metal as the coin that threw it, or the sparkle reads as a second
+   * effect landing on top of the pickup. It runs BRIGHTER than the disc does:
+   * a purple spark on a dark forest at night has to clear the darkness
+   * multiply, which the gold one never had to worry about.
+   */
+  --fx-dark-gold-text: #a862e6;
+  --fx-dark-gold-a: #6d2bb0;
+  --fx-dark-gold-b: #9247d8;
+  --fx-dark-gold-c: #c98cf0;
+  --fx-dark-gold-d: #48197a;
+  --fx-dark-gold-core: #d9a8ff;
 
   /* entity chrome */
   --entity-shadow: rgb(0 0 0 / 0.32);
@@ -300,6 +325,7 @@
   --color-ink: var(--ink);
   --color-ink-muted: var(--ink-muted);
   --color-ink-accent: var(--ink-accent);
+  --color-ink-dark-gold: var(--ink-dark-gold);
 
   --color-rarity-common: var(--rarity-common);
   --color-rarity-uncommon: var(--rarity-uncommon);

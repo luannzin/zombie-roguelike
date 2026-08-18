@@ -243,11 +243,26 @@ subtree.
     leave without seeing half the stock. The tables are placed on an even
     rhythm and then pushed off it — four identical stalls at four identical
     intervals is the loudest tell that nobody set this up by hand.
-  - **CURRENCY.** Everything the party loaded onto the night's platforms
-    becomes the GROUP's balance on the way in here — nothing else, anywhere, adds to
-    it. Loot still in the bag is not money, it is loot they failed to extract.
-    The balance is the party's and survives the day; `Player.gold` is a
-    separate, personal number (coins somebody walked over) and stays that way.
+  - **THERE ARE TWO CURRENCIES AND THEY ARE TWO METALS.** GOLD is the GROUP's:
+    everything the party loaded onto the night's platforms becomes the balance
+    on the way in here, and nothing else, anywhere, adds to it. Loot still in
+    the bag is not money, it is loot they failed to extract. The balance is the
+    party's, it survives the day, and it is the number a night is scored on —
+    it is also never an object, which is why nothing in the world is drawn in
+    gold except the sparks off a platform tearing out of the ground.
+    DARK GOLD is the PLAYER's, and it is the opposite in every way: a PURPLE
+    coin (`server/tools/make_coin.py`) that falls off corpses and out of
+    explorables, that somebody has to walk over, that pools in `Player.gold`
+    and rides on the `GOLD` row of their own panel behind a purple badge. It
+    buys nothing yet — it is being saved for things that belong to one player
+    rather than to the party — so its taps are set deliberately low: about half
+    what they were, split across `config.COIN_DROP_CHANCE` for corpses and
+    `crates.DROP_COIN` for objects. Move those two together. Do not merge the
+    two currencies, and do not let dark gold pay for anything the group earned.
+    The purple is separated from `--rarity-epic` by VALUE on purpose: epic loot
+    already glows lavender in the dark, and a coin that glowed the same would
+    teach the party that a purple light across a clearing means a good item
+    right up until the night it meant three coins.
   - Each table shows a coin and a price above it. Walking close LIFTS the
     weapon off the boards, lights a pool under it, and opens the buy tooltip;
     E takes it. A stall sells once and the table stays there empty, because
@@ -423,9 +438,13 @@ subtree.
   stray round popping every container on the map would delete the walk.
   Using an object frees EVERY tile it stood on — a vehicle claims four — and
   rolls empty (wind VFX), coins, or one item, which JUMPS out of the opening
-  and lands. Coins only once the exit is open, for the same reason the ground
-  gets swept then. Camp maps have none. Interact is loot, then object, then
-  ready.
+  and lands. **The coin slice is the thinnest one on every object in the game**,
+  because what an explorable is FOR is the item: that is what gets carried to a
+  platform and becomes the group's balance, which is the number a night is
+  scored on. Coins only once the exit is open, for the same reason the ground
+  gets swept then — which makes the run for the exit the one stretch where dark
+  gold really accumulates. Camp maps have none. Interact is loot, then object,
+  then ready.
 - **AND SOMETIMES SOMEBODY IS STILL IN THE CAR.** A vehicle has an ambush
   chance, rolled independently of its loot, and what comes out arrives already
   hunting whoever opened it. It is the cheapest story the map has and it is
@@ -465,8 +484,10 @@ subtree.
   nothing.
 - **A corpse pays a ROLL, and then it STAYS.** A creature's `gold` is the
   ceiling, not the payout — each point is flipped on its own (`COIN_DROP_CHANCE`),
-  so the usual zombie drops 0 to 3 coins with both ends rare, and none of it is
-  credited: the coins land on the ground and somebody has to walk over them.
+  and that flip sits BELOW half, so the usual zombie pays nothing about half the
+  time, one dark gold coin most of the rest, and three about once in a hundred.
+  None of it is credited: the coins land on the ground and somebody has to walk
+  over them.
   xp does not vary, because what a kill is WORTH is a rule and what fell out
   of it is luck. The body is the other half: a death burst, a collapse
   timeline on `<sheet>-death`, then a prone rest with a growing blood pool

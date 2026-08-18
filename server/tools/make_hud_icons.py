@@ -17,7 +17,9 @@ the game shares one shading vocabulary.
 Output (assets/processed/hud/):
     battery.png    one 10x18 frame — a single cell of the lantern's battery
     backpack.png   one 16x16 frame — the pocket on the HUD, seen from the back
-    coin.png       one 8x8 frame — slot gold badge, not the world pickup
+    coin.png       one 8x8 frame — GROUP gold: catalog value, quota, price
+    darkcoin.png   one 8x8 frame — the player's dark gold, face of the
+                   purple pickup `make_coin.py` spins in the world
     arrow.png      one 21x13 frame — gold dart, authored pointing right;
                    ExitGuide rotates it toward the extraction corridor
 
@@ -42,7 +44,16 @@ from pathlib import Path
 
 from PIL import Image
 
-from make_textures import RGBA, Ramp, outline, paint_coin, pick, rgb
+from make_textures import (
+    DARK_COIN_OUTLINE,
+    DARK_COIN_RAMP,
+    RGBA,
+    Ramp,
+    outline,
+    paint_coin,
+    pick,
+    rgb,
+)
 
 ROOT = Path(__file__).resolve().parents[2]
 PROCESSED_DIR = ROOT / "assets" / "processed"
@@ -166,9 +177,28 @@ def make_backpack(size: int = 16) -> Image.Image:
 
 
 def make_coin(size: int = 8) -> Image.Image:
-    """Face-on frame of the world coin, 8x8 so a slot value stays a badge."""
+    """Group gold, 8x8 so a slot value stays a badge.
+
+    Nothing on the floor is made of this: it is what a catalog item is worth,
+    what a platform is owed and what the merchant charges.
+    """
     img = Image.new("RGBA", (size, size), TRANSPARENT)
     return paint_coin(img)
+
+
+def make_dark_coin(size: int = 8) -> Image.Image:
+    """The player's dark gold — the face of the purple disc in the woods.
+
+    Same 8x8 badge as its gold sibling, and deliberately the same silhouette:
+    at this size the METAL is the whole message, and two different shapes
+    would make the panel look like it holds two unrelated icons rather than
+    two currencies. The groove is shallower than the world coin's — an 8px
+    disc has half the room for it.
+    """
+    img = Image.new("RGBA", (size, size), TRANSPARENT)
+    return paint_coin(
+        img, ramp=DARK_COIN_RAMP, edge=DARK_COIN_OUTLINE, groove=0.22
+    )
 
 
 #: Where the head starts, as a fraction of the sprite's length. The rest is
@@ -269,6 +299,11 @@ def build(args) -> Path:
     coin_path = out_dir / "coin.png"
     coin.save(coin_path)
     print(f"wrote {coin_path} ({coin.width}x{coin.height})")
+
+    dark_coin = make_dark_coin()
+    dark_coin_path = out_dir / "darkcoin.png"
+    dark_coin.save(dark_coin_path)
+    print(f"wrote {dark_coin_path} ({dark_coin.width}x{dark_coin.height})")
 
     arrow = make_arrow()
     arrow_path = out_dir / "arrow.png"

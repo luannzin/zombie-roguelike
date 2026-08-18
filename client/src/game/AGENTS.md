@@ -478,7 +478,7 @@ seam React is allowed to read.
   head, open the bag, then travel into the slot. Travel waits until
   `slot-N` has a live anchor (drawer open, cell on screen) and aims
   through `warpHudPoint` so the sprite lands on the glass-warped cell.
-  The pocket snapshot carries `gold` as the sum of catalog values in
+  The pocket snapshot carries `gold` — the GROUP's metal — as the sum of catalog values in
   the bag (`value × qty`). The cell, the weight bar and that total
   stay at their pre-collect state while a fly is in the air.
   Dragging a cell off the panel calls `requestInventoryDrop`; `Game`

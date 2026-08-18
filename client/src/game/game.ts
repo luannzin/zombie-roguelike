@@ -1172,7 +1172,7 @@ export class Game {
 
   private onPickup(pickup: PickupEvent): void {
     if (pickup.by !== this.localId) return;
-    this.effects.spawnGoldPickup(pickup.x, pickup.y, pickup.gold);
+    this.effects.spawnDarkGoldPickup(pickup.x, pickup.y, pickup.gold);
     this.camera.addTrauma(PICKUP_TRAUMA);
     playSfx('coin', { gain: 0.9 });
   }

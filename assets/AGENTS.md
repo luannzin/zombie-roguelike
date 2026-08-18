@@ -28,7 +28,7 @@ output the game actually loads.
   `/player/sheet.png`, `/backpack/sheet.png`, `/zombie-husk/sheet.png`,
   `/zhat-cap/sheet.png`, `/terrain/ground_loam.png`,
   `/scenery/vehicle.png`, `/loot/sheet.png`, `/guns/sheet.png`, `/hud/backpack.png`,
-  `/hud/coin.png`, `/hud/arrow.png`, ….
+  `/hud/coin.png`, `/hud/darkcoin.png`, `/hud/arrow.png`, ….
 - `terrain/` is the PLACE — soil, stone, wood that grew there — and the client
   scatters it off the map seed. `scenery/` was carried in by somebody, and it
   arrives placed in groups from `server/app/scenery.py`. Two folders because
@@ -42,8 +42,16 @@ output the game actually loads.
 - Raw character art is a 3x3 grid of frames on solid magenta (`#FF00FF`), rows
   down/side/up, col 1 idle. Exact creatures and zhat-* / zcloth-* also write
   an N-column `<name>-death.png` (last column is the prone rest). Terrain,
-  HUD icons and the world coin have no raw stage. The pickup is `make_coin.py`
-  — the HUD disc, spinning.
+  HUD icons and the world coin have no raw stage.
+- **TWO CURRENCIES ARE STRUCK FROM ONE DISC.** `paint_coin` is the whole
+  shape; `ramp` picks the metal. GOLD (`COIN_RAMP`) is the group's and only
+  ever appears as `hud/coin.png` — catalog value, a platform's quota, a shop
+  price, none of which is a thing on the floor. DARK GOLD (`DARK_COIN_RAMP`,
+  deep royal purple) is the player's, and it is the only currency with a world
+  sprite: `coin/` is `make_coin.py` spinning that disc on the Y-axis, and
+  `hud/darkcoin.png` is its face. The two badges share a silhouette on
+  purpose — at 8px the metal is the whole message. The purple deliberately
+  sits darker than `--rarity-epic`, which already glows in the woods.
 - Processed character sheets are rows down/left/right/up × 3 walk frames, at
   `TILE_SIZE` from `server/app/config.py`. Death sheets are the same rows × N
   timeline frames; `loop` is false and the last frame holds.

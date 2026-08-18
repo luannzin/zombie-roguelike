@@ -57,7 +57,17 @@ DROP_COIN = "coin"
 DROP_ITEM = "item"
 
 #: The default table. Empty is the common case — a pile of wood is not a shop.
-BASE_DROPS: dict[str, float] = {DROP_EMPTY: 50, DROP_COIN: 32, DROP_ITEM: 18}
+#:
+#: COIN is DARK GOLD (`coins.py`), the player's own purple currency, and it is
+#: the thinnest slice on every object in the game on purpose. What an explorable
+#: is FOR is the ITEM: that is what gets carried to a platform and becomes the
+#: group's balance, which is the number a night is scored on. Coin weight is the
+#: second tap on dark gold — the first is `config.COIN_DROP_CHANCE` on corpses —
+#: and the two were cut together, so a party that opens everything and kills
+#: everything now walks out of a night with roughly half the purple it used to.
+#: Item weight was left exactly where it was: this pass made a currency scarcer,
+#: not the forest poorer.
+BASE_DROPS: dict[str, float] = {DROP_EMPTY: 68, DROP_COIN: 14, DROP_ITEM: 18}
 
 
 @dataclass(frozen=True)
@@ -89,6 +99,10 @@ class ObjectType:
     #: opening, and a car bonnet is louder than a mailbox.
     noise_tiles: float = 5.5
     drops: dict[str, float] = field(default_factory=lambda: dict(BASE_DROPS))
+    #: Dark gold paid when the roll lands on COIN, inclusive. Left wide while
+    #: the WEIGHT came down: a coin drop should stay worth the walk over to it,
+    #: and a currency that got both rarer and smaller in the same pass would be
+    #: two cuts sold as one.
     coins: tuple[int, int] = (1, 3)
     #: Catalog tags the item roll is biased toward. Empty means no bias.
     tags: tuple[str, ...] = ()
@@ -152,23 +166,23 @@ TYPES: tuple[ObjectType, ...] = (
     ObjectType(
         key="drum", sheet="barrel", variant=1, verb=VERB_BREAK, label=BREAK_LABEL,
         noise_tiles=6.5, tags=("supplies", "tools", "scrap"),
-        drops={DROP_EMPTY: 44, DROP_COIN: 34, DROP_ITEM: 22},
+        drops={DROP_EMPTY: 62, DROP_COIN: 16, DROP_ITEM: 22},
     ),
     ObjectType(
         key="fuel_drum", sheet="barrel", variant=2, verb=VERB_BREAK, label=BREAK_LABEL,
         noise_tiles=7.5, tags=("supplies", "travel", "scrap"),
-        drops={DROP_EMPTY: 52, DROP_COIN: 30, DROP_ITEM: 18},
+        drops={DROP_EMPTY: 68, DROP_COIN: 14, DROP_ITEM: 18},
     ),
     # --- OPEN: containers ----------------------------------------------
     ObjectType(
         key="box", sheet="box", variant=0, verb=VERB_OPEN, label=OPEN_LABEL,
         hit_h_tiles=1.5, noise_tiles=3.0, tags=("supplies", "tools", "abandoned"),
-        drops={DROP_EMPTY: 34, DROP_COIN: 34, DROP_ITEM: 32},
+        drops={DROP_EMPTY: 52, DROP_COIN: 16, DROP_ITEM: 32},
     ),
     ObjectType(
         key="ammo_case", sheet="box", variant=1, verb=VERB_OPEN, label=OPEN_LABEL,
         hit_h_tiles=1.5, noise_tiles=3.0, tags=("military", "supplies", "combat"),
-        drops={DROP_EMPTY: 22, DROP_COIN: 26, DROP_ITEM: 52},
+        drops={DROP_EMPTY: 36, DROP_COIN: 12, DROP_ITEM: 52},
     ),
     ObjectType(
         key="tote", sheet="box", variant=2, verb=VERB_OPEN, label=OPEN_LABEL,
@@ -195,27 +209,27 @@ TYPES: tuple[ObjectType, ...] = (
     ObjectType(
         key="mailbox", sheet="stash", variant=0, verb=VERB_OPEN, label=OPEN_LABEL,
         hit_h_tiles=1.5, noise_tiles=2.5, tags=("living", "dropped"),
-        drops={DROP_EMPTY: 46, DROP_COIN: 40, DROP_ITEM: 14},
+        drops={DROP_EMPTY: 68, DROP_COIN: 18, DROP_ITEM: 14},
     ),
     ObjectType(
         key="suitcase", sheet="stash", variant=1, verb=VERB_OPEN, label=OPEN_LABEL,
         hit_h_tiles=1.0, noise_tiles=2.5, tags=("travel", "living", "dropped"),
-        drops={DROP_EMPTY: 26, DROP_COIN: 32, DROP_ITEM: 42},
+        drops={DROP_EMPTY: 44, DROP_COIN: 14, DROP_ITEM: 42},
     ),
     ObjectType(
         key="freezer", sheet="stash", variant=2, verb=VERB_OPEN, label=OPEN_LABEL,
         hit_h_tiles=1.25, noise_tiles=3.5, tags=("supplies", "living", "electronics"),
-        drops={DROP_EMPTY: 40, DROP_COIN: 30, DROP_ITEM: 30},
+        drops={DROP_EMPTY: 56, DROP_COIN: 14, DROP_ITEM: 30},
     ),
     ObjectType(
         key="bin", sheet="stash", variant=3, verb=VERB_OPEN, label=SEARCH_LABEL,
         hit_h_tiles=1.25, noise_tiles=3.0, tags=("scrap", "abandoned"),
-        drops={DROP_EMPTY: 56, DROP_COIN: 26, DROP_ITEM: 18}, rarity=JUNK_ODDS,
+        drops={DROP_EMPTY: 70, DROP_COIN: 12, DROP_ITEM: 18}, rarity=JUNK_ODDS,
     ),
     ObjectType(
         key="toolbox", sheet="stash", variant=4, verb=VERB_OPEN, label=OPEN_LABEL,
         hit_h_tiles=1.0, noise_tiles=2.5, tags=("tools", "scrap", "supplies"),
-        drops={DROP_EMPTY: 24, DROP_COIN: 28, DROP_ITEM: 48},
+        drops={DROP_EMPTY: 40, DROP_COIN: 12, DROP_ITEM: 48},
     ),
     # --- OPEN: vehicles -------------------------------------------------
     # FOUR TILES WIDE, and every one of them can have somebody still in it.
@@ -227,37 +241,37 @@ TYPES: tuple[ObjectType, ...] = (
         key="car", sheet="vehicle", variant=0, verb=VERB_OPEN, label=SEARCH_LABEL,
         tiles_w=4, hit_w_tiles=4.0, hit_h_tiles=2.5, noise_tiles=6.0,
         tags=("travel", "living", "dropped"), ambush=0.22,
-        drops={DROP_EMPTY: 40, DROP_COIN: 30, DROP_ITEM: 30},
+        drops={DROP_EMPTY: 56, DROP_COIN: 14, DROP_ITEM: 30},
     ),
     ObjectType(
         key="van", sheet="vehicle", variant=1, verb=VERB_OPEN, label=SEARCH_LABEL,
         tiles_w=4, hit_w_tiles=4.0, hit_h_tiles=2.5, noise_tiles=6.5,
         tags=("supplies", "tools", "travel"), ambush=0.26,
-        drops={DROP_EMPTY: 30, DROP_COIN: 30, DROP_ITEM: 40},
+        drops={DROP_EMPTY: 46, DROP_COIN: 14, DROP_ITEM: 40},
     ),
     ObjectType(
         key="ambulance", sheet="vehicle", variant=2, verb=VERB_OPEN, label=SEARCH_LABEL,
         tiles_w=4, hit_w_tiles=4.0, hit_h_tiles=2.5, noise_tiles=6.5,
         tags=("medical", "supplies", "electronics"), ambush=0.42,
-        drops={DROP_EMPTY: 20, DROP_COIN: 26, DROP_ITEM: 54}, rarity=GOOD_ODDS,
+        drops={DROP_EMPTY: 34, DROP_COIN: 12, DROP_ITEM: 54}, rarity=GOOD_ODDS,
     ),
     ObjectType(
         key="cruiser", sheet="vehicle", variant=3, verb=VERB_OPEN, label=SEARCH_LABEL,
         tiles_w=4, hit_w_tiles=4.0, hit_h_tiles=2.5, noise_tiles=6.5,
         tags=("military", "combat", "supplies"), ambush=0.34,
-        drops={DROP_EMPTY: 24, DROP_COIN: 28, DROP_ITEM: 48}, rarity=GOOD_ODDS,
+        drops={DROP_EMPTY: 40, DROP_COIN: 12, DROP_ITEM: 48}, rarity=GOOD_ODDS,
     ),
     ObjectType(
         key="lorry", sheet="vehicle", variant=4, verb=VERB_OPEN, label=SEARCH_LABEL,
         tiles_w=4, hit_w_tiles=4.0, hit_h_tiles=2.5, noise_tiles=7.0,
         tags=("supplies", "scrap", "tools"), ambush=0.30,
-        drops={DROP_EMPTY: 22, DROP_COIN: 28, DROP_ITEM: 50},
+        drops={DROP_EMPTY: 38, DROP_COIN: 12, DROP_ITEM: 50},
     ),
     ObjectType(
         key="bus", sheet="vehicle", variant=5, verb=VERB_OPEN, label=SEARCH_LABEL,
         tiles_w=4, hit_w_tiles=4.0, hit_h_tiles=2.5, noise_tiles=7.0,
         tags=("travel", "living", "dropped"), ambush=0.46,
-        drops={DROP_EMPTY: 26, DROP_COIN: 30, DROP_ITEM: 44},
+        drops={DROP_EMPTY: 42, DROP_COIN: 14, DROP_ITEM: 44},
     ),
     # --- OPEN: the shrine ------------------------------------------------
     ObjectType(

@@ -70,9 +70,19 @@ export interface Palette {
     muzzleFlash: string;
     damageText: string;
     rewardText: string;
+    /**
+     * GROUP gold. Almost nothing in the world is drawn in it, because the
+     * group's money is a number the party extracted rather than a thing on the
+     * floor — `goldCore` is the exception, and it is the right one: the sparks
+     * off a platform tearing out of the ground are the loot becoming money.
+     */
     goldText: string;
     goldParticles: string[];
     goldCore: string;
+    /** The purple pickup: dark gold is the only currency with a world sprite. */
+    darkGoldText: string;
+    darkGoldParticles: string[];
+    darkGoldCore: string;
     slash: string;
     slashBlocked: string;
     /** The player's blade path: leading edge, tail, and the cut's wash. */
@@ -208,6 +218,14 @@ function resolve(): Palette {
       goldText: v('--fx-gold-text'),
       goldParticles: [v('--fx-gold-a'), v('--fx-gold-b'), v('--fx-gold-c'), v('--fx-gold-d')],
       goldCore: v('--fx-gold-core'),
+      darkGoldText: v('--fx-dark-gold-text'),
+      darkGoldParticles: [
+        v('--fx-dark-gold-a'),
+        v('--fx-dark-gold-b'),
+        v('--fx-dark-gold-c'),
+        v('--fx-dark-gold-d'),
+      ],
+      darkGoldCore: v('--fx-dark-gold-core'),
       slash: v('--fx-slash'),
       slashBlocked: v('--fx-slash-blocked'),
       bladeCore: v('--fx-blade-core'),

@@ -106,10 +106,32 @@ def rgb(hex_code: str) -> RGBA:
 # multiplies over this, so a bright texture would leave nothing for the light to
 # add. Ramps run darkest -> lightest and are indexed by noise.
 
-# World pickup and HUD badge share this disc. One ramp so a coin on the
-# floor and a coin on a slot are the same piece of gold.
+# TWO CURRENCIES, TWO METALS, ONE DISC. `paint_coin` strikes both — the shape
+# is shared so a coin always reads as a coin, and only the metal says which.
+# GOLD is the GROUP's: catalog value, the platform's quota, a shop price. It is
+# never a thing on the floor; it is a number the party earned by extracting.
 COIN_RAMP: Ramp = [rgb(c) for c in ("#a05a1c", "#f2a541", "#ffd678", "#fff1c2")]
 COIN_OUTLINE = rgb("#482a12")
+
+# DARK GOLD is the PLAYER's, and it is the one that falls in the woods. Purple
+# because it has to be legible as a different metal at 16px in the dark and at
+# 8px on a panel — a duller yellow would just read as a gold coin the lantern
+# had not reached yet. FIVE steps where the gold has four, and that is not
+# symmetry for its own sake: purple has less luminance range to spend than
+# yellow does, so the same four-step dither came out as static, not metal.
+#
+# IT IS DEEP ROYAL AND NOT LAVENDER, and that is the constraint that picked
+# these exact steps. `--rarity-epic` (#b46ee8) is already a purple the forest
+# throws in the dark, as an aura and as motes around an epic drop — and the
+# first cut of this coin landed on nearly that hue, which would have taught the
+# player that a purple glow across a clearing means a good item right up until
+# the night it meant three coins. So dark gold is separated by VALUE: its mass
+# sits well below epic's, it never reaches epic's brightness, and the name is
+# the art direction — this is gold that went dark, not a gem.
+DARK_COIN_RAMP: Ramp = [
+    rgb(c) for c in ("#2a0f4a", "#48197a", "#6d2bb0", "#9247d8", "#c98cf0")
+]
+DARK_COIN_OUTLINE = rgb("#160726")
 
 # The only near-red in the game, and shared for the same reason as the coin:
 # the stain a scene left on the floor (make_scenery) and the wound a bullet
@@ -605,12 +627,17 @@ def paint_coin(
     shine_x: float = -1.1,
     shine_y: float = -1.1,
     dim: float = 1.0,
+    ramp: Ramp = COIN_RAMP,
+    edge: RGBA = COIN_OUTLINE,
+    groove: float = 0.0,
 ) -> Image.Image:
-    """The gold disc the HUD badge and the world pickup are both made of.
+    """The disc both currencies are struck from — `ramp` says which metal.
 
     `scale_x` is a Y-axis squash (1 = face, ~0 = rim). Shine is in pixels
     from the centre so a world light stays put while the coin turns. `dim`
-    is the back-face drop so the flip reads.
+    is the back-face drop so the flip reads. `groove` sinks a ring inside
+    the rim; it is measured in NORMALISED radius, so the mark squashes with
+    the coin instead of sliding off the face halfway through the spin.
     """
     px = img.load()
     width, height = img.size
@@ -632,8 +659,10 @@ def paint_coin(
                 1 - ((x - cx - shine_x) ** 2 + (y - cy - shine_y) ** 2) ** 0.5 / radius,
             )
             tone = (0.32 + falloff * 0.28 + shine * 0.42) * dim
-            px[x, y] = pick(COIN_RAMP, tone, x, y)
-    outline(img, COIN_OUTLINE)
+            if groove:
+                tone *= 1 - groove * max(0.0, 1 - abs(dist - 0.7) / 0.18)
+            px[x, y] = pick(ramp, tone, x, y)
+    outline(img, edge)
     return img
 
 

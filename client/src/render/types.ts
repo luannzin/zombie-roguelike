@@ -108,6 +108,27 @@ export interface DrawableEntity {
   gunKick: number;
   /** Pixels of slide back along aim. */
   gunPump: number;
+  /**
+   * The POUR, or null for every body that is not emptying a bag into a
+   * platform. `t` is 0..1 through the whole ceremony's grip: 0 is the pack on
+   * the back where it always is, 1 is the pack held out at arm's length and
+   * upside down. The entity pass takes the backpack out of `gear` while this
+   * is set and draws it as something being HELD, because the one thing that
+   * makes a pour read is that the bag stops being clothing.
+   */
+  pour: PourPose | null;
+}
+
+/** Where a poured backpack is between the shoulders and arm's length. */
+export interface PourPose {
+  /** 0 walk, 1 lift, 2 dump, 3 stow. Mirrors `Player.pour.phase`. */
+  phase: number;
+  /** 0 on the back, 1 held out and inverted. Eased by the game, not here. */
+  grip: number;
+  /** Seconds into the ceremony. Drives the shake while it is being emptied. */
+  age: number;
+  /** Which sheet the pack is. Taken out of `gear` for the duration. */
+  sheet: string;
 }
 
 /** World gold pickup — drawn under entities, spins forever. */

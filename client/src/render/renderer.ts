@@ -394,7 +394,7 @@ export class Renderer {
           if (row.rift) {
             drawRiftProp(
               ctx, view, this.riftAtlas, this.platformAtlas, row.rift,
-              palette().entity.shadow,
+              palette().entity.shadow, this.lootAtlas,
             );
           } else if (row.store) {
             if (this.storeAtlas && store) {
@@ -425,8 +425,11 @@ export class Renderer {
     // the air has no contact row to be sorted by. Before the darkness, so a
     // platform twenty tiles up dissolves into the night instead of staying
     // crisp and bright over a blacked-out forest.
-    for (const { phase } of riftPhases) {
-      drawRiftAir(ctx, view, phase, this.platformAtlas, palette().entity.shadow);
+    for (const { rift, phase } of riftPhases) {
+      drawRiftAir(
+        ctx, view, phase, this.platformAtlas, palette().entity.shadow,
+        rift.id, this.lootAtlas,
+      );
     }
 
     // World space again, and the order here IS the atmosphere:

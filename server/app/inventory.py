@@ -112,54 +112,37 @@ class Inventory:
         self.slots[index] = None
         return slot
 
-    def spend_toward(self, remaining: int) -> int:
-        """Consume bag items until `remaining` value is paid. Returns spent.
+    def tip_one(self) -> Slot | None:
+        """Tip ONE unit out of the bag, in slot order. None once it is empty.
 
-        Slot order, one unit at a time. The last item may overshoot — a ring
-        worth 70 still goes in when 10 is left, because extraction does not
-        make change. Guns stay on the belt: they are not what the platform carries.
+        THE POUR'S BEAT. Extraction used to swallow the whole pocket inside a
+        single press (`spend_toward` / `spend_all`); it now takes one unit at a
+        time on the room's clock, so the bag empties on the HUD at exactly the
+        speed the sprites leave the backpack on screen. Two numbers for one
+        event is how a bag that visibly still has things in it ends up already
+        spent.
+
+        Returns a DETACHED single-unit slot rather than a key: the caller has
+        to draw the thing falling, and a condensed core carries its own value,
+        weight and drawn size. Guns are not in here — they stay on the belt.
         """
-        if remaining <= 0:
-            return 0
-        spent = 0
-        left = remaining
         for index, slot in enumerate(self.slots):
-            if left <= 0:
-                break
             if slot is None:
                 continue
             item = BY_KEY.get(slot.key)
             if item is None or item.pocket != "bag":
                 continue
-            unit = slot.unit_value()
-            while slot.qty > 0 and left > 0:
-                slot.qty -= 1
-                spent += unit
-                left -= unit
-                # A worthless row would never pay the bill and would spin here
-                # forever emptying the bag. Take the one unit and move on.
-                if unit <= 0:
-                    break
+            slot.qty -= 1
             if slot.qty <= 0:
                 self.slots[index] = None
-        return spent
-
-    def spend_all(self) -> int:
-        """Empty every bag slot onto the platform. Returns the value that went in.
-
-        What "alimentar além do limite" runs through: `spend_toward` stops at
-        the quota by design, and past the quota there is no number to stop at.
-        """
-        spent = 0
-        for index, slot in enumerate(self.slots):
-            if slot is None:
-                continue
-            item = BY_KEY.get(slot.key)
-            if item is None or item.pocket != "bag":
-                continue
-            spent += slot.unit_value() * slot.qty
-            self.slots[index] = None
-        return spent
+            return Slot(
+                key=slot.key,
+                qty=1,
+                value=slot.value,
+                weight=slot.weight,
+                scale=slot.scale,
+            )
+        return None
 
     def bag_value(self) -> int:
         """Catalog value still in the pocket. What a feed press would pay."""

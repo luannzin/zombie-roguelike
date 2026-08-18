@@ -52,6 +52,7 @@ from .config import (
     MELEE_IMMUNITY,
     PLAYER_HALF_HEIGHT,
     PLAYER_HALF_WIDTH,
+    MOVE_SPEED,
     RESPAWN_DELAY,
     RESPAWN_IMMUNITY,
     ROSTER_EVERY_N_TICKS,
@@ -70,9 +71,12 @@ from .loot import Drop
 from .quests import Quest
 from .enemies import Enemy, EnemyType, dress
 from .world import FLOOR, VOID
-from .entities import InputCmd, Player, clean_name, pick_color, random_name
+from .entities import (
+    POUR_DUMP, POUR_LIFT, POUR_STOW, POUR_WALK,
+    InputCmd, Player, Pour, clean_name, pick_color, random_name,
+)
 from .pathing import Navigator
-from .simulation import apply_input
+from .simulation import apply_input, carry_scale
 
 #: How many creatures stand on a nest, and how far from its middle they are
 #: scattered, in tiles.
@@ -156,6 +160,10 @@ class Room:
         self.kill_events: list[dict] = []
         self.pickup_events: list[dict] = []
         self.loot_pickup_events: list[dict] = []
+        #: Items tipped out of a backpack onto a platform this tick. The juice:
+        #: every client draws the sprite leaving the bag and landing on the
+        #: deck, and `n` is the pile index so they all stack it the same way.
+        self.pour_events: list[dict] = []
         self.crate_break_events: list[dict] = []
         #: Purchases made this tick. The juice: the client flies the gun onto
         #: the belt cell and counts the balance down.
@@ -800,10 +808,12 @@ class Room:
                 self._press_console(player, target)
             return
         if target.state == rift.OPEN and target.close_at is None:
+            if player.pour is not None:
+                return
             if target.ready and player.inventory.bag_value() <= 0:
                 self._shut_rift(target)
             else:
-                self._feed_rift(player, target)
+                self._begin_pour(player, target)
 
     def _awake_rift(self) -> Rift | None:
         """The pad currently answering, if any.
@@ -875,26 +885,36 @@ class Room:
             self._quests_dirty = True
         self.offer_feed_quest(target)
 
-    def _feed_rift(self, player: Player, target: Rift) -> None:
-        """Load the pocket onto this platform. Guns stay on the belt.
+    def _begin_pour(self, player: Player, target: Rift) -> None:
+        """Start the ceremony. Nothing is spent on this frame.
 
-        Under the quota this pays TOWARD it and stops on the nose, so a bag
-        full of relics is not swallowed whole to settle a bill of 30. Past it
-        the pad takes the lot: that is the `over` path, and it is only reached
-        by a player who keeps pressing a console that is already offering to
-        launch.
+        THE PRESS NO LONGER PAYS THE PAD — it sends the body to do it. What
+        used to be one call that emptied the pocket into a counter is now a few
+        seconds of somebody walking up to a machine, taking their pack off,
+        turning it over and tipping a night's work into it. The value moves one
+        item at a time in `_tip_item`, so the number on the HUD and the sprites
+        on the deck are the same event and cannot disagree.
+
+        The CEILING is decided here and only here. Under the quota this pour
+        stops on the bill (`cap`), so a bag of relics is not swallowed whole to
+        settle 30; past it there is no number to stop at and the pad takes the
+        lot, which is the overfeed and the only way to grow the core waiting at
+        the far end.
         """
-        remaining = target.need - target.fed
-        if remaining <= 0:
-            paid = player.inventory.spend_all()
-        else:
-            paid = player.inventory.spend_toward(remaining)
-        if paid <= 0:
+        if player.inventory.bag_value() <= 0:
             return
-        target.fed += paid
-        self._rift_dirty = True
-        self._roster_dirty = True
-        self._sync_feed_quest(target)
+        remaining = target.need - target.fed
+        player.pour = Pour(
+            rift_id=target.id,
+            phase=POUR_WALK,
+            left=rift.POUR_WALK_MAX,
+            x=target.deck_x,
+            y=target.deck_y + rift.POUR_STAND * TILE_SIZE,
+            cap=max(0, remaining),
+        )
+        # One noise for the whole pour, thrown when it starts. A pad being
+        # loaded is a crate being emptied into an iron box and it carries; one
+        # per item would be the same event reported twenty times.
         self.noises.append(
             ai.Noise(
                 x=target.x,
@@ -903,6 +923,142 @@ class Room:
                 source_id=player.id,
             )
         )
+
+    def _pour_inputs(self, player: Player) -> None:
+        """Ack everything, obey nothing but the cancel.
+
+        The body is a puppet for the length of a pour, but the queue still has
+        to drain and the sequence still has to be acked, or the client's
+        prediction never hears back and walks off on its own.
+
+        A MOVEMENT KEY IS THE ONE THING THAT STILL MEANS SOMETHING. It ends the
+        pour where it stands and everything already tipped stays in the pad —
+        standing still for three seconds in a dark forest has to be a choice
+        the player can take back on the frame something comes out of the trees.
+        """
+        for cmd in player.inputs:
+            player.last_processed_seq = cmd.sequence
+            player.last_input = cmd
+            if cmd.up or cmd.down or cmd.left or cmd.right:
+                player.pour = None
+        player.inputs.clear()
+
+    def _step_pour(self, player: Player, dt: float) -> None:
+        """Run one body's pour a tick further.
+
+        Four beats, and each one hands to the next: WALK up to the mark in
+        front of the deck, LIFT the pack off the back and turn it over, DUMP
+        one item every `POUR_BEAT` until the bag or the bill runs out, STOW the
+        pack again. The client draws all four off `Player.pour.phase` and runs
+        its own clock inside whichever it is in.
+        """
+        pour = player.pour
+        if pour is None:
+            return
+        target = next((row for row in self.rifts if row.id == pour.rift_id), None)
+        # The pad launched, or went out from under them. Nothing to pour into.
+        if target is None or target.state != rift.OPEN or target.close_at is not None:
+            player.pour = None
+            return
+
+        player.vx = 0.0
+        player.vy = 0.0
+        # Face the deck for the whole ceremony. A body tipping a bag out over
+        # its own shoulder is the one thing that would make this read as a bug.
+        dx = target.deck_x - player.x
+        dy = target.deck_y - (player.y + PLAYER_HALF_HEIGHT)
+        span = math.hypot(dx, dy)
+        if span > 1e-3:
+            player.aim_x = dx / span
+            player.aim_y = dy / span
+        pour.left -= dt
+
+        if pour.phase == POUR_WALK:
+            if self._walk_to_mark(player, pour, dt) or pour.left <= 0.0:
+                pour.phase = POUR_LIFT
+                pour.left = rift.POUR_LIFT
+            return
+        if pour.phase == POUR_LIFT:
+            if pour.left > 0.0:
+                return
+            pour.phase = POUR_DUMP
+            pour.left = 0.0
+            # Falls THROUGH to the dump on the same tick: the first item leaves
+            # on the frame the bag finishes turning over, not a beat after it.
+        if pour.phase == POUR_DUMP:
+            while pour.left <= 0.0:
+                if not self._tip_item(player, pour, target):
+                    pour.phase = POUR_STOW
+                    pour.left = rift.POUR_STOW
+                    return
+                pour.left += rift.POUR_BEAT
+            return
+        if pour.left <= 0.0:
+            player.pour = None
+
+    def _walk_to_mark(self, player: Player, pour: Pour, dt: float) -> bool:
+        """Step toward the drop mark. True once standing on it.
+
+        Driven through `world.move_axis` like every other body in the game, so
+        the walk cannot post the player through the skid's own tiles if the
+        mark ends up on the far side of something.
+        """
+        feet_y = player.y + PLAYER_HALF_HEIGHT
+        dx = pour.x - player.x
+        dy = pour.y - feet_y
+        span = math.hypot(dx, dy)
+        if span <= 1.0:
+            return True
+        speed = MOVE_SPEED * carry_scale(player.carry_weight)
+        step = min(span, speed * dt)
+        player.vx = dx / span * speed
+        player.vy = dy / span * speed
+        player.x = self.world.move_axis(
+            player.x, player.y, PLAYER_HALF_WIDTH, PLAYER_HALF_HEIGHT,
+            dx / span * step, 0,
+        )
+        player.y = self.world.move_axis(
+            player.x, player.y, PLAYER_HALF_WIDTH, PLAYER_HALF_HEIGHT,
+            dy / span * step, 1,
+        )
+        return False
+
+    def _tip_item(self, player: Player, pour: Pour, target: Rift) -> bool:
+        """One item out of the bag and onto the deck. False when the pour ends.
+
+        This is the whole transaction, one unit at a time: the pocket loses it,
+        the pad gains its value, the deck's pile grows by one, and the event
+        goes out so every client can watch the same sprite fall into the same
+        place. `n` is the pile index and it is the server's, because two
+        players watching one pour have to see one pile.
+        """
+        if pour.cap > 0 and pour.paid >= pour.cap:
+            return False
+        slot = player.inventory.tip_one()
+        if slot is None:
+            return False
+        value = slot.unit_value()
+        pour.paid += value
+        target.feed(value)
+        row = {
+            "by": player.id,
+            "r": target.id,
+            "k": slot.key,
+            "v": value,
+            "n": target.cargo,
+            "x": round(player.x, 1),
+            "y": round(player.y + PLAYER_HALF_HEIGHT, 1),
+        }
+        # A condensed core carries its own drawn size, and it has to land on
+        # the deck at the size it was lying in the grass at.
+        if slot.scale is not None:
+            row["s"] = round(slot.scale, 2)
+        self.pour_events.append(row)
+        target.cargo += 1
+        self._rift_dirty = True
+        self._roster_dirty = True
+        self._sync_feed_quest(target)
+        return True
 
     def _shut_rift(self, target: Rift) -> None:
         """A paid pad, launched by hand. Starts the lift; banks the overpayment.
@@ -1306,6 +1462,9 @@ class Room:
         self.corpses.clear()
         self._corpses_dirty = True
         self.crate_break_events = []
+        self.pour_events = []
+        for player in self.players.values():
+            player.pour = None
         self._load_drops()
         self._load_crates()
         self._load_rifts()
@@ -1529,6 +1688,14 @@ class Room:
                 player.respawn_timer -= dt
                 if player.respawn_timer <= 0.0:
                     self.respawn(player)
+                continue
+
+            # Mid-pour the body is a puppet: input is acked and dropped, the
+            # walk is driven from here, and the only key that still does
+            # anything is one that cancels.
+            if player.pour is not None:
+                self._pour_inputs(player)
+                self._step_pour(player, dt)
                 continue
 
             budget = MAX_INPUTS_PER_TICK if len(player.inputs) > 3 else 1
@@ -2095,6 +2262,10 @@ class Room:
     def damage_player(self, target: Player, amount: int, source: Player | None) -> None:
         if not target.alive:
             return
+        # BEING HIT ENDS A POUR. A body standing over an open backpack while
+        # something eats it is the one frame of this ceremony that would read
+        # as the game having stopped listening.
+        target.pour = None
         target.hp -= amount
         if target.hp <= 0:
             target.hp = 0
@@ -2300,6 +2471,7 @@ class Room:
                 roster=roster,
                 loot=loot_rows,
                 loot_pickups=self.loot_pickup_events or None,
+                pours=self.pour_events or None,
                 crates=crate_rows,
                 crate_breaks=self.crate_break_events or None,
                 corpses=corpse_rows,
@@ -2342,6 +2514,7 @@ class Room:
                 self.kill_events = []
                 self.pickup_events = []
                 self.loot_pickup_events = []
+                self.pour_events = []
                 self.crate_break_events = []
                 self.buy_events = []
             delay = next_time - time.perf_counter()

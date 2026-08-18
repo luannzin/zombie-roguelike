@@ -28,6 +28,7 @@ seam React is allowed to read.
 | `inventory-anchors.ts` | screen-space centres for the HUD bag (pack + slots) |
 | `inventory-actions.ts` | bag → socket: `Game` binds `drop`; React never owns the connection |
 | `loot-flies.ts` | collect flies: hold over the head, then travel; membership is a store, pose is per-frame |
+| `pad-cargo.ts` | the POUR's other half: items in the air out of a backpack, and the pile they become on a platform's deck. Deck-relative, so the load leaves with the skid |
 
 ## Local Contracts
 
@@ -434,6 +435,21 @@ seam React is allowed to read.
   card must clear BEFORE the hold ends, or the HUD rises under the title.
   Forest names the night over the march (`introducing` is false; `cinematic`
   covers the letterbox).
+
+- **A POUR IS TWO CLOCKS AND THE SPLIT IS DELIBERATE.** The server owns the
+  BEAT — one integer on the player row (`pour`: walk / lift / dump / stow) plus
+  one `pours` event per item — because it owns when the pocket actually empties.
+  This side owns the POSE: `Game.pourPose` eases the backpack between worn and
+  held-out-upside-down on the render clock, and `pad-cargo.ts` flies each item
+  from the bag's mouth onto the deck and leaves it there. Nothing here may
+  decide that an item left the bag; nothing on the wire may decide where the
+  pack is on this frame.
+  The local body is the only one that needs help: it faces the MOUSE, so
+  `Game.pourAim` turns it at the awake pad for the length of the ceremony, and
+  the walk up to the mark is server-driven so `moving` has to be forced — there
+  is no predicted velocity to read it off. Piles are keyed by pad id and pad ids
+  repeat across nights: `clearPadCargo()` on every `welcome`, or tonight's haul
+  stacks on top of last night's.
 
 ## Work Guidance
 

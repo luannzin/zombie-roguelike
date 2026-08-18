@@ -77,6 +77,46 @@ class InputCmd:
         )
 
 
+#: THE POUR'S FOUR BEATS, and the phase is on the wire because every client in
+#: the room draws the same ceremony over the same body: the walk up to the
+#: skid, the pack coming off the back and turning over, the items falling out
+#: of it one at a time, and the pack going back on. One integer buys all four —
+#: the client runs its own clock inside a beat, and the beat it is in is the
+#: only thing it cannot know for itself.
+POUR_WALK, POUR_LIFT, POUR_DUMP, POUR_STOW = range(4)
+
+
+@dataclass
+class Pour:
+    """One player emptying their pocket onto one platform, over time.
+
+    Loading used to be instant: one press, the bag was empty, the meter jumped.
+    That is a transaction, and extraction is the thing the whole night is for —
+    so it is a PERFORMANCE now, and this is the state that performance runs on.
+    It lives on the player rather than on the pad because it is a body doing
+    something; the pad only counts what lands in it.
+
+    A pour ENDS ITSELF (bag empty, or the quota settled when it started under
+    one) and any movement key cancels it. There is no way to be stuck in one:
+    it is a few seconds standing still in a dark forest, and the player has to
+    be able to take that back the instant something walks out of the trees.
+    """
+
+    rift_id: str
+    phase: int = POUR_WALK
+    #: Seconds left in this beat — or, inside POUR_DUMP, until the next item.
+    left: float = 0.0
+    #: The mark in front of the deck this walks to. FEET, in world pixels.
+    x: float = 0.0
+    y: float = 0.0
+    #: Value still owed to the quota when this press started, or 0 for a pour
+    #: with no ceiling — the pad is already paid and this is an overfeed, which
+    #: takes the whole bag.
+    cap: int = 0
+    #: What has gone in on this press. Only ever read against `cap`.
+    paid: int = 0
+
+
 @dataclass
 class Player:
     id: str
@@ -126,6 +166,10 @@ class Player:
     hurt_immunity: float = 0.0
     #: Camp only. Toggled by `{type:"ready"}` while standing at the fire.
     ready: bool = False
+    #: Mid-pour, or None. While this is set the body is a puppet: input is
+    #: acked and dropped, the walk is driven by `Room._step_pour`, and the only
+    #: thing a key can still do is cancel.
+    pour: "Pour | None" = None
 
     @property
     def capsule_y0(self) -> float:
@@ -172,7 +216,7 @@ class Player:
             and self.last_input.shoot
             and self.aim_hold > 0.0
         )
-        return {
+        row = {
             "id": self.id,
             "x": round(self.x, 4),
             "y": round(self.y, 4),
@@ -192,6 +236,12 @@ class Player:
             "held": self.hotbar.held,
             "ads": ads,
         }
+        # Omitted for everybody who is not pouring, which is everybody almost
+        # all of the time — this is a per-tick row and a field that is null for
+        # eight players costs more than the one it describes.
+        if self.pour is not None:
+            row["pour"] = self.pour.phase
+        return row
 
     def to_payload(self) -> dict:
         """The whole player: `welcome`, and the snapshot roster."""

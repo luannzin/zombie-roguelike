@@ -142,6 +142,40 @@ OPEN_AT = CONSOLE_LAG + 0.55
 #: the SPENT path.
 OPEN_TIME = math.inf
 
+# --- the pour ------------------------------------------------------------------
+#
+# LOADING IS A PERFORMANCE, NOT A TRANSACTION. It used to be one press: the bag
+# emptied, the meter jumped, and the single most important verb in the game
+# resolved in the same frame as opening a barrel. What the party is actually
+# doing is carrying a night's work up to a machine and giving it away, so they
+# now WATCH themselves do it — the walk up to the skid, the pack off the back
+# and turned over, the contents falling out of it one at a time and landing on
+# the deck, the pack going back on.
+#
+# The items leave the pocket AS THEY LEAVE THE BAG, one per `POUR_BEAT`, which
+# is the whole reason the server owns this clock: a client-side flourish over
+# an inventory that emptied instantly is a bag that is visibly still full and
+# already spent.
+#
+# THE PLAYER MAY WALK OUT OF IT AT ANY POINT. A movement key cancels, and
+# everything already tipped stays in the pad. Standing still for three seconds
+# in a dark forest has to be a choice that can be un-made.
+
+#: How long the walk up to the mark is allowed to take before the pour starts
+#: anyway. A ceiling, not a duration — the walk normally finishes early.
+POUR_WALK_MAX = 0.80
+#: The pack coming off the back and turning over.
+POUR_LIFT = 0.42
+#: One item out of the bag. Fast enough to feel like pouring rather than
+#: placing, slow enough that the eye can still count them.
+POUR_BEAT = 0.15
+#: The pack going back on.
+POUR_STOW = 0.40
+#: Where the pour happens, in tiles in front of the deck's own contact row.
+#: Close enough that the items are being tipped INTO the skid, far enough that
+#: the body is not standing inside the sprite.
+POUR_STAND = 0.85
+
 # --- the pickup ----------------------------------------------------------------
 #
 # THIS IS THE SET PIECE OF THE NIGHT AND IT IS DELIBERATELY LONG.
@@ -298,6 +332,11 @@ class Rift:
     #: Catalog value put into it. May go past `need` — the overshoot is the
     #: size of the core waiting at the far end.
     fed: int = 0
+    #: How many items have been tipped onto this deck. Never decreases while
+    #: the pad lives, and it rides the geometry payload because it is the index
+    #: every client stacks the pile off — two players watching the same pour
+    #: have to see the same crate land in the same place on the same deck.
+    cargo: int = 0
     #: What the overpayment condensed into, banked when the launch starts and
     #: spent when it finishes. Zero once the drop has been placed, so a pad
     #: cannot pay out twice however the room ticks.
@@ -418,6 +457,7 @@ class Rift:
         """
         return {
             "found": self.found,
+            "cargo": self.cargo,
             "excess": self.excess,
             "freed": self.freed,
             "id": self.id,
@@ -485,6 +525,7 @@ def from_payload(row: dict | None) -> Rift | None:
         need=int(row.get("need", 0)),
         fed=int(row.get("fed", 0)),
         excess=int(row.get("excess", 0)),
+        cargo=int(row.get("cargo", 0)),
         found=bool(row.get("found", False)),
     )
 

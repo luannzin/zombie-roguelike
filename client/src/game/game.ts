@@ -45,6 +45,7 @@ import type {
   MeleeConfig,
   PickupEvent,
   PlayerMeta,
+  PourEvent,
   RiftStateRow,
   RiftTimingConfig,
   QuestState,
@@ -76,7 +77,13 @@ import { Renderer } from '../render/renderer';
 import { SpriteBook } from '../render/sprites';
 import { NOTICE_AT } from '../render/layers/vision';
 import { tileHash } from '../render/terrain';
-import type { DrawableCoin, DrawableCorpse, DrawableEntity, DrawableLoot } from '../render/types';
+import type {
+  DrawableCoin,
+  DrawableCorpse,
+  DrawableEntity,
+  DrawableLoot,
+  PourPose,
+} from '../render/types';
 import { whenFontsReady } from '../theme/fonts';
 import { palette } from '../theme/palette';
 import { crateAlongRay, hitscan, type RayTarget } from './combat';
@@ -99,6 +106,16 @@ import { readInventoryAnchor, clearInventoryAnchors } from './inventory-anchors'
 import { Lantern } from './lantern';
 import { SnapshotBuffer, type RenderedEnemy, type RenderedPlayer } from './interpolation';
 import { clearLootFlies, listLootFlies, spawnLootFly, stepLootFlies } from './loot-flies';
+import {
+  POUR_DUMP,
+  POUR_LIFT,
+  POUR_WALK,
+  POUR_LIFT_TIME,
+  POUR_STOW_TIME,
+  clearPadCargo,
+  stepPadCargo,
+  tipPadItem,
+} from './pad-cargo';
 import { warpHudPoint } from '../lib/lens';
 import { LocalPlayer } from './prediction';
 import { carryBurden } from './simulation';
@@ -124,6 +141,18 @@ const HIT_TRAUMA = 0.12;
 const HURT_TRAUMA = 0.55;
 /** Tiny bump when a coin lands in the pocket. */
 const PICKUP_TRAUMA = 0.06;
+/**
+ * The kick each item gives when it hits the deck. A twentieth of a pickup:
+ * a pour is twenty of these in a row, and at pickup strength emptying a full
+ * bag would shake the camera off the map.
+ */
+const POUR_LAND_TRAUMA = 0.012;
+/** Where the held bag's mouth is, in world px out along aim and up from the feet. */
+const POUR_MOUTH_OUT = 5.5;
+const POUR_MOUTH_UP = 15;
+/** The skid's own size in tiles. Mirrors make_platform.py. */
+const PLATFORM_TILES_W = 5;
+const PLATFORM_TILES_H = 4;
 /** Camera punch when an enemy drops. */
 const DEATH_TRAUMA = 0.32;
 /** The woods swallowing the way in — one beat per rank of trees. */
@@ -329,6 +358,8 @@ interface PlayerSource {
   ready: boolean;
   held?: number;
   ads?: boolean;
+  /** Which beat of a pour this body is on, if any. Absent for the local one. */
+  pour?: number;
 }
 
 export interface GameOptions {
@@ -440,6 +471,21 @@ export class Game {
    * instantly, and overwritten by the server's own row on the next snapshot.
    */
   private localReady = false;
+  /**
+   * Which beat of a POUR the local body is on, or null. Read off its own
+   * snapshot row rather than the interpolated list, because the local player
+   * is the one body the interpolator deliberately does not carry.
+   */
+  private localPour: number | null = null;
+  /**
+   * How far each body's backpack is off its shoulders, keyed by player.
+   *
+   * The BEAT is the server's and the POSE is this client's: one integer on the
+   * wire says which part of the ceremony a body is in, and the ease between a
+   * pack that is worn and a pack that is held upside down runs here, on the
+   * render clock, where 30 Hz would show as steps.
+   */
+  private pourPoses = new Map<string, { phase: number; raw: number; age: number }>();
   /** Remaining world drops. Replaced on welcome and on a dirty snapshot. */
   private readonly loot = new Map<string, LootState>();
   /** Dead bodies on this map. Replaced on welcome; upserted from kills. */
@@ -647,6 +693,7 @@ export class Game {
     dropExitGuide();
     clearInventoryAnchors();
     clearLootFlies();
+    clearPadCargo();
     bindInventoryDrop(null);
     this.inventoryOpen = false;
     this.bagCatches = 0;
@@ -713,6 +760,12 @@ export class Game {
     // the catalog the server just sent is in place.
     setObjectCatalog(msg.config.objects);
     this.world = new TileMap(msg.map);
+    // A new map is a new set of decks. Piles are keyed by pad id and pad ids
+    // repeat across nights, so carrying them would stack tonight's haul on top
+    // of last night's on a platform that has never been touched.
+    clearPadCargo();
+    this.pourPoses.clear();
+    this.localPour = null;
     // A new map is a new forest: nothing has been explored yet.
     this.fov = new FovField(this.world.width, this.world.height);
     this.localId = msg.playerId;
@@ -939,6 +992,7 @@ export class Game {
     for (const state of msg.players) {
       if (state.id === this.localId) {
         this.localReady = state.ready ?? false;
+        this.localPour = state.pour ?? null;
         if (this.locked) {
           this.local.state.x = state.x;
           this.local.state.y = state.y;
@@ -1010,6 +1064,7 @@ export class Game {
     for (const pickup of msg.pickups ?? []) this.onPickup(pickup);
     if (msg.loot) this.replaceLoot(msg.loot);
     for (const ev of msg.lootPickups ?? []) this.onLootPickup(ev);
+    for (const ev of msg.pours ?? []) this.onPour(ev);
     if (msg.crates) this.replaceCrates(msg.crates);
     for (const ev of msg.crateBreaks ?? []) this.onCrateBreak(ev);
     if (msg.rifts) {
@@ -1286,6 +1341,50 @@ export class Game {
   }
 
   /**
+   * One item out of somebody's backpack and onto a platform's deck.
+   *
+   * The server tips the pocket one unit at a time and sends one of these per
+   * item, so this is the only place that knows what a pour looks like: the
+   * thing leaves the bag's mouth, arcs over the skid's front lip and lands in
+   * the square the pad's own pile index put it in. Everything after that
+   * belongs to `pad-cargo.ts` — it is furniture now.
+   *
+   * NOTHING ABOUT THE INVENTORY HAPPENS HERE. The bag emptying is the roster's
+   * job and it arrives on its own cadence; the point of pacing the server's
+   * spend is that the two already agree without this having to force it.
+   */
+  private onPour(ev: PourEvent): void {
+    const pad = this.world?.rifts.find((row) => row.id === ev.r);
+    const def = this.config?.loot?.[ev.k];
+    if (!pad || !def || !this.config) return;
+    const tile = this.config.tileSize;
+
+    // Out of the mouth of a bag that is being held out toward the deck. The
+    // pose in `layers/entities.ts` puts the pack there; this has to agree with
+    // it or the items fall out of the character's chest.
+    let nx = pad.deckX - ev.x;
+    let ny = pad.deckY - ev.y;
+    const span = Math.hypot(nx, ny) || 1;
+    nx /= span;
+    ny /= span;
+
+    tipPadItem({
+      rift: ev.r,
+      frame: def.frame,
+      n: ev.n,
+      scale: ev.s ?? 1,
+      fromX: ev.x + nx * POUR_MOUTH_OUT,
+      fromY: ev.y + ny * POUR_MOUTH_OUT * 0.45 - POUR_MOUTH_UP,
+      deckX: pad.deckX,
+      deckY: pad.deckY,
+      // The skid is authored 5x4 TILES (make_platform.py). Derived rather than
+      // hardcoded at 80x64 so a re-rendered atlas still stacks inside the box.
+      frameW: tile * PLATFORM_TILES_W,
+      frameH: tile * PLATFORM_TILES_H,
+    });
+  }
+
+  /**
    * Somebody bought a weapon off a table.
    *
    * Deliberately the same performance a world pickup gets — the thunk, the
@@ -1502,6 +1601,10 @@ export class Game {
    * prediction throws an arc the server never resolved.
    */
   private canAttack(): boolean {
+    // Both hands are on a backpack. The server ignores the trigger for the
+    // length of a pour, so predicting a swing here would draw an arc that
+    // never happened.
+    if (this.localPour !== null) return false;
     if (this.zone?.hostile !== false) return true;
     return !!this.heldWeapon()?.melee;
   }
@@ -1881,6 +1984,7 @@ export class Game {
 
     if (!this.locked && this.local && this.localMeta) {
       const { vx, vy } = this.local.state;
+      const pourAim = this.pourAim();
       entities.push(
         this.toDrawablePlayer(
           {
@@ -1891,11 +1995,18 @@ export class Game {
             y: this.smoothY,
             vx,
             vy,
-            ax: this.aimX,
-            ay: this.aimY,
+            // A pour turns the body toward the deck and keeps it there. The
+            // local sprite normally faces the MOUSE, so without this the
+            // player alone would watch themselves tip a bag out sideways
+            // while everybody else in the room saw it done properly.
+            ax: pourAim?.x ?? this.aimX,
+            ay: pourAim?.y ?? this.aimY,
             hp: this.local.hp,
             alive: this.local.alive,
-            moving: Math.hypot(vx, vy) > MOVING_SPEED,
+            // The walk up to the mark is the server's, so locally there is no
+            // predicted velocity to read it off — the legs have to be told.
+            moving:
+              Math.hypot(vx, vy) > MOVING_SPEED || this.localPour === POUR_WALK,
             isLocal: true,
             // Your own tick comes from the optimistic flag, not the snapshot,
             // so pressing E marks your plate on the same frame it hides the
@@ -1941,6 +2052,17 @@ export class Game {
     // of pure presentation between two snapshots, and stepping it at 30 Hz
     // would make the light walk around the ring in visible increments.
     this.stepRift(dt);
+    // What is falling out of a backpack, on the same clock and for the same
+    // reason. The thud is fired from HERE and not from the event, because the
+    // moment a pour is actually about is the item hitting the deck.
+    stepPadCargo(dt, (px, py) => {
+      playSfxAt('drop', px, py, { gain: 0.7, rate: 0.9 + Math.random() * 0.3 });
+      // Grit off the plate, not a footfall puff: dust is drawn under the
+      // standing sort and the skid would sit on top of it, so the scatter that
+      // sells the landing has to be one that draws over the night.
+      this.effects.spawnImpact(px, py, 0, -1, false, 0.55);
+      this.camera.addTrauma(POUR_LAND_TRAUMA);
+    });
     // The merchant's performance runs on the render clock for the same reason
     // the rift's ceremony does: it is pure presentation between snapshots, and
     // nothing about which frame he is on has ever been on the wire.
@@ -2170,6 +2292,15 @@ export class Game {
     const recoil = this.visuals.recoilOf(id);
     const gun = this.visuals.gunFeelOf(id);
     const weaponKey = this.weaponKeyOf(id, source.isLocal ? this.heldSlot : source.held);
+    const pack = this.config?.backpackSprite || BACKPACK_SHEET;
+    const pour = this.pourPose(
+      id,
+      source.isLocal ? this.localPour : source.pour ?? null,
+      pack,
+      x,
+      y,
+      dt,
+    );
 
     return {
       id,
@@ -2177,8 +2308,10 @@ export class Game {
       sheet: PLAYER_SHEET,
       tint: source.color,
       // Always on for now — the overlay is what "equipped" means, and every
-      // player walks out of camp wearing one.
-      gear: [this.config?.backpackSprite || BACKPACK_SHEET],
+      // player walks out of camp wearing one. A body mid-POUR is the one
+      // exception: its pack has come off, so it stops being gear and is drawn
+      // as something held instead (see `pour` below).
+      gear: pour ? [] : [pack],
       color: source.color,
       name: source.name,
       ready: source.ready,
@@ -2207,6 +2340,66 @@ export class Game {
       gunKick: gun.kick,
       gunPump: gun.pump,
       hitSpin: 0,
+      pour,
+    };
+  }
+
+  /**
+   * Ease one body's backpack between worn and held-out-upside-down.
+   *
+   * TWO CLOCKS, AND THAT SPLIT IS THE POINT. The server owns the BEAT — walk,
+   * lift, dump, stow — because it owns when the pocket actually empties. This
+   * owns the pose, on the render clock, because a pack that changed position
+   * thirty times a second reads as a stutter and this is a four-second shot
+   * the player is looking directly at.
+   *
+   * A pour that simply STOPS (cancelled by a step, or by something hitting the
+   * player) is not a special case: the beat goes away, the grip eases back to
+   * zero from wherever it had got to, and the pack is on the shoulders again
+   * by the time the body has taken two paces.
+   */
+  private pourPose(
+    id: string,
+    phase: number | null,
+    pack: string,
+    x: number,
+    y: number,
+    dt: number,
+  ): PourPose | null {
+    let pose = this.pourPoses.get(id);
+    if (pose === undefined) {
+      if (phase === null) return null;
+      pose = { phase, raw: 0, age: 0 };
+      this.pourPoses.set(id, pose);
+    }
+    if (phase !== null && phase !== pose.phase) {
+      // The two sounds of a pour, and they are the pack's, not the pad's: one
+      // as it comes off the shoulders and one as it goes back on. Everything
+      // between them is things hitting iron.
+      if (phase === POUR_LIFT) playSfxAt('bag-open', x, y);
+      else if (phase > POUR_DUMP) playSfxAt('bag-close', x, y);
+    }
+    if (phase !== null) pose.phase = phase;
+    pose.age += dt;
+
+    // Held for the two beats that need a hand on it; on the back for the walk
+    // up, the walk away, and everything after the ceremony ends.
+    const held = phase === POUR_LIFT || phase === POUR_DUMP;
+    const rate = dt / (held ? POUR_LIFT_TIME : POUR_STOW_TIME);
+    pose.raw = held
+      ? Math.min(1, pose.raw + rate)
+      : Math.max(0, pose.raw - rate);
+    if (phase === null && pose.raw <= 0.0001) {
+      this.pourPoses.delete(id);
+      return null;
+    }
+    return {
+      phase: pose.phase,
+      // Smoothstep: the pack accelerates off the back and settles into the
+      // hold instead of sliding there at a constant rate.
+      grip: pose.raw * pose.raw * (3 - 2 * pose.raw),
+      age: pose.age,
+      sheet: pack,
     };
   }
 
@@ -2273,6 +2466,8 @@ export class Game {
       gunKick: 0,
       gunPump: 0,
       hitSpin: this.visuals.hitSpinOf(id),
+      // Only a player carries a bag, and only a player ever pours one out.
+      pour: null,
     };
   }
 
@@ -2853,6 +3048,10 @@ export class Game {
    */
   private riftPrompt(): HudRiftPrompt | null {
     if (this.locked || this.introLeft > 0) return null;
+    // Mid-pour there is nothing to offer: the server refuses a second press
+    // for the length of one, and a key prompt that does nothing when pressed
+    // is worse than no prompt at all.
+    if (this.localPour !== null) return null;
     const rift = this.nearRift();
     if (!rift) return null;
     const empty = (this.inventoryHud()?.gold ?? 0) <= 0;
@@ -2965,6 +3164,23 @@ export class Game {
       full: !room && swap === null,
       swap: swap ?? undefined,
     };
+  }
+
+  /**
+   * Which way the local body is turned while it is pouring, or null.
+   *
+   * Taken off the AWAKE pad rather than off anything the pour event carries:
+   * only one platform on a map may be awake at a time (`Room._awake_rift`), so
+   * the pad somebody is emptying a bag into is never ambiguous.
+   */
+  private pourAim(): { x: number; y: number } | null {
+    if (this.localPour === null || !this.world) return null;
+    const pad = this.world.rifts.find((row) => row.state === 'open');
+    if (!pad) return null;
+    const dx = pad.deckX - this.smoothX;
+    const dy = pad.deckY - this.smoothY;
+    const len = Math.hypot(dx, dy) || 1;
+    return { x: dx / len, y: dy / len };
   }
 
   private nearRift(): Rift | null {

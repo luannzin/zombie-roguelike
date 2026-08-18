@@ -15,7 +15,7 @@ game's scale.
 | `room.py` | authoritative state, lobby phase, tick loop, broadcasts |
 | `simulation.py` | movement + tile collision — mirrored by the client |
 | `combat.py` | hitscan raycast and melee arc sweep, both entity-agnostic |
-| `entities.py` | `Player`, `InputCmd` (includes the lantern switch, relayed not simulated) |
+| `entities.py` | `Player`, `Pour` (a body emptying its pocket into a platform), `InputCmd` (includes the lantern switch, relayed not simulated) |
 | `enemies.py` | `EnemyType` stat blocks (incl. the sight cone, visual variants and accessory pools), live `Enemy`, `dress` |
 | `ai.py` | enemy senses, patrol/hunt/return, steering/attack, the director; `hunt_all` is the extraction chase |
 | `pathing.py` | BFS flow field, one per player |
@@ -25,10 +25,10 @@ game's scale.
 | `crates.py` | INTERACTIVE OBJECTS: the type table (barrels, boxes, chests, stashes, vehicles, altars), their verbs, drop tables, ambush odds and hit boxes; extract from scenery, use, roll |
 | `ammo.py` | calibres, per-player reserves, boxes gated on what the party carries, the merchant's starting load |
 | `corpses.py` | dead enemies left on the floor: persist until the map swaps |
-| `rift.py` | extraction pads: day-scaled count, plot, the cargo platform and its corner lamps, inbound pickup, per-pad quota, overfeed, hand-called launch, siren / `hunt_all` |
+| `rift.py` | extraction pads: day-scaled count, plot, the cargo platform and its corner lamps, inbound pickup, per-pad quota, the pour's timing, overfeed, hand-called launch, siren / `hunt_all` |
 | `entrance.py` | forest edge VOID corridor, emerge formation, staggered seal (`seal_to`), `bounds` for a map with two corridors, extraction `open_exit` (flared at the border) |
 | `quests.py` | run objectives: progress, done, optional risk; the HUD mirrors this list |
-| `inventory.py` | the pocket: slots, stacking, weight, `spend_toward` / `spend_all` for the extraction platform, per-slot value/weight overrides |
+| `inventory.py` | the pocket: slots, stacking, weight, `tip_one` (one unit out of the bag per pour beat), per-slot value/weight overrides |
 | `world.py` | tile grid, tile alphabet, collision queries |
 | `maps.py` | hand-authored maps (`from_ascii`, `from_rects`) |
 | `mapgen.py` | procedural forest, seeded and connectivity-checked |
@@ -176,11 +176,30 @@ game's scale.
   climb). `_stamp` makes the deck's tiles `LOW`: the party may not get on the
   platform, but a five-by-two block of sight-blocker in the one clearing they
   fight in would be worse than the thing it prevents.
+- **LOADING IS A POUR, AND IT TAKES TIME.** `activate_rift` no longer spends
+  anything: it starts a `Pour` on the player (`Room._begin_pour`) and the body
+  becomes a puppet for the length of it. `Room._step_pour` runs four beats —
+  WALK to a mark `rift.POUR_STAND` tiles in front of the deck, LIFT the pack
+  off the back, DUMP one item every `rift.POUR_BEAT`, STOW it again — and
+  `_tip_item` is the whole transaction, one unit at a time: `Inventory.tip_one`
+  out of the pocket, `Rift.feed` into the pad, one `pours` event out to every
+  client. THE PACING IS THE POINT. The client draws the sprites leaving the
+  backpack, and a server that emptied the pocket in one call would leave a bag
+  that is visibly still full and already spent. The CEILING is set once, at the
+  start: under the quota a pour stops on the bill, at or past it there is no
+  number to stop at and it takes the whole bag.
+  `Rift.cargo` is the pad's running pile index and it rides the geometry
+  payload, because two players watching one pour have to watch one pile.
+  **A pour can always be walked out of.** `Room._pour_inputs` acks every
+  packet and obeys none of them except a movement key, which ends the pour
+  where it stands and leaves everything already tipped in the pad; taking
+  damage ends it too (`damage_player`). Standing still for three seconds in a
+  dark forest has to be a choice that can be un-made.
 - **One pad at a time, and the PLAYER calls the pickup.** `Room._awake_rift`
   is the gate: a dormant console refuses while another platform is charging or
   open. `activate_rift` is a four-way switch on the pad's state plus what is
-  in the pocket — wake it, load toward the quota, keep loading past it, or
-  call the pickup with an empty bag. The bag is what disambiguates the last
+  in the pocket — wake it, start a pour toward the quota, start one past it,
+  or call the pickup with an empty bag. The bag is what disambiguates the last
   two on purpose: overfeeding is only a real choice if it is repeatable, and a
   press that called the aircraft the instant the quota landed would make
   keeping the bag going unreachable. `Rift.begin_collapse` banks the
@@ -638,5 +657,7 @@ game's scale.
 
 ## Verification
 
-- No test suite exists. Run the server and confirm at least two clients move,
-  shoot and take damage without desync.
+- `python tests/test_snapshot_shape.py` and `python tests/test_pour.py` from
+  `server/`. Both are plain scripts and print `ok`; there is no runner.
+- Beyond that, run the server and confirm at least two clients move, shoot and
+  take damage without desync.

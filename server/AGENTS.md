@@ -36,9 +36,10 @@ pipeline that produces everything the client renders.
 
 ## Verification
 
-- No test suite exists. Verify by running the server and joining from two
-  browser tabs; check the server stays at a steady tick and no client
-  rubber-bands.
+- `python tests/test_snapshot_shape.py` and `python tests/test_pour.py` from
+  `server/`. Plain scripts, no runner, each prints `ok`.
+- Then run the server and join from two browser tabs; check the server stays at
+  a steady tick and no client rubber-bands.
 
 ## Child DOX Index
 

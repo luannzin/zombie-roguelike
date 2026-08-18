@@ -47,6 +47,14 @@
  */
 
 import { FLOOR, VOID, type Rift, type TileMap } from '../../game/world';
+import {
+  CARGO_SCALE,
+  padPile,
+  padTosses,
+  tossPose,
+  type PadCargo,
+} from '../../game/pad-cargo';
+import type { LootAtlas } from '../loot';
 import type { RiftTimingConfig } from '../../net/protocol';
 import { palette } from '../../theme/palette';
 import type { Camera } from '../camera';
@@ -472,6 +480,12 @@ export interface RiftStanding {
   y: number;
   shape: number;
   state: number;
+  /**
+   * Which pad this is, on the platform piece only. The deck carries a LOAD —
+   * everything the party has poured into it — and the pile is drawn with the
+   * box in the same depth slot, so the piece has to know whose it is.
+   */
+  rift?: string;
 }
 
 /**
@@ -528,6 +542,7 @@ export function riftStanding(rift: Rift, phase: RiftPhase): RiftStanding[] {
       y: phase.deckY,
       shape: 0,
       state: phase.platformState,
+      rift: rift.id,
     });
   }
   pieces.sort((a, b) => a.y - b.y);
@@ -555,6 +570,7 @@ export function drawRiftProp(
   platform: PlatformAtlas | null,
   piece: RiftStanding,
   shadow: string,
+  loot: LootAtlas | null = null,
 ): void {
   if (piece.sheet === 'platform') {
     const sheet = platform?.platform;
@@ -565,6 +581,13 @@ export function drawRiftProp(
       sheet.frameWidth, sheet.frameHeight,
       piece.x, piece.y, 1, 1, 0, shadow, 0.74,
     );
+    // The load, in the box's own depth slot. It is drawn AFTER the skid and
+    // never sorted against the party: cargo is part of the platform now, and a
+    // player walking behind the box has to be hidden by what is inside it the
+    // same way they are hidden by the box.
+    if (piece.rift) {
+      drawCargoPile(ctx, view, loot, padPile(piece.rift), piece.x, piece.y, 1, 1);
+    }
     return;
   }
   const sheet = piece.sheet === 'torch' ? rift?.torch : rift?.console;
@@ -595,6 +618,8 @@ export function drawRiftAir(
   phase: RiftPhase,
   atlas: PlatformAtlas | null,
   shadow: string,
+  riftId: string | null = null,
+  loot: LootAtlas | null = null,
 ): void {
   // No state guard beyond the atlas. Outside a pickup the drone list is empty
   // and `airborne` is false, so every block below skips itself on its own.
@@ -628,7 +653,22 @@ export function drawRiftAir(
       sheet.frameWidth, sheet.frameHeight,
       phase.deckX, phase.deckY, phase.scale, phase.alpha, phase.tilt, null, 0,
     );
+    // THE LOAD LEAVES WITH THE SKID. Same offsets, same scale, same fade —
+    // this is the one frame the night is actually for, and a platform that
+    // climbed away empty would throw it away.
+    if (riftId) {
+      drawCargoPile(
+        ctx, view, loot, padPile(riftId),
+        phase.deckX, phase.deckY, phase.scale, phase.alpha,
+      );
+    }
   }
+
+  // Everything still in the air out of somebody's backpack. In THIS pass and
+  // not the standing sort, because the body doing the pouring stands in front
+  // of the deck: sorted by feet, every item would fly behind the person
+  // throwing it.
+  if (riftId) drawCargoTosses(ctx, view, loot, riftId, shadow);
 
   const sheet = atlas.drone;
   if (!sheet) return;
@@ -640,6 +680,108 @@ export function drawRiftAir(
       drone.x, drone.y, phase.airborne ? phase.scale : 1, phase.alpha, 0, null, 0,
     );
   }
+}
+
+/**
+ * A deck's load, back to front, in the platform's own frame of reference.
+ *
+ * Offsets are from the CONTACT point and are scaled by whatever the skid is
+ * scaled by, which is the whole trick: one number moves the box and its cargo
+ * together, so a pile stacked on the ground is still stacked when the thing it
+ * is stacked on is forty tiles up and half the size.
+ *
+ * Bottom-anchored like everything else that stands on something, rotated about
+ * its own base so a leaning crate leans on the floor rather than hovering off
+ * it. No shadows: twenty ellipses under twenty items on an iron deck is a
+ * texture, not a contact.
+ */
+function drawCargoPile(
+  ctx: CanvasRenderingContext2D,
+  view: Projection,
+  loot: LootAtlas | null,
+  pile: readonly PadCargo[],
+  deckX: number,
+  deckY: number,
+  scale: number,
+  alpha: number,
+): void {
+  if (!loot || pile.length === 0 || alpha <= 0.02) return;
+  const { image, frameWidth, frameHeight } = loot;
+  ctx.globalAlpha = alpha;
+  for (const item of pile) {
+    const w = frameWidth * CARGO_SCALE * item.scale * scale;
+    const h = frameHeight * CARGO_SCALE * item.scale * scale;
+    const px = view.x(deckX + item.dx * scale);
+    const py = view.y(deckY + (item.dy - item.z) * scale);
+    const dw = view.size(w);
+    const dh = view.size(h);
+    if (item.rot === 0) {
+      ctx.drawImage(image, item.frame * frameWidth, 0, frameWidth, frameHeight,
+        Math.round(px - dw / 2), Math.round(py - dh), Math.round(dw), Math.round(dh));
+      continue;
+    }
+    ctx.save();
+    ctx.translate(px, py);
+    ctx.rotate(item.rot);
+    ctx.drawImage(image, item.frame * frameWidth, 0, frameWidth, frameHeight,
+      Math.round(-dw / 2), Math.round(-dh), Math.round(dw), Math.round(dh));
+    ctx.restore();
+  }
+  ctx.globalAlpha = 1;
+}
+
+/**
+ * What is between the bag and the deck on this frame.
+ *
+ * THE SHADOW IS WHAT SELLS IT. At this camera angle a sprite moving up the
+ * screen and a sprite moving away are the same pixels; a dark ellipse pinned
+ * to the spot it is going to land on, growing as it falls, is the only thing
+ * that says which. It is drawn at the RESTING place, not under the sprite,
+ * because that is where the thing is heading and watching the shadow arrive
+ * first is what makes the landing feel aimed.
+ */
+function drawCargoTosses(
+  ctx: CanvasRenderingContext2D,
+  view: Projection,
+  loot: LootAtlas | null,
+  riftId: string,
+  shadow: string,
+): void {
+  if (!loot) return;
+  const { image, frameWidth, frameHeight } = loot;
+  for (const toss of padTosses()) {
+    if (toss.rift !== riftId) continue;
+    const pose = tossPose(toss);
+    const w = frameWidth * CARGO_SCALE * pose.scale;
+    const h = frameHeight * CARGO_SCALE * pose.scale;
+    const groundX = toss.deckX + toss.rest.dx;
+    const groundY = toss.deckY + toss.rest.dy - toss.rest.z;
+    const drop = Math.max(0, groundY - pose.y);
+    const near = 1 - Math.min(1, drop / Math.max(toss.rise, 1));
+
+    ctx.globalAlpha = 0.16 + 0.24 * near;
+    ctx.fillStyle = shadow;
+    ctx.beginPath();
+    ctx.ellipse(
+      view.x(groundX), view.y(groundY),
+      view.size(w * (0.34 + 0.16 * near)),
+      view.size(h * (0.16 + 0.08 * near)),
+      0, 0, Math.PI * 2,
+    );
+    ctx.fill();
+
+    ctx.globalAlpha = 1;
+    ctx.save();
+    ctx.translate(view.x(pose.x), view.y(pose.y));
+    ctx.rotate(pose.rot);
+    ctx.drawImage(
+      image, pose.frame * frameWidth, 0, frameWidth, frameHeight,
+      Math.round(-view.size(w) / 2), Math.round(-view.size(h)),
+      Math.round(view.size(w)), Math.round(view.size(h)),
+    );
+    ctx.restore();
+  }
+  ctx.globalAlpha = 1;
 }
 
 /**

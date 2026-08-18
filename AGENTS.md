@@ -143,6 +143,19 @@ subtree.
     Each pad carries its OWN quota (`rift.pad_need`, the night's bill divided
     between them) and its own `Carregue a plataforma` row (catalog gold from
     the pocket — guns stay on the belt — the HUD draws the coin badge).
+  - **LOADING IS A CEREMONY AND IT IS THE SHOT THE WHOLE NIGHT IS FOR.** E on
+    an open pad does not spend anything: the character WALKS to a mark in front
+    of the skid, turns to face it, takes the backpack off their shoulders,
+    turns it upside down, and tips it out. The items come out one at a time,
+    arc over the front lip and land on the deck, where they STAY — a pile that
+    grows all night, that nobody can pick back up, and that goes up with the
+    platform when the drones take it. Then the pack goes back on. Every item
+    leaves the pocket on the frame it leaves the bag, because the server owns
+    that clock (`Room._step_pour`); a bag that emptied instantly under an
+    animation would be visibly still full and already spent. Any movement key
+    walks out of it and keeps what has already gone in, and being hit ends it —
+    standing still for three seconds in a dark forest is a choice, not a
+    cutscene.
   - **THE NIGHT'S BILL IS A SHARE OF WHAT IS ACTUALLY OUT THERE.** A forest
     holds a MEDIAN of about 910 points of findable value — roughly a third of
     it scattered on the ground, the rest inside the forty-odd objects standing

@@ -10,7 +10,7 @@ mutation, no React.
 | file | owns |
 | --- | --- |
 | `renderer.ts` | pass sequencing and the world/screen transform |
-| `types.ts` | `RenderState`, `DrawableEntity` — the renderer's input contract (`gear` overlays, `weapon` the held gun, `hitSpin` the hit tilt) |
+| `types.ts` | `RenderState`, `DrawableEntity` — the renderer's input contract (`gear` overlays, `weapon` the held gun, `hitSpin` the hit tilt, `pour` the backpack coming off the back) |
 | `camera.ts` | follow, clamp to map bounds, the arrival push-in |
 | `framing.ts` | the wide shot of the camp — zoom and rest-shot fire position |
 | `projection.ts` | zoom + offset between world and screen space |
@@ -20,7 +20,7 @@ mutation, no React.
 | `vfx.ts` | effect atlas loading: one-shot sheets (summon, kindle, wind, death) and the looping loot `aura` |
 | `rift.ts` | threshold atlas: the console prop with its four STATES, the torch prop and its fire, the paid console's band, the exit's paving |
 | `platform.ts` | extraction atlas: the cargo skid (cold / green standby / red alarm) and lift drone (hover / cruise) props, rotor / strobe / standby / siren / downwash / burst effect sheets, the imprint decal, and the `layout` block the ropes and lamps are drawn from |
-| `layers/rift.ts` | extraction pads: the whole rig's timing (`riftPhase`) plus its four passes — floor, depth sort, the air, additive light |
+| `layers/rift.ts` | extraction pads: the whole rig's timing (`riftPhase`) plus its four passes — floor, depth sort, the air, additive light — and the deck's LOAD, both the pile at rest and what is still falling into it |
 | `store.ts` | the merchant's own kit: tables (with `topY`), torches (with `flameY`), the mat, the torch fire and the buy pool — plus the HUD coin the price tag draws |
 | `merchant.ts` | the shopkeeper's clips and the player that picks between them (`MerchantPose`, `stepMerchant`, `merchantFrame`) |
 | `layers/store.ts` | his pitch drawn: mat, depth-sorted tables / torches / merchant, stock with its lift, the fires and the price tags |
@@ -170,6 +170,26 @@ mutation, no React.
   Because the mask is unforgiving, placement (`EntityVisuals.splatter`) aims
   at the trunk and stays well inside it: a mark aimed past the edge is not
   clipped gracefully, it is deleted.
+- **A POURED BACKPACK IS NOT GEAR.** While `DrawableEntity.pour` is set the
+  game takes the pack OUT of `gear` and hands it here as a pose instead, and
+  `drawHeldPack` draws the same sheet, row and frame through one extra
+  transform: out along the aim, up, and over onto its mouth. At `grip` 0 that
+  transform is the identity, which is what makes the handover from worn to held
+  invisible — do not "improve" it by drawing a second sheet or by starting the
+  ease anywhere but at the worn position. A character standing beside a
+  platform while items appear out of them is a spawner; the same character
+  holding their own bag over the deck is somebody paying for the flight home.
+- **A DECK CARRIES ITS LOAD, and every position in it is relative to the
+  platform's CONTACT POINT.** `game/pad-cargo.ts` owns the pile;
+  `layers/rift.ts` draws it twice — with the box in the standing sort while the
+  skid is on the ground, and inside `drawRiftAir` through the same
+  scale/alpha/tilt once it is flying, which is what carries a night's work out
+  of the map with the thing it was loaded onto. Absolute positions would leave
+  the pile in the grass. Items still in the air are ALWAYS in the air pass,
+  never the standing sort: the body doing the pouring stands in front of the
+  deck, so sorted by feet every item would fly behind the person throwing it.
+  The pile is drawn in insertion order and that is the depth order — the grid
+  fills the far row first and climbs a layer at a time.
 - **Gear sits on the body.** `DrawableEntity.gear` is a back-to-front list of
   overlay sheets drawn in the same facing and walk frame. A tinted target
   (the player) multiply-tints every layer — the backpack follows the wearer.
@@ -333,14 +353,16 @@ mutation, no React.
   - `drawRiftGround` — the imprint the skid leaves, on the FLOOR with the boot
     prints. It does not exist until the platform breaks ground; before that the
     ground under a platform is the platform's.
-  - `riftStanding` — the console, the torch, and the skid while it is still on
-    the ground, MERGED into the entity depth sort so a body walking behind the
+  - `riftStanding` — the console, the torch, and the skid (with everything
+    poured into it) while it is still on the ground, MERGED into the entity
+    depth sort so a body walking behind the
     platform disappears behind it. NO DRONES, EVER: they arrive flying and
     leave flying. Prop frames are STATES, never variants —
     `platformPropFrame` takes the state, and hashing one would make the pad
     flicker between "safe to load" and "every zombie on the map is coming".
-  - `drawRiftAir` — the ropes, the inbound aircraft, and a skid that has come
-    free. Screen space, AFTER the depth sort and BEFORE the darkness. Both
+  - `drawRiftAir` — the ropes, the inbound aircraft, a skid that has come free
+    (with its load), and anything still falling out of a backpack toward the
+    deck. Screen space, AFTER the depth sort and BEFORE the darkness. Both
     halves matter: nothing standing on the floor can plausibly be in front of a
     machine hanging over it, and drawing before the darkness is what lets an
     inbound drone resolve out of the dark instead of popping in at full

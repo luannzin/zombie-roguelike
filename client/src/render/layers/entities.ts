@@ -203,6 +203,7 @@ export function drawEntity(entity: EntityContext, target: DrawableEntity): void 
   ctx.globalAlpha = target.visibility;
   ctx.drawImage(image, col * w, row * h, w, h, dx, dy, dw, dh);
   blitGear(entity, target, facing, dx, dy, dw, dh);
+  drawHeldPack(entity, target, facing, dx, dy, dw, dh);
 
   if (target.hitFlash > 0) {
     ctx.globalCompositeOperation = 'lighter';
@@ -354,6 +355,7 @@ function corpseAsTarget(body: DrawableCorpse): DrawableEntity {
     recoilX: 0,
     recoilY: 0,
     hitSpin: 0,
+    pour: null,
     halfWidth: 0,
     halfHeight: body.halfHeight,
     weapon: null,
@@ -395,6 +397,74 @@ function blitGear(
     );
   }
 }
+
+/**
+ * The backpack, mid-pour: off the shoulders, out at arm's length, upside down.
+ *
+ * THE PACK LEAVING THE BACK IS THE WHOLE READ. A character standing next to a
+ * platform while items appear out of them is a spawner; the same character
+ * holding their own bag over the deck and turning it over is somebody paying
+ * for the flight home. So while a pour is running the game takes the pack out
+ * of `gear` and hands it here instead, and this draws the SAME sheet, the same
+ * frame and the same row through one extra transform.
+ *
+ * At `grip` 0 that transform is the identity, which is not a coincidence — it
+ * is what makes the handoff from worn to held invisible. Everything else is
+ * eased off that: out along the aim (which is pointed at the deck for the
+ * length of the ceremony), up, and over onto its mouth.
+ */
+function drawHeldPack(
+  { ctx, view, book }: EntityContext,
+  target: DrawableEntity,
+  facing: string,
+  dx: number,
+  dy: number,
+  dw: number,
+  dh: number,
+): void {
+  const pose = target.pour;
+  if (!pose || pose.grip <= 0.001) return;
+  const sheet = book.get(pose.sheet);
+  const image = book.image(pose.sheet, target.tint);
+  if (!sheet || !image) return;
+
+  const row = sheet.rows[facing] ?? 0;
+  const col = frameIndex(sheet, target.animTime, target.moving);
+  const g = pose.grip;
+  const zoom = view.zoom;
+  // The shake only exists while things are actually coming out. A bag being
+  // lifted or put back is being handled; a bag being emptied is being WORKED.
+  const shaking = pose.phase === POUR_DUMP ? 1 : 0;
+  const shake = Math.sin(pose.age * 34) * shaking;
+
+  // Held out along the aim and up. The body is already facing the deck, so
+  // "out" is "over the platform" without this needing to know where that is.
+  const outX = (target.ax * 5.5 + shake * 0.7) * zoom * g;
+  const outY = (target.ay * 2.5 - 7 + shake * 0.4) * zoom * g;
+  // Over onto its mouth, turning the way the body is leaning.
+  const angle = g * Math.PI * (target.ax < 0 ? -1 : 1) + shake * 0.05 * g;
+  const cx = dx + dw / 2 + outX;
+  const cy = dy + dh / 2 + outY;
+
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(angle);
+  ctx.drawImage(
+    image,
+    col * sheet.frameWidth,
+    row * sheet.frameHeight,
+    sheet.frameWidth,
+    sheet.frameHeight,
+    -dw / 2,
+    -dh / 2,
+    dw,
+    dh,
+  );
+  ctx.restore();
+}
+
+/** The beat where things are actually falling out. Mirrors `entities.py`. */
+const POUR_DUMP = 2;
 
 /**
  * One scratch frame, reused by every wounded body on screen.

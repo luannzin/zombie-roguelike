@@ -54,7 +54,7 @@ server -> client
   {"type":"snapshot","tick":N,"departing":false,"arriving":false,"zoneKey":"camp-1",
    "players":[...],"enemies":[...],"coins":[...],
    "shots":[...],"swings":[...],"attacks":[...],"kills":[...],"pickups":[...],
-   "loot":[...],"lootPickups":[...],
+   "loot":[...],"lootPickups":[...],"pours":[...],
    "crates":[...],"crateBreaks":[...],
    "corpses":[...],
    "entrance":{...},"tilePatches":[...],"quests":[...],
@@ -138,6 +138,14 @@ Snapshot arrays:
                the bag or hotbar index it landed in; `dest` is `hotbar`
                for a gun and omitted for the pocket. The client flies
                the sprite onto that HUD cell.
+  pours        items tipped out of a backpack onto a platform since the last
+               snapshot (juice). `by` is the body doing it, `r` the pad, `k`
+               the catalog key, `v` what it paid, `s` the drawn size when the
+               item carries its own (a condensed core), and `n` the pad's own
+               running pile index — the client stacks the deck off that, so
+               every client in the room lands the same crate in the same
+               place. The player row's `pour` field is the beat the body is
+               on (walk / lift / dump / stow, absent when not pouring)
   crates       remaining interactive objects; attached like loot — on the map
                payload, and again on a snapshot only when one was used
   crateBreaks  objects used since the last snapshot (juice). `t` names the
@@ -278,6 +286,7 @@ def snapshot(
     roster: list[dict] | None = None,
     loot: list[dict] | None = None,
     loot_pickups: list[dict] | None = None,
+    pours: list[dict] | None = None,
     crates: list[dict] | None = None,
     crate_breaks: list[dict] | None = None,
     corpses: list[dict] | None = None,
@@ -316,6 +325,8 @@ def snapshot(
         payload["loot"] = loot
     if loot_pickups:
         payload["lootPickups"] = loot_pickups
+    if pours:
+        payload["pours"] = pours
     if crates is not None:
         payload["crates"] = crates
     if crate_breaks:

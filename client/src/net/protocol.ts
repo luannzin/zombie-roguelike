@@ -342,6 +342,33 @@ export interface LootPickupEvent {
 }
 
 /**
+ * One item leaving a backpack and landing on a platform's deck.
+ *
+ * The load is a POUR now, not a press: the server tips the pocket out one unit
+ * at a time on its own clock and sends one of these per item, so the bag
+ * emptying on the HUD and the sprites piling up on the deck are the same
+ * event. `n` is the pad's running pile index and it is authoritative — it is
+ * what makes two players watching one pour watch one pile.
+ */
+export interface PourEvent {
+  /** The body doing it. */
+  by: string;
+  /** The pad being loaded. */
+  r: string;
+  /** Catalog key — the atlas frame and the rarity. */
+  k: string;
+  /** What it paid toward the quota. */
+  v: number;
+  /** Drawn size. Only a condensed core sets it. */
+  s?: number;
+  /** How many items were already on that deck. The pile's index. */
+  n: number;
+  /** Where the body was standing, in world pixels (feet). */
+  x: number;
+  y: number;
+}
+
+/**
  * Where the room is, and how that place behaves. Mirrors server/app/zones.py.
  *
  * `title` / `subtitle` are fiction the server authors — "Preparação" over
@@ -750,6 +777,13 @@ export interface PlayerState {
   held?: number;
   /** True while a scoped gun is being held to fire. */
   ads?: boolean;
+  /**
+   * Which beat of a POUR this body is on — 0 walk, 1 lift, 2 dump, 3 stow.
+   * Absent for everybody who is not emptying their pocket into a platform,
+   * which is everybody almost all of the time. The client runs its own clock
+   * inside a beat; the beat is the only thing it cannot know for itself.
+   */
+  pour?: number;
 }
 
 /**
@@ -1086,6 +1120,8 @@ export interface SnapshotMessage {
   loot?: LootState[];
   /** Drops collected since the last snapshot. */
   lootPickups?: LootPickupEvent[];
+  /** Items tipped out of a backpack onto a pad since the last snapshot. */
+  pours?: PourEvent[];
   /** Remaining crates. Present only when the set changed. */
   crates?: CrateState[];
   /** Crates smashed since the last snapshot. */

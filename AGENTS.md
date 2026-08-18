@@ -119,43 +119,66 @@ subtree.
   the party (spend, re-arm, a fire to stand at), and sending them home
   afterwards made them ready up a second time for a decision they had just
   made.
-- **EXTRACTION is the core loop, and a night's pads are a QUEUE.** After the
-  entrance seals, the HUD quest `Encontre o ponto de extração` ticks `0/N` when
-  a console is pressed (`quests.py`). Day 1–2 spawn one rift; day 3–4 two;
-  day 5+ three (`rift.count_for_day`). **Only one anomaly may be awake at a
-  time** — a second console refuses while another is open, so three pads is
-  three walks rather than an errand list a party splits up. Each pad carries
-  its OWN quota (`rift.pad_need`, the night's bill divided between them) and
-  its own `Alimente a fenda` row (catalog gold from the pocket — guns stay on
-  the belt — the HUD draws the coin badge).
-  - The quota is a FLOOR, not a ceiling. E on a paid pad keeps feeding while
-    the pocket has anything, and the anomaly walks up three overfeed TIERS,
-    each a different baked colour scheme (`LEVEL_HUES` in `make_rift.py`), so
-    how much has gone in is readable from across the clearing. The console
-    goes GOLD the moment the quota lands and throws a rainbow band
-    (`aura.png`) until somebody deals with it.
-  - E with an empty pocket SHUTS the pad. It does not blink out: `collapse.png`
-    is a real timeline — the lattice goes unstable, tears at itself, implodes
-    to a point and is gone. Everything paid past the quota comes back on that
-    frame as ONE condensed core (`rift_shard`), dropped in the MIDDLE of the
-    sigil where the anomaly was hanging, with value, weight and drawn SIZE
-    proportional to the overpayment. That is what overfeeding buys: four slots
-    of loot become one you carry to the next console, at a weight that costs
-    real walk speed. On the LAST pad of the night there is no next console, so
-    no core is paid and the game stops offering to keep feeding at all.
-  - Shutting the LAST pad carves a new exit on a random edge, kills every
+- **EXTRACTION is the core loop, and a night's pads are a QUEUE.** The
+  extraction point is an abandoned CARGO PLATFORM: a rusted iron skid open at
+  the front, still half loaded with crates nobody came back for, with four dead
+  lift drones parked at its corners on the ropes they were rigged to. A console
+  stands in front of it and a torch — the same torch the exit corridor wears —
+  burns beside that console from the moment the map is built, because a
+  landmark you can only see once you have found it is not a landmark. The
+  platform's own tiles are SOLID: it is cargo space, and the party may not get
+  on it.
+  - The module is still called `rift.py` and the wire still says `rifts`. That
+    is history, not a second mechanic: the extraction point used to be a tear
+    in the world with stones around it, and renaming twenty client files buys
+    nothing this line cannot say. `assets/processed/rift/` still holds that
+    art — the pad borrows its CONSOLE and its TORCH and nothing else.
+  - After the entrance seals, the HUD quest `Encontre o ponto de extração`
+    ticks `0/N` when a console is pressed (`quests.py`). Day 1–2 spawn one pad;
+    day 3–4 two; day 5+ three (`rift.count_for_day`). **Only one platform may
+    be awake at a time** — a second console refuses while another is running,
+    so three pads is three walks rather than an errand list a party splits up.
+    Each pad carries its OWN quota (`rift.pad_need`, the night's bill divided
+    between them) and its own `Carregue a plataforma` row (catalog gold from
+    the pocket — guns stay on the belt — the HUD draws the coin badge).
+  - **THE DRONES ARE THE METER.** Pressing the console powers the deck and
+    wakes ONE drone: it spools up, climbs until its rope comes straight, and
+    holds there turning. The quota is a FLOOR, not a ceiling — E on a paid pad
+    keeps loading while the pocket has anything, and every overfeed tier wakes
+    ANOTHER drone (`rift.awake` is `1 + level`, capped at four). So how much
+    has gone into a platform is legible from across the clearing without a
+    number, and the wake order runs on the diagonal so a rig on two drones is
+    on opposite corners and hangs level. The console goes GOLD the moment the
+    quota lands and throws a rainbow band (`aura.png`) until somebody sends it.
+  - **E on a paid pad with an empty pocket LAUNCHES it**, and the launch is
+    three beats (`LIFT_STRAIN` / `LIFT_BREAK` / `LIFT_CLIMB`). The rotors go to
+    maximum and the skid rattles in its own hole without moving, because the
+    beat that says HEAVY is the one where nothing happens. Then the ground lets
+    go: a dirt burst, a camera shove, the deck's tiles are patched back to
+    floor, and the hole the platform was sitting in is uncovered as a ground
+    decal (`imprint.png`) the party watches arrive. Then it flies — up and away
+    along a heading the map rolled at placement, accelerating, shrinking and
+    fading, with the drones nobody woke dragged along underneath on their own
+    ropes. Everything paid past the quota comes back as ONE condensed core
+    (`rift_shard`), dropped in the middle of that imprint, with value, weight
+    and drawn SIZE proportional to the overpayment. That is what overfeeding
+    buys: four slots of loot become one you carry to the next console, at a
+    weight that costs real walk speed. On the LAST pad of the night there is no
+    next console, so no core is paid and the game stops offering to keep
+    loading at all.
+  - Launching the LAST pad carves a new exit on a random edge, kills every
     lantern, puts the whole pack on hunt (`Encontre a saída`, risk), and
     SWEEPS EVERY REMAINING DROP OFF THE MAP. Extraction is what loot was for;
-    with no console left to feed, a bottle in the grass on the way out is only
+    with no console left to load, a bottle in the grass on the way out is only
     a reason to stop moving while the pack hunts. Coins still fall and still
     count — they are gold, not cargo.
   A gold HUD arrow (`/hud/arrow.png`) points at the VOID corridor carved on a
   random map edge — the same dark gap as the camp exit, and its outer end
   FLARES so the way out is a visible hole in the border treeline rather than a
-  crack. The threshold is DRESSED: four torches burning the anomaly's own
-  prism in two ranks of two, and cut paving with light in its seams — the exit
-  opens during the blackout, so those torches are the only thing burning on the
-  map and the only thing that can say "here" rather than "that way". Crossing
+  crack. The threshold is DRESSED: four torches in two ranks of two, and cut
+  paving with light in its seams — the exit opens during the blackout, so those
+  torches and the pads' own are the only thing burning on the map and the only
+  thing that can say "here" rather than "that way". Crossing
   that corridor ends the night — but it does not go home yet. It opens on the
   **STORE**, and the day increments on the way out of THAT.
   Extraction pads are on the
@@ -190,8 +213,8 @@ subtree.
     leave without seeing half the stock. The tables are placed on an even
     rhythm and then pushed off it — four identical stalls at four identical
     intervals is the loudest tell that nobody set this up by hand.
-  - **CURRENCY.** Everything the party fed into the night's anomalies becomes
-    the GROUP's balance on the way in here — nothing else, anywhere, adds to
+  - **CURRENCY.** Everything the party loaded onto the night's platforms
+    becomes the GROUP's balance on the way in here — nothing else, anywhere, adds to
     it. Loot still in the bag is not money, it is loot they failed to extract.
     The balance is the party's and survives the day; `Player.gold` is a
     separate, personal number (coins somebody walked over) and stays that way.

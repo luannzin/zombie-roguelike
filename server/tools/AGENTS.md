@@ -15,7 +15,8 @@ imported by `app/` and never run at request time.
 | `make_textures.py` | generates final pixels | `assets/processed/terrain/` (4 grounds, blend, patch, rock, tree, deadtree, stump, grass, bush, branch, leaves, fern, campfire) |
 | `make_scenery.py` | generates final pixels | `assets/processed/scenery/` (cabin, tent, fence, sign, logs, crate, firepit, blood, tracks, clothes, debris) |
 | `make_vfx.py` | generates final pixels | `assets/processed/vfx/` (summon, kindle, aura, wind, death) |
-| `make_rift.py` | generates final pixels | `assets/processed/rift/` (the extraction structure: scar, pillar, console, charge, crown, emerge, rift ×4 tiers, collapse ×4 tiers, aura; and the exit: torch, torchfire, egress paving) |
+| `make_rift.py` | generates final pixels | `assets/processed/rift/` (the CONSOLE and the threshold kit: torch, torchfire, egress paving, the paid console's aura — plus the retired anomaly sheets, still generated and no longer drawn: scar, pillar, charge, crown, emerge, rift ×4 tiers, collapse ×4 tiers, residue, corrupt) |
+| `make_platform.py` | generates final pixels | `assets/processed/platform/` (the extraction platform: the cargo skid ×2 states, its lift drone ×2 states, rotor and strobe loops, the imprint it leaves, rotor downwash, the ground-break burst) |
 | `make_gore.py` | generates final pixels | `assets/processed/gore/` (6 wound decals worn by a hit body) |
 | `make_loot.py` | generates final pixels | `assets/processed/loot/` (one 16x16 frame per item, including gun icons) |
 | `make_guns.py` | generates final pixels | `assets/processed/guns/` (held side-view, one 18x8 frame per weapon, plus its carry pose) |
@@ -131,87 +132,91 @@ imported by `app/` and never run at request time.
   caret (a wedge crossed by a bar), and a rotating caret reads as a cross or a
   plus rather than as something with a front and a back. Authored pointing
   RIGHT; `ExitGuide` applies the `atan2`.
-- **`make_rift.py` is the EXTRACTION STRUCTURE, and it is the one generator that
-  writes into all three shapes at once**, because the thing it draws is made of
-  three kinds of object: `scar` is a flat DECAL baked into the ground, `pillar`
-  and `console` are bottom-anchored PROPS in the depth sort, and `charge` /
-  `crown` / `emerge` / `rift` are greyscale VFX drawn additively over the
-  darkness. That split is the design, not an accident of filing. Painting the
-  awake pillar's glow into its prop frame would put the beacon UNDER the night
-  multiply, and a beacon you can only see once you are standing next to it is
-  not a beacon.
-  - Its hue is `--scene-beacon` (118 255 196) in `client/src/styles/index.css`,
-    already reserved for this and nothing else. The `BEACON` ramp bakes it into
-    the two prop sheets, because a prop's colour is its material; the VFX sheets
-    stay greyscale and the client tints them, exactly as the kindle roar does
-    with `fire.core`. Move the CSS variable and this ramp moves with it, or the
-    structure grows two greens.
-  - The prop frames are STATES, not variants. `pillar` is
-    `shape * states + state` packed shape-major (four cuts, one per corner,
-    dormant then awake); `console` is idle, armed, READY, spent. The index is
-    authoritative — nothing here may be rolled, unlike a crate kind. READY is
-    the quota-paid console: same lectern, same plunger, same pips, only the
-    light in them moved to the warm end of the prism — so it reads as this
-    console having changed its mind rather than as a different object.
-  - **The overfeed TIERS are baked, and they are separate files.** `rift` and
-    `collapse` each ship four sheets (`rift.png`, `rift-1.png`, …) indexed by
-    `levelFiles` in the manifest. A tier is a remap of the RESOLVED hue index
-    (`LEVEL_HUES`, applied in `Prism.paint`) rather than of the input hues:
-    remapping the inputs would change how shapes blend with each other and
-    every tier would come out a different SHAPE, instead of the same lattice in
-    a different key. Four tiers of a 64-frame loop in one strip would be a
-    16384px bitmap, right on the maximum texture dimension a lot of hardware
-    accepts, which is why they are files and not one sheet.
-  - `collapse` is the one sheet here that hands off to NOTHING. It starts on
-    `rift` frame 0 of its own tier and ends on an EMPTY frame — `build` checks
-    both, and the empty tail matters because a client holding the final frame
-    would otherwise leave a spark burning on a dead pad. Do not fade it at draw
-    time: the sheet is the vanish, and an alpha over it dims the implosion the
-    whole timeline exists to arrive at.
-  - **`collapse` is on a BIGGER FRAME than the loop it continues**
-    (`COLLAPSE_MARGIN_TILES`). The resting sheet is sized for a sphere that
-    breathes; the vanish lurches, shears out a third again its width and throws
-    tears and a departing ring well past that, and on the resting frame all of
-    them were cut off at the edge — the effect read as an animation happening
-    inside an invisible box. The margin is pure PADDING: the anomaly is drawn
-    at the same place relative to the anchor, so a collapse frame cropped back
-    to the resting rectangle is byte-identical to the resting frame, and that
-    crop is how `build` still checks the seam across two frame sizes.
-  - **The exit's art lives here too**, because it is the anomaly's material and
-    not the forest's: `torch` is an unlit PROP, `torchfire` is a looping VFX in
-    the prism anchored on the post's BASE (the frame is taller than the torch
-    and `anchorY` is not its height — the fire needs rows above the post to
-    burn into), and `egress` is a ground DECAL of cut paving. The paving's
-    grout is DASHED and only its interior split runs solid: these decals sit on
-    adjacent tiles, so a continuous seam at every boundary is a bright grid
-    however faint you make it. Its slab bodies go into BOTH halves — the dark
-    grain alone vanished into a night forest and the field read as a net with
-    nothing between the strands.
-  - `aura` belongs to the CONSOLE, not the anomaly, and is anchored on the
-    console's contact. Its hue is a function of POSITION around the band rather
-    than of what threw it — the only effect in the game that works that way,
-    which is what makes it look like nothing else on the map.
-  - **`crownAt` / `burstAt` are where the prop underneath changes state**, as
-    well as where a sound puts its impact. The stone flips dormant → awake on
-    the frame `charge` whites out the capstone, because the flash is what hides
-    the swap; a frame early or late is a visible cut to a different stone.
-  - **A one-shot's last frame IS its loop's frame 0** (`handsOffTo`), and the
-    convergence is structural rather than eyeballed: `charge` ends by calling
-    the same `_crown_paint` that draws `crown` at phase 0, `emerge` ends by
-    calling the same `_anomaly` that draws `rift` with `_rift_state(0.0)`, and
-    the one-shot's own debris reaches zero before t=1. `build` measures both
-    seams and refuses to write if either is non-zero.
-  - The anomaly is drawn as ABSENCE. Additive light cannot subtract, so the dark
-    shell is never drawn — only the cell-shaped openings on an implied sphere
-    are, and the body is the negative space between them. Cells are spread by
-    the GOLDEN ANGLE, not rolled: random points on a sphere clump, the field
-    saturates where they pile up, and the lattice comes out as one white blob
-    with bald patches beside it.
-  - `layout` in the manifest is the arrangement in TILE offsets, in the same
-    coordinate language as `scenery.Piece` (a standing piece's `dy` is its
-    contact row, a decal's is its centre). It ships with the art so nobody
-    re-derives where a corner is. The `light` entry is `kind: 2` — `BEACON` in
-    `server/app/scenery.py`, which reserved that value for exactly this.
+- **`make_rift.py` used to draw the whole extraction point and now draws its
+  DRESSING.** The extraction point is a cargo platform (`make_platform.py`);
+  what survived here are the four sheets that were never about the anomaly,
+  because they are about a THRESHOLD somebody set up:
+  - `console` — the one thing on the map you press, in four STATES, and the
+    index is authoritative: idle, armed, READY, spent. Nothing here may be
+    rolled the way a crate kind is. The verbs behind those states did not
+    change when the structure did — wake it, load it, launch it, and a dead
+    button afterwards — so neither did the sprite. READY is the same lectern,
+    the same plunger and the same pips with the light in them moved to the warm
+    end of the prism, so it reads as this console having changed its mind
+    rather than as a different object.
+  - `torch` (an unlit PROP) and `torchfire` (a looping VFX in the anomaly's
+    prism, anchored on the post's BASE — the frame is taller than the torch,
+    and `anchorY` is not its height, because the fire needs rows above the post
+    to burn into). The exit corridor wears four of these and every extraction
+    pad wears one. **That sharing is the point rather than a saving**: one
+    flame in this game means "a threshold somebody dressed", and the pad is the
+    other end of the errand the exit is.
+  - `aura` — the band a PAID console throws until somebody sends the platform.
+    It belongs to the CONSOLE and is anchored on the console's contact. Its hue
+    is a function of POSITION around the band rather than of what threw it, the
+    only effect in the game that works that way, which is what makes it look
+    like nothing else on the map.
+  - `egress` — cut paving for the exit's threshold. Its grout is DASHED and
+    only its interior split runs solid: these decals sit on adjacent tiles, so
+    a continuous seam at every boundary is a bright grid however faint you make
+    it. Its slab bodies go into BOTH halves — the dark grain alone vanished
+    into a night forest and the field read as a net with nothing between the
+    strands.
+  - **The anomaly's own sheets are still generated and nothing draws them**:
+    `scar`, `pillar`, `charge`, `crown`, `emerge`, `rift` ×4 tiers, `collapse`
+    ×4 tiers, `residue`, `corrupt`. They are kept because the art is worth
+    keeping, and everything the file documents about them still holds — the
+    structural seams (`build` measures `charge`→`crown`, `emerge`→`rift` and
+    `rift`→`collapse` and refuses to write if any is non-zero), the tier files,
+    the empty `collapse` tail, and the anomaly drawn as ABSENCE with its cells
+    spread by the golden angle. Do not delete them, and do not wire them back
+    into the pad: the extraction point is a machine now.
+  - Its hue is `--scene-beacon` (118 255 196) in `client/src/styles/index.css`.
+    The `BEACON` ramp bakes it into the prop sheets, because a prop's colour is
+    its material. Move the CSS variable and this ramp moves with it.
+- **`make_platform.py` is the EXTRACTION POINT, and like `make_rift.py` before
+  it, it writes into all three shapes at once** — because the thing it draws is
+  made of three kinds of object. `platform` and `drone` are bottom-anchored
+  PROPS in the depth sort; `imprint` is a flat DECAL split into a `multiply`
+  half and a `lighter` half; `rotor`, `strobe`, `downwash` and `burst` are
+  greyscale-vocabulary VFX resolved out of an intensity field and drawn
+  additively over the darkness. That split is the design, not an accident of
+  filing.
+  - **`IRON` is imported from `make_rift.py`, not re-typed.** The console you
+    press is bolted beside the deck it operates, and one game has one steel in
+    it. The rest of the palette is local because it is local: `RUST` runs
+    DOWNWARD from seams because water does, `HAZARD` is the one saturated
+    colour on the prop and earns it (black-and-yellow chevrons are how a 16px
+    world says "machinery, stand clear"), and `STATUS` is green because every
+    other light in this game is fire or the beacon's mint and a machine
+    reporting that it is running must be neither.
+  - The prop frames are STATES: `platform` is cold / powered, `drone` is dead /
+    live. The drone's two frames differ by POSTURE rather than by detail —
+    parked it has settled and tipped with its blades hanging, live it sits
+    level with its lights on and **no blades drawn at all**, because the blades
+    are `rotor`'s job and a drone whose props are painted on never spins.
+  - **A rotor is a SMEAR, not a shape.** Drawing blades and stepping them round
+    strobes horribly at any frame rate a sheet can afford, so what is drawn is
+    the disc the blades sweep with one bright arc running round it. Diagonal
+    pairs counter-rotate like a real quad, so the four are never in lockstep.
+  - `imprint` is the one sheet here the player WATCHES ARRIVE: it is uncovered
+    on the frame the skid breaks ground, so it has to land as an answer to
+    "what was under there" at that moment. A soft RECTANGLE, never an ellipse —
+    the thing that stood here had corners, and rounding them off loses the clue
+    that says a machine was parked here rather than that something burned.
+  - `burst` is a one-shot and `build` enforces the rule every one-shot follows:
+    the first and last frames must be empty. A tail with alpha in it leaves
+    dust hanging over a bare imprint forever.
+  - **`layout` ships the arrangement with the art**, in TILE offsets in the
+    same coordinate language as `scenery.Piece` — `server/app/rift.py`'s
+    `_PLATFORM` / `_DECK` / `_DRONES` / `_CONSOLE` / `_TORCH` mirror it exactly
+    and if one moves the other has to. Two entries are in PIXELS and are the
+    exception on purpose: `eyes` (where on the sprite each rope is tied) and
+    `rope.length` (how much line each drone was rigged with). The client draws
+    the rigging from those two numbers, because a rope between a fixed eye and
+    a drone that climbs, strains and then flies off cannot be a sprite — and
+    `rope.length` alone is what sets the hover height, since a drone climbs
+    until its line comes straight and stops there.
 - Shared helpers (`pick`, `hash01`, `clamp01`, `pack`, `rgb`, the ramps) live in
   `make_textures.py` and are imported by the other generators, so every sheet
   keeps one shading vocabulary. Do not copy them.
@@ -306,13 +311,14 @@ imported by `app/` and never run at request time.
   `make_scenery.py`'s tent. A second tent sheet would only be a slightly
   different one, and a store-specific floor would put a rectangle of somewhere
   else in the middle of a forest.
-- **The camp's torch is NOT the rift's.** `make_rift.py` also draws a torch and
-  its fire, but that one burns the anomaly's prism — cyan and violet, because
-  it is marking a hole in the world. This one is warm (`FLAME`), because it is
-  a man's campfire on a stick. Sharing the sheet would say the merchant and the
-  rift are the same kind of thing, which is the one thing the scene must not
-  say. Both are `tinted: false` for the same reason: a flame is a ramp from a
-  dull red root to a white core, and a draw-time multiply is a single hue.
+- **The camp's torch is NOT the threshold torch.** `make_rift.py` also draws a
+  torch and its fire, but that one burns the prism — cyan and violet, because
+  it marks a way through: the exit corridor and every extraction pad. This one
+  is warm (`FLAME`), because it is a man's campfire on a stick. Sharing the
+  sheet would say the merchant's pitch and an extraction point are the same
+  kind of place, which is the one thing the scene must not say. Both are
+  `tinted: false` for the same reason: a flame is a ramp from a dull red root
+  to a white core, and a draw-time multiply is a single hue.
 - **`table.topY` is gameplay geometry living in the art, and that is correct.**
   It is the pixel row a weapon rests on, per table frame, and the four tables
   are deliberately three different heights (a trestle, a board over crates, a
@@ -349,6 +355,7 @@ python tools/make_textures.py
 python tools/make_scenery.py
 python tools/make_vfx.py
 python tools/make_rift.py
+python tools/make_platform.py
 python tools/make_merchant.py
 python tools/make_store.py
 python tools/make_gore.py
@@ -381,6 +388,10 @@ python tools/make_audio.py
   must leave `assets/processed/` byte-identical. That is also how a refactor of
   the shared helpers is proved safe — move a ramp or a field primitive, re-run
   every generator, and nothing under `assets/processed/` may move.
+- `make_platform.py` checks the one rule its own sheets can break: `burst` is a
+  one-shot, so `build` measures its first and last frames' alpha and refuses to
+  write if either carries any. A tail with alpha in it leaves dust hanging over
+  a bare imprint for the rest of the night.
 - `make_rift.py` checks its own seams: it prints the worst channel difference
   at every handoff — `charge`→`crown`, `emerge`→`rift`, and `rift`→`collapse`
   for each tier — and exits non-zero if any is anything but 0. It also refuses

@@ -110,7 +110,7 @@ ITEMS: tuple[ItemDef, ...] = (
     # only ever reaches it through a tag overlap it does not have.
     ItemDef("knife", "Faca", "common", ("combat",), 0.5, 12, "hotbar", droppable=False),
     # WHAT THE ANOMALY GAVE BACK. Never scattered, never rolled, never in a
-    # crate: the only thing that makes one is overfeeding a rift and then
+    # crate: the only thing that makes one is overfeeding a pad and then
     # closing it (`Room._drop_excess`). Its catalog `value` and `weight` are a
     # BASE — the real ones ride on the drop, because what it is worth is
     # whatever the party overpaid. See `Drop.value` and `SHARD_*` below.

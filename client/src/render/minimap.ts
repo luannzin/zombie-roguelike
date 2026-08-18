@@ -185,9 +185,10 @@ export class Minimap {
    *
    * The colour is the pad's own story and matches what the clearing looks
    * like: mint while it is dormant or waking, GOLD once its quota is paid and
-   * the console is waiting to be shut — the same gold the console itself takes
-   * — and a flat dead grey once it is gone. An awake pad breathes; nothing
-   * else on this widget does, so movement alone says "that one is live".
+   * the console is waiting to be pressed again — the same gold the console
+   * itself takes — and a flat dead grey once the platform has flown. A running
+   * pad breathes; nothing else on this widget does, so movement alone says
+   * "that one is live".
    */
   private paintRift(
     rift: Rift,

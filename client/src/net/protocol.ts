@@ -73,9 +73,9 @@ export interface BreakPacket {
 }
 
 /**
- * Press a rift console or feed an open anomaly. `id` is the pad; omitted
- * means nearest in range. Server ignores it unless you are close enough,
- * alive, and the pad will take the press (dormant → open, or open → feed).
+ * Press an extraction console: wake the platform, load it, or launch it.
+ * `id` is the pad; omitted means nearest in range. Server ignores it unless
+ * you are close enough, alive, and the pad will take the press.
  */
 export interface ActivatePacket {
   type: 'activate';
@@ -161,7 +161,7 @@ export interface GameConfig {
   storeBuyTiles?: number;
   /** How far the weapon on that table lifts while somebody is in range, in tiles. */
   storeLiftTiles?: number;
-  /** The activation ceremony's clock. One source: `server/app/rift.py`. */
+  /** The extraction platform's clock. One source: `server/app/rift.py`. */
   rift?: RiftTimingConfig;
   /** Catalog of world loot. Keyed by item key; `frame` indexes the loot atlas. */
   loot?: Record<string, LootItemConfig>;
@@ -271,7 +271,7 @@ export interface LootState {
    *
    * Everything the world scatters is worth what its `LootItemConfig` row says,
    * which is why the catalog ships once in `welcome.config` and the wire only
-   * carries a key. A condensed core out of an overfed rift is worth whatever
+   * carries a key. A condensed core out of an overfed pad is worth whatever
    * was overpaid into it, so those numbers travel with the object instead.
    */
   v?: number;
@@ -481,7 +481,7 @@ export interface MapPayload {
   /**
    * The shop's fixtures. Absent on every map that is not the store.
    *
-   * On the MAP payload rather than the snapshot for the same reason a rift's
+   * On the MAP payload rather than the snapshot for the same reason a pad's
    * geometry is: where the merchant stands and where his tables are is decided
    * once, when the corridor is built. Only what SELLS moves, and that rides
    * `SnapshotMessage.stands`.
@@ -555,56 +555,69 @@ export interface RiftPayload {
   tx: number;
   ty: number;
   plot: number;
+  /** Middle of the deck's footprint: the imprint, the light, the core drop. */
   x: number;
   y: number;
-  /** Contact point the anomaly hovers over. */
-  anomaly: [number, number];
+  /** Contact point of the skid — the row its beams stand on. */
+  deck: [number, number];
   /** The console you press. */
   console: [number, number];
-  /** `[x, y, shape]` per stone. `shape` indexes the pillar sheet's four cuts. */
-  pillars: [number, number, number][];
+  /** The torch that marks the pad. Burning from the moment the map is built. */
+  torch: [number, number];
+  /** Ground contact of each parked drone, front-left / back-right / … */
+  drones: [number, number][];
+  /** Which way the platform leaves, in radians. Rolled by the map. */
+  heading: number;
   lightTiles: number;
   /** Scene-light kind. 2 is `beacon` — see `theme/palette.ts`. */
   lightKind: number;
   state: 'dormant' | 'charging' | 'open' | 'spent';
-  /** Seconds into the activation sequence. */
+  /** Seconds into the sequence. */
   t: number;
-  /** When collapse begins, in the same clock as `t`. Absent while holding. */
+  /** When the launch begins, in the same clock as `t`. Absent while holding. */
   closeAt?: number | null;
+  /** `t` at which each drone started spooling. Its LENGTH is how many woke. */
+  woke?: number[];
   /** Catalog value put into THIS pad, and what it asked for. */
   fed?: number;
   need?: number;
   /** Overfeed tier, 0..3. See `RiftStateRow`. */
   level?: number;
-  /** Quota paid and still holding. */
+  /** Quota paid and still on the ground. */
   ready?: boolean;
 }
 
 /**
- * The activation ceremony, in seconds, straight off `server/app/rift.py`.
+ * The extraction platform's clock, in seconds, straight off
+ * `server/app/rift.py`.
  *
- * The sheet durations inside it (`chargeTime`, `emergeTime`) come from
- * `frames / fps` in `server/tools/make_rift.py`, so the sprite the client plays
- * and the sequence the server ends are timed by one set of numbers. The gaps
- * are the ceremony: the console answers, then the stones catch ONE AT A TIME.
+ * Every number here is a claim about a machine: how long four rotors take to
+ * reach lift speed, how long a rope takes to come straight, how long a tonne
+ * of iron argues with the ground before it lets go. The client animates the
+ * rig off them and the server ends the sequence on them, so there is one
+ * clock.
  */
 export interface RiftTimingConfig {
   consoleLag: number;
-  pillarStagger: number;
-  chargeTime: number;
-  settle: number;
-  emergeAt: number;
-  emergeTime: number;
+  /** One drone waking: rotors to speed, then the climb until its rope is taut. */
+  droneSpool: number;
+  droneRise: number;
+  /** How many corners the rig has. Four. */
+  drones: number;
   openAt: number;
   lightTiles: number;
-  /** The blast that lays the residue: when it starts, how long, how far. */
-  boomAt: number;
-  boomTime: number;
-  boomTiles: number;
   /**
-   * The window, and the way it shuts. NULL means NEVER — the rift stays open
-   * until some future mechanic closes it. Not `Infinity`: that is not valid
-   * JSON and would throw on parse, taking the whole config with it.
+   * The launch, in three beats: straining against ground that will not let go,
+   * breaking free, and the flight out. `liftStrain` is also the moment the
+   * deck's tiles become walkable — the server patches them on that tick.
+   */
+  liftStrain: number;
+  liftBreak: number;
+  liftClimb: number;
+  /**
+   * The window, and the way it ends. NULL means NEVER — the platform waits
+   * until a player launches it. Not `Infinity`: that is not valid JSON and
+   * would throw on parse, taking the whole config with it.
    */
   openTime: number | null;
   collapseAt: number | null;
@@ -953,7 +966,7 @@ export interface WelcomeMessage {
   /** Lamps are dead. The extraction chase; latched until the next welcome. */
   blackout?: boolean;
   /**
-   * THE PARTY'S money — what the group fed into the anomalies, converted on the
+   * THE PARTY'S money — what the group loaded onto the platforms, converted on the
    * way out of the forest. Always sent, even at zero: a client that had to wait
    * for the first change to learn it would draw an empty purse over a corridor
    * full of price tags. `PlayerFull.gold` is the other, personal one: coins
@@ -1030,18 +1043,25 @@ export interface RiftStateRow {
   state: 'dormant' | 'charging' | 'open' | 'spent';
   /** Seconds into the sequence, so a late joiner picks it up in progress. */
   t: number;
-  /** When collapse begins, in the same clock as `t`. */
+  /** When the launch begins, in the same clock as `t`. */
   closeAt?: number | null;
+  /**
+   * `t` at which each drone started spooling, in corner order. Its LENGTH is
+   * how many are awake. Shipped rather than derived because a wake time is the
+   * moment somebody pressed a button, which is not a function of anything the
+   * client holds.
+   */
+  woke?: number[];
   /** Catalog value put into THIS pad, and what it asked for. */
   fed?: number;
   need?: number;
   /**
    * Overfeed tier, 0..3. Derived on the server from `fed` against `need` — the
    * tiers live in `server/app/rift.py` and are not re-derived here, the same
-   * rule the ceremony timings follow.
+   * rule the platform's timings follow.
    */
   level?: number;
-  /** Quota paid and still holding: the console is a close button now. */
+  /** Quota paid and still on the ground: the console is a launch button now. */
   ready?: boolean;
 }
 

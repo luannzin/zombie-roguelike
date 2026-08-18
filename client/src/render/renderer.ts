@@ -26,14 +26,14 @@ import { AtmosphereLayer } from './layers/atmosphere';
 import { DarknessLayer } from './layers/darkness';
 import { crateAnimFrame, drawFootprints, drawSceneryProp } from './layers/scenery';
 import { drawBloodPools } from './layers/corpses';
-import { CorruptionField } from './layers/corruption';
 import {
-  chargeHandoff,
   drawEgressFire,
   drawEgressGround,
+  drawRiftAir,
+  drawRiftFire,
   drawRiftGlow,
+  drawRiftGround,
   drawRiftProp,
-  drawRiftScar,
   egressTorches,
   riftPhase,
   riftStanding,
@@ -42,6 +42,7 @@ import {
   type RiftStanding,
 } from './layers/rift';
 import { loadRift, type RiftAtlas } from './rift';
+import { loadPlatform, type PlatformAtlas } from './platform';
 import {
   drawLootAuras,
   drawLootBeams,
@@ -107,17 +108,13 @@ export class Renderer {
    * which the renderer already has, and nothing outside drawing reads it.
    */
   private readonly disturbance = new DisturbanceField();
-  /**
-   * Each blast's mark on the world, baked per pad. Two draw calls a field
-   * instead of the ~1300 the per-tile version cost.
-   */
-  private readonly corruptions = new Map<string, CorruptionField>();
   private scenery: SceneryAtlas | null = null;
   private lootAtlas: LootAtlas | null = null;
   private gunAtlas: GunAtlas | null = null;
   private vfx: VfxAtlas | null = null;
   private gore: GoreAtlas | null = null;
   private riftAtlas: RiftAtlas | null = null;
+  private platformAtlas: PlatformAtlas | null = null;
   private storeAtlas: StoreAtlas | null = null;
   private merchantAtlas: MerchantAtlas | null = null;
 
@@ -150,6 +147,9 @@ export class Renderer {
     void loadRift().then((atlas) => {
       this.riftAtlas = atlas;
     });
+    void loadPlatform().then((atlas) => {
+      this.platformAtlas = atlas;
+    });
     void loadStore().then((atlas) => {
       this.storeAtlas = atlas;
     });
@@ -168,19 +168,19 @@ export class Renderer {
   }
 
   /**
-   * What every extraction pad is doing this frame.
+   * What every extraction rig is doing this frame.
    *
-   * Computed twice a frame would be harmless — it is arithmetic on one number
-   * per pad — but the FLOOR pass and the LIGHT pass are separated by the whole
-   * entity sort, and having them read one value is what guarantees the marks
-   * the wave has revealed and the anomaly throwing that wave agree about time.
+   * Computed once and read by FOUR passes — the imprint on the floor, the
+   * depth sort, the air pass and the additive light — which are spread across
+   * the whole frame. Recomputing it in each would be cheap arithmetic and
+   * still wrong: the shudder is keyed off wall time, so two calls a frame
+   * would put the skid's sprite and the shadow under it in different places.
    */
   private riftPhasesFor(state: RenderState): { rift: NonNullable<RenderState['world']['rifts'][number]>; phase: RiftPhase }[] {
     const timing = state.config.rift ?? RIFT_FALLBACK;
-    const handoff = chargeHandoff(this.riftAtlas);
     return state.world.rifts.map((rift) => ({
       rift,
-      phase: riftPhase(rift, timing, handoff),
+      phase: riftPhase(rift, timing, this.platformAtlas, state.time),
     }));
   }
 
@@ -197,8 +197,6 @@ export class Renderer {
 
   /** Release cached bitmaps. Safe to call more than once. */
   dispose(): void {
-    for (const field of this.corruptions.values()) field.reset();
-    this.corruptions.clear();
     this.terrain.reset();
     this.darkness.reset();
     this.atmosphere.reset();
@@ -248,38 +246,15 @@ export class Renderer {
       drawFootprints(ctx, state.effects, this.scenery, state.camera);
       drawBloodPools(ctx, state.corpses, this.scenery, state.camera);
     }
-    // The sigil goes on the floor with them: flat, under everybody, and the
-    // only part of the structure that is there before anything happens. The
-    // blast's residue goes on top of it, for the same reason and in the same
-    // pass — it is more of the same material, thrown further.
+    // The hole an extraction platform leaves goes on the floor with them:
+    // flat, under everybody, and revealed on the frame the skid comes free
+    // rather than shipped with the map. Until then there is nothing here —
+    // the ground under a platform is the platform's.
     const riftPhases = this.riftPhasesFor(state);
-    if (riftPhases.length > 0) {
-      const boomReach = (state.config.rift ?? RIFT_FALLBACK).boomTiles * state.world.tileSize;
-      for (const { rift, phase } of riftPhases) {
-        if (phase.waveRadius > 0) {
-          let field = this.corruptions.get(rift.id);
-          if (!field) {
-            field = new CorruptionField();
-            this.corruptions.set(rift.id, field);
-          }
-          const marks = state.residues.find((row) => row.id === rift.id)?.marks ?? [];
-          field.advance(
-            this.riftAtlas,
-            state.world,
-            rift,
-            boomReach,
-            phase.waveRadius,
-            marks,
-          );
-          field.draw(ctx, state.camera);
-        }
-        drawRiftScar(ctx, this.riftAtlas, rift, state.camera);
-      }
-    } else if (this.corruptions.size > 0) {
-      for (const field of this.corruptions.values()) field.reset();
-      this.corruptions.clear();
+    for (const { rift, phase } of riftPhases) {
+      drawRiftGround(ctx, this.platformAtlas, rift, phase, state.camera);
     }
-    // The threshold's paving, with the sigil and the boot prints — it is a
+    // The threshold's paving, with the imprint and the boot prints — it is a
     // mark on the floor and belongs in the same pass they do.
     drawEgressGround(ctx, this.riftAtlas, state.world, state.camera);
     drawDust(ctx, state.effects);
@@ -391,9 +366,10 @@ export class Renderer {
         } else {
           const row = depthProps[prop];
           if (row.rift) {
-            if (this.riftAtlas) {
-              drawRiftProp(ctx, view, this.riftAtlas, row.rift, palette().entity.shadow);
-            }
+            drawRiftProp(
+              ctx, view, this.riftAtlas, this.platformAtlas, row.rift,
+              palette().entity.shadow,
+            );
           } else if (row.store) {
             if (this.storeAtlas && store) {
               drawStoreProp(
@@ -416,6 +392,16 @@ export class Renderer {
       drawEntity(entity, target);
     }
     flushTo(Infinity);
+
+    // The rigging and whatever is hanging off it. AFTER the depth sort and
+    // still in screen space: nothing standing on the floor can plausibly be in
+    // front of a machine hovering over it, and a rope between two points in
+    // the air has no contact row to be sorted by. Before the darkness, so a
+    // platform twenty tiles up dissolves into the night instead of staying
+    // crisp and bright over a blacked-out forest.
+    for (const { phase } of riftPhases) {
+      drawRiftAir(ctx, view, phase, this.platformAtlas, palette().entity.shadow);
+    }
 
     // World space again, and the order here IS the atmosphere:
     //   overgrowth  canopies and ferns close over whoever is standing behind
@@ -450,30 +436,22 @@ export class Renderer {
     drawLootBeams(ctx, this.vfx?.aura ?? null, state.loot, state.time);
     drawWindPuffs(ctx, this.vfx?.wind ?? null, state.effects.winds);
     drawDeathBursts(ctx, this.vfx?.death ?? null, state.effects.deaths);
-    // Motes off the corrupted ground, after the darkness like every other
-    // light: they are coming OUT of the floor, not being lit on it.
-    for (const { rift, phase } of riftPhases) {
-      if (phase.waveRadius > 0) {
-        this.corruptions.get(rift.id)?.drawMotes(
-          ctx, state.world.tileSize, phase.waveRadius, state.time, state.camera,
-        );
-      }
-    }
-    // The exit's torches. Before the pads, because a rift that is still open
-    // is the brighter thing and should sit over them — and once every rift is
-    // shut these four are the only fire left on the map anyway.
+    // Every torch on the map, the exit's and the pads'. Before the rigs,
+    // because a platform under power is the brighter thing and should sit over
+    // them — and once every pad has flown these are the only fire left burning
+    // anyway.
     drawEgressFire(ctx, this.riftAtlas, state.world.egress, state.time);
-    // The structure's own light, last of the additive passes: the stones'
-    // crowns and the anomaly are the brightest things on the map once they are
-    // lit, and nothing after this may be drawn under them.
+    drawRiftFire(ctx, this.riftAtlas, state.world.rifts, state.time);
+    // The rigs' own light, last of the additive passes: rotor wash, the burst
+    // and four sets of nav lights are the brightest things on the map once a
+    // platform is running, and nothing after this may be drawn under them.
     if (riftPhases.length > 0) {
       const beacon = palette().scene.beacon;
       const beaconCss = `rgb(${beacon[0]} ${beacon[1]} ${beacon[2]})`;
       for (const { rift, phase } of riftPhases) {
         drawRiftGlow(
-          ctx, this.riftAtlas, rift, phase,
-          beaconCss,
-          state.world.tileSize, state.time,
+          ctx, rift, phase, this.riftAtlas, this.platformAtlas,
+          beaconCss, state.world.tileSize, state.time,
         );
       }
     }

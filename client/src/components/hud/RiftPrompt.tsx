@@ -1,12 +1,13 @@
 /**
  * Interact prompt on an extraction pad. One use of `Tooltip`.
  *
- * FOUR THINGS THE BUTTON CAN BE SAYING, and they are not interchangeable:
- * open it, wait (another pad is already awake), feed it, or SHUT it. The last
- * one is the one that matters most and the one a player will not guess — the
- * quota is paid, the console has gone gold, and pressing now ends the pad
- * rather than adding to it. Everything fed past the quota before that press
- * comes back as one condensed core when the anomaly goes.
+ * FIVE THINGS THE BUTTON CAN BE SAYING, and they are not interchangeable: wake
+ * the platform, wait (another pad is already running), load it, keep loading
+ * past the quota, or SEND it. The last one is the one that matters most and
+ * the one a player will not guess — the quota is paid, the console has gone
+ * gold, and pressing now flies the platform out rather than adding to it.
+ * Everything loaded past the quota before that press comes back as one
+ * condensed core once the skid is gone.
  *
  * Mounted only while in reach.
  */
@@ -25,7 +26,7 @@ export function RiftPrompt({ prompt }: RiftPromptProps) {
   if (prompt.mode === 'open') {
     return (
       <Tooltip anchor="rift">
-        Aperte <TooltipKey>E</TooltipKey> para abrir a fenda
+        Aperte <TooltipKey>E</TooltipKey> para ligar a plataforma
       </Tooltip>
     );
   }
@@ -33,7 +34,7 @@ export function RiftPrompt({ prompt }: RiftPromptProps) {
   if (prompt.mode === 'busy') {
     return (
       <Tooltip anchor="rift">
-        <span className="text-hp-low">Outra fenda está aberta</span>
+        <span className="text-hp-low">Outra plataforma está ligada</span>
       </Tooltip>
     );
   }
@@ -43,18 +44,19 @@ export function RiftPrompt({ prompt }: RiftPromptProps) {
   if (prompt.mode === 'close') {
     return (
       <Tooltip anchor="rift" end={count}>
-        Aperte <TooltipKey>E</TooltipKey> para fechar a fenda
+        Aperte <TooltipKey>E</TooltipKey> para lançar a plataforma
       </Tooltip>
     );
   }
 
   // Past the quota with a bag that still has something in it. The press is the
-  // same key doing the same verb — the pad is just no longer counting — so the
-  // line says what it BUYS rather than repeating the instruction.
+  // same key doing the same verb — the platform is just no longer counting —
+  // so the line says what it BUYS rather than repeating the instruction. The
+  // level is the number of drones that will be carrying it out.
   if (prompt.mode === 'over') {
     return (
       <Tooltip anchor="rift" end={count}>
-        Aperte <TooltipKey>E</TooltipKey> para saturar a fenda
+        Aperte <TooltipKey>E</TooltipKey> para sobrecarregar a plataforma
         <span className="text-ink-muted"> · nível {prompt.level}</span>
       </Tooltip>
     );
@@ -70,7 +72,7 @@ export function RiftPrompt({ prompt }: RiftPromptProps) {
 
   return (
     <Tooltip anchor="rift" end={count}>
-      Aperte <TooltipKey>E</TooltipKey> para alimentar a fenda
+      Aperte <TooltipKey>E</TooltipKey> para carregar a plataforma
     </Tooltip>
   );
 }

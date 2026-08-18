@@ -24,10 +24,10 @@ game's scale.
 | `weapons.py` | weapon catalog (glock/deagle/famas/ak47/awp + the knife), hotbar, per-shot stats, the melee combo |
 | `crates.py` | breakable boxes/barrels: extract from scenery, smash, drop roll |
 | `corpses.py` | dead enemies left on the floor: persist until the map swaps |
-| `rift.py` | extraction pads: day-scaled count, plot, activation, per-pad quota, overfeed tiers, hand-shut collapse |
+| `rift.py` | extraction pads: day-scaled count, plot, the cargo platform and its four lift drones, per-pad quota, overfeed tiers, hand-launched liftoff |
 | `entrance.py` | forest edge VOID corridor, emerge formation, staggered seal (`seal_to`), `bounds` for a map with two corridors, extraction `open_exit` (flared at the border) |
 | `quests.py` | run objectives: progress, done, optional risk; the HUD mirrors this list |
-| `inventory.py` | the pocket: slots, stacking, weight, `spend_toward` / `spend_all` for the fenda, per-slot value/weight overrides |
+| `inventory.py` | the pocket: slots, stacking, weight, `spend_toward` / `spend_all` for the extraction platform, per-slot value/weight overrides |
 | `world.py` | tile grid, tile alphabet, collision queries |
 | `maps.py` | hand-authored maps (`from_ascii`, `from_rects`) |
 | `mapgen.py` | procedural forest, seeded and connectivity-checked |
@@ -145,11 +145,11 @@ game's scale.
   the HUD mirrors it (`have`/`need`/`done`/`risk`/`gold`) and never invents a row.
   Dropping a quest from the list is how it leaves the screen. Forest chain:
   find every pad (`extract`, `0/N`, offered the tick the entrance goes
-  `gone`, ticked when a console is pressed), feed the open anomaly
+  `gone`, ticked when a console is pressed), load the running platform
   (`feed`, catalog gold from the pocket — the row carries `gold` so the
   HUD draws the coin), then run for the carved exit (`exit`, `risk`).
-  There is only ever ONE feed row, because there is only ever one awake pad:
-  it carries THAT pad's quota, is dropped when the pad is shut, and a fresh
+  There is only ever ONE load row, because there is only ever one awake pad:
+  it carries THAT pad's quota, is dropped when the pad launches, and a fresh
   one goes up at the next console. Its `have` is allowed PAST `need` while
   staying done — the overshoot is the size of the core coming out the far
   end, and clamping it hides the only number that says so.
@@ -157,27 +157,46 @@ game's scale.
   the same shape as the camp walk-out. VOID is walkable only while
   `world.egress` is set; camp and the forest arrival stay solid. The
   quest ticks when a living player stands on VOID past the FLOOR mouth
-  (`EXIT_CROSS_TILES`), not on proximity to the threshold. Shutting the LAST
+  (`EXIT_CROSS_TILES`), not on proximity to the threshold. Launching the LAST
   pad opens egress, blackout, and panic-hunt.
   Crossing the corridor takes the party to the SHOP (`Room.enter_store`), not
   home. Do not auto-remove a row on complete — ticking `need/need` is the
   check. Camp has none.
-- **One pad at a time, and the PLAYER shuts it.** `Room._awake_rift` is the
-  gate: a dormant console refuses while another anomaly is charging or open.
+- **The extraction point is a CARGO PLATFORM, and `rift.py` is its historical
+  name.** An abandoned iron skid with four dead lift drones parked at its
+  corners on ropes, a console in front of it, and a torch beside that console
+  burning all night. Waking it starts one drone; each overfeed tier starts
+  another (`Rift.awake` is `1 + level`, capped at four), so `Rift.woke` is a
+  list of WAKE TIMES rather than a count — the client animates each machine off
+  its own entry, and two drones woken by one press are held apart by
+  `DRONE_LAG` so they do not spool in lockstep. `_stamp` makes the deck's tiles
+  `LOW`: the party may not get on the platform, but a five-by-two block of
+  sight-blocker in the one clearing they fight in would be worse than the thing
+  it prevents.
+- **One pad at a time, and the PLAYER launches it.** `Room._awake_rift` is the
+  gate: a dormant console refuses while another platform is charging or open.
   `activate_rift` is a four-way switch on the pad's state plus what is in the
-  pocket — open it, feed toward the quota, keep feeding past it, or shut it
+  pocket — wake it, load toward the quota, keep loading past it, or launch it
   with an empty bag. The bag is what disambiguates the last two on purpose:
   overfeeding is only a real choice if it is repeatable, and a press that
-  closed the pad the instant the quota landed would make the tiers
+  launched the pad the instant the quota landed would make the tiers
   unreachable. `Rift.begin_collapse` banks the overpayment and
   `Room._drop_excess` pays it out on the tick the pad reaches SPENT, IN THE
-  MIDDLE OF THE SIGIL — where the anomaly was hanging a second ago, because
-  the core is the thing that would not fit through the hole, not a bag somebody
-  put down near the console.
+  MIDDLE OF THE IMPRINT — on the ground the skid was sitting on, because the
+  core is the thing that did not fit aboard, not a bag somebody put down near
+  the console.
+- **The deck's tiles are handed back on the tick the skid breaks ground.**
+  `Room._free_deck` fires off `Rift.lifted` (`close_at + BREAK_AT`), patches
+  those tiles to `FLOOR` on the wire and rebuilds the navigator. It is a
+  separate beat from SPENT and seconds earlier on purpose: the map physically
+  changes shape when the platform comes off it, and a party that watches one
+  fly away and then walks into the hole it left is the only version of this
+  that is not a lie. `Rift.freed` rides the geometry payload so a rehydrate
+  does not re-free ground that is already free.
 - **`_close_extraction` sweeps the ground.** `Room._clear_loot` empties
-  `drops` on the tick the last pad is shut, alongside the egress carve and the
-  blackout — one beat, one change of what the map is for. Loot existed to feed
-  a console and there is no console left, so the run home is a RUN and not a
+  `drops` on the tick the last pad is launched, alongside the egress carve and
+  the blackout — one beat, one change of what the map is for. Loot existed to
+  load a platform and there is no platform left, so the run home is a RUN and not a
   shopping trip with a horde behind it. Coins are NOT swept: they fall from
   kills on the way out and they are gold rather than cargo. The empty list
   rides the next snapshot (`payload["loot"] = []` when `loot is not None`, so
@@ -185,23 +204,23 @@ game's scale.
   `replaceLoot` clears on it.
 - **A core only exists while there is a next console to carry it to.**
   `Room._pads_left` (any pad still DORMANT) gates both halves of that rule:
-  `_drop_excess` pays nothing on the last rift of the night, and
-  `activate_rift` stops offering to keep feeding there — paid means shut,
+  `_drop_excess` pays nothing on the last pad of the night, and
+  `activate_rift` stops offering to keep loading there — paid means launched,
   whatever you are carrying. Without the second half the first is a trap: E on
-  a paid pad feeds while the pocket has anything, so a party would empty a full
-  bag into a rift that cannot pay it back on the way out.
+  a paid pad loads while the pocket has anything, so a party would empty a full
+  bag onto a platform that cannot pay it back on the way out.
 - **`Drop` and `Slot` carry per-item overrides, and exactly one thing sets
   them.** Everything the world scatters is worth what its catalog row says,
   which is why the catalog ships once in `welcome.config` and the wire carries
-  a key. A condensed core out of an overfed rift is worth whatever was
+  a key. A condensed core out of an overfed pad is worth whatever was
   overpaid, so `value` / `weight` / `scale` travel WITH the object — through
   the ground, the bag, a toss back onto the ground, and the tooltip. A slot
   carrying them never stacks: two cores worth 40 and 300 are not two of a
   thing, and merging them would have to invent a number for the pair.
 - **THE STORE IS WHERE MONEY IS CREATED, and it is the only place.**
   `Room.enter_store` banks `sum(rift.fed)` into `Room.balance` on the way out
-  of the forest — so a night is worth exactly what the party FED INTO THE
-  ANOMALIES, which is the one number that measures the thing the night was
+  of the forest — so a night is worth exactly what the party LOADED ONTO THE
+  PLATFORMS, which is the one number that measures the thing the night was
   about. Loot still in the bag is not money; it is loot they failed to
   extract, and `_clear_loot` already said so. Nothing else anywhere adds to
   the balance, and no run accumulates it as it goes.
@@ -445,9 +464,10 @@ game's scale.
   until a lantern reaches them, which means a map full of stories nobody walks
   past; one lit lamp at a cabin door is visible from across the dark and the
   player CHOOSES to go to it. Radii stay small — these are things you can see
-  from far away, not areas of safety. `BEACON` is the extraction pad: pushed
-  onto the same `lights` list when a rift opens, taken off when it collapses.
-  The lighting has no idea it is special.
+  from far away, not areas of safety. `BEACON` is the extraction pad — its
+  torch from the moment the map is built, and its deck as well once the console
+  is pressed, both pushed onto the same `lights` list. The lighting has no idea
+  either is special.
 - The camp draws from `CAMP_POOL`, not `SCENES`: firewood and a sign, nothing
   that bled, and no crate pieces. It is the one non-hostile zone, and a last
   stand outside the tent the party is about to leave from is a promise the
@@ -455,7 +475,7 @@ game's scale.
   mouth — the same two places the decoration mask and the walk-out already own.
 - VOID (`world.VOID`) is a winding path of forest floor between trees.
   Camp and the forest arrival keep it solid — players bounce, and only the
-  walk-out may puppet a body onto it. Once the last pad is shut, `egress` opens
+  walk-out may puppet a body onto it. Once the last pad has flown, `egress` opens
   and VOID on that map becomes the walkable extraction corridor: find the
   dark gap on the edge and cross it. The carve wanders and frays; the
   client paints ground and crushes a darkness falloff around it.

@@ -19,6 +19,8 @@ output the game actually loads.
   `zombie-brute/`, `zhat-*/`, `zcloth-*/`, `*-death/` (collapse timelines),
   `coin/`, `backpack/`
   (`sheet.png` + `manifest.json`), `terrain/`, `scenery/`, `vfx/`, `gore/`,
+  `rift/` (the extraction console and the threshold torches), `platform/` (the
+  extraction platform and its lift drones), `merchant/`, `store/`,
   `loot/`, `guns/` (held side-view), `hud/`, and `audio/` (16-bit mono wavs +
   `manifest.json`) — the folder is art too,
   generated the same way, and `/audio/shot-0.wav` is served like any sprite.

@@ -11,7 +11,7 @@ Same item key stacks in the first matching slot. A later upgrade grows
 ONE EXCEPTION TO THE CATALOG, and it is the reason `Slot` carries numbers at
 all. Everything the world scatters is worth exactly what its catalog row says,
 so a stack only ever needs a key and a count. A condensed core out of an
-overfed rift is worth whatever was overpaid into that rift, so it arrives with
+overfed pad is worth whatever was overpaid into that pad, so it arrives with
 its own value, weight and drawn size. Those travel on the slot, and a slot
 carrying them NEVER STACKS — two cores worth 40 and 300 are not two of a thing,
 and merging them would have to invent a number for the pair.
@@ -117,7 +117,7 @@ class Inventory:
 
         Slot order, one unit at a time. The last item may overshoot — a ring
         worth 70 still goes in when 10 is left, because extraction does not
-        make change. Guns stay on the belt: they are not what the fenda eats.
+        make change. Guns stay on the belt: they are not what the platform carries.
         """
         if remaining <= 0:
             return 0
@@ -145,7 +145,7 @@ class Inventory:
         return spent
 
     def spend_all(self) -> int:
-        """Empty every bag slot into the rift. Returns the value that went in.
+        """Empty every bag slot onto the platform. Returns the value that went in.
 
         What "alimentar além do limite" runs through: `spend_toward` stops at
         the quota by design, and past the quota there is no number to stop at.

@@ -4,16 +4,16 @@ The HUD is a MIRROR of this list: progress as numbers, a done flag, an optional
 risk mark, and dropping a row is how a task leaves the screen. The client never
 invents a quest and never ticks one off on its own.
 
-The first objective of a forest is finding the extraction point — the anomaly
+The first objective of a forest is finding the extraction point — the platform
 `rift.py` placed. It appears after the entrance seals, which is the moment the
 party knows they cannot leave the way they came. Pressing a console unlocks
-feeding (`gold` on the row, so the HUD shows the coin); paying that pad's quota
-arms its console, and shutting it by hand collapses the pad. When the last one
-is shut the way out opens.
+loading (`gold` on the row, so the HUD shows the coin); paying that pad's quota
+arms its console, and pressing again launches the platform. When the last one
+is gone the way out opens.
 
-THE FEED ROW IS PER-PAD AND IT MAY OVERSHOOT. Only one anomaly is ever awake,
-so there is only ever one feed row, carrying that pad's quota; it is dropped
-when the pad is shut and a fresh one goes up at the next console. `have` is
+THE LOAD ROW IS PER-PAD AND IT MAY OVERSHOOT. Only one platform is ever awake,
+so there is only ever one load row, carrying that pad's quota; it is dropped
+when the pad launches and a fresh one goes up at the next console. `have` is
 deliberately allowed past `need` while it stays done — the overshoot is what
 the party is choosing to build, and clamping it would hide the number that says
 how big the core coming out the other side will be.
@@ -26,7 +26,7 @@ from dataclasses import dataclass
 EXTRACT = "extract"
 EXTRACT_LABEL = "Encontre o ponto de extração"
 FEED = "feed"
-FEED_LABEL = "Alimente a fenda"
+FEED_LABEL = "Carregue a plataforma"
 EXIT = "exit"
 EXIT_LABEL = "Encontre a saída"
 #: The store's row. Same id as the forest's, because it is the same mechanic —

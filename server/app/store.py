@@ -2,7 +2,7 @@
 
 A run is a loop — prepare at the camp, go out, extract, SPEND, go again — and
 this is the fourth beat. The party walks out of a forest with the night's take
-already converted (see `Room.enter_store`: everything fed into the anomalies is
+already converted (see `Room.enter_store`: everything loaded onto the platforms is
 the group's balance now), arrives at the west end of a long glade, and the way
 back seals behind them exactly as the forest's did. A trader has pitched in the
 middle of it. His tables are in front of him with one weapon on each. The east

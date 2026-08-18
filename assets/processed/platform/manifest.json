@@ -1,0 +1,151 @@
+{
+  "tile": 16,
+  "seed": 1337,
+  "plot": {
+    "widthTiles": 7,
+    "heightTiles": 7
+  },
+  "props": {
+    "platform": {
+      "file": "platform.png",
+      "frameWidth": 80,
+      "frameHeight": 64,
+      "frames": 2,
+      "shapes": 1,
+      "states": 2
+    },
+    "drone": {
+      "file": "drone.png",
+      "frameWidth": 24,
+      "frameHeight": 16,
+      "frames": 2,
+      "shapes": 1,
+      "states": 2,
+      "rotorY": 9.0
+    }
+  },
+  "decals": {
+    "imprint": {
+      "file": "imprint.png",
+      "litFile": "imprint-lit.png",
+      "frameWidth": 80,
+      "frameHeight": 48,
+      "frames": 1
+    }
+  },
+  "effects": {
+    "rotor": {
+      "file": "rotor.png",
+      "frameWidth": 28,
+      "frameHeight": 12,
+      "frames": 8,
+      "fps": 24,
+      "anchorY": 6.0,
+      "loop": true,
+      "tinted": false
+    },
+    "strobe": {
+      "file": "strobe.png",
+      "frameWidth": 24,
+      "frameHeight": 16,
+      "frames": 8,
+      "fps": 8,
+      "anchorY": 16,
+      "loop": true,
+      "tinted": false
+    },
+    "downwash": {
+      "file": "downwash.png",
+      "frameWidth": 112,
+      "frameHeight": 56,
+      "frames": 12,
+      "fps": 12,
+      "anchorY": 28.0,
+      "loop": true,
+      "tinted": false
+    },
+    "burst": {
+      "file": "burst.png",
+      "frameWidth": 128,
+      "frameHeight": 64,
+      "frames": 12,
+      "fps": 18,
+      "anchorY": 32.0,
+      "loop": false,
+      "tinted": false
+    }
+  },
+  "layout": {
+    "platform": {
+      "dx": 3.5,
+      "dy": 5.0
+    },
+    "footprint": {
+      "x": 1,
+      "y": 3,
+      "w": 5,
+      "h": 2
+    },
+    "drones": [
+      {
+        "dx": 0.5,
+        "dy": 5.0,
+        "corner": 0
+      },
+      {
+        "dx": 6.5,
+        "dy": 3.0,
+        "corner": 1
+      },
+      {
+        "dx": 6.5,
+        "dy": 5.0,
+        "corner": 2
+      },
+      {
+        "dx": 0.5,
+        "dy": 3.0,
+        "corner": 3
+      }
+    ],
+    "eyes": [
+      {
+        "dx": -30.8,
+        "dy": -37.0
+      },
+      {
+        "dx": 27.2,
+        "dy": -59.0
+      },
+      {
+        "dx": 30.8,
+        "dy": -37.0
+      },
+      {
+        "dx": -27.2,
+        "dy": -59.0
+      }
+    ],
+    "rope": {
+      "length": 67.2
+    },
+    "imprint": {
+      "dx": 3.5,
+      "dy": 4.0
+    },
+    "console": {
+      "dx": 3.5,
+      "dy": 6.0
+    },
+    "torch": {
+      "dx": 1.0,
+      "dy": 6.0
+    },
+    "light": {
+      "dx": 3.5,
+      "dy": 4.0,
+      "radiusTiles": 4.0,
+      "kind": 2
+    }
+  }
+}

@@ -593,33 +593,33 @@ class Room:
         )
 
     def activate_rift(self, pid: str, rift_id: str | None = None) -> None:
-        """Press a console, feed an open anomaly, or shut a paid one.
+        """Wake a platform, load an awake one, or launch a paid one.
 
         FOUR PRESSES, ONE BUTTON, and which one you get is the pad's state
         and what is in your pocket:
 
-          dormant, nothing else awake   open it (once only, not reversible)
+          dormant, nothing else awake   wake it (once only, not reversible)
           dormant, another pad awake    nothing. One at a time.
-          open, quota not yet paid      feed the pocket toward the quota
+          open, quota not yet paid      load the pocket toward the quota
           open, quota paid, pads left,
-            bag has something           KEEP feeding. Every press past the
-                                        quota walks the anomaly up a tier and
-                                        grows the core waiting at the far end.
-          open, quota paid, otherwise   SHUT it. The console is gold by now.
+            bag has something           KEEP loading. Every press past the
+                                        quota wakes another drone and grows
+                                        the core waiting at the far end.
+          open, quota paid, otherwise   LAUNCH it. The console is gold by now.
 
         THE BAG IS WHAT DISAMBIGUATES THE MIDDLE TWO, and it has to be
-        something rather than a second key: "alimentar além do limite" is only
-        a real choice if it is repeatable, and a press that closes the pad the
-        instant the quota lands makes the tiers unreachable — you would only
-        ever see whichever one the last item happened to overshoot into.
+        something rather than a second key: "carregar além do limite" is only
+        a real choice if it is repeatable, and a press that launches the pad
+        the instant the quota lands makes the tiers unreachable — you would
+        only ever see whichever one the last item happened to overshoot into.
         Reading the pocket gives both: the pad takes everything you have, and
-        when you have nothing left to give it, the same press lets you out.
+        when you have nothing left to give it, the same press sends it.
 
-        THE LAST PAD OF THE NIGHT NEVER OFFERS TO KEEP FEEDING. An overpayment
+        THE LAST PAD OF THE NIGHT NEVER OFFERS TO KEEP LOADING. An overpayment
         only comes back while there is another console to carry it to
-        (`_drop_excess`), so on the final rift saturating it buys nothing and
+        (`_drop_excess`), so on the final pad saturating it buys nothing and
         the bag-reading rule would quietly eat a full pocket on the way out.
-        Paid means shut there, whatever you are carrying.
+        Paid means launched there, whatever you are carrying.
 
         Measured from the FEET, the same way collect and smash are, so the
         prompt and the check agree.
@@ -647,8 +647,8 @@ class Room:
     def _awake_rift(self) -> Rift | None:
         """The pad currently answering, if any.
 
-        ONE AT A TIME is the rule the whole night hangs off. Three consoles
-        open at once turns a night into an errand list the party splits up and
+        ONE AT A TIME is the rule the whole night hangs off. Three platforms
+        awake at once turns a night into an errand list the party splits up and
         does in parallel; one at a time makes it a route, and makes the
         overpayment you carry forward worth carrying.
         """
@@ -681,10 +681,9 @@ class Room:
         return nearest
 
     def _press_console(self, player: Player, target: Rift) -> None:
-        target.state = rift.CHARGING
-        target.elapsed = 0.0
+        target.press()
         self._rift_dirty = True
-        # It is LOUD. Stones lighting up in the dark is the largest thing
+        # It is LOUD. A lift rotor spinning up in the dark is the largest thing
         # that has happened on this map, and every creature that could hear a
         # crate come apart can hear this — which is the cost of calling for a
         # ride, and the reason the walk to the console is a decision.
@@ -701,8 +700,8 @@ class Room:
     def _note_rift_opened(self, target: Rift) -> None:
         """Extract ticks on the console press, not on walking nearby.
 
-        That is when "Alimente a fenda" appears: the pad is answering, and
-        its quota is now the job. Standing in the clearing is not enough.
+        That is when the load row appears: the platform is turning, and its
+        quota is now the job. Standing in the clearing is not enough.
         """
         if not target.found:
             target.found = True
@@ -716,13 +715,14 @@ class Room:
         self.offer_feed_quest(target)
 
     def _feed_rift(self, player: Player, target: Rift) -> None:
-        """Spend the pocket into this open pad. Guns stay on the belt.
+        """Load the pocket onto this platform. Guns stay on the belt.
 
         Under the quota this pays TOWARD it and stops on the nose, so a bag
         full of relics is not swallowed whole to settle a bill of 30. Once
         the quota is met the pad is `ready` and this is not reached — a second
-        press shuts it (`_shut_rift`), and only a player who deliberately keeps
-        feeding an armed pad goes past the line, which is the `over` path.
+        press launches it (`_shut_rift`), and only a player who deliberately
+        keeps loading an armed pad goes past the line, which is the `over`
+        path.
         """
         remaining = target.need - target.fed
         if remaining <= 0:
@@ -732,6 +732,10 @@ class Room:
         if paid <= 0:
             return
         target.fed += paid
+        # An overfeed tier is a DRONE, so the tier landing has to wake one here
+        # and now — the wake time is the moment somebody pressed a button and
+        # is not derivable from anything the client holds.
+        target.sync_drones()
         self._rift_dirty = True
         self._roster_dirty = True
         self._sync_feed_quest(target)
@@ -745,11 +749,11 @@ class Room:
         )
 
     def _shut_rift(self, target: Rift) -> None:
-        """A paid pad, closed by hand. Starts the vanish; banks the overpayment.
+        """A paid pad, launched by hand. Starts the lift; banks the overpayment.
 
-        The DROP is not made here — it is made when the anomaly is actually
-        gone (`step_rift`), because the core is what would not fit through the
-        hole and it has to land on ground the party can see it land on.
+        The DROP is not made here — it is made when the skid is actually gone
+        (`step_rift`), because the core is what did not fit aboard and it has
+        to land on ground the party can see it land on.
         """
         if not target.begin_collapse():
             return
@@ -760,7 +764,7 @@ class Room:
             self._close_extraction()
 
     def _all_pads_shut(self) -> bool:
-        """Every pad on the map either gone or on its way out."""
+        """Every pad on the map either gone or already climbing away."""
         return all(
             row.state == rift.SPENT or row.close_at is not None
             for row in self.rifts
@@ -770,7 +774,7 @@ class Room:
         """Another console still waiting to be found — "faltam extrações".
 
         DORMANT is the test, not "not spent": a pad that is awake is the one
-        being worked on and a pad that is closing is finished with. What this
+        being worked on and a pad that is lifting is finished with. What this
         answers is whether there is anywhere left to carry a core to, which is
         the only thing the core exists for.
         """
@@ -808,34 +812,33 @@ class Room:
         be a souvenir rather than a decision.
 
         `Room.activate_rift` is the other half of that rule. On the last pad it
-        stops offering to keep feeding at all, because saturating a rift that
-        cannot pay you back is a way to lose a full bag to a keypress.
+        stops offering to keep loading at all, because saturating a platform
+        that cannot pay you back is a way to lose a full bag to a keypress.
         """
         value = target.excess
         target.excess = 0
         if value <= 0 or not self._pads_left():
             return
         worth, kg, scale = loot.shard_stats(value)
-        # IN THE MIDDLE OF THE SIGIL, exactly where the anomaly was hanging a
-        # second ago. This is the thing that would not fit through the hole, so
-        # it lands where the hole was — not scattered onto some walkable tile
-        # near the console like a dropped bag. The plot's centre is always
-        # cleared to floor by `rift._stamp`, so the exact point is legal;
-        # `place_near` is only the fallback for a map that somehow is not.
-        pos: tuple[float, float] | None = (target.anomaly_x, target.anomaly_y)
-        tx = int(target.anomaly_x // TILE_SIZE)
-        ty = int(target.anomaly_y // TILE_SIZE)
+        # IN THE MIDDLE OF THE IMPRINT, on the ground the platform was sitting
+        # on. This is the thing that did not fit aboard, so it lands in the
+        # hole the skid left rather than being scattered onto some walkable
+        # tile near the console like a dropped bag. Those tiles were handed
+        # back to the floor by `_free_deck` seconds ago, so the exact point is
+        # legal; `place_near` is only the fallback for a map that somehow is
+        # not.
+        pos: tuple[float, float] | None = (target.x, target.y)
+        tx = int(target.x // TILE_SIZE)
+        ty = int(target.y // TILE_SIZE)
         tiles = self.world.tiles
         if not (0 <= ty < len(tiles) and 0 <= tx < len(tiles[0]) and tiles[ty][tx] == FLOOR):
             occupied = [
                 (drop.x / TILE_SIZE - 0.5, drop.y / TILE_SIZE - 0.5)
                 for drop in self.drops.values()
             ]
-            pos = loot.place_near(
-                tiles, target.anomaly_x, target.anomaly_y, occupied, random.Random()
-            )
+            pos = loot.place_near(tiles, target.x, target.y, occupied, random.Random())
         if pos is None:
-            pos = (target.anomaly_x, target.anomaly_y)
+            pos = (target.x, target.y)
         drop_id = self._next_drop_id()
         self.drops[drop_id] = Drop(
             id=drop_id, key=loot.SHARD_KEY, x=pos[0], y=pos[1],
@@ -844,9 +847,9 @@ class Room:
         self._loot_dirty = True
 
     def _close_extraction(self) -> None:
-        """Every pad shut: the exit opens and the night hunts.
+        """Every pad gone: the exit opens and the night hunts.
 
-        The pads are already collapsing on their own clocks — this does not
+        The pads are already climbing away on their own clocks — this does not
         touch them. What it does is the map-level consequence, and it is the
         one moment in a run where the world changes shape around the party.
         """
@@ -871,8 +874,8 @@ class Room:
 
         This runs BEFORE the last pad reaches SPENT, and that is safe rather
         than lucky: a pad only pays out a condensed core while another console
-        is still waiting (`_drop_excess`), so the final rift never drops one
-        into a map that was just cleared.
+        is still waiting (`_drop_excess`), so the final platform never drops
+        one into a map that was just cleared.
         """
         if not self.drops:
             return
@@ -1234,18 +1237,43 @@ class Room:
     def step_rift(self, dt: float) -> None:
         """Run every pad's sequence. Marks dirty only on a transition.
 
-        SPENT is where an overpayment turns into an object. Not on the press
-        that shut the pad: the core is what the anomaly could not swallow, so
-        it appears when the anomaly does not — on the frame the sphere finishes
-        imploding, on ground somebody is standing on watching it happen.
+        TWO THINGS HAPPEN OFF THIS CLOCK and they are half a second apart.
+        `_free_deck` is the platform breaking ground: the tiles it was standing
+        on stop being a wall the instant it is no longer standing on them, and
+        that has to be a tile patch on the wire because the map physically
+        changed shape. SPENT is later — the skid is out of sight, and that is
+        where an overpayment turns into an object, on ground the party is
+        standing next to watching it land.
         """
         for row in self.rifts:
-            if not row.step(dt):
+            changed = row.step(dt)
+            if self._free_deck(row):
+                changed = True
+            if not changed:
                 continue
             self._rift_dirty = True
             if row.state == rift.SPENT:
                 self._drop_excess(row)
             self.world.rifts = [item.geometry_payload() for item in self.rifts]
+
+    def _free_deck(self, target: Rift) -> bool:
+        """Hand the platform's tiles back to the floor. True the tick it fires.
+
+        The deck is solid the whole time the skid is on it and walkable the
+        moment it is not — a party that watches a platform fly away and then
+        walks into the hole it left is the only version of this that is not a
+        lie. The patches ride the next snapshot; the navigator is rebuilt
+        because a hole opening in the middle of a clearing is exactly the sort
+        of thing the pack's routes were avoiding.
+        """
+        if target.freed or not target.lifted:
+            return False
+        target.freed = True
+        for tx, ty in target.deck_tiles():
+            self.world.set_tile(tx, ty, FLOOR)
+            self._tile_patches.append((tx, ty, FLOOR))
+        self.navigator.invalidate()
+        return True
 
     def begin_arrive(self) -> None:
         """Lock input and line the party up inside the arrival corridor.

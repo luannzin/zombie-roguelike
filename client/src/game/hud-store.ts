@@ -78,11 +78,11 @@ export interface HudRiftPrompt {
    *
    *   open   nothing has happened here yet
    *   busy   another pad is already awake — one at a time, so this one refuses
-   *   feed   the anomaly is open and under its quota
+   *   feed   the platform is running and under its quota
    *   over   the quota is paid and the bag still has something. E keeps
-   *          feeding: the anomaly walks up a tier and the core waiting at the
-   *          far end grows.
-   *   close  the quota is paid and the pocket is empty. E SHUTS it, and
+   *          loading: another drone comes up and the core waiting at the far
+   *          end grows.
+   *   close  the quota is paid and the pocket is empty. E LAUNCHES it, and
    *          everything past the quota comes back as one condensed core.
    */
   mode: 'open' | 'busy' | 'feed' | 'over' | 'close';
@@ -210,13 +210,13 @@ export interface HudSnapshot {
   cratePrompt: boolean;
   /**
    * Proximity prompt on an extraction pad. `open` while dormant, `feed`
-   * once the anomaly is up and the feed quest is live.
+   * once the platform is running and the load quest is live.
    */
   riftPrompt: HudRiftPrompt | null;
   /** Proximity prompt on a shop table. Null outside the store. */
   buyPrompt: HudBuyPrompt | null;
   /**
-   * The PARTY's money — what the group fed into the anomalies on the last
+   * The PARTY's money — what the group loaded onto the platforms on the last
    * night out, converted on the way to the shop. Separate from
    * `vitals.gold`, which is the coins this player personally walked over.
    */

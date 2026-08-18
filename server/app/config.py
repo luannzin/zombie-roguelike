@@ -177,7 +177,7 @@ STORE_LIFT_TILES = 0.4
 #:
 #: KEPT LOW ON PURPOSE, and the number is pinned to the first night rather than
 #: to a feeling about margins. Day one has a single pad, a single pad is always
-#: the LAST pad, and the last pad never offers to keep feeding — so a first
+#: the LAST pad, and the last pad never offers to keep loading — so a first
 #: night banks its quota (`rift.night_need`, 24) plus whatever the final item
 #: overshot by, and nothing else. At a 35% markup the cheapest gun on the
 #: cheapest table is 54 and that shop is a corridor of things nobody can buy,
@@ -550,29 +550,32 @@ def client_config() -> dict:
         # distance where the key does nothing.
         "storeBuyTiles": STORE_BUY_TILES,
         "storeLiftTiles": STORE_LIFT_TILES,
-        # The activation ceremony, in seconds. ONE clock: the client plays the
-        # sheets off these numbers and the server ends the sequence on them, so
-        # the stone that lights on screen is the stone the server thinks lit.
-        # See server/app/rift.py — the sheet durations come from make_rift.py.
+        # The extraction platform's clock, in seconds. ONE clock: the client
+        # animates the rig off these numbers and the server ends the sequence
+        # on them, so the drone that is turning on screen is the drone the
+        # server thinks woke. See server/app/rift.py.
         "rift": {
             "consoleLag": rift.CONSOLE_LAG,
-            "pillarStagger": rift.PILLAR_STAGGER,
-            "chargeTime": rift.CHARGE_TIME,
-            "settle": rift.SETTLE,
-            "emergeAt": rift.EMERGE_AT,
-            "emergeTime": rift.EMERGE_TIME,
+            # One drone waking: rotors to lift speed, then the climb until its
+            # rope comes straight. Every later drone repeats this beat off its
+            # own entry in the pad's `woke` list.
+            "droneSpool": rift.DRONE_SPOOL,
+            "droneRise": rift.DRONE_RISE,
+            "drones": rift.DRONES,
             "openAt": rift.OPEN_AT,
             "lightTiles": rift.LIGHT_TILES,
-            # The blast that lays the residue. `boomAt` is the frame the
-            # anomaly arrives on, not the frame `emerge` starts.
-            "boomAt": rift.BOOM_AT,
-            "boomTime": rift.BOOM_TIME,
-            "boomTiles": rift.BOOM_TILES,
-            # The window, and the way it shuts. NULL means "never" — the rift
-            # stays open until some future mechanic closes it. It cannot be
-            # `inf`: Python serialises that as the bare token `Infinity`, which
-            # is not JSON and which `JSON.parse` throws on, taking the entire
-            # config payload with it.
+            # The launch, in three beats: the rig straining against ground that
+            # will not let go, the skid breaking free, and the flight out.
+            # `liftStrain` is also when the deck's tiles become walkable — the
+            # server patches them on that tick.
+            "liftStrain": rift.LIFT_STRAIN,
+            "liftBreak": rift.LIFT_BREAK,
+            "liftClimb": rift.LIFT_CLIMB,
+            # The window, and the way it ends. NULL means "never" — the
+            # platform waits until a player launches it. It cannot be `inf`:
+            # Python serialises that as the bare token `Infinity`, which is not
+            # JSON and which `JSON.parse` throws on, taking the entire config
+            # payload with it.
             "openTime": _finite(rift.OPEN_TIME),
             "collapseAt": _finite(rift.COLLAPSE_AT),
             "collapseTime": rift.COLLAPSE_TIME,

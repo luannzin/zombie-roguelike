@@ -1,55 +1,67 @@
 """The extraction point: one or more per forest, scaled by the day, and the
 only thing on a map that ANSWERS BACK.
 
-Everything else the generator lays down is finished before the player arrives.
-A cabin is a cabin whether you look at it or not; a crate has exactly one thing
-left to do and then it is gone. The rift is the first object in this game with a
-STATE MACHINE: it sits dormant until somebody walks up to the console and
-presses it, and then it spends four seconds becoming something else while the
-whole party watches.
+WHAT IT IS
+An abandoned cargo skid — an iron box open at the front, still half loaded with
+crates nobody came back for — with four dead lift drones parked at its corners
+on the ropes they were rigged with. Pressing the console wakes the first drone:
+it spools up, climbs until its line comes straight, and holds there. Every
+overfeed tier past the quota wakes another one. Pressing a paid console makes
+the woken drones take the weight: the skid strains, breaks ground, and flies
+off along a heading the map rolled when it placed the pad, climbing until it is
+gone. What is left is the hole it was sitting in.
 
-ONE PAD AT A TIME, AND THE PLAYER SHUTS IT
-A night's rifts are a queue, not a menu: `Room` refuses a console while another
-anomaly is awake, so three pads is three separate walks. Each carries its own
-quota (`pad_need`). Paying it does not close the pad — it ARMS the console,
-which goes gold and starts throwing an aura, and pressing it again is what
-begins the collapse. That extra press is what makes overfeeding possible at
-all: the window between "paid" and "closed" is time the party chooses to spend,
-and everything they put in during it comes back out as one dense object at the
-far end (see `LEVEL_STEPS` and `Room._drop_excess`). A timer never closes a
-rift and never did.
+The name `rift` is what this module was called when the extraction point was a
+tear in the world with stones around it. The wire, the config and twenty client
+files still say `rift`, and renaming them buys nothing a line here cannot say.
+The art it used to draw is still in `assets/processed/rift/` — this pad borrows
+its CONSOLE and its TORCH, and nothing else.
+
+ONE PAD AT A TIME, AND THE PLAYER SENDS IT
+A night's pads are a queue, not a menu: `Room` refuses a console while another
+platform is awake, so three pads is three separate walks. Each carries its own
+quota (`pad_need`). Paying it does not launch the platform — it ARMS the
+console, which goes gold, and pressing again is what starts the lift. That
+extra press is what makes overfeeding possible at all: the window between
+"paid" and "gone" is time the party chooses to spend, and everything they load
+during it comes back at the far end as one dense object (`LEVEL_STEPS` and
+`Room._drop_excess`). A timer never launched a platform and never did.
+
+THE DRONES ARE THE METER
+`level_for` is the overfeed tier and `awake` is `1 + tier`, capped at four. So
+how much has gone into a pad is legible from across the clearing without a
+number: one drone turning is the minimum, four is a party that emptied their
+bags into it. That is the same job the anomaly's colour tiers used to do, moved
+onto something with moving parts.
 
 WHY THIS IS SERVER-SIDE AND WHY IT SHIPS COORDINATES
 Same reason `scenery.py` is. Placement has to know which ground is open, it
-makes tiles solid, and every client has to agree on where the thing is down to
-the pixel — so the server picks the spot, stamps the tiles, and ships absolute
-world positions. The client never re-derives the arrangement. The `layout` block
-in `assets/processed/rift/manifest.json` is the ART's copy of the same offsets,
-and `_LAYOUT` below mirrors it exactly; if one moves the other has to, the same
-way `TRACK_DIRECTIONS` is one number in three files.
+makes tiles solid, and every client has to agree on where the thing is to the
+pixel — so the server picks the spot, stamps the tiles, and ships absolute
+world positions. The client never re-derives the arrangement. The `layout`
+block in `assets/processed/platform/manifest.json` is the ART's copy of the
+same offsets and `_LAYOUT` below mirrors it exactly; if one moves the other
+has to.
 
 WHERE IT GOES
-At the far end of the story. `scenery.Population.route` is a walk from the spawn
-clearing outward through the scenes that landed, ordered so the last stop is the
-landmark — the module has said since it was written that this is what extraction
-wants. Dropping the rift at `route[-1]` gives a run a SHAPE: out along the
-trail, and back through it with your pockets full. A uniformly random tile gives
-an errand.
+At the far end of the story. `scenery.Population.route` is a walk from the
+spawn clearing outward through the scenes that landed, ordered so the last stop
+is the landmark. Dropping the pad at `route[-1]` gives a run a SHAPE: out along
+the trail, and back through it with your pockets full. A uniformly random tile
+gives an errand.
 
-THE TIMELINE IS THE SHEETS
-`CHARGE_TIME` and `EMERGE_TIME` are `frames / fps` out of `server/tools/
-make_rift.py`, and the client mirrors this whole block through `client_config`
-so there is one clock. The gaps between them are the ceremony: the console
-answers first, then the stones catch ONE AT A TIME so the light visibly runs
-around the ring, and only once the last crown is lit does the middle tear open.
-Firing all four together costs nothing and reads as a light switch.
+THE TIMELINE IS THE RIG
+Every duration below is a physical claim about a machine — how long four
+rotors take to reach lift speed, how long a line takes to come straight, how
+long a tonne of iron argues with the ground before it lets go. The client
+mirrors this whole block through `client_config` so there is one clock.
 """
 
 from __future__ import annotations
 
 import math
 import random
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from .config import TILE_SIZE
 from .maps import count_reachable
@@ -57,96 +69,111 @@ from .world import FLOOR, LOW, PROP
 
 KIND = "rift"
 
-#: The plot, in tiles. Mirrors `PLOT_TILES` in server/tools/make_rift.py.
+#: The plot, in tiles. Mirrors `plot` in server/tools/make_platform.py.
 PLOT = 7
 
 #: Where each piece stands inside the plot, in TILE offsets from its top-left.
-#: Mirrors `_layout()` in server/tools/make_rift.py. A standing piece's `dy` is
-#: the BOTTOM EDGE of the row it stands on — its contact point — exactly as in
-#: `scenery.Piece`. There is no `flip`: the stone is shaded from the upper left
-#: and a mirrored one is lit from the wrong side, which is why the sheet ships
-#: four cuts instead of two.
+#: Mirrors `_layout()` in server/tools/make_platform.py. A standing piece's
+#: `dy` is the BOTTOM EDGE of the row it stands on — its contact point —
+#: exactly as in `scenery.Piece`.
 #:
-#: ONE STONE. Four framed the anomaly symmetrically and, being symmetrical,
-#: said nothing; one off to the side reads as something driven into the ground
-#: next to a hole in the world. The plot stays 7x7 regardless — that is the
-#: cleared ground and the isolation footprint, not the structure's own size.
-_PILLARS: tuple[tuple[float, float, int], ...] = (
-    (1.5, PLOT - 1.0, 2),
-)
-#: On the front stones' row, not the plot's south edge. Out there a tree
-#: growing just past the plot drew its canopy — painted several tiles above
-#: its trunk — straight over the one piece the player has to walk up to.
-_CONSOLE = (PLOT / 2.0, PLOT - 1.0)
-_CENTRE = (PLOT / 2.0, PLOT / 2.0)
-#: THE SAME POINT AS THE SIGIL. The anomaly's sheet is anchored on its
-#: UNDERSIDE rather than on a ground contact — it hovers over a ring cut into
-#: the floor, and the picture is that the ring is a mouth: the sphere's bottom
-#: sits in the middle of it and its top half stands clear above the far edge.
-_ANOMALY = _CENTRE
+#: The skid is 5 tiles wide and its contact is two rows up from the plot's own
+#: edge, which is what leaves standing room in front of it for the console and
+#: the torch. A structure that filled its plot would be a wall with a button.
+_PLATFORM = (PLOT / 2.0, 5.0)
 
-#: Radius of the beacon once it is open, in tiles.
+#: The tiles the box actually SITS ON, as (x, y, w, h) from the plot corner.
+#: These go solid — see `_stamp`. THE PLAYER MAY NOT GET ON THE PLATFORM: it is
+#: cargo space, and a party standing on the deck when it lifts would be a whole
+#: second physics problem for no gameplay.
+_DECK = (1, 3, 5, 2)
+
+#: The four drones, in the DIAGONAL order the art and the client both use:
+#: front-left, back-right, front-right, back-left. Parked outside the skid's
+#: own columns, so a body can still walk down either side of the pad — and
+#: opposite corners first, so a platform lifting on two drones hangs level
+#: instead of hinging.
+_DRONES: tuple[tuple[float, float], ...] = (
+    (0.5, 5.0),
+    (PLOT - 0.5, 3.0),
+    (PLOT - 0.5, 5.0),
+    (0.5, 3.0),
+)
+DRONES = len(_DRONES)
+
+#: On the approach row, in front of the skid. The console is the one piece the
+#: player has to walk up to; out on the plot's own south edge a tree growing
+#: just past the plot drew its canopy — painted several tiles above its trunk —
+#: straight over it.
+_CONSOLE = (PLOT / 2.0, PLOT - 1.0)
+#: THE TORCH IS THE PAD'S ADDRESS, and it burns from the moment the map is
+#: built. Everything else here is dark until somebody presses the button, and a
+#: landmark you can only see once you have already found it is not a landmark —
+#: so the same torch that dresses the exit corridor stands on the approach,
+#: lit, all night. It is the one piece of this structure whose whole job is to
+#: be visible from somewhere else.
+_TORCH = (1.0, PLOT - 1.0)
+#: The middle of the deck's footprint: where the imprint is centred, where the
+#: pad's light comes from, and where the condensed core lands once the skid has
+#: flown and the ground under it is walkable again.
+_CENTRE = (PLOT / 2.0, 4.0)
+
+#: Radius of the pad's own light once it is powered, in tiles.
 #:
-#: Bigger than a cabin lamp, smaller than the campfire. It has to light the
-#: pad — you can see what is coming at you, which is the difference between a
-#: beacon and a lamp — without washing the forest around it. The sphere's own
-#: brightness is the client's halo and sheet, not this number; this is how far
-#: the night actually lifts. `kind` 2 is `scenery.BEACON`.
-LIGHT_TILES = 4.5
+#: Bigger than a cabin lamp, smaller than the campfire. It has to light the pad
+#: — you can see what is coming at you, which is the difference between a
+#: beacon and a lamp — without washing the forest around it. `kind` 2 is
+#: `scenery.BEACON`.
+LIGHT_TILES = 4.0
 LIGHT_KIND = 2
 
 # --- the timeline ------------------------------------------------------------
-# Sheet durations. Change a sheet's `frames / fps` in make_rift.py and these
-# change with it, or the sprite finishes before the state does.
-CHARGE_TIME = 14 / 14
-EMERGE_TIME = 20 / 16
 
 #: The console answers before anything else does. Without this beat the press
-#: and the first stone are the same instant and the button reads as decoration.
-CONSOLE_LAG = 0.35
-#: One stone at a time, so the light RUNS AROUND THE RING. This number is the
-#: single most load-bearing one in the file: at 0 the structure switches on, at
-#: 0.45 it wakes up.
-PILLAR_STAGGER = 0.45
-#: A held breath between the last crown and the tear. The pause is what makes
-#: the tear land — the same trick `make_vfx.py` documents between a summon's
-#: charge and its strike.
-SETTLE = 0.30
+#: and the first rotor are the same instant and the button reads as decoration.
+CONSOLE_LAG = 0.30
+#: Rotors from dead to lift speed. THE SINGLE MOST LOAD-BEARING NUMBER HERE: at
+#: 0 a drone switches on, at 0.85 it winds up, and winding up is the difference
+#: between a prop that changed frame and a machine that started.
+DRONE_SPOOL = 0.85
+#: The climb, from the ground to wherever its own rope runs out. The rope
+#: coming STRAIGHT is the end of this — the client eases the drone up until the
+#: line has no sag left, which is why the hover height is not a number here.
+DRONE_RISE = 0.85
+#: One drone's whole wake-up, and the beat every later drone repeats when an
+#: overfeed tier lands.
+DRONE_WAKE = DRONE_SPOOL + DRONE_RISE
+#: Held between two drones woken by the SAME press. See `sync_drones`.
+DRONE_LAG = 0.34
 
-#: Derived, never typed. The ceremony's length is a consequence of how many
-#: stones there are, so adding or removing one re-times the sequence — and the
-#: client reads the result through `client_config`, so all three stay in step.
-PILLARS = len(_PILLARS)
-LAST_PILLAR_AT = CONSOLE_LAG + (PILLARS - 1) * PILLAR_STAGGER
-CROWNED_AT = LAST_PILLAR_AT + CHARGE_TIME
-EMERGE_AT = CROWNED_AT + SETTLE
-OPEN_AT = EMERGE_AT + EMERGE_TIME
+OPEN_AT = CONSOLE_LAG + DRONE_WAKE
 
-#: How long the anomaly stays if nothing feeds it. INFINITE: the window
-#: closes when a player shuts it, not on a clock. `begin_collapse` is what
-#: walks the SPENT path.
+#: How long the platform waits if nothing feeds it. INFINITE: the window closes
+#: when a player launches it, not on a clock. `begin_collapse` walks the SPENT
+#: path.
 OPEN_TIME = math.inf
-#: It does not blink out, and it does not simply fade either. `collapse.png`
-#: out of make_rift.py is a real timeline — the lattice goes unstable, tears at
-#: itself, then implodes to a point and is gone — and this is that sheet's
-#: `frames / fps`. Change one and change the other, the same contract every
-#: other duration in this file has with the art.
-COLLAPSE_TIME = 28 / 16
 
-#: The blast, starting the frame the anomaly arrives.
-#:
-#: THIS IS THE EVENT THAT CHANGES THE MAP, so it is deliberately enormous: a
-#: front that crosses most of the clearing and keeps going, slow enough to
-#: watch arrive and to be somewhere when it reaches you. At 13 tiles over 1.7 s
-#: it was a puff around the structure's own feet; the point is that a player
-#: standing well away from the rift still gets caught by it.
-BOOM_TIME = 3.4
-BOOM_TILES = 34.0
+# --- the lift ----------------------------------------------------------------
+#
+# THE LAUNCH IS THREE BEATS AND THEY ARE NOT INTERCHANGEABLE. A platform that
+# simply rose would be an elevator; what makes this land is that the ground
+# argues first.
 
-#: Where the burst lands inside `emerge` — mirrors `EMERGE_BURST` in
-#: server/tools/make_rift.py. The boom starts on the frame the sheet flashes,
-#: not when the sheet starts playing.
-BOOM_AT = EMERGE_AT + EMERGE_TIME * 0.40
+#: Rotors to maximum, lines taut, the skid rattling in its own hole and not
+#: moving. Everything the party can see is straining and nothing has happened
+#: yet — this is the beat that says the thing is HEAVY.
+LIFT_STRAIN = 1.10
+#: It breaks ground. The ground under it is uncovered on the first frame of
+#: this window, the deck's tiles go walkable, and the burst fires.
+LIFT_BREAK = 0.45
+#: The flight: up and away along `heading`, accelerating, shrinking, gone.
+LIFT_CLIMB = 3.30
+
+#: When the skid comes free, measured from the launch press.
+BREAK_AT = LIFT_STRAIN
+#: The whole launch. Named `COLLAPSE_TIME` because `Rift.step` and the client
+#: both time the pad's end off one number and this is it.
+COLLAPSE_TIME = LIFT_STRAIN + LIFT_BREAK + LIFT_CLIMB
 
 COLLAPSE_AT = OPEN_AT + OPEN_TIME
 SPENT_AT = COLLAPSE_AT + COLLAPSE_TIME
@@ -154,30 +181,30 @@ SPENT_AT = COLLAPSE_AT + COLLAPSE_TIME
 DORMANT = "dormant"
 CHARGING = "charging"
 OPEN = "open"
-#: Used up. The structure is dark, the console is dead, and the ground keeps
-#: the marks — the whole point of the state is that the map remembers.
+#: Gone. The console is dead, the drones went with the platform, and the ground
+#: keeps the mark — the whole point of the state is that the map remembers.
 SPENT = "spent"
 
 
 # --- overfeeding ---------------------------------------------------------------
 #
 # THE QUOTA IS A FLOOR, NOT A CEILING, and that is the whole decision the pad
-# exists to offer. Paying exactly what it asks closes it. Keeping the bag going
-# past that does not — the anomaly takes everything, and it CHANGES as it takes:
-# three visible tiers past the quota, each a different colour, so a party can
-# read from across the clearing how much has gone in.
+# exists to offer. Paying exactly what it asks lets you launch. Keeping the bag
+# going past that does not — the platform takes everything, and it WAKES
+# ANOTHER DRONE for each tier, so a party can read from across the clearing how
+# much has gone in.
 #
 # What buys that back is `excess_item` in `room.py`: what you overpaid comes
-# out the far side of the collapse as one dense object you carry to the NEXT
-# pad. Overfeeding is therefore never a donation, it is moving value forward
-# through a bag that has a slot count — which is the only reason it is worth
-# doing at all.
+# back as one dense object you carry to the NEXT pad. Overfeeding is therefore
+# never a donation, it is moving value forward through a bag that has a slot
+# count — which is the only reason it is worth doing at all.
 
-#: How many tiers past the quota the colour walks before it stops.
-MAX_LEVEL = 3
+#: How many tiers past the quota the rig walks before it stops. One per extra
+#: drone, so the art and the economy cannot disagree about the ceiling.
+MAX_LEVEL = DRONES - 1
 #: Where each tier starts, as a fraction of the quota paid ON TOP of it. The
-#: first is any overpayment at all, so a single item past the line already says
-#: something on screen; the two above it are half again and double.
+#: first is any overpayment at all, so a single item past the line already wakes
+#: something; the two above it are half again and double.
 LEVEL_STEPS: tuple[float, ...] = (0.0, 0.5, 1.0)
 
 
@@ -190,14 +217,9 @@ def level_for(fed: int, need: int) -> int:
     return min(MAX_LEVEL, max(1, level))
 
 
-def pillar_charge_at(index: int) -> float:
-    """When stone `index` starts waking, in seconds after the press."""
-    return CONSOLE_LAG + index * PILLAR_STAGGER
-
-
 @dataclass
 class Rift:
-    """One placed extraction point, in world pixels."""
+    """One placed extraction platform, in world pixels."""
 
     tx: int
     ty: int
@@ -205,53 +227,117 @@ class Rift:
     y: float
     console_x: float
     console_y: float
-    anomaly_x: float
-    anomaly_y: float
-    pillars: tuple[tuple[float, float, int], ...]
+    torch_x: float
+    torch_y: float
+    #: Contact point of the skid — the row its beams stand on.
+    deck_x: float
+    deck_y: float
+    #: Ground contact of each parked drone, in `_DRONES` order.
+    drones: tuple[tuple[float, float], ...]
+    #: Which way it leaves, in radians. Rolled at placement rather than at
+    #: launch so it rides on the map payload: every client has to agree about
+    #: where a departing platform went, and a client that joined during the
+    #: climb has to be able to place it.
+    heading: float = 0.0
     id: str = "r0"
     state: str = DORMANT
-    #: Seconds since the console was pressed. Only meaningful while CHARGING
-    #: or OPEN, and it is on the wire so a player who joins mid-sequence sees
-    #: the rest of it rather than a structure that snaps to finished.
+    #: Seconds since the console was pressed. Only meaningful while CHARGING or
+    #: OPEN, and it is on the wire so a player who joins mid-sequence sees the
+    #: rest of it rather than a rig that snaps to finished.
     elapsed: float = 0.0
-    #: When collapse begins, in the same clock as `elapsed`. None while the
-    #: anomaly is holding. Set by `begin_collapse` on the tick a player shuts
-    #: the pad — not by an authored window.
+    #: When the launch begins, in the same clock as `elapsed`. None while the
+    #: platform is holding. Set by `begin_collapse` on the tick a player sends
+    #: it — not by an authored window.
     close_at: float | None = None
-    #: The console has been pressed. Server-only; the extract quest ticks
-    #: off this, not off standing nearby.
+    #: `elapsed` at which each drone started spooling, in `_DRONES` order. The
+    #: length IS how many are awake, and shipping the times rather than a count
+    #: is what lets a drone that woke thirty seconds ago be already hovering
+    #: while the one that woke this tick is still winding up.
+    woke: list[float] = field(default_factory=list)
+    #: The deck's tiles have been handed back to the floor. Server-side truth
+    #: about the map, and it rides on the geometry payload because that payload
+    #: is also the room's STORE — a rehydrate must not re-free ground that is
+    #: already free.
+    freed: bool = False
+    #: The console has been pressed. Server-only in spirit; the extract quest
+    #: ticks off this, not off standing nearby.
     found: bool = False
     #: Catalog value THIS pad asks for. Per-pad rather than per-night: only one
-    #: anomaly may be open at a time, so a night with three of them is three
+    #: platform may be awake at a time, so a night with three of them is three
     #: separate walks and three separate bills.
     need: int = 0
     #: Catalog value put into it. May go past `need` — see `level_for`.
     fed: int = 0
-    #: What the overpayment condensed into, banked when the collapse starts and
+    #: What the overpayment condensed into, banked when the launch starts and
     #: spent when it finishes. Zero once the drop has been placed, so a pad
     #: cannot pay out twice however the room ticks.
     excess: int = 0
 
     @property
     def ready(self) -> bool:
-        """Quota paid and still holding: the console is now a close button."""
+        """Quota paid and still on the ground: the console is a launch button."""
         return self.state == OPEN and self.close_at is None and self.fed >= self.need
 
     @property
     def level(self) -> int:
         return level_for(self.fed, self.need)
 
+    @property
+    def awake(self) -> int:
+        """How many drones should be turning. One, plus one per overfeed tier."""
+        if self.state in (DORMANT, SPENT):
+            return 0
+        return min(DRONES, 1 + self.level)
+
+    @property
+    def lifted(self) -> bool:
+        """The skid has broken ground. Its tiles are no longer anybody's wall."""
+        return self.close_at is not None and self.elapsed >= self.close_at + BREAK_AT
+
     def feed(self, value: int) -> None:
         if value > 0:
             self.fed += value
 
+    def press(self) -> None:
+        """Wake the pad: power up, first drone spooling after `CONSOLE_LAG`.
+
+        The lag lives HERE rather than in the room, because it is a fact about
+        this rig — the console answers, and a moment later something on the
+        skid starts turning. Waking the first drone on the same tick as the
+        press makes the button read as a light switch.
+        """
+        self.state = CHARGING
+        self.elapsed = 0.0
+        self.woke = [CONSOLE_LAG]
+
+    def sync_drones(self) -> bool:
+        """Wake whatever the current tier is owed. True if anything changed.
+
+        Each new drone starts its spool at the moment the tier landed, so two
+        drones woken by two different presses are never in phase — which is
+        what makes a four-drone rig look like four machines rather than one
+        sprite drawn four times.
+        """
+        want = self.awake
+        if len(self.woke) >= want:
+            return False
+        added = 0
+        # A bag big enough to cross two tiers on one press wakes two drones,
+        # and they must not wake on the same frame: two identical machines
+        # spooling in perfect sync read as one sprite drawn twice. A third of a
+        # second apart is enough that the ear and the eye both get two events.
+        while len(self.woke) < want:
+            self.woke.append(round(self.elapsed + added * DRONE_LAG, 2))
+            added += 1
+        return True
+
     def step(self, dt: float) -> bool:
         """Advance the sequence. True when the state changed this tick.
 
-        One clock for the whole life of the thing: charge, open, collapse,
-        spent are all read off `elapsed`, so there is no separate timer to fall
-        out of step and a client that joins at any point can be told where it
-        is with one number.
+        One clock for the whole life of the thing: spool, hold, launch and gone
+        are all read off `elapsed`, so there is no separate timer to fall out of
+        step and a client that joins at any point can be told where it is with
+        one number.
         """
         if self.state in (DORMANT, SPENT):
             return False
@@ -271,15 +357,14 @@ class Rift:
         return changed
 
     def begin_collapse(self) -> bool:
-        """Start the vanish. True if this call changed anything.
+        """Start the launch. True if this call changed anything.
 
-        A player closing a fed pad is what ends a rift, not a timer. A dormant
-        stone just goes dark. A charging one is jumped to open so the collapse
-        has a sphere to tear apart rather than a half-played ceremony.
+        A player sending a paid platform is what ends a pad, not a timer. A
+        dormant one just stays dead. A pad still spooling is jumped to open so
+        the lift has a rig to strain against rather than a half-played wake-up.
 
         The overpayment is BANKED HERE and paid out at SPENT, because the drop
-        belongs to the moment the anomaly is gone — it is what would not fit
-        through the hole.
+        belongs to the moment the skid is gone — it is what did not fit aboard.
         """
         if self.state == SPENT:
             return False
@@ -293,30 +378,42 @@ class Rift:
         if self.close_at is None:
             self.close_at = self.elapsed
             self.excess = max(0, self.fed - self.need)
+            self.sync_drones()
             return True
         return False
+
+    def deck_tiles(self) -> list[tuple[int, int]]:
+        """The tiles the box stands on, in map coordinates."""
+        dx, dy, dw, dh = _DECK
+        return [
+            (self.tx + dx + ox, self.ty + dy + oy)
+            for oy in range(dh)
+            for ox in range(dw)
+        ]
 
     def geometry_payload(self) -> dict:
         """The static half: where the pieces are. Rides on the map payload.
 
         Also the room's STORE — `Room._load_rifts` hydrates straight back out
-        of it — which is why `found` and `excess` ride along here and not on
-        the snapshot's state row. They reach the client as a side effect of
-        that and neither is a secret: `found` is a pad the client can already
-        see is not dormant, and `excess` is the core it is about to watch land.
+        of it — which is why `found`, `excess` and `freed` ride along here and
+        not on the snapshot's state row. They reach the client as a side effect
+        of that and none of them is a secret.
         """
         return {
             "found": self.found,
             "excess": self.excess,
+            "freed": self.freed,
             "id": self.id,
             "tx": self.tx,
             "ty": self.ty,
             "plot": PLOT,
             "x": round(self.x, 1),
             "y": round(self.y, 1),
-            "anomaly": [round(self.anomaly_x, 1), round(self.anomaly_y, 1)],
+            "deck": [round(self.deck_x, 1), round(self.deck_y, 1)],
             "console": [round(self.console_x, 1), round(self.console_y, 1)],
-            "pillars": [[round(px, 1), round(py, 1), shape] for px, py, shape in self.pillars],
+            "torch": [round(self.torch_x, 1), round(self.torch_y, 1)],
+            "drones": [[round(dx, 1), round(dy, 1)] for dx, dy in self.drones],
+            "heading": round(self.heading, 3),
             "lightTiles": LIGHT_TILES,
             "lightKind": LIGHT_KIND,
             **self.state_payload(),
@@ -325,10 +422,9 @@ class Rift:
     def state_payload(self) -> dict:
         """The live half: what it is doing. Rides on the snapshot when dirty.
 
-        `level` is derived and shipped anyway. The client picks a colour off it
-        every frame and re-deriving the tiers there would put `LEVEL_STEPS` in
-        two files, which is the rule this module already keeps for the ceremony
-        timings.
+        `level` is derived and shipped anyway, and `woke` is shipped because
+        the client cannot derive it: a tier's wake time is the moment somebody
+        pressed a button, which is not a function of anything the client holds.
         """
         row = {
             "id": self.id,
@@ -337,6 +433,7 @@ class Rift:
             "fed": self.fed,
             "need": self.need,
             "level": self.level,
+            "woke": list(self.woke),
         }
         if self.close_at is not None:
             row["closeAt"] = round(self.close_at, 2)
@@ -354,15 +451,20 @@ def from_payload(row: dict | None) -> Rift | None:
         ty=int(row["ty"]),
         x=float(row["x"]),
         y=float(row["y"]),
-        anomaly_x=float(row["anomaly"][0]),
-        anomaly_y=float(row["anomaly"][1]),
+        deck_x=float(row["deck"][0]),
+        deck_y=float(row["deck"][1]),
         console_x=float(row["console"][0]),
         console_y=float(row["console"][1]),
-        pillars=tuple((float(p[0]), float(p[1]), int(p[2])) for p in row["pillars"]),
+        torch_x=float(row["torch"][0]),
+        torch_y=float(row["torch"][1]),
+        drones=tuple((float(p[0]), float(p[1])) for p in row["drones"]),
+        heading=float(row.get("heading", 0.0)),
         id=str(row.get("id", "r0")),
         state=str(row.get("state", DORMANT)),
         elapsed=float(row.get("t", 0.0)),
         close_at=None if close is None else float(close),
+        woke=[float(v) for v in row.get("woke") or []],
+        freed=bool(row.get("freed", False)),
         need=int(row.get("need", 0)),
         fed=int(row.get("fed", 0)),
         excess=int(row.get("excess", 0)),
@@ -385,9 +487,8 @@ def count_for_day(day: int) -> int:
     """How many extraction points a forest of this day carries.
 
     The first two nights are one pad — find it, feed it, run. After that the
-    woods grow more of them, so the walk is longer and the feed quota has
-    more mouths. Capped at three: a fourth is another errand, not a harder
-    night.
+    woods grow more of them, so the walk is longer and the feed quota has more
+    mouths. Capped at three: a fourth is another errand, not a harder night.
     """
     if day <= 2:
         return 1
@@ -397,7 +498,7 @@ def count_for_day(day: int) -> int:
 
 
 def night_need(day: int, count: int) -> int:
-    """Catalog value the party has to put into the rifts across the whole night.
+    """Catalog value the party has to load across the whole night.
 
     Scales with the day AND with how many pads landed, so a cramped map that
     only fitted one still asks less than a night that found room for three.
@@ -408,7 +509,7 @@ def night_need(day: int, count: int) -> int:
 def pad_need(day: int, count: int) -> int:
     """What ONE pad asks for.
 
-    The night's bill split evenly, because only one anomaly may be open at a
+    The night's bill split evenly, because only one platform may be awake at a
     time: three pads is three walks and three separate payments, not one pot
     you can empty at whichever console you reached first. Rounded up, so the
     pads together never ask for less than the night was supposed to cost.
@@ -440,7 +541,7 @@ EDGE_MARGIN = 8
 #: comes out as an island nobody can reach and `build_forest` refuses the map.
 #: Requiring that the plot is mostly a clearing already means the structure is
 #: found in a space rather than punched into the trees — which is also the
-#: better read: somebody chose this spot.
+#: better read: somebody chose this spot to leave it in.
 MIN_OPEN = 0.70
 #: And the MARGIN ring around it has to be mostly open too.
 #:
@@ -454,10 +555,9 @@ MIN_MARGIN_OPEN = 0.55
 #: THE STRUCTURE STANDS ALONE, and these three numbers are what enforce it.
 #:
 #: Everything else on this map is somebody's leftovers, arranged into scenes
-#: that mean something. The rift is not part of any of them, and dropping it
-#: beside a cabin makes it read as that homestead's yard ornament — the one
-#: reading that costs it the whole "this does not belong here" effect the
-#: iridescence is doing all the work to buy.
+#: that mean something. The skid is not part of any of them, and dropping it
+#: beside a cabin makes it read as that homestead's equipment — the one reading
+#: that costs it the whole "somebody flew this in and never came back" effect.
 #:
 #: `MARGIN` also protects the approach: a fence or a woodpile lapping onto the
 #: pad would be cover the player fights from on the one tile they are supposed
@@ -476,9 +576,9 @@ def place_many(
     count: int,
 ) -> list[Rift]:
     """Place up to `count` extraction points. The first follows the story
-    thread; the rest go as far from spawn and from each other as the
-    clearances allow. Fewer than asked is survivable — the quest need is
-    however many actually landed.
+    thread; the rest go as far from spawn and from each other as the clearances
+    allow. Fewer than asked is survivable — the quest need is however many
+    actually landed.
     """
     want = max(0, count)
     if want == 0:
@@ -486,9 +586,9 @@ def place_many(
     placed: list[Rift] = []
     keepout = list(scenes)
     for index in range(want):
-        # The first pad is the end of the trail. Later ones have no thread
-        # to honour, so they fall back to "as far from spawn as possible",
-        # which is also as far from the party as the night can make them walk.
+        # The first pad is the end of the trail. Later ones have no thread to
+        # honour, so they fall back to "as far from spawn as possible", which
+        # is also as far from the party as the night can make them walk.
         aim_route = route if index == 0 else []
         row = place(tiles, aim_route, keepout, origin, rng)
         if row is None:
@@ -506,11 +606,11 @@ def place(
     origin: tuple[float, float],
     rng: random.Random,
 ) -> Rift | None:
-    """Clear a plot, stamp its tiles, and return the rift standing in it.
+    """Clear a plot, stamp its tiles, and return the platform standing in it.
 
     Mutates `tiles`. Returns None if the map has nowhere to put one, which is
     survivable — a forest without an extraction point is a forest you leave the
-    way you came — and is why the caller treats the rift as optional.
+    way you came — and is why the caller treats the pad as optional.
 
     The clearances are RELAXED rather than absolute. A cramped map that cannot
     honour them should still get an extraction point somewhere imperfect: the
@@ -518,12 +618,12 @@ def place(
     what makes the run work.
 
     THEY DO NOT ALL GIVE WAY AT THE SAME RATE, and the order is the ranking.
-    Distance from the other scenes goes first — a rift a bit close to a cabin
-    is merely less striking. Distance from spawn goes next. The MAP EDGE holds
-    at full strength through three passes and only bends in the last two,
-    because it is the only one of the three whose failure is not cosmetic: you
-    fight at this place, and a wall the screen does not explain is worse than
-    a structure that landed nearer a campsite than you would have liked.
+    Distance from the other scenes goes first — a pad a bit close to a cabin is
+    merely less striking. Distance from spawn goes next. The MAP EDGE holds at
+    full strength through three passes and only bends in the last two, because
+    it is the only one of the three whose failure is not cosmetic: you fight at
+    this place, and a wall the screen does not explain is worse than a
+    structure that landed nearer a campsite than you would have liked.
     """
     height = len(tiles)
     width = len(tiles[0]) if tiles else 0
@@ -540,8 +640,8 @@ def place(
     ):
         scene_clear = SCENE_CLEARANCE * scene_relax
         spawn_clear = SPAWN_CLEARANCE * spawn_relax
-        # Never past the treeline, whatever happens: a rift with its back to the
-        # forest is a compromise, a rift hanging off the map is broken.
+        # Never past the treeline, whatever happens: a pad with its back to the
+        # forest is a compromise, a pad hanging off the map is broken.
         margin = max(BORDER, round(EDGE_MARGIN * edge_relax))
         for tx, ty in _candidates(width, height, aim, origin, rng, margin):
             if not _plot_open(tiles, tx, ty):
@@ -555,14 +655,14 @@ def place(
             # STAMP, THEN CHECK, THEN KEEP OR PUT IT BACK.
             #
             # Clearing the plot only ever ADDS reachable ground — but the solid
-            # core in the middle takes nine tiles away, and if the plot happens
-            # to straddle a neck in the forest those nine were the bridge. The
+            # deck in the middle takes ten tiles away, and if the plot happens
+            # to straddle a neck in the forest those ten were the bridge. The
             # far side is then unreachable and `build_forest` rightly refuses
             # the whole map. Rather than forbid narrow spots up front (hard to
             # measure, and it would reject good ones), the placement tries it
             # and rolls back if the map came out worse.
             before = [row[tx:tx + PLOT] for row in tiles[ty:ty + PLOT]]
-            placed = _stamp(tiles, tx, ty)
+            placed = _stamp(tiles, tx, ty, rng)
             floor = sum(row.count(FLOOR) for row in tiles)
             if count_reachable(tiles) == floor:
                 return placed
@@ -601,7 +701,7 @@ def _candidates(
             )
         )
     # A little noise on the front of the list, so two maps that happen to put
-    # their last scene in the same place do not put the rift on the same tile.
+    # their last scene in the same place do not put the pad on the same tile.
     head = corners[:24]
     rng.shuffle(head)
     return head + corners[24:]
@@ -611,7 +711,7 @@ def _plot_open(tiles: list[list[int]], tx: int, ty: int) -> bool:
     """Whether a plot at this corner is a clearing rather than a thicket.
 
     Rejects any plot — or `MARGIN` tiles around it — that already contains a
-    building or cover: those tiles belong to a scene, and dropping a monolith
+    building or cover: those tiles belong to a scene, and dropping a cargo skid
     through somebody's cabin is the one placement bug that would be visible
     from across the map.
     """
@@ -644,46 +744,49 @@ def _plot_open(tiles: list[list[int]], tx: int, ty: int) -> bool:
     return open_tiles >= PLOT * PLOT * MIN_OPEN
 
 
-def _stamp(tiles: list[list[int]], tx: int, ty: int) -> Rift:
+def _stamp(tiles: list[list[int]], tx: int, ty: int, rng: random.Random) -> Rift:
     """Clear the plot to floor, then put the structure's own tiles back.
 
-    A pillar is PROP — solid AND sight-blocking. It is a three-metre stone, and
-    the four of them throwing hard shadows across the pad is worth more than the
-    convenience of shooting through them. The console is LOW: waist-high cover
-    you can see over and shoot over, which is what you want on the one tile the
-    party will be standing on.
+    THE DECK IS `LOW`, NOT `PROP`. Solid — you cannot get on the platform, and
+    that is deliberate: it is cargo space, and a party riding it out would be a
+    whole second problem for nothing. But you can SEE and SHOOT over it, which
+    a five-by-two block of sight-blocker in the middle of the one clearing the
+    party fights in would take away. The console is `LOW` for the same reason:
+    waist-high cover on the tile everyone is standing at.
+
+    The drones and the torch claim NOTHING. A drone is knee-high and about to
+    fly away, and a torch you can walk through is the same torch the exit
+    corridor uses.
     """
     for oy in range(PLOT):
         for ox in range(PLOT):
             tiles[ty + oy][tx + ox] = FLOOR
 
-    pillars: list[tuple[float, float, int]] = []
-    for dx, dy, shape in _PILLARS:
-        # Same arithmetic as `scenery._cells` for a 1-wide piece: the tile is
-        # the one containing the point just ABOVE the contact, so the feet are
-        # what claims ground and a capstone drawn overhead claims nothing.
-        px = int(math.floor(tx + dx))
-        py = int(math.floor(ty + dy - 1e-6))
-        tiles[py][px] = PROP
-        pillars.append(((tx + dx) * TILE_SIZE, (ty + dy) * TILE_SIZE, shape))
+    dx, dy, dw, dh = _DECK
+    for oy in range(dh):
+        for ox in range(dw):
+            tiles[ty + dy + oy][tx + dx + ox] = LOW
 
     cx = int(math.floor(tx + _CONSOLE[0]))
     cy = int(math.floor(ty + _CONSOLE[1] - 1e-6))
     tiles[cy][cx] = LOW
-
-    # NOTHING BLOCKS THE MIDDLE. The anomaly is not a wall: you can walk under
-    # it, through it, and stand in the sigil while it is open. It was solid for
-    # a while and it was worse — a body-sized hole in the one place the party
-    # is meant to gather reads as the structure fighting them.
 
     return Rift(
         tx=tx,
         ty=ty,
         x=(tx + _CENTRE[0]) * TILE_SIZE,
         y=(ty + _CENTRE[1]) * TILE_SIZE,
-        anomaly_x=(tx + _ANOMALY[0]) * TILE_SIZE,
-        anomaly_y=(ty + _ANOMALY[1]) * TILE_SIZE,
+        deck_x=(tx + _PLATFORM[0]) * TILE_SIZE,
+        deck_y=(ty + _PLATFORM[1]) * TILE_SIZE,
         console_x=(tx + _CONSOLE[0]) * TILE_SIZE,
         console_y=(ty + _CONSOLE[1]) * TILE_SIZE,
-        pillars=tuple(pillars),
+        torch_x=(tx + _TORCH[0]) * TILE_SIZE,
+        torch_y=(ty + _TORCH[1]) * TILE_SIZE,
+        drones=tuple(
+            ((tx + ox) * TILE_SIZE, (ty + oy) * TILE_SIZE) for ox, oy in _DRONES
+        ),
+        # Where it goes when it goes. Rolled here so it is decided once, by the
+        # map, and every client watching the same launch watches it leave in
+        # the same direction.
+        heading=rng.uniform(0.0, math.tau),
     )

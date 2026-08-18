@@ -38,12 +38,13 @@ export const WALL = ROCK;
 const EPS = 1e-4;
 
 /**
- * How far an exit torch lifts the night, in tiles.
+ * How far a threshold torch lifts the night, in tiles.
  *
- * Smaller than the rift's beacon and much smaller than a bonfire. It has to
- * make the threshold findable and no more: four torches that lit the clearing
- * would undo the blackout the extraction just imposed, and the run home is
- * supposed to be dark.
+ * Smaller than a powered platform's light and much smaller than a bonfire. It
+ * has to make the place findable and no more: four torches that lit the
+ * clearing would undo the blackout the extraction just imposed, and the run
+ * home is supposed to be dark. An extraction pad wears one of these all night;
+ * the exit corridor wears four.
  */
 const TORCH_LIGHT_TILES = 3.4;
 /** Scene-light kind 2 — see `theme/palette.ts` `scene`. */
@@ -82,50 +83,58 @@ export interface CratePiece {
 }
 
 /**
- * The extraction point, placed by `server/app/rift.py`.
+ * The extraction point, placed by `server/app/rift.py`: an abandoned cargo
+ * platform, four lift drones on ropes, a console and a torch.
  *
- * Geometry arrives once on the map payload and never moves; `state` and
- * `elapsed` are the live half. The client runs `elapsed` on its OWN clock
- * between the two snapshots the server sends (pressed, and open), because a
- * four-second ceremony resolved at 6 Hz would step rather than play.
+ * Geometry arrives once on the map payload and never moves; `state`, `elapsed`
+ * and `woke` are the live half. The client runs `elapsed` on its OWN clock
+ * between the snapshots the server sends, because a rig winding up and a
+ * platform flying away resolved at 6 Hz would step rather than play.
  */
 export type RiftState = 'dormant' | 'charging' | 'open' | 'spent';
 
-export interface RiftPillar {
+export interface RiftDrone {
+  /** Ground contact of the parked airframe. */
   x: number;
   y: number;
-  /** Which of the four cuts. The index is authoritative — never rolled. */
-  shape: number;
 }
 
 export interface Rift {
   id: string;
+  /** Middle of the deck's footprint: the imprint, the light, the core drop. */
   x: number;
   y: number;
-  /** Contact point the anomaly hovers over. */
-  anomalyX: number;
-  anomalyY: number;
+  /** Contact point of the skid — the row its beams stand on. */
+  deckX: number;
+  deckY: number;
   /** The console you press. Distance is measured from a player's FEET to this. */
   consoleX: number;
   consoleY: number;
-  pillars: readonly RiftPillar[];
+  /** The torch marking the pad. Burning from the moment the map is built. */
+  torchX: number;
+  torchY: number;
+  /** The four parked drones, in the corner order the server wakes them. */
+  drones: readonly RiftDrone[];
+  /** Which way the platform leaves, in radians. Rolled once, by the map. */
+  heading: number;
   lightTiles: number;
   lightKind: number;
   state: RiftState;
-  /** Seconds since the console was pressed. Only meaningful while charging. */
+  /** Seconds since the console was pressed. */
   elapsed: number;
-  /** When collapse begins, in the same clock as `elapsed`. Null while holding. */
+  /** When the launch begins, in the same clock as `elapsed`. Null while holding. */
   closeAt: number | null;
+  /**
+   * `elapsed` at which each drone started spooling. Its LENGTH is how many are
+   * awake — one for the pad being open, one more per overfeed tier.
+   */
+  woke: number[];
   /** Catalog value put into THIS pad, and the quota it asked for. */
   fed: number;
   need: number;
-  /**
-   * Overfeed tier, 0..3, straight off the server. The anomaly's resting sheet
-   * has one baked colour scheme per tier, so this is a frame-bank index and
-   * not a hint — see `render/rift.ts` `riftLevelImage`.
-   */
+  /** Overfeed tier, 0..3, straight off the server. */
   level: number;
-  /** Quota paid and still holding: the console is a close button now. */
+  /** Quota paid and still on the ground: the console is a launch button now. */
   ready: boolean;
 }
 
@@ -293,8 +302,14 @@ export class TileMap {
     // lit here as well as in `setEgress`, or they are dark for that player
     // alone on a map where nothing else is burning.
     this.lightTorches();
+    // EVERY PAD'S TORCH BURNS FROM THE START. It is the only part of an
+    // extraction point that is alight before anybody touches it, and that is
+    // the whole reason it is there: a landmark you can only see once you have
+    // found it is not a landmark. The deck's own light is separate and waits
+    // for the console.
     for (const row of this.rifts) {
-      if (row.state === 'open' && row.closeAt === null) this.lightRift(row);
+      this.lightAt(row.torchX, row.torchY, TORCH_LIGHT_TILES);
+      if (row.state === 'charging' || row.state === 'open') this.lightRift(row);
     }
   }
 
@@ -310,7 +325,7 @@ export class TileMap {
     state: RiftState,
     elapsed: number,
     closeAt: number | null = null,
-    feed?: { fed: number; need: number; level: number; ready: boolean },
+    feed?: { fed: number; need: number; level: number; ready: boolean; woke?: number[] },
   ): void {
     const row = this.rifts.find((item) => item.id === id);
     if (!row) return;
@@ -322,9 +337,10 @@ export class TileMap {
       row.need = feed.need;
       row.level = feed.level;
       row.ready = feed.ready;
+      if (feed.woke) row.woke = [...feed.woke];
     }
-    if (state === 'open' && row.closeAt === null) this.lightRift(row);
-    if (state === 'spent' || row.closeAt !== null) this.darkenRift(row);
+    if (state === 'charging' || state === 'open') this.lightRift(row);
+    if (state === 'spent') this.darkenRift(row);
   }
 
   /**
@@ -367,25 +383,24 @@ export class TileMap {
   private lightTorches(): void {
     const egress = this.egress;
     if (!egress) return;
+    for (const torch of egress.torches) this.lightAt(torch.x, torch.y, TORCH_LIGHT_TILES);
+  }
+
+  /** One entry on the scene-light list, idempotent by position. */
+  private lightAt(x: number, y: number, radiusTiles: number): void {
     const lights = this.scenery.lights as SceneryLight[];
-    for (const torch of egress.torches) {
-      if (lights.some((light) => light.x === torch.x && light.y === torch.y)) continue;
-      lights.push({
-        x: torch.x,
-        y: torch.y,
-        radiusTiles: TORCH_LIGHT_TILES,
-        kind: BEACON_LIGHT,
-      });
-    }
+    if (lights.some((light) => light.x === x && light.y === y)) return;
+    lights.push({ x, y, radiusTiles, kind: BEACON_LIGHT });
   }
 
   /**
-   * Advance every pad's local ceremony clock. Called once per frame.
+   * Advance every pad's local clock. Called once per frame.
    *
-   * It keeps running AFTER a rift opens, and that is the point: `elapsed` is
-   * what every loop on this structure is phased against, so the anomaly's
-   * resting loop starts at frame 0 on the frame `emerge` handed over to it and
-   * each stone's crown starts at frame 0 on the frame its own charge finished.
+   * It keeps running AFTER the platform is awake, and that is the point:
+   * `elapsed` is what every moving part of this rig is phased against. A
+   * drone's spool is measured from its own entry in `woke`, the launch from
+   * `closeAt`, and both are in this clock — so one number kept in step between
+   * snapshots animates the whole machine.
    */
   stepRift(dt: number): void {
     for (const row of this.rifts) {
@@ -405,8 +420,8 @@ export class TileMap {
    *
    * Deliberately not a second list the lighting has to know about: the fov
    * field and the glow pass have no concept of a camp light versus a forest
-   * light versus this, and must not grow one. An open rift is simply another
-   * thing on the map that is burning.
+   * light versus this, and must not grow one. A powered platform is simply
+   * another thing on the map that is lit.
    */
   private lightRift(row: Rift): void {
     const lights = this.scenery.lights as SceneryLight[];
@@ -597,16 +612,20 @@ function unpackRifts(payload: MapPayload): Rift[] {
     id: row.id,
     x: row.x,
     y: row.y,
-    anomalyX: row.anomaly[0],
-    anomalyY: row.anomaly[1],
+    deckX: row.deck[0],
+    deckY: row.deck[1],
     consoleX: row.console[0],
     consoleY: row.console[1],
-    pillars: row.pillars.map(([x, y, shape]) => ({ x, y, shape })),
+    torchX: row.torch[0],
+    torchY: row.torch[1],
+    drones: row.drones.map(([x, y]) => ({ x, y })),
+    heading: row.heading ?? 0,
     lightTiles: row.lightTiles,
     lightKind: row.lightKind,
     state: row.state,
     elapsed: row.t,
     closeAt: row.closeAt ?? null,
+    woke: [...(row.woke ?? [])],
     fed: row.fed ?? 0,
     need: row.need ?? 0,
     level: row.level ?? 0,

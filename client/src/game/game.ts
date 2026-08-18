@@ -59,7 +59,6 @@ import { Camera } from '../render/camera';
 import { ARENA_ZOOM } from '../render/framing';
 import { gunMuzzle, loadGuns, type GunAtlas } from '../render/guns';
 import { projectionFor } from '../render/projection';
-import { riftResidue, type ResidueMark } from '../render/residue';
 import { FovField, type LightSource, type VisionConfig, type Viewer } from '../render/fov';
 import {
   loadMerchant,
@@ -158,15 +157,14 @@ const BUY_TOOLTIP_LIFT_TILES = 2.6;
 /** How far above the console the activate tooltip sits, in tiles. */
 const RIFT_TOOLTIP_LIFT_TILES = 1.9;
 /**
- * Where inside its own charge the stone actually flashes — `crownAt` in
- * `assets/processed/rift/manifest.json`. The beat fired here has to sit on the
- * frame the sprite whites out, or the shove arrives beside the flash instead
- * of with it. The anomaly's equivalent is `config.rift.boomAt`, which the
- * server computes from the same number.
+ * How far the ground-break throws dirt, in world px per second.
+ *
+ * Read against `make_platform.py`'s `burst` sheet rather than chosen: the
+ * sprite's own debris crosses about half its 128px frame in the first third of
+ * a 0.67s timeline, and particles that outrun the sheet they are supposed to
+ * be part of read as a second, unrelated effect going off underneath it.
  */
-const RIFT_CROWN_FRACTION = 0.55;
-/** Sphere height above its anchor, in world px — where burst debris starts. */
-const RIFT_BURST_LIFT = 34;
+const RIFT_BURST_SPEED = 110;
 /** Distance between boot prints, in tiles. One stride, not one frame. */
 const FOOTPRINT_STRIDE = 0.9;
 /**
@@ -402,13 +400,6 @@ export class Game {
    * instantly, and overwritten by the server's own row on the next snapshot.
    */
   private localReady = false;
-  /**
-   * What each extraction blast threw on the ground, generated ONCE per pad.
-   *
-   * Deterministic from the map seed, so every client lays the same field
-   * without a byte of it crossing the wire (`render/residue.ts`).
-   */
-  private residues: { id: string; marks: readonly ResidueMark[] }[] = [];
   /** Remaining world drops. Replaced on welcome and on a dirty snapshot. */
   private readonly loot = new Map<string, LootState>();
   /** Dead bodies on this map. Replaced on welcome; upserted from kills. */
@@ -675,11 +666,8 @@ export class Game {
     this.config = msg.config;
     this.zone = msg.zone;
     this.world = new TileMap(msg.map);
-    // A new map is a new forest: nothing has been explored yet, and it has its
-    // own rift — so the old map's marks must not survive into it.
+    // A new map is a new forest: nothing has been explored yet.
     this.fov = new FovField(this.world.width, this.world.height);
-    this.residues = [];
-    this.ensureResidue();
     this.localId = msg.playerId;
     this.localMeta = msg.player;
     // Seeds the cache: the first snapshot may land before the first roster.
@@ -1896,7 +1884,6 @@ export class Game {
       coins,
       loot,
       corpses,
-      residues: this.residues,
       weather: this.zone?.weather ?? 'clear',
       store: this.storeScene(),
       balance: this.balance,
@@ -2343,7 +2330,7 @@ export class Game {
     if (rift) {
       // Two dead presses, and both get the buzz rather than a packet the
       // server would drop on the floor: an empty bag at a hungry pad, and a
-      // second console while another anomaly is already awake.
+      // second console while another platform is already running.
       if ((rift.mode === 'feed' && rift.empty) || rift.mode === 'busy') {
         playSfx('ui-error');
         return;
@@ -2915,11 +2902,11 @@ export class Game {
       need: row.need ?? 0,
       level: row.level ?? 0,
       ready: row.ready ?? false,
+      woke: row.woke,
     });
-    this.ensureResidue();
     // The quota being met is an EVENT even though the state string does not
-    // change: the console goes gold, the aura starts, and the button stops
-    // meaning "feed" and starts meaning "shut it". It has to be as loud as the
+    // change: the console goes gold, the band starts, and the button stops
+    // meaning "load" and starts meaning "send it". It has to be as loud as the
     // press was or nobody notices the pad is waiting on them.
     const level = row.level ?? 0;
     if ((row.ready ?? false) && !wasReady) playSfx('rarity', { variant: 4 });
@@ -2937,37 +2924,11 @@ export class Game {
   }
 
   /**
-   * Lay each blast's marks, once per pad.
-   *
-   * Called on every state change and on arrival, because the field has to
-   * exist for a rift that is ALREADY open or spent when this client turns up —
-   * they walk into a clearing that is covered in it and no wave ever plays
-   * (`riftPhase` hands back an infinite `waveRadius` for those). Generating on
-   * the burst alone would leave late arrivals looking at clean ground.
-   */
-  private ensureResidue(): void {
-    const world = this.world;
-    const timing = this.config?.rift ?? null;
-    if (!world || !timing) return;
-    for (const rift of world.rifts) {
-      if (rift.state === 'dormant') continue;
-      // A pad that jumped dormant → spent never tore. Residue is the blast's
-      // mark, and inventing one here would stain a stone that never woke.
-      if (rift.state === 'spent' && rift.elapsed <= 0 && rift.closeAt === null) continue;
-      if (this.residues.some((row) => row.id === rift.id)) continue;
-      this.residues.push({
-        id: rift.id,
-        marks: riftResidue(world.seed, rift, timing.boomTiles * world.tileSize),
-      });
-    }
-  }
-
-  /**
    * Rebuild the FOV light list from the map as it is right now.
    *
    * Bonfires come off the tiles; everything else comes off `scenery.lights`.
-   * That second list is live — an open rift pushes a beacon onto it, a spent
-   * one takes it off — so this has to run again whenever that membership
+   * That second list is live — a powered platform pushes a light onto it, a
+   * flown one takes it off — so this has to run again whenever that membership
    * changes, not only on welcome. A snapshot taken once at embark leaves the
    * pad dark after the tear, which is how a 7-tile beacon produced no light.
    */
@@ -3005,23 +2966,23 @@ export class Game {
   }
 
   /**
-   * Run the ceremony's clock and fire the beats that need an effect.
+   * Run the rig's clock and fire the beats that need an effect.
    *
-   * The four seconds between the server's two snapshots are entirely local, so
-   * this is where the light and the shove come from.
+   * The seconds between the server's snapshots are entirely local, so this is
+   * where the shove and the noise come from.
    *
    * Each beat fires on the frame `elapsed` CROSSES it — the `before < at &&
    * after >= at` window is what makes it happen exactly once even if a frame
-   * runs long enough to step over two stones, and what stops a late joiner
+   * runs long enough to step over two drones, and what stops a late joiner
    * (who starts at the server's `t`) replaying the beats it already missed.
    */
   private stepRift(dt: number): void {
     const world = this.world;
     if (!world || world.rifts.length === 0) return;
     const befores = world.rifts.map((row) => row.elapsed);
-    // Unconditionally, and BEFORE the charging guard: the clock keeps running
-    // once a rift is open because that is what phases the resting loop. Stop
-    // it here and the anomaly freezes on frame 0 forever.
+    // Unconditionally, and BEFORE the state guard: the clock keeps running
+    // once a platform is awake because that is what phases every rotor on it.
+    // Stop it here and four machines freeze on frame 0 forever.
     world.stepRift(dt);
     if (!this.config) return;
     const timing = this.config.rift ?? null;
@@ -3040,92 +3001,81 @@ export class Game {
     timing: RiftTimingConfig,
   ): void {
     const fx = palette().effects;
-    const beacon = palette().scene.beacon;
-    const beaconCss = `rgb(${beacon[0]} ${beacon[1]} ${beacon[2]})`;
 
-    // A stone catching. A small shove and a note each, so the four of them
-    // walking around the ring are four separate events rather than one long
-    // brightening — the punctuation is what sells the stagger.
+    // A DRONE COMING UP TO SPEED, and then its rope coming straight. Two beats
+    // per drone rather than one, because they are two different pieces of
+    // information: the first says the machine started, the second says it has
+    // taken the weight and there is one more of them than there was.
     //
-    // NO POINT LIGHT. `Effects.spawnLight` is a `ctx.arc` radial gradient in
-    // WORLD pixels, and the world is drawn at `ARENA_ZOOM` — so a radius that
-    // reads as modest in this file arrives on screen multiplied by the zoom and
-    // covers half the viewport as a hard-edged disc. Every existing caller gets
-    // away with it by being over in about a tenth of a second; a beat you are
-    // meant to WATCH cannot hide behind that. The glow belongs to the sheets,
-    // which are pixel art and lit like everything else — see `crown` and
-    // `emerge` in `make_rift.py`.
-    for (let i = 0; i < rift.pillars.length; i++) {
-      const at = timing.consoleLag + i * timing.pillarStagger
-        + timing.chargeTime * RIFT_CROWN_FRACTION;
-      if (before < at && after >= at) {
-        this.camera.addTrauma(0.08);
-        // Four of these in a row is a rising figure, which is the whole reason
-        // the stones are staggered. Borrowed from the loot-reveal chime for
-        // now — the rift has no voice of its own in `make_audio.py` yet.
-        playSfx('rarity');
+    // NO POINT LIGHT on either. `Effects.spawnLight` is a `ctx.arc` radial
+    // gradient in WORLD pixels and the world is drawn at `ARENA_ZOOM`, so a
+    // radius that reads as modest here arrives on screen multiplied by the
+    // zoom and covers half the viewport as a hard-edged disc. Every existing
+    // caller gets away with it by being over in a tenth of a second; a beat
+    // you are meant to WATCH cannot hide behind that. The light belongs to the
+    // sheets, which are pixel art and lit like everything else.
+    for (const woke of rift.woke) {
+      if (before < woke && after >= woke) {
+        this.camera.addTrauma(0.05);
+        playSfx('lantern-on');
+      }
+      const station = woke + timing.droneSpool + timing.droneRise;
+      if (before < station && after >= station) {
+        this.camera.addTrauma(0.09);
+        // Each drone a step higher than the last, so four of them coming up is
+        // a rising figure. Borrowed from the loot-reveal chime for now — the
+        // rig has no voice of its own in `make_audio.py` yet.
+        playSfx('rarity', { variant: Math.min(4, rift.woke.indexOf(woke) + 1) });
       }
     }
 
-    // The tear. The largest thing that happens on this map, and the only one
-    // that earns a real shove.
-    if (before < timing.emergeAt && after >= timing.emergeAt) {
-      playSfx('summon');
-    }
-    // Feeding is what shuts the window. `closeAt` is the pad's own deadline;
-    // `collapseAt` on the timing block is the authored fallback and is null
-    // while the rift is open-ended.
-    const collapseAt = rift.closeAt ?? timing.collapseAt;
-    if (collapseAt !== null && before < collapseAt && after >= collapseAt) {
-      playSfx('lantern-off');
-      this.camera.addTrauma(0.12);
-    }
-    // THE FRONT REACHING YOU. Not the explosion going off across the clearing —
-    // the moment it arrives where this player is standing, which is a different
-    // instant for everybody in the party and is the whole reason the wave is
-    // slow and wide. Someone at the far edge feels it three seconds after the
-    // person who pressed the button.
-    const reach = timing.boomTiles * (this.world?.tileSize ?? 16);
-    const local = this.local;
-    if (local) {
-      const away = Math.hypot(rift.x - local.state.x, rift.y - local.state.y);
-      if (away <= reach) {
-        const front = (t: number) => {
-          const u = Math.max(0, Math.min(1, (t - timing.boomAt) / timing.boomTime));
-          return (1 - (1 - u) ** 3) * reach;
-        };
-        if (front(before) < away && front(after) >= away) {
-          // Hardest up close and still felt at the rim, so the shove reports
-          // how much of the blast you actually took.
-          this.camera.addTrauma(0.55 * (1 - (away / reach) * 0.65));
-          playSfx('crate-break');
-        }
-      }
+    // From here down is the launch, and it only exists once somebody has sent
+    // the platform. `closeAt` is that press.
+    const launch = rift.closeAt;
+    if (launch === null) return;
+
+    // THE STRAIN. Rotors to maximum against ground that will not let go: a
+    // shove that GROWS rather than a single hit, because what the beat has to
+    // communicate is effort, and effort is the one thing a one-frame impulse
+    // cannot say.
+    const strainFrom = launch;
+    const strainTo = launch + timing.liftStrain;
+    if (before < strainFrom && after >= strainFrom) playSfx('kindle');
+    if (after > strainFrom && after < strainTo) {
+      const climb = (after - strainFrom) / Math.max(timing.liftStrain, 1e-6);
+      this.camera.addTrauma(0.035 + climb * 0.06);
     }
 
-    const burst = timing.boomAt;
-    if (before < burst && after >= burst) {
-      // Same reason: the sheet already whites the whole frame out on this
-      // exact frame. A gradient disc on top of it only adds the one thing the
-      // sheet does not have — a hard circular edge.
-      this.camera.addTrauma(0.42);
-      playSfx('kindle');
-      for (let i = 0; i < 30; i++) {
+    // THE GROUND LETTING GO. The largest thing that happens on this map and
+    // the only beat here that earns a real shove.
+    const broke = launch + timing.liftStrain;
+    if (before < broke && after >= broke) {
+      this.camera.addTrauma(0.55);
+      playSfx('crate-break');
+      // Dirt out of the hole, low and flat: this is soil being thrown sideways
+      // by a slab coming off it, not an explosion. `gy` pulls it back down
+      // inside the sheet's own timeline so the two settle together.
+      for (let i = 0; i < 34; i++) {
         const angle = Math.random() * Math.PI * 2;
-        const speed = 40 + Math.random() * 90;
+        const speed = RIFT_BURST_SPEED * (0.35 + Math.random() * 0.9);
         this.effects.particles.push({
-          x: rift.anomalyX,
-          y: rift.anomalyY - RIFT_BURST_LIFT,
+          x: rift.x,
+          y: rift.y,
           vx: Math.cos(angle) * speed,
-          vy: Math.sin(angle) * speed * 0.7,
+          vy: Math.sin(angle) * speed * 0.5,
           size: 1 + Math.random() * 2,
-          color: i % 3 === 0 ? fx.goldCore : beaconCss,
+          color: i % 4 === 0 ? fx.goldCore : fx.dust[i % fx.dust.length],
           age: 0,
-          life: 0.35 + Math.random() * 0.4,
-          gy: 30,
+          life: 0.30 + Math.random() * 0.45,
+          gy: 40,
         });
       }
     }
+
+    // Out of sight. Quiet on purpose — the party has already watched it go,
+    // and a flourish here would ask them to look up again at nothing.
+    const gone = launch + timing.collapseTime;
+    if (before < gone && after >= gone) playSfx('lantern-off');
   }
 
   private nearCrate() {

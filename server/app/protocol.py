@@ -24,7 +24,7 @@ client -> server
   {"type":"drop","slot":0}              pull a bag slot back onto the ground
                                         near the player's feet; ignored in camp
   {"type":"activate","id":"r0"}         press a rift console or feed an open
-                                        anomaly from the bag. `id` is the pad;
+                                        platform from the bag. `id` is the pad;
                                         omitted = nearest in range.
   {"type":"buy","id":"s2"}              take the weapon off a shop table and
                                         charge the party balance. Store zone

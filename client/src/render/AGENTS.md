@@ -18,10 +18,9 @@ mutation, no React.
 | `terrain.ts` | terrain atlas loading (4 grounds, blend stencils, props, flat decals, the animated campfire) |
 | `scenery.ts` | scenery atlas loading: standing props and flat decals of what people left |
 | `vfx.ts` | effect atlas loading: one-shot sheets (summon, kindle, wind, death) and the looping loot `aura` |
-| `rift.ts` | extraction atlas: the sigil decal, the pillar/console props with their STATES, the activation sheets, the anomaly's per-tier colour banks, the vanish and the paid console's band |
-| `layers/rift.ts` | extraction pads: the whole lifecycle's timing (`riftPhase`) plus its passes — floor, depth sort, additive light |
-| `layers/corruption.ts` | the blast's mark on the ground, baked into a pair of offscreen canvases; motes over it |
-| `residue.ts` | where the extraction blast's marks land: a deterministic field derived from the map seed, never sent over the wire |
+| `rift.ts` | threshold atlas: the console prop with its four STATES, the torch prop and its fire, the paid console's band, the exit's paving |
+| `platform.ts` | extraction atlas: the cargo skid and lift drone props with their STATES, the rotor / strobe / downwash / burst effect sheets, the imprint decal, and the `layout` block the ropes are drawn from |
+| `layers/rift.ts` | extraction pads: the whole rig's timing (`riftPhase`) plus its four passes — floor, depth sort, the air, additive light |
 | `store.ts` | the merchant's own kit: tables (with `topY`), torches (with `flameY`), the mat, the torch fire and the buy pool — plus the HUD coin the price tag draws |
 | `merchant.ts` | the shopkeeper's clips and the player that picks between them (`MerchantPose`, `stepMerchant`, `merchantFrame`) |
 | `layers/store.ts` | his pitch drawn: mat, depth-sorted tables / torches / merchant, stock with its lift, the fires and the price tags |
@@ -43,10 +42,10 @@ mutation, no React.
   in one `entities` list and are drawn by one path.
 - `renderer.ts` only sequences passes and switches spaces; drawing lives in
   `layers/`. **The pass order is the atmosphere** — ground (soil, litter, flat
-  scenery, then the baked rift corruption) → dust → coins and loot sprites → entities, bonfires and standing
+  scenery, then any extraction imprint) → dust → coins and loot sprites → entities, bonfires and standing
   scenery (one depth sort by `y`, including live crates and smash sheets) →
   overgrowth → motes / rain / fog → darkness → combat effects → loot auras / motes /
-  epic-legendary beams / empty-crate wind / death burst / corruption motes / rift glow → hunt diamond →
+  epic-legendary beams / empty-crate wind / death burst / torch fire / rig glow → hunt diamond →
   labels → vignette. Effects and loot light go over the darkness because
   they are light, not things being lit. An unlit drop HIDES ITS SPRITE.
   Corpses hide the same way. Blood pools sit on the floor with the boot
@@ -60,7 +59,7 @@ mutation, no React.
   off the map. Every rarity throws specks; epic and legendary keep the
   looping column as well.
   A drop's `scale` is 1 for everything the world scatters; only a condensed
-  core out of an overfed rift sets it, proportional to the overpayment, so
+  core out of an overfed pad sets it, proportional to the overpayment, so
   "how much did we bank" is legible from the size of the thing lying in the
   grass before anyone is close enough to read a tooltip. Scaling happens about
   the CONTACT, not the centre — a bigger drop grows upward off the ground it is
@@ -283,8 +282,8 @@ mutation, no React.
   tone and beat, and must stay that way: the moment a lamp out in the woods is
   drawn by different code from the camp's bonfire they start reading as
   different kinds of object. Tones come from `--scene-*`; `beacon` is the
-  extraction rift, pushed onto the SAME `scenery.lights` list when it opens
-  (`TileMap.setRiftState`) rather than given a list of its own — the lighting
+  extraction platform, pushed onto the SAME `scenery.lights` list when it
+  powers up (`TileMap.setRiftState`) rather than given a list of its own — the lighting
   has no idea it is special, which is what "a light is a light" was for.
 - A `FIRE` tile is drawn in the ENTITY sort, not with the terrain: baked it
   could not animate, and drawn as scenery it would be covered by whoever is
@@ -316,88 +315,99 @@ mutation, no React.
   ferns stay off it, and the darkness pass crushes a falloff around it. The
   tiles themselves wander and fray — a rectangle of VOID would read as a
   corridor punched through the woods.
-- **The extraction rift spans all three shapes at once and is drawn in three
-  different places in the frame**, because it is three kinds of object: the
-  sigil is a flat decal on the floor (with the boot prints), the stones and the
-  console are bottom-anchored props MERGED into the entity depth sort (so a
-  body walking behind a pillar disappears behind it), and the charge, crown,
-  emerge and rift sheets are additive light after the darkness pass. Its prop
-  frames are STATES, never variants — `riftPropFrame` takes the state, and
-  hashing one would make the extraction point flicker between on and off.
-  A night can carry more than one pad; each has its own `CorruptionField`
-  keyed by `rift.id`. The exit arrow is HUD chrome (`hud/ExitGuide`), not
-  a world sprite.
-- **Every rift sheet carries its own colour, and `tinted` is the flag that
-  says so.** The whole structure is painted from ONE iridescent prism: the
-  anomaly's openings, and the pillars' conduit running violet at the foot
-  through cyan to a white crown. That is the one thing a draw-time tint can
-  never produce — a single multiply is a single hue — so the colour is resolved
-  in `make_rift.py` and `riftImage` refuses the tint rather than trusting each
-  call site to remember. `--scene-beacon` survives only as the BEACON GLOW's
-  tone (the scene light on the map), and it is pale cyan to match, not the mint
-  it started as.
-- **The anomaly is anchored on its CORE, not on a ground contact**, and it is
-  the only sheet in the game that is. Everything else registers where it
-  touches the floor because everything else touches the floor; the rift hovers,
-  so `anchorY` is the centre of the sphere and it can be placed on the middle
-  of its own sigil instead of a radius above it.
-- **The blast's residue is DERIVED, not transmitted.** Hundreds of marks would
-  be the largest message in the game for the least gameplay, so both where they
-  land and which cut lands there come out of `world.seed` hashed with the
-  rift's own tile — the same trick the forest already uses for grass and prop
-  variants. The server only ever says the rift went off.
-  - Placement still sorts by DISTANCE so the shockwave can reveal them. Drawing
-    does not: `CorruptionField` bakes the corrupted ground AND the residue into
-    a pair of offscreen canvases, incrementally as the front advances, then
-    blits the visible rectangle — two draw calls a frame, not one per tile.
-    A live per-tile pass at this radius cost about half the frame rate.
-  - `waveRadius` is `Infinity` for a rift that is already spent when you
-    arrive. The marks are simply THERE, with no replay of an explosion nobody
-    was present for.
-- **`drawRiftGlow` throws a halo around the anomaly** once the tear starts.
-  Soft radial gradient, alpha already zero at the edge. A
-  whisper, never a flood — the sheet is drawn at `ANOMALY_GLOW` so the lattice
-  stays readable instead of blowing out to a white disc. Its tone follows the
-  pad's overfeed TIER (`haloTone`, `--scene-beacon` mixed toward
-  `--scene-ember`), mixed rather than switched: a cold halo around a gorged
-  gold sphere reads as two light sources instead of one thing lighting a
-  clearing. The scene-light row
-  still feeds the fov (visibility) and `drawSceneLights` (the same pool every
-  other map lamp gets); the halo is the extra that makes the hovering sphere
-  read as the source rather than as an object sitting in someone else's light.
-- **The overfeed tier picks a BITMAP, not a tint.** `riftLevelImage` swaps
-  which of the four baked banks `rift` / `collapse` read from; the frame index
-  is untouched, so a pad crossing a tier does not restart or rephase its loop.
-  A draw-time multiply cannot produce a colour scheme — that is the same
-  reason these sheets are `tinted: false` in the first place.
-- **The vanish is a sheet and must not be faded.** Once `closeAt` is set,
-  `phase.collapsing` takes priority over the resting loop and `collapse.png`
-  plays at full alpha. It ends on an empty frame, so it disappears itself;
-  multiplying `phase.fade` over it would dim the implosion — the one frame the
-  whole timeline is built to arrive at — out of existence. `fade` is the
-  HALO's alone now.
-- **The paid console throws a band** (`aura`), drawn on the CONSOLE and on
-  wall time rather than the pad's clock, so every armed console in a night
-  turns at the same rate instead of at its own age. It is the only thing that
-  can say "this button does something different now" from outside tooltip
-  range.
+- **The extraction point spans all three shapes at once and is drawn in FOUR
+  different places in the frame**, because it is four kinds of thing happening
+  at once. It is an abandoned cargo platform with four lift drones on ropes:
+  - `drawRiftGround` — the imprint the skid leaves, on the FLOOR with the boot
+    prints. It does not exist until the platform breaks ground; before that the
+    ground under a platform is the platform's.
+  - `riftStanding` — the console, the torch, and whatever is still standing on
+    something (the skid, and any drone still parked), MERGED into the entity
+    depth sort so a body walking behind the platform disappears behind it. Prop
+    frames are STATES, never variants — `platformPropFrame` takes the state,
+    and hashing one would make the rig flicker between running and dead.
+  - `drawRiftAir` — the ropes, the drones at station, and a skid that has come
+    free. Screen space, AFTER the depth sort and BEFORE the darkness. Both
+    halves matter: nothing standing on the floor can plausibly be in front of a
+    machine hovering over it, and drawing before the darkness is what lets a
+    platform twenty tiles up dissolve into the night instead of staying crisp
+    and bright over a blacked-out forest.
+  - `drawRiftGlow` — rotor discs, nav lights, rotor wash, the ground-break
+    burst and the paid console's band. Additive, after the darkness pass.
+
+  The exit arrow is HUD chrome (`hud/ExitGuide`), not a world sprite.
+- **THE DRONES ARE THE METER, and the server owns when each one woke.** One
+  turns the moment the pad is awake and every overfeed tier wakes another, so
+  `rift.woke` is a LIST OF TIMES rather than a count: a drone that woke thirty
+  seconds ago is already hovering while one woken this tick is still winding
+  up, and only per-drone wake times can say that. The client derives nothing
+  here — a wake time is the moment somebody pressed a button.
+- **The ropes are DRAWN, not baked.** A line between a fixed eye on the skid
+  and a drone that climbs, strains and then flies off cannot be a sprite. The
+  art ships where each rope is tied (`layout.eyes`, in pixels from the
+  platform's contact) and how much line was rigged (`layout.rope`), and
+  `drawRope` puts a catenary between them whose SAG is the difference between
+  the rope's length and how far apart its two ends actually are. That single
+  number does the whole job: a parked drone sits well inside its rope and the
+  line pools, a drone at station has used all of it and the line is dead
+  straight, and the straightening is what says the machine is about to pull.
+  `layout.rope` is also what sets the hover height — a drone climbs until its
+  line comes straight and stops there, so there is no second number to disagree
+  with it.
+- **The launch is three beats and the middle one is the point.** `liftStrain`
+  is rotors at maximum with the skid rattling in its own hole and NOT MOVING,
+  because the beat that says a thing is heavy is the one where nothing happens
+  — the shudder grows through it and is gone the instant the ground lets go.
+  Then `liftBreak`: the burst fires, the imprint is uncovered, and the server's
+  `tilePatches` hand the deck's tiles back to the floor on that same tick. Then
+  `liftClimb`: up and away along the map's heading, EASING IN, because
+  something heavy that has just come unstuck is still speeding up when it
+  leaves frame — easing out instead makes it look like it is being lowered on a
+  wire. Scale carries the distance and the ground shadow stays on the floor;
+  an object that only dims looks like it is being switched off.
+- **Drones nobody woke go with it anyway**, hanging off their own ropes as dead
+  weight and swinging on their own beat. It is free and it is what makes the
+  rig read as one machine somebody rigged rather than four sprites that happen
+  to be nearby.
+- **A spent pad is a condition, not a moment, and there are TWO of them.** A
+  pad that FLEW leaves the imprint, a dead console (its fourth frame — driven
+  home, every lamp out; reusing `idle` would pop the plunger back up and offer
+  the button again) and nothing else. A pad the END OF THE NIGHT killed never
+  flew: its platform is still sitting there cold with its ground still under
+  it. `closeAt` is what separates them. Either way the map remembering is the
+  whole point of the state.
+- **The pad's torch burns from the moment the map is built**, in every state
+  including spent, and it is on `scenery.lights` from the `TileMap`
+  constructor rather than from a state change. Everything else about an
+  extraction point is dark until somebody presses the button, and a landmark
+  you can only see once you have found it is not a landmark. The deck's own
+  light is separate and does wait for the console.
+- **The paid console throws a band** (`aura`, out of the rift atlas), drawn on
+  the CONSOLE and on wall time rather than the pad's clock, so every armed
+  console in a night turns at the same rate instead of at its own age. It is
+  the only thing that can say "this button does something different now" from
+  outside tooltip range.
+- **`render/rift.ts` is now the THRESHOLD atlas, not the extraction one.** What
+  it still loads is the console, the torch, that torch's fire, the console's
+  band and the exit's paving — the pieces that were never about the anomaly.
+  The anomaly's own sheets are still generated into `assets/processed/rift/`
+  and nothing loads them; they are kept because the art is worth keeping. The
+  platform's art lives in `render/platform.ts`, and `drawRiftProp` takes BOTH
+  atlases because one pad is made of two generators' output.
 - **The exit is dressed in three passes, one per kind of thing.** The paving
-  (`drawEgressGround`) goes on the FLOOR with the sigil and the boot prints —
-  multiply for the slabs, `lighter` for the seams, the same split every ground
-  decal here uses — and it is SCATTERED CLIENT-SIDE: which tile got which cut
-  is decidable from `(tx, ty, seed)`, so by the rule the world is split on it
-  is the client's, and only the mouth is on the wire. It is drawn live rather
-  than baked because the corridor does not exist when the ground canvas is
-  built. The torches are PROPS in the entity depth sort (`egressTorches`), so a
-  body can disappear behind one. Their fire (`drawEgressFire`) is additive
-  after the darkness, each one offset around the loop by its index — four fires
-  playing the same frame at the same instant read as four copies of one sprite,
-  which is what they are and what the eye must not notice.
-- **A spent rift is a condition, not a moment.** The structure goes dark, the
-  console takes its fourth frame (driven home, every lamp dead — reusing `idle`
-  would pop the plunger back up and offer the button again), the beacon comes
-  off `scenery.lights`, and the ground keeps everything. The map remembering is
-  the whole point of the state.
+  (`drawEgressGround`) goes on the FLOOR with the boot prints — multiply for
+  the slabs, `lighter` for the seams, the same split every ground decal here
+  uses — and it is SCATTERED CLIENT-SIDE: which tile got which cut is decidable
+  from `(tx, ty, seed)`, so by the rule the world is split on it is the
+  client's, and only the mouth is on the wire. It is drawn live rather than
+  baked because the corridor does not exist when the ground canvas is built.
+  The torches are PROPS in the entity depth sort (`egressTorches`), so a body
+  can disappear behind one. Their fire (`drawEgressFire`) is additive after the
+  darkness, each one offset around the loop by its index — four fires playing
+  the same frame at the same instant read as four copies of one sprite, which
+  is what they are and what the eye must not notice. `drawRiftFire` does the
+  same for the pads' torches, on the same sheet: one flame in this game means
+  "a threshold somebody dressed".
 - **The STORE draws almost nothing of its own, and that is the design.** It is
   an ordinary forest map: the glade's soil, grass and trees come from
   `layers/terrain`, the merchant's tent is a scenery prop in the standing sort,

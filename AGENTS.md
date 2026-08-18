@@ -84,8 +84,9 @@ When the user requests a durable behavior change, record it here or in the relev
   laser sight. The AWP zooms the camera out while holding to shoot. Tracers
   start at the barrel. Hit juice (blood, a small knockback, tilt) scales
   with the gun's damage. Repeated hits slow then stop the enemy's walk. Each
-  gun has its own weight (slows the walk) and feel. Ammo types are named;
-  magazines are not built yet.
+  gun has its own weight (slows the walk) and feel. EVERY SHOT SPENDS A
+  ROUND out of a per-calibre reserve, and a dry trigger clicks and eats the
+  cooldown. Guns are BOUGHT and never found.
 - The KNIFE is the last cell (key 3) and the one weapon that never changes:
   it cannot be picked up, swapped or dropped. **A run starts with it and
   with no gun at all.** It does not shoot — it swings a short arc that
@@ -142,6 +143,17 @@ subtree.
     Each pad carries its OWN quota (`rift.pad_need`, the night's bill divided
     between them) and its own `Carregue a plataforma` row (catalog gold from
     the pocket — guns stay on the belt — the HUD draws the coin badge).
+  - **THE NIGHT'S BILL IS A SHARE OF WHAT IS ACTUALLY OUT THERE.** A forest
+    holds a MEDIAN of about 910 points of findable value — roughly a third of
+    it scattered on the ground, the rest inside the forty-odd objects standing
+    on it — and `rift.night_need` is set against the LOW quarter of that
+    spread rather than the median, so a bad roll makes a night hard and never
+    impossible. Day 1 asks 40 (under five per cent, and that whole take is the
+    budget that buys the first gun); day 5 asks 248 across three pads; day 10
+    asks 448, which is the night the walk stops being optional and the shrine
+    stops being a question. Moving a number in `loot.SCENE_COUNTS`,
+    `crates.TYPES` or `mapgen` moves how many nights a party survives — the
+    two ends are one decision.
   - **THE LAMPS ARE THE STATE.** Pressing the console powers the deck and the
     four corner lamps come up GREEN: found, running, safe to load, and nothing
     out there has heard anything. The quota is a FLOOR, not a ceiling — E on a
@@ -269,6 +281,14 @@ subtree.
   - `server/app/protocol.py` ↔ `client/src/net/protocol.ts`
 - Sizes, speeds and distances are authored in tiles/seconds and multiplied by
   `TILE_SIZE`. No raw pixel numbers.
+- **The forest is 132 x 92 tiles and its scene count went up with it.** Those
+  are one decision, not two: a map that grows without growing its stories is
+  not a bigger world, it is a longer walk between the same things. What the
+  extra ground buys is that a night with three extraction pads can put them
+  far enough apart to be three separate expeditions rather than three stops on
+  one lap. The pocket grew with it too (five slots), because at three a party
+  filled the bag at the second scene and spent the rest of the night walking
+  past things, which is the game refusing its own content.
 - All colours and type live in `client/src/styles/index.css`, read by the canvas
   through `client/src/theme/`.
 - **Sound is generated art, like every pixel.** `server/tools/make_audio.py`
@@ -295,8 +315,10 @@ subtree.
   `(tx, ty, seed)` belongs to the client; anything that means something belongs
   to a scene.
 - Collectable loot is placed by the server next to those scenes
-  (`server/app/loot.py`), not hashed from the seed. Five rarities (common
-  white, uncommon green, rare blue, epic purple, legendary gold). E collects
+  (`server/app/loot.py`), not hashed from the seed, and there is a SECOND pass
+  over the same scene list for ammunition (`server/app/ammo.py`) so the boxes
+  land where the party is already going. Five rarities (common white, uncommon
+  green, rare blue, epic purple, legendary gold). E collects
   when close; the name in the tooltip takes the rarity colour. Epic and
   legendary get a small looping beam; every rarity also throws a few
   rarity-coloured motes. The sprite hides in the dark; the motes and
@@ -319,9 +341,12 @@ subtree.
   off the panel sends `{type:"drop","slot"}`; the server places the
   stack on walkable floor near the player's feet. A full bag (no slot
   and no stack) keeps the drop tooltip and reads "Inventário Cheio".
-  Guns are loot too, but they land on the HOTBAR (`server/app/weapons.py`),
-  not in the pocket — they do not stack. Nobody starts with one: the belt
-  opens as two empty cells and the knife. 1 / 2 selects a gun slot, 3 is
+  Guns land on the HOTBAR (`server/app/weapons.py`), not in the pocket — they
+  do not stack. **They are never found: the merchant is the only source.** A
+  firearm is something the party spent a night's extraction on rather than
+  something the forest handed them, and it is also what makes ammunition mean
+  anything — a calibre nobody paid for is a calibre nobody finds boxes of.
+  Nobody starts with one: the belt opens as two empty cells and the knife. 1 / 2 selects a gun slot, 3 is
   the knife; the same key holsters. An
   empty hand does not fire. The held sprite follows the mouse and flips
   when the cursor is left
@@ -333,7 +358,19 @@ subtree.
   gun cell does not refuse a better gun: the drop's tooltip becomes
   "trocar {held} por {new}" and E trades, leaving the old one at your feet.
   That is refused while holding the knife, which is not yours to trade away.
-  Ammo types (pistol / rifle / awp) are named and unused.
+- **AMMUNITION IS UPKEEP, NOT CARGO** (`server/app/ammo.py`). Every gun eats a
+  round per shot out of a per-player reserve for its calibre — pistol, rifle,
+  or precision — and the knife eats nothing, which is most of why the knife is
+  still in the game. A box is worth ZERO, takes no bag slot and cannot be
+  loaded onto a platform: a round competing with a gold ring for a pocket cell
+  would make shooting a choice against extracting, which is a tax on playing
+  rather than a trade-off. THE FOREST STOCKS ITSELF AGAINST THE BELT — the map
+  is built knowing what the party carries, so a room of knives finds no
+  ammunition at all — and a box is collected only by somebody whose OWN belt
+  holds that calibre and has room for it, so the rifle rounds go to whoever
+  brought the rifle and a full reserve leaves the box there for the walk back.
+  The rounds ride on the hotbar cell of the gun they feed; the knife's cell
+  has no number on it, and that absence is the point.
 - **The belt's last cell is the KNIFE and it is not loot.** Nobody collects
   it, drops it or rolls a second one — it is placed by `Hotbar` itself, and
   that guarantee is the feature: a run OPENS with no gun, and the hand is
@@ -352,16 +389,54 @@ subtree.
   `zone.hostile` gates the gun, not the swing, so the fire is somewhere you
   can mess about with a blade. Anyone killed there walks back to their seat
   a couple of seconds later.
-- Boxes, barrels and the other wood on the crate sheet are live objects
-  (`server/app/crates.py`), not scenery. Scenery still places them; after
-  the stamp they are pulled onto the map as crates so a smash can remove
-  one. The sheet is kinds × break frames (idle is frame 0). Shoot the
-  sprite (the full box, not just the foot tile) or stand close and press
-  E ("E para destruir"). A smash opens the
-  LOW tile to floor and rolls empty (wind VFX), a few coins, or one
-  catalog item on that same tile — coins only once the exit is open, for the
-  same reason the ground gets swept then. Camp maps have none. Interact is
-  loot, then crate, then ready.
+- **THE FOREST IS A VOCABULARY OF THINGS YOU CAN OPEN, AND THAT REPLACED THE
+  CRATE.** A crate is a noun with one verb; once a player has smashed four of
+  them the fifth is furniture, and a map made of them generates SPACE rather
+  than stories. What is out there now (`server/app/crates.py`, art in
+  `server/tools/make_objects.py`) is a set of promises the player learns by
+  walking: BARRELS you break (wood, steel, fuel); BOXES, ammo cases and totes
+  whose lids hinge open; CHESTS with a domed lid, the only silhouette in the
+  woods that curves, which ALWAYS pay; small stashes — a mailbox, a suitcase,
+  a chest freezer, a wheelie bin, a toolbox; and six kinds of abandoned
+  VEHICLE — car, van, ambulance, police cruiser, lorry, bus — four tiles long,
+  solid, sight-blocking, with a bonnet or a bay that lifts. Each type owns its
+  own drop table, its own loot TAGS (an ambulance leans medical, a mailbox
+  leans dropped), its own rarity curve and its own prompt.
+- **TWO VERBS, ONE KEY, AND ONLY THE BARRELS ANSWER A BULLET.** E is "use the
+  thing in front of me" and the tooltip already said which — a barrel says
+  destruir, a chest abrir, a car boot vasculhar. A bullet can break a barrel
+  (its own per-type sprite box, not the foot tile); it cannot open anything,
+  because a boot does not come open because somebody shot near it and one
+  stray round popping every container on the map would delete the walk.
+  Using an object frees EVERY tile it stood on — a vehicle claims four — and
+  rolls empty (wind VFX), coins, or one item, which JUMPS out of the opening
+  and lands. Coins only once the exit is open, for the same reason the ground
+  gets swept then. Camp maps have none. Interact is loot, then object, then
+  ready.
+- **AND SOMETIMES SOMEBODY IS STILL IN THE CAR.** A vehicle has an ambush
+  chance, rolled independently of its loot, and what comes out arrives already
+  hunting whoever opened it. It is the cheapest story the map has and it is
+  what makes opening the third car of the night a decision instead of a chore.
+- **THERE ARE NO BUILDINGS AND NO LIGHTS IN THE WOODS.** The abandoned cabin,
+  the tents and the campsites are gone, and so is every lamp and ember a scene
+  used to leave burning. A procedurally dropped house teaches "house = loot"
+  inside two expeditions, after which the forest is a list of houses; and a
+  fixed light on a dark map does the player's reading for them from across the
+  level, before they have spent a step finding out what is under it. Only the
+  party's own lamp, the merchant's torches and the extraction pad's beacon
+  burn now — and world lights LIGHT WITHOUT EXPLORING, so nothing but a player
+  can leave a permanent mark on the map or the minimap. A silhouette in the
+  dark that could be a tree, a car or a body is worth more than any of the
+  three would be lit.
+- **ONE LANDMARK, AND IT IS THE ONE THING SOMEBODY BUILT.** The `sanctuary`:
+  carved stone in a ring — totems, idols, a robed figure, a skull post, a
+  monolith — with bones on the floor inside it and an ALTAR in the middle
+  whose slab grinds aside. It is the only scene made of vertical shapes in a
+  forest of low horizontal wrecks, the only one arranged in a circle, and the
+  only one that states its bargain before the player commits: guaranteed loot
+  off the best rarity table in the game, and a pack of creatures already
+  standing on it. A landmark that was worth more AND safer would be an errand,
+  not a decision.
 - **A hit shows on the body, and it keeps showing.** A landed shot throws
   debris BACK along the ray and blood FORWARD out the far side, so the two
   read as a round passing through something rather than stopping on it, and

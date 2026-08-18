@@ -149,11 +149,15 @@ export interface GameConfig {
   readyRangeTiles: number;
   /** How close to a drop (tiles, feet to item) E will collect. */
   lootCollectTiles?: number;
-  /** How close to a crate (tiles, feet to contact) E will smash. */
+  /**
+   * How close to an object (tiles) E will use it. Measured feet to the
+   * nearest point of the FOOTPRINT, not to the contact point — a bus is four
+   * tiles long and a centre-to-centre reach would refuse the prompt at the
+   * exact doors the art is pointing at.
+   */
   crateBreakTiles?: number;
-  /** Crate shot box width, in tiles. Bottom-anchored on the contact. */
+  /** Fallback shot box, in tiles. Per-object boxes ride `objects` and win. */
   crateHitWTiles?: number;
-  /** Crate shot box height, in tiles. Covers the barrel, not just the foot. */
   crateHitHTiles?: number;
   /** How close to the extraction console (tiles, feet to contact) E activates. */
   riftActivateTiles?: number;
@@ -167,6 +171,10 @@ export interface GameConfig {
   loot?: Record<string, LootItemConfig>;
   /** Combat stats for guns. Keyed by the same keys as loot rows with pocket `hotbar`. */
   weapons?: Record<string, WeaponConfig>;
+  /** The object vocabulary: sheet, verb, prompt and hit box per kind. */
+  objects?: Record<string, ObjectDef>;
+  /** Ammunition: the calibres, their boxes and how much of each fits. */
+  ammo?: AmmoConfig;
   /** Starting bag size. A later upgrade grows it. */
   inventorySlots?: number;
   /** Gun belt size. */
@@ -189,8 +197,43 @@ export interface LootItemConfig {
   frame: number;
   weight: number;
   value: number;
-  /** Where a collect puts it. Guns are `hotbar`; valuables are `bag`. */
-  pocket?: 'bag' | 'hotbar';
+  /**
+   * Where a collect puts it. Guns are `hotbar`; valuables are `bag`; rounds
+   * are `ammo` and take no slot anywhere — they top up a reserve and are
+   * gone. An `ammo` row's `value` is 0 on purpose: ammunition is upkeep, not
+   * cargo, and an extraction platform will not carry it.
+   */
+  pocket?: 'bag' | 'hotbar' | 'ammo';
+  /** `ammo` rows only: which calibre this fills, and by how many rounds. */
+  ammo?: string;
+  rounds?: number;
+}
+
+/**
+ * One interactive object kind, from `server/app/crates.py`.
+ *
+ * The client has no table of its own — see `game/objects.ts`. `sheet` plus
+ * `variant` locate the art (several kinds share one sheet: every vehicle is a
+ * row of `vehicle.png`), `verb` decides whether E breaks or opens it and
+ * whether a bullet counts, and `label` is the line the prompt shows.
+ */
+export interface ObjectDef {
+  sheet: string;
+  variant: number;
+  verb: 'break' | 'open';
+  label: string;
+  /** Footprint width in tiles. A vehicle is 4; almost everything else is 1. */
+  tilesW: number;
+  /** Shot box, in world pixels, bottom-centred on the contact. */
+  hitW: number;
+  hitH: number;
+}
+
+/** Calibres, which catalog row is a box of each, and the reserve caps. */
+export interface AmmoConfig {
+  types: string[];
+  boxes: Record<string, string>;
+  max: Record<string, number>;
 }
 
 export type WeaponKind = 'pistol' | 'rifle' | 'sniper' | 'melee' | string;
@@ -290,7 +333,12 @@ export interface LootPickupEvent {
   /** Bag or hotbar slot it landed in. The fly aims at this cell. */
   slot: number;
   /** `hotbar` for a gun; omitted for the pocket. */
-  dest?: 'bag' | 'hotbar';
+  /**
+   * Where it landed. `hotbar` is a gun, `ammo` is rounds that went into a
+   * reserve — `slot` then names the belt cell holding the weapon they feed,
+   * so the sprite flies onto the gun it topped up. Omitted for the pocket.
+   */
+  dest?: 'bag' | 'hotbar' | 'ammo';
 }
 
 /**
@@ -634,9 +682,17 @@ export interface RiftTimingConfig {
   spentAt: number | null;
 }
 
-/** One live crate. `v` is the kind row on the crate sheet (box, barrel, …). */
+/**
+ * One live interactive object.
+ *
+ * `t` is the TYPE key — `barrel`, `ambulance`, `altar` — and it indexes
+ * `config.objects`. `v` is the row inside that type's sheet, carried on the
+ * wire rather than looked up so a break event can still draw an object that
+ * has already left the live list.
+ */
 export interface CrateState {
   id: string;
+  t: string;
   x: number;
   y: number;
   v: number;
@@ -645,9 +701,10 @@ export interface CrateState {
 
 export type CrateDrop = 'empty' | 'coin' | 'item';
 
-/** A crate that just broke. Juice for the smash sheet and the empty-wind puff. */
+/** An object that was just used. Juice for the sheet and the empty-wind puff. */
 export interface CrateBreakEvent {
   id: string;
+  t: string;
   x: number;
   y: number;
   v: number;
@@ -655,6 +712,8 @@ export interface CrateBreakEvent {
   drop: CrateDrop;
   /** Catalog key when `drop` is `item`. */
   k?: string;
+  /** Set when what came out was a passenger rather than loot. */
+  amb?: number;
 }
 
 /**
@@ -711,6 +770,14 @@ export interface PlayerMeta {
   inv?: InventoryState;
   /** The gun belt. Slots and which one is in hand. */
   guns?: HotbarState;
+  /**
+   * Rounds by calibre, every calibre, including the zeroes.
+   *
+   * On the 5 Hz roster rather than the snapshot: the client spends its own
+   * rounds locally as it predicts the trigger, so this is the resync, not the
+   * counter. A run opens at all zeroes because it opens with no gun.
+   */
+  ammo?: Record<string, number>;
 }
 
 /**

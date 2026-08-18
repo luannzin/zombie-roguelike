@@ -1,13 +1,22 @@
 """Weapons: catalog, hotbar, and the stats that make each one a different hit.
 
-Loot on the ground is still `loot.py`. This is what a collected weapon *is* —
-damage, cadence, reach, weight, the AWP's hold-to-aim. Ammo types are
-named here so the catalog is honest; magazines are a later pass and
-nothing here spends a round.
+Loot on the ground is still `loot.py`. This is what a bought weapon *is* —
+damage, cadence, reach, weight, the AWP's hold-to-aim.
+
+`ammo` names the CALIBRE each one eats, and it is load-bearing rather than
+decorative: every shot spends a round out of the firing player's reserve
+(`ammo.py`), and what the party is carrying decides which boxes the next
+forest bothers to stock. The knife's `AMMO_NONE` is the exception that makes
+the blade matter — it is the one weapon that never runs out.
+
+GUNS ARE NOT FOUND. Every row here is `droppable=False` in the loot catalog:
+the merchant is the only source (`store.py`), so a firearm is something the
+party spent a night's extraction on rather than something the forest handed
+them, and a calibre nobody paid for is a calibre nobody finds ammunition for.
 
 The pocket (`inventory.py`) holds valuables. Weapons live on a 3-slot
 HOTBAR: two gun cells and then ONE FIXED CELL holding the knife. Guns are
-collected and swapped; the knife is neither, which is the point of it —
+bought and swapped; the knife is neither, which is the point of it —
 a run STARTS with no gun at all and the hand is still not empty.
 1/2/3 selects a slot; selecting the held slot again holsters it.
 
@@ -33,10 +42,12 @@ KNIFE_SLOT = GUN_SLOTS
 HOTBAR_SLOTS = GUN_SLOTS + 1
 #: The one weapon nobody picks up, drops or loses — and the ONLY thing a
 #: run starts with. There is no starting gun: the first one is something
-#: you find, which is what makes finding one an event.
+#: you BUY, out of the first night's extraction, which is what makes owning
+#: one an event and what makes the first shop mean something.
 STARTING_MELEE = "knife"
 
-#: Named so a later magazine pass has somewhere to land. Unused today.
+#: The calibres. `ammo.py` owns the reserves, the caps and the boxes; these
+#: three strings are the join between a weapon and the pile of rounds it eats.
 AMMO_PISTOL = "pistol"
 AMMO_RIFLE = "rifle"
 AMMO_AWP = "awp"
@@ -136,8 +147,9 @@ class WeaponDef:
 
     key: str
     name: str
-    #: pistol / rifle / sniper / melee — presentation and the ammo it will eat.
+    #: pistol / rifle / sniper / melee — presentation only.
     kind: str
+    #: The calibre this eats, one per shot. `AMMO_NONE` never runs dry.
     ammo: str
     damage: int = 0
     #: Seconds between shots once the trigger is live.

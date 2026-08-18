@@ -22,7 +22,8 @@ game's scale.
 | `coins.py` | dropped gold: the per-kill drop roll, burst, magnet, collection |
 | `loot.py` | world collectables: catalog, scene-context scatter, E-to-collect |
 | `weapons.py` | weapon catalog (glock/deagle/famas/ak47/awp + the knife), hotbar, per-shot stats, the melee combo |
-| `crates.py` | breakable boxes/barrels: extract from scenery, smash, drop roll |
+| `crates.py` | INTERACTIVE OBJECTS: the type table (barrels, boxes, chests, stashes, vehicles, altars), their verbs, drop tables, ambush odds and hit boxes; extract from scenery, use, roll |
+| `ammo.py` | calibres, per-player reserves, boxes gated on what the party carries, the merchant's starting load |
 | `corpses.py` | dead enemies left on the floor: persist until the map swaps |
 | `rift.py` | extraction pads: day-scaled count, plot, the cargo platform and its corner lamps, inbound pickup, per-pad quota, overfeed, hand-called launch, siren / `hunt_all` |
 | `entrance.py` | forest edge VOID corridor, emerge formation, staggered seal (`seal_to`), `bounds` for a map with two corridors, extraction `open_exit` (flared at the border) |
@@ -320,35 +321,45 @@ game's scale.
   anything. Standing pieces claim tiles from `FOOTPRINTS` — derived from the
   piece's contact point, never listed per-scene — and those can cut a path, so
   `_stamp` re-checks reachability from the player origin and REVERTS on
-  failure. Never drill: a corridor cut through a cabin to keep the map
-  connected is a map with a hole in a cabin. `_seal` puts back scrub whose
+  failure. Never drill: a corridor cut through a parked lorry to keep the map
+  connected is a map with a hole in a lorry. `_seal` puts back scrub whose
   clearing left an orphan tile of floor; both generators leave sealed pockets
   in their own treelines and those are not ours to tidy.
 - The connectivity check is a SET from a point that matters (spawn clearing,
   camp fire), not a count from the first floor tile in scan order. A camp
   treeline pocket is two tiles and is the first floor the scan finds; a count
-  that starts there answers no before a crate has landed. Containment, not
+  that starts there answers no before an object has landed. Containment, not
   totals: clearing one pocket while a fence orphans another cancels in a
   count. The reachable set is carried across attempts — a flood of the whole
   map per try is most of what generation costs.
 - Scene placement never touches the `BORDER` treeline, which is what keeps the
   camera from framing the end of the world.
--   BUILDINGS claim `world.PROP` (solid, sight-blocking). Waist-high cover —
-  fences, signs, crates, logs — claims `world.LOW`: solid to bodies and
-  bullets, transparent to light. Making those PROP puts a shadow wedge behind
-  every crate and turns a fence into a wall of black. Firepits stay walkable.
-  Crates are then pulled off the scenery list (`crates.attach`) so a smash
-  can delete one and `set_tile` that LOW cell back to FLOOR. `Navigator`
-  must `invalidate()` when a tile opens.
+- VEHICLES and STATUES claim `world.PROP` (solid, sight-blocking), and that is
+  a gameplay decision rather than a physical one: you lose a creature behind a
+  bus, and a ring of totems is a ring of blind corners, which is most of what
+  makes the shrine expensive. Waist-high cover — fences, signs, barrels,
+  boxes, logs — claims `world.LOW`: solid to bodies and bullets, transparent
+  to light. Making those PROP puts a shadow wedge behind every barrel and
+  turns a fence into a wall of black. Firepits stay walkable. Objects are then
+  pulled off the scenery list (`crates.attach`) so using one can `set_tile`
+  every cell it held back to FLOOR. `Navigator` must `invalidate()` when a
+  tile opens.
 - **A standing thing is solid on one tile of height, at its feet.** Trees,
-  signs, tents, cabins — the canopy, the board, the roof are drawn, not
-  walked into. `FOOTPRINTS` depth is 1 and `_cells` sits on the contact
+  signs, tents, buses, totems — the canopy, the board, the roofline are drawn,
+  not walked into. `FOOTPRINTS` depth is 1 and `_cells` sits on the contact
   point; growing the box up the sprite is how a signboard becomes a wall.
   TREE is the same contract: the trunk tile only.
-- The LANDMARK (the cabin) is placed first, alone, with a much larger attempt
-  budget, and there is at most one per map. Rolled in with the weighted pool it
-  loses every anchor race to a 4x3 woodpile; a second one turns the first from a
-  place into a prop.
+- The LANDMARK (the tribal `sanctuary`) is placed first, alone, with a much
+  larger attempt budget, and there is at most one per map. Rolled in with the
+  weighted pool it loses every anchor race to a 4x3 woodpile; a second one
+  turns the first from a place into a prop. It is the one thing out here
+  somebody BUILT rather than abandoned, the only scene made of vertical carved
+  shapes in a forest of low horizontal wrecks, and the only one that states
+  its bargain in props before the player commits: guaranteed loot on an altar
+  rolling off the best rarity table in the game, with a pack already standing
+  on it (`mapgen.NEST_SCENES` → `Room._seed_nests`). Nests are the only
+  creatures placed rather than spawned by the director, because a place has to
+  be dangerous whether or not anybody has walked to it yet.
 - **`populate` returns a `Population`, and half of it is not on the wire.**
   `props` and `lights` ship; `scenes` (now `PlacedScene` with a kind) and
   `route` are where things ended up in tiles and the order the thread walks
@@ -438,21 +449,67 @@ game's scale.
   sixteen tiles; the entire knife chain wakes five, and only when it
   CONNECTS — a whiff is silent and is not broadcast at all. Raising it to
   match a gun would delete the reason the weapon exists.
-- **A crate is furniture you can break.** Scenery still places the pile;
-  `crates.py` owns the live list. `{type:"break","id"}` smashes if the
-  feet are inside `crateBreakTiles`; a bullet that hits the sprite box
-  (`crateHitWTiles` × `crateHitHTiles`, from the contact up) does the
-  same — the 1×1 foot tile is walking cover, not the aim target.
-  Walk-out refuses it; camp maps have none. Three rolls: empty (client plays wind), 1–3
-  coins, or one catalog item (`loot.roll_item`, no scene bias) on the
-  crate's own tile — not `place_near`. During the BLACKOUT it rolls two:
-  `roll_drop(items=False)` folds the item weight into COIN, so a crate on the
-  run home is empty-or-coins and never puts a fresh item back on a map
-  `_clear_loot` just swept. Folded into coin rather than into empty on
-  purpose — what changes is what falls out, not whether anything does. Smash
-  makes a quieter `ai.Noise` than a gunshot (`CRATE_NOISE_TILES`). The
-  remaining list rides `welcome`/`map.crates` and a dirty snapshot
-  `crates`; `crateBreaks` is the juice for that tick.
+- **THE OBJECTS ARE A VOCABULARY, AND `crates.py` IS THE DICTIONARY.** The
+  module and the wire still say `crates` — history, like `rifts` — but the
+  list holds barrels, supply boxes, ammo cases, chests, mailboxes, suitcases,
+  freezers, bins, toolboxes, six kinds of abandoned vehicle, and the shrine's
+  altar. Everything that separates one from another is a row in
+  `crates.TYPES`: its sheet and sheet row, its VERB, its prompt, its footprint
+  and hit box, its drop table, the catalog TAGS its item roll leans on, its
+  rarity curve, and its AMBUSH chance. The whole table ships in
+  `welcome.config.objects`; the client has no list of its own.
+- **TWO VERBS, ONE KEY, AND ONLY ONE OF THEM ANSWERS A BULLET.**
+  `{type:"break","id"}` is "use the thing in front of me" — from the input's
+  point of view that is one intent, and the prompt already said which it
+  would be. A BREAK object (the barrels) can also be shot: `crates.along_ray`
+  tests each type's own sprite box, so a car is four tiles of target and a
+  toolbox is one. OPEN objects skip that ray entirely — a boot does not come
+  open because somebody shot near it, and one stray round popping every
+  container on the map would delete the walk. Reach is measured feet to the
+  nearest point of the FOOTPRINT (`crates.nearest`), because a bus is four
+  tiles long and a centre-to-centre reach refuses the prompt at exactly the
+  doors the art is pointing at.
+- Using one frees EVERY tile it stood on (`Crate.cells`) — a vehicle claims
+  four, and freeing only the contact tile leaves three invisible walls.
+  `Navigator` must `invalidate()`. Walk-out refuses; camp maps have none.
+  Outcomes come off the type's own table: empty (the client plays wind on a
+  break), coins, or one catalog item rolled with that object's tags and rarity
+  curve. A chest and an altar have no empty weight at all — they are the only
+  objects guaranteed to pay, which is what the domed lid and the ring of
+  statues are advertising from across a clearing. During the BLACKOUT
+  `roll_drop(items=False)` folds the item weight into COIN, so nothing puts a
+  fresh item back on a map `_clear_loot` just swept; folded into coin rather
+  than into empty on purpose, because what changes is what falls out, not
+  whether anything does. Noise is per type (`ObjectType.noise_tiles`) — a
+  mailbox and a lorry bonnet are not the same event.
+- **AND SOMETIMES SOMEBODY IS STILL IN THE CAR.** `ObjectType.ambush` is
+  rolled in `Room.smash_crate` AFTER the loot and independent of it, so a boot
+  can hold a medical kit AND a passenger; `Room._ambush` places the creature
+  already committed to whoever opened it. It is the cheapest story the map has
+  and the reason opening the third car of the night is a decision rather than
+  a chore. The remaining list rides `welcome`/`map.crates` and a dirty
+  snapshot `crates`; `crateBreaks` carries the type key `t` (the object is
+  already gone from the live list, so the client has nothing left to ask), the
+  outcome, and `amb`.
+- **AMMUNITION IS UPKEEP, NOT CARGO** (`ammo.py`). Every gun eats one round
+  per shot out of the firing player's reserve; the knife eats nothing, which
+  is most of why the knife is still in the game. A dry trigger still burns the
+  cooldown, on both sides, or an empty gun clicks thirty times a second. Boxes
+  are worth 0 and take no pocket slot — a round competing with a gold ring for
+  a bag cell would make shooting a choice against extracting, which is not a
+  trade-off, it is a tax on playing. THE FOREST STOCKS ITSELF AGAINST THE
+  BELT: `mapgen.build_forest` is handed `ammo.party_calibres`, so a party of
+  knives finds none at all, and `Room.collect_loot` refuses a box unless the
+  COLLECTING player's own hotbar holds that calibre and has room for it — the
+  rifle rounds belong to whoever brought the rifle, and a full reserve leaves
+  the box on the ground for the walk back.
+- **GUNS ARE BOUGHT AND NEVER FOUND.** Every weapon row is
+  `droppable=False`, so no scene, object or roll can produce one and
+  `store.py` is the only source. That is what makes calibre and ownership the
+  same question: what the party paid the merchant for last night decides what
+  the forest bothers to stock tonight. A purchase comes loaded
+  (`Reserve.grant_for`), because a gun that could not be fired until the
+  following night would make the shop feel broken.
 - **The thread is what makes it one story instead of seven.** `_route` orders
   the placed scenes by distance from spawn so the narrative reads OUTWARD and
   ends at the landmark; `_thread` lays prints between them with blood
@@ -462,16 +519,19 @@ game's scale.
   around every trunk to stay visible reads as a drawn line. The camp gets no
   thread — it is firewood around a fire, and a blood trail through it is the
   wrong promise.
-- **A `SceneLight` turns a scene into a destination.** Scenes are invisible
-  until a lantern reaches them, which means a map full of stories nobody walks
-  past; one lit lamp at a cabin door is visible from across the dark and the
-  player CHOOSES to go to it. Radii stay small — these are things you can see
-  from far away, not areas of safety. `BEACON` is the extraction pad — its
-  torch from the moment the map is built, and its deck as well once the console
-  is pressed, both pushed onto the same `lights` list. The lighting has no idea
-  either is special.
+- **NO FOREST SCENE IS LIT.** `SceneLight` still exists and the STORE still
+  uses it — the merchant's torches are navigation in the one zone with no
+  lantern — but nothing in the woods emits one any more. A fixed light on a
+  dark map does the player's reading for them from across the level, through
+  the treeline, before they have spent a step finding out what is under it,
+  and the darkness is the only real inventory of tension the game has. The
+  client backs it up: world lights LIGHT and never EXPLORE (`render/fov.ts`
+  `burn`), so nothing but the party can leave a permanent mark on the map or
+  the minimap. `BEACON` is the extraction pad — its torch from the moment the
+  map is built, its deck once the console is pressed — and it is the
+  deliberate exception, because the pad IS the objective.
 - The camp draws from `CAMP_POOL`, not `SCENES`: firewood and a sign, nothing
-  that bled, and no crate pieces. It is the one non-hostile zone, and a last
+  that bled, and no containers. It is the one non-hostile zone, and a last
   stand outside the tent the party is about to leave from is a promise the
   zone does not keep. Camp scenes also keep clear of the hearth and the exit
   mouth — the same two places the decoration mask and the walk-out already own.

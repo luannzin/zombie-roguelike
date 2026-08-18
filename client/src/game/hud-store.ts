@@ -27,6 +27,15 @@ export interface HudHotbarSlot {
   rarity: LootRarity;
   frame: number;
   weight: number;
+  /**
+   * Rounds left for this weapon's calibre, or null for the knife.
+   *
+   * PER CELL rather than one counter beside the belt, because a party can
+   * carry two guns on two calibres and "how many bullets do I have" is not a
+   * question with one answer. Null is what makes the blade read as the weapon
+   * that never runs out — the cell simply has no number on it.
+   */
+  ammo: number | null;
 }
 
 /** One run objective. The HUD mirrors the server list and never invents a row. */
@@ -205,8 +214,12 @@ export interface HudSnapshot {
   prompt: 'ready' | null;
   /** Proximity prompt on a world drop. `full` is a bag that cannot take it. */
   lootPrompt: HudLootPrompt | null;
-  /** Proximity prompt on a crate. */
-  cratePrompt: boolean;
+  /**
+   * The verb E offers on the object in reach, or null. A string rather than a
+   * flag because the objects do not share a verb any more — see
+   * `server/app/crates.py`.
+   */
+  cratePrompt: string | null;
   /**
    * Proximity prompt on an extraction pad. `open` while dormant, `feed`
    * once the platform is running and the load quest is live.
@@ -251,7 +264,7 @@ export const EMPTY_HUD: HudSnapshot = {
   ready: null,
   prompt: null,
   lootPrompt: null,
-  cratePrompt: false,
+  cratePrompt: null,
   riftPrompt: null,
   buyPrompt: null,
   balance: 0,

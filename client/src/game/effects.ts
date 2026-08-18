@@ -202,8 +202,15 @@ function shotPower(damage?: number): number {
   return Math.min(3.2, Math.max(0.5, damage / 10));
 }
 
-/** A crate playing its smash sheet. Gone from the live list; this is the juice. */
+/**
+ * An object playing its one-shot. Gone from the live list; this is the juice.
+ *
+ * `sheet` is carried rather than looked up because by the time this plays the
+ * object is no longer in `world.crates` — there is nothing left to ask what
+ * kind it was.
+ */
 export interface CrateSmash {
+  sheet: string;
   x: number;
   y: number;
   variant: number;
@@ -211,6 +218,34 @@ export interface CrateSmash {
   age: number;
   life: number;
   empty: boolean;
+  /** `open` holds its last frame; `break` ends near-empty and can just stop. */
+  verb: 'break' | 'open';
+}
+
+/**
+ * An item leaping out of something that was just opened.
+ *
+ * The ONE piece of juice in this file that exists purely so a reward lands as
+ * an event. A drop that simply appeared on the floor under the lid is
+ * information; a drop that pops up, hangs for a beat and falls is a moment,
+ * and the beat at the top is where the player reads the rarity colour before
+ * they have walked a step. It is drawn by `layers/loot.ts` from the same atlas
+ * frame the ground drop uses, so nothing about it can disagree with the thing
+ * it becomes.
+ */
+export interface LootPop {
+  x: number;
+  y: number;
+  /** Catalog key, for the atlas frame and the rarity tint. */
+  key: string;
+  age: number;
+  life: number;
+  /** Peak height of the arc, in world px. */
+  rise: number;
+  /** Sideways drift over the whole arc, in world px. */
+  drift: number;
+  /** Radians per second. A rare thing turning over reads as worth looking at. */
+  spin: number;
 }
 
 /** One-shot wind puff. Played when a crate held nothing. */
@@ -244,6 +279,7 @@ export class Effects {
   /** Boot prints. Long-lived; see Footprint. */
   footprints: Footprint[] = [];
   crateSmashes: CrateSmash[] = [];
+  lootPops: LootPop[] = [];
   winds: WindPuff[] = [];
   deaths: DeathBurst[] = [];
 
@@ -642,16 +678,25 @@ export class Effects {
     }
   }
 
-  /** A crate coming apart: splinters, a puff of dust, and the sheet to play. */
+  /**
+   * An object being used: splinters, a puff of dust, and the sheet to play.
+   *
+   * Both verbs come through here and the particles are deliberately the same
+   * for both — dust off the ground either way. What separates a barrel from a
+   * boot is the SHEET (one bursts, one hinges) and the sound, and adding a
+   * second particle vocabulary on top would be saying the same thing twice.
+   */
   spawnCrateSmash(
+    sheet: string,
     x: number,
     y: number,
     variant: number,
     flip: boolean,
     empty: boolean,
     life: number,
+    verb: 'break' | 'open' = 'break',
   ): void {
-    this.crateSmashes.push({ x, y, variant, flip, age: 0, life, empty });
+    this.crateSmashes.push({ sheet, x, y, variant, flip, age: 0, life, empty, verb });
     const fx = palette().effects;
     for (let i = 0; i < 10; i++) {
       const angle = Math.random() * Math.PI * 2;
@@ -669,6 +714,26 @@ export class Effects {
       });
     }
     this.spawnDust(x, y, 0, 1, 1);
+  }
+
+  /**
+   * The item jumping out of an opened container.
+   *
+   * Aimed slightly toward the camera (down the screen), because the whole
+   * point is that it lands somewhere the player can see and walk to rather
+   * than behind the thing they just opened.
+   */
+  spawnLootPop(x: number, y: number, key: string, life: number): void {
+    this.lootPops.push({
+      x,
+      y,
+      key,
+      age: 0,
+      life,
+      rise: 13 + Math.random() * 5,
+      drift: (Math.random() - 0.5) * 10,
+      spin: (Math.random() < 0.5 ? -1 : 1) * (2.4 + Math.random() * 1.6),
+    });
   }
 
   spawnWind(x: number, y: number, life: number): void {
@@ -775,6 +840,7 @@ export class Effects {
     this.lights = advance(this.lights, dt);
     this.footprints = advance(this.footprints, dt);
     this.crateSmashes = advance(this.crateSmashes, dt);
+    this.lootPops = advance(this.lootPops, dt);
     this.winds = advance(this.winds, dt);
     this.deaths = advance(this.deaths, dt);
     this.particles = stepParticles(this.particles, dt, PARTICLE_DRAG);
@@ -796,6 +862,7 @@ export class Effects {
     this.lights.length = 0;
     this.footprints.length = 0;
     this.crateSmashes.length = 0;
+    this.lootPops.length = 0;
     this.winds.length = 0;
     this.deaths.length = 0;
   }

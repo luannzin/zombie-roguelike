@@ -43,11 +43,11 @@ mutation, no React.
 - `renderer.ts` only sequences passes and switches spaces; drawing lives in
   `layers/`. **The pass order is the atmosphere** — ground (soil, litter, flat
   scenery, then any extraction imprint) → dust → coins and loot sprites → entities, bonfires and standing
-  scenery (one depth sort by `y`, including live crates and smash sheets, the
+  scenery (one depth sort by `y`, including live objects and their one-shots, the
   console, the torch and a grounded skid) → `drawRiftAir` (ropes, inbound
   drones, an airborne skid — after the sort, before the darkness) →
   overgrowth → motes / rain / fog → darkness → combat effects → loot auras / motes /
-  epic-legendary beams / empty-crate wind / death burst / torch fire / corner lamps / rig glow → hunt diamond →
+  epic-legendary beams / empty-object wind / death burst / torch fire / corner lamps / rig glow → hunt diamond →
   labels → vignette. Effects and loot light go over the darkness because
   they are light, not things being lit. An unlit drop HIDES ITS SPRITE.
   Corpses hide the same way. Blood pools sit on the floor with the boot
@@ -126,7 +126,7 @@ mutation, no React.
   (`VOID_CRUSH_REACH`), not as a stamped rectangle, so it reads as a ribbon
   of deep woods. `LOW` is the third exception — waist-high cover you look
   over. Paint it as ground (with PROP and VOID); the standing sprite covers
-  it. Treating it as a wall tile puts a rock under every crate.
+  it. Treating it as a wall tile puts a rock under every barrel.
 - `Camera` follows the player and nothing else. The move INTO a zone belongs to
   `game/lobby-scene.ts`, which is already showing the same place when it starts;
   by the time this camera exists the push-in is over and it opens on the frame
@@ -240,8 +240,11 @@ mutation, no React.
   signs and cold firepits go into the entity depth sort next to the
   bonfires, because a player walking behind a cabin has to disappear behind it.
   That one requirement is the whole reason they are not in the prop bake.
-  Live crates and their smash sheets join that same sort from `world.crates`
-  / `effects.crateSmashes` — they are no longer scenery props.
+  Live objects and their one-shots join that same sort from `world.crates` /
+  `effects.crateSmashes` — they are no longer scenery props. Each carries the
+  atlas SHEET it draws from, resolved once from `config.objects` when the row
+  was unpacked (`game/objects.ts`), because a one-shot outlives the live row
+  and there is nothing left to ask what kind it was.
 - The bake order inside the ground canvas is a stack of things resting on each
   other: soil, stains that soaked in, litter that fell on top, then what people
   left last. A blood stain under a drift of leaves is older than the leaves,
@@ -249,8 +252,13 @@ mutation, no React.
 - Almost nothing in `layers/scenery.ts` moves, and that is deliberate: these are
   the things in the forest that have STOPPED. A sign swings, canvas breathes, a
   dead fire smokes — all three off the sheet's own `sway`/`smokes` fields, so
-  the art decides what the wind can push, not a table in the layer. A crate
-  smash is a one-shot on the crate sheet (`kinds` × `breakFrames`), not sway.
+  the art decides what the wind can push, not a table in the layer. An object
+  being used is a one-shot on its own sheet (`kinds` × `animFrames`, kind-major,
+  frame 0 the idle), not sway. `crateAnimFrame` CLAMPS on the last frame, and
+  that clamp is what lets one number serve both verbs: a break sheet ends
+  near-empty, an open sheet ends on a lid standing up and holds it for the rest
+  of `CRATE_BREAK_LIFE` — cutting an opened container the instant its lid
+  finished rising reads as the object vanishing rather than as it being emptied.
   The first `HIT_FLASH_LIFE` of a smash is the same additive white blink a
   body gets when a shot lands — without it the wood just starts playing.
 - Scenery props are drawn through `Projection`, so the lobby can reuse the same

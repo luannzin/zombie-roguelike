@@ -17,10 +17,19 @@ client -> server
   {"type":"start"}                      host only; ignored otherwise
   {"type":"ready"}                      toggle ready, camp only, near the fire
   {"type":"collect","id":"l3"}          pick up a loot drop; ignored if too far
-                                        or the destination (bag / hotbar) is full
-  {"type":"break","id":"k3"}            smash a crate; ignored if too far.
-                                        A shot that hits the crate's sprite
-                                        box does the same.
+                                        or the destination (bag / hotbar) is
+                                        full. An AMMO drop is refused unless
+                                        the collecting player's own belt holds
+                                        that calibre and has room for it
+  {"type":"break","id":"k3"}            USE the object at `id` — break a
+                                        barrel, open a boot, lift an altar
+                                        slab. One message for both verbs:
+                                        which one it is belongs to the object
+                                        (`config.objects[t].verb`), not to
+                                        the key. Ignored if too far. A shot
+                                        that hits a BREAKABLE object's sprite
+                                        box does the same; openable ones
+                                        ignore bullets.
   {"type":"drop","slot":0}              pull a bag slot back onto the ground
                                         near the player's feet; ignored in camp
   {"type":"activate","id":"r0"}         press a rift console or feed an open
@@ -75,9 +84,12 @@ value is that the pieces know about each other. Each row is
 x/y in world pixels — a contact point for a standing prop, a centre for a flat
 one — and `layer` 0 flat / 1 standing. `variant` is taken modulo the sheet's
 frame count client-side, except for `tracks`, where it is a compass point.
-Standing crates are pulled out of `props` into `crates` (`{id,x,y,v,flip}`)
-so a smash can remove one without rewriting the scenery list. Their LOW tiles
-stay on `tiles` until they break, then become FLOOR.
+Interactive objects are pulled out of `props` into `crates`
+(`{id,t,x,y,v,flip}`) so using one can remove it without rewriting the scenery
+list. `t` is the object TYPE key — `barrel`, `ambulance`, `altar` — and it
+indexes `welcome.config.objects`, which carries the sheet, the sheet row, the
+verb, the prompt and the hit box. Their tiles stay solid on `tiles` until the
+object is used, then become FLOOR; a vehicle frees FOUR of them.
 
 A snapshot is IDENTICAL for every socket in the room — it is serialised once a
 tick and the same string is written to all of them. That is why the per-player
@@ -126,10 +138,13 @@ Snapshot arrays:
                the bag or hotbar index it landed in; `dest` is `hotbar`
                for a gun and omitted for the pocket. The client flies
                the sprite onto that HUD cell.
-  crates       remaining breakable crates; attached like loot — on the map
-               payload, and again on a snapshot only when one was smashed
-  crateBreaks  crates smashed since the last snapshot (juice). `drop` is
-               empty / coin / item; `k` is the catalog key when it is an item
+  crates       remaining interactive objects; attached like loot — on the map
+               payload, and again on a snapshot only when one was used
+  crateBreaks  objects used since the last snapshot (juice). `t` names the
+               type so the client can play the right sheet for something that
+               is already gone from the live list; `drop` is empty / coin /
+               item; `k` is the catalog key when it is an item; `amb` is set
+               when what came out was a passenger rather than loot
   stands       the shop's tables, attached like crates — on the map payload,
                and again on a snapshot only when one was bought from. A sold
                table keeps its row and its price; `sold` is what empties it,

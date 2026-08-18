@@ -107,6 +107,77 @@ export function drawLootSprites(
 }
 
 /**
+ * The item leaping out of something that was just opened.
+ *
+ * Drawn from the SAME atlas frame the ground drop uses, because it becomes
+ * that ground drop — the server placed the real one under it before this
+ * started playing, and any difference between the two would be the pop
+ * lying about what was found.
+ *
+ * The arc is a parabola with a spin on it and a shadow that stays on the
+ * floor and shrinks as the thing climbs. The shadow is what sells the height:
+ * without it a sprite moving up the screen reads as a sprite moving away, and
+ * at this camera angle those are the same pixels.
+ */
+export function drawLootPops(
+  ctx: CanvasRenderingContext2D,
+  view: Projection,
+  atlas: LootAtlas | null,
+  pops: readonly {
+    x: number;
+    y: number;
+    key: string;
+    age: number;
+    life: number;
+    rise: number;
+    drift: number;
+    spin: number;
+  }[],
+  frameOf: (key: string) => number | null,
+): void {
+  if (!atlas || pops.length === 0) return;
+  const { image, frameWidth, frameHeight } = atlas;
+  for (const pop of pops) {
+    const frame = frameOf(pop.key);
+    if (frame === null) continue;
+    const t = Math.min(1, pop.age / pop.life);
+    // 4t(1-t) peaks at exactly 1 halfway through, so `rise` is the height in
+    // world px rather than a number that has to be tuned by eye.
+    const height = pop.rise * 4 * t * (1 - t);
+    const x = pop.x + pop.drift * t;
+    const groundY = pop.y;
+    // Fades only at the very end, as it settles onto the drop underneath it.
+    const alpha = t > 0.82 ? 1 - (t - 0.82) / 0.18 : 1;
+
+    ctx.globalAlpha = alpha * 0.35;
+    ctx.fillStyle = palette().entity.shadow;
+    ctx.beginPath();
+    const shrink = 1 - (height / Math.max(pop.rise, 1)) * 0.45;
+    ctx.ellipse(
+      view.x(x),
+      view.y(groundY),
+      view.size(frameWidth * 0.28 * shrink),
+      view.size(frameHeight * 0.14 * shrink),
+      0, 0, Math.PI * 2,
+    );
+    ctx.fill();
+
+    ctx.globalAlpha = alpha;
+    ctx.save();
+    ctx.translate(view.x(x), view.y(groundY - height - frameHeight * 0.4));
+    ctx.rotate(pop.spin * pop.age);
+    ctx.drawImage(
+      image,
+      frame * frameWidth, 0, frameWidth, frameHeight,
+      -view.size(frameWidth) / 2, -view.size(frameHeight) / 2,
+      view.size(frameWidth), view.size(frameHeight),
+    );
+    ctx.restore();
+  }
+  ctx.globalAlpha = 1;
+}
+
+/**
  * Ground puddle in the rarity colour. Drawn additive, after darkness, in
  * WORLD space — the context already carries zoom and camera, so these are
  * raw drop coordinates. Running them through `Projection` would place the

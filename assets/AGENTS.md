@@ -27,7 +27,7 @@ output the game actually loads.
   Vite's `publicDir` points here, so these files are fetched as
   `/player/sheet.png`, `/backpack/sheet.png`, `/zombie-husk/sheet.png`,
   `/zhat-cap/sheet.png`, `/terrain/ground_loam.png`,
-  `/scenery/cabin.png`, `/loot/sheet.png`, `/guns/sheet.png`, `/hud/backpack.png`,
+  `/scenery/vehicle.png`, `/loot/sheet.png`, `/guns/sheet.png`, `/hud/backpack.png`,
   `/hud/coin.png`, `/hud/arrow.png`, ….
 - `terrain/` is the PLACE — soil, stone, wood that grew there — and the client
   scatters it off the map seed. `scenery/` was carried in by somebody, and it

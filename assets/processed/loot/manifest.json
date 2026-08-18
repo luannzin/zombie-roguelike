@@ -2,7 +2,7 @@
   "tile": 16,
   "frameWidth": 16,
   "frameHeight": 16,
-  "frames": 31,
+  "frames": 50,
   "items": {
     "old_tools": {
       "frame": 0
@@ -19,83 +19,140 @@
     "scrap": {
       "frame": 4
     },
-    "camera": {
+    "rusty_can": {
       "frame": 5
     },
-    "old_headphone": {
+    "torn_map": {
       "frame": 6
     },
-    "portable_radio": {
+    "spark_plug": {
       "frame": 7
     },
-    "compass": {
+    "license_plate": {
       "frame": 8
     },
-    "military_camera": {
+    "camera": {
       "frame": 9
     },
-    "gold_ring": {
+    "old_headphone": {
       "frame": 10
     },
-    "binoculars": {
+    "portable_radio": {
       "frame": 11
     },
-    "precious_gem": {
+    "compass": {
       "frame": 12
     },
-    "stone_idol": {
+    "car_battery": {
       "frame": 13
     },
-    "tribal_mask": {
+    "first_aid": {
       "frame": 14
     },
-    "ancient_amulet": {
+    "road_flare": {
       "frame": 15
     },
-    "gold_figurine": {
+    "wrench_set": {
       "frame": 16
     },
-    "raw_diamond": {
+    "military_camera": {
       "frame": 17
     },
-    "black_pearl": {
+    "gold_ring": {
       "frame": 18
     },
-    "black_diamond": {
+    "binoculars": {
       "frame": 19
     },
-    "lost_crown": {
+    "precious_gem": {
       "frame": 20
     },
-    "sanctuary_relic": {
+    "morphine": {
       "frame": 21
     },
-    "vault_key": {
+    "police_radio": {
       "frame": 22
     },
-    "royal_ring": {
+    "night_vision": {
       "frame": 23
     },
-    "glock18": {
+    "bone_charm": {
       "frame": 24
     },
-    "deagle": {
+    "stone_idol": {
       "frame": 25
     },
-    "famas": {
+    "tribal_mask": {
       "frame": 26
     },
-    "ak47": {
+    "ancient_amulet": {
       "frame": 27
     },
-    "awp": {
+    "gold_figurine": {
       "frame": 28
     },
-    "knife": {
+    "raw_diamond": {
       "frame": 29
     },
-    "rift_shard": {
+    "black_pearl": {
       "frame": 30
+    },
+    "ritual_dagger": {
+      "frame": 31
+    },
+    "bank_ledger": {
+      "frame": 32
+    },
+    "black_diamond": {
+      "frame": 33
+    },
+    "lost_crown": {
+      "frame": 34
+    },
+    "sanctuary_relic": {
+      "frame": 35
+    },
+    "vault_key": {
+      "frame": 36
+    },
+    "royal_ring": {
+      "frame": 37
+    },
+    "obsidian_totem": {
+      "frame": 38
+    },
+    "ancestor_skull": {
+      "frame": 39
+    },
+    "ammo_pistol": {
+      "frame": 40
+    },
+    "ammo_rifle": {
+      "frame": 41
+    },
+    "ammo_awp": {
+      "frame": 42
+    },
+    "glock18": {
+      "frame": 43
+    },
+    "deagle": {
+      "frame": 44
+    },
+    "famas": {
+      "frame": 45
+    },
+    "ak47": {
+      "frame": 46
+    },
+    "awp": {
+      "frame": 47
+    },
+    "knife": {
+      "frame": 48
+    },
+    "rift_shard": {
+      "frame": 49
     }
   }
 }

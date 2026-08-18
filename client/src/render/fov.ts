@@ -417,6 +417,15 @@ export class FovField {
    * fire has no aim, no cone, no spill and no battery, so everything that makes
    * the viewer path complicated is dead weight here. Same `max()` merge, same
    * shadowcast, so a fire and a lantern lighting the same tile agree about it.
+   *
+   * IT LIGHTS, AND IT DOES NOT EXPLORE. That single omission is the rule the
+   * whole night runs on: only what the PARTY has seen counts as seen. A light
+   * the party did not carry there — a torch beside an extraction console, the
+   * merchant's lamps — makes its own pool visible while you are looking at it
+   * and leaves no permanent mark on the map or the minimap. Otherwise every
+   * fixed light on the level would quietly hand over the ground around it
+   * before anybody had spent a step finding out what was on it, and the
+   * darkness is the only real inventory of tension this game has.
    */
   private burn(world: TileMap, lights: readonly LightSource[], time: number): void {
     if (lights.length === 0) return;
@@ -446,7 +455,6 @@ export class FovField {
 
         const index = ty * this.width + tx;
         if (value > this.light[index]) this.light[index] = value;
-        if (value >= EXPLORE_THRESHOLD) this.explored[index] = 1;
 
         const heat =
           value * FIRE_WARMTH * (HEAT_BASE + falloff(dist, hearth, 0) * HEAT_NEAR);

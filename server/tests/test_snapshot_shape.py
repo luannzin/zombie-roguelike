@@ -17,11 +17,24 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app import protocol  # noqa: E402
+from app.config import INVENTORY_SLOTS  # noqa: E402
 from app.coins import Coin  # noqa: E402
 from app.entities import Player  # noqa: E402
 
-MOVING = {"id", "x", "y", "vx", "vy", "ax", "ay", "seq", "lantern", "hp", "alive", "ready"}
-IDENTITY = {"name", "color", "kills", "deaths", "xp", "gold", "level", "xpInLevel", "xpToLevel", "inv"}
+# What legitimately changes every tick. `held` and `ads` are in here rather
+# than on the roster because both are read by the RENDERER on the frame they
+# flip — which gun is in the hand and whether the scope is up.
+MOVING = {
+    "id", "x", "y", "vx", "vy", "ax", "ay", "seq", "lantern", "hp", "alive",
+    "ready", "held", "ads",
+}
+# What rides the 5 Hz roster. `ammo` is here and not above on purpose: the
+# client predicts its own trigger and this is the resync, so paying for three
+# integers thirty times a second would buy nothing.
+IDENTITY = {
+    "name", "color", "kills", "deaths", "xp", "gold", "level", "xpInLevel",
+    "xpToLevel", "inv", "guns", "ammo",
+}
 
 
 def main() -> None:
@@ -34,7 +47,10 @@ def main() -> None:
 
     full = player.to_payload()
     assert set(full) == MOVING | IDENTITY, set(full) ^ (MOVING | IDENTITY)
-    assert full["inv"] == {"cap": 3, "bag": [None, None, None], "w": 0}
+    assert full["inv"]["cap"] == INVENTORY_SLOTS
+    assert full["inv"]["bag"] == [None] * INVENTORY_SLOTS
+    # A run opens with no rounds, because it opens with no gun.
+    assert full["ammo"] == {"pistol": 0, "rifle": 0, "awp": 0}, full["ammo"]
 
     packet = protocol.snapshot(1, [row], [], [], [], [], [], [])
     assert "ack" not in packet, "per-recipient field would force a dump per socket"

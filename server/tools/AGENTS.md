@@ -13,7 +13,8 @@ imported by `app/` and never run at request time.
 | `process_sprites.py` | raw → production | `assets/processed/<name>/` |
 | `make_coin.py` | generates final pixels | `assets/processed/coin/` (8-frame Y-spin, same disc as the HUD badge) |
 | `make_textures.py` | generates final pixels | `assets/processed/terrain/` (4 grounds, blend, patch, rock, tree, deadtree, stump, grass, bush, branch, leaves, fern, campfire) |
-| `make_scenery.py` | generates final pixels | `assets/processed/scenery/` (cabin, tent, fence, sign, logs, crate, firepit, blood, tracks, clothes, debris) |
+| `make_scenery.py` | generates final pixels | `assets/processed/scenery/` (tent, fence, sign, logs, firepit, blood, tracks, clothes, debris) — and PACKS what `make_objects.py` drew into the same folder and the one manifest |
+| `make_objects.py` | draws only; `make_scenery.build()` packs it | the INTERACTIVE objects and the tribal ground: barrel, box, chest, stash, vehicle, altar, statue, bones, oil |
 | `make_vfx.py` | generates final pixels | `assets/processed/vfx/` (summon, kindle, aura, wind, death) |
 | `make_rift.py` | generates final pixels | `assets/processed/rift/` (the CONSOLE and the threshold kit: torch, torchfire, egress paving, the paid console's aura — plus the retired anomaly sheets, still generated and no longer drawn: scar, pillar, charge, crown, emerge, rift ×4 tiers, collapse ×4 tiers, residue, corrupt) |
 | `make_platform.py` | generates final pixels | `assets/processed/platform/` (the extraction platform: the cargo skid ×3 states cold/standby/alarm, a lift drone ×2 postures hover/cruise, rotor and strobe loops, standby and siren lamp glare, the imprint it leaves, rotor downwash, the ground-break burst) |
@@ -100,7 +101,14 @@ imported by `app/` and never run at request time.
   draw time. A 16px print through a canvas rotate is grey mush, and heel-vs-toe
   is the whole value of a footprint. `TRACK_DIRECTIONS` here and in
   `app/scenery.py` are one number.
-- Prop frames are VARIANTS, except the campfire's (a LOOP) and the crate
+- Prop frames are VARIANTS, except the campfire's (a LOOP) and the animated
+  object sheets' (a ONE-SHOT). An animated sheet is `kinds` × `animFrames`,
+  packed kind-major, frame 0 of each kind being its idle pose. Whether that
+  one-shot is a barrel bursting or a lid hinging up is the SERVER's business
+  (`crates.ObjectType.verb`) and never the sheet's — the art contract is
+  identical either way, which is why one set of fields covers both. The old
+  `breakFrames` name is gone with the single crate sheet it described. The
+  crate
   sheet (kinds × one-shot break, packed kind-major, idle is frame 0 of
   each kind). A looping sheet's frames must LOOP: every wobble is a sine
   of the frame phase (or an integer multiple), so the last frame hands
@@ -120,8 +128,8 @@ imported by `app/` and never run at request time.
 - A VFX sheet's `frames / fps` is the effect's duration and the client times
   itself off it. Changing either means changing whatever the client aligns to
   it (`SUMMON_TIME` / `SUMMON_IMPACT`, `KINDLE_TIME` / `KINDLE_IMPACT` in
-  `client/src/game/lobby-scene.ts`; crate smash / wind life / death in
-  `client/src/game/game.ts`). `wind` is the empty-crate gust — greyscale,
+  `client/src/game/lobby-scene.ts`; object one-shot / wind life / death in
+  `client/src/game/game.ts`). `wind` is the empty-object gust — greyscale,
   drawn without a player tint. `death` is the same family: dirt and air
   kicked when a body hits the floor. `sfx_zombie_death` puts its thud on
   `DEATH_IMPACT`.
@@ -138,7 +146,7 @@ imported by `app/` and never run at request time.
   because they are about a THRESHOLD somebody set up:
   - `console` — the one thing on the map you press, in four STATES, and the
     index is authoritative: idle, armed, READY, spent. Nothing here may be
-    rolled the way a crate kind is. The verbs behind those states did not
+    rolled the way an object kind is. The verbs behind those states did not
     change when the structure did — wake it, load it, launch it, and a dead
     button afterwards — so neither did the sprite. READY is the same lectern,
     the same plunger and the same pips with the light in them moved to the warm
@@ -258,7 +266,7 @@ imported by `app/` and never run at request time.
     always rewritten whole.
   - **Timelines align to the sheet they play with.** `sfx_kindle` and
   `sfx_summon` put their impact on the frame `make_vfx.py` flashes, and
-  `sfx_crate_break` fits inside the crate smash strip. `sfx_zombie_death`
+  `sfx_crate_break` fits inside the barrel break strip. `sfx_zombie_death`
   lands on `DEATH_IMPACT`. `sfx_siren` is one turn of `siren.png` (12 frames
   at 16 fps = 0.75s) and plays once per sweep for the whole pickup. Changing
   a sheet's `frames / fps` means changing its sound.
@@ -286,7 +294,7 @@ imported by `app/` and never run at request time.
   - **`bus` is a player-facing grouping**, because each one is a fader in the
     game's Opções panel: `ui` (the interface answering), `ambient` (the loops),
     `sfx` (**guns and zombies only**) and `misc` (everything else that happens —
-    steps, loot, crates, the lamp, the transitions). Keep `sfx` narrow: somebody
+    steps, loot, objects, the lamp, the transitions). Keep `sfx` narrow: somebody
     turning combat down must not lose their own footsteps with it. A sound in
     the wrong bus is a slider that does not do what its label says.
 - **The knife's place on the ladder IS the weapon.** `knife-swing` and
@@ -334,7 +342,7 @@ imported by `app/` and never run at request time.
   to a white core, and a draw-time multiply is a single hue.
 - **`table.topY` is gameplay geometry living in the art, and that is correct.**
   It is the pixel row a weapon rests on, per table frame, and the four tables
-  are deliberately three different heights (a trestle, a board over crates, a
+  are deliberately three different heights (a trestle, a board over boxes, a
   board over a barrel). One hardcoded offset client-side would float one gun
   and sink another. `lamp.flameY` is the same contract for where a lamp burns.
 - **The merchant is CLIPS, not a walk cycle.** He never moves, so he ships an

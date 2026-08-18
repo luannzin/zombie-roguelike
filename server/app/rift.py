@@ -514,13 +514,42 @@ def count_for_day(day: int) -> int:
     return 3
 
 
+#: Catalog value one night's quota grows by per day, and the surcharge each
+#: EXTRA pad adds.
+#:
+#: PINNED TO WHAT A MAP ACTUALLY HOLDS, not to a feeling. Sampled over forty
+#: seeds, a forest carries a MEDIAN of about 910 points of findable value —
+#: roughly 340 scattered on the ground by `loot.scatter` across sixteen or so
+#: scenes plus the shrine, and about 600 more inside the forty-odd objects
+#: `scenery.py` stands up. The spread is wide on purpose (a quarter of maps
+#: come in under 640, a quarter over 1170), so the quota is set against the
+#: LOW quarter rather than the median: a bad roll should make a night hard,
+#: never impossible. The quota is a SHARE OF THE MAP:
+#:
+#:     day 1     40   one pad. Under five per cent. A first night has to be
+#:                    winnable by a party with a knife and no idea where
+#:                    anything is, and its whole take is the shop budget that
+#:                    buys the first gun (`store.price_of`: a Glock is 46).
+#:     day 3    144   two pads, 72 each. About a sixth of the map.
+#:     day 5    248   three pads, 83 each. A bit over a quarter.
+#:     day 10   448   half of everything out there, which is the night the
+#:                    walk stops being optional and the shrine stops being
+#:                    a question.
+#:
+#: The per-pad surcharge is smaller than a day's step on purpose: a map that
+#: found room for three platforms is a longer night, not a harder one, and the
+#: extra should be paid for in walking rather than in loot.
+NEED_PER_DAY = 40
+NEED_PER_EXTRA_PAD = 24
+
+
 def night_need(day: int, count: int) -> int:
     """Catalog value the party has to load across the whole night.
 
     Scales with the day AND with how many pads landed, so a cramped map that
     only fitted one still asks less than a night that found room for three.
     """
-    return 24 * max(1, day) + 16 * max(0, count - 1)
+    return NEED_PER_DAY * max(1, day) + NEED_PER_EXTRA_PAD * max(0, count - 1)
 
 
 def pad_need(day: int, count: int) -> int:

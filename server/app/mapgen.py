@@ -13,9 +13,12 @@ Shape of the result, and why:
   * The CENTRE is a glade so the map breathes. Players no longer spawn there:
     they emerge from a VOID corridor on a random edge (see `entrance.py`) and
     that path seals behind them.
-  * It is CONNECTED. Noise happily produces sealed pockets; step 6 finds them
-    and either drills them out or fills them in. `build_forest` asserts the
-    result, the same guarantee `build_arena` gives.
+  * It is CONNECTED, and `_connect` cannot fail to make it so. Noise happily
+    produces sealed pockets; step 6 finds them, TUNNELS a route out of each
+    one (a search, so it can go around the arrival corridor rather than being
+    refused by it), and fills whatever is left over — removing floor can never
+    strand anything new, so the invariant holds by construction.
+    `build_forest` asserts the result, the same guarantee `build_arena` gives.
 
 Determinism: one seed in, one map out. The seed also ships to the client, which
 uses it to place decoration.
@@ -25,8 +28,9 @@ from __future__ import annotations
 
 import math
 import random
+from collections import deque
 
-from . import crates, entrance, loot, rift, scenery
+from . import ammo, crates, entrance, loot, rift, scenery
 from .config import ENTRANCE_MOUTH_TILES, TILE_SIZE
 from .maps import count_reachable
 from .world import FLOOR, ROCK, TREE, VOID, TileMap
@@ -34,8 +38,15 @@ from .world import FLOOR, ROCK, TREE, VOID, TileMap
 # --- authoring knobs ---------------------------------------------------------
 # Map size in tiles. Big enough that the lantern radius (11 tiles) never lights
 # the whole thing, so fog of war has something to hide.
-DEFAULT_WIDTH = 96
-DEFAULT_HEIGHT = 64
+#
+# ROUGHLY DOUBLE WHAT IT WAS, and the scene count went up with it (see
+# `scenery.FOREST_SCENES`). The two numbers are one decision: a forest that
+# grows without growing its stories is not a bigger world, it is a longer walk
+# between the same things. What the extra ground actually buys is that a night
+# with three extraction pads can put them far enough apart to be three
+# separate expeditions rather than three stops on one lap.
+DEFAULT_WIDTH = 132
+DEFAULT_HEIGHT = 92
 
 # Noise thresholds. The band between them is the fringe of a thicket, which is
 # where rocks go — a treeline that fades into scattered boulders reads as a
@@ -48,8 +59,10 @@ ROCK_THRESHOLD = 0.555
 BOULDER_DENSITY = 0.014
 LONE_TREE_DENSITY = 0.010
 # Glades: open circles punched through the thickets so the map breathes.
-GLADE_COUNT = (6, 10)
-GLADE_RADIUS = (3.0, 5.5)
+# Scaled with the map — the same count over twice the area leaves half the
+# forest as one unbroken thicket, which is not cover, it is a maze.
+GLADE_COUNT = (13, 20)
+GLADE_RADIUS = (3.0, 6.5)
 
 CENTRE_CLEARING_TILES = 6.0
 BORDER_TILES = 2
@@ -57,6 +70,21 @@ BORDER_TILES = 2
 # A sealed pocket smaller than this is filled solid; anything larger earns a
 # corridor. Drilling out every 3-tile hole would leave the map full of stubs.
 MIN_POCKET_TILES = 12
+# Drilling passes before `_connect` gives up and fills whatever is left. One
+# pass can open a pocket and split another, so this is iterative rather than
+# single-shot; twelve is comfortably more than a 132x92 map has ever needed.
+PASSES = 12
+
+#: Scene kinds that come with creatures already standing on them.
+#:
+#: THE ONLY PLACE THE MAP PROMISES A FIGHT. Everything else the director
+#: spawns is a wandering group that happened to be near somebody; a nest is
+#: pre-placed, does not despawn on arrival, and is exactly where the best loot
+#: in the game is. That pairing is the whole point of the shrine — the player
+#: can see the totems from a distance, can see the pack around them, and gets
+#: to decide. A landmark that was worth more AND safer would not be a
+#: decision, it would be an errand.
+NEST_SCENES = frozenset({"sanctuary"})
 
 
 def _fade(t: float) -> float:
@@ -151,21 +179,60 @@ def _regions(tiles: list[list[int]]) -> list[list[tuple[int, int]]]:
     return found
 
 
-def _drill(
+def _tunnel(
     tiles: list[list[int]],
-    start: tuple[int, int],
-    goal: tuple[int, int],
+    region: list[tuple[int, int]],
+    main: set[tuple[int, int]],
     protect: int | None = None,
-) -> None:
-    """Clear an L-shaped 2-tile-wide trail between two points."""
-    x, y = start
-    gx, gy = goal
-    while x != gx:
-        x += 1 if gx > x else -1
-        _carve_circle(tiles, x, y, 1.2, protect)
-    while y != gy:
-        y += 1 if gy > y else -1
-        _carve_circle(tiles, x, y, 1.2, protect)
+) -> bool:
+    """Carve the SHORTEST route from `region` to `main`. False if there is none.
+
+    A breadth-first search out of the whole pocket at once, over every tile
+    the carve is allowed to touch, stopping on the first tile of the main
+    region it meets — then the path is carved back along `prev`.
+
+    THIS REPLACED AN L-SHAPED DRILL, and the difference is not tidiness. An L
+    goes across and then down whether or not that route is legal, and
+    `protect` makes one route illegal: the arrival corridor. A pocket sitting
+    on the far side of that corridor from the main region got the same refused
+    L every pass, forever — the map generated fine on a 96x64 forest because
+    there was less room for it to happen in, and reliably wedged on a few
+    seeds once the map doubled. A search cannot be refused by a wall it can
+    walk around.
+    """
+    height = len(tiles)
+    width = len(tiles[0]) if tiles else 0
+    frontier: deque[tuple[int, int]] = deque(region)
+    seen: set[tuple[int, int]] = set(region)
+    prev: dict[tuple[int, int], tuple[int, int]] = {}
+    goal: tuple[int, int] | None = None
+
+    while frontier:
+        x, y = frontier.popleft()
+        if (x, y) in main:
+            goal = (x, y)
+            break
+        for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            nx, ny = x + dx, y + dy
+            if not (0 <= nx < width and 0 <= ny < height):
+                continue
+            if (nx, ny) in seen:
+                continue
+            # The corridor is not ours to dig through. Everything else — rock,
+            # trunk, open floor — is fair game for a route.
+            if protect is not None and tiles[ny][nx] == protect:
+                continue
+            seen.add((nx, ny))
+            prev[(nx, ny)] = (x, y)
+            frontier.append((nx, ny))
+
+    if goal is None:
+        return False
+    cell: tuple[int, int] | None = goal
+    while cell is not None:
+        _carve_circle(tiles, cell[0], cell[1], 1.1, protect)
+        cell = prev.get(cell)
+    return True
 
 
 def _connect(
@@ -178,8 +245,19 @@ def _connect(
     Small pockets are filled solid (they are noise artefacts, not places).
     Larger ones get a trail drilled to the nearest tile of the main region, so
     the map keeps its interesting shapes instead of losing them to the fill.
+
+    IT ALWAYS SUCCEEDS, and the last pass is why. Drilling can FAIL: `protect`
+    stops `_carve_circle` writing over the arrival corridor, so a pocket whose
+    only line to the main region runs along that corridor keeps its trail
+    refused however many passes it gets. On the old map that was rare enough
+    to never be seen; at 132x92 there is simply more forest for it to happen
+    in, and `build_forest` asserts the result, so "rare" is a crash a player
+    eventually meets. Anything still isolated after the drilling passes is
+    FILLED — removing floor can never disconnect anything, so the invariant
+    holds by construction rather than by luck, and what is lost is a piece of
+    forest nobody could have walked to in the first place.
     """
-    for _ in range(8):
+    for _ in range(PASSES):
         regions = _regions(tiles)
         if len(regions) <= 1:
             return
@@ -197,15 +275,19 @@ def _connect(
                 for x, y in region:
                     tiles[y][x] = ROCK
                 continue
-            # Nearest pair between the pocket and the main region. Both are
-            # sampled rather than scanned in full: a 6000-tile map would
-            # otherwise make this quadratic for no visual gain.
-            source = min(region, key=lambda p: (p[0] - centre[0]) ** 2 + (p[1] - centre[1]) ** 2)
-            target = min(
-                main_set,
-                key=lambda p: (p[0] - source[0]) ** 2 + (p[1] - source[1]) ** 2,
-            )
-            _drill(tiles, source, target, protect)
+            _tunnel(tiles, region, main_set, protect)
+
+    # Whatever the drilling could not reach. See the note above: filling only
+    # ever removes floor, so this cannot strand anything new.
+    regions = _regions(tiles)
+    if len(regions) <= 1:
+        return
+    main = next((r for r in regions if centre in r), regions[0])
+    for region in regions:
+        if region is main:
+            continue
+        for x, y in region:
+            tiles[y][x] = ROCK
 
 
 def generate_forest(
@@ -330,8 +412,16 @@ def build_forest(
     height: int = DEFAULT_HEIGHT,
     seed: int | None = None,
     day: int = 1,
+    calibres: set[str] | None = None,
 ) -> TileMap:
-    """Generate, populate and validate. Raises rather than shipping a broken map."""
+    """Generate, populate and validate. Raises rather than shipping a broken map.
+
+    `calibres` is what the PARTY is carrying, and it is the only thing the
+    forest asks about the players before it is built. Ammunition is stocked
+    against the belt (`ammo.scatter`): a room with nothing but knives finds no
+    boxes at all, and a room with one pistol does not spend the night walking
+    past rifle rounds nobody can fire.
+    """
     tiles, used = generate_forest(width, height, seed)
     gate = entrance.carve(tiles, used)
     mouth_tx = int(gate.mouth_x // TILE_SIZE)
@@ -370,6 +460,19 @@ def build_forest(
         raise ValueError(f"forest seed {used} lost reachability placing the extraction point")
 
     drops = loot.scatter(tiles, population.scenes, random.Random(used ^ 0x1007))
+    # Ammunition is a SECOND pass over the same scenes, with its own ids and
+    # its own rng stream, so a party that bought a rifle last night does not
+    # get a different arrangement of gold rings tonight than one that did not.
+    occupied = [(drop.x / TILE_SIZE - 0.5, drop.y / TILE_SIZE - 0.5) for drop in drops]
+    drops += ammo.scatter(
+        tiles,
+        population.scenes,
+        random.Random(used ^ 0x0AA0),
+        calibres or set(),
+        day,
+        next_id=1,
+        occupied=occupied,
+    )
     crate_rows = crates.attach(population)
     return TileMap(
         tiles,
@@ -379,4 +482,9 @@ def build_forest(
         crates=crate_rows,
         rifts=[row.geometry_payload() for row in placed],
         entrance=gate.geometry_payload(),
+        nests=[
+            (scene.x * TILE_SIZE, scene.y * TILE_SIZE)
+            for scene in population.scenes
+            if scene.kind in NEST_SCENES
+        ],
     )

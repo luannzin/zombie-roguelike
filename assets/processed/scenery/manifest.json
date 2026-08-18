@@ -2,13 +2,6 @@
   "tile": 16,
   "seed": 1337,
   "props": {
-    "cabin": {
-      "file": "cabin.png",
-      "frameWidth": 80,
-      "frameHeight": 72,
-      "frames": 2,
-      "sway": 0
-    },
     "tent": {
       "file": "tent.png",
       "frameWidth": 32,
@@ -37,16 +30,6 @@
       "frames": 4,
       "sway": 0
     },
-    "crate": {
-      "file": "crate.png",
-      "frameWidth": 16,
-      "frameHeight": 18,
-      "frames": 40,
-      "sway": 0,
-      "kinds": 5,
-      "breakFrames": 8,
-      "fps": 12
-    },
     "firepit": {
       "file": "firepit.png",
       "frameWidth": 20,
@@ -54,6 +37,73 @@
       "frames": 3,
       "sway": 0,
       "smokes": true
+    },
+    "statue": {
+      "file": "statue.png",
+      "frameWidth": 16,
+      "frameHeight": 36,
+      "frames": 6,
+      "sway": 0
+    },
+    "barrel": {
+      "file": "barrel.png",
+      "frameWidth": 16,
+      "frameHeight": 20,
+      "frames": 24,
+      "sway": 0,
+      "kinds": 3,
+      "animFrames": 8,
+      "fps": 13
+    },
+    "box": {
+      "file": "box.png",
+      "frameWidth": 16,
+      "frameHeight": 18,
+      "frames": 18,
+      "sway": 0,
+      "kinds": 3,
+      "animFrames": 6,
+      "fps": 14
+    },
+    "chest": {
+      "file": "chest.png",
+      "frameWidth": 20,
+      "frameHeight": 20,
+      "frames": 16,
+      "sway": 0,
+      "kinds": 2,
+      "animFrames": 8,
+      "fps": 11
+    },
+    "stash": {
+      "file": "stash.png",
+      "frameWidth": 16,
+      "frameHeight": 20,
+      "frames": 30,
+      "sway": 0,
+      "kinds": 5,
+      "animFrames": 6,
+      "fps": 14
+    },
+    "vehicle": {
+      "file": "vehicle.png",
+      "frameWidth": 64,
+      "frameHeight": 40,
+      "frames": 30,
+      "sway": 0,
+      "kinds": 6,
+      "animFrames": 5,
+      "fps": 9
+    },
+    "altar": {
+      "file": "altar.png",
+      "frameWidth": 28,
+      "frameHeight": 24,
+      "frames": 14,
+      "sway": 0,
+      "kinds": 2,
+      "animFrames": 7,
+      "fps": 10
     }
   },
   "decals": {
@@ -81,6 +131,18 @@
       "frameWidth": 16,
       "frameHeight": 16,
       "frames": 6
+    },
+    "bones": {
+      "file": "bones.png",
+      "frameWidth": 16,
+      "frameHeight": 16,
+      "frames": 6
+    },
+    "oil": {
+      "file": "oil.png",
+      "frameWidth": 32,
+      "frameHeight": 32,
+      "frames": 4
     }
   }
 }

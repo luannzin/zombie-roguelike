@@ -147,27 +147,39 @@ export function rayAabb(
   return tmin;
 }
 
-/** Closest crate sprite box on the ray, at or before `maxDist`. */
+/**
+ * Closest BREAKABLE object's sprite box on the ray, at or before `maxDist`.
+ *
+ * Mirrors `crates.along_ray`, including the skip: openable objects are not
+ * targets. A car bonnet does not come open because somebody shot near it, and
+ * a stray round that popped every container on the map would delete the walk
+ * the whole object vocabulary exists to create.
+ *
+ * The box is per object rather than one size for all — `boxOf` answers it —
+ * because a bus is four tiles long and a toolbox is one.
+ */
 export function crateAlongRay(
-  crates: readonly { x: number; y: number }[],
+  crates: readonly { kind: string; x: number; y: number }[],
   ox: number,
   oy: number,
   dx: number,
   dy: number,
   maxDist: number,
-  width: number,
-  height: number,
+  breakable: (kind: string) => boolean,
+  boxOf: (kind: string) => { w: number; h: number },
 ): number | null {
-  const half = width * 0.5;
   let best: number | null = null;
   for (const crate of crates) {
+    if (!breakable(crate.kind)) continue;
+    const { w, h } = boxOf(crate.kind);
+    const half = w * 0.5;
     const dist = rayAabb(
       ox,
       oy,
       dx,
       dy,
       crate.x - half,
-      crate.y - height,
+      crate.y - h,
       crate.x + half,
       crate.y,
     );

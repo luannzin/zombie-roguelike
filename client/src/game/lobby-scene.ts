@@ -1150,7 +1150,7 @@ export class LobbyScene {
 							WORLD_SPACE,
 							scenery,
 							{
-								kind: "crate",
+								kind: crate.sheet,
 								x: crate.x,
 								y: crate.y,
 								variant: crate.variant,

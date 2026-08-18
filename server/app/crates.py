@@ -1,57 +1,322 @@
-"""Breakable crates: boxes, barrels and the other wood on the crate sheet.
+"""Interactive objects: the things in the forest a player walks up to and USES.
 
-Scenery still PLACES them — a dumpsite without its pile is not a dumpsite —
-but once the stamp has claimed the LOW tiles they become live objects. The
-client draws them from this list, not from the scenery props, so a smash can
-remove one without rewriting the map payload.
+The module is still called `crates.py` and the wire still says `crates`, the
+same way `rift.py` still says `rifts`. That is history, not a second mechanic:
+this list used to hold five kinds of anonymous wood and it now holds barrels,
+boxes, chests, mailboxes, altars and abandoned vehicles, and renaming a field
+across twenty client files buys nothing this line cannot say.
 
-Smash is server-authoritative. E sends `{type:"break","id"}`; a bullet that
-hits the sprite box (not just the 1×1 foot tile) does the same. Three
-outcomes, rolled here: nothing (the client plays wind), a few coins, or
-one catalog item on the crate's own tile.
+WHY A CRATE WAS NOT ENOUGH
+A crate is a noun with one verb, and once a player has smashed four of them
+the fifth is furniture. What the map needed was not more containers but more
+KINDS of promise, so an object here carries its own:
+
+    verb        BREAK (a barrel: shoot it, or E) or OPEN (everything else).
+    drop table  what falls out, and how often nothing does.
+    tags        what KIND of thing belongs in it, biasing the catalog roll —
+                an ambulance holds different things from a mailbox.
+    rarity      some objects roll off a better table. A chest always pays.
+    ambush      the chance that what is inside a vehicle is a passenger.
+
+Every one of those is data on `ObjectType` and reaches the client through
+`welcome.config.objects`, so adding an object is a row here, a sheet in
+`server/tools/make_objects.py` and a scene in `scenery.py`.
+
+Scenery still PLACES them — a checkpoint without its barrels is not a
+checkpoint — but once the stamp has claimed the tiles they become live
+objects. The client draws them from this list, not from the scenery props, so
+opening one can remove it without rewriting the map payload.
+
+Server-authoritative, both verbs. E sends `{type:"break","id"}` (one message,
+because from the input's point of view "use the thing in front of me" is one
+intent); a bullet that hits a BREAK object's sprite box does the same. An OPEN
+object ignores bullets: shooting a car bonnet open is not a thing, and letting
+a stray round pop every container on the map would delete the walk.
 """
 
 from __future__ import annotations
 
 import math
 import random
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
-from .config import CRATE_HIT_H, CRATE_HIT_W, TILE_SIZE
-from .loot import roll_item
+from .config import TILE_SIZE
+from .loot import RARITY_WEIGHTS, roll_item
 from .scenery import STANDING, Prop
 
 KIND = "crate"
+
+VERB_BREAK = "break"
+VERB_OPEN = "open"
 
 DROP_EMPTY = "empty"
 DROP_COIN = "coin"
 DROP_ITEM = "item"
 
-# Empty is the common case — a pile of wood is not a shop. Coin next.
-# An item is the surprise.
-DROP_WEIGHTS: dict[str, float] = {
-    DROP_EMPTY: 50,
-    DROP_COIN: 32,
-    DROP_ITEM: 18,
+#: The default table. Empty is the common case — a pile of wood is not a shop.
+BASE_DROPS: dict[str, float] = {DROP_EMPTY: 50, DROP_COIN: 32, DROP_ITEM: 18}
+
+
+@dataclass(frozen=True)
+class ObjectType:
+    """One kind of interactive object. Frozen data, like `EnemyType`."""
+
+    key: str
+    #: Scenery prop sheet this draws from, and the sheet KIND inside it.
+    #: Several types can share one sheet — every vehicle is a frame row of
+    #: `vehicle.png` — which is why the two are separate fields.
+    sheet: str
+    variant: int
+    verb: str
+    #: The VERB the HUD offers, and only the verb: the prompt itself reads
+    #: "Aperte E para {label}". Portuguese, because the HUD is. Authored here
+    #: next to the drop table so the promise and the wording cannot drift —
+    #: `vasculhar` is on the objects that mostly hold nothing, `abrir` on the
+    #: ones that mostly do.
+    label: str
+    #: Footprint in tiles. Vehicles are FOUR wide, and that is the point of
+    #: them: a car is the only piece of cover in the forest long enough to
+    #: break a sightline while you are standing still behind it.
+    tiles_w: int = 1
+    #: Shot box, in tiles, bottom-centred on the contact. Only BREAK objects
+    #: are ever tested against it.
+    hit_w_tiles: float = 1.0
+    hit_h_tiles: float = 2.0
+    #: How far the verb carries as sound, in tiles. Breaking is louder than
+    #: opening, and a car bonnet is louder than a mailbox.
+    noise_tiles: float = 5.5
+    drops: dict[str, float] = field(default_factory=lambda: dict(BASE_DROPS))
+    coins: tuple[int, int] = (1, 3)
+    #: Catalog tags the item roll is biased toward. Empty means no bias.
+    tags: tuple[str, ...] = ()
+    #: Rarity table override. None uses the world's own.
+    rarity: dict[str, float] | None = None
+    #: Chance that opening this wakes something that was inside it.
+    ambush: float = 0.0
+
+    @property
+    def hit_w(self) -> float:
+        return TILE_SIZE * self.hit_w_tiles
+
+    @property
+    def hit_h(self) -> float:
+        return TILE_SIZE * self.hit_h_tiles
+
+    @property
+    def noise(self) -> float:
+        return TILE_SIZE * self.noise_tiles
+
+    def client_payload(self) -> dict:
+        return {
+            "sheet": self.sheet,
+            "variant": self.variant,
+            "verb": self.verb,
+            "label": self.label,
+            "tilesW": self.tiles_w,
+            "hitW": self.hit_w,
+            "hitH": self.hit_h,
+        }
+
+
+#: Rarity tables the objects lean on. The world's own (`RARITY_WEIGHTS`) is
+#: the floor; these are the reasons to walk to a specific thing.
+GOOD_ODDS: dict[str, float] = {
+    "common": 26, "uncommon": 32, "rare": 24, "epic": 13, "legendary": 5,
+}
+#: The shrine's. Nothing in the forest else rolls off this — it is what a
+#: clearing full of statues and a dozen creatures is paying for.
+SHRINE_ODDS: dict[str, float] = {
+    "common": 6, "uncommon": 18, "rare": 30, "epic": 30, "legendary": 16,
+}
+#: A bin. Mostly rubbish, and once in a while not, which is the joke.
+JUNK_ODDS: dict[str, float] = {
+    "common": 72, "uncommon": 18, "rare": 6, "epic": 3, "legendary": 1,
 }
 
-COIN_MIN = 1
-COIN_MAX = 3
+OPEN_LABEL = "abrir"
+BREAK_LABEL = "destruir"
+SEARCH_LABEL = "vasculhar"
+
+TYPES: tuple[ObjectType, ...] = (
+    # --- BREAK ---------------------------------------------------------
+    # The one verb with a gun attached to it. A barrel is the object you can
+    # deal with from across the clearing, and paying for that with a louder
+    # noise and a worse table is what keeps the quiet verb worth walking for.
+    ObjectType(
+        key="barrel", sheet="barrel", variant=0, verb=VERB_BREAK, label=BREAK_LABEL,
+        noise_tiles=5.5, tags=("supplies", "scrap", "camp"),
+    ),
+    ObjectType(
+        key="drum", sheet="barrel", variant=1, verb=VERB_BREAK, label=BREAK_LABEL,
+        noise_tiles=6.5, tags=("supplies", "tools", "scrap"),
+        drops={DROP_EMPTY: 44, DROP_COIN: 34, DROP_ITEM: 22},
+    ),
+    ObjectType(
+        key="fuel_drum", sheet="barrel", variant=2, verb=VERB_BREAK, label=BREAK_LABEL,
+        noise_tiles=7.5, tags=("supplies", "travel", "scrap"),
+        drops={DROP_EMPTY: 52, DROP_COIN: 30, DROP_ITEM: 18},
+    ),
+    # --- OPEN: containers ----------------------------------------------
+    ObjectType(
+        key="box", sheet="box", variant=0, verb=VERB_OPEN, label=OPEN_LABEL,
+        hit_h_tiles=1.5, noise_tiles=3.0, tags=("supplies", "tools", "abandoned"),
+        drops={DROP_EMPTY: 34, DROP_COIN: 34, DROP_ITEM: 32},
+    ),
+    ObjectType(
+        key="ammo_case", sheet="box", variant=1, verb=VERB_OPEN, label=OPEN_LABEL,
+        hit_h_tiles=1.5, noise_tiles=3.0, tags=("military", "supplies", "combat"),
+        drops={DROP_EMPTY: 22, DROP_COIN: 26, DROP_ITEM: 52},
+    ),
+    ObjectType(
+        key="tote", sheet="box", variant=2, verb=VERB_OPEN, label=OPEN_LABEL,
+        hit_h_tiles=1.5, noise_tiles=3.0, tags=("living", "camp", "abandoned"),
+    ),
+    # A chest ALWAYS pays, and it is the only object in the game that does.
+    # That guarantee is the whole design: the domed lid is visible from across
+    # a clearing, so the walk to it is a decision the player is allowed to
+    # make on information, and a decision on information that comes up empty
+    # teaches them to stop reading the map.
+    ObjectType(
+        key="chest", sheet="chest", variant=0, verb=VERB_OPEN, label=OPEN_LABEL,
+        hit_w_tiles=1.25, hit_h_tiles=1.5, noise_tiles=4.0,
+        tags=("valuables", "relics", "living"),
+        drops={DROP_ITEM: 100}, rarity=GOOD_ODDS,
+    ),
+    ObjectType(
+        key="strongbox", sheet="chest", variant=1, verb=VERB_OPEN, label=OPEN_LABEL,
+        hit_w_tiles=1.25, hit_h_tiles=1.5, noise_tiles=4.0,
+        tags=("valuables", "military", "supplies"),
+        drops={DROP_ITEM: 100}, rarity=GOOD_ODDS,
+    ),
+    # --- OPEN: the small stuff -----------------------------------------
+    ObjectType(
+        key="mailbox", sheet="stash", variant=0, verb=VERB_OPEN, label=OPEN_LABEL,
+        hit_h_tiles=1.5, noise_tiles=2.5, tags=("living", "dropped"),
+        drops={DROP_EMPTY: 46, DROP_COIN: 40, DROP_ITEM: 14},
+    ),
+    ObjectType(
+        key="suitcase", sheet="stash", variant=1, verb=VERB_OPEN, label=OPEN_LABEL,
+        hit_h_tiles=1.0, noise_tiles=2.5, tags=("travel", "living", "dropped"),
+        drops={DROP_EMPTY: 26, DROP_COIN: 32, DROP_ITEM: 42},
+    ),
+    ObjectType(
+        key="freezer", sheet="stash", variant=2, verb=VERB_OPEN, label=OPEN_LABEL,
+        hit_h_tiles=1.25, noise_tiles=3.5, tags=("supplies", "living", "electronics"),
+        drops={DROP_EMPTY: 40, DROP_COIN: 30, DROP_ITEM: 30},
+    ),
+    ObjectType(
+        key="bin", sheet="stash", variant=3, verb=VERB_OPEN, label=SEARCH_LABEL,
+        hit_h_tiles=1.25, noise_tiles=3.0, tags=("scrap", "abandoned"),
+        drops={DROP_EMPTY: 56, DROP_COIN: 26, DROP_ITEM: 18}, rarity=JUNK_ODDS,
+    ),
+    ObjectType(
+        key="toolbox", sheet="stash", variant=4, verb=VERB_OPEN, label=OPEN_LABEL,
+        hit_h_tiles=1.0, noise_tiles=2.5, tags=("tools", "scrap", "supplies"),
+        drops={DROP_EMPTY: 24, DROP_COIN: 28, DROP_ITEM: 48},
+    ),
+    # --- OPEN: vehicles -------------------------------------------------
+    # FOUR TILES WIDE, and every one of them can have somebody still in it.
+    # The ambush is not a spawn budget trick: it is what makes opening the
+    # third car of the night a decision rather than a chore, and it is the
+    # cheapest source of a story the map has. You open a boot, nothing. You
+    # open a boot, a passenger.
+    ObjectType(
+        key="car", sheet="vehicle", variant=0, verb=VERB_OPEN, label=SEARCH_LABEL,
+        tiles_w=4, hit_w_tiles=4.0, hit_h_tiles=2.5, noise_tiles=6.0,
+        tags=("travel", "living", "dropped"), ambush=0.22,
+        drops={DROP_EMPTY: 40, DROP_COIN: 30, DROP_ITEM: 30},
+    ),
+    ObjectType(
+        key="van", sheet="vehicle", variant=1, verb=VERB_OPEN, label=SEARCH_LABEL,
+        tiles_w=4, hit_w_tiles=4.0, hit_h_tiles=2.5, noise_tiles=6.5,
+        tags=("supplies", "tools", "travel"), ambush=0.26,
+        drops={DROP_EMPTY: 30, DROP_COIN: 30, DROP_ITEM: 40},
+    ),
+    ObjectType(
+        key="ambulance", sheet="vehicle", variant=2, verb=VERB_OPEN, label=SEARCH_LABEL,
+        tiles_w=4, hit_w_tiles=4.0, hit_h_tiles=2.5, noise_tiles=6.5,
+        tags=("medical", "supplies", "electronics"), ambush=0.42,
+        drops={DROP_EMPTY: 20, DROP_COIN: 26, DROP_ITEM: 54}, rarity=GOOD_ODDS,
+    ),
+    ObjectType(
+        key="cruiser", sheet="vehicle", variant=3, verb=VERB_OPEN, label=SEARCH_LABEL,
+        tiles_w=4, hit_w_tiles=4.0, hit_h_tiles=2.5, noise_tiles=6.5,
+        tags=("military", "combat", "supplies"), ambush=0.34,
+        drops={DROP_EMPTY: 24, DROP_COIN: 28, DROP_ITEM: 48}, rarity=GOOD_ODDS,
+    ),
+    ObjectType(
+        key="lorry", sheet="vehicle", variant=4, verb=VERB_OPEN, label=SEARCH_LABEL,
+        tiles_w=4, hit_w_tiles=4.0, hit_h_tiles=2.5, noise_tiles=7.0,
+        tags=("supplies", "scrap", "tools"), ambush=0.30,
+        drops={DROP_EMPTY: 22, DROP_COIN: 28, DROP_ITEM: 50},
+    ),
+    ObjectType(
+        key="bus", sheet="vehicle", variant=5, verb=VERB_OPEN, label=SEARCH_LABEL,
+        tiles_w=4, hit_w_tiles=4.0, hit_h_tiles=2.5, noise_tiles=7.0,
+        tags=("travel", "living", "dropped"), ambush=0.46,
+        drops={DROP_EMPTY: 26, DROP_COIN: 30, DROP_ITEM: 44},
+    ),
+    # --- OPEN: the shrine ------------------------------------------------
+    ObjectType(
+        key="altar", sheet="altar", variant=0, verb=VERB_OPEN, label=OPEN_LABEL,
+        tiles_w=2, hit_w_tiles=1.75, hit_h_tiles=1.5, noise_tiles=5.0,
+        tags=("relics", "valuables", "nature"),
+        drops={DROP_ITEM: 100}, rarity=SHRINE_ODDS,
+    ),
+    ObjectType(
+        key="cairn", sheet="altar", variant=1, verb=VERB_OPEN, label=OPEN_LABEL,
+        tiles_w=2, hit_w_tiles=1.75, hit_h_tiles=1.5, noise_tiles=5.0,
+        tags=("relics", "valuables"),
+        drops={DROP_ITEM: 100}, rarity=SHRINE_ODDS,
+    ),
+)
+
+BY_KEY: dict[str, ObjectType] = {kind.key: kind for kind in TYPES}
+#: What `scenery.py` may emit as a piece kind and `attach` will pull out.
+OBJECT_KINDS: frozenset[str] = frozenset(BY_KEY)
+
+DEFAULT_TYPE = TYPES[0]
+
+
+def type_of(key: str) -> ObjectType:
+    return BY_KEY.get(key, DEFAULT_TYPE)
+
+
+def catalog_payload() -> dict:
+    """Sheet, verb, prompt and hit box per object, for `welcome.config`."""
+    return {kind.key: kind.client_payload() for kind in TYPES}
 
 
 @dataclass
 class Crate:
+    """One live object on the map."""
+
     id: str
+    #: Object TYPE key — `barrel`, `ambulance`, `altar`. On the wire as `t`.
+    kind: str
     x: float
     y: float
+    #: Sheet frame row. Carried rather than looked up so the client can draw a
+    #: break event for an object that is already gone from the live list.
     variant: int
     flip: bool
     tx: int
     ty: int
 
+    @property
+    def type(self) -> ObjectType:
+        return type_of(self.kind)
+
+    def cells(self) -> list[tuple[int, int]]:
+        """Every tile this object stands on. Vehicles claim four."""
+        width = self.type.tiles_w
+        left = self.tx - (width - 1) // 2
+        return [(left + offset, self.ty) for offset in range(width)]
+
     def to_payload(self) -> dict:
         return {
             "id": self.id,
+            "t": self.kind,
             "x": round(self.x, 1),
             "y": round(self.y, 1),
             "v": self.variant,
@@ -61,17 +326,23 @@ class Crate:
 
 @dataclass
 class CrateBreak:
+    """An object that was just used. The client plays the sheet and the juice."""
+
     crate_id: str
+    kind: str
     x: float
     y: float
     variant: int
     flip: bool
     drop: str
     key: str | None = None
+    #: Something came out that was not loot.
+    ambush: bool = False
 
     def to_payload(self) -> dict:
         row = {
             "id": self.crate_id,
+            "t": self.kind,
             "x": round(self.x, 1),
             "y": round(self.y, 1),
             "v": self.variant,
@@ -80,38 +351,41 @@ class CrateBreak:
         }
         if self.key:
             row["k"] = self.key
+        if self.ambush:
+            row["amb"] = 1
         return row
 
 
 def footprint(x: float, y: float) -> tuple[int, int]:
-    """The LOW tile a crate claims. Mirrors `scenery._cells` for a 1-wide piece."""
+    """The tile a contact point lands in. Mirrors `scenery._cells`."""
     tx = int(math.floor(x / TILE_SIZE))
     ty = int(math.floor(y / TILE_SIZE - 1e-6))
     return tx, ty
 
 
 def attach(population) -> list[dict]:
-    """Strip standing crates from a Population and return their wire rows.
+    """Strip interactive objects from a Population and return their wire rows.
 
-    The LOW tiles are already stamped. Call this after `scenery.populate`,
-    before `to_payload`, so the map does not draw the same box twice.
+    Their tiles are already stamped. Call this after `scenery.populate`,
+    before `to_payload`, so the map does not draw the same barrel twice.
     """
-    kept, crates = extract(population.props)
+    kept, objects = extract(population.props)
     population.props[:] = kept
-    return [crate.to_payload() for crate in crates]
+    return [obj.to_payload() for obj in objects]
 
 
 def extract(props: list[Prop]) -> tuple[list[Prop], list[Crate]]:
-    """Pull standing crates out of a scenery prop list and give them ids."""
+    """Pull interactive objects out of a scenery prop list and give them ids."""
     kept: list[Prop] = []
-    crates: list[Crate] = []
+    objects: list[Crate] = []
     next_id = 1
     for prop in props:
-        if prop.kind == KIND and prop.layer == STANDING:
+        if prop.kind in OBJECT_KINDS and prop.layer == STANDING:
             tx, ty = footprint(prop.x, prop.y)
-            crates.append(
+            objects.append(
                 Crate(
                     id=f"k{next_id}",
+                    kind=prop.kind,
                     x=prop.x,
                     y=prop.y,
                     variant=prop.variant,
@@ -123,33 +397,43 @@ def extract(props: list[Prop]) -> tuple[list[Prop], list[Crate]]:
             next_id += 1
         else:
             kept.append(prop)
-    return kept, crates
+    return kept, objects
 
 
 def from_payloads(rows: list[dict]) -> dict[str, Crate]:
-    crates: dict[str, Crate] = {}
+    objects: dict[str, Crate] = {}
     for row in rows:
         crate_id = str(row["id"])
         x = float(row["x"])
         y = float(row["y"])
         tx, ty = footprint(x, y)
-        crates[crate_id] = Crate(
+        kind = str(row.get("t", DEFAULT_TYPE.key))
+        objects[crate_id] = Crate(
             id=crate_id,
+            kind=kind,
             x=x,
             y=y,
-            variant=int(row.get("v", 0)),
+            variant=int(row.get("v", type_of(kind).variant)),
             flip=bool(row.get("flip")),
             tx=tx,
             ty=ty,
         )
-    return crates
+    return objects
 
 
 def nearest(crates: dict[str, Crate], x: float, y: float, max_dist: float) -> Crate | None:
+    """Closest object whose BODY is within reach.
+
+    Distance is measured to the nearest point of the footprint rather than to
+    the contact point, because a bus is four tiles long: measured centre to
+    centre, standing at its rear door is standing two tiles from the object
+    and the prompt refuses on the exact spot the art says to press.
+    """
     best: Crate | None = None
     best_d2 = max_dist * max_dist
     for crate in crates.values():
-        dx = crate.x - x
+        half = crate.type.tiles_w * TILE_SIZE * 0.5
+        dx = max(0.0, abs(crate.x - x) - half)
         dy = crate.y - y
         d2 = dx * dx + dy * dy
         if d2 < best_d2:
@@ -158,10 +442,11 @@ def nearest(crates: dict[str, Crate], x: float, y: float, max_dist: float) -> Cr
     return best
 
 
-def hitbox(crate: Crate, width: float = CRATE_HIT_W, height: float = CRATE_HIT_H) -> tuple[float, float, float, float]:
-    """Sprite box, bottom-centred on the contact. Wider/taller than the foot tile."""
-    half = width * 0.5
-    return crate.x - half, crate.y - height, crate.x + half, crate.y
+def hitbox(crate: Crate) -> tuple[float, float, float, float]:
+    """Sprite box, bottom-centred on the contact. Read off the object's type."""
+    kind = crate.type
+    half = kind.hit_w * 0.5
+    return crate.x - half, crate.y - kind.hit_h, crate.x + half, crate.y
 
 
 def ray_aabb(
@@ -212,14 +497,20 @@ def along_ray(
     dx: float,
     dy: float,
     max_dist: float,
-    width: float = CRATE_HIT_W,
-    height: float = CRATE_HIT_H,
 ) -> tuple[Crate | None, float]:
-    """Closest crate whose sprite box the ray hits, at or before `max_dist`."""
+    """Closest BREAKABLE object whose sprite box the ray hits, within range.
+
+    Openable objects are skipped, and that is a rule about what a gun is for:
+    a car bonnet does not come open because somebody shot near it, and a
+    single stray round that popped every container in a clearing would delete
+    the walk this whole module exists to create.
+    """
     best: Crate | None = None
     best_d = max_dist
     for crate in crates.values():
-        left, top, right, bottom = hitbox(crate, width, height)
+        if crate.type.verb != VERB_BREAK:
+            continue
+        left, top, right, bottom = hitbox(crate)
         dist = ray_aabb(ox, oy, dx, dy, left, top, right, bottom)
         if dist is not None and dist <= best_d:
             best = crate
@@ -227,34 +518,44 @@ def along_ray(
     return best, best_d
 
 
-def roll_drop(rng: random.Random, items: bool = True) -> tuple[str, str | None, int]:
-    """`(kind, item_key, coin_count)`. Only one of item/coins is set.
+def roll_drop(
+    kind: ObjectType, rng: random.Random, items: bool = True
+) -> tuple[str, str | None, int]:
+    """`(outcome, item_key, coin_count)` for opening or breaking one object.
 
-    `items=False` is the run home. Once the last rift is shut there is nothing
-    left to spend a find on and the ground has been swept
-    (`Room._clear_loot`), so a crate must not put a fresh bottle back on a map
-    that was just cleared of them.
+    `items=False` is the run home. Once the last pad has launched there is
+    nothing left to spend a find on and the ground has been swept
+    (`Room._clear_loot`), so an object rolls COINS ONLY from there — putting a
+    fresh bottle back on a map that was just cleared of them would undo the
+    sweep one boot at a time.
 
     The item weight FOLDS INTO COIN rather than into empty. What changes is
-    what falls out, not whether anything does — a crate that mostly stopped
+    what falls out, not whether anything does: an object that mostly stopped
     paying at the exact moment the party is running past it would read as the
     game switching off, and coins still count on the way out.
     """
-    weights = dict(DROP_WEIGHTS)
+    weights = dict(kind.drops)
     if not items:
-        weights[DROP_COIN] = weights[DROP_COIN] + weights.pop(DROP_ITEM, 0.0)
+        weights[DROP_COIN] = weights.get(DROP_COIN, 0.0) + weights.pop(DROP_ITEM, 0.0)
+        # A chest is nothing but item weight, so folding it leaves a table that
+        # is all coin — which is right: the guarantee is that it pays, and on
+        # the way out gold is the only thing that still counts as paying.
+        if not weights:
+            weights = {DROP_COIN: 1.0}
     total = sum(weights.values())
+    if total <= 0:
+        return DROP_EMPTY, None, 0
     roll = rng.uniform(0, total)
-    kind = DROP_EMPTY
+    outcome = DROP_EMPTY
     for name, weight in weights.items():
         roll -= weight
         if roll <= 0:
-            kind = name
+            outcome = name
             break
-    if kind == DROP_COIN:
-        return DROP_COIN, None, rng.randint(COIN_MIN, COIN_MAX)
-    if kind == DROP_ITEM:
-        item = roll_item(rng)
+    if outcome == DROP_COIN:
+        return DROP_COIN, None, rng.randint(*kind.coins)
+    if outcome == DROP_ITEM:
+        item = roll_item(rng, kind.tags, kind.rarity or RARITY_WEIGHTS)
         if item is None:
             return DROP_EMPTY, None, 0
         return DROP_ITEM, item.key, 0

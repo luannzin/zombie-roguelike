@@ -6,19 +6,33 @@ make_vfx.py and make_hud_icons.py. Same rules: no raw stage, final-resolution
 pixels straight into assets/processed/, deterministic, shading helpers imported
 from make_textures rather than copied.
 
+This module draws what is STILL and what has STOPPED. The objects a player
+walks up and interacts with — barrels, boxes, chests, stashes, vehicles,
+altars — are drawn in `make_objects.py` and packed by `build()` here, into the
+same folder and the same manifest, because the client keys its atlas off that
+one manifest and a second one would buy nothing.
+
+THERE ARE NO BUILDINGS. A cabin sheet used to live here and it was the largest
+asset in the game; it was cut with the homestead scene that placed it. A
+procedurally dropped house teaches the player "house = loot" inside two
+expeditions, and after that the forest is a list of houses. What replaced it
+is a vocabulary of things somebody drove, packed, buried or carved — see
+`make_objects.py` — which does the same navigational job without ever
+resolving into one repeated noun.
+
 Output (assets/processed/scenery/):
 
   standing — bottom-anchored silhouettes, depth-sorted with the party
-    cabin.png      2 frames, 80x72   a shack, one still standing, one caved in
-    tent.png       3 frames, 32x28   canvas, sagging / collapsed / torn open
+    tent.png       3 frames, 32x28   canvas, sagging / collapsed / torn open.
+                                     The forest no longer places one; the
+                                     MERCHANT is pitched in it (store.py).
     fence.png      6 frames, 16x22   post-and-rail, whole through to splintered
     sign.png       3 frames, 16x28   a board on a post. SWAYS.
     logs.png       4 frames, 32x14   a felled trunk lying across the ground
-    crate.png      5 kinds × 8 frames, 16x18
-                                 box / smashed / barrel / sack / pail.
-                                 Frame 0 of each kind is intact; 1..7 is
-                                 the one-shot break. Packed kind-major.
     firepit.png    3 frames, 20x12   cold stones and burnt wood. SMOKES.
+    statue.png     6 frames, 16x36   carved stone. See make_objects.py.
+    barrel/box/chest/stash/vehicle/altar
+                                     animated, kind-major. make_objects.py.
 
   decals — flat, no outline, baked into the client's ground canvas
     blood.png      6 frames, 32x32   spray, pool, drag, spatter, arc, print
@@ -26,6 +40,8 @@ Output (assets/processed/scenery/):
     clothes.png    5 frames, 20x16   shirt, coat, pack, boot, hat
     debris.png     6 frames, 16x16   bottle, planks, bones, lantern, crockery,
                                      a wheel
+    bones.png      6 frames, 16x16   skull, ribs, scatter, ash. make_objects.py
+    oil.png        4 frames, 32x32   a slick under a dead engine.
     manifest.json
 
 WHY THIS IS A SEPARATE FOLDER FROM terrain/
@@ -47,9 +63,9 @@ a thing standing up at ankle height.
 
 READ ORDER AT 16px. Every silhouette here has to survive being three tiles
 tall on a dark screen with a lantern moving across it. What carries is
-VALUE and SHAPE, never hue and never fine detail: a cabin is a black doorway
-under a pale roof, a firepit is a light stone ring around a dark middle, a
-blood pool is the only near-red on the forest floor.
+VALUE and SHAPE, never hue and never fine detail: a firepit is a light stone
+ring around a dark middle, a totem is a narrow column with bright notches down
+it, and a blood pool is the only near-red on the forest floor.
 
 Usage:
     python tools/make_scenery.py
@@ -66,6 +82,7 @@ from pathlib import Path
 
 from PIL import Image
 
+import make_objects as objects
 from make_textures import (
     BLOOD,
     DEFAULT_TILE,
@@ -89,7 +106,6 @@ from make_textures import (
 
 PLANK: Ramp = [rgb(c) for c in ("#1b1710", "#272118", "#342c20", "#413628", "#4f4232")]
 PLANK_DARK: Ramp = [rgb(c) for c in ("#100d09", "#181410", "#211b15", "#2b2419")]
-SHINGLE: Ramp = [rgb(c) for c in ("#14171a", "#1d2126", "#262c32", "#31383f", "#3d454d")]
 CANVAS: Ramp = [rgb(c) for c in ("#241f18", "#312b21", "#3f382b", "#4d4536", "#5b5242")]
 METAL: Ramp = [rgb(c) for c in ("#16181b", "#212429", "#2e3238", "#3d4249", "#4d535b")]
 GLASS: Ramp = [rgb(c) for c in ("#1c242b", "#2a3742", "#3d4f5d", "#56707f", "#7794a4")]
@@ -125,66 +141,9 @@ OUTLINE_COLD = rgb("#0a0b0d")
 SWAY_SIGN = 1.6
 SWAY_TENT = 0.5
 
-# One-shot smash. Frame 0 is the idle pose; the last frames are near-empty
-# so the sprite can vanish without a pop. Not a loop — do not use rng per
-# frame; hash the pixel and the frame index.
-CRATE_BREAK_FRAMES = 8
-CRATE_BREAK_FPS = 12
-CRATE_KINDS = 5
-
 
 # --- shared drawing ---------------------------------------------------------
 
-
-def _plank_row(px, x0: int, x1: int, y: int, ramp: Ramp, shade: float, salt: int) -> None:
-    """One horizontal board. Grain is per-pixel, the shadow is at the seam."""
-    for x in range(x0, x1):
-        px[x, y] = pick(ramp, shade + (hash01(x, y, salt) - 0.5) * 0.34, x, y)
-
-
-def _plank_wall(
-    px,
-    x0: int,
-    y0: int,
-    x1: int,
-    y1: int,
-    ramp: Ramp,
-    lit: float,
-    salt: int,
-    course: int = 3,
-) -> None:
-    """A wall of horizontal boards, lit from the upper left.
-
-    The dark line under every course is what makes it siding rather than a
-    rectangle of noise: the eye needs a repeating horizontal beat at this size
-    or the whole wall averages into one flat panel.
-    """
-    for y in range(y0, y1):
-        band = (y - y0) % course
-        shade = lit - band * 0.06
-        if band == course - 1:
-            shade -= 0.30
-        _plank_row(px, x0, x1, y, ramp, shade, salt)
-
-
-def _shingle_roof(px, cx: float, y0: int, y1: int, half0: float, half1: float, salt: int) -> None:
-    """A pitched roof seen from slightly above: a trapezoid in shingle courses.
-
-    Overhangs at the eaves, because a roof flush with its walls reads as a lid
-    and a roof that sticks out reads as shelter.
-    """
-    span = max(1, y1 - y0)
-    for y in range(y0, y1):
-        t = (y - y0) / span
-        half = half0 + (half1 - half0) * t
-        band = (y - y0) % 3
-        for x in range(int(cx - half), int(cx + half) + 1):
-            shade = 0.72 - t * 0.34 - band * 0.10
-            # Every other course is offset, so the shingles interlock.
-            if (x + (y - y0) // 3 * 2) % 5 == 0:
-                shade -= 0.16
-            shade += (hash01(x, y, salt) - 0.5) * 0.2
-            px[x, y] = pick(SHINGLE, shade, x, y)
 
 
 def _stroke(px, x: float, y: float, angle: float, length: float, thick: float,
@@ -201,135 +160,6 @@ def _stroke(px, x: float, y: float, angle: float, length: float, thick: float,
                 px[ix, jy] = pick(
                     ramp, shade - offset * 0.16 + (hash01(ix, jy, salt) - 0.5) * 0.22, ix, jy
                 )
-
-
-# --- standing: the cabin ----------------------------------------------------
-
-
-def make_cabin(width: int, height: int, ruined: bool, rng: random.Random) -> Image.Image:
-    """A one-room shack. The largest thing in the forest and the one landmark.
-
-    Two frames, and the difference between them is the story: one is a place
-    somebody could still be inside, the other has lost its roof. Both keep the
-    same footprint so the server can stamp either into the same solid tiles.
-
-    The doorway is a HOLE — flat black, no shading, no frame highlight. It is
-    the only pure void in the art, which is what makes the eye go to it first
-    and what makes walking up to it feel like a decision.
-    """
-    img = Image.new("RGBA", (width, height), TRANSPARENT)
-    px = img.load()
-
-    cx = (width - 1) / 2.0
-    ground = height - 1
-    wall_top = int(height * 0.46)
-    wall_half = width * 0.36
-    x0 = int(cx - wall_half)
-    x1 = int(cx + wall_half)
-
-    # 1. walls
-    _plank_wall(px, x0, wall_top, x1, ground + 1, PLANK, 0.62, 11)
-    # Corner posts: two darker columns, so the box has edges.
-    for edge_x in (x0, x0 + 1, x1 - 2, x1 - 1):
-        for y in range(wall_top, ground + 1):
-            px[edge_x, y] = pick(PLANK_DARK, 0.55 + (hash01(edge_x, y, 13) - 0.5) * 0.3, edge_x, y)
-
-    # 2. the doorway, off centre so the facade is not symmetrical
-    door_w = int(width * 0.17)
-    door_h = int((ground - wall_top) * 0.78)
-    door_x = int(cx - door_w / 2 + width * rng.uniform(-0.14, 0.02))
-    for y in range(ground - door_h, ground + 1):
-        for x in range(door_x, door_x + door_w):
-            px[x, y] = (0, 0, 0, 255)
-    # A door hanging off one hinge, swung out over the wall to its left.
-    hinge_x = door_x - 1
-    for step in range(int(door_h * 0.9)):
-        y = ground - door_h + 2 + step
-        lean = int(step * 0.16)
-        for x in range(hinge_x - 5 - lean, hinge_x + 1):
-            if 0 <= x < width and 0 <= y < height:
-                px[x, y] = pick(PLANK_DARK, 0.72 - step * 0.012, x, y)
-
-    # 3. the broken window — "janela quebrada"
-    win_w = int(width * 0.15)
-    win_h = int(win_w * 0.82)
-    win_x = int(cx + width * 0.16)
-    win_y = wall_top + int((ground - wall_top) * 0.22)
-    for y in range(win_y, win_y + win_h):
-        for x in range(win_x, win_x + win_w):
-            px[x, y] = (0, 0, 0, 255)
-    # Shards clinging to the frame: teeth top and bottom, never a clean hole.
-    for x in range(win_x, win_x + win_w):
-        top = int(1 + hash01(x, 0, 31) * 3)
-        bottom = int(hash01(x, 1, 37) * 3)
-        for y in range(win_y, win_y + top):
-            px[x, y] = pick(GLASS, 0.35 + hash01(x, y, 41) * 0.6, x, y)
-        for y in range(win_y + win_h - bottom, win_y + win_h):
-            px[x, y] = pick(GLASS, 0.25 + hash01(x, y, 43) * 0.5, x, y)
-    # Frame.
-    for x in range(win_x - 1, win_x + win_w + 1):
-        for y in (win_y - 1, win_y + win_h):
-            if 0 <= y < height:
-                px[x, y] = pick(PLANK_DARK, 0.8, x, y)
-    for y in range(win_y - 1, win_y + win_h + 1):
-        for x in (win_x - 1, win_x + win_w):
-            px[x, y] = pick(PLANK_DARK, 0.8, x, y)
-
-    # 4. roof
-    if ruined:
-        # Caved in. The roof is drawn WHOLE and then a bite is taken out of the
-        # right half, because a roof that was never there reads as unfinished
-        # construction and a roof with a hole in it reads as something that
-        # happened. The bite is a lopsided blob, not an arc: a clean curve is
-        # architecture, a ragged one is failure.
-        _shingle_roof(px, cx, int(height * 0.10), wall_top + 1,
-                      width * 0.06, width * 0.46, 17)
-        hole_cx = cx + width * 0.16
-        hole_cy = height * 0.30
-        hole_r = width * 0.24
-        for y in range(int(hole_cy - hole_r) - 2, int(hole_cy + hole_r) + 2):
-            for x in range(int(hole_cx - hole_r) - 2, int(hole_cx + hole_r) + 2):
-                if not (0 <= x < width and 0 <= y < height):
-                    continue
-                dx = (x - hole_cx) / hole_r
-                dy = (y - hole_cy) / (hole_r * 0.72)
-                bite = 1.0 + (hash01(int(math.atan2(dy, dx) * 6), 0, 19) - 0.5) * 0.5
-                if dx * dx + dy * dy < bite * bite:
-                    px[x, y] = TRANSPARENT
-        # Rafters standing in the gap: the skeleton the roof hung on. This is
-        # what turns a hole into a section, and it is the only place in the art
-        # where you can see INSIDE a building.
-        for index in range(5):
-            bx = hole_cx - width * 0.18 + index * width * 0.09
-            _stroke(px, bx, wall_top + 2, -math.pi / 2 - 0.42 + index * 0.21,
-                    height * 0.30, 0.6, PLANK_DARK, 0.85, 21, width, height)
-        # Shingles that slid off, piled on the wall top under the hole.
-        for _ in range(18):
-            dx = int(hole_cx + rng.uniform(-hole_r, hole_r))
-            dy = int(wall_top + rng.uniform(-2, 3))
-            if 0 <= dx < width and 0 <= dy < height:
-                px[dx, dy] = pick(CHAR, rng.uniform(0.3, 0.9), dx, dy)
-    else:
-        _shingle_roof(px, cx, int(height * 0.10), wall_top + 1,
-                      width * 0.06, width * 0.46, 17)
-        # A few missing shingles: nobody has been up there in a while.
-        for _ in range(9):
-            hx = int(cx + rng.uniform(-width * 0.4, width * 0.4))
-            hy = int(height * 0.14 + rng.uniform(0, (wall_top - height * 0.14)))
-            for oy in range(2):
-                for ox in range(rng.randint(2, 4)):
-                    jx, jy = hx + ox, hy + oy
-                    if 0 <= jx < width and 0 <= jy < height and px[jx, jy][3]:
-                        px[jx, jy] = pick(PLANK_DARK, 0.4, jx, jy)
-
-    # 5. a couple of boards fallen against the base, tying it to the ground
-    for _ in range(rng.randint(2, 3)):
-        bx = cx + rng.uniform(-wall_half - 5, wall_half + 5)
-        _stroke(px, bx, ground - rng.uniform(0, 4), rng.uniform(-0.5, 0.5) - 0.2,
-                rng.uniform(7, 13), 1.0, PLANK, 0.6, 23, width, height)
-
-    outline(img, OUTLINE_WOOD)
-    return img
 
 
 # --- standing: camp remains -------------------------------------------------
@@ -468,144 +298,6 @@ def make_firepit(width: int, height: int, variant: int, rng: random.Random) -> I
                 px[x, y] = pick(STONE, clamp01(0.78 - dy / radius * 0.34 - dx / radius * 0.2), x, y)
 
     outline(img, OUTLINE_COLD)
-    return img
-
-
-def make_crate(width: int, height: int, kind: int, rng: random.Random) -> Image.Image:
-    """Supplies. `kind`: 0 crate, 1 smashed crate, 2 barrel, 3 sack, 4 pail."""
-    img = Image.new("RGBA", (width, height), TRANSPARENT)
-    px = img.load()
-
-    cx = (width - 1) / 2.0
-    ground = height - 1
-
-    if kind in (0, 1):
-        box_h = int(height * 0.72)
-        half = width * 0.36
-        top = ground - box_h
-        for y in range(top, ground + 1):
-            for x in range(int(cx - half), int(cx + half) + 1):
-                shade = 0.66 - (x - cx) / half * 0.22 - (y - top) / box_h * 0.2
-                px[x, y] = pick(PLANK, shade + (hash01(x, y, 73) - 0.5) * 0.24, x, y)
-        # Diagonal brace — the one mark that says "crate" and not "block".
-        for step in range(box_h):
-            ix = int(cx - half + step * (2 * half) / box_h)
-            iy = ground - step
-            if 0 <= ix < width:
-                px[ix, iy] = pick(PLANK_DARK, 0.85, ix, iy)
-        if kind == 1:
-            # Staved in from above: the top third is gone and boards splay out.
-            for y in range(top, top + int(box_h * 0.38)):
-                for x in range(int(cx - half), int(cx + half) + 1):
-                    if hash01(x, y, 79) > 0.30:
-                        px[x, y] = TRANSPARENT
-            for _ in range(3):
-                _stroke(px, cx + rng.uniform(-half, half), top + rng.uniform(0, 3),
-                        rng.uniform(-1.0, 1.0), rng.uniform(4, 8), 0.5,
-                        PLANK, 0.8, 83, width, height)
-    elif kind == 2:
-        barrel_h = int(height * 0.76)
-        top = ground - barrel_h
-        for y in range(top, ground + 1):
-            t = (y - top) / barrel_h
-            # Bulge: a barrel is a cylinder that got fat in the middle.
-            half = width * (0.28 + 0.10 * math.sin(t * math.pi))
-            for x in range(int(cx - half), int(cx + half) + 1):
-                shade = 0.62 - abs(x - cx) / max(half, 0.5) * 0.34
-                px[x, y] = pick(PLANK, shade + (hash01(x, y, 89) - 0.5) * 0.2, x, y)
-            if t in (0.0,) or abs(t - 0.28) < 0.04 or abs(t - 0.74) < 0.04:
-                for x in range(int(cx - half), int(cx + half) + 1):
-                    px[x, y] = pick(METAL, 0.6 - abs(x - cx) / max(half, 0.5) * 0.3, x, y)
-    elif kind == 3:
-        # A slumped sack: wide at the floor, pinched at a tied neck.
-        sack_h = int(height * 0.66)
-        top = ground - sack_h
-        for y in range(top, ground + 1):
-            t = (y - top) / sack_h
-            half = width * (0.10 + 0.30 * t ** 0.6)
-            for x in range(int(cx - half), int(cx + half) + 1):
-                shade = 0.55 - abs(x - cx) / max(half, 0.5) * 0.3 + t * 0.12
-                px[x, y] = pick(CANVAS, shade + (hash01(x, y, 97) - 0.5) * 0.28, x, y)
-        for x in range(int(cx - 2), int(cx + 3)):
-            px[x, top] = pick(ROPE, 0.7, x, top)
-    else:
-        pail_h = int(height * 0.5)
-        top = ground - pail_h
-        for y in range(top, ground + 1):
-            t = (y - top) / pail_h
-            half = width * (0.30 - 0.08 * t)
-            for x in range(int(cx - half), int(cx + half) + 1):
-                px[x, y] = pick(METAL, 0.58 - abs(x - cx) / max(half, 0.5) * 0.34, x, y)
-        # Handle, fallen to one side.
-        for step in range(5):
-            ix = int(cx + 3 + step)
-            iy = int(top + 1 + step * 0.6)
-            if 0 <= ix < width and 0 <= iy < height:
-                px[ix, iy] = pick(METAL, 0.8, ix, iy)
-
-    outline(img, OUTLINE_WOOD)
-    return img
-
-
-def make_crate_break(intact: Image.Image, frame: int, frames: int, kind: int) -> Image.Image:
-    """One smash frame of a crate kind. Frame 0 is the idle pose, unchanged.
-
-    Later frames throw the silhouette apart: pixels that leave fly out and
-    down from the centre, the ones that stay crack, and the last two are
-    almost gone so the client can hide the sprite on the last frame without
-    a pop. Deterministic — `hash01` of (x, y, kind, frame), never rng.
-    """
-    if frame <= 0:
-        return intact.copy()
-
-    width, height = intact.size
-    src = intact.load()
-    img = Image.new("RGBA", (width, height), TRANSPARENT)
-    px = img.load()
-    t = frame / max(frames - 1, 1)
-    cx = (width - 1) / 2.0
-    ground = height - 1
-
-    for y in range(height):
-        for x in range(width):
-            pixel = src[x, y]
-            if pixel[3] < 20:
-                continue
-            seed = hash01(x, y, kind * 31 + 17)
-            # Early: a few cracks. Mid: most of the body leaves. Late: dust.
-            leave = seed < (t * 0.55 + 0.12)
-            if t < 0.18:
-                leave = seed < 0.08
-            if leave:
-                angle = seed * math.tau
-                dist = t * (3.2 + seed * 7.5)
-                nx = int(round(x + math.cos(angle) * dist))
-                ny = int(round(y + math.sin(angle) * dist * 0.7 + t * 4.5))
-                if ny > ground:
-                    ny = ground
-                    nx = int(round(cx + (nx - cx) * 0.4))
-                fade = 1.0 - t * 0.85
-                if 0 <= nx < width and 0 <= ny < height and fade > 0.12:
-                    a = int(pixel[3] * fade)
-                    if a > 20:
-                        px[nx, ny] = (pixel[0], pixel[1], pixel[2], a)
-            elif t < 0.72:
-                # Still standing, but the top opens first.
-                if y < height * (0.28 + t * 0.55) and seed > 0.35:
-                    continue
-                px[x, y] = pixel
-
-    if t > 0.55:
-        # A few splinters on the floor so the last frames still read as wood.
-        for i in range(3):
-            sx = int(cx + (hash01(kind, i, 41) - 0.5) * width * 0.7)
-            sy = int(ground - hash01(kind, i, 43) * 2)
-            if 0 <= sx < width and 0 <= sy < height:
-                shade = 0.7 - t * 0.3
-                a = int(200 * (1.0 - t))
-                if a > 30:
-                    px[sx, sy] = (*pick(PLANK, shade, sx, sy)[:3], a)
-
     return img
 
 
@@ -1048,14 +740,24 @@ TRACK_DIRECTIONS = 8
 
 
 def build(args) -> Path:
+    """Pack every scenery sheet and write the one manifest the client reads.
+
+    Two drawing modules feed this: the functions above (what the forest LOOKS
+    like after people left) and `make_objects.py` (what they left that you can
+    open). They land in the same folder and the same manifest on purpose —
+    the client keys its atlas off the manifest, so a new sheet here plus a
+    scene in `server/app/scenery.py` is the whole of adding an object.
+
+    ANIMATED SHEETS carry three extra fields and nothing else needs to change:
+    `kinds` (how many objects are packed in the strip, kind-major),
+    `animFrames` (frames per kind — frame 0 is always the idle pose) and
+    `fps`. Whether that animation is a smash or a lid coming up is the
+    SERVER's business (`server/app/crates.py`), not the sheet's: the art is
+    the same contract either way.
+    """
     tile = args.tile
     out_dir = PROCESSED_DIR / "scenery"
     out_dir.mkdir(parents=True, exist_ok=True)
-
-    cabin_w, cabin_h = tile * 5, round(tile * 4.5)
-    rng = random.Random(args.seed + 11)
-    cabins = [make_cabin(cabin_w, cabin_h, ruined, rng) for ruined in (False, True)]
-    pack(cabins, cabin_w, cabin_h).save(out_dir / "cabin.png")
 
     tent_w, tent_h = tile * 2, round(tile * 1.75)
     rng = random.Random(args.seed + 22)
@@ -1077,20 +779,34 @@ def build(args) -> Path:
     logs = [make_logs(log_w, log_h, variant, rng) for variant in range(4)]
     pack(logs, log_w, log_h).save(out_dir / "logs.png")
 
-    crate_w, crate_h = tile, round(tile * 1.125)
-    rng = random.Random(args.seed + 66)
-    crate_strip: list[Image.Image] = []
-    for kind in range(CRATE_KINDS):
-        intact = make_crate(crate_w, crate_h, kind, rng)
-        for frame in range(CRATE_BREAK_FRAMES):
-            crate_strip.append(make_crate_break(intact, frame, CRATE_BREAK_FRAMES, kind))
-    pack(crate_strip, crate_w, crate_h).save(out_dir / "crate.png")
-
     pit_w, pit_h = round(tile * 1.25), round(tile * 0.75)
     rng = random.Random(args.seed + 77)
     pits = [make_firepit(pit_w, pit_h, variant, rng) for variant in range(3)]
     pack(pits, pit_w, pit_h).save(out_dir / "firepit.png")
 
+    # --- the objects, from make_objects.py ---------------------------------
+    barrels, barrel_w, barrel_h = objects.barrel_strip(tile, args.seed + 201)
+    pack(barrels, barrel_w, barrel_h).save(out_dir / "barrel.png")
+
+    boxes, box_w, box_h = objects.box_strip(tile, args.seed + 202)
+    pack(boxes, box_w, box_h).save(out_dir / "box.png")
+
+    chests, chest_w, chest_h = objects.chest_strip(tile, args.seed + 203)
+    pack(chests, chest_w, chest_h).save(out_dir / "chest.png")
+
+    stashes, stash_w, stash_h = objects.stash_strip(tile, args.seed + 204)
+    pack(stashes, stash_w, stash_h).save(out_dir / "stash.png")
+
+    vehicles, veh_w, veh_h = objects.vehicle_strip(tile, args.seed + 205)
+    pack(vehicles, veh_w, veh_h).save(out_dir / "vehicle.png")
+
+    altars, altar_w, altar_h = objects.altar_strip(tile, args.seed + 206)
+    pack(altars, altar_w, altar_h).save(out_dir / "altar.png")
+
+    statues, statue_w, statue_h = objects.statue_strip(tile, args.seed + 207)
+    pack(statues, statue_w, statue_h).save(out_dir / "statue.png")
+
+    # --- decals ------------------------------------------------------------
     blood_size = tile * 2
     rng = random.Random(args.seed + 88)
     bloods = [make_blood(blood_size, kind, rng) for kind in range(6)]
@@ -1109,6 +825,12 @@ def build(args) -> Path:
     debris = [make_debris(tile, kind, rng) for kind in range(6)]
     pack(debris, tile, tile).save(out_dir / "debris.png")
 
+    bones, bones_w, bones_h = objects.bones_strip(tile, args.seed + 208)
+    pack(bones, bones_w, bones_h).save(out_dir / "bones.png")
+
+    oils, oil_w, oil_h = objects.oil_strip(tile, args.seed + 209)
+    pack(oils, oil_w, oil_h).save(out_dir / "oil.png")
+
     def sheet(file: str, w: int, h: int, frames: list, **extra) -> dict:
         return {"file": file, "frameWidth": w, "frameHeight": h, "frames": len(frames), **extra}
 
@@ -1119,22 +841,49 @@ def build(args) -> Path:
         # peak lean in world px the client animates; 0 means it does not move.
         # `smokes` asks the client for a wisp rising off the anchor point.
         "props": {
-            "cabin": sheet("cabin.png", cabin_w, cabin_h, cabins, sway=0),
             "tent": sheet("tent.png", tent_w, tent_h, tents, sway=SWAY_TENT),
             "fence": sheet("fence.png", fence_w, fence_h, fences, sway=0),
             "sign": sheet("sign.png", sign_w, sign_h, signs, sway=SWAY_SIGN),
             "logs": sheet("logs.png", log_w, log_h, logs, sway=0),
-            "crate": sheet(
-                "crate.png",
-                crate_w,
-                crate_h,
-                crate_strip,
-                sway=0,
-                kinds=CRATE_KINDS,
-                breakFrames=CRATE_BREAK_FRAMES,
-                fps=CRATE_BREAK_FPS,
-            ),
             "firepit": sheet("firepit.png", pit_w, pit_h, pits, sway=0, smokes=True),
+            "statue": sheet("statue.png", statue_w, statue_h, statues, sway=0),
+            # Animated. Kind-major strips; frame 0 of each kind is the idle.
+            "barrel": sheet(
+                "barrel.png", barrel_w, barrel_h, barrels, sway=0,
+                kinds=objects.BARREL_KINDS,
+                animFrames=objects.BARREL_FRAMES,
+                fps=objects.BARREL_FPS,
+            ),
+            "box": sheet(
+                "box.png", box_w, box_h, boxes, sway=0,
+                kinds=objects.BOX_KINDS,
+                animFrames=objects.BOX_FRAMES,
+                fps=objects.BOX_FPS,
+            ),
+            "chest": sheet(
+                "chest.png", chest_w, chest_h, chests, sway=0,
+                kinds=objects.CHEST_KINDS,
+                animFrames=objects.CHEST_FRAMES,
+                fps=objects.CHEST_FPS,
+            ),
+            "stash": sheet(
+                "stash.png", stash_w, stash_h, stashes, sway=0,
+                kinds=objects.STASH_KINDS,
+                animFrames=objects.STASH_FRAMES,
+                fps=objects.STASH_FPS,
+            ),
+            "vehicle": sheet(
+                "vehicle.png", veh_w, veh_h, vehicles, sway=0,
+                kinds=objects.VEHICLE_KINDS,
+                animFrames=objects.VEHICLE_FRAMES,
+                fps=objects.VEHICLE_FPS,
+            ),
+            "altar": sheet(
+                "altar.png", altar_w, altar_h, altars, sway=0,
+                kinds=objects.ALTAR_KINDS,
+                animFrames=objects.ALTAR_FRAMES,
+                fps=objects.ALTAR_FPS,
+            ),
         },
         # DECALS: flat, centred on their point, baked into the ground canvas.
         "decals": {
@@ -1142,23 +891,24 @@ def build(args) -> Path:
             "tracks": sheet("tracks.png", tile, tile, tracks, directions=TRACK_DIRECTIONS),
             "clothes": sheet("clothes.png", cloth_w, cloth_h, clothes),
             "debris": sheet("debris.png", tile, tile, debris),
+            "bones": sheet("bones.png", bones_w, bones_h, bones),
+            "oil": sheet("oil.png", oil_w, oil_h, oils),
         },
     }
     (out_dir / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
 
     print(
         f"wrote {out_dir}: "
-        f"cabin {len(cabins)}x{cabin_w}x{cabin_h}, "
-        f"tent {len(tents)}x{tent_w}x{tent_h}, "
-        f"fence {len(fences)}x{fence_w}x{fence_h}, "
-        f"sign {len(signs)}x{sign_w}x{sign_h}, "
-        f"logs {len(logs)}x{log_w}x{log_h}, "
-        f"crate {CRATE_KINDS}x{CRATE_BREAK_FRAMES}x{crate_w}x{crate_h} @{CRATE_BREAK_FPS}fps, "
-        f"firepit {len(pits)}x{pit_w}x{pit_h}, "
-        f"blood {len(bloods)}x{blood_size}x{blood_size}, "
-        f"tracks {len(tracks)}x{tile}x{tile}, "
-        f"clothes {len(clothes)}x{cloth_w}x{cloth_h}, "
-        f"debris {len(debris)}x{tile}x{tile}"
+        f"tent {len(tents)}, fence {len(fences)}, sign {len(signs)}, "
+        f"logs {len(logs)}, firepit {len(pits)}, statue {len(statues)}, "
+        f"barrel {objects.BARREL_KINDS}x{objects.BARREL_FRAMES}, "
+        f"box {objects.BOX_KINDS}x{objects.BOX_FRAMES}, "
+        f"chest {objects.CHEST_KINDS}x{objects.CHEST_FRAMES}, "
+        f"stash {objects.STASH_KINDS}x{objects.STASH_FRAMES}, "
+        f"vehicle {objects.VEHICLE_KINDS}x{objects.VEHICLE_FRAMES}@{veh_w}x{veh_h}, "
+        f"altar {objects.ALTAR_KINDS}x{objects.ALTAR_FRAMES}, "
+        f"blood {len(bloods)}, tracks {len(tracks)}, clothes {len(clothes)}, "
+        f"debris {len(debris)}, bones {len(bones)}, oil {len(oils)}"
     )
     return out_dir
 

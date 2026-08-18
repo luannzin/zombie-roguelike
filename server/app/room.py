@@ -32,8 +32,8 @@ import time
 import uuid
 
 from . import (
-    ai, camp, coins, combat, crates, entrance, loot, mapgen, protocol, quests,
-    rift, store, weapons, zones,
+    ai, ammo, camp, coins, combat, crates, entrance, loot, mapgen, protocol,
+    quests, rift, store, weapons, zones,
 )
 from .ai import EnemyDirector
 from .coins import Coin
@@ -73,6 +73,18 @@ from .world import FLOOR, VOID
 from .entities import InputCmd, Player, clean_name, pick_color, random_name
 from .pathing import Navigator
 from .simulation import apply_input
+
+#: How many creatures stand on a nest, and how far from its middle they are
+#: scattered, in tiles.
+#:
+#: The pack is sized to be OBVIOUSLY too many for a knife and obviously
+#: possible with a gun, because that is the sentence the shrine is trying to
+#: say from across the clearing: come back when you have bought something.
+#: `NEST_INNER` keeps them off the altar itself — a creature standing on the
+#: prize would make the fight about a pixel rather than about the ground.
+NEST_PACK = (5, 8)
+NEST_INNER = 2.0
+NEST_SPREAD = 5.0
 
 
 class Room:
@@ -462,6 +474,40 @@ class Room:
             return
         item = loot.BY_KEY.get(drop.key)
         dest = "bag"
+        if item is not None and item.pocket == "ammo":
+            # AMMUNITION, and it answers to the collecting player's own belt.
+            # Not the party's: in a four-player room the rifle rounds belong
+            # to whoever is carrying the rifle, and a teammate who cannot fire
+            # the calibre may not scoop them up "for later". A player who
+            # already holds all they can carry of it leaves the box on the
+            # ground — `Reserve.add` returning zero is the refusal.
+            calibre = ammo.calibre_for_key(drop.key)
+            if calibre is None or calibre not in ammo.carried_by(player.hotbar):
+                return
+            if player.ammo.add(calibre, ammo.rounds_in(drop.key)) <= 0:
+                return
+            # No slot, because rounds do not take one. The pickup event still
+            # needs an index for the fly-to-slot animation, so it names the
+            # hotbar cell the matching gun is in — the sprite flies to the
+            # weapon it just fed, which is exactly what happened.
+            dest = "ammo"
+            slot = next(
+                (
+                    index
+                    for index, key in enumerate(player.hotbar.slots)
+                    if ammo.calibre_of(key) == calibre
+                ),
+                0,
+            )
+            del self.drops[drop_id]
+            self.loot_pickup_events.append(
+                loot.LootPickup(
+                    drop.id, player.id, drop.key, drop.x, drop.y, slot, dest
+                ).to_payload()
+            )
+            self._loot_dirty = True
+            self._roster_dirty = True
+            return
         if item is not None and item.pocket == "hotbar":
             # A gun goes straight to the hand when there was no gun in it.
             # The knife counts as no gun for this: a run opens holding the
@@ -534,11 +580,19 @@ class Room:
         return held
 
     def break_crate(self, pid: str, crate_id: str) -> None:
-        """Smash a crate if this player is standing on it.
+        """Use the object in front of this player — break it, or open it.
 
-        Walk-out is too late. Distance is measured from the feet, the same
-        way collect is. Camp maps have none. A shot that lands on the sprite
-        box does the same work through `smash_crate`.
+        ONE MESSAGE FOR BOTH VERBS. From the input's point of view "use the
+        thing I am standing at" is a single intent, and which verb that turns
+        out to be is a property of the object rather than of the key: the
+        prompt on screen already told the player whether they were about to
+        destroy a barrel or open a boot, and a second keybind for the second
+        half of that would be a rule the fiction does not have.
+
+        Walk-out is too late. Distance is measured feet to FOOTPRINT — see
+        `crates.nearest` — so the rear of a bus is in reach of the rear of a
+        bus. Camp maps have no objects. A shot that lands on a BREAK object's
+        sprite box does the same work through `smash_crate`.
         """
         if self.phase != protocol.PHASE_PLAYING or self.departing or self.arriving:
             return
@@ -549,34 +603,62 @@ class Room:
         if crate is None:
             return
         feet_y = player.y + PLAYER_HALF_HEIGHT
-        if (crate.x - player.x) ** 2 + (crate.y - feet_y) ** 2 > CRATE_BREAK_DIST * CRATE_BREAK_DIST:
+        half = crate.type.tiles_w * TILE_SIZE * 0.5
+        dx = max(0.0, abs(crate.x - player.x) - half)
+        dy = crate.y - feet_y
+        if dx * dx + dy * dy > CRATE_BREAK_DIST * CRATE_BREAK_DIST:
             return
         self.smash_crate(crate, player)
 
     def smash_crate(self, crate: Crate, source: Player | None) -> None:
-        """Remove a crate, open its tile, and roll what falls out."""
+        """Remove an object, free the ground it stood on, roll what was in it.
+
+        The same path for both verbs, because everything downstream of the
+        animation is identical: the object stops existing, its tiles go back
+        to floor, something or nothing falls out, and whatever heard it comes
+        looking. The verb only ever decides which sheet the client plays and
+        how loud the noise is.
+        """
         if crate.id not in self.crates:
             return
+        kind = crate.type
         del self.crates[crate.id]
-        self.world.set_tile(crate.tx, crate.ty, FLOOR)
+        # Every tile, not one: a vehicle is four wide, and leaving three of
+        # them solid would leave an invisible wall where the car used to be.
+        for tx, ty in crate.cells():
+            self.world.set_tile(tx, ty, FLOOR)
         self.world.crates = [row.to_payload() for row in self.crates.values()]
         self.navigator.invalidate()
         self._crates_dirty = True
 
         if source is not None:
             self.noises.append(
-                ai.Noise(x=crate.x, y=crate.y, radius=CRATE_NOISE_DIST, source_id=source.id)
+                ai.Noise(x=crate.x, y=crate.y, radius=kind.noise, source_id=source.id)
             )
 
         rng = random.Random()
         # `blackout` is the run home: lanterns dead, exit open, ground already
-        # swept. A crate rolls COINS ONLY from here — putting a fresh item back
-        # on a map that was just cleared of them would undo `_clear_loot` one
-        # box at a time.
-        kind, item_key, coin_count = crates.roll_drop(rng, items=not self.blackout)
-        if kind == crates.DROP_COIN:
+        # swept. An object rolls COINS ONLY from here — putting a fresh bottle
+        # back on a map that was just cleared of them would undo `_clear_loot`
+        # one boot at a time.
+        outcome, item_key, coin_count = crates.roll_drop(
+            kind, rng, items=not self.blackout
+        )
+        # Military-flavoured objects pay ROUNDS instead of an item, and only
+        # for a calibre somebody in the room is carrying. Rolled here rather
+        # than in `crates.roll_drop` because that module has no idea who is in
+        # the room, and "is this box useful to anybody" is the only question
+        # ammunition ever asks.
+        if outcome == crates.DROP_ITEM and not self.blackout:
+            box = ammo.roll_from_object(
+                kind.tags, rng, ammo.party_calibres(self.players.values())
+            )
+            if box is not None:
+                item_key = box
+
+        if outcome == crates.DROP_COIN:
             self.drop_coins(crate.x, crate.y, coin_count)
-        elif kind == crates.DROP_ITEM and item_key:
+        elif outcome == crates.DROP_ITEM and item_key:
             drop_id = self._next_drop_id()
             self.drops[drop_id] = Drop(
                 id=drop_id,
@@ -586,11 +668,81 @@ class Room:
             )
             self._loot_dirty = True
 
+        # AND SOMETIMES SOMEBODY IS STILL IN THE CAR. Rolled after the loot
+        # and independent of it, so a boot can hold a medical kit AND a
+        # passenger — the two are not alternatives, and the run where both
+        # happen is the one the player retells.
+        ambushed = False
+        if (
+            kind.ambush > 0.0
+            and self.zone.hostile
+            and source is not None
+            and rng.random() < kind.ambush
+        ):
+            ambushed = self._ambush(crate, source)
+
         self.crate_break_events.append(
             crates.CrateBreak(
-                crate.id, crate.x, crate.y, crate.variant, crate.flip, kind, item_key
+                crate.id, crate.kind, crate.x, crate.y, crate.variant, crate.flip,
+                outcome, item_key, ambushed,
             ).to_payload()
         )
+
+    def _seed_nests(self) -> None:
+        """Stand a pack on every nest the map asked for, before anybody arrives.
+
+        THE ONLY CREATURES IN THE GAME THAT ARE PLACED RATHER THAN SPAWNED.
+        Everything else comes out of `EnemyDirector`, which puts groups in a
+        ring around a living player — good for pressure, useless for making a
+        PLACE dangerous, because the ring follows the party around. A shrine
+        has to be guarded whether or not anyone has walked to it yet, or the
+        bargain it offers (better loot, worse odds) is a bargain the player
+        only finds out about after they have already committed.
+
+        They are dropped in loose and left ALONE: no commit, no alarm. A nest
+        that started hunting would walk off its own ground and turn the
+        landmark back into an empty clearing before the party ever saw it.
+        """
+        nests = getattr(self.world, "nests", None)
+        if not nests or not self.zone.hostile:
+            return
+        types = [entry for entry, _ in ai.SPAWN_TABLE]
+        if not types:
+            return
+        rng = random.Random(self.world.seed ^ 0x4E57)
+        for x, y in nests:
+            for _ in range(rng.randint(*NEST_PACK)):
+                angle = rng.uniform(0, math.tau)
+                radius = rng.uniform(NEST_INNER, NEST_SPREAD) * TILE_SIZE
+                spot = loot.place_near(
+                    self.world.tiles,
+                    x + math.cos(angle) * radius,
+                    y + math.sin(angle) * radius * 0.7,
+                    [],
+                    rng,
+                )
+                if spot is None:
+                    continue
+                self.spawn_enemy(rng.choice(types), spot[0], spot[1])
+
+    def _ambush(self, crate: Crate, victim: Player) -> bool:
+        """Put one creature on the tile the object was standing on.
+
+        It arrives ALREADY HUNTING the player who opened it. A passenger that
+        spawned confused and had to notice them would be a spawn; one that
+        comes out of the door swinging is the door being opened.
+        """
+        types = [entry for entry, _ in ai.SPAWN_TABLE]
+        if not types:
+            return False
+        spot = loot.place_near(
+            self.world.tiles, crate.x, crate.y, [], random.Random()
+        )
+        if spot is None:
+            return False
+        enemy = self.spawn_enemy(random.choice(types), spot[0], spot[1])
+        ai.commit(enemy, victim)
+        return True
 
     def activate_rift(self, pid: str, rift_id: str | None = None) -> None:
         """Wake a platform, load a running one, or call the pickup.
@@ -945,6 +1097,11 @@ class Room:
             return
 
         self.balance -= target.price
+        # A GUN COMES LOADED. The merchant is the only source of firearms in
+        # the game, so a purchase that handed over an empty weapon would ask
+        # the party to survive a night before the thing they just spent the
+        # last night earning does anything at all.
+        player.ammo.grant_for(target.key)
         target.sold = True
         self._balance_dirty = True
         self._stands_dirty = True
@@ -1061,7 +1218,10 @@ class Room:
             return
         self._pending_embark = False
         await self._swap_map(
-            zones.forest(self.day), mapgen.build_forest(day=self.day)
+            zones.forest(self.day),
+            mapgen.build_forest(
+                day=self.day, calibres=ammo.party_calibres(self.players.values())
+            ),
         )
 
     async def advance_zone(self) -> None:
@@ -1145,6 +1305,7 @@ class Room:
         self._load_entrance()
         self._rebuild_spawns()
         self.director = EnemyDirector(self.spawn_points)
+        self._seed_nests()
         self.begin_arrive()
         for player in self.players.values():
             player.ready = False
@@ -1201,7 +1362,10 @@ class Room:
             return
         self.day += 1
         await self._swap_map(
-            zones.forest(self.day), mapgen.build_forest(day=self.day)
+            zones.forest(self.day),
+            mapgen.build_forest(
+                day=self.day, calibres=ammo.party_calibres(self.players.values())
+            ),
         )
 
     # --- input --------------------------------------------------------------
@@ -1752,7 +1916,18 @@ class Room:
             return
         if player.aim_hold < weapon.aim_delay:
             return
+        # THE ROUND IS SPENT BEFORE THE RAY IS CAST, and a dry trigger still
+        # eats the cooldown. Both halves matter: a shot that resolved and then
+        # discovered there was nothing to fire would credit a kill nobody
+        # paid for, and a dry trigger that could be retried every tick would
+        # spray `ui-error` thirty times a second the moment somebody ran out.
+        # The client predicts the same thing off its own mirror of the
+        # reserve, so an empty gun clicks on the frame it was pressed.
+        if not player.ammo.spend(ammo.calibre_of(weapon.key)):
+            player.fire_cooldown = weapon.fire_cooldown
+            return
         player.fire_cooldown = weapon.fire_cooldown
+        self._roster_dirty = True
         self.fire(player, cmd.aim_x, cmd.aim_y, weapon)
 
     def handle_melee(self, player: Player, cmd: InputCmd, weapon: weapons.WeaponDef) -> None:

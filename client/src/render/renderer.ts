@@ -48,6 +48,7 @@ import {
   drawLootBeams,
   drawLootMotes,
   drawLootShadows,
+  drawLootPops,
   drawLootSprites,
 } from './layers/loot';
 import { TerrainLayer, type DecorationMask } from './layers/terrain';
@@ -270,6 +271,16 @@ export class Renderer {
     drawCoins(entity, state.coins, state.config.coinSprite);
     drawLootShadows(ctx, view, state.loot);
     drawLootSprites(ctx, view, this.lootAtlas, state.loot);
+    // The item jumping out of something that was just opened. AFTER the
+    // ground drops and before the bodies, so it passes over the drop it is
+    // about to become and still goes behind anyone standing in front of it.
+    drawLootPops(
+      ctx,
+      view,
+      this.lootAtlas,
+      state.effects.lootPops,
+      (key) => state.config.loot?.[key]?.frame ?? null,
+    );
     drawCorpseSprites(entity, state.corpses);
 
     // Scratch array, reused every frame: this list is rebuilt and re-sorted
@@ -306,6 +317,9 @@ export class Renderer {
     for (const piece of storeStanding(store)) {
       depthProps.push({ y: piece.y, anim: 0, hitFlash: 0, piece: null, rift: null, store: piece });
     }
+    // Live objects. `sheet` was resolved when the row was unpacked (see
+    // `game/objects.ts`), so a bus and a barrel reach the same depth sort
+    // without this loop knowing that either of them exists.
     for (const crate of state.world.crates) {
       depthProps.push({
         y: crate.y,
@@ -314,7 +328,7 @@ export class Renderer {
         rift: null,
         store: null,
         piece: {
-          kind: 'crate',
+          kind: crate.sheet,
           x: crate.x,
           y: crate.y,
           variant: crate.variant,
@@ -322,18 +336,20 @@ export class Renderer {
         },
       });
     }
-    const crateSheet = this.scenery?.props.crate;
+    // Objects that are already gone from that list and are still playing.
+    // They keep their own `sheet` for exactly that reason.
     for (const smash of state.effects.crateSmashes) {
+      const sheet = this.scenery?.props[smash.sheet];
       const flash =
         smash.age < HIT_FLASH_LIFE ? 1 - smash.age / HIT_FLASH_LIFE : 0;
       depthProps.push({
         y: smash.y,
-        anim: crateSheet ? crateAnimFrame(crateSheet, smash.age) : 0,
+        anim: sheet ? crateAnimFrame(sheet, smash.age) : 0,
         hitFlash: flash,
         rift: null,
         store: null,
         piece: {
-          kind: 'crate',
+          kind: smash.sheet,
           x: smash.x,
           y: smash.y,
           variant: smash.variant,

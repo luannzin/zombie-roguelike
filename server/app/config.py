@@ -178,11 +178,14 @@ STORE_LIFT_TILES = 0.4
 #: KEPT LOW ON PURPOSE, and the number is pinned to the first night rather than
 #: to a feeling about margins. Day one has a single pad, a single pad is always
 #: the LAST pad, and the last pad never offers to keep loading — so a first
-#: night banks its quota (`rift.night_need`, 24) plus whatever the final item
-#: overshot by, and nothing else. At a 35% markup the cheapest gun on the
-#: cheapest table is 54 and that shop is a corridor of things nobody can buy,
-#: which is the worst possible first impression for a zone whose whole job is
-#: to make the night's take feel like it bought something.
+#: night banks its quota (`rift.night_need`, 40) plus whatever the final item
+#: overshot by, and nothing else. At this markup the cheapest gun on the
+#: cheapest table is 46, which the first night clears. Push the markup up and
+#: that shop becomes a corridor of things nobody can buy, which is the worst
+#: possible first impression for a zone whose whole job is to make the night's
+#: take feel like it bought something — and, now that guns are ONLY sold here
+#: and never found, a first shop nobody can buy from is a second night with a
+#: knife.
 STORE_MARKUP = 1.15
 
 # --- vision (authored in tiles) ---------------------------------------------
@@ -420,7 +423,11 @@ COIN_ATTRACT_MAX_SPEED = TILE_SIZE * COIN_ATTRACT_MAX_TILES_PER_SEC
 LOOT_COLLECT_TILES = 2.25
 LOOT_COLLECT_DIST = TILE_SIZE * LOOT_COLLECT_TILES
 
-# How close the feet have to be for E to smash a crate. Same reach as loot.
+# How close the feet have to be for E to use an object. Same reach as loot.
+# Measured to the nearest point of the FOOTPRINT rather than to the contact
+# point (`crates.nearest`), because a bus is four tiles long and a
+# centre-to-centre reach would refuse the prompt at exactly the rear doors the
+# art is telling you to press.
 CRATE_BREAK_TILES = 2.25
 CRATE_BREAK_DIST = TILE_SIZE * CRATE_BREAK_TILES
 
@@ -434,12 +441,17 @@ RIFT_ACTIVATE_DIST = TILE_SIZE * RIFT_ACTIVATE_TILES
 # FLOOR mouth toward the map edge, before "Encontre a saída" ticks.
 # Standing at the threshold is finding it; crossing the dark is leaving.
 EXIT_CROSS_TILES = 1.75
-# Quieter than a gunshot — wood giving way, not a muzzle.
+# Quieter than a gunshot — wood giving way, not a muzzle. This is only the
+# FALLBACK: how far each object carries is `ObjectType.noise_tiles`, because a
+# mailbox and a lorry bonnet are not the same event.
 CRATE_NOISE_TILES = 5.5
 CRATE_NOISE_DIST = TILE_SIZE * CRATE_NOISE_TILES
-# Shot box. Walking still uses the 1×1 foot tile; a bullet has to hit the
-# wood you aim at. The sheet is 1 × 1.125 tiles — two tiles of height so
-# the barrel's body is not empty air.
+# Shot box, for anything that does not name its own. Walking still uses the
+# foot tiles; a bullet has to hit the wood you aim at, and the real box comes
+# off `ObjectType.hit_w_tiles` / `hit_h_tiles` and rides `welcome.config.objects`
+# — a car is four tiles wide and a toolbox is one, and one number for both
+# would mean either shooting past the car or shooting the toolbox from the
+# next tile over.
 CRATE_HIT_W_TILES = 1.0
 CRATE_HIT_H_TILES = 2.0
 CRATE_HIT_W = TILE_SIZE * CRATE_HIT_W_TILES
@@ -448,8 +460,16 @@ CRATE_HIT_H = TILE_SIZE * CRATE_HIT_H_TILES
 # --- inventory / carry ------------------------------------------------------
 # Starting pocket. A later upgrade grows the slot count; weight is independent
 # of that and can go PAST the max — the bag never refuses for being heavy.
-INVENTORY_SLOTS = 3
-CARRY_MAX_WEIGHT = 10.0
+#
+# FIVE, NOT THREE, AND IT MOVED WITH THE MAP. The forest is twice the size and
+# carries about twice the loot, and at three slots a party filled the bag at
+# the second scene and spent the rest of the night walking past things. That
+# is not scarcity, it is the game refusing its own content. Five is still
+# short of a night's find — the bag is meant to be the reason you make two
+# trips to a platform — and the WEIGHT bar, not the slot count, is still what
+# decides whether the last thing was worth picking up.
+INVENTORY_SLOTS = 5
+CARRY_MAX_WEIGHT = 14.0
 # Fraction of max weight where the walk is still full speed. Past this the
 # body starts to feel it; at 1.0 the multiplier is CARRY_SLOW_AT_MAX, and it
 # keeps falling if they go over, floored at CARRY_SLOW_FLOOR so they can
@@ -504,7 +524,8 @@ def client_config() -> dict:
     # Local import: enemies.py reads TILE_SIZE from this module, so importing it
     # at module scope would be a cycle. Enemy stat blocks still reach the client
     # through this one function, which stays the single client-config contract.
-    from . import rift
+    from . import ammo, rift
+    from .crates import catalog_payload as objects_payload
     from .enemies import enemy_types_payload
     from .loot import catalog_payload
     from .weapons import HOTBAR_SLOTS, catalog_payload as weapons_payload
@@ -587,9 +608,17 @@ def client_config() -> dict:
             "collapseTime": rift.COLLAPSE_TIME,
             "spentAt": _finite(rift.SPENT_AT),
         },
-        # Shot box on a crate, in tiles. Bottom-anchored on the contact.
+        # Fallback shot box on an object, in tiles. Bottom-anchored on the
+        # contact. Per-object boxes ride `objects` below and win.
         "crateHitWTiles": CRATE_HIT_W_TILES,
         "crateHitHTiles": CRATE_HIT_H_TILES,
+        # THE OBJECT VOCABULARY: which sheet each one draws from, which verb
+        # E offers, what the prompt says, and how big a target it is. The
+        # client has no table of its own — adding a barrel kind is a row in
+        # `crates.TYPES` and a sheet in `make_objects.py`.
+        "objects": objects_payload(),
+        # Calibres, which catalog row is a box of each, and the reserve caps.
+        "ammo": ammo.client_payload(),
         # Catalog: name, rarity, atlas frame, weight, value, pocket.
         # Guns also have a combat block in `weapons`.
         "loot": catalog_payload(),

@@ -61,8 +61,16 @@ class ItemDef:
     weight: float
     #: What it is worth. The HUD slot shows it; extraction will spend it.
     value: int
-    #: Where a collect puts it. `hotbar` is guns (no stack); `bag` is the pocket.
+    #: Where a collect puts it. `hotbar` is guns (no stack); `bag` is the
+    #: pocket; `ammo` goes straight into the reserve for its calibre and takes
+    #: no slot at all — see `ammo.py`. Ammunition is not cargo, it is upkeep,
+    #: and a round that ate a pocket slot would be competing with the loot the
+    #: gun exists to help you carry out.
     pocket: str = "bag"
+    #: Which reserve an `ammo` row fills, and how many rounds one box is
+    #: worth. Empty on everything else.
+    ammo: str = ""
+    rounds: int = 0
     #: Whether the world may ever produce one. False for gear everybody
     #: already has — it keeps the row in the catalog, so the HUD can name it
     #: and draw it, while keeping it out of every rarity pool.
@@ -76,33 +84,74 @@ ITEMS: tuple[ItemDef, ...] = (
     ItemDef("broken_toy", "Brinquedo quebrado", "common", ("living", "dropped"), 0.6, 5),
     ItemDef("broken_clock", "Relógio quebrado", "common", ("living", "abandoned"), 1.2, 7),
     ItemDef("scrap", "Sucata", "common", ("scrap", "supplies"), 2.0, 6),
+    ItemDef("rusty_can", "Lata enferrujada", "common", ("scrap", "supplies", "camp"), 0.3, 3),
+    ItemDef("torn_map", "Mapa rasgado", "common", ("travel", "dropped"), 0.1, 6),
+    ItemDef("spark_plug", "Vela de ignição", "common", ("tools", "travel", "scrap"), 0.2, 5),
+    ItemDef("license_plate", "Placa de carro", "common", ("travel", "scrap", "dropped"), 0.9, 7),
     ItemDef("camera", "Câmera", "uncommon", ("electronics", "abandoned", "living"), 1.0, 22),
     ItemDef("old_headphone", "Fone velho", "uncommon", ("electronics", "camp"), 0.4, 18),
     ItemDef("portable_radio", "Rádio portátil", "uncommon", ("electronics", "camp", "travel"), 1.4, 28),
     ItemDef("compass", "Bússola", "uncommon", ("travel", "dropped"), 0.3, 24),
+    ItemDef("car_battery", "Bateria automotiva", "uncommon", ("travel", "tools", "electronics"), 5.0, 26),
+    ItemDef("first_aid", "Kit de primeiros socorros", "uncommon", ("medical", "supplies"), 1.0, 30),
+    ItemDef("road_flare", "Sinalizador", "uncommon", ("travel", "supplies", "military"), 0.3, 20),
+    ItemDef("wrench_set", "Jogo de chaves", "uncommon", ("tools", "travel", "scrap"), 1.8, 21),
     ItemDef("military_camera", "Câmera militar", "rare", ("military", "electronics"), 1.2, 55),
     ItemDef("gold_ring", "Anel de ouro", "rare", ("valuables", "living"), 0.15, 70),
     ItemDef("binoculars", "Binóculo", "rare", ("travel", "military"), 1.0, 60),
     ItemDef("precious_gem", "Gema preciosa", "rare", ("valuables", "nature"), 0.25, 75),
+    ItemDef("morphine", "Morfina", "rare", ("medical", "supplies"), 0.2, 58),
+    ItemDef("police_radio", "Rádio policial", "rare", ("military", "electronics", "combat"), 0.8, 62),
+    ItemDef("night_vision", "Visão noturna", "rare", ("military", "electronics"), 1.1, 80),
+    ItemDef("bone_charm", "Amuleto de osso", "rare", ("relics", "nature"), 0.2, 52),
     ItemDef("stone_idol", "Ídolo de pedra", "epic", ("relics", "nature"), 2.2, 120),
     ItemDef("tribal_mask", "Máscara tribal", "epic", ("relics", "living"), 1.1, 130),
     ItemDef("ancient_amulet", "Amuleto antigo", "epic", ("relics", "valuables"), 0.4, 150),
     ItemDef("gold_figurine", "Estatueta de ouro", "epic", ("valuables", "living"), 1.6, 160),
     ItemDef("raw_diamond", "Diamante bruto", "epic", ("valuables", "nature"), 0.5, 170),
     ItemDef("black_pearl", "Pérola negra", "epic", ("valuables", "relics"), 0.2, 180),
+    ItemDef("ritual_dagger", "Adaga ritual", "epic", ("relics", "combat", "valuables"), 0.7, 140),
+    ItemDef("bank_ledger", "Livro-caixa do banco", "epic", ("valuables", "living", "supplies"), 1.4, 125),
     ItemDef("black_diamond", "Diamante negro", "legendary", ("valuables", "relics"), 0.5, 320),
     ItemDef("lost_crown", "Coroa perdida", "legendary", ("valuables", "living"), 1.8, 400),
     ItemDef("sanctuary_relic", "Relíquia do santuário", "legendary", ("relics",), 2.0, 380),
     ItemDef("vault_key", "Chave do cofre nacional", "legendary", ("valuables", "supplies"), 0.3, 350),
     ItemDef("royal_ring", "Anel da família real", "legendary", ("valuables", "living"), 0.15, 420),
-    # Guns. Combat stats live in weapons.py; these rows are the GROUND
-    # object — a name, a rarity, a loot-atlas frame, a weight. Collect
-    # routes them to the hotbar, not the pocket.
-    ItemDef("glock18", "Glock 18", "common", ("military", "combat"), 1.1, 40, "hotbar"),
-    ItemDef("deagle", "Desert Eagle", "uncommon", ("military", "combat"), 2.2, 90, "hotbar"),
-    ItemDef("famas", "FAMAS", "rare", ("military", "combat"), 3.4, 160, "hotbar"),
-    ItemDef("ak47", "AK-47", "epic", ("military", "combat"), 4.0, 240, "hotbar"),
-    ItemDef("awp", "AWP", "legendary", ("military", "combat"), 6.2, 400, "hotbar"),
+    ItemDef("obsidian_totem", "Totem de obsidiana", "legendary", ("relics", "nature"), 2.4, 360),
+    ItemDef("ancestor_skull", "Crânio do ancestral", "legendary", ("relics",), 1.2, 340),
+    # AMMUNITION. `pocket="ammo"` means a collect never touches a bag slot —
+    # it tops up the reserve for that calibre (`ammo.py`) and is gone. Their
+    # `value` is deliberately ZERO: an extraction platform carries CARGO, and
+    # a box of rounds is what you spent getting the cargo, not the cargo.
+    # Never rolled off a rarity table either — `droppable` is False and
+    # `ammo.scatter` is the only thing in the game that places one, because a
+    # box of .308 on a map where nobody owns a rifle is litter.
+    ItemDef("ammo_pistol", "Munição de pistola", "common", ("military", "combat"), 0.4, 0,
+            "ammo", ammo="pistol", rounds=24, droppable=False),
+    ItemDef("ammo_rifle", "Munição de rifle", "uncommon", ("military", "combat"), 0.8, 0,
+            "ammo", ammo="rifle", rounds=45, droppable=False),
+    ItemDef("ammo_awp", "Munição de precisão", "rare", ("military", "combat"), 0.6, 0,
+            "ammo", ammo="awp", rounds=6, droppable=False),
+    # Guns. Combat stats live in weapons.py; these rows are the name, the
+    # rarity, the loot-atlas frame and the weight — and the PRICE the shop
+    # derives its own from (`store.price_of`).
+    #
+    # NOT DROPPABLE, AND THAT IS THE WHOLE FIREARM ECONOMY. No barrel, no
+    # boot, no shrine and no scene ever produces one: the merchant is the
+    # only source, so a gun is something the party DECIDED to buy with a
+    # night's extraction rather than something the forest handed them. It also
+    # makes ammunition mean something — a calibre nobody paid for is a calibre
+    # nobody finds boxes of.
+    ItemDef("glock18", "Glock 18", "common", ("military", "combat"), 1.1, 40, "hotbar",
+            droppable=False),
+    ItemDef("deagle", "Desert Eagle", "uncommon", ("military", "combat"), 2.2, 90, "hotbar",
+            droppable=False),
+    ItemDef("famas", "FAMAS", "rare", ("military", "combat"), 3.4, 160, "hotbar",
+            droppable=False),
+    ItemDef("ak47", "AK-47", "epic", ("military", "combat"), 4.0, 240, "hotbar",
+            droppable=False),
+    ItemDef("awp", "AWP", "legendary", ("military", "combat"), 6.2, 400, "hotbar",
+            droppable=False),
     # The knife is a catalog row for its NAME, its ICON and its WEIGHT, and
     # for nothing else: it is never scattered, never rolled and never
     # collected — everybody already has one. It stays out of `BY_RARITY`'s
@@ -127,11 +176,17 @@ BY_RARITY: dict[str, tuple[ItemDef, ...]] = {
     for rarity in RARITIES
 }
 
-# What a scene is *about*, for the overlap test. deadfall is quiet woods;
-# homestead is a life that stopped.
+# What a scene is *about*, for the overlap test. `deadfall` is quiet woods;
+# `sanctuary` is the one place somebody built rather than abandoned.
 SCENE_TAGS: dict[str, tuple[str, ...]] = {
-    "homestead": ("living", "valuables", "relics", "electronics"),
-    "campsite": ("camp", "tools", "electronics", "abandoned"),
+    "sanctuary": ("relics", "valuables", "nature"),
+    "roadside": ("travel", "dropped", "living"),
+    "convoy": ("travel", "supplies", "military"),
+    "medevac": ("medical", "supplies", "electronics"),
+    "checkpoint": ("military", "combat", "supplies"),
+    "haulage": ("supplies", "tools", "scrap"),
+    "busstop": ("travel", "living", "dropped"),
+    "flight": ("living", "dropped", "travel", "valuables"),
     "last_stand": ("military", "combat", "scrap", "tools"),
     "dumpsite": ("scrap", "supplies", "tools", "abandoned"),
     "trailhead": ("travel", "dropped", "tools"),
@@ -139,17 +194,30 @@ SCENE_TAGS: dict[str, tuple[str, ...]] = {
     "boundary": ("travel", "mixed", "dropped"),
 }
 
-# How many items a scene of this kind tries to drop. Landmark always has
-# something; a deadfall almost never does.
+# How many items a scene of this kind SCATTERS on the ground, before anything
+# inside its objects is counted. The landmark always pays; a deadfall almost
+# never does.
+#
+# THESE ARE THE GROUND HALF OF A NIGHT'S BUDGET, and they went up with the map.
+# The forest is roughly twice the area it was and carries about half again as
+# many scenes, and the extraction quota (`rift.night_need`) is set against the
+# total the two halves produce — so moving a number here without re-reading
+# that one moves how many nights a party can survive.
 SCENE_COUNTS: dict[str, tuple[float, int, int]] = {
     # (chance of at least one, min, max)
-    "homestead": (1.0, 1, 2),
-    "campsite": (0.75, 0, 2),
-    "last_stand": (0.80, 0, 2),
-    "dumpsite": (0.85, 0, 2),
-    "trailhead": (0.60, 0, 1),
-    "boundary": (0.50, 0, 1),
-    "deadfall": (0.22, 0, 1),
+    "sanctuary": (1.0, 2, 3),
+    "flight": (0.95, 1, 2),
+    "medevac": (0.90, 1, 2),
+    "checkpoint": (0.90, 1, 2),
+    "dumpsite": (0.90, 1, 2),
+    "convoy": (0.85, 1, 2),
+    "haulage": (0.85, 1, 2),
+    "last_stand": (0.85, 1, 2),
+    "busstop": (0.80, 1, 2),
+    "roadside": (0.70, 0, 2),
+    "trailhead": (0.70, 0, 1),
+    "boundary": (0.60, 0, 1),
+    "deadfall": (0.25, 0, 1),
 }
 
 SEARCH_RADIUS = 4.0
@@ -253,8 +321,9 @@ class LootPickup:
 
 def catalog_payload() -> dict:
     """Item defs the client needs to draw a name, a rarity, a frame and a slot."""
-    return {
-        item.key: {
+    payload: dict[str, dict] = {}
+    for index, item in enumerate(ITEMS):
+        row = {
             "name": item.name,
             "rarity": item.rarity,
             "frame": index,
@@ -262,8 +331,12 @@ def catalog_payload() -> dict:
             "value": item.value,
             "pocket": item.pocket,
         }
-        for index, item in enumerate(ITEMS)
-    }
+        # Omitted rather than nulled on the forty rows that are not rounds.
+        if item.pocket == "ammo":
+            row["ammo"] = item.ammo
+            row["rounds"] = item.rounds
+        payload[item.key] = row
+    return payload
 
 
 def from_payloads(rows: list[dict]) -> dict[str, Drop]:
@@ -354,9 +427,40 @@ def place_near(
     return None
 
 
-def roll_item(rng: random.Random, tags: tuple[str, ...] = ()) -> ItemDef | None:
-    """One catalog roll. No scene bias — a crate does not know where it sat."""
-    rarity = _roll_rarity(rng, RARITY_WEIGHTS)
+def free_tile_near(
+    tiles: list[list[int]],
+    cx: float,
+    cy: float,
+    occupied: list[tuple[float, float]],
+    rng: random.Random,
+    radius: float = SEARCH_RADIUS,
+    min_sep: float = MIN_SEPARATION,
+) -> tuple[int, int] | None:
+    """A walkable tile near `(cx, cy)` in TILE coordinates, or None.
+
+    The placement scan every scatter in the game shares. `ammo.py` runs a
+    second pass over the same scenes this one does, and both have to agree
+    about what "next to" means or the boxes end up in the treeline while the
+    loot sits in the clearing.
+    """
+    return _find_floor(tiles, cx, cy, occupied, rng, radius=radius, min_sep=min_sep)
+
+
+def roll_item(
+    rng: random.Random,
+    tags: tuple[str, ...] = (),
+    weights: dict[str, float] | None = None,
+) -> ItemDef | None:
+    """One catalog roll, optionally biased.
+
+    `tags` is what KIND of place this is — an ambulance leans medical, a
+    shrine leans relic — and it weights the pick without ever forbidding
+    anything, because a bandage in a totem pile is a better story than a
+    lookup table. `weights` swaps the rarity curve itself, which is how a
+    chest is worth more than a bin without either of them holding a
+    different list of objects.
+    """
+    rarity = _roll_rarity(rng, weights or RARITY_WEIGHTS)
     return _pick_item(rng, rarity, tags)
 
 

@@ -83,6 +83,26 @@ export function HotbarSlot({ index, item, lootFrames, selected }: HotbarSlotProp
       >
         {index + 1}
       </span>
+      {/*
+        ROUNDS, ON THE CELL. Per weapon rather than one counter beside the
+        belt, because two guns can be on two calibres and "how much ammo do I
+        have" has no single answer. The knife's cell carries no number at all
+        — `ammo` is null there — and that absence is the clearest thing the
+        HUD can say about the one weapon that never runs out.
+
+        Empty goes red rather than hidden: a zero the player can read is what
+        turns a dry trigger into a decision they made instead of a bug.
+      */}
+      {shown && shown.ammo !== null ? (
+        <span
+          className={cn(
+            'absolute right-0.5 bottom-px text-[11px] leading-[11px] tabular-nums',
+            shown.ammo > 0 ? 'text-ink-muted' : 'text-hp-low',
+          )}
+        >
+          {shown.ammo}
+        </span>
+      ) : null}
     </div>
   );
 }

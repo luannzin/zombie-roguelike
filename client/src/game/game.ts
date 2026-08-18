@@ -103,8 +103,13 @@ import { warpHudPoint } from '../lib/lens';
 import { LocalPlayer } from './prediction';
 import { carryBurden } from './simulation';
 import {
-  crateFootprint, FLOOR, VOID, hearthMask, TileMap, type Rift, type Stand,
+  crateCells, FLOOR, VOID, hearthMask, makeCrate, TileMap,
+  type Rift, type Stand,
 } from './world';
+import {
+  objectHitBox, objectLabel, objectSheet, objectTilesW, objectVerb,
+  setObjectCatalog,
+} from './objects';
 import {
   clearTooltipAnchors,
   dropTooltipAnchor,
@@ -139,10 +144,26 @@ const MOVING_SPEED = 1;
 const FIRE_TOOLTIP_LIFT_TILES = 2.5;
 /** How far above a drop the collect tooltip sits, in tiles. */
 const LOOT_TOOLTIP_LIFT_TILES = 1.1;
-/** How far above a crate's contact the smash tooltip sits, in tiles. */
+/** How far above an object's contact the use tooltip sits, in tiles. */
 const CRATE_TOOLTIP_LIFT_TILES = 1.4;
-/** Smash sheet duration. Matches `make_scenery.py` crate break (8 frames @ 12 fps). */
-const CRATE_BREAK_LIFE = 8 / 12;
+/**
+ * How long a used object keeps playing before it stops being drawn.
+ *
+ * ONE NUMBER FOR BOTH VERBS, and it is a ceiling rather than a duration: the
+ * sheet's own `animFrames`/`fps` decide when the last frame lands, and this is
+ * how long the sprite lingers after that. A break sheet ends near-empty so the
+ * extra beat costs nothing; an OPEN sheet ends on a held pose of a lid
+ * standing up, and that beat is the whole difference between a container being
+ * emptied and a container vanishing.
+ */
+const CRATE_BREAK_LIFE = 0.85;
+/**
+ * How long the item jumping out of an opened container is in the air.
+ *
+ * Slow enough to read the rarity colour at the top of the arc, short enough
+ * that it is over before the player has finished deciding to walk to it.
+ */
+const LOOT_POP_LIFE = 0.62;
 /** Empty-crate gust. Matches `make_vfx.py` wind (8 frames @ 14 fps). */
 const WIND_LIFE = 8 / 14;
 /**
@@ -398,6 +419,17 @@ export class Game {
   private local: LocalPlayer | null = null;
   private localMeta: PlayerMeta | null = null;
   /**
+   * THIS PLAYER'S ROUNDS, BY CALIBRE, PREDICTED.
+   *
+   * The same contract as position: the server owns it, the client spends it
+   * locally on the frame it predicts a shot, and every roster overwrites it.
+   * A counter that only moved on the 5 Hz roster would fall in visible steps
+   * behind rounds the player is watching leave the barrel, and — worse — the
+   * last shot of a magazine would fire locally after the reserve was already
+   * empty server-side.
+   */
+  private ammo: Record<string, number> = {};
+  /**
    * Names, colours and score boards, keyed by player id. Snapshots carry only
    * what moves; this is refreshed from the roster they attach a few times a
    * second (see net/protocol).
@@ -626,6 +658,7 @@ export class Game {
     this.lights = [];
     this.local = null;
     this.localMeta = null;
+    this.ammo = {};
     this.roster.clear();
 
     this.hud.set(EMPTY_HUD);
@@ -673,11 +706,16 @@ export class Game {
   private onWelcome(msg: WelcomeMessage): void {
     this.config = msg.config;
     this.zone = msg.zone;
+    // BEFORE the map, and that order is load-bearing: `TileMap` resolves each
+    // object row's atlas sheet as it unpacks it, and it can only do that once
+    // the catalog the server just sent is in place.
+    setObjectCatalog(msg.config.objects);
     this.world = new TileMap(msg.map);
     // A new map is a new forest: nothing has been explored yet.
     this.fov = new FovField(this.world.width, this.world.height);
     this.localId = msg.playerId;
     this.localMeta = msg.player;
+    this.ammo = { ...(msg.player.ammo ?? {}) };
     // Seeds the cache: the first snapshot may land before the first roster.
     this.roster.clear();
     this.roster.set(msg.player.id, msg.player);
@@ -825,7 +863,7 @@ export class Game {
     const wasDeparting = this.departing;
     this.departing = Boolean(msg.departing) && this.zone?.kind === 'camp';
     if (this.departing && !wasDeparting) {
-      this.patchHud({ cinematic: true, prompt: null, ready: null, cratePrompt: false });
+      this.patchHud({ cinematic: true, prompt: null, ready: null, cratePrompt: null });
       // The walk-out, in one gesture: the bonfire is pulled down to a memory
       // of itself while the corridor's drone comes up under the march. The
       // point of leaving the camp is that the warmth stops, so the fire has to
@@ -841,7 +879,7 @@ export class Game {
       Boolean(msg.arriving) &&
       (this.zone?.kind === 'forest' || this.zone?.kind === 'store');
     if (this.arriving && !wasArriving) {
-      this.patchHud({ cinematic: true, prompt: null, cratePrompt: false });
+      this.patchHud({ cinematic: true, prompt: null, cratePrompt: null });
     }
     if (!this.arriving && wasArriving) {
       this.patchHud({ cinematic: false });
@@ -888,6 +926,10 @@ export class Game {
       const mine = this.roster.get(this.localId);
       if (mine) {
         this.localMeta = mine;
+        // Authoritative resync. Replaces rather than merges: a calibre the
+        // server has dropped to zero has to come back as zero, not survive
+        // as whatever the prediction last left behind.
+        if (mine.ammo) this.ammo = { ...mine.ammo };
         if (this.local && mine.inv) this.local.carryWeight = this.moveWeight();
       }
     }
@@ -1216,9 +1258,13 @@ export class Game {
       // tooltip has drawn.
       playSfx('loot');
       playSfx('rarity', { variant: RARITY_CHIME[def.rarity], jitter: 0, delay: 0.07 });
-      const dest = ev.dest === 'hotbar' ? 'hotbar' : 'bag';
+      // AMMUNITION FLIES ONTO THE GUN IT FEEDS. The server sent the hotbar
+      // cell holding the weapon of that calibre, so the sprite lands on the
+      // thing it just topped up rather than on a bag that never held it —
+      // and it must not open the pack, because nothing went in there.
+      const dest = ev.dest === 'bag' || ev.dest === undefined ? 'bag' : 'hotbar';
       if (dest === 'bag') this.inventoryOpen = true;
-      else if (this.heldSlot < 0) this.heldSlot = ev.slot;
+      else if (ev.dest === 'hotbar' && this.heldSlot < 0) this.heldSlot = ev.slot;
       spawnLootFly({
         id: ev.id,
         key: ev.k,
@@ -1391,8 +1437,18 @@ export class Game {
     if (packet.shoot && local.alive && weapon) {
       this.adsHold += dt;
       if (this.localFireCooldown === 0 && this.adsHold >= weapon.aimDelay) {
+        const key = this.weaponKeyOf(this.localId, this.heldSlot);
+        // A DRY TRIGGER STILL EATS THE COOLDOWN, exactly as it does on the
+        // server. Both halves matter: without the spend the tracer would
+        // outlive the reserve, and without the cooldown an empty gun would
+        // click thirty times a second for as long as the button was down.
         this.localFireCooldown = weapon.fireCooldown;
-        this.predictShot(weapon);
+        if (this.hasRound(key)) {
+          this.spendRound(key);
+          this.predictShot(weapon);
+        } else {
+          playSfx('ui-error');
+        }
       }
     } else {
       this.adsHold = 0;
@@ -1511,8 +1567,13 @@ export class Game {
       this.aimX,
       this.aimY,
       result.distance,
-      (config.crateHitWTiles ?? 1) * config.tileSize,
-      (config.crateHitHTiles ?? 2) * config.tileSize,
+      (kind) => objectVerb(kind) === 'break',
+      (kind) =>
+        objectHitBox(
+          kind,
+          (config.crateHitWTiles ?? 1) * config.tileSize,
+          (config.crateHitHTiles ?? 2) * config.tileSize,
+        ),
     );
     const crateHit = crateDist !== null;
     const distance = crateHit ? crateDist : result.distance;
@@ -2430,6 +2491,23 @@ export class Game {
   private canStow(key: string): boolean {
     const catalog = this.config?.loot ?? {};
     const def = catalog[key];
+    if (def?.pocket === 'ammo') {
+      // AMMUNITION ANSWERS TO YOUR OWN BELT, and to nothing else. Mirrors
+      // `Room.collect_loot`: a calibre you are not carrying is refused (the
+      // rifle rounds belong to whoever brought the rifle) and a reserve
+      // already at its cap is refused too — the box stays on the ground and
+      // is still there on the way back, which is exactly what a player wants
+      // from ammunition they cannot use yet.
+      const calibre = def.ammo;
+      if (!calibre) return false;
+      const guns = this.localMeta?.guns;
+      const owns = (guns?.slots ?? []).some(
+        (cell) => cell !== null && this.config?.weapons?.[cell]?.ammo === calibre,
+      );
+      if (!owns) return false;
+      const cap = this.config?.ammo?.max?.[calibre];
+      return cap === undefined || (this.ammo[calibre] ?? 0) < cap;
+    }
     if (def?.pocket === 'hotbar') {
       const guns = this.localMeta?.guns;
       if (!guns) return true;
@@ -2528,6 +2606,7 @@ export class Game {
         rarity: def.rarity,
         frame: def.frame,
         weight: def.weight,
+        ammo: this.roundsFor(key),
       };
     });
     let frames = 0;
@@ -2540,6 +2619,41 @@ export class Game {
       lootFrames: Math.max(1, frames),
       picks: this.hotbarPicks,
     };
+  }
+
+  /**
+   * Rounds this player has for `key`'s calibre, or null if it eats none.
+   *
+   * Read off the LOCAL mirror rather than off the roster, because the roster
+   * is 5 Hz and the trigger is 60: a counter that only fell five times a
+   * second while you were holding down a Glock would tick in visible steps
+   * behind the shots you were watching leave the barrel. `this.ammo` is spent
+   * on the frame the shot is predicted and overwritten by every roster that
+   * lands, exactly like position reconciliation.
+   */
+  private roundsFor(key: string | null | undefined): number | null {
+    if (!key) return null;
+    const calibre = this.config?.weapons?.[key]?.ammo;
+    if (!calibre || calibre === 'none') return null;
+    return this.ammo[calibre] ?? 0;
+  }
+
+  /** Take one round for `key`'s calibre off the local mirror. */
+  private spendRound(key: string | null | undefined): void {
+    if (!key) return;
+    const calibre = this.config?.weapons?.[key]?.ammo;
+    if (!calibre || calibre === 'none') return;
+    const have = this.ammo[calibre] ?? 0;
+    if (have <= 0) return;
+    this.ammo[calibre] = have - 1;
+    const hotbar = this.hotbarHud();
+    if (hotbar) this.patchHud({ hotbar });
+  }
+
+  /** Whether the weapon in hand can fire. A knife always can. */
+  private hasRound(key: string | null | undefined): boolean {
+    const rounds = this.roundsFor(key);
+    return rounds === null || rounds > 0;
   }
 
   private stepCollectFlies(dt: number): void {
@@ -2710,11 +2824,20 @@ export class Game {
     return this.nearFire() ? 'ready' : null;
   }
 
-  private cratePromptInfo(): boolean {
-    if (this.locked || this.introLeft > 0) return false;
-    if (this.nearLoot()) return false;
-    if (this.riftPrompt()) return false;
-    return this.nearCrate() !== null;
+  /**
+   * The line E is offering on the object in front of you, or null.
+   *
+   * A STRING RATHER THAN A FLAG, because the objects no longer share a verb:
+   * a barrel says destroy, a boot says search, a chest says open. The wording
+   * is authored server-side next to the object's drop table
+   * (`crates.ObjectType.label`) so the promise and the prompt cannot drift.
+   */
+  private cratePromptInfo(): string | null {
+    if (this.locked || this.introLeft > 0) return null;
+    if (this.nearLoot()) return null;
+    if (this.riftPrompt()) return null;
+    const near = this.nearCrate();
+    return near ? objectLabel(near.kind) : null;
   }
 
   /**
@@ -3102,6 +3225,14 @@ export class Game {
     if (before < gone && after >= gone) playSfx('lantern-off');
   }
 
+  /**
+   * The object E is offering, or null.
+   *
+   * Distance runs feet to the nearest point of the FOOTPRINT, mirroring
+   * `crates.nearest`. A bus is four tiles long: measured centre to centre,
+   * standing at its rear doors is standing two tiles away from the object,
+   * and the prompt would refuse on the exact spot the art is pointing at.
+   */
   private nearCrate() {
     const config = this.config;
     const local = this.local;
@@ -3112,7 +3243,8 @@ export class Game {
     let best = null;
     let bestD2 = range * range;
     for (const crate of world.crates) {
-      const dx = crate.x - local.state.x;
+      const half = objectTilesW(crate.kind) * config.tileSize * 0.5;
+      const dx = Math.max(0, Math.abs(crate.x - local.state.x) - half);
       const dy = crate.y - feetY;
       const d2 = dx * dx + dy * dy;
       if (d2 < bestD2) {
@@ -3125,26 +3257,54 @@ export class Game {
 
   private replaceCrates(rows: CrateState[]): void {
     if (!this.world) return;
-    this.world.replaceCrates(
-      rows.map((row) => ({
-        id: row.id,
-        x: row.x,
-        y: row.y,
-        variant: row.v,
-        flip: row.flip !== 0,
-      })),
-    );
+    // Through the same unpacker the map payload uses, so a snapshot row and a
+    // map row can never resolve to different sheets for the same object.
+    this.world.replaceCrates(rows.map((row) => makeCrate(row)));
   }
 
   private onCrateBreak(ev: CrateBreakEvent): void {
     if (!this.world) return;
     this.world.removeCrate(ev.id);
-    const { tx, ty } = crateFootprint(ev.x, ev.y, this.world.tileSize);
-    this.world.setTile(tx, ty, FLOOR);
+    // EVERY tile it stood on. A vehicle claims four, and freeing only the
+    // contact tile would leave three invisible walls where the car used to be.
+    for (const cell of crateCells(
+      ev.x,
+      ev.y,
+      this.world.tileSize,
+      objectTilesW(ev.t),
+    )) {
+      this.world.setTile(cell.tx, cell.ty, FLOOR);
+    }
     const empty = ev.drop === 'empty';
-    this.effects.spawnCrateSmash(ev.x, ev.y, ev.v, ev.flip !== 0, empty, CRATE_BREAK_LIFE);
-    playSfxAt('crate-break', ev.x, ev.y);
-    if (empty) this.effects.spawnWind(ev.x, ev.y, WIND_LIFE);
+    const verb = objectVerb(ev.t);
+    this.effects.spawnCrateSmash(
+      objectSheet(ev.t),
+      ev.x,
+      ev.y,
+      ev.v,
+      ev.flip !== 0,
+      empty,
+      CRATE_BREAK_LIFE,
+      verb,
+    );
+    playSfxAt(verb === 'break' ? 'crate-break' : 'bag-open', ev.x, ev.y);
+    // The gust is the sound of nothing being in there, and it is only honest
+    // on a break: a lid coming up on an empty boot has already said it.
+    if (empty && verb === 'break') this.effects.spawnWind(ev.x, ev.y, WIND_LIFE);
+    // THE ITEM JUMPS. The drop itself already exists on the ground — the
+    // server placed it — so this is pure presentation over the top of it, and
+    // it is what turns a find into a moment the player watches instead of a
+    // sprite that was suddenly there.
+    if (ev.drop === 'item' && ev.k) {
+      this.effects.spawnLootPop(ev.x, ev.y, ev.k, LOOT_POP_LIFE);
+      playSfxAt('loot', ev.x, ev.y);
+    }
+    // And sometimes it was not loot. The server has already spawned the
+    // creature; this is the door being kicked rather than opened.
+    if (ev.amb) {
+      this.camera.addTrauma(0.35);
+      playSfxAt('zombie-alert', ev.x, ev.y);
+    }
   }
 
   private lootPromptInfo(): HudLootPrompt | null {
@@ -3301,7 +3461,7 @@ export class Game {
       dropTooltipAnchor('buy');
     }
 
-    const crate = this.cratePromptInfo() ? this.nearCrate() : null;
+    const crate = this.cratePromptInfo() !== null ? this.nearCrate() : null;
     if (crate && this.config) {
       const lift = this.config.tileSize * CRATE_TOOLTIP_LIFT_TILES;
       writeTooltipAnchor('crate', view.x(crate.x), view.y(crate.y - lift));

@@ -9,6 +9,7 @@
  */
 
 import type { MapPayload } from '../net/protocol';
+import { objectSheet, objectVariant } from './objects';
 
 /** Tile kinds. Mirror of server/app/world.py. */
 export const FLOOR = 0;
@@ -73,9 +74,18 @@ export interface SceneryPiece {
   flip: boolean;
 }
 
-/** A live crate. Drawn like standing scenery; removed when it breaks. */
+/**
+ * A live interactive object. Drawn like standing scenery; removed when used.
+ *
+ * `kind` is the TYPE key and the only thing that arrives on the wire;
+ * `sheet` and `variant` are resolved from `config.objects` at unpack time
+ * (see `game/objects.ts`) so the depth sort can name an atlas sheet without
+ * a lookup per object per frame.
+ */
 export interface CratePiece {
   id: string;
+  kind: string;
+  sheet: string;
   x: number;
   y: number;
   variant: number;
@@ -642,15 +652,30 @@ function unpackStore(payload: MapPayload): StoreFixtures | null {
 
 function unpackCrates(payload: MapPayload): CratePiece[] {
   const rows = payload.crates ?? [];
-  const crates = rows.map((row) => ({
-    id: row.id,
-    x: row.x,
-    y: row.y,
-    variant: row.v,
-    flip: row.flip !== 0,
-  }));
+  const crates = rows.map((row) => makeCrate(row));
   crates.sort((a, b) => a.y - b.y);
   return crates;
+}
+
+/** One wire row into a drawable. Shared with the snapshot's `crates` list. */
+export function makeCrate(row: {
+  id: string;
+  t?: string;
+  x: number;
+  y: number;
+  v?: number;
+  flip?: number;
+}): CratePiece {
+  const kind = row.t ?? '';
+  return {
+    id: row.id,
+    kind,
+    sheet: objectSheet(kind),
+    x: row.x,
+    y: row.y,
+    variant: row.v ?? objectVariant(kind),
+    flip: (row.flip ?? 0) !== 0,
+  };
 }
 
 /**
@@ -680,7 +705,7 @@ function findFires(tiles: number[][], tileSize: number): FirePlace[] {
  * at the top and bottom of it standing in scrub while the ones at the sides had
  * room.
  */
-/** The LOW tile a crate claims. Mirrors `crates.footprint` on the server. */
+/** The tile a contact point lands in. Mirrors `crates.footprint` server-side. */
 export function crateFootprint(
   x: number,
   y: number,
@@ -690,6 +715,28 @@ export function crateFootprint(
     tx: Math.floor(x / tileSize),
     ty: Math.floor(y / tileSize - 1e-6),
   };
+}
+
+/**
+ * EVERY tile an object stands on. Mirrors `crates.Crate.cells`.
+ *
+ * A vehicle is four tiles wide and freeing only the contact tile when it is
+ * opened would leave three invisible walls exactly where the car used to be —
+ * the worst bug a 2D game can have, because nothing on screen explains it.
+ */
+export function crateCells(
+  x: number,
+  y: number,
+  tileSize: number,
+  tilesW: number,
+): { tx: number; ty: number }[] {
+  const { tx, ty } = crateFootprint(x, y, tileSize);
+  const left = tx - Math.floor((tilesW - 1) / 2);
+  const cells: { tx: number; ty: number }[] = [];
+  for (let offset = 0; offset < Math.max(1, tilesW); offset++) {
+    cells.push({ tx: left + offset, ty });
+  }
+  return cells;
 }
 
 export function hearthDistance(

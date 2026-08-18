@@ -37,12 +37,15 @@ export interface SceneryProp {
   /** Whether a thin column of smoke still rises off it. */
   smokes: boolean;
   /**
-   * Crate sheet only. Kinds are packed kind-major: idle is frame 0 of that
-   * kind's strip, and the rest is the one-shot break. Absent on every other
-   * prop — those frames are still variants.
+   * ANIMATED SHEETS ONLY, and the three travel together. Kinds are packed
+   * kind-major: frame 0 of a kind's strip is its idle pose and the rest is a
+   * one-shot — a barrel coming apart, or a lid swinging up. Which of those it
+   * is belongs to the SERVER (`config.objects[kind].verb`), not to the sheet:
+   * the art contract is identical either way, and that is why one field
+   * covers both. Absent on every other prop, where frames are plain variants.
    */
   kinds?: number;
-  breakFrames?: number;
+  animFrames?: number;
   fps?: number;
 }
 
@@ -66,7 +69,7 @@ interface SheetManifest {
   sway?: number;
   smokes?: boolean;
   kinds?: number;
-  breakFrames?: number;
+  animFrames?: number;
   fps?: number;
 }
 
@@ -109,7 +112,7 @@ async function fetchScenery(): Promise<SceneryAtlas | null> {
           sway: sheet.sway ?? 0,
           smokes: sheet.smokes ?? false,
           kinds: sheet.kinds,
-          breakFrames: sheet.breakFrames,
+          animFrames: sheet.animFrames,
           fps: sheet.fps,
         };
       }),

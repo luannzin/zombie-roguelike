@@ -3,39 +3,62 @@
 `mapgen.py` grows a forest. This grows what happened in it.
 
 THE RULE THIS MODULE EXISTS TO ENFORCE
-A prop scattered by a hash is texture. A tent, a cold firepit, a dropped pack
-and a line of boot prints walking away from all three is a sentence, and the
-player reads it whether or not they notice they are reading. So nothing here
-places a single object: the unit of placement is a SCENE — a small handful of
-props with fixed relationships — and the procedural part is which scenes, in
-what order, facing which way, with which details rolled in.
+A prop scattered by a hash is texture. A car, a suitcase open beside it, a
+pack forty paces on and blood after that is a sentence, and the player reads it
+whether or not they notice they are reading. So nothing here places a single
+object: the unit of placement is a SCENE — a small handful of props with fixed
+relationships — and the procedural part is which scenes, in what order, facing
+which way, with which details rolled in.
 
 That is also why this is server-side. Everything else the client draws comes
 off the map seed, because one rock is as good as another and both sides can
-agree on a hash. A scene cannot work that way: it has to know that a doorway is
-open ground and that the blood trail runs OUT of it, it may make tiles solid,
-and reproducing that on the client would mean mirroring this whole file the way
-`simulation.py` is mirrored. The map already ships as tiles; scenes ship beside
-them as a flat list of drawables and cost a few hundred bytes.
+agree on a hash. A scene cannot work that way: it has to know which side of the
+lorry the load spilled onto and that the blood runs AWAY from the doors, it may
+make tiles solid, and reproducing that on the client would mean mirroring this
+whole file the way `simulation.py` is mirrored. The map already ships as tiles;
+scenes ship beside them as a flat list of drawables and cost a few hundred
+bytes.
 
 THE SCENES
 
-    homestead   a cabin, its fence, a sign at the approach. Somebody LIVED
-                here. Tracks go IN through the door and do not come out.
-    campsite    tent, cold firepit, logs to sit on, a pack still open. Left
-                fast — the tracks leave, the gear does not.
-    last_stand  no shelter and no comfort: a barricade of logs, spent glass,
-                bones, and blood in a ring. It ended here.
-    deadfall    felled trunks and stumps, nothing human at all. The quiet
-                scene, and it is load-bearing — a forest where every clearing
-                has a story is a theme park, and the loud ones only land if
-                most of the woods is just woods.
+    sanctuary   THE LANDMARK, one per map. Carved stone in a ring, bones on
+                the floor, an altar in the middle that always pays — and a
+                nest of creatures standing on it. The only place anybody
+                BUILT, and the only bargain the map states in advance.
+    roadside    one vehicle, an oil slick, and whichever way somebody walked.
+    convoy      three or four vehicles nose to tail, still queued. People were
+                being moved out and did not get out.
+    medevac     an ambulance with its doors open and blood fanning away from
+                them. Somebody was still trying.
+    checkpoint  a cruiser across the road, a barricade with a hole punched
+                through it, barrels stacked as a block.
+    haulage     a lorry that shed its load in a cone behind the tailgate. The
+                densest object scene there is.
+    busstop     a bus with the bay open and cases on BOTH sides of it, so
+                reading the scene means walking around something solid.
+    flight      the micro-history: car, case, pack, blood, nothing. Four props
+                in an order, and the order is the whole scene.
+    last_stand  no shelter and no comfort: a barricade of logs, spent brass,
+                blood in a ring. It ended here.
+    dumpsite    barrels, bins and boxes. No story, and that is its job — it is
+                where a player learns the two verbs before a scene with a
+                stake in it asks them to use one.
     boundary    a fence run with a gap smashed through it, and prints in the
                 gap. Something did not use the gate.
     trailhead   footprints crossing open ground, one dropped thing at the
                 start, blood halfway, nothing at the end.
-    dumpsite    crates, sacks, a cart wheel off its axle. A supply run that
-                did not arrive.
+    deadfall    felled trunks, nothing human at all. The quiet scene, and it
+                is load-bearing — a forest where every clearing has a story is
+                a theme park, and the loud ones only land if most of the woods
+                is just woods.
+
+NOTHING IN A FOREST IS LIT ANY MORE. `SceneLight` still exists and the STORE
+still uses it (the merchant's torches are navigation in a zone with no
+lantern), but no forest scene emits one. A lamp on a dark map does the
+player's reading for them from across the level, through the treeline, before
+they have spent anything to find out — and the darkness is the only real
+inventory of tension the game has. The party's own lamp and the extraction
+platform they woke are the whole light budget of a night.
 
 Determinism: one rng in, one set of scenes out. The caller seeds it from the
 map seed, so a map and its story are the same pair every time.
@@ -83,7 +106,15 @@ class Piece:
     flip: bool = False
 
 
-#: Light kinds. The client maps these to tones; the numbers are the contract.
+#: Light kinds. The client maps these to tones; the NUMBERS are the contract
+#: and must not be renumbered — `client/src/game/world.ts` pushes a beacon on
+#: as kind 2 by literal.
+#:
+#: LAMP is the merchant's torches, and after the forest lights were cut it is
+#: the only one any generator still emits. EMBER is kept because the client
+#: already has a tone for it and because the next warm thing somebody adds —
+#: a burning wreck, a flare somebody dropped — wants exactly this slot rather
+#: than a new one; it is not currently placed anywhere.
 LAMP = 0
 EMBER = 1
 #: The EXTRACTION point, and it is a light like any other — which is the whole
@@ -199,23 +230,52 @@ class Layout:
 #: crate half a tile, and the failure mode is invisible walls — the worst bug a
 #: 2D game can have, because nothing on screen explains it.
 #:
-#: The kind matters as much as the size. A CABIN is a building: it stops light.
+#: The kind matters as much as the size, and there are exactly two answers.
+#: A VEHICLE is a wall of steel taller than a person: it is PROP, so it stops
+#: sight as well as bodies, and that is what makes a convoy somewhere to fight
+#: rather than a row of decorations — you lose a creature behind a bus. A
+#: STATUE is the same, and for the same reason: a ring of them is a ring of
+#: blind corners, which is most of what makes the shrine expensive.
 #: Everything else here is waist-high, so it is LOW — solid to bodies and
-#: bullets, transparent to sight. You take cover behind a log, you do not
+#: bullets, transparent to sight. You take cover behind a barrel, you do not
 #: disappear behind it.
 #:
-#: Widths match the sheets in `make_scenery.py` (cabin 5, tent 2, logs 2,
-#: the rest 1). Height is always one tile, on the contact point — the feet,
-#: the doorstep, the post. A sign is 1.75 tiles tall and a cabin's roof is
-#: 4.5; those pixels are drawn, not walked into. Claiming them is how a
-#: board becomes a wall and a roof becomes eaves you bounce off.
+#: Widths match the sheets in `make_scenery.py` / `make_objects.py` (a vehicle
+#: is 4, an altar 2, tent 2, logs 2, the rest 1). Height is always one tile,
+#: on the contact point — the feet, the sill, the post. A statue is 2.25 tiles
+#: tall and a bus is 2.5; those pixels are drawn, not walked into. Claiming
+#: only the contact row is how a board becomes a wall without a roofline
+#: becoming something you bounce off two tiles above your own head.
 FOOTPRINTS: dict[str, tuple[int, int, int]] = {
-    "cabin": (5, 1, PROP),
     "tent": (2, 1, PROP),
     "logs": (2, 1, LOW),
-    "crate": (1, 1, LOW),
     "fence": (1, 1, LOW),
     "sign": (1, 1, LOW),
+    "statue": (1, 1, PROP),
+    # Interactive objects. Their tiles are claimed here and then the pieces
+    # are pulled onto the live list by `crates.attach`, so a smash or an open
+    # can free the ground again — see `Room.smash_crate`.
+    "barrel": (1, 1, LOW),
+    "drum": (1, 1, LOW),
+    "fuel_drum": (1, 1, LOW),
+    "box": (1, 1, LOW),
+    "ammo_case": (1, 1, LOW),
+    "tote": (1, 1, LOW),
+    "chest": (1, 1, LOW),
+    "strongbox": (1, 1, LOW),
+    "mailbox": (1, 1, LOW),
+    "suitcase": (1, 1, LOW),
+    "freezer": (1, 1, LOW),
+    "bin": (1, 1, LOW),
+    "toolbox": (1, 1, LOW),
+    "car": (4, 1, PROP),
+    "van": (4, 1, PROP),
+    "ambulance": (4, 1, PROP),
+    "cruiser": (4, 1, PROP),
+    "lorry": (4, 1, PROP),
+    "bus": (4, 1, PROP),
+    "altar": (2, 1, LOW),
+    "cairn": (2, 1, LOW),
 }
 
 
@@ -300,114 +360,350 @@ def _trail(
 # --- the scenes --------------------------------------------------------------
 # Each builds a Layout in its own local tile space. They are functions rather
 # than tables because the interesting part of every one of them is procedural:
-# where the gap in a fence falls, how far a trail runs, which way somebody was
-# going. A table of fixed offsets would give seven scenes; these give seven
-# KINDS of scene.
+# which way a car is facing, where a barricade got pushed through, how far a
+# trail runs. A table of fixed offsets would give a dozen scenes; these give a
+# dozen KINDS of scene.
+#
+# NOTHING HERE IS A BUILDING, AND NOTHING HERE IS LIT.
+#
+# There used to be a cabin and a tent out in these woods, with a lamp burning
+# over the door. Both are gone, and for two different reasons that turned out
+# to be the same reason.
+#
+#   The BUILDINGS taught the wrong lesson. A procedurally dropped house is
+#   read once as "what is that" and forever after as "loot house", and after
+#   two expeditions the forest is a list of houses with a fixed payout. What
+#   replaced them is a vocabulary of things somebody DROVE, packed, buried or
+#   carved — none of which resolves into one repeated noun, and all of which
+#   the player has to walk up to before they know what they have found.
+#
+#   The LIGHTS did the reading for the player. A lamp on a dark map is not
+#   decoration, it is a waypoint: it says "something is over there" from
+#   across the whole level, and it says it through the treeline, through the
+#   fog, and before the party has spent anything to find out. The darkness is
+#   the game's only real inventory of tension and a scene light was quietly
+#   spending it. The only lights left in a forest now come from the party
+#   themselves and from the extraction platform they woke up — see
+#   `SceneLight`, which the STORE still uses, and `BEACON`.
+#
+# A silhouette in the dark that could be a tree, a car or a body is worth more
+# than any of the three would be lit.
 
 
-def _homestead(rng: random.Random) -> Layout:
-    width, height = 12, 10
-    cabin_x, cabin_y = 3.5, 4.0
-    flip = rng.random() < 0.5
-    ruined = rng.random() < 0.45
+def _vehicle(rng: random.Random, dx: float, dy: float, pool=None) -> Piece:
+    """One abandoned vehicle, rolled off a weighted pool.
 
-    pieces = [Piece("cabin", STANDING, cabin_x + 2.5, cabin_y + 3.0, 1 if ruined else 0, flip)]
+    Vehicles are the load-bearing prop of the whole forest now, so the roll is
+    in one place: a `car` is what most of a road is, and an ambulance or a
+    cruiser is a find. Each is FOUR TILES WIDE and solid, which makes them the
+    only cover out here long enough to break a sightline while you stand still
+    behind it — and the reason a convoy reads as a place to fight rather than
+    as scenery to walk past.
+    """
+    table = pool or VEHICLE_POOL
+    total = sum(weight for _, weight in table)
+    roll = rng.uniform(0, total)
+    kind = table[0][0]
+    for name, weight in table:
+        roll -= weight
+        if roll <= 0:
+            kind = name
+            break
+    return Piece(kind, STANDING, dx, dy, 0, rng.random() < 0.5)
 
-    # The door is off centre in the art; the story hangs off knowing where.
-    door_x = cabin_x + (3.4 if flip else 1.6)
-    door_y = cabin_y + 3.0
 
-    # A fence running out from one side, with a gate gap the path goes through.
-    fence_y = cabin_y + 5.5
-    gap = rng.randrange(3, width - 4)
-    for tx in range(1, width - 1):
-        if gap <= tx <= gap + 1:
-            continue
-        distance = abs(tx - gap)
-        # Ruin concentrates AT the gap: the further from whatever came
-        # through, the more of the fence is still standing.
-        state = 0 if distance > 4 else min(5, 5 - distance + rng.randint(-1, 1))
-        pieces.append(Piece("fence", STANDING, tx + 0.5, fence_y, max(0, state)))
+#: (object key, weight). A road is mostly cars.
+VEHICLE_POOL = (
+    ("car", 46.0),
+    ("van", 20.0),
+    ("lorry", 12.0),
+    ("bus", 9.0),
+    ("cruiser", 8.0),
+    ("ambulance", 5.0),
+)
 
-    pieces.append(Piece("sign", STANDING, gap + 0.5, fence_y - 0.4, rng.randrange(3)))
+#: Small openables, for dressing any scene. Same shape, same reason.
+STASH_POOL = (
+    ("suitcase", 26.0),
+    ("toolbox", 22.0),
+    ("box", 20.0),
+    ("bin", 14.0),
+    ("mailbox", 10.0),
+    ("freezer", 8.0),
+)
 
-    # Somebody's things against the wall.
+BARREL_POOL = (("barrel", 46.0), ("drum", 34.0), ("fuel_drum", 20.0))
+
+
+def _from_pool(rng: random.Random, pool, dx: float, dy: float) -> Piece:
+    total = sum(weight for _, weight in pool)
+    roll = rng.uniform(0, total)
+    kind = pool[0][0]
+    for name, weight in pool:
+        roll -= weight
+        if roll <= 0:
+            kind = name
+            break
+    return Piece(kind, STANDING, dx, dy, 0, rng.random() < 0.5)
+
+
+def _roadside(rng: random.Random) -> Layout:
+    """One vehicle where the road used to be, and whatever fell out of it.
+
+    The commonest of the vehicle scenes and deliberately the least
+    conclusive. Most of what a player walks up to should turn out to be one
+    car with a boot full of nothing, or the scenes that DO pay stop being
+    events.
+    """
+    width, height = 10, 7
+    cy = height / 2
+    pieces = [_vehicle(rng, width / 2, cy)]
+
+    # An oil slick under the engine, always. It is the one decal in the game
+    # darker than the floor, so it does not advertise the car — it confirms it
+    # once you are close enough to be committed.
+    pieces.append(Piece("oil", DECAL, width / 2 + rng.uniform(-1.4, 1.4), cy + 0.6,
+                        rng.randrange(4)))
+    for _ in range(rng.randint(0, 2)):
+        pieces.append(_from_pool(rng, STASH_POOL, rng.uniform(1.2, width - 1.2),
+                                 cy + rng.uniform(0.8, 2.2)))
+    pieces.append(Piece("debris", DECAL, width / 2 + rng.uniform(-3, 3),
+                        cy + rng.uniform(-1, 1.8), rng.randrange(6)))
+    if rng.random() < 0.5:
+        pieces.append(Piece("clothes", DECAL, rng.uniform(1, width - 1),
+                            cy + rng.uniform(0.5, 2.0), rng.randrange(5)))
+    # Somebody got out and walked. Which way is the only information here.
+    angle = rng.uniform(0, math.tau)
+    pieces += _trail(width / 2, cy + 1.4,
+                     width / 2 + math.cos(angle) * 3.6, cy + 1.4 + math.sin(angle) * 2.6, rng)
+    return Layout(width, height, tuple(pieces))
+
+
+def _convoy(rng: random.Random) -> Layout:
+    """Three or four vehicles nose to tail. Somebody was moving people out.
+
+    The shape is the story: a line, all facing the same way, stopped. Cars
+    scattered at angles would read as a car park; a queue reads as traffic
+    that was going somewhere and did not get there.
+    """
+    width, height = 20, 8
+    cy = height / 2
+    count = rng.randint(3, 4)
+    pieces: list[Piece] = []
+    # One heading for the whole line, and each vehicle nudged off it — a
+    # perfectly aligned queue is a diagram, a queue with two cars slewed is a
+    # queue people were trying to get around.
+    facing = rng.random() < 0.5
+    for index in range(count):
+        x = 2.6 + index * (width - 5.0) / max(count - 1, 1)
+        y = cy + rng.uniform(-1.1, 1.1)
+        vehicle = _vehicle(rng, x, y)
+        pieces.append(Piece(vehicle.kind, STANDING, x, y, 0, facing))
+        pieces.append(Piece("oil", DECAL, x + rng.uniform(-1, 1), y + 0.5, rng.randrange(4)))
+    for _ in range(rng.randint(1, 3)):
+        pieces.append(_from_pool(rng, STASH_POOL, rng.uniform(1.5, width - 1.5),
+                                 cy + rng.uniform(1.6, 3.0)))
     for _ in range(rng.randint(2, 4)):
-        pieces.append(
-            Piece(
-                "crate",
-                STANDING,
-                cabin_x + rng.uniform(-0.6, 5.4),
-                cabin_y + 3.0 + rng.uniform(0.1, 0.7),
-                rng.randrange(5),
-            )
-        )
-    pieces.append(Piece("clothes", DECAL, door_x + rng.uniform(-0.8, 0.8), door_y + 0.9,
-                       rng.randrange(5)))
-
-    # Tracks come up the path and go IN. They do not come out, and that is the
-    # only thing this scene is trying to say.
-    pieces += _trail(gap + 0.5, fence_y + 1.4, door_x, door_y + 0.6, rng)
-    if rng.random() < 0.7:
-        pieces.append(Piece("blood", DECAL, door_x + rng.uniform(-0.5, 0.5),
-                            door_y + 0.4, rng.choice((1, 2, 5))))
-
-    # A lamp still lit over the door, most of the time. It is the only warm
-    # point on a dark map that is not a player, and it does two jobs at once:
-    # it makes the landmark FINDABLE from across the woods, and it asks the
-    # question the rest of the scene refuses to answer — somebody lit that.
-    lights: tuple[SceneLight, ...] = ()
-    if rng.random() < 0.75:
-        lights = (SceneLight(door_x + (0.9 if flip else -0.9), door_y - 0.4, 3.4, LAMP),)
-    return Layout(width, height, tuple(pieces), lights)
+        pieces.append(Piece("debris", DECAL, rng.uniform(1, width - 1),
+                            rng.uniform(1, height - 1), rng.randrange(6)))
+    for _ in range(rng.randint(1, 3)):
+        pieces.append(Piece("blood", DECAL, rng.uniform(2, width - 2),
+                            cy + rng.uniform(-2, 2), rng.randrange(6)))
+    return Layout(width, height, tuple(pieces))
 
 
-def _campsite(rng: random.Random) -> Layout:
-    width, height = 9, 8
+def _medevac(rng: random.Random) -> Layout:
+    """An ambulance with its doors already open, and what came out of it.
+
+    The one scene that says somebody was still TRYING. Blood in a fan behind
+    the rear doors, dressings dropped where they fell, and — usually — a
+    second vehicle that brought them.
+    """
+    width, height = 12, 9
     cx, cy = width / 2, height / 2
     flip = rng.random() < 0.5
-
-    tent_x, tent_y = cx + rng.uniform(-1.6, 1.6), cy - 1.4
     pieces = [
-        Piece("tent", STANDING, tent_x, tent_y, rng.randrange(3), flip),
-        Piece("firepit", STANDING, cx, cy + 1.0, rng.randrange(3)),
+        Piece("ambulance", STANDING, cx, cy, 0, flip),
+        Piece("oil", DECAL, cx + rng.uniform(-1.5, 1.5), cy + 0.6, rng.randrange(4)),
     ]
-    # Two logs pulled up to the fire — the detail that makes it a place people
-    # sat rather than a pile of equipment.
-    for side in (-1, 1):
-        if rng.random() < 0.75:
-            pieces.append(
-                Piece("logs", STANDING, cx + side * rng.uniform(1.5, 2.2),
-                      cy + 1.0 + rng.uniform(-0.5, 0.8), rng.randrange(4), side < 0)
-            )
+    # The fan of blood behind the doors. It spreads AWAY from the vehicle,
+    # which is the difference between somebody being treated here and
+    # somebody being dragged out.
+    back = (1 if flip else -1)
+    for _ in range(rng.randint(4, 7)):
+        pieces.append(Piece("blood", DECAL,
+                            cx + back * rng.uniform(1.5, 4.0),
+                            cy + rng.uniform(-1.6, 2.2), rng.randrange(6)))
+    for _ in range(rng.randint(1, 2)):
+        pieces.append(Piece("box", STANDING, cx + back * rng.uniform(1.8, 3.6),
+                            cy + rng.uniform(0.6, 2.0), 0, rng.random() < 0.5))
+    pieces.append(Piece("clothes", DECAL, cx + rng.uniform(-2, 2), cy + rng.uniform(0.5, 2.4),
+                        rng.randrange(5)))
     for _ in range(rng.randint(1, 3)):
-        pieces.append(
-            Piece("crate", STANDING, cx + rng.uniform(-3, 3), cy + rng.uniform(-1.5, 2.2),
-                  rng.randrange(5))
-        )
-    # Somebody's pack, still open, and their coat where they were sitting.
-    pieces.append(Piece("clothes", DECAL, cx + rng.uniform(-2, 2), cy + rng.uniform(0, 2), 2))
+        pieces.append(Piece("debris", DECAL, cx + rng.uniform(-4, 4),
+                            cy + rng.uniform(-2, 2.6), rng.randrange(6)))
+    if rng.random() < 0.55:
+        pieces.append(_from_pool(rng, STASH_POOL, cx + rng.uniform(-3.5, 3.5),
+                                 cy + rng.uniform(1.4, 2.6)))
+    return Layout(width, height, tuple(pieces))
+
+
+def _checkpoint(rng: random.Random) -> Layout:
+    """A cruiser across the road and a barricade that did not hold.
+
+    A LINE with a hole in it, same grammar as `boundary` — the reason the two
+    coexist is that a fence is what a farmer builds and this is what a
+    government does, and the player can tell which failed harder.
+    """
+    width, height = 14, 9
+    row = height / 2
+    pieces: list[Piece] = []
+
+    gap = rng.randrange(4, width - 5)
+    for tx in range(2, width - 2):
+        if gap <= tx <= gap + 1:
+            continue
+        if rng.random() < 0.22:
+            continue
+        distance = abs(tx - gap)
+        state = 0 if distance > 3 else max(0, min(5, 5 - distance))
+        pieces.append(Piece("fence", STANDING, tx + 0.5, row, state))
+
+    pieces.append(Piece("cruiser", STANDING, rng.uniform(3.0, width - 3.0), row - 2.4,
+                        0, rng.random() < 0.5))
+    # Barrels used as a road block. They are the only BREAKABLE thing in the
+    # scene, so a party with a gun can open the gap without walking into it.
+    for index in range(rng.randint(2, 4)):
+        pieces.append(_from_pool(rng, BARREL_POOL,
+                                 gap + 0.5 + rng.uniform(-2.5, 2.5),
+                                 row + 1.2 + index * 0.35 + rng.uniform(-0.4, 0.4)))
     if rng.random() < 0.6:
-        pieces.append(Piece("clothes", DECAL, cx + rng.uniform(-2, 2), cy + rng.uniform(-1, 1),
-                            rng.randrange(5)))
-    pieces.append(Piece("debris", DECAL, cx + rng.uniform(-2.5, 2.5), cy + rng.uniform(-1, 2),
-                        rng.randrange(6)))
+        pieces.append(Piece("ammo_case", STANDING, rng.uniform(2.5, width - 2.5),
+                            row + rng.uniform(1.4, 2.6), 0, rng.random() < 0.5))
+    pieces.append(Piece("sign", STANDING, gap + 0.5, row - 0.4, rng.randrange(3)))
+    for _ in range(rng.randint(2, 5)):
+        pieces.append(Piece("debris", DECAL, rng.uniform(2, width - 2),
+                            row + rng.uniform(-2.5, 2.5), rng.choice((0, 1, 4))))
+    for _ in range(rng.randint(2, 4)):
+        pieces.append(Piece("blood", DECAL, gap + rng.uniform(-2.0, 3.0),
+                            row + rng.uniform(-1.5, 1.5), rng.randrange(6)))
+    # And whatever came through went one way, through the gap.
+    direction = 1 if rng.random() < 0.5 else -1
+    pieces += _trail(gap + 1.0, row - direction * 2.4,
+                     gap + 1.0 + rng.uniform(-2.0, 2.0), row + direction * 2.6, rng)
+    return Layout(width, height, tuple(pieces))
 
-    # And they left in a hurry, in one direction, all at once.
+
+def _haulage(rng: random.Random) -> Layout:
+    """A lorry that shed its load. The densest object scene in the forest.
+
+    Everything a supply run was carrying, on the ground, in a spill pattern
+    that widens away from the tailgate. It is the scene that most rewards
+    stopping — and the one most likely to keep somebody standing still for
+    twenty seconds, which is a long time out here.
+    """
+    width, height = 14, 9
+    cy = height / 2
+    flip = rng.random() < 0.5
+    pieces = [
+        Piece("lorry", STANDING, width * 0.34, cy, 0, flip),
+        Piece("oil", DECAL, width * 0.34 + rng.uniform(-1.5, 1.5), cy + 0.6, rng.randrange(4)),
+    ]
+    # The spill: a cone opening away from the bed, denser at the tailgate.
+    for _ in range(rng.randint(4, 7)):
+        t = rng.random()
+        x = width * 0.52 + t * width * 0.42
+        y = cy + rng.uniform(-1.0 - t * 2.0, 1.4 + t * 2.0)
+        pieces.append(_from_pool(rng, BARREL_POOL if rng.random() < 0.55 else STASH_POOL, x, y))
+    for _ in range(rng.randint(2, 4)):
+        pieces.append(Piece("debris", DECAL, rng.uniform(2, width - 1),
+                            cy + rng.uniform(-2.5, 2.5), rng.randrange(6)))
+    if rng.random() < 0.5:
+        pieces.append(Piece("clothes", DECAL, rng.uniform(2, width - 2),
+                            cy + rng.uniform(-2, 2), rng.randrange(5)))
+    return Layout(width, height, tuple(pieces))
+
+
+def _busstop(rng: random.Random) -> Layout:
+    """A bus with the luggage bay open and the cases already gone through.
+
+    A natural mini-dungeon: the longest solid object in the game, with things
+    on both sides of it, so reading the scene means walking around something
+    you cannot see past.
+    """
+    width, height = 14, 9
+    cy = height / 2
+    flip = rng.random() < 0.5
+    pieces = [
+        Piece("bus", STANDING, width / 2, cy, 0, flip),
+        Piece("oil", DECAL, width / 2 + rng.uniform(-2, 2), cy + 0.6, rng.randrange(4)),
+    ]
+    # Cases strung out along the flank, some on the far side. The far side is
+    # the point: you have to commit to a lap of the bus to see all of it.
+    for _ in range(rng.randint(3, 5)):
+        side = 1 if rng.random() < 0.6 else -1
+        pieces.append(Piece("suitcase", STANDING,
+                            rng.uniform(1.5, width - 1.5),
+                            cy + side * rng.uniform(1.4, 2.6), 0, rng.random() < 0.5))
+    for _ in range(rng.randint(1, 2)):
+        pieces.append(Piece("clothes", DECAL, rng.uniform(1.5, width - 1.5),
+                            cy + rng.uniform(-2.6, 2.6), rng.randrange(5)))
+    for _ in range(rng.randint(1, 3)):
+        pieces.append(Piece("blood", DECAL, rng.uniform(2, width - 2),
+                            cy + rng.uniform(-2.4, 2.4), rng.randrange(6)))
+    pieces.append(Piece("debris", DECAL, rng.uniform(2, width - 2),
+                        cy + rng.uniform(-2, 2), rng.randrange(6)))
+    return Layout(width, height, tuple(pieces))
+
+
+def _flight(rng: random.Random) -> Layout:
+    """THE MICRO-HISTORY, and the only scene built to be read in ORDER.
+
+    A car. Beside it, a case somebody stopped to open. Further on, a pack
+    they gave up on. Further still, blood. Nothing at the end.
+
+    Every other scene here is a tableau you take in at once. This one is a
+    SENTENCE with a direction, and the direction is what carries it: the props
+    get cheaper and the ground gets worse the further you follow the line,
+    which is the shape of somebody losing. No NPC, no quest, no dialogue —
+    four props in an order.
+    """
+    width, height = 16, 10
+    # One heading, and everything is placed along it.
     angle = rng.uniform(0, math.tau)
-    pieces += _trail(cx, cy + 1.6, cx + math.cos(angle) * 4.2, cy + math.sin(angle) * 3.4, rng)
+    cx, cy = 3.0 + rng.uniform(0, 1.5), height / 2
+    ux, uy = math.cos(angle), math.sin(angle) * 0.6
 
-    # Sometimes the fire is only just out, and that changes what the scene
-    # says: cold ash is history, live embers are a WARNING. Rare enough that
-    # finding one means something.
-    lights: tuple[SceneLight, ...] = ()
-    if rng.random() < 0.3:
-        lights = (SceneLight(cx, cy + 1.0, 2.2, EMBER),)
-    return Layout(width, height, tuple(pieces), lights)
+    def at(distance: float, jitter: float = 0.7) -> tuple[float, float]:
+        return (
+            min(width - 1.5, max(1.5, cx + ux * distance + rng.uniform(-jitter, jitter))),
+            min(height - 1.2, max(1.2, cy + uy * distance + rng.uniform(-jitter, jitter))),
+        )
+
+    pieces = [
+        Piece("car", STANDING, cx, cy, 0, ux < 0),
+        Piece("oil", DECAL, cx + rng.uniform(-1, 1), cy + 0.6, rng.randrange(4)),
+    ]
+    sx, sy = at(3.4)
+    pieces.append(Piece("suitcase", STANDING, sx, sy, 0, rng.random() < 0.5))
+    px, py = at(6.2)
+    pieces.append(Piece("clothes", DECAL, px, py, 2))
+    for step in range(rng.randint(3, 5)):
+        bx, by = at(7.6 + step * 0.9, 0.5)
+        pieces.append(Piece("blood", DECAL, bx, by, rng.choice((0, 2, 3))))
+    # And the trail runs the whole way, so the order is walkable rather than
+    # something the player has to guess at.
+    ex, ey = at(9.8, 0.3)
+    pieces += _trail(cx, cy + 1.2, ex, ey, rng, step=1.0, wander=0.4)
+    if rng.random() < 0.45:
+        # Sometimes they made it far enough to drop one more thing. Sometimes.
+        fx, fy = at(11.0)
+        pieces.append(_from_pool(rng, STASH_POOL, fx, fy))
+    return Layout(width, height, tuple(pieces))
 
 
 def _last_stand(rng: random.Random) -> Layout:
-    width, height = 8, 8
+    width, height = 9, 9
     cx, cy = width / 2, height / 2
     facing = rng.uniform(0, math.tau)
 
@@ -425,6 +721,16 @@ def _last_stand(rng: random.Random) -> Layout:
                 rng.random() < 0.5,
             )
         )
+    # Whatever they were shooting FROM behind, still there.
+    for _ in range(rng.randint(1, 2)):
+        pieces.append(
+            _from_pool(rng, BARREL_POOL,
+                       cx - math.cos(facing) * rng.uniform(0.8, 2.2),
+                       cy - math.sin(facing) * rng.uniform(0.6, 1.8))
+        )
+    if rng.random() < 0.55:
+        pieces.append(Piece("ammo_case", STANDING, cx + rng.uniform(-1.6, 1.6),
+                            cy + rng.uniform(-0.6, 1.6), 0, rng.random() < 0.5))
     # Blood in a ring rather than a blot: the fight moved, and a single stain
     # would say somebody bled, not that somebody fought.
     for _ in range(rng.randint(4, 7)):
@@ -485,6 +791,9 @@ def _boundary(rng: random.Random) -> Layout:
     if rng.random() < 0.6:
         pieces.append(Piece("sign", STANDING, 1.5 if rng.random() < 0.5 else width - 1.5,
                             row - 0.3, rng.randrange(3)))
+    if rng.random() < 0.4:
+        pieces.append(Piece("mailbox", STANDING, 1.5 if rng.random() < 0.5 else width - 1.5,
+                            row + 0.8, 0, rng.random() < 0.5))
     # Through the gap and onward, one way only.
     direction = 1 if rng.random() < 0.5 else -1
     pieces += _trail(gap + 1.0, row - direction * 2.0, gap + 1.0 + rng.uniform(-1.5, 1.5),
@@ -511,18 +820,28 @@ def _trailhead(rng: random.Random) -> Layout:
                         y0 + rng.uniform(-0.6, 0.6), rng.randrange(5)))
     pieces.append(Piece("blood", DECAL, cx + rng.uniform(-0.8, 0.8),
                         cy + rng.uniform(-0.8, 0.8), rng.choice((0, 3, 4))))
+    if rng.random() < 0.35:
+        pieces.append(_from_pool(rng, STASH_POOL, x0 + rng.uniform(-1.2, 1.2),
+                                 y0 + rng.uniform(-1.2, 1.2)))
     return Layout(width, height, tuple(pieces))
 
 
 def _dumpsite(rng: random.Random) -> Layout:
-    width, height = 7, 6
+    """Everything somebody stopped bothering to sort. Barrels and bins.
+
+    The quiet workhorse of the object vocabulary: no vehicle, no story, just a
+    heap of things with lids, which is where a player learns the two verbs
+    before a scene with a stake in it asks them to use one.
+    """
+    width, height = 8, 7
     cx, cy = width / 2, height / 2
     pieces = [Piece("debris", DECAL, cx + rng.uniform(-1, 1), cy + rng.uniform(-1, 1), 5)]
     for _ in range(rng.randint(3, 6)):
-        pieces.append(
-            Piece("crate", STANDING, cx + rng.uniform(-2.4, 2.4), cy + rng.uniform(-1.6, 2.0),
-                  rng.randrange(5))
-        )
+        pieces.append(_from_pool(rng, BARREL_POOL, cx + rng.uniform(-2.6, 2.6),
+                                 cy + rng.uniform(-1.8, 2.2)))
+    for _ in range(rng.randint(1, 3)):
+        pieces.append(_from_pool(rng, STASH_POOL, cx + rng.uniform(-2.8, 2.8),
+                                 cy + rng.uniform(-1.8, 2.2)))
     for _ in range(rng.randint(1, 2)):
         pieces.append(
             Piece("debris", DECAL, cx + rng.uniform(-2.5, 2.5), cy + rng.uniform(-2, 2),
@@ -534,23 +853,105 @@ def _dumpsite(rng: random.Random) -> Layout:
     return Layout(width, height, tuple(pieces))
 
 
-#: (builder, weight). Weights are the pacing: `deadfall` is common because most
-#: of a forest has to be unremarkable, and `homestead` is rare because a
-#: landmark stops being one the moment there are three of them.
+def _sanctuary(rng: random.Random) -> Layout:
+    """THE LANDMARK. Carved stone in a ring, bones on the floor, an altar.
+
+    Everything else in this forest is something that BROKE — a car that
+    stopped, a fence that failed, a load that spilled. This is the one place
+    somebody BUILT, and every decision in it is aimed at that difference being
+    readable from as far away as the dark allows:
+
+      * it is the only scene made of vertical shapes. A totem is taller than
+        it is wide and the whole rest of the map is low horizontal mass, so a
+        row of narrow columns at the edge of a lantern's reach does not read
+        as more forest;
+      * the shapes are arranged in a CIRCLE, and a circle is the one
+        arrangement nothing in nature and nothing in a crash produces;
+      * the floor inside the ring is bones, which is the scene telling the
+        player what standing here has cost other people.
+
+    And it always pays. `loot.SCENE_COUNTS` gives it the only guaranteed
+    scatter in the game, its altar is one of the two objects that never comes
+    up empty, and `enemies` seeds a nest on top of it (see
+    `mapgen.populate_forest`). The bargain is stated in props before the
+    player commits: this is worth more, and it is guarded.
+    """
+    width, height = 13, 13
+    cx, cy = width / 2, height / 2
+    radius = rng.uniform(3.6, 4.4)
+    count = rng.randint(5, 7)
+    start = rng.uniform(0, math.tau)
+
+    pieces: list[Piece] = []
+    for index in range(count):
+        angle = start + math.tau * index / count
+        # A ring squashed on Y by the same ratio everything else in this game
+        # is, so it reads as a circle on the ground rather than as a hoop
+        # standing up in the air.
+        px = cx + math.cos(angle) * radius
+        py = cy + math.sin(angle) * radius * 0.62
+        pieces.append(Piece("statue", STANDING, px, py, rng.randrange(6), rng.random() < 0.5))
+
+    # The altar in the middle, and it is the reason to walk in.
+    pieces.append(
+        Piece("altar" if rng.random() < 0.6 else "cairn", STANDING, cx, cy + 0.4, 0,
+              rng.random() < 0.5)
+    )
+
+    # Bones inside the ring, denser toward the middle.
+    for _ in range(rng.randint(7, 12)):
+        angle = rng.uniform(0, math.tau)
+        r = rng.uniform(0.6, radius * 0.95) ** 0.7
+        pieces.append(Piece("bones", DECAL, cx + math.cos(angle) * r,
+                            cy + math.sin(angle) * r * 0.7, rng.randrange(6)))
+    for _ in range(rng.randint(2, 5)):
+        angle = rng.uniform(0, math.tau)
+        r = rng.uniform(0.5, radius)
+        pieces.append(Piece("blood", DECAL, cx + math.cos(angle) * r,
+                            cy + math.sin(angle) * r * 0.7, rng.randrange(6)))
+    # A couple of offerings people left before it went bad, still standing.
+    for _ in range(rng.randint(1, 2)):
+        angle = rng.uniform(0, math.tau)
+        pieces.append(_from_pool(rng, STASH_POOL,
+                                 cx + math.cos(angle) * radius * 0.6,
+                                 cy + math.sin(angle) * radius * 0.5))
+    # And a path worn in to it, from one side only.
+    approach = rng.uniform(0, math.tau)
+    pieces += _trail(cx + math.cos(approach) * (radius + 2.2),
+                     cy + math.sin(approach) * (radius + 1.6),
+                     cx + math.cos(approach) * 1.4,
+                     cy + math.sin(approach) * 1.1, rng, step=1.0, wander=0.3)
+    return Layout(width, height, tuple(pieces))
+
+
+#: (kind, builder, weight). Weights are the pacing.
+#:
+#: `deadfall` is still the most common thing on the map and that is not an
+#: oversight — a forest where every clearing has a wreck in it is a scrapyard,
+#: and the loud scenes only land if most of the woods is just woods. The
+#: vehicle scenes together are about a third of the roll: enough that a walk
+#: crosses two or three, few enough that the fourth one still gets looked at.
 SCENES = (
-    ("deadfall", _deadfall, 26),
-    ("campsite", _campsite, 17),
-    ("boundary", _boundary, 14),
-    ("trailhead", _trailhead, 14),
-    ("last_stand", _last_stand, 12),
-    ("dumpsite", _dumpsite, 11),
+    ("deadfall", _deadfall, 22),
+    ("roadside", _roadside, 16),
+    ("dumpsite", _dumpsite, 12),
+    ("trailhead", _trailhead, 11),
+    ("boundary", _boundary, 10),
+    ("flight", _flight, 9),
+    ("last_stand", _last_stand, 9),
+    ("checkpoint", _checkpoint, 7),
+    ("convoy", _convoy, 6),
+    ("haulage", _haulage, 6),
+    ("busstop", _busstop, 5),
+    ("medevac", _medevac, 5),
 )
+
 
 def _woodpile(rng: random.Random) -> Layout:
     """Firewood, stacked. Camp furniture — it says somebody keeps this place.
 
-    No crates. Those are forest loot you smash; a sack by the fire would
-    be a shop in the one zone that is not supposed to have one.
+    No containers. Those are forest loot you open or smash; a barrel by the
+    fire would be a shop in the one zone that is not supposed to have one.
     """
     width, height = 4, 3
     pieces = [
@@ -571,9 +972,9 @@ def _marker(rng: random.Random) -> Layout:
 #: What may stand in the CAMP. The camp is the party's own ground and the one
 #: place in the game that is not hostile, so it gets the scenes that read as
 #: "people live here" and none of the ones that read as "people died here".
-#: A last stand outside the tent you are about to sleep in is a promise the
-#: zone does not keep. No crate pieces either — those become live smashables
-#: and the camp is not a loot zone.
+#: A wreck outside the fire you are about to sit at is a promise the zone does
+#: not keep. No containers either — those become live objects and the camp is
+#: not a loot zone.
 CAMP_POOL = (
     ("woodpile", _woodpile, 18),
     ("marker", _marker, 8),
@@ -583,13 +984,17 @@ CAMP_POOL = (
 #: The one LANDMARK. Attempted first and on its own, before the weighted pool,
 #: because it is the largest layout by a wide margin: rolled in with everything
 #: else it loses every anchor race to a 4x3 woodpile and a player can go three
-#: expeditions without seeing a building. One per map, never two — a second
-#: cabin turns the first one from a place into a prop.
-LANDMARK = ("homestead", _homestead)
+#: expeditions without seeing one. One per map, never two — a second shrine
+#: turns the first one from a place into a prop.
+LANDMARK = ("sanctuary", _sanctuary)
 
 #: Scenes per map, before rejections. A map that rolls badly gets fewer, which
 #: is fine — an empty stretch of woods is a legitimate outcome.
-FOREST_SCENES = (7, 11)
+#:
+#: Raised with the map. The forest is roughly twice the area it was, and
+#: holding the old count would have made the same number of stories float in
+#: twice the emptiness, which is not atmosphere, it is a longer walk.
+FOREST_SCENES = (13, 18)
 #: The camp is small and mostly hearth. Three is furniture; eight is a junkyard.
 CAMP_SCENES = (3, 5)
 #: Tiles between two scene anchors. Below this they read as one heap.

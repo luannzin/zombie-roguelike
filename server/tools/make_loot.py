@@ -58,6 +58,7 @@ CRYSTAL: Ramp = [rgb(c) for c in ("#1a2438", "#2a4060", "#3d6a9a", "#5a9ad0", "#
 OBSIDIAN: Ramp = [rgb(c) for c in ("#0a0a10", "#14141c", "#1e1e2a", "#2c2c3a", "#4a4a5a", "#8a8a9a")]
 PEARL: Ramp = [rgb(c) for c in ("#1a1420", "#2a2030", "#3d3048", "#5a4868", "#2a2a32", "#c8c0d0")]
 OLIVE: Ramp = [rgb(c) for c in ("#1d2016", "#272b1d", "#333825", "#40462e", "#545c3c")]
+RED: Ramp = [rgb(c) for c in ("#3a0d0c", "#5e1512", "#8a1f19", "#b52c22", "#d94a34")]
 OUTLINE = rgb("#0a0b0d")
 
 Art = list[str]
@@ -155,6 +156,53 @@ ITEMS: list[tuple[str, Palette, Art]] = [
         ],
     ),
     (
+        "rusty_can",
+        {"r": RUST, "m": METAL},
+        [
+            ".rrrr.",
+            "rmmmmr",
+            "rmmmmr",
+            "rmmmmr",
+            "rmmmmr",
+            ".rrrr.",
+        ],
+    ),
+    (
+        "torn_map",
+        {"c": CLOTH, "w": WOOD},
+        [
+            ".cccccc.",
+            "cccccccc",
+            "ccwcc.cc",
+            "cccwccwc",
+            "cc.ccwcc",
+            ".cccc.c.",
+        ],
+    ),
+    (
+        "spark_plug",
+        {"m": METAL, "c": CLOTH},
+        [
+            "..mm..",
+            "..mm..",
+            ".mmmm.",
+            ".cccc.",
+            ".cccc.",
+            "..mm..",
+            "..m...",
+        ],
+    ),
+    (
+        "license_plate",
+        {"m": METAL, "c": CLOTH},
+        [
+            "mmmmmmmmm",
+            "mcc.cc.cm",
+            "mc.c.c.cm",
+            "mmmmmmmmm",
+        ],
+    ),
+    (
         "camera",
         {"l": LEATHER, "m": METAL, "g": GLASS},
         [
@@ -201,6 +249,56 @@ ITEMS: list[tuple[str, Palette, Art]] = [
         ],
     ),
     (
+        "car_battery",
+        {"k": OBSIDIAN, "s": RUST, "m": METAL},
+        [
+            "..m..m..",
+            ".ss..ss.",
+            "kkkkkkkk",
+            "kkkkkkkk",
+            "kkkkkkkk",
+            "kkkkkkkk",
+        ],
+    ),
+    (
+        "first_aid",
+        {"w": CLOTH, "r": RED},
+        [
+            "wwwwwwww",
+            "wwwrrwww",
+            "wwwrrwww",
+            "wrrrrrrw",
+            "wrrrrrrw",
+            "wwwrrwww",
+            "wwwrrwww",
+        ],
+    ),
+    (
+        "road_flare",
+        {"g": GOLD, "r": RED},
+        [
+            "..gg..",
+            ".gggg.",
+            "..rr..",
+            "..rr..",
+            "..rr..",
+            "..rr..",
+        ],
+    ),
+    (
+        "wrench_set",
+        {"m": METAL},
+        [
+            "mm..mm..",
+            "mm..mm..",
+            ".mmmm...",
+            "..mm....",
+            "..mm....",
+            "..mm....",
+            "..mm....",
+        ],
+    ),
+    (
         "military_camera",
         {"o": OLIVE, "m": METAL, "g": GLASS},
         [
@@ -241,6 +339,54 @@ ITEMS: list[tuple[str, Palette, Art]] = [
             ".cccccc.",
             "..cccc..",
             "...cc...",
+        ],
+    ),
+    (
+        "morphine",
+        {"m": METAL, "c": CRYSTAL},
+        [
+            "..mm..",
+            "..cc..",
+            "..cc..",
+            "..cc..",
+            "..mm..",
+            "...m..",
+            "...m..",
+        ],
+    ),
+    (
+        "police_radio",
+        {"k": OBSIDIAN, "c": CRYSTAL, "m": METAL},
+        [
+            "...m...",
+            "...m...",
+            ".kkkkk.",
+            ".kccck.",
+            ".kkkkk.",
+            ".kkkkk.",
+            ".kkkkk.",
+        ],
+    ),
+    (
+        "night_vision",
+        {"o": OLIVE, "c": CRYSTAL},
+        [
+            "oooooooo",
+            "occoocco",
+            "occoocco",
+            "oooooooo",
+            "..o..o..",
+        ],
+    ),
+    (
+        "bone_charm",
+        {"b": BONE, "r": LEATHER},
+        [
+            "..r..r..",
+            "...rr...",
+            "..bbbb..",
+            ".b.bb.b.",
+            "..bbbb..",
         ],
     ),
     (
@@ -312,6 +458,31 @@ ITEMS: list[tuple[str, Palette, Art]] = [
         ],
     ),
     (
+        "ritual_dagger",
+        {"m": METAL, "b": BONE, "w": WOOD},
+        [
+            "...m...",
+            "...m...",
+            "...m...",
+            "...m...",
+            "..bbb..",
+            "...w...",
+            "...w...",
+        ],
+    ),
+    (
+        "bank_ledger",
+        {"l": LEATHER, "g": GOLD, "c": CLOTH},
+        [
+            "llllllll",
+            "lggggggl",
+            "lgccccgl",
+            "lgccccgl",
+            "lggggggl",
+            "llllllll",
+        ],
+    ),
+    (
         "black_diamond",
         {"o": OBSIDIAN, "c": CRYSTAL},
         [
@@ -365,6 +536,72 @@ ITEMS: list[tuple[str, Palette, Art]] = [
             ".g....g.",
             ".g....g.",
             "..gggg..",
+        ],
+    ),
+    (
+        "obsidian_totem",
+        {"k": OBSIDIAN, "g": GOLD},
+        [
+            ".kkkk.",
+            "kkkkkk",
+            "kgkkgk",
+            "kkkkkk",
+            "kgkkgk",
+            "kkkkkk",
+            ".kkkk.",
+        ],
+    ),
+    (
+        "ancestor_skull",
+        {"b": BONE, "g": GOLD, "k": OBSIDIAN},
+        [
+            ".bbbb.",
+            "bbbbbb",
+            "gggggg",
+            "bkbbkb",
+            "bbbbbb",
+            ".b..b.",
+        ],
+    ),
+    # AMMUNITION, and the three of them are drawn to be told apart at a glance
+    # in a HUD cell the size of a fingernail. Not by colour — by COUNT and
+    # HEIGHT of the rounds standing in the case: three short ones is pistol,
+    # four tall ones is rifle, and one big one on a black case is the AWP.
+    # A player reading a box across a dark clearing is deciding whether the
+    # walk is for them, and "which calibre" is the only question they have.
+    (
+        "ammo_pistol",
+        {"g": GOLD, "o": OLIVE},
+        [
+            "..g.g.g..",
+            "..ggggg..",
+            ".ooooooo.",
+            ".o.....o.",
+            ".ooooooo.",
+        ],
+    ),
+    (
+        "ammo_rifle",
+        {"g": GOLD, "o": OLIVE},
+        [
+            ".g.g.g.g.",
+            ".g.g.g.g.",
+            ".ggggggg.",
+            "ooooooooo",
+            "o.......o",
+            "ooooooooo",
+        ],
+    ),
+    (
+        "ammo_awp",
+        {"g": GOLD, "k": OBSIDIAN},
+        [
+            "...g...",
+            "..ggg..",
+            "..ggg..",
+            "..ggg..",
+            ".kkkkk.",
+            ".kkkkk.",
         ],
     ),
     (

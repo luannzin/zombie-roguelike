@@ -22,6 +22,10 @@ from .config import (
 from .inventory import Inventory
 from .weapons import Hotbar
 
+# Imported after `weapons` on purpose: `ammo` reads the weapon catalog to
+# answer what calibre a key eats, so the module order here is the dependency.
+from .ammo import Reserve
+
 COLORS = [
     "#e6484f", "#f2a541", "#f6e05e", "#7bd389", "#3fb8af",
     "#4d9de0", "#8367c7", "#e07be0", "#f28482", "#57cc99",
@@ -95,8 +99,12 @@ class Player:
     gold: int = 0
     #: The pocket. Slots and weight; extraction will spend what is in it.
     inventory: Inventory = field(default_factory=lambda: Inventory(INVENTORY_SLOTS))
-    #: Three gun slots plus the fixed knife cell. Starts with a Glock 18.
+    #: Two gun cells plus the fixed knife cell. A run opens with no gun.
     hotbar: Hotbar = field(default_factory=Hotbar.starting)
+    #: Rounds by calibre. Starts EMPTY, and stays empty for as long as the
+    #: belt is: the first reserve in a run arrives with the first gun, out of
+    #: the merchant's hands (`Reserve.grant_for`).
+    ammo: Reserve = field(default_factory=Reserve)
     #: How long the trigger has been held. AWP spends this before it fires.
     aim_hold: float = 0.0
     #: Which beat of the melee chain the next swing is. Never on the wire —
@@ -207,6 +215,11 @@ class Player:
             # the frames its own hotbar selection is ahead of the server's.
             "inv": self.inventory.to_payload(),
             "guns": self.hotbar.to_payload(),
+            # Rounds by calibre. On the ROSTER rather than the snapshot: the
+            # client predicts its own trigger off this the same way it
+            # predicts movement, so five times a second is a resync, not the
+            # counter. Every calibre is present, including the zeroes.
+            "ammo": self.ammo.to_payload(),
         }
 
 

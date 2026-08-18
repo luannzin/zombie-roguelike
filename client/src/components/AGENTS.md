@@ -68,7 +68,10 @@ and nowhere near the frame loop.
   as the player walked. These are one-line prompts — overflowing the edge is
   the better failure, and a caller whose copy does not fit should shorten it
   or move a part into `start` / `end`, which are `shrink-0`. `InteractPrompt` is ready at the fire; `LootPrompt` is a
-  nearby drop; `CratePrompt` is smash ("E para destruir"); `RiftPrompt` is
+  nearby drop; `CratePrompt` names the object's OWN verb, which arrives on the
+  HUD snapshot as a string ("destruir" / "abrir" / "vasculhar") — there is no
+  verb constant in the component, because adding an object is a row in
+  `server/app/crates.py`; `RiftPrompt` is
   a pad, and it has FIVE things to say because the one key has four different
   jobs: "ligar a plataforma" while dormant, "outra plataforma está ligada"
   while another pad is awake, "carregar a plataforma" under the quota,

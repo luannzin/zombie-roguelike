@@ -334,40 +334,40 @@ function swayOf(piece: SceneryPiece, time: number): number {
 }
 
 /**
- * Frame index on a prop sheet. Variant sheets are a single strip; a crate
- * sheet is kinds × breakFrames, packed kind-major, and `anim` walks the smash.
+ * Frame index on a prop sheet. Variant sheets are a single strip; an animated
+ * sheet is kinds × animFrames, packed kind-major, and `anim` walks the one-shot.
  */
 export function sheetFrame(
-  sheet: { frames: number; kinds?: number; breakFrames?: number },
+  sheet: { frames: number; kinds?: number; animFrames?: number },
   variant: number,
   anim: number,
 ): number {
   const kinds = sheet.kinds ?? 0;
-  const breakFrames = sheet.breakFrames ?? 0;
-  if (kinds > 0 && breakFrames > 0) {
+  const animFrames = sheet.animFrames ?? 0;
+  if (kinds > 0 && animFrames > 0) {
     const kind = ((variant % kinds) + kinds) % kinds;
-    const frame = Math.max(0, Math.min(breakFrames - 1, anim));
-    return kind * breakFrames + frame;
+    const frame = Math.max(0, Math.min(animFrames - 1, anim));
+    return kind * animFrames + frame;
   }
   return ((variant % sheet.frames) + sheet.frames) % sheet.frames;
 }
 
+/**
+ * Which frame of the one-shot `age` seconds in. CLAMPS on the last one, and
+ * that clamp is what makes one number serve both verbs: a break sheet ends
+ * near-empty so holding its last frame costs nothing, and an open sheet ends
+ * on a lid standing up, which the caller then holds for the rest of
+ * `CRATE_BREAK_LIFE`. Cutting an opened container the instant its lid
+ * finished rising would read as the object vanishing rather than as it being
+ * emptied.
+ */
 export function crateAnimFrame(
-  sheet: { breakFrames?: number; fps?: number },
+  sheet: { animFrames?: number; fps?: number },
   age: number,
 ): number {
-  const frames = sheet.breakFrames ?? 1;
+  const frames = sheet.animFrames ?? 1;
   const fps = sheet.fps ?? 12;
   return Math.max(0, Math.min(frames - 1, Math.floor(age * fps)));
-}
-
-export function crateBreakDone(
-  sheet: { breakFrames?: number; fps?: number },
-  age: number,
-): boolean {
-  const frames = sheet.breakFrames ?? 1;
-  const fps = sheet.fps ?? 12;
-  return age >= frames / fps;
 }
 
 function drawFrame(

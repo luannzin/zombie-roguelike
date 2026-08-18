@@ -16,10 +16,11 @@ seam React is allowed to read.
 | `prediction.ts` | apply-locally, replay-on-ack reconciliation |
 | `interpolation.ts` | remote entity smoothing |
 | `input.ts` | keyboard/mouse sampling into an `InputPacket` (1/2/3 is the hotbar) |
-| `world.ts` | client tile map, collision + sight queries, fires, hearth mask, placed scenery, live crates, the extraction rift |
-| `combat.ts` | client-side shot feel: capsules, tile DDA, crate sprite boxes |
-| `effects.ts` | tracers, blade paths, dust, blood, floating text, event lights, boot prints, crate smash, wind, death burst |
-| `entity-visuals.ts` | per-entity flash, recoil, gun kick/pump, hit-stun tilt, anim, worn wounds; `HIT_FLASH_LIFE` is also the crate smash blink |
+| `world.ts` | client tile map, collision + sight queries, fires, hearth mask, placed scenery, live interactive objects, the extraction rift |
+| `objects.ts` | the client's copy of `welcome.config.objects`: which sheet, verb, prompt, footprint and hit box each object kind has. No table of its own |
+| `combat.ts` | client-side shot feel: capsules, tile DDA, per-object sprite boxes (BREAKABLE only) |
+| `effects.ts` | tracers, blade paths, dust, blood, floating text, event lights, boot prints, object one-shots, the loot pop, wind, death burst |
+| `entity-visuals.ts` | per-entity flash, recoil, gun kick/pump, hit-stun tilt, anim, worn wounds; `HIT_FLASH_LIFE` is also the object one-shot blink |
 | `lantern.ts` | four-cell battery, produces `output` 0..1 |
 | `hud-store.ts` | the only seam to React; `HUD_INTERVAL` = 0.2 s |
 | `tooltip-anchors.ts` | screen-space points for world `Tooltip`s, written every frame |
@@ -114,7 +115,7 @@ seam React is allowed to read.
   every frame and that merge walks two ascending lists). `PROP` is the tile kind
   a building's footprint claims: solid, sight-blocking, painted as ground, and
   drawn by nothing — the sprite in `scenery.standing` covers it. `LOW` is
-  waist-high cover (crate, fence, log, sign): solid to bodies and bullets,
+  waist-high cover (barrel, box, fence, log, sign): solid to bodies and bullets,
   transparent to light, painted as ground the same way. A log that blocked
   sight would throw a hard shadow; one that was walkable would not be cover.
   Standing collision is one tile tall at the contact — a tree's canopy and a
@@ -140,7 +141,7 @@ seam React is allowed to read.
   sheet pinned to the sprite by `EntityVisuals.splatter`, riding the body
   through its walk cycle and its facings until it dries. Without the second a
   zombie at 1 HP looks exactly like one at full, because the health bar is a
-  number and a number is not damage. Only flesh bleeds — a crate hit is an
+  number and a number is not damage. Only flesh bleeds — a barrel hit is an
   impact and a blocked swing is neither, so `spawnShot` takes `flesh`
   separately from `hit` and `onAttack` splatters only when the swing got
   through. Wounds are normalised to the sprite (`u`/`v`), never world pixels:
@@ -232,7 +233,7 @@ seam React is allowed to read.
     Three files, one set of numbers, the same discipline `SUMMON_TIME` already
     follows. There is nothing about the aircraft on the wire: `closeAt` plus
     the constants is the whole flight plan.
-  - E offers a pad BEFORE a crate and before the fire: if you are standing at
+  - E offers a pad BEFORE an object and before the fire: if you are standing at
     the console with a box at your elbow, you did not walk there for the box.
     Dormant shows "ligar a plataforma" (or "outra plataforma está ligada");
     under quota shows "carregar a plataforma"; past it shows "sobrecarregar a
@@ -311,7 +312,7 @@ seam React is allowed to read.
 - `dispose()` releases every timer, listener, observer and rAF handle created in
   this folder.
 - **Sound is driven from two places and the split is deliberate.** EVENTS (a
-  shot, a hit, a crate, a pickup) are played by the handler that already knows
+  shot, a hit, an object, a pickup) are played by the handler that already knows
   the event happened, next to the visual effect they belong with. STATE (which
   ambience is playing, how fast the heart is going, whether anything is growling
   out there) is reconciled every frame in `updateAudio`, called from `render`
@@ -425,7 +426,7 @@ seam React is allowed to read.
   interpolated with the remotes so they cannot fight the march. Camera follows
   the party, looking ahead at the VOID mouth. E at the fire sends
   `{type:"ready"}`; the server is what decides whether it counted.
-  `Game.locked` is departing OR arriving — interact, loot, crates, the rift
+  `Game.locked` is departing OR arriving — interact, loot, objects, the rift
   prompt and prediction all key off that, not off `departing` alone.
 - Entering a zone is announced ONCE, through `hud-store.arrival`, keyed by the
   zone key; `introducing` says whether the hold is still running. INTRO_TIME,
@@ -440,8 +441,10 @@ seam React is allowed to read.
 - New HUD data means a field on the `hud-store` snapshot, published at 5 Hz —
   not a subscription from a component to the game. Camp ready uses `ready` and
   `prompt`; a nearby drop uses `lootPrompt`; the pocket uses `inventory`;
-  the walk-out and the forest emerge use `cinematic`; a crate in reach uses
-  `cratePrompt`; a pad in reach uses `riftPrompt`
+  the walk-out and the forest emerge use `cinematic`; an object in reach uses
+  `cratePrompt`, which carries the object's own VERB as a string rather than a
+  flag — a barrel says destruir, a chest abrir, a car boot vasculhar, and the
+  wording is authored server-side beside the drop table; a pad uses `riftPrompt`
   (`open` / `busy` / `feed` / `over` / `close`); a shop table in reach uses
   `buyPrompt` and the party's purse uses `balance`; the
   extraction exit arrow uses `exitGuide`. Run
@@ -451,7 +454,7 @@ seam React is allowed to read.
   that beat.
   A world `Tooltip` also needs an `anchor` id written in `syncTooltipAnchors`
   each frame — show/hide is the store, the pixels are the camera. E is
-  interact: collect on a drop, smash a crate, open or feed a rift, buy off a
+  interact: collect on a drop, use an object, open or feed a rift, buy off a
   shop table, ready at the fire. The server validates range.
   TAB toggles `inventory.open` locally and is patched immediately so the
   drawer does not wait for the 5 Hz tick. A collect fly is

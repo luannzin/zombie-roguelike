@@ -909,12 +909,27 @@ def _sanctuary(rng: random.Random) -> Layout:
         r = rng.uniform(0.5, radius)
         pieces.append(Piece("blood", DECAL, cx + math.cos(angle) * r,
                             cy + math.sin(angle) * r * 0.7, rng.randrange(6)))
-    # A couple of offerings people left before it went bad, still standing.
-    for _ in range(rng.randint(1, 2)):
-        angle = rng.uniform(0, math.tau)
+    # OFFERINGS, AT THE FEET OF THE CARVINGS. Scattered anywhere inside the
+    # ring these were containers that happened to be in a circle of statues;
+    # placed at a statue's base they are things somebody CARRIED here and put
+    # down in front of one, which is the same prop doing an entirely different
+    # job. The angle is reused from the ring, so the offering and the figure it
+    # was left for line up rather than nearly lining up.
+    for _ in range(rng.randint(1, 3)):
+        index = rng.randrange(count)
+        angle = start + math.tau * index / count
         pieces.append(_from_pool(rng, STASH_POOL,
-                                 cx + math.cos(angle) * radius * 0.6,
-                                 cy + math.sin(angle) * radius * 0.5))
+                                 cx + math.cos(angle) * (radius - 0.9)
+                                 + rng.uniform(-0.4, 0.4),
+                                 cy + math.sin(angle) * (radius - 0.7) * 0.62 + 0.8))
+    # Broken stone between the figures, swept out from the middle. It is what
+    # says the ring is OLDER than the bodies in it — the bones arrived recently
+    # and the masonry has been coming apart for a long time.
+    for _ in range(rng.randint(3, 6)):
+        angle = rng.uniform(0, math.tau)
+        r = rng.uniform(radius * 0.7, radius * 1.15)
+        pieces.append(Piece("debris", DECAL, cx + math.cos(angle) * r,
+                            cy + math.sin(angle) * r * 0.7, rng.randrange(6)))
     # And a path worn in to it, from one side only.
     approach = rng.uniform(0, math.tau)
     pieces += _trail(cx + math.cos(approach) * (radius + 2.2),

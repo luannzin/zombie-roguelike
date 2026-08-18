@@ -47,8 +47,8 @@
     },
     "barrel": {
       "file": "barrel.png",
-      "frameWidth": 16,
-      "frameHeight": 20,
+      "frameWidth": 28,
+      "frameHeight": 26,
       "frames": 24,
       "sway": 0,
       "kinds": 3,
@@ -98,7 +98,7 @@
     "altar": {
       "file": "altar.png",
       "frameWidth": 28,
-      "frameHeight": 24,
+      "frameHeight": 28,
       "frames": 14,
       "sway": 0,
       "kinds": 2,

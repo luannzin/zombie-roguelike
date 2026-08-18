@@ -339,9 +339,23 @@ def _ground_dark(img: Image.Image, rows: int = 2, drop: float = 0.55) -> None:
 def _explode(intact: Image.Image, frame: int, frames: int, salt: int) -> Image.Image:
     """One break frame. Shared by every sheet whose verb is BREAK.
 
-    Lifted out of `make_scenery.make_crate_break` unchanged in behaviour and
-    generalised on the salt, because a steel drum and a wooden barrel have to
-    come apart on different noise or two barrels side by side burst in step.
+    IT THROWS PIECES, NOT SAND. The old version moved every pixel on its own
+    noise, which at eight frames is a barrel dissolving into a cloud of dots —
+    legible as "the object went away" and as nothing else. What a player needs
+    to read off a smash is that the thing CAME APART: the staves went one way,
+    the lid went up, the hoops fell. So the sprite is cut into wedges around
+    its own centre, each wedge is thrown as ONE piece on its own heading, and
+    the pieces arc down and land. Same cost, and it is the difference between
+    an object breaking and an object fading out.
+
+    Three beats, and they are the whole feel:
+
+      * frame 1 is the HIT — the silhouette jolts up a pixel and its rim goes
+        bright. Nothing has moved apart yet. A break with no anticipation
+        frame reads as a hitbox event rather than as an impact;
+      * the middle frames throw the wedges out and down under gravity;
+      * the tail fades what is left and leaves dust at the foot, so the client
+        can drop the sprite without a pop.
     """
     if frame <= 0:
         return intact.copy()
@@ -352,43 +366,64 @@ def _explode(intact: Image.Image, frame: int, frames: int, salt: int) -> Image.I
     px = img.load()
     t = frame / max(frames - 1, 1)
     cx = (width - 1) / 2.0
+    cy = height * 0.55
     ground = height - 1
+
+    # THE HIT. One frame of the intact silhouette, lifted and rimmed. The rim
+    # is warm rather than white: a white outline on a night map is a light
+    # source, and the barrel is not lighting the clearing, it is being hit.
+    if frame == 1:
+        for y in range(height):
+            for x in range(width):
+                pixel = src[x, y]
+                if pixel[3] < 20:
+                    continue
+                ny = max(0, y - 1)
+                lit = y > 0 and src[x, y - 1][3] < 20
+                px[x, ny] = (246, 226, 178, pixel[3]) if lit else pixel
+        return img
+
+    #: Wedges the silhouette is cut into. Six is enough to read as pieces and
+    #: few enough that each piece survives as a recognisable lump of the thing
+    #: it came off.
+    wedges = 6
+    speed = [4.5 + hash01(salt, index, 61) * 7.0 for index in range(wedges)]
+    lift = [2.2 + hash01(salt, index, 67) * 4.5 for index in range(wedges)]
+    spin = [(hash01(salt, index, 71) - 0.5) * 2.0 for index in range(wedges)]
 
     for y in range(height):
         for x in range(width):
             pixel = src[x, y]
             if pixel[3] < 20:
                 continue
-            seed = hash01(x, y, salt)
-            leave = seed < (t * 0.55 + 0.12)
-            if t < 0.18:
-                leave = seed < 0.08
-            if leave:
-                angle = seed * math.tau
-                dist = t * (3.2 + seed * 7.5)
-                nx = int(round(x + math.cos(angle) * dist))
-                ny = int(round(y + math.sin(angle) * dist * 0.7 + t * 4.5))
-                if ny > ground:
-                    ny = ground
-                    nx = int(round(cx + (nx - cx) * 0.4))
-                fade = 1.0 - t * 0.85
-                if 0 <= nx < width and 0 <= ny < height and fade > 0.12:
-                    alpha = int(pixel[3] * fade)
-                    if alpha > 20:
-                        px[nx, ny] = (pixel[0], pixel[1], pixel[2], alpha)
-            elif t < 0.72:
-                if y < height * (0.28 + t * 0.55) and seed > 0.35:
-                    continue
-                px[x, y] = pixel
+            angle = math.atan2(y - cy, x - cx)
+            index = int((angle + math.pi) / math.tau * wedges) % wedges
+            # Each wedge travels as a body: one heading for every pixel in it,
+            # which is what makes it a fragment instead of a spray.
+            heading = (index + 0.5) / wedges * math.tau - math.pi
+            travel = speed[index] * t
+            rise = lift[index] * t - 9.0 * t * t
+            nx = x + math.cos(heading) * travel + spin[index] * t * (y - cy) * 0.3
+            ny = y + math.sin(heading) * travel * 0.55 - rise
+            nx, ny = int(round(nx)), int(round(ny))
+            if ny > ground:
+                ny = ground
+            if not (0 <= nx < width and 0 <= ny < height):
+                continue
+            fade = 1.0 if t < 0.45 else 1.0 - (t - 0.45) / 0.55
+            alpha = int(pixel[3] * max(fade, 0.0))
+            if alpha > 24:
+                px[nx, ny] = (pixel[0], pixel[1], pixel[2], alpha)
 
-    if t > 0.55:
-        for index in range(3):
-            sx = int(cx + (hash01(salt, index, 41) - 0.5) * width * 0.7)
-            sy = int(ground - hash01(salt, index, 43) * 2)
-            if 0 <= sx < width and 0 <= sy < height:
-                alpha = int(200 * (1.0 - t))
-                if alpha > 30:
-                    px[sx, sy] = (*pick(PLANK, 0.7 - t * 0.3, sx, sy)[:3], alpha)
+    # Dust at the foot, low and wide, under everything. It is what says the
+    # pieces hit the ground rather than that they went on travelling.
+    if 0.15 < t < 0.9:
+        puff = int(200 * (1.0 - abs(t - 0.45) * 2.0))
+        for index in range(7):
+            dx = int(cx + (hash01(salt, index, 41) - 0.5) * width * (0.6 + t))
+            dy = int(ground - hash01(salt, index, 43) * 2.5)
+            if 0 <= dx < width and 0 <= dy < height and puff > 30 and px[dx, dy][3] < 40:
+                px[dx, dy] = (*pick(PLANK, 0.62, dx, dy)[:3], min(puff, 190))
     return img
 
 
@@ -1258,8 +1293,8 @@ def _chip(px, x: int, y: int, width: int, height: int) -> None:
 def make_statue(width: int, height: int, variant: int, rng: random.Random) -> Image.Image:
     """Somebody carved this, and what they carved is WHAT IS OUT HERE.
 
-    `variant`: 0 walker, 1 brute, 2 husk, 3 kneeling supplicant, 4 skull post,
-    5 toppled walker.
+    `variant`: 0 walker, 1 brute, 2 husk, 3 hooded supplicant, 4 skull post,
+    5 broken walker.
 
     THE SUBJECT IS THE POINT, and it changed. These used to be totems, idols
     and a monolith — worked stone that meant "old" and nothing else, which
@@ -1403,36 +1438,42 @@ def make_statue(width: int, height: int, variant: int, rng: random.Random) -> Im
                   307 + side, width, height)
         _carve(px, int(cx), fy(0.62), int(cx), feet, width, height)
     elif variant == 3:
-        # THE SUPPLICANT. A PERSON, kneeling, head down, hands on a planted
-        # rod. The one figure in the ring that is not a creature, and it is
-        # what turns a circle of monsters into a place where somebody knelt in
-        # front of them. Without it the shrine is a trophy rack.
-        # The head, bowed and clear of the shoulders. A hooded head merged
-        # into the back gave one lump; the NECK GAP is what makes it a person
-        # looking at the ground.
-        _fill(px, fx(0.28), fy(0.20), fx(0.54), fy(0.31), ramp, 0.60, 311, width, height)
-        _carve(px, fx(0.28), fy(0.29), fx(0.54), fy(0.29), width, height)   # bowed brow
-        _carve(px, fx(0.30), fy(0.32), fx(0.52), fy(0.32), width, height)   # neck shadow
-        # The back, curved forward over the knee. It leans LEFT, over the head,
-        # so the silhouette is a hunch rather than a column with a lid.
-        for y in range(fy(0.33), fy(0.58)):
-            t = (y - fy(0.33)) / max(fy(0.58) - fy(0.33), 1)
-            _fill(px, fx(0.26) + int(t * width * 0.06), y,
-                  fx(0.62) + int(t * width * 0.10), y, ramp,
-                  0.58 - t * 0.08, 312, width, height)
-        # The kneeling mass: one knee down and forward, the other folded under,
-        # with the carve between them doing the work of two shapes.
-        _fill(px, fx(0.22), fy(0.58), fx(0.78), feet, ramp, 0.50, 313, width, height)
-        _carve(px, fx(0.50), fy(0.60), fx(0.50), feet, width, height)
-        _carve(px, fx(0.22), fy(0.66), fx(0.49), fy(0.66), width, height)
-        # The rod, planted at arm's length, and the hands folded over it. It is
-        # the only STRAIGHT line in the figure, which is what makes the rest of
-        # it read as slumped — and the ARM has to reach it, or the rod is a
-        # post that happens to be standing next to somebody.
-        _fill(px, fx(0.80), fy(0.26), fx(0.86), feet, ramp, 0.68, 314, width, height)
-        _fill(px, fx(0.52), fy(0.36), fx(0.82), fy(0.41), ramp, 0.56, 316, width, height)
-        _fill(px, fx(0.68), fy(0.40), fx(0.90), fy(0.46), ramp, 0.74, 315, width, height)
-        _carve(px, fx(0.68), fy(0.47), fx(0.90), fy(0.47), width, height)
+        # THE SUPPLICANT. A PERSON, robed and hooded, hands together in front.
+        # The one figure in the ring that is not a creature, and it is what
+        # turns a circle of monsters into a place where somebody stood in
+        # front of them on purpose. Without it the shrine is a trophy rack.
+        #
+        # It was a kneeling pose first and it did not survive the size: a
+        # crouch is a diagonal, and a diagonal in a twenty-pixel silhouette is
+        # a lump. Standing and vertical, it reads at the same distance as the
+        # rest of the ring — and the hood does the storytelling the pose was
+        # supposed to.
+        for y in range(fy(0.08), fy(0.32)):
+            t = (y - fy(0.08)) / max(fy(0.32) - fy(0.08), 1)
+            half = width * (0.05 + 0.22 * t ** 0.8)
+            _fill(px, int(cx - half), y, int(cx + half), y, ramp,
+                  0.64 - t * 0.06, 311, width, height)
+        # NO FACE. The cavity under the hood is cut, not shaded — the absence
+        # is the effect, and a shaded one would just read as a chin.
+        for y in range(fy(0.21), fy(0.29)):
+            _carve(px, int(cx - width * 0.13), y, int(cx + width * 0.13), y,
+                   width, height)
+        # The robe, flaring to the hem.
+        for y in range(fy(0.30), feet + 1):
+            t = (y - fy(0.30)) / max(feet - fy(0.30), 1)
+            half = width * (0.22 + 0.18 * t ** 1.3)
+            _fill(px, int(cx - half), y, int(cx + half), y, ramp,
+                  0.58 - t * 0.10, 312, width, height)
+        # Two folds down the front, and the sleeves that meet over them.
+        for side in (-1, 1):
+            _carve(px, int(cx + side * width * 0.12), fy(0.42),
+                   int(cx + side * width * 0.18), feet, width, height)
+            _fill(px, int(cx + side * width * 0.30) - 1, fy(0.34),
+                  int(cx + side * width * 0.30) + 1, fy(0.52), ramp, 0.54,
+                  313 + side, width, height)
+        _fill(px, int(cx - width * 0.12), fy(0.48), int(cx + width * 0.12),
+              fy(0.56), ramp, 0.74, 315, width, height)
+        _carve(px, int(cx), fy(0.49), int(cx), fy(0.55), width, height)
     elif variant == 4:
         # THE SKULL POST. Not carved and not stone — a pole somebody drove in
         # and tied a head to. The most direct sentence on the map, and the one
@@ -1457,36 +1498,43 @@ def make_statue(width: int, height: int, variant: int, rng: random.Random) -> Im
         _line(px, int(cx - 4), fy(0.40), int(cx + 4), fy(0.44), BONE, 0.58, width, height)
         _line(px, int(cx - 4), fy(0.44), int(cx + 4), fy(0.40), BONE, 0.58, width, height)
     else:
-        # THE TOPPLED WALKER. The same figure as variant 0, snapped at the
-        # shins, its top half lying across its own base. The one variant that
-        # says TIME rather than intent — and saying it with a recognisable
-        # subject is worth more than a broken column, because the player can
-        # see what it used to be.
-        # THE STUMPS STAY UP, on the right of the frame, and the fallen half
-        # lies to the LEFT of them. Drawn on top of each other the two shapes
-        # became one heap and the whole sentence was lost: a break only reads
-        # if the player can see both ends of it at once.
-        # The legs still standing, snapped mid-thigh, on the right of the base.
-        _fill(px, fx(0.58), fy(0.46), fx(0.70), feet, ramp, 0.54, 331, width, height)
-        _fill(px, fx(0.74), fy(0.42), fx(0.86), feet, ramp, 0.52, 332, width, height)
-        _carve(px, fx(0.72), fy(0.50), fx(0.72), feet, width, height)
-        for x in range(fx(0.58), fx(0.87)):
-            if 0 <= x < width and hash01(x, 7, 333) < 0.6:
-                _chip(px, x, fy(0.45), width, height)
-                _chip(px, x, fy(0.41), width, height)
-        # The upper half lying across the front of its own base, head at the
-        # far end, one arm still out in front of it — the pose it fell in. A
-        # player who has met variant 0 standing knows what came off this.
-        _fill(px, fx(0.14), fy(0.70), fx(0.56), fy(0.80), ramp, 0.58, 334, width, height)
-        _fill(px, fx(0.04), fy(0.66), fx(0.20), fy(0.78), ramp, 0.68, 335,
-              width, height)                                          # the head
-        _carve(px, fx(0.21), fy(0.67), fx(0.21), fy(0.79), width, height)  # the neck
-        _fill(px, fx(0.20), fy(0.81), fx(0.50), fy(0.85), ramp, 0.44, 336,
-              width, height)                                          # the arm
-        # Rubble between the two halves. Four pixels, and they are what say
-        # this FELL rather than that it was laid down here.
+        # THE BROKEN WALKER. Hips and legs still standing on the block, the
+        # head lying at their feet where it came off. Two shapes, and the
+        # distance between them is the sentence — a player who has met variant
+        # 0 standing can see exactly what used to be here.
+        #
+        # It was a whole toppled body first: torso, arms and stumps all inside
+        # twenty pixels, and every one of them came out too small to identify.
+        # A head on the floor beside a pair of snapped legs says the same thing
+        # with two shapes instead of six.
+        _fill(px, fx(0.30), fy(0.44), fx(0.70), fy(0.62), ramp, 0.56, 331,
+              width, height)
+        for side in (-1, 1):
+            lx = cx + side * width * 0.16
+            _fill(px, int(lx - 2), fy(0.60), int(lx + 2), feet, ramp, 0.52,
+                  332 + side, width, height)
+        _carve(px, int(cx), fy(0.62), int(cx), feet, width, height)
+        # The break: a jagged top edge, and the two rows under it lit as fresh
+        # stone. A clean cut would read as a plinth with nothing on it.
+        for x in range(fx(0.30), fx(0.71)):
+            if 0 <= x < width and hash01(x, 11, 333) < 0.62:
+                _chip(px, x, fy(0.44), width, height)
+                if hash01(x, 13, 334) < 0.4:
+                    _chip(px, x, fy(0.46), width, height)
+        # The head, on its side on the block, sockets down. Big — it is half
+        # the read and it is competing with a leg twice its height.
+        _fill(px, fx(0.02), fy(0.68), fx(0.28), fy(0.82), ramp, 0.70, 335,
+              width, height)
+        for ex in (fx(0.08), fx(0.21)):
+            _chip(px, ex, fy(0.75), width, height)
+        _carve(px, fx(0.05), fy(0.79), fx(0.25), fy(0.79), width, height)
+        # The shadow it casts on the block. Sitting flush on the plinth at the
+        # same value, the head vanished into it — the two shapes have to be
+        # separated by something or the broken statue is just a pair of legs.
+        _carve(px, fx(0.02), fy(0.83), fx(0.28), fy(0.83), width, height)
+        # Rubble between the head and the stumps.
         for index in range(4):
-            rx = fx(0.50) + index * 2
+            rx = fx(0.30) + index * 2
             ry = feet - (index % 2)
             if 0 <= rx < width and 0 <= ry < height:
                 px[rx, ry] = pick(ramp, 0.40, rx, ry)
@@ -1514,14 +1562,33 @@ def make_statue(width: int, height: int, variant: int, rng: random.Random) -> Im
     return img
 
 
+#: Wax. Burnt down, never burning — see the note in `make_altar`.
+WAX: Ramp = [rgb(c) for c in ("#3b352a", "#4e4735", "#645b44", "#7d7256", "#988b6c")]
+
+
 def make_altar(width: int, height: int, kind: int, frame: int, frames: int) -> Image.Image:
     """The one thing at a shrine you open. `kind`: 0 stone altar, 1 bone cairn.
 
     The lid SLIDES rather than hinges, and it slides sideways rather than up.
     Everything else in the game that opens hinges, so a slab grinding aside is
-    a different verb even though it is the same key -- and it is the only
+    a different verb even though it is the same key — and it is the only
     animation here that uncovers a hole in the GROUND rather than the inside
     of a container.
+
+    WHAT IS ON TOP OF IT IS THE SCENE. The altar used to be a grey bar on a
+    grey box, which is a fair description of an altar and no description at
+    all of a place: it stated a shape and left the player to guess why a ring
+    of statues was pointed at it. What it carries now is the evidence —
+    burnt-down candle stubs, a stone bowl, small bones, a run of blood down
+    the front and rune marks cut into the side. None of that changes what the
+    object does. All of it changes what the player thinks happened here, and
+    the difference between "a container in a clearing" and "people came here
+    and paid for something" is entirely in those pixels.
+
+    THE CANDLES ARE OUT, and that is not an oversight. Nothing in the forest
+    burns — see the note on world lights in `server/app/scenery.py` — so these
+    are cold wax stubs with black wicks. A lit candle here would be a lamp,
+    and a lamp does the player's reading for them from across the map.
     """
     img = Image.new("RGBA", (width, height), TRANSPARENT)
     px = img.load()
@@ -1529,43 +1596,99 @@ def make_altar(width: int, height: int, kind: int, frame: int, frames: int) -> I
     ground = height - 1
     open_t = _ease(frame / max(frames - 1, 1))
 
-    base_h = int(height * 0.34)
+    base_h = int(height * 0.40)
     base_top = ground - base_h
-    half = width * 0.40
+    half = width * 0.36
 
-    # The plinth: a stepped base, so it reads as built and not as dropped.
-    _fill(px, int(cx - half), base_top, int(cx + half), ground, GRANITE, 0.48, 241,
-          width, height)
-    _fill(px, int(cx - half * 1.14), ground - 2, int(cx + half * 1.14), ground,
-          GRANITE, 0.36, 243, width, height)
+    # The plinth: three steps, so it reads as BUILT rather than as dropped.
+    _fill(px, int(cx - half), base_top, int(cx + half), ground - 3, GRANITE, 0.48,
+          241, width, height, grain=0.10)
+    _fill(px, int(cx - half * 1.12), ground - 3, int(cx + half * 1.12), ground - 1,
+          GRANITE, 0.40, 243, width, height, grain=0.08)
+    _fill(px, int(cx - half * 1.24), ground - 1, int(cx + half * 1.24), ground,
+          GRANITE, 0.30, 244, width, height, grain=0.06)
 
     if kind == 1:
-        # A cairn of bones piled around the plinth. Same silhouette, and the
-        # difference is what the place cost.
-        for index in range(9):
-            bx = cx + math.cos(index * 1.9) * half * 1.05
-            by = ground - 1 - (index % 3)
-            _line(px, int(bx), int(by), int(bx + 3), int(by - 1), BONE, 0.5, width, height)
+        # A cairn of bones stacked around the plinth. Same silhouette, and the
+        # difference between the two is what the place cost the people who
+        # used it — one of them is masonry and the other one is a body count.
+        for index in range(11):
+            bx = cx + math.cos(index * 1.9) * half * 1.06
+            by = ground - 2 - (index % 4)
+            _line(px, int(bx), int(by), int(bx + 3), int(by - 1), BONE, 0.55,
+                  width, height)
+        for index in range(3):
+            sx = cx + (index - 1) * half * 0.72
+            _disc(px, sx, ground - 5 - (index % 2) * 2, width * 0.07, BONE, 0.70,
+                  246 + index, width, height, squash=1.1)
+    else:
+        # Runes cut down the face of the plinth. Not a language — four short
+        # strokes on an even rhythm, which is exactly enough for a player to
+        # know a person made the marks and not enough to invite reading them.
+        for index in range(4):
+            rx = int(cx - half + 3 + index * (half * 2 - 6) / 3)
+            _carve(px, rx, base_top + 2, rx, base_top + 5, width, height)
+            _carve(px, rx - 1, base_top + 5, rx + 1, base_top + 5, width, height)
 
     # The hollow under the slab.
-    hollow_top = base_top - 3
+    hollow_top = base_top - 4
     if open_t > 0.03:
         _hollow(px, int(cx - half + 2), hollow_top, int(cx + half - 2), base_top - 1,
                 width, height)
         _spark(px, int(cx - half + 2), hollow_top, int(cx + half - 2), base_top - 1,
                EMBER, open_t, 245 + kind, width, height)
 
-    # THE SLAB, ground sideways off the mouth.
-    slide = int(open_t * half * 1.5)
+    # THE SLAB, ground sideways off the mouth — far enough that the hole is
+    # unmistakably open, not so far that the stone and everything standing on
+    # it leaves the frame. A slab that exits the sprite reads as deleted, and
+    # the held final pose has to stay a legible OPEN altar.
+    slide = int(open_t * half * 0.85)
     slab_x0 = int(cx - half + slide)
     slab_x1 = int(cx + half + slide)
-    _fill(px, slab_x0, hollow_top - 1, slab_x1, base_top - 1, STONE, 0.72, 247,
-          width, height)
-    # A carved rim on the slab's top edge, so a flat grey bar reads as worked.
-    for x in range(slab_x0, slab_x1 + 1, 3):
-        if 0 <= x < width and 0 <= hollow_top - 1 < height:
-            px[x, hollow_top - 1] = pick(STONE, 0.34, x, hollow_top - 1)
+    slab_top = hollow_top - 2
+    _fill(px, slab_x0, slab_top, slab_x1, base_top - 1, STONE, 0.62, 247,
+          width, height, grain=0.10)
+    # The seam where the slab sits on the plinth. Without it the two stones are
+    # one stone, and the thing that is supposed to MOVE has no edge to move on.
+    _seam(px, slab_x0, base_top - 1, slab_x1, base_top - 1, width, height,
+          GRANITE, 0.06)
 
+    # WHAT IS ON THE SLAB. It rides with it — an offering that stayed put while
+    # the stone under it slid away would read as a bug, and pinning it to the
+    # slab costs one variable.
+    if kind == 0:
+        # A bowl, dead centre, cut into the top of the stone.
+        _fill(px, int(cx - 2 + slide), slab_top - 2, int(cx + 2 + slide),
+              slab_top, STONE, 0.78, 249, width, height, grain=0.08)
+        _carve(px, int(cx - 1 + slide), slab_top - 1, int(cx + 1 + slide),
+               slab_top - 1, width, height)
+        # Two candle stubs, unequal, both out. The uneven pair is what makes
+        # them read as things somebody left rather than as a decoration.
+        for offset, stub in ((-int(half * 0.66), 3), (int(half * 0.62), 2)):
+            sx = int(cx + offset + slide)
+            _fill(px, sx, slab_top - stub, sx + 1, slab_top - 1, WAX, 0.66, 251,
+                  width, height, grain=0.10)
+            if 0 <= sx < width and 0 <= slab_top - stub - 1 < height:
+                px[sx, slab_top - stub - 1] = CARVE          # the spent wick
+            # Wax that ran down the stone and set there.
+            _line(px, sx, slab_top, sx, slab_top + 1, WAX, 0.34, width, height)
+    else:
+        # The cairn's capstone carries a skull instead of a bowl.
+        _disc(px, cx + slide, slab_top - 2, width * 0.09, BONE, 0.76, 253,
+              width, height, squash=1.15)
+        for ex in (int(cx + slide - 2), int(cx + slide + 1)):
+            if 0 <= ex < width and 0 <= slab_top - 2 < height:
+                px[ex, slab_top - 2] = CARVE
+
+    # A run of blood over the front lip, dried. The one warm-dark thing on the
+    # object, and the only line on it that says what the bowl was FOR.
+    for offset in (-1, 0, 2):
+        bx = int(cx + offset + slide)
+        _line(px, bx, base_top - 1, bx, base_top + 3 + (offset % 2), RED, 0.12,
+              width, height)
+
+    _sculpt(img, STONE, grain=0.08)
+    _ground_dark(img, rows=1, drop=0.72)
     outline(img, OUTLINE_STONE)
     return img
 
@@ -1662,14 +1785,30 @@ def make_oil(size: int, variant: int, rng: random.Random) -> Image.Image:
 
 
 def barrel_strip(tile: int, seed: int) -> tuple[list[Image.Image], int, int]:
+    """The one sheet whose frames are PADDED, and the padding is the smash.
+
+    A break throws pieces, and pieces need somewhere to go. Drawn at the
+    barrel's own size the fragments hit the edge of the frame on the second
+    frame and pile up against it, which reads as the sprite tearing rather
+    than as a barrel coming apart. So the cylinder is drawn at its real size
+    and then dropped into a larger canvas, bottom-centred, and everything the
+    smash throws has half a tile of air on each side to travel through.
+
+    Costs nothing at runtime: the prop is bottom-anchored on its contact point
+    like every other one, so the extra pixels hang off the sides of a footprint
+    that has not changed.
+    """
     w, h = tile, round(tile * 1.25)
+    pad_w, pad_h = round(tile * 1.75), round(tile * 1.6)
     rng = random.Random(seed)
     frames: list[Image.Image] = []
     for kind in range(BARREL_KINDS):
-        intact = make_barrel(w, h, kind, rng)
+        body = make_barrel(w, h, kind, rng)
+        intact = Image.new("RGBA", (pad_w, pad_h), TRANSPARENT)
+        intact.paste(body, ((pad_w - w) // 2, pad_h - h), body)
         for frame in range(BARREL_FRAMES):
             frames.append(_explode(intact, frame, BARREL_FRAMES, kind * 31 + 17))
-    return frames, w, h
+    return frames, pad_w, pad_h
 
 
 def box_strip(tile: int, seed: int) -> tuple[list[Image.Image], int, int]:
@@ -1713,7 +1852,9 @@ def vehicle_strip(tile: int, seed: int) -> tuple[list[Image.Image], int, int]:
 
 
 def altar_strip(tile: int, seed: int) -> tuple[list[Image.Image], int, int]:
-    w, h = round(tile * 1.75), round(tile * 1.5)
+    # Taller than it was. The slab now carries offerings, and they need
+    # somewhere to stand that is not on top of the frame's own edge.
+    w, h = round(tile * 1.75), round(tile * 1.75)
     frames = [
         make_altar(w, h, kind, frame, ALTAR_FRAMES)
         for kind in range(ALTAR_KINDS)

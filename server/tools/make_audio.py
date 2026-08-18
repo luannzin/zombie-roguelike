@@ -1621,6 +1621,111 @@ def sfx_crate_break(rng: random.Random, variant: int) -> tuple[Buf, int]:
     return normalize(pad(out, n), 0.9), rate
 
 
+# --- the things you open ----------------------------------------------------
+#
+# THE OTHER VERB HAD NO SOUND OF ITS OWN. `crate-break` covers everything that
+# shatters, and everything that OPENED was playing `bag-open` — the inventory
+# panel's UI tick. So a car boot, a chest lid and the backpack all made the
+# same noise, which quietly undid the whole point of the object vocabulary:
+# the art, the verb and the prompt all say a chest is not a mailbox and is not
+# a lorry, and then the loudest channel the game has said they are identical.
+#
+# Two recipes, because there are two weights of hinge out there. A LID is
+# wood and small — the creak, then the knock of it hitting its stop. A PANEL
+# is a car and a shrine — a low grind that has to be pushed, and metal
+# arriving at the end of its travel. Both end on a settle, because what a
+# player is listening for is the moment they can look inside.
+
+
+def _settle_tick(rate: int):
+    """One small thing shifting inside a container that just came open."""
+
+    def make(local_rng: random.Random, _index: int) -> Buf:
+        m = dur(0.008 + local_rng.random() * 0.03, rate)
+        grain = biquad(
+            white(m, local_rng), rate, "bandpass", 900 + local_rng.random() * 2600, 4.0
+        )
+        return gain(mul(grain, env_perc(m, rate, 0.0005, 0.02, 3.2)),
+                    0.25 + local_rng.random() * 0.4)
+
+    return make
+
+
+def sfx_object_open(rng: random.Random, variant: int) -> tuple[Buf, int]:
+    """A wooden lid on a hinge. Creak, stop, settle.
+
+    Timed against the sheets that use it — box is 6 frames at 14 fps, chest is
+    8 at 11 — so the knock lands with the lid's last frame rather than under it.
+    The creak is a narrow resonant band climbing as the hinge turns, chopped by
+    an LFO: a hinge that has been out in a wet forest for a year does not turn
+    smoothly, it sticks and lets go, and that stutter is the whole character.
+    """
+    rate = SFX_RATE
+    n = dur(0.62, rate)
+
+    creak_n = dur(0.30, rate)
+    base = 300.0 + rng.random() * 190.0
+    creak = biquad(white(creak_n, rng), rate, "bandpass",
+                   lambda t: base * (1.0 + 0.85 * t), 7.5)
+    creak = mul(creak, env_from(creak_n, [(0.0, 0.0), (0.12, 1.0), (0.65, 0.6), (1.0, 0.0)]))
+    creak = mul(creak, lfo(creak_n, rate, 24.0 + rng.random() * 16.0, 0.42, 0.62))
+
+    knock_n = dur(0.16, rate)
+    knock = mix(
+        mul(tone(knock_n, lambda t: 200.0 - 70.0 * t, rate, "sine"),
+            env_perc(knock_n, rate, 0.001, 0.09, 3.0)),
+        mul(biquad(white(knock_n, rng), rate, "bandpass", 1500.0, 2.2),
+            env_perc(knock_n, rate, 0.0005, 0.05, 3.4)),
+    )
+
+    out = at(pad(gain(creak, 0.85), n), gain(knock, 0.9), dur(0.28, rate))
+    out = mix(out, gain(scatter(n, rate, rng, 5, _settle_tick(rate), spread=(0.32, 0.62)), 0.7))
+    return normalize(reflections(out, rate, [(0.031, 0.17), (0.062, 0.09)]), 0.9), rate
+
+
+def sfx_object_heavy(rng: random.Random, variant: int) -> tuple[Buf, int]:
+    """A panel that has to be forced, and the stone that has to be pushed.
+
+    The vehicles and the altar share it, and they share it on purpose: what
+    those two have in common is that a person is moving something that does not
+    want to move, which is a different sentence from a lid falling open. It is
+    the longest of the three container sounds because the WAIT is the point —
+    a car boot that opened instantly would cost the vehicles the one beat where
+    the player has already committed and does not yet know what is in there.
+    """
+    rate = SFX_RATE
+    n = dur(0.86, rate)
+
+    # The grind: broadband, low, and it has to build rather than strike.
+    grind_n = dur(0.52, rate)
+    grind = biquad(brown(grind_n, rng), rate, "bandpass",
+                   lambda t: 150.0 + 260.0 * t, 1.4)
+    grind = mul(grind, env_from(grind_n, [(0.0, 0.0), (0.2, 0.75), (0.75, 1.0), (1.0, 0.25)]))
+    grind = mul(grind, lfo(grind_n, rate, 11.0 + rng.random() * 7.0, 0.3, 0.72))
+
+    # The seal letting go, a third of the way in.
+    creak_n = dur(0.22, rate)
+    creak = biquad(white(creak_n, rng), rate, "bandpass",
+                   lambda t: 420.0 + 520.0 * t, 8.0)
+    creak = mul(creak, env_perc(creak_n, rate, 0.02, 0.18, 1.8))
+
+    # The stop: metal arriving at the end of its travel, with a ring on it.
+    clank_n = dur(0.30, rate)
+    clank = mix(
+        mul(tone(clank_n, 128.0, rate, "sine"), env_perc(clank_n, rate, 0.001, 0.16, 2.8)),
+        mul(tone(clank_n, 311.0, rate, "sine"), env_perc(clank_n, rate, 0.001, 0.11, 3.4)),
+        mul(biquad(white(clank_n, rng), rate, "bandpass", 2400.0, 2.6),
+            env_perc(clank_n, rate, 0.0004, 0.04, 4.0)),
+    )
+
+    out = pad(gain(grind, 0.9), n)
+    out = at(out, gain(creak, 0.5), dur(0.14, rate))
+    out = at(out, gain(clank, 0.85), dur(0.50, rate))
+    out = mix(out, gain(scatter(n, rate, rng, 4, _settle_tick(rate), spread=(0.60, 0.88)), 0.6))
+    out = reflections(softclip(out, 1.2), rate, [(0.041, 0.2), (0.083, 0.11)])
+    return normalize(pad(out, n), 0.9), rate
+
+
 # --- the knife --------------------------------------------------------------
 #
 # The blade's whole argument is that it is QUIET, and the mix has to say so
@@ -1797,6 +1902,10 @@ CATALOG: dict[str, tuple[object, int, float, str, bool]] = {
     "rarity": (sfx_rarity, 5, -9.0, "misc", False),
     "coin": (sfx_coin, 1, -12.0, "misc", False),
     "crate-break": (sfx_crate_break, 3, -4.0, "misc", False),
+    # Quieter than the smash by design: the whole reason to walk to a chest
+    # rather than shoot a barrel is that opening one does not announce you.
+    "object-open": (sfx_object_open, 3, -9.0, "misc", False),
+    "object-heavy": (sfx_object_heavy, 3, -7.0, "misc", False),
     "drop": (sfx_drop, 1, -13.0, "misc", False),
 }
 

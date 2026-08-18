@@ -107,8 +107,8 @@ import {
   type Rift, type Stand,
 } from './world';
 import {
-  objectHitBox, objectLabel, objectSheet, objectTilesW, objectVerb,
-  setObjectCatalog,
+  crateOpenSound, objectHitBox, objectLabel, objectSheet, objectTilesW,
+  objectVerb, setObjectCatalog,
 } from './objects';
 import {
   clearTooltipAnchors,
@@ -579,6 +579,8 @@ export class Game {
       'rarity',
       'coin',
       'crate-break',
+      'object-open',
+      'object-heavy',
     ]);
 
     this.renderer = new Renderer(this.canvas, this.sprites);
@@ -3299,7 +3301,13 @@ export class Game {
       CRATE_BREAK_LIFE,
       verb,
     );
-    playSfxAt(verb === 'break' ? 'crate-break' : 'bag-open', ev.x, ev.y);
+    // THREE SOUNDS FOR THREE WEIGHTS OF HINGE. A break shatters; a lid creaks
+    // and knocks; a car panel or a stone slab has to be forced. Opening used
+    // to play `bag-open` — the inventory panel's own UI tick — so a lorry, a
+    // chest and the backpack were indistinguishable with the eyes shut, which
+    // threw away the object vocabulary on the one channel that reaches a
+    // player who is looking somewhere else.
+    playSfxAt(crateOpenSound(ev.t, verb), ev.x, ev.y);
     // The gust is the sound of nothing being in there, and it is only honest
     // on a break: a lid coming up on an empty boot has already said it.
     if (empty && verb === 'break') this.effects.spawnWind(ev.x, ev.y, WIND_LIFE);

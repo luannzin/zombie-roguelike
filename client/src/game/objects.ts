@@ -57,6 +57,25 @@ export function objectVerb(kind: string): ObjectVerb {
   return catalog[kind]?.verb === 'break' ? 'break' : 'open';
 }
 
+/** Sheets whose contents are forced rather than lifted. See `crateOpenSound`. */
+const HEAVY_SHEETS = new Set(['vehicle', 'altar']);
+
+/**
+ * Which of the three container sounds this object makes.
+ *
+ * Off the SHEET rather than off a list of keys, because the sheet is already
+ * the answer to "what is this made of and how big is it": everything on
+ * `vehicle.png` is a panel somebody has to force and everything on `altar.png`
+ * is stone that has to be pushed, while a lid on `box`, `chest` or `stash` is
+ * a hinge that creaks and knocks. Adding a sixth vehicle inherits the right
+ * sound without touching this file, which is the same reason the verb and the
+ * prompt come off the server's row instead of a switch here.
+ */
+export function crateOpenSound(kind: string, verb: ObjectVerb): string {
+  if (verb === 'break') return 'crate-break';
+  return HEAVY_SHEETS.has(objectSheet(kind)) ? 'object-heavy' : 'object-open';
+}
+
 /** The HUD line. Portuguese, authored server-side with the rest of the row. */
 export function objectLabel(kind: string): string {
   return catalog[kind]?.label ?? 'E';

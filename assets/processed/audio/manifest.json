@@ -274,6 +274,24 @@
       "bus": "misc",
       "gain": 0.3657
     },
+    "object-open": {
+      "files": [
+        "object-open-0.wav",
+        "object-open-1.wav",
+        "object-open-2.wav"
+      ],
+      "bus": "misc",
+      "gain": 0.4121
+    },
+    "object-heavy": {
+      "files": [
+        "object-heavy-0.wav",
+        "object-heavy-1.wav",
+        "object-heavy-2.wav"
+      ],
+      "bus": "misc",
+      "gain": 0.324
+    },
     "drop": {
       "files": [
         "drop.wav"

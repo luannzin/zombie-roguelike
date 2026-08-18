@@ -25,7 +25,10 @@ Every one of those is data on `ObjectType` and reaches the client through
 Scenery still PLACES them — a checkpoint without its barrels is not a
 checkpoint — but once the stamp has claimed the tiles they become live
 objects. The client draws them from this list, not from the scenery props, so
-opening one can remove it without rewriting the map payload.
+using one can change its state without rewriting the map payload. USING DOES
+NOT DELETE: the object flips to `opened`, keeps its tiles unless it was a
+BREAK, and stands there holding its last animation frame for the rest of the
+night.
 
 Server-authoritative, both verbs. E sends `{type:"break","id"}` (one message,
 because from the input's point of view "use the thing in front of me" is one
@@ -302,6 +305,11 @@ class Crate:
     flip: bool
     tx: int
     ty: int
+    #: Already used. The object STAYS ON THE MAP — a searched car is still a
+    #: car — it just holds its last animation frame, refuses the prompt and
+    #: never rolls a second drop. Removing it was the old behaviour and it
+    #: read as the forest deleting its own furniture.
+    opened: bool = False
 
     @property
     def type(self) -> ObjectType:
@@ -321,6 +329,7 @@ class Crate:
             "y": round(self.y, 1),
             "v": self.variant,
             "flip": 1 if self.flip else 0,
+            "o": 1 if self.opened else 0,
         }
 
 
@@ -417,6 +426,7 @@ def from_payloads(rows: list[dict]) -> dict[str, Crate]:
             flip=bool(row.get("flip")),
             tx=tx,
             ty=ty,
+            opened=bool(row.get("o")),
         )
     return objects
 
@@ -432,6 +442,8 @@ def nearest(crates: dict[str, Crate], x: float, y: float, max_dist: float) -> Cr
     best: Crate | None = None
     best_d2 = max_dist * max_dist
     for crate in crates.values():
+        if crate.opened:
+            continue
         half = crate.type.tiles_w * TILE_SIZE * 0.5
         dx = max(0.0, abs(crate.x - x) - half)
         dy = crate.y - y
@@ -508,7 +520,7 @@ def along_ray(
     best: Crate | None = None
     best_d = max_dist
     for crate in crates.values():
-        if crate.type.verb != VERB_BREAK:
+        if crate.opened or crate.type.verb != VERB_BREAK:
             continue
         left, top, right, bottom = hitbox(crate)
         dist = ray_aabb(ox, oy, dx, dy, left, top, right, bottom)

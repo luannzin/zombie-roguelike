@@ -61,45 +61,59 @@ from make_textures import (
 
 # --- palette ----------------------------------------------------------------
 # Paint is the one material in the game that was CHOSEN, so the vehicle ramps
-# are allowed a hue the forest never has. They are still dark: a white
+# are allowed a hue the forest never has. The MASS is still dark — a white
 # ambulance at full value would be the brightest object on a night map and
-# would read as lit rather than as painted.
+# would read as lit rather than as painted — but every ramp now carries a real
+# top step, because what makes a curved panel read is the distance between the
+# edge the sky hits and the shadow under it, and a ramp spanning four
+# near-identical greys has nowhere to put that distance. The night layer
+# multiplies over all of this: what is authored here is the object in daylight,
+# and the darkness decides how much of it survives.
+#
+# Six steps, and the two ends are doing different jobs from the middle. Step 0
+# is the self-shadow an object throws on its own underside; the top step is the
+# one edge with sky on it, spent one pixel at a time. The middle is the body.
 
-PLANK: Ramp = [rgb(c) for c in ("#1b1710", "#272118", "#342c20", "#413628", "#4f4232")]
-PLANK_DARK: Ramp = [rgb(c) for c in ("#100d09", "#181410", "#211b15", "#2b2419")]
-STEEL: Ramp = [rgb(c) for c in ("#16181b", "#212429", "#2e3238", "#3d4249", "#4d535b", "#666d77")]
-RUST: Ramp = [rgb(c) for c in ("#241410", "#331c15", "#44251b", "#5a3323", "#70432c")]
-HAZARD: Ramp = [rgb(c) for c in ("#3a2a0c", "#5c4210", "#8a6417", "#b8871f")]
-STONE: Ramp = [rgb(c) for c in ("#1e1d21", "#2a292e", "#37353b", "#454249", "#545059", "#666270")]
-GRANITE: Ramp = [rgb(c) for c in ("#191a1d", "#242529", "#313338", "#3f4249", "#4f535c")]
-BONE: Ramp = [rgb(c) for c in ("#38362e", "#49463c", "#5c584b", "#726d5c", "#8a8471", "#a49d86")]
-ROPE: Ramp = [rgb(c) for c in ("#2b2418", "#3a3120", "#4a3f29", "#5b4e33")]
-GLASS: Ramp = [rgb(c) for c in ("#12171c", "#1a232b", "#25323d", "#33454f", "#476068")]
-TYRE: Ramp = [rgb(c) for c in ("#0a0b0c", "#111214", "#181a1d", "#212428")]
-CHROME: Ramp = [rgb(c) for c in ("#2a2e33", "#3d434a", "#555c65", "#6f7883", "#8d97a3")]
-BRASS: Ramp = [rgb(c) for c in ("#332208", "#523710", "#7a541b", "#a37628", "#c69a3c")]
-OCHRE: Ramp = [rgb(c) for c in ("#2c1d0d", "#402a13", "#573a1b", "#6f4c25", "#87602f")]
-LEATHER: Ramp = [rgb(c) for c in ("#1a1310", "#251b16", "#31241c", "#3f2f24", "#534033")]
+PLANK: Ramp = [rgb(c) for c in ("#1b1710", "#2a2318", "#3a3123", "#4b3f2c", "#5e5039", "#786748")]
+PLANK_DARK: Ramp = [rgb(c) for c in ("#0d0b07", "#151109", "#1e1810", "#2a2217", "#37301f")]
+STEEL: Ramp = [rgb(c) for c in ("#141619", "#212429", "#2f343b", "#41474f", "#565d67", "#767e8a")]
+RUST: Ramp = [rgb(c) for c in ("#241410", "#3a1e15", "#4f2a1c", "#683a23", "#82502e", "#9c6a3c")]
+HAZARD: Ramp = [rgb(c) for c in ("#3a2a0c", "#5c4210", "#8a6417", "#b8871f", "#d9a62c")]
+STONE: Ramp = [rgb(c) for c in ("#1c1b20", "#2a292f", "#3a383f", "#4b4851", "#5f5b66", "#77727f")]
+GRANITE: Ramp = [rgb(c) for c in ("#17181b", "#232529", "#323439", "#43464d", "#565a63", "#6d727c")]
+BONE: Ramp = [rgb(c) for c in ("#332f27", "#474337", "#5d584a", "#77705e", "#948c76", "#b3aa90")]
+ROPE: Ramp = [rgb(c) for c in ("#2b2418", "#3a3120", "#4d4229", "#615334", "#786745")]
+GLASS: Ramp = [rgb(c) for c in ("#0e1216", "#151d24", "#1f2c36", "#2c3f4b", "#3d5866", "#5b7f8e")]
+TYRE: Ramp = [rgb(c) for c in ("#08090a", "#0f1012", "#16181b", "#1f2226", "#2b2f34")]
+CHROME: Ramp = [rgb(c) for c in ("#23262b", "#383d44", "#525a64", "#6e7883", "#8f99a5", "#b3bcc7")]
+BRASS: Ramp = [rgb(c) for c in ("#332208", "#523710", "#7a541b", "#a37628", "#c69a3c", "#e3bd5e")]
+OCHRE: Ramp = [rgb(c) for c in ("#2c1d0d", "#402a13", "#573a1b", "#6f4c25", "#8b6231", "#a87b41")]
+LEATHER: Ramp = [rgb(c) for c in ("#1a1310", "#251b16", "#33261d", "#443326", "#584434", "#6f5844")]
+#: Wet growth on anything that has stood still in a forest for a year.
+MOSS: Ramp = [rgb(c) for c in ("#161c14", "#1f281a", "#2b3722", "#3a482c", "#4c5c38")]
 
-# Vehicle paint. Each is a body ramp; the roof gets the top step, the flank the
-# middle, the shadowed sill the bottom.
-PAINT_SEDAN: Ramp = [rgb(c) for c in ("#101820", "#18242f", "#22323f", "#2e4250", "#3b5462")]
-PAINT_VAN: Ramp = [rgb(c) for c in ("#1a1a18", "#262622", "#34342e", "#43423a", "#535148")]
-PAINT_AMBU: Ramp = [rgb(c) for c in ("#1b1d1f", "#26292c", "#343a3e", "#454b50", "#5a6165")]
-PAINT_POLICE: Ramp = [rgb(c) for c in ("#0c0d10", "#141619", "#1e2126", "#2a2e34", "#383d45")]
-PAINT_TRUCK: Ramp = [rgb(c) for c in ("#1d1410", "#2b1e17", "#3b2b20", "#4c392a", "#5d4835")]
-PAINT_BUS: Ramp = [rgb(c) for c in ("#2a2110", "#3c3018", "#524122", "#68532c", "#7d6537")]
+# Vehicle paint. Each is a body ramp, and they are pulled apart by HUE rather
+# than by value: six dark masses that differ only in brightness are six of the
+# same car at the far end of a lantern. The shape says vehicle, the roofline
+# says which class, and the hue is what makes the ambulance you already opened
+# recognisable from across a clearing from the one you have not.
+PAINT_SEDAN: Ramp = [rgb(c) for c in ("#1a0e10", "#2c1518", "#411d1f", "#5a2a29", "#763c37", "#95564a")]
+PAINT_VAN: Ramp = [rgb(c) for c in ("#12160f", "#1d2417", "#2b3520", "#3c482b", "#505e38", "#6b7a4b")]
+PAINT_AMBU: Ramp = [rgb(c) for c in ("#1b1e20", "#2b3033", "#3f4649", "#565e62", "#6f787c", "#8d979a")]
+PAINT_POLICE: Ramp = [rgb(c) for c in ("#0b0c0f", "#141619", "#1f2228", "#2c3038", "#3d434c", "#525a66")]
+PAINT_TRUCK: Ramp = [rgb(c) for c in ("#1d1310", "#2e1e16", "#412b1d", "#573a26", "#6f4d31", "#8a6440")]
+PAINT_BUS: Ramp = [rgb(c) for c in ("#241a09", "#38290e", "#503b15", "#6b511f", "#87682a", "#a4833a")]
 
 # Signal colours. Used in single pixels only -- a red cross, a light bar, the
 # ember inside an opened chest. Anything larger and the map stops being dark.
-RED: Ramp = [rgb(c) for c in ("#3a0d0c", "#5e1512", "#8a1f19", "#b52c22")]
-BLUE: Ramp = [rgb(c) for c in ("#0d1a3a", "#153060", "#1f4a8a", "#2c6ab5")]
-EMBER: Ramp = [rgb(c) for c in ("#3a2410", "#6a4018", "#a06820", "#d4a040", "#f2c14b")]
+RED: Ramp = [rgb(c) for c in ("#3a0d0c", "#5e1512", "#8a1f19", "#b52c22", "#d8462f")]
+BLUE: Ramp = [rgb(c) for c in ("#0d1a3a", "#153060", "#1f4a8a", "#2c6ab5", "#4a8fd8")]
+EMBER: Ramp = [rgb(c) for c in ("#3a2410", "#6a4018", "#a06820", "#d4a040", "#f2c14b", "#ffe08a")]
 COLD: Ramp = [rgb(c) for c in ("#16232b", "#1f3644", "#2c505f", "#3d707f", "#5a97a4")]
 
 OUTLINE_WOOD = rgb("#0c0a07")
-OUTLINE_COLD = rgb("#0a0b0d")
-OUTLINE_STONE = rgb("#0b0b0e")
+OUTLINE_COLD = rgb("#08090b")
+OUTLINE_STONE = rgb("#0a0a0d")
 
 # --- animation shape --------------------------------------------------------
 # One number per sheet, and the client reads them off the manifest. Break is
@@ -215,9 +229,111 @@ def _spark(px, x0: int, y0: int, x1: int, y1: int, ramp: Ramp, amount: float,
                 px[x, y] = pick(ramp, 0.34 + amount * 0.32, x, y)
 
 
-def _wheel(px, cx: float, cy: float, r: float, width: int, height: int) -> None:
-    _disc(px, cx, cy, r, TYRE, 0.55, 211, width, height)
-    _disc(px, cx, cy, max(1.0, r * 0.45), CHROME, 0.6, 213, width, height)
+def _wheel(px, cx: float, cy: float, r: float, width: int, height: int,
+           flat: bool = False) -> None:
+    """A tyre with a hub in it, and optionally sat down on its rim.
+
+    The hub is what makes a black blob read as a wheel rather than as a hole
+    in the sprite, and it is the only place a vehicle spends a bright pixel
+    below its waist. `flat` squashes the bottom of the circle onto the ground
+    and widens it — a dead car with one flat is the cheapest way to say this
+    has been here a while, and the asymmetry is what stops six identical
+    wheels reading as a diagram.
+    """
+    squash = 0.78 if flat else 1.0
+    _disc(px, cx, cy + (r * 0.16 if flat else 0.0), r * (1.12 if flat else 1.0),
+          TYRE, 0.60, 211, width, height, squash=squash)
+    # The hub is small and DIM. Sized up or lit any harder it stops reading as
+    # a wheel centre and starts reading as a lamp, which on a vehicle is the
+    # one wrong answer — headlights are the four saturated pixels at the nose
+    # and nothing below the sill may compete with them.
+    _disc(px, cx, cy + (r * 0.14 if flat else 0.0), max(1.0, r * 0.30),
+          CHROME, 0.22, 213, width, height, squash=squash)
+    # One lit pixel top-left of the hub. A wheel is a cylinder end and this is
+    # the entire budget for saying so.
+    hx, hy = int(cx - r * 0.20), int(cy - r * 0.24)
+    if 0 <= hx < width and 0 <= hy < height and px[hx, hy][3]:
+        px[hx, hy] = pick(CHROME, 0.55, hx, hy)
+
+
+def _top_light(img: Image.Image, ramp: Ramp, shade: float = 0.95,
+               inset: int = 0) -> None:
+    """Relight the topmost opaque pixel of every column.
+
+    THE ONE RULE THIS FILE'S READ DEPENDS ON. A pixel-art object is legible
+    because its lit edge and its shadow are far apart in value, and the lit
+    edge is always the same place: whatever the sky can see. Painting it in a
+    second pass rather than in each shape means a bonnet, a roof and a lid all
+    get the same edge without any of them knowing about the others, and a
+    shape moved half a pixel keeps its highlight instead of losing it.
+    """
+    px = img.load()
+    for x in range(inset, img.width - inset):
+        for y in range(img.height):
+            if px[x, y][3] > 20:
+                px[x, y] = pick(ramp, shade, x, y)
+                break
+
+
+def _specular(px, x0: int, y0: int, run: int, ramp: Ramp, width: int, height: int,
+              shade: float = 0.95, step: int = 1) -> None:
+    """One short diagonal streak. Glass, and nothing else.
+
+    A window is the only surface out here that is FLAT and POLISHED, and one
+    pale line across a dark rectangle is what a player reads as glass instead
+    of as a hole. Two lines read as a reflection of something, which raises a
+    question the map cannot answer.
+    """
+    for index in range(run):
+        x = x0 + index
+        y = y0 + index * step
+        if 0 <= x < width and 0 <= y < height and px[x, y][3] > 20:
+            px[x, y] = pick(ramp, shade, x, y)
+
+
+def _seam(px, x0: int, y0: int, x1: int, y1: int, width: int, height: int,
+          ramp: Ramp = PLANK_DARK, shade: float = 0.12) -> None:
+    """A dark line where two forms MEET. Panel gaps, door shuts, lid seals.
+
+    Drawn dark rather than light because at this scale a seam is a crack with
+    no light in it, and because the alternative — outlining every sub-shape —
+    turns an object into a diagram of itself.
+    """
+    _line(px, x0, y0, x1, y1, ramp, shade, width, height)
+
+
+def _wear(px, x0: int, y0: int, x1: int, y1: int, ramp: Ramp, salt: int,
+          width: int, height: int, amount: float = 0.14) -> None:
+    """Rust, rot or moss, scattered over a band of an object.
+
+    Everything in this forest has been standing in it for a year, and the
+    difference between a prop and a prop somebody abandoned is entirely in
+    this pass: unbroken paint reads as a car parked five minutes ago.
+    """
+    for y in range(max(0, y0), min(height, y1 + 1)):
+        for x in range(max(0, x0), min(width, x1 + 1)):
+            if px[x, y][3] > 20 and hash01(x, y, salt) < amount:
+                px[x, y] = pick(ramp, 0.30 + hash01(x, y, salt + 7) * 0.35, x, y)
+
+
+def _ground_dark(img: Image.Image, rows: int = 2, drop: float = 0.55) -> None:
+    """Darken the bottom rows of a sprite toward its own outline colour.
+
+    The client bakes a contact shadow UNDER a standing prop, which plants it on
+    the floor; this is the other half — the object's own underside, which the
+    ground shadow cannot supply because it is drawn behind the sprite. Without
+    it the bottom edge is as lit as the top and the thing reads as a sticker.
+    """
+    px = img.load()
+    for offset in range(rows):
+        y = img.height - 1 - offset
+        if y < 0:
+            continue
+        factor = drop + offset * (1.0 - drop) * 0.5
+        for x in range(img.width):
+            r, g, b, a = px[x, y]
+            if a > 20:
+                px[x, y] = (int(r * factor), int(g * factor), int(b * factor), a)
 
 
 def _explode(intact: Image.Image, frame: int, frames: int, salt: int) -> Image.Image:
@@ -695,6 +811,79 @@ def make_stash(width: int, height: int, kind: int, frame: int, frames: int) -> I
 
 VEHICLE_PAINT = (PAINT_SEDAN, PAINT_VAN, PAINT_AMBU, PAINT_POLICE, PAINT_TRUCK, PAINT_BUS)
 
+#: THE PROFILE IS THE VEHICLE. Each row is the upper silhouette of one kind as
+#: control points in fractions of the frame — left to right, y down from the
+#: top — interpolated per column into the line the body is filled down from.
+#:
+#: This replaced six stacked rectangles, and the difference is the whole read.
+#: A car and a van drawn as boxes are the same object in two palettes: you
+#: cannot tell them apart at the edge of a lantern, so the map stops being a
+#: place with an ambulance in it and becomes a map with dark blocks on it. A
+#: bonnet that slopes, a windscreen that rakes back and a roof that stops
+#: before the boot is a SEDAN from as far away as the pixels survive — and the
+#: ambulance's box roof standing proud of its cab is legible at the same range,
+#: which is what makes detouring for the medical drop table a decision.
+VEHICLE_PROFILE: tuple[tuple[tuple[float, float], ...], ...] = (
+    # 0 sedan: long bonnet, raked screen, roof over the middle third, and a
+    #   BOOT — a flat deck behind the cabin rather than a slope to the tail.
+    ((0.03, 0.74), (0.09, 0.70), (0.22, 0.65), (0.30, 0.45), (0.38, 0.35),
+     (0.60, 0.34), (0.68, 0.50), (0.74, 0.60), (0.93, 0.61), (0.98, 0.73)),
+    # 1 van: stub nose, then a wall. Everything behind the cab is cargo.
+    ((0.03, 0.76), (0.07, 0.60), (0.11, 0.30), (0.16, 0.22), (0.94, 0.22),
+     (0.97, 0.30)),
+    # 2 ambulance: the box body stands PROUD of the cab roof. That step is the
+    #   silhouette tell, and it is worth more than the red cross because it
+    #   survives to a distance where four pixels of paint do not.
+    ((0.03, 0.74), (0.07, 0.58), (0.12, 0.30), (0.17, 0.26), (0.30, 0.26),
+     (0.33, 0.15), (0.96, 0.15), (0.98, 0.24)),
+    # 3 cruiser: a sedan stretched and dropped, with a bar across the roof.
+    #   The boot has to run FLAT to the tail. Sloping it straight off the roof
+    #   gave a wedge, and a wedge is not a car — the notch behind the cabin is
+    #   the whole reason a saloon reads as one from the side.
+    ((0.02, 0.72), (0.10, 0.67), (0.24, 0.62), (0.31, 0.43), (0.38, 0.33),
+     (0.64, 0.32), (0.71, 0.50), (0.78, 0.58), (0.94, 0.59), (0.99, 0.70)),
+    # 4 lorry: a tall cab, a drop, and a flat bed with a rail along it.
+    ((0.02, 0.64), (0.05, 0.32), (0.09, 0.22), (0.27, 0.22), (0.29, 0.50),
+     (0.33, 0.44), (0.97, 0.44), (0.99, 0.52)),
+    # 5 bus: one long box, the tallest thing in the woods that is not a tree.
+    ((0.02, 0.26), (0.04, 0.13), (0.10, 0.09), (0.92, 0.09), (0.97, 0.13),
+     (0.99, 0.26)),
+)
+
+#: Wheel centres, in fractions of the frame width. Three entries is a lorry or
+#: a bus — the extra axle is most of what says WEIGHT at this size.
+VEHICLE_WHEELS: tuple[tuple[float, ...], ...] = (
+    (0.20, 0.79), (0.19, 0.81), (0.18, 0.82), (0.19, 0.80),
+    (0.13, 0.72, 0.85), (0.14, 0.74, 0.87),
+)
+
+#: Glazing, per kind: (x0, x1, y0, y1) in frame fractions. Punched into the
+#: body after it is filled, so a window is a HOLE in the paint rather than a
+#: rectangle sitting on top of it — which is the difference between a car with
+#: windows and a car with stickers.
+VEHICLE_GLASS: tuple[tuple[tuple[float, float, float, float], ...], ...] = (
+    ((0.33, 0.46, 0.40, 0.59), (0.49, 0.62, 0.39, 0.57)),
+    ((0.10, 0.21, 0.31, 0.47), (0.79, 0.86, 0.27, 0.42), (0.87, 0.93, 0.27, 0.42)),
+    ((0.11, 0.22, 0.33, 0.49), (0.42, 0.55, 0.20, 0.34), (0.86, 0.94, 0.20, 0.34)),
+    ((0.34, 0.47, 0.38, 0.57), (0.50, 0.63, 0.37, 0.55)),
+    ((0.06, 0.17, 0.27, 0.42),),
+    ((0.06, 0.15, 0.13, 0.32), (0.19, 0.29, 0.13, 0.32), (0.33, 0.43, 0.13, 0.32),
+     (0.47, 0.57, 0.13, 0.32), (0.61, 0.71, 0.13, 0.32), (0.75, 0.88, 0.13, 0.32)),
+)
+
+#: THE COMPARTMENT: (x0, x1) in frame fractions, and which edge the lid is
+#: hinged on. It is always the part of that vehicle somebody would still be
+#: packed into or trapped behind — a bonnet on the car that died on the road,
+#: the tailgate on the vans, the bed on the lorry, the luggage bay on a bus.
+VEHICLE_PANEL: tuple[tuple[float, float, bool], ...] = (
+    (0.05, 0.26, True),     # sedan bonnet, hinged at the screen
+    (0.76, 0.96, True),     # van tailgate, hinged at the roof
+    (0.78, 0.96, True),     # ambulance rear doors
+    (0.04, 0.25, True),     # cruiser bonnet
+    (0.40, 0.68, False),    # lorry bed hatch
+    (0.30, 0.52, False),    # bus luggage bay
+)
+
 
 def _bar(px, x0: int, y: int, x1: int, width: int, height: int,
          ramps: tuple[Ramp, Ramp]) -> None:
@@ -702,167 +891,270 @@ def _bar(px, x0: int, y: int, x1: int, width: int, height: int,
 
     Unlit matters. A flashing bar would be the brightest moving thing on a
     dark map and would read as an active vehicle, which is the one thing none
-    of these are.
+    of these are. What it gets instead is a dark housing under it, so the two
+    dull signal pixels read as lenses in a fitting rather than as a mistake in
+    the roofline.
     """
     for index, x in enumerate(range(x0, x1 + 1)):
         if 0 <= x < width and 0 <= y < height:
-            px[x, y] = pick(ramps[(index // 2) % 2], 0.5, x, y)
+            px[x, y] = pick(ramps[(index // 2) % 2], 0.42, x, y)
         if 0 <= x < width and 0 <= y + 1 < height:
-            px[x, y + 1] = pick(CHROME, 0.35, x, y + 1)
+            px[x, y + 1] = pick(TYRE, 0.6, x, y + 1)
+
+
+def _profile_y(profile, fx: float) -> float:
+    """The silhouette's top edge at one column, in frame fractions."""
+    if fx <= profile[0][0]:
+        return profile[0][1]
+    if fx >= profile[-1][0]:
+        return profile[-1][1]
+    for (ax, ay), (bx, by) in zip(profile, profile[1:]):
+        if ax <= fx <= bx:
+            t = (fx - ax) / max(bx - ax, 1e-6)
+            return ay + (by - ay) * t
+    return profile[-1][1]
+
+
+def _lid(px, x0: int, x1: int, y: int, lift: float, hinge_right: bool,
+         ramp: Ramp, salt: int, width: int, height: int, thickness: int = 3) -> None:
+    """A panel lifted off its seal, TILTED around the edge it is hinged on.
+
+    The old one slid a flat plate straight up, which reads as a piece of the
+    car floating. A lid that rises at its free edge and stays put at its
+    hinge is the only thing in the frame that has to say "this is attached and
+    it swung", and the taper — thinner at the top of the swing — is what keeps
+    it from reading as a second, smaller vehicle.
+    """
+    span = max(x1 - x0, 1)
+    for x in range(x0, x1 + 1):
+        t = (x1 - x) / span if hinge_right else (x - x0) / span
+        top = int(round(y - lift * t))
+        for offset in range(thickness):
+            yy = top + offset
+            if 0 <= x < width and 0 <= yy < height:
+                shade = 0.90 if offset == 0 else 0.52 - offset * 0.14
+                px[x, yy] = pick(ramp, shade + (hash01(x, yy, salt) - 0.5) * 0.10, x, yy)
 
 
 def make_vehicle(width: int, height: int, kind: int, frame: int, frames: int) -> Image.Image:
     """A dead vehicle, seen from the side and slightly above. `frame` opens it.
 
-    THE SILHOUETTE IS THE WHOLE ASSET. At this size nobody reads a badge; what
-    they read across a dark clearing is a long low mass with two black holes
-    under it, and then the ROOFLINE tells them which one it is -- flat and low
-    is a car, a tall box is a van, a tall box with a bar on top is an
-    ambulance, a cab with a bed behind it is a lorry, a very long box with a
-    row of windows is a bus.
+    THE SILHOUETTE IS THE WHOLE ASSET, and it is drawn from `VEHICLE_PROFILE`
+    rather than assembled out of two rectangles. At this size nobody reads a
+    badge; what a player reads across a dark clearing is a long low mass with
+    two black holes under it, and then the ROOFLINE tells them which one it is
+    — a bonnet that slopes into a raked screen is a car, a wall behind a stub
+    nose is a van, a box standing proud of its cab is an ambulance, a cab with
+    a bed behind it is a lorry, one long box with six windows is a bus.
+
+    THE SECOND READ IS THAT IT DIED HERE. Every one of these carries rust up
+    from the sill, moss on the shadowed bottom rows, one flat tyre and a
+    smashed window, because a clean car is a car somebody parked, and a map
+    full of parked cars is a map that has not been abandoned. None of that
+    costs a frame: it is four passes over pixels the body already put down.
 
     What opens is the compartment that vehicle would actually have somebody
-    still in it or still packed: a bonnet on a car that died on the road, rear
-    doors on the vans, the bed on a lorry, the luggage bay on a bus. It lifts
-    from the front edge and the black underneath is the reward -- or the
-    warning.
+    still in it or still packed. It lifts from its hinge and the black
+    underneath is the reward — or the warning.
     """
     img = Image.new("RGBA", (width, height), TRANSPARENT)
     px = img.load()
     ground = height - 1
     open_t = _ease(frame / max(frames - 1, 1))
     paint = VEHICLE_PAINT[kind % len(VEHICLE_PAINT)]
+    profile = VEHICLE_PROFILE[kind % len(VEHICLE_PROFILE)]
 
-    # Chassis geometry per kind, in fractions of the frame. `body_top` is the
-    # bonnet line; `cab_top` is the roof.
-    if kind == 0:      # sedan
-        x0, x1 = width * 0.05, width * 0.95
-        body_top, cab_top = height * 0.52, height * 0.28
-        cab0, cab1 = width * 0.30, width * 0.72
-    elif kind == 1:    # van
-        x0, x1 = width * 0.06, width * 0.94
-        body_top, cab_top = height * 0.44, height * 0.14
-        cab0, cab1 = width * 0.20, width * 0.94
-    elif kind == 2:    # ambulance
-        x0, x1 = width * 0.04, width * 0.96
-        body_top, cab_top = height * 0.42, height * 0.10
-        cab0, cab1 = width * 0.30, width * 0.96
-    elif kind == 3:    # police cruiser
-        x0, x1 = width * 0.04, width * 0.96
-        body_top, cab_top = height * 0.52, height * 0.28
-        cab0, cab1 = width * 0.28, width * 0.70
-    elif kind == 4:    # lorry
-        x0, x1 = width * 0.03, width * 0.97
-        body_top, cab_top = height * 0.44, height * 0.12
-        cab0, cab1 = width * 0.04, width * 0.38
-    else:              # bus
-        x0, x1 = width * 0.02, width * 0.98
-        body_top, cab_top = height * 0.40, height * 0.06
-        cab0, cab1 = width * 0.04, width * 0.96
+    sill = int(height * 0.87)
+    axle = height * 0.885
+    radius = max(2.4, height * 0.105)
+    body_x0 = int(width * profile[0][0])
+    body_x1 = int(width * profile[-1][0])
 
-    sill = ground - max(2, int(height * 0.12))
+    # 1. THE BODY, one column at a time down from the profile. The vertical
+    #    ramp is the whole of the form: a panel is bright where it turns
+    #    toward the sky and dark where it tucks under itself, and a flat fill
+    #    with an outline round it is a sticker of a car.
+    for x in range(body_x0, body_x1 + 1):
+        top = int(round(_profile_y(profile, x / max(width - 1, 1)) * height))
+        depth = max(sill - top, 1)
+        for y in range(top, sill + 1):
+            t = (y - top) / depth
+            shade = 0.74 - t * 0.46 + (hash01(x, y, 181 + kind) - 0.5) * 0.10
+            px[x, y] = pick(paint, shade, x, y)
 
-    # 1. the flank
-    _fill(px, int(x0), int(body_top), int(x1), sill, paint, 0.58, 181 + kind,
-          width, height, grain=0.14)
-    # 2. the sill, one step darker: it is the shadow the body throws on itself
-    #    and it is what plants the vehicle instead of floating it.
-    _fill(px, int(x0), sill, int(x1), ground - 1, paint, 0.24, 183 + kind,
-          width, height, grain=0.10)
-    # 3. the cabin
-    _fill(px, int(cab0), int(cab_top), int(cab1), int(body_top), paint, 0.70, 185 + kind,
-          width, height, grain=0.12)
-    # 4. glass. Windows are DARK, not bright: there is nothing behind them,
-    #    and a lit window on an abandoned car is a promise the map cannot keep.
-    glass_top = int(cab_top) + 2
-    glass_bot = int(body_top) - 2
-    if glass_bot > glass_top:
-        if kind in (1, 2, 4):
-            _fill(px, int(cab0) + 2, glass_top, int(cab0 + (cab1 - cab0) * 0.32), glass_bot,
-                  GLASS, 0.18, 187, width, height)
-        elif kind == 5:
-            # A row of bus windows with pillars between them.
-            span = cab1 - cab0
-            for index in range(6):
-                wx0 = int(cab0 + 2 + span * index / 6.0)
-                wx1 = int(cab0 + span * (index + 0.86) / 6.0)
-                _fill(px, wx0, glass_top, wx1, glass_bot, GLASS, 0.18, 187 + index,
-                      width, height)
+    # 2. The lit edge, one pixel per column, before anything is cut into it.
+    _top_light(img, paint, 0.97)
+
+    # 3. GLASS. Punched into the paint, dark, with one specular streak each.
+    #    Windows are DARK on purpose: there is nothing behind them, and a lit
+    #    window on an abandoned car is a promise the map cannot keep.
+    glass = VEHICLE_GLASS[kind % len(VEHICLE_GLASS)]
+    belt = 0
+    for index, (gx0, gx1, gy0, gy1) in enumerate(glass):
+        wx0, wx1 = int(width * gx0), int(width * gx1)
+        wy0, wy1 = int(height * gy0), int(height * gy1)
+        belt = max(belt, wy1)
+        # One window per vehicle is GONE. A hole where glass should be is the
+        # single cheapest mark of violence available, and it costs no frame.
+        #
+        # Never the only window a vehicle has. The lorry has one, in its cab,
+        # and smashing it turned the entire cab into a black notch — which
+        # deletes the silhouette the profile was drawn to produce. A vehicle
+        # with one pane keeps it.
+        smashed = len(glass) > 1 and index == (kind % len(glass))
+        for y in range(wy0, wy1 + 1):
+            for x in range(wx0, wx1 + 1):
+                if not (0 <= x < width and 0 <= y < height) or px[x, y][3] == 0:
+                    continue
+                if smashed and hash01(x, y, 301 + kind) < 0.72:
+                    px[x, y] = pick(PLANK_DARK, 0.04, x, y)
+                else:
+                    px[x, y] = pick(GLASS, 0.30 - (y - wy0) / max(wy1 - wy0, 1) * 0.18,
+                                    x, y)
+        if smashed:
+            # Two shards left in the frame, so the hole reads as broken rather
+            # than as a window somebody left open.
+            for sx in (wx0 + 1, wx1 - 1):
+                if 0 <= sx < width and 0 <= wy0 < height:
+                    px[sx, wy0] = pick(CHROME, 0.66, sx, wy0)
         else:
-            _fill(px, int(cab0) + 2, glass_top, int(cab1) - 2, glass_bot,
-                  GLASS, 0.18, 187, width, height)
-        # One pale streak along the top of the screen. The only specular here.
-        for x in range(int(cab0) + 3, int(cab1) - 3, 5):
-            if 0 <= x < width and 0 <= glass_top < height:
-                px[x, glass_top] = pick(CHROME, 0.62, x, glass_top)
+            _specular(px, wx0 + 1, wy0 + 1, min(4, wx1 - wx0), CHROME, width, height,
+                      shade=0.72)
+        # The seal round the glass, so it sits IN the door.
+        _seam(px, wx0 - 1, wy1 + 1, wx1 + 1, wy1 + 1, width, height, paint, 0.10)
 
-    # 5. wheels, sunk into the sill so the arches read
-    r = max(2.0, height * 0.13)
-    front = x0 + (x1 - x0) * (0.18 if kind != 4 else 0.14)
-    rear = x0 + (x1 - x0) * (0.82 if kind != 4 else 0.80)
-    _wheel(px, front, ground - r * 0.75, r, width, height)
-    _wheel(px, rear, ground - r * 0.75, r, width, height)
-    if kind in (4, 5):
-        _wheel(px, rear - r * 1.7, ground - r * 0.75, r, width, height)
+    # 4. Panel gaps. Two vertical seams turn one long flank into doors, and
+    #    doors are most of what says the mass has a scale a person fits in.
+    for cut in (0.42, 0.60) if kind in (0, 3) else (0.36, 0.62, 0.80):
+        cx = int(width * cut)
+        if body_x0 < cx < body_x1:
+            top = int(round(_profile_y(profile, cut) * height))
+            _seam(px, cx, max(top + 1, belt + 1), cx, sill - 1, width, height, paint, 0.06)
 
-    # 6. per-kind markings, all of them one or two pixels wide
+    # 5. Wheels, and the arch shadow above each. The arch is what sinks a
+    #    wheel into the body instead of parking it in front.
+    for index, wx in enumerate(VEHICLE_WHEELS[kind % len(VEHICLE_WHEELS)]):
+        cx = width * wx
+        for ax in range(int(cx - radius - 1), int(cx + radius + 2)):
+            ay = int(axle - math.sqrt(max(radius * radius + 2 -
+                                          (ax - cx) ** 2, 0.0)))
+            if 0 <= ax < width and 0 <= ay < height and px[ax, ay][3]:
+                px[ax, ay] = pick(paint, 0.06, ax, ay)
+        _wheel(px, cx, axle, radius, width, height, flat=(index == kind % 2))
+
+    # 6. Bumpers and lamps. Four pixels of amber and red, and they are the only
+    #    saturated thing below the roofline — which is why they land as FRONT
+    #    and BACK the instant the eye gets there.
+    _fill(px, body_x0, sill - 2, body_x0 + 1, sill, CHROME, 0.34, 305, width, height)
+    _fill(px, body_x1 - 1, sill - 2, body_x1, sill, CHROME, 0.34, 307, width, height)
+    lamp_y = int(round(_profile_y(profile, profile[0][0] + 0.03) * height)) + 2
+    for offset in range(2):
+        if 0 <= body_x0 + offset < width and 0 <= lamp_y < height:
+            px[body_x0 + offset, lamp_y] = pick(EMBER, 0.42, body_x0 + offset, lamp_y)
+    # The tail lamp sits at the WAIST, not on the roofline. Pinned to the
+    # profile it climbed to the top corner of the box bodies and read as a
+    # warning light on a roof rather than as the back of a vehicle.
+    tail_y = max(int(round(_profile_y(profile, profile[-1][0] - 0.03) * height)) + 2,
+                 sill - 6)
+    for offset in range(2):
+        if 0 <= body_x1 - offset < width and 0 <= tail_y < height:
+            px[body_x1 - offset, tail_y] = pick(RED, 0.55, body_x1 - offset, tail_y)
+
+    # 7. Per-kind markings. All of them one or two pixels wide.
+    cab_end = int(width * (0.30 if kind == 2 else 0.28))
     if kind == 2:
-        # Red cross and a light bar. The cross is the single most legible
-        # symbol available at 16px and it is worth its four pixels: it is what
-        # makes a player detour for a medical box.
-        mx = int(x0 + (x1 - x0) * 0.62)
-        my = int(body_top + (sill - body_top) * 0.45)
+        # Red cross and a light bar. The cross is the most legible symbol
+        # available at 16px and it is worth its eight pixels: it is what makes
+        # a player detour for the medical drop table.
+        mx = int(width * 0.66)
+        my = int(height * 0.44)
         for offset in range(-2, 3):
-            if 0 <= mx + offset < width and 0 <= my < height:
-                px[mx + offset, my] = pick(RED, 0.85, mx + offset, my)
-            if 0 <= mx < width and 0 <= my + offset < height:
-                px[mx, my + offset] = pick(RED, 0.85, mx, my + offset)
-        _bar(px, int(cab0) + 2, int(cab_top) - 2, int(cab0 + (cab1 - cab0) * 0.5),
+            if 0 <= mx + offset < width and 0 <= my < height and px[mx + offset, my][3]:
+                px[mx + offset, my] = pick(RED, 0.92, mx + offset, my)
+            if 0 <= mx < width and 0 <= my + offset < height and px[mx, my + offset][3]:
+                px[mx, my + offset] = pick(RED, 0.92, mx, my + offset)
+        # The stripe down the flank, one step up from the body: an ambulance
+        # is the one vehicle out here that was PAINTED to be found.
+        band = int(height * 0.58)
+        _fill(px, cab_end, band, body_x1 - 2, band + 1, RED, 0.30, 309, width, height)
+        _bar(px, int(width * 0.14), int(height * 0.26) - 2, int(width * 0.26),
              width, height, (RED, BLUE))
     elif kind == 3:
-        _bar(px, int(cab0) + 1, int(cab_top) - 2, int(cab1) - 1, width, height, (BLUE, RED))
-        # The pale door panel a cruiser has and a sedan does not.
-        _fill(px, int(x0 + (x1 - x0) * 0.36), int(body_top) + 2,
-              int(x0 + (x1 - x0) * 0.66), sill - 2, CHROME, 0.55, 191, width, height)
+        _bar(px, int(width * 0.40), int(height * 0.32) - 2, int(width * 0.60),
+             width, height, (BLUE, RED))
+        # The pale door a cruiser has and a sedan does not, and it stops at the
+        # DOOR SEAMS. Floating free of them it read as a sticker on the flank;
+        # bounded by them it reads as the panel that was painted white.
+        _fill(px, int(width * 0.42) + 1, belt + 2, int(width * 0.60) - 1, sill - 3,
+              CHROME, 0.32, 191, width, height, grain=0.10)
     elif kind == 4:
-        # A load still strapped on the bed. Half the reason to walk to a lorry.
-        bed0 = int(x0 + (x1 - x0) * 0.44)
-        bed1 = int(x1) - 2
-        _fill(px, bed0, int(body_top) - 5, bed1, int(body_top) - 1, PLANK, 0.5, 193,
-              width, height)
-        for x in range(bed0, bed1, 5):
-            _line(px, x, int(body_top) - 5, x, int(body_top) - 1, ROPE, 0.6, width, height)
+        # CRATES still strapped to the bed. Drawn as separate boxes at
+        # different heights rather than as one plank band, because a band with
+        # verticals across it reads as a railing — and a railing is furniture,
+        # while three boxes somebody roped down is cargo that never arrived.
+        bed_top = int(height * 0.44)
+        bed0, bed1 = int(width * 0.34), body_x1 - 3
+        cursor = bed0 + 1
+        for index in range(3):
+            box_w = int((bed1 - bed0) * (0.22 + 0.06 * (index % 2)))
+            box_h = 5 + (index % 2) * 2
+            if cursor + box_w > bed1:
+                break
+            _fill(px, cursor, bed_top - box_h, cursor + box_w, bed_top - 1,
+                  PLANK, 0.50, 193 + index, width, height)
+            # Lit top edge and a strap over the middle of each.
+            _line(px, cursor, bed_top - box_h, cursor + box_w, bed_top - box_h,
+                  PLANK, 0.92, width, height)
+            _line(px, cursor + box_w // 2, bed_top - box_h, cursor + box_w // 2,
+                  bed_top - 1, ROPE, 0.78, width, height)
+            _seam(px, cursor + box_w + 1, bed_top - box_h, cursor + box_w + 1,
+                  bed_top - 1, width, height, PLANK_DARK, 0.10)
+            cursor += box_w + 2
+        _seam(px, bed0, bed_top, bed1, bed_top, width, height, PLANK_DARK, 0.10)
+    elif kind == 5:
+        # A destination board over the windscreen, blank. Nobody is going there.
+        _fill(px, int(width * 0.06), int(height * 0.11), int(width * 0.30),
+              int(height * 0.12), PLANK_DARK, 0.30, 311, width, height)
 
-    # 7. THE COMPARTMENT. Cut a dark mouth into the body and lift its panel
-    #    off the front edge of it.
-    if kind in (0, 3):
-        px0, px1 = int(x0) + 1, int(x0 + (x1 - x0) * 0.26)   # bonnet
-        panel_top = int(body_top)
+    # 8. IT DIED HERE. Rust creeping up from the sill, moss on the rows that
+    #    face the ground. Sparse: at any more than this the pass stops reading
+    #    as age and starts reading as a stripe somebody painted on.
+    # Less of it on the two PALE bodies: rust on white reads at twice the
+    # strength it does on maroon, and at equal amounts the ambulance came out
+    # looking sprayed with mud rather than parked for a year.
+    _wear(px, body_x0, sill - 4, body_x1, sill, RUST, 331 + kind, width, height,
+          0.06 if kind in (2, 5) else 0.11)
+    _wear(px, body_x0, sill - 1, body_x1, ground, MOSS, 337 + kind, width, height, 0.16)
+
+    # 9. THE COMPARTMENT. Cut a dark mouth into the body and swing its panel.
+    pan0, pan1, hinge_right = VEHICLE_PANEL[kind % len(VEHICLE_PANEL)]
+    px0, px1 = int(width * pan0), int(width * pan1)
+    panel_top = int(round(_profile_y(profile, (pan0 + pan1) / 2) * height))
+    if kind in (4, 5):
+        panel_top = max(panel_top, belt + 2)
     elif kind in (1, 2):
-        px0, px1 = int(x1 - (x1 - x0) * 0.24), int(x1) - 1   # rear doors
-        panel_top = int(cab_top) + 3
-    elif kind == 4:
-        px0, px1 = int(x0 + (x1 - x0) * 0.46), int(x0 + (x1 - x0) * 0.74)
-        panel_top = int(body_top) - 1
-    else:
-        px0, px1 = int(x0 + (x1 - x0) * 0.32), int(x0 + (x1 - x0) * 0.58)
-        panel_top = int(body_top) + 1
+        # A tailgate hinged at the ROOF of a box body would swing straight off
+        # the top of the frame and get clipped. It opens from the waist, which
+        # is also where a person would reach it from.
+        panel_top = max(panel_top + 4, belt + 1)
 
     if open_t > 0.04:
-        mouth_bot = min(sill - 1, panel_top + max(2, int((sill - panel_top) * 0.7)))
+        mouth_bot = min(sill - 1, panel_top + max(3, int((sill - panel_top) * 0.72)))
         _hollow(px, px0 + 1, panel_top, px1 - 1, mouth_bot, width, height)
         _spark(px, px0 + 1, panel_top, px1 - 1, mouth_bot, EMBER, open_t * 0.75,
                197 + kind, width, height)
 
-    lift = open_t * (height * 0.13 + 1)
-    plate_y = int(panel_top - lift)
-    plate_h = max(2, int(4 - open_t * 1.2))
-    _fill(px, px0, plate_y, px1, plate_y + plate_h, paint, 0.86, 199 + kind,
-          width, height, grain=0.12)
+    # Clamped so no lid ever leaves the frame: a panel cut off at the top edge
+    # of the sheet reads as a rendering bug, not as a car with its boot up.
+    lift = min(open_t * (height * 0.22 + 1), max(panel_top - 2.0, 0.0))
+    _lid(px, px0, px1, panel_top, lift, hinge_right, paint, 199 + kind, width, height,
+         thickness=3)
     if open_t > 0.05:
-        # The hinge, still holding at the far edge, so the panel is attached.
-        _line(px, px1, plate_y + plate_h, px1, panel_top, CHROME, 0.4, width, height)
+        # The hinge itself, still holding, so the panel is attached to a car.
+        hx = px1 if hinge_right else px0
+        _line(px, hx, panel_top - 1, hx, panel_top + 1, CHROME, 0.5, width, height)
 
+    _ground_dark(img, rows=2, drop=0.62)
     outline(img, OUTLINE_COLD)
     return img
 
@@ -870,16 +1162,121 @@ def make_vehicle(width: int, height: int, kind: int, frame: int, frames: int) ->
 # --- the tribal ground ------------------------------------------------------
 
 
-def make_statue(width: int, height: int, variant: int, rng: random.Random) -> Image.Image:
-    """Somebody carved this. `variant`: 0 totem, 1 idol, 2 figure, 3 broken,
-    4 skull post, 5 monolith.
+def _plinth(px, cx: float, ground: int, half: float, width: int, height: int,
+            ramp: Ramp, steps: int = 2) -> None:
+    """The block a carved figure stands on.
 
-    These are the only objects in the forest that are TALLER than they are
-    wide and made of worked stone, and both halves of that are on purpose.
-    Everything else out here is a low horizontal mass -- a car, a log, a
-    barrel -- so a narrow vertical shape at the far end of a clearing does not
-    read as more of the same. It reads as a question, which is exactly how far
-    a landmark has to get you before the loot has to do the rest.
+    Every statue in the ring gets one, and it is doing two jobs. It says
+    somebody PLACED this rather than that it grew here, which is the entire
+    difference between the shrine and the rest of the forest; and it gives the
+    figure a wide dark base, so a narrow silhouette at the edge of a lantern
+    still plants on the ground instead of hovering over it.
+    """
+    for step in range(steps):
+        y1 = ground - step * 2
+        y0 = y1 - 1
+        spread = half * (1.0 + 0.22 * step)
+        _fill(px, int(cx - spread), y0, int(cx + spread), y1, ramp,
+              0.42 - step * 0.10, 271 + step, width, height, grain=0.06)
+    # The top step, in the figure's own stone. It is relit with everything
+    # else by `_sculpt`, so nothing here needs to guess where the light is.
+    top = ground - steps * 2
+    _fill(px, int(cx - half), top, int(cx + half), top, ramp, 0.50, 273,
+          width, height, grain=0.04)
+
+
+#: The groove colour, and it is deliberately NOT a step of any stone ramp.
+#: `_sculpt` relights every pixel it finds in a ramp and leaves everything else
+#: alone, so a chisel line drawn in this survives the relight instead of being
+#: smoothed back into the mass it was cut into.
+CARVE = rgb("#0f0e12")
+
+
+def _carve(px, x0: int, y0: int, x1: int, y1: int, width: int, height: int) -> None:
+    """A chisel groove. Dark, one pixel, inside the stone.
+
+    Stone has no seams of its own, so every line a player reads as CARVED is
+    one of these: the gap between an arm and a ribcage, the line of a jaw, the
+    crack that says this has been out here longer than they have.
+    """
+    steps = max(abs(x1 - x0), abs(y1 - y0), 1)
+    for step in range(steps + 1):
+        t = step / steps
+        x = int(round(x0 + (x1 - x0) * t))
+        y = int(round(y0 + (y1 - y0) * t))
+        if 0 <= x < width and 0 <= y < height and px[x, y][3] > 20:
+            px[x, y] = CARVE
+
+
+def _sculpt(img: Image.Image, ramp: Ramp, grain: float = 0.10) -> None:
+    """Relight a solid mass from its own silhouette. Stone's whole read.
+
+    A carved figure built out of filled rectangles is a set of filled
+    rectangles: the arms are the same value as the ribs they hang beside, so
+    the only thing separating them is a groove, and a groove alone reads as a
+    scratch on a slab rather than as two forms. What separates them is LIGHT —
+    the edge of the arm that faces up and left catches the sky, the edge that
+    turns away goes to the shadow step, and the eye reassembles the volumes
+    without being told.
+
+    So this walks the sprite once, asks each pixel how close it is to an edge
+    and in which direction, and rewrites it. It touches ONLY pixels that are
+    already a step of `ramp`: chisel grooves (`CARVE`), bone, rope and lichen
+    are other materials and keep whatever they were given.
+    """
+    px = img.load()
+    width, height = img.size
+    solid = [[px[x, y][3] > 20 for y in range(height)] for x in range(width)]
+    members = set(ramp)
+
+    def free(x: int, y: int) -> bool:
+        return not (0 <= x < width and 0 <= y < height and solid[x][y])
+
+    for x in range(width):
+        for y in range(height):
+            if not solid[x][y] or px[x, y] not in members:
+                continue
+            if free(x - 1, y) or free(x, y - 1):
+                shade = 0.94
+            elif free(x - 2, y) or free(x, y - 2):
+                shade = 0.72
+            elif free(x + 1, y) or free(x, y + 1):
+                shade = 0.14
+            elif free(x + 2, y) or free(x, y + 2):
+                shade = 0.34
+            else:
+                shade = 0.52
+            px[x, y] = pick(ramp, shade + (hash01(x, y, 277) - 0.5) * grain, x, y)
+
+
+def _chip(px, x: int, y: int, width: int, height: int) -> None:
+    """Knock a pixel off an edge. Weather, damage, or a hundred years."""
+    if 0 <= x < width and 0 <= y < height:
+        px[x, y] = TRANSPARENT
+
+
+def make_statue(width: int, height: int, variant: int, rng: random.Random) -> Image.Image:
+    """Somebody carved this, and what they carved is WHAT IS OUT HERE.
+
+    `variant`: 0 walker, 1 brute, 2 husk, 3 kneeling supplicant, 4 skull post,
+    5 toppled walker.
+
+    THE SUBJECT IS THE POINT, and it changed. These used to be totems, idols
+    and a monolith — worked stone that meant "old" and nothing else, which
+    made the shrine a texture rather than a statement. Carving the CREATURES
+    instead costs the same pixels and says something the map could not say
+    before: whoever built this had seen the things in these woods, stood in
+    front of one long enough to get the shoulders right, and then built a ring
+    of them around an altar and left offerings in the middle. The player meets
+    the walker in stone before they meet it in the dark, and meets it again
+    afterwards knowing what the ring was for.
+
+    They are still the only objects in the forest TALLER than they are wide,
+    and still the only worked stone. Everything else out here is a low
+    horizontal mass — a car, a log, a barrel — so a column of narrow vertical
+    shapes at the far end of a clearing does not read as more of the same. It
+    reads as a question, which is as far as a landmark has to get you before
+    the loot has to do the rest.
     """
     img = Image.new("RGBA", (width, height), TRANSPARENT)
     px = img.load()
@@ -887,102 +1284,232 @@ def make_statue(width: int, height: int, variant: int, rng: random.Random) -> Im
     ground = height - 1
     ramp = GRANITE if variant % 2 == 0 else STONE
 
+    def fx(f: float) -> int:
+        return int(round(width * f))
+
+    def fy(f: float) -> int:
+        return int(round(height * f))
+
+    # Every carving stands on a block, and the block eats the bottom sixth of
+    # the frame — so the figure is authored above `feet`, never down to it.
+    _plinth(px, cx, ground, width * 0.40, width, height, ramp)
+    feet = ground - 5
+
     if variant == 0:
-        # Totem: a stacked column of carved faces. Each notch is a face, and
-        # the notches are what make it carved rather than quarried.
-        half = width * 0.30
-        top = int(height * 0.06)
-        _fill(px, int(cx - half), top, int(cx + half), ground, ramp, 0.55, 221, width, height)
-        for index in range(4):
-            fy = top + 3 + index * max(1, int((ground - top - 4) / 4))
-            for x in range(int(cx - half), int(cx + half) + 1):
-                if 0 <= x < width and 0 <= fy < height:
-                    px[x, fy] = pick(ramp, 0.20, x, fy)
-            for ex in (int(cx - 2), int(cx + 2)):
-                if 0 <= ex < width and 0 <= fy + 2 < height:
-                    px[ex, fy + 2] = pick(ramp, 0.90, ex, fy + 2)
-        # Wings at the crown, which is the tell at a glance.
-        for wx in range(int(cx - half * 1.9), int(cx + half * 1.9) + 1):
-            if 0 <= wx < width and 0 <= top + 1 < height:
-                px[wx, top + 1] = pick(ramp, 0.68, wx, top + 1)
+        # THE WALKER. Head narrow, shoulders WIDER than the head, both arms
+        # out — the pose the player is going to see coming at them out of the
+        # dark about ninety seconds after they first look at this.
+        #
+        # The head has to be narrower than the shoulders or the figure reads
+        # as a cabinet. That single ratio is what makes a stack of stone
+        # rectangles resolve into a body.
+        head0, head1 = fy(0.12), fy(0.25)
+        _fill(px, fx(0.34), head0, fx(0.64), head1, ramp, 0.62, 281, width, height)
+        _carve(px, fx(0.35), fy(0.20), fx(0.63), fy(0.20), width, height)   # brow
+        for ex in (fx(0.39), fx(0.58)):
+            _chip(px, ex, fy(0.22), width, height)                          # sockets
+        _carve(px, fx(0.40), fy(0.24), fx(0.58), fy(0.24), width, height)   # slack jaw
+        _fill(px, fx(0.42), head1, fx(0.56), head1 + 1, ramp, 0.42, 282, width, height)
+        # Shoulders rolled forward, then a torso tapering into the hips.
+        for y in range(fy(0.28), fy(0.60)):
+            t = (y - fy(0.28)) / max(fy(0.60) - fy(0.28), 1)
+            half = width * (0.34 - 0.10 * t)
+            _fill(px, int(cx - half), y, int(cx + half), y, ramp,
+                  0.60 - t * 0.10, 283, width, height)
+        # THE ARMS, and they are the tell. Reaching, so they hang clear of the
+        # ribs with daylight carved between, and end in hands lower and
+        # blockier than the elbows above them.
+        for side in (-1, 1):
+            ax = cx + side * width * 0.40
+            _fill(px, int(ax - 1), fy(0.31), int(ax + 1), fy(0.58), ramp, 0.52,
+                  285 + side, width, height)
+            _fill(px, int(ax - 2), fy(0.56), int(ax + 2), fy(0.63), ramp, 0.66,
+                  287 + side, width, height)
+            _carve(px, int(cx + side * width * 0.31), fy(0.32),
+                   int(cx + side * width * 0.31), fy(0.57), width, height)
+        # Legs, apart, with the gap carved between them.
+        for side in (-1, 1):
+            lx = cx + side * width * 0.15
+            _fill(px, int(lx - 2), fy(0.60), int(lx + 2), feet, ramp, 0.54,
+                  289 + side, width, height)
+        _carve(px, int(cx), fy(0.60), int(cx), feet, width, height)
     elif variant == 1:
-        # Squat idol: a wide crouching mass with a heavy brow.
-        for y in range(int(height * 0.30), ground + 1):
-            t = (y - height * 0.30) / max(height * 0.70, 1)
-            half = width * (0.22 + 0.20 * t)
+        # THE BRUTE. Shoulders first, head last: the head is a detail on this
+        # one and the shoulders ARE the silhouette. Same reading order as the
+        # creature itself, which is the whole reason to carve it.
+        _fill(px, fx(0.38), fy(0.16), fx(0.62), fy(0.30), ramp, 0.56, 291, width, height)
+        for ex in (fx(0.43), fx(0.56)):
+            _chip(px, ex, fy(0.24), width, height)
+        # The TORSO stays inside the arms. Drawn as wide as the shoulders it
+        # swallowed both of them and the figure came out as one slab: the
+        # carve between an arm and a rib only works if there is a rib edge for
+        # it to be beside.
+        for y in range(fy(0.26), fy(0.40)):
+            t = (y - fy(0.26)) / max(fy(0.40) - fy(0.26), 1)
+            half = width * (0.26 + 0.06 * t)
             _fill(px, int(cx - half), y, int(cx + half), y, ramp,
-                  0.58 - t * 0.12, 223, width, height)
-        brow = int(height * 0.38)
-        for x in range(int(cx - width * 0.26), int(cx + width * 0.26) + 1):
-            if 0 <= x < width and 0 <= brow < height:
-                px[x, brow] = pick(ramp, 0.18, x, brow)
-        for ex in (int(cx - 2), int(cx + 2)):
-            if 0 <= ex < width and 0 <= brow + 2 < height:
-                px[ex, brow + 2] = pick(BONE, 0.55, ex, brow + 2)
+                  0.66 - t * 0.08, 292, width, height)
+        for y in range(fy(0.40), fy(0.66)):
+            t = (y - fy(0.40)) / max(fy(0.66) - fy(0.40), 1)
+            half = width * (0.32 - 0.08 * t)
+            _fill(px, int(cx - half), y, int(cx + half), y, ramp,
+                  0.58 - t * 0.10, 293, width, height)
+        # Arms to the knees, thicker than the legs, hung OUTSIDE the ribs.
+        for side in (-1, 1):
+            ax = cx + side * width * 0.38
+            _fill(px, int(ax - 1), fy(0.26), int(ax + 1), fy(0.70), ramp, 0.50,
+                  294 + side, width, height)
+            _fill(px, int(ax - 2), fy(0.68), int(ax + 2), fy(0.76), ramp, 0.64,
+                  296 + side, width, height)
+            # The shoulder that joins them, so the mass is one creature.
+            _fill(px, int(min(cx, ax)), fy(0.28), int(max(cx, ax)), fy(0.34), ramp,
+                  0.60, 297 + side, width, height)
+            _carve(px, int(cx + side * width * 0.30), fy(0.36),
+                   int(cx + side * width * 0.30), fy(0.68), width, height)
+        for side in (-1, 1):
+            lx = cx + side * width * 0.18
+            _fill(px, int(lx - 3), fy(0.66), int(lx + 3), feet, ramp, 0.52,
+                  298 + side, width, height)
+        _carve(px, int(cx), fy(0.68), int(cx), feet, width, height)
     elif variant == 2:
-        # A standing figure, robed. Narrow, tall, no face -- the absence of a
-        # face is the effect.
-        for y in range(int(height * 0.10), ground + 1):
-            # Clamped before the fractional power: `int()` on the start row can
-            # land a hair above the float it came from, and a negative base
-            # under a non-integer exponent is a complex number, not a taper.
-            t = clamp01((y - height * 0.10) / max(height * 0.90, 1))
-            half = width * (0.13 + 0.22 * t ** 1.4)
-            _fill(px, int(cx - half), y, int(cx + half), y, ramp,
-                  0.60 - t * 0.14, 225, width, height)
-        _disc(px, cx, height * 0.13, width * 0.16, ramp, 0.66, 227, width, height)
+        # THE HUSK. Everything the walker has, thinner, with the ribs cut in.
+        # Parallel arcs are the one bone shape that survives being half in
+        # shadow, which is why this variant is the one that still reads when a
+        # lantern only catches an edge of it.
+        _fill(px, fx(0.34), fy(0.10), fx(0.64), fy(0.23), ramp, 0.64, 301, width, height)
+        _carve(px, fx(0.36), fy(0.21), fx(0.62), fy(0.21), width, height)
+        for ex in (fx(0.40), fx(0.57)):
+            _chip(px, ex, fy(0.18), width, height)
+        _fill(px, fx(0.44), fy(0.23), fx(0.55), fy(0.28), ramp, 0.40, 302, width, height)
+        # Ribcage: narrow, and carved rather than shaded.
+        _fill(px, fx(0.34), fy(0.28), fx(0.66), fy(0.52), ramp, 0.58, 303, width, height)
+        for index in range(4):
+            ry = fy(0.31) + index * max(1, fy(0.05))
+            _carve(px, fx(0.36), ry, fx(0.64), ry, width, height)
+        # Hips, then the long thin limbs.
+        _fill(px, fx(0.38), fy(0.52), fx(0.62), fy(0.62), ramp, 0.50, 304, width, height)
+        for side in (-1, 1):
+            ax = cx + side * width * 0.36
+            # The shoulder first: an arm that starts in mid-air beside a
+            # ribcage is a slab floating next to a statue, not a limb.
+            _fill(px, int(min(cx, ax)), fy(0.28), int(max(cx, ax)), fy(0.32), ramp,
+                  0.54, 304 + side, width, height)
+            _fill(px, int(ax), fy(0.30), int(ax + side), fy(0.68), ramp, 0.48,
+                  305 + side, width, height)
+            _carve(px, int(cx + side * width * 0.28), fy(0.33),
+                   int(cx + side * width * 0.28), fy(0.62), width, height)
+            lx = cx + side * width * 0.14
+            _fill(px, int(lx - 1), fy(0.62), int(lx + 1), feet, ramp, 0.52,
+                  307 + side, width, height)
+        _carve(px, int(cx), fy(0.62), int(cx), feet, width, height)
     elif variant == 3:
-        # Broken: the base still standing and the top lying beside it. The one
-        # variant that says TIME rather than intent.
-        stump = int(height * 0.52)
-        half = width * 0.24
-        _fill(px, int(cx - half), stump, int(cx + half), ground, ramp, 0.52, 229, width, height)
-        for x in range(int(cx - half), int(cx + half) + 1):
-            if 0 <= x < width and 0 <= stump < height:
-                px[x, stump] = pick(ramp, 0.86, x, stump)
-        _fill(px, int(cx - width * 0.44), ground - 3, int(cx - half) - 1, ground - 1,
-              ramp, 0.44, 231, width, height)
+        # THE SUPPLICANT. A PERSON, kneeling, head down, hands on a planted
+        # rod. The one figure in the ring that is not a creature, and it is
+        # what turns a circle of monsters into a place where somebody knelt in
+        # front of them. Without it the shrine is a trophy rack.
+        # The head, bowed and clear of the shoulders. A hooded head merged
+        # into the back gave one lump; the NECK GAP is what makes it a person
+        # looking at the ground.
+        _fill(px, fx(0.28), fy(0.20), fx(0.54), fy(0.31), ramp, 0.60, 311, width, height)
+        _carve(px, fx(0.28), fy(0.29), fx(0.54), fy(0.29), width, height)   # bowed brow
+        _carve(px, fx(0.30), fy(0.32), fx(0.52), fy(0.32), width, height)   # neck shadow
+        # The back, curved forward over the knee. It leans LEFT, over the head,
+        # so the silhouette is a hunch rather than a column with a lid.
+        for y in range(fy(0.33), fy(0.58)):
+            t = (y - fy(0.33)) / max(fy(0.58) - fy(0.33), 1)
+            _fill(px, fx(0.26) + int(t * width * 0.06), y,
+                  fx(0.62) + int(t * width * 0.10), y, ramp,
+                  0.58 - t * 0.08, 312, width, height)
+        # The kneeling mass: one knee down and forward, the other folded under,
+        # with the carve between them doing the work of two shapes.
+        _fill(px, fx(0.22), fy(0.58), fx(0.78), feet, ramp, 0.50, 313, width, height)
+        _carve(px, fx(0.50), fy(0.60), fx(0.50), feet, width, height)
+        _carve(px, fx(0.22), fy(0.66), fx(0.49), fy(0.66), width, height)
+        # The rod, planted at arm's length, and the hands folded over it. It is
+        # the only STRAIGHT line in the figure, which is what makes the rest of
+        # it read as slumped — and the ARM has to reach it, or the rod is a
+        # post that happens to be standing next to somebody.
+        _fill(px, fx(0.80), fy(0.26), fx(0.86), feet, ramp, 0.68, 314, width, height)
+        _fill(px, fx(0.52), fy(0.36), fx(0.82), fy(0.41), ramp, 0.56, 316, width, height)
+        _fill(px, fx(0.68), fy(0.40), fx(0.90), fy(0.46), ramp, 0.74, 315, width, height)
+        _carve(px, fx(0.68), fy(0.47), fx(0.90), fy(0.47), width, height)
     elif variant == 4:
-        # A pole with a skull on it. The most direct sentence on the map:
-        # somebody put this here, and they meant it as a boundary.
-        for y in range(int(height * 0.24), ground + 1):
+        # THE SKULL POST. Not carved and not stone — a pole somebody drove in
+        # and tied a head to. The most direct sentence on the map, and the one
+        # object at the shrine that a person could have made in an afternoon.
+        for y in range(fy(0.26), ground + 1):
             for x in (int(cx - 1), int(cx)):
                 if 0 <= x < width and 0 <= y < height:
-                    px[x, y] = pick(PLANK, 0.44, x, y)
-        sy = int(height * 0.20)
-        _disc(px, cx, sy, width * 0.24, BONE, 0.72, 233, width, height, squash=1.15)
+                    px[x, y] = pick(PLANK, 0.46 + (hash01(x, y, 321) - 0.5) * 0.2, x, y)
+        sy = fy(0.18)
+        _disc(px, cx, sy, width * 0.22, BONE, 0.74, 322, width, height, squash=1.15)
         for ex in (int(cx - 2), int(cx + 1)):
             if 0 <= ex < width and 0 <= sy < height:
-                px[ex, sy] = pick(PLANK_DARK, 0.2, ex, sy)
-        if 0 <= int(cx) < width and 0 <= sy + 3 < height:
-            px[int(cx), sy + 3] = pick(PLANK_DARK, 0.2, int(cx), sy + 3)
-        for offset in range(-1, 2):
-            bx = int(cx + offset)
-            by = int(height * 0.44)
-            if 0 <= bx < width and 0 <= by < height:
-                px[bx, by] = pick(ROPE, 0.6, bx, by)
+                px[ex, sy] = pick(PLANK_DARK, 0.16, ex, sy)
+        # The jaw, one row of teeth. Four dark pixels, and it is what makes the
+        # disc a skull instead of a stone on a stick.
+        for tx in range(int(cx - 2), int(cx + 3), 2):
+            if 0 <= tx < width and 0 <= sy + 3 < height and px[tx, sy + 3][3]:
+                px[tx, sy + 3] = pick(PLANK_DARK, 0.18, tx, sy + 3)
+        for by in (fy(0.30), fy(0.34)):
+            _line(px, int(cx - 2), by, int(cx + 2), by, ROPE, 0.68, width, height)
+        # Two small bones lashed crossways below it.
+        _line(px, int(cx - 4), fy(0.40), int(cx + 4), fy(0.44), BONE, 0.58, width, height)
+        _line(px, int(cx - 4), fy(0.44), int(cx + 4), fy(0.40), BONE, 0.58, width, height)
     else:
-        # Monolith. A slab with a carved spiral. It does not represent
-        # anything, and that is the point of keeping one in the set.
-        half = width * 0.34
-        top = int(height * 0.14)
-        _fill(px, int(cx - half), top, int(cx + half), ground, ramp, 0.50, 235, width, height)
-        for step in range(18):
-            angle = step * 0.7
-            radius = 1.0 + step * 0.16
-            gx = int(cx + math.cos(angle) * radius)
-            gy = int(height * 0.42 + math.sin(angle) * radius * 1.5)
-            if 0 <= gx < width and 0 <= gy < height and px[gx, gy][3]:
-                px[gx, gy] = pick(ramp, 0.88, gx, gy)
+        # THE TOPPLED WALKER. The same figure as variant 0, snapped at the
+        # shins, its top half lying across its own base. The one variant that
+        # says TIME rather than intent — and saying it with a recognisable
+        # subject is worth more than a broken column, because the player can
+        # see what it used to be.
+        # THE STUMPS STAY UP, on the right of the frame, and the fallen half
+        # lies to the LEFT of them. Drawn on top of each other the two shapes
+        # became one heap and the whole sentence was lost: a break only reads
+        # if the player can see both ends of it at once.
+        # The legs still standing, snapped mid-thigh, on the right of the base.
+        _fill(px, fx(0.58), fy(0.46), fx(0.70), feet, ramp, 0.54, 331, width, height)
+        _fill(px, fx(0.74), fy(0.42), fx(0.86), feet, ramp, 0.52, 332, width, height)
+        _carve(px, fx(0.72), fy(0.50), fx(0.72), feet, width, height)
+        for x in range(fx(0.58), fx(0.87)):
+            if 0 <= x < width and hash01(x, 7, 333) < 0.6:
+                _chip(px, x, fy(0.45), width, height)
+                _chip(px, x, fy(0.41), width, height)
+        # The upper half lying across the front of its own base, head at the
+        # far end, one arm still out in front of it — the pose it fell in. A
+        # player who has met variant 0 standing knows what came off this.
+        _fill(px, fx(0.14), fy(0.70), fx(0.56), fy(0.80), ramp, 0.58, 334, width, height)
+        _fill(px, fx(0.04), fy(0.66), fx(0.20), fy(0.78), ramp, 0.68, 335,
+              width, height)                                          # the head
+        _carve(px, fx(0.21), fy(0.67), fx(0.21), fy(0.79), width, height)  # the neck
+        _fill(px, fx(0.20), fy(0.81), fx(0.50), fy(0.85), ramp, 0.44, 336,
+              width, height)                                          # the arm
+        # Rubble between the two halves. Four pixels, and they are what say
+        # this FELL rather than that it was laid down here.
+        for index in range(4):
+            rx = fx(0.50) + index * 2
+            ry = feet - (index % 2)
+            if 0 <= rx < width and 0 <= ry < height:
+                px[rx, ry] = pick(ramp, 0.40, rx, ry)
 
-    # Lichen. Three or four pale specks, because unweathered stone in a wet
-    # forest is the one thing that would make these read as freshly placed.
-    for _ in range(rng.randint(3, 6)):
+    # The light, once, over whatever the variant built. It belongs to the
+    # silhouette rather than to each shape that happened to make it, which is
+    # why it runs here instead of inside the fills — and why moving an arm two
+    # pixels does not mean re-authoring its shading.
+    _sculpt(img, ramp)
+
+    # WEATHER. Lichen on the shaded lower two thirds, chips off the corners.
+    # Unweathered stone in a wet forest is the one thing that would make these
+    # read as freshly placed, which is the opposite of everything else here.
+    for _ in range(rng.randint(5, 9)):
         lx = int(rng.uniform(0, width))
-        ly = int(rng.uniform(height * 0.3, height))
+        ly = int(rng.uniform(height * 0.35, height))
         if 0 <= lx < width and 0 <= ly < height and px[lx, ly][3]:
-            px[lx, ly] = pick(BONE, 0.34, lx, ly)
+            px[lx, ly] = pick(MOSS, rng.uniform(0.35, 0.75), lx, ly)
+    for _ in range(rng.randint(2, 4)):
+        _chip(px, int(rng.uniform(0, width)), int(rng.uniform(height * 0.1, height * 0.7)),
+              width, height)
 
+    _ground_dark(img, rows=1, drop=0.7)
     outline(img, OUTLINE_STONE)
     return img
 
@@ -1196,7 +1723,11 @@ def altar_strip(tile: int, seed: int) -> tuple[list[Image.Image], int, int]:
 
 
 def statue_strip(tile: int, seed: int) -> tuple[list[Image.Image], int, int]:
-    w, h = tile, round(tile * 2.25)
+    # WIDER THAN A TILE, and deliberately. A statue's footprint is still one
+    # tile — the shoulders overhang it the way a tree's canopy overhangs its
+    # trunk — but a carved figure with arms out does not fit in sixteen pixels
+    # without becoming a column again, and the arms are the read.
+    w, h = round(tile * 1.25), round(tile * 2.375)
     rng = random.Random(seed)
     frames = [make_statue(w, h, variant, rng) for variant in range(STATUE_VARIANTS)]
     return frames, w, h

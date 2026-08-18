@@ -75,7 +75,8 @@ export interface SceneryPiece {
 }
 
 /**
- * A live interactive object. Drawn like standing scenery; removed when used.
+ * A live interactive object. Drawn like standing scenery; using it does not
+ * remove it — it flips to `opened` and stays where it stood.
  *
  * `kind` is the TYPE key and the only thing that arrives on the wire;
  * `sheet` and `variant` are resolved from `config.objects` at unpack time
@@ -90,6 +91,15 @@ export interface CratePiece {
   y: number;
   variant: number;
   flip: boolean;
+  /** Already used: still drawn, refuses the prompt, holds its last frame. */
+  opened: boolean;
+  /**
+   * Game clock at the moment it was opened, which is what the renderer ages
+   * to pick a frame. A row that arrived ALREADY open (a late joiner, a
+   * snapshot after the fact) gets a time far enough in the past that the
+   * clamp in `crateAnimFrame` lands it on the last frame with no animation.
+   */
+  openedAt: number;
 }
 
 /**
@@ -438,14 +448,25 @@ export class TileMap {
   }
 
   replaceCrates(rows: CratePiece[]): void {
+    // An object that was ALREADY open here keeps the moment it opened. The
+    // server re-sends the whole list every time it changes, and rebuilding a
+    // row from the wire would reset its clock and snap a lid that is still
+    // swinging straight to its final frame.
+    const opened = new Map(this.crates.map((crate) => [crate.id, crate.openedAt]));
+    for (const row of rows) {
+      const was = opened.get(row.id);
+      if (row.opened && was !== undefined) row.openedAt = was;
+    }
     this.crates = rows.slice().sort((a, b) => a.y - b.y);
   }
 
-  removeCrate(id: string): CratePiece | null {
-    const index = this.crates.findIndex((crate) => crate.id === id);
-    if (index < 0) return null;
-    const [removed] = this.crates.splice(index, 1);
-    return removed ?? null;
+  /** Flip one object to its opened state, dated now. Null if it is gone. */
+  openCrate(id: string, now: number): CratePiece | null {
+    const crate = this.crates.find((row) => row.id === id);
+    if (!crate) return null;
+    crate.opened = true;
+    crate.openedAt = now;
+    return crate;
   }
 
   /**
@@ -650,6 +671,9 @@ function unpackStore(payload: MapPayload): StoreFixtures | null {
   };
 }
 
+/** Old enough that `crateAnimFrame` clamps to the last frame on sight. */
+const OPENED_LONG_AGO = -1e9;
+
 function unpackCrates(payload: MapPayload): CratePiece[] {
   const rows = payload.crates ?? [];
   const crates = rows.map((row) => makeCrate(row));
@@ -665,6 +689,7 @@ export function makeCrate(row: {
   y: number;
   v?: number;
   flip?: number;
+  o?: number;
 }): CratePiece {
   const kind = row.t ?? '';
   return {
@@ -675,6 +700,8 @@ export function makeCrate(row: {
     y: row.y,
     variant: row.v ?? objectVariant(kind),
     flip: (row.flip ?? 0) !== 0,
+    opened: (row.o ?? 0) !== 0,
+    openedAt: OPENED_LONG_AGO,
   };
 }
 

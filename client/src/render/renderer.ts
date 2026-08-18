@@ -321,9 +321,15 @@ export class Renderer {
     // `game/objects.ts`), so a bus and a barrel reach the same depth sort
     // without this loop knowing that either of them exists.
     for (const crate of state.world.crates) {
+      // An opened object plays its own sheet from the moment it was used and
+      // then HOLDS the last frame — a lid standing up, a boot swung open. The
+      // clamp in `crateAnimFrame` is what makes one expression serve both the
+      // object that was just opened and the one that was opened five minutes
+      // ago, or before this client even joined.
+      const openSheet = crate.opened ? this.scenery?.props[crate.sheet] : null;
       depthProps.push({
         y: crate.y,
-        anim: 0,
+        anim: openSheet ? crateAnimFrame(openSheet, state.time - crate.openedAt) : 0,
         hitFlash: 0,
         rift: null,
         store: null,
@@ -339,6 +345,10 @@ export class Renderer {
     // Objects that are already gone from that list and are still playing.
     // They keep their own `sheet` for exactly that reason.
     for (const smash of state.effects.crateSmashes) {
+      // Sheet-less one-shots are the object's own dust: the sprite is being
+      // animated by the live object itself (see `Game.onCrateBreak`), so
+      // there is nothing to draw here.
+      if (!smash.sheet) continue;
       const sheet = this.scenery?.props[smash.sheet];
       const flash =
         smash.age < HIT_FLASH_LIFE ? 1 - smash.age / HIT_FLASH_LIFE : 0;

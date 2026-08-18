@@ -40,8 +40,8 @@
     },
     "statue": {
       "file": "statue.png",
-      "frameWidth": 16,
-      "frameHeight": 36,
+      "frameWidth": 20,
+      "frameHeight": 38,
       "frames": 6,
       "sway": 0
     },

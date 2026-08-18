@@ -2871,13 +2871,11 @@ export class Game {
     // offered on a pad whose aircraft are already in the air.
     if (rift.state !== 'open' || rift.closeAt !== null) return null;
     // Same split `Room.activate_rift` makes, off the same facts: whether the
-    // quota is paid, whether another console is still waiting, and whether the
-    // pocket has anything. Saturating is only offered
-    // while there is a pad left to carry the core to — on the last pad the
-    // overpayment is not paid back, so the game must not invite it.
-    //
-    const padsLeft = this.world?.rifts.some((row) => row.state === 'dormant') ?? false;
-    const mode = !rift.ready ? 'feed' : (empty || !padsLeft) ? 'close' : 'over';
+    // quota is paid and whether the pocket still has anything. Saturating is
+    // offered on EVERY pad, last one included — the payout at the end of the
+    // night is what was fed, so value loaded past the quota is banked whether
+    // or not there is another console left to carry a core to.
+    const mode = !rift.ready ? 'feed' : empty ? 'close' : 'over';
     return {
       id: rift.id,
       mode,
@@ -3243,6 +3241,7 @@ export class Game {
     let best = null;
     let bestD2 = range * range;
     for (const crate of world.crates) {
+      if (crate.opened) continue;
       const half = objectTilesW(crate.kind) * config.tileSize * 0.5;
       const dx = Math.max(0, Math.abs(crate.x - local.state.x) - half);
       const dy = crate.y - feetY;
@@ -3264,21 +3263,34 @@ export class Game {
 
   private onCrateBreak(ev: CrateBreakEvent): void {
     if (!this.world) return;
-    this.world.removeCrate(ev.id);
-    // EVERY tile it stood on. A vehicle claims four, and freeing only the
-    // contact tile would leave three invisible walls where the car used to be.
-    for (const cell of crateCells(
-      ev.x,
-      ev.y,
-      this.world.tileSize,
-      objectTilesW(ev.t),
-    )) {
-      this.world.setTile(cell.tx, cell.ty, FLOOR);
+    // IT STAYS. The object flips to its opened state and keeps standing where
+    // it stood — the sheet plays off the object itself from here, dated now,
+    // which is why the one-shot below is spawned WITHOUT a sheet: it is the
+    // dust and the splinters only, and drawing the animation twice would
+    // double every frame of it.
+    const live = this.world.openCrate(ev.id, this.time);
+    const verb = objectVerb(ev.t);
+    // Only a BREAK hands its ground back. An opened car is still solid — see
+    // `Room.smash_crate`, which makes the same split — and freeing its tiles
+    // would let a body walk through the bodywork. EVERY tile it stood on: a
+    // vehicle claims four, and freeing only the contact tile would leave
+    // three invisible walls where the car used to be.
+    if (verb === 'break') {
+      for (const cell of crateCells(
+        ev.x,
+        ev.y,
+        this.world.tileSize,
+        objectTilesW(ev.t),
+      )) {
+        this.world.setTile(cell.tx, cell.ty, FLOOR);
+      }
     }
     const empty = ev.drop === 'empty';
-    const verb = objectVerb(ev.t);
     this.effects.spawnCrateSmash(
-      objectSheet(ev.t),
+      // Only when the object is somehow not in the live list — a break event
+      // for a row this client never had — does the one-shot draw the sheet
+      // itself, so the press is never silent.
+      live ? '' : objectSheet(ev.t),
       ev.x,
       ev.y,
       ev.v,

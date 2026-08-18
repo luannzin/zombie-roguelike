@@ -697,6 +697,8 @@ export interface CrateState {
   y: number;
   v: number;
   flip: number;
+  /** 1 once it has been used. It stays on the map, holding its last frame. */
+  o?: number;
 }
 
 export type CrateDrop = 'empty' | 'coin' | 'item';

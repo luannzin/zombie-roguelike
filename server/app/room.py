@@ -62,7 +62,7 @@ from .config import (
     client_config,
 )
 from .corpses import Corpse
-from .crates import Crate
+from .crates import VERB_BREAK, Crate
 from .entrance import Entrance
 from .rift import Rift
 from .store import Stand
@@ -611,24 +611,34 @@ class Room:
         self.smash_crate(crate, player)
 
     def smash_crate(self, crate: Crate, source: Player | None) -> None:
-        """Remove an object, free the ground it stood on, roll what was in it.
+        """Use an object once: mark it open, roll what was in it, make noise.
 
         The same path for both verbs, because everything downstream of the
-        animation is identical: the object stops existing, its tiles go back
-        to floor, something or nothing falls out, and whatever heard it comes
-        looking. The verb only ever decides which sheet the client plays and
-        how loud the noise is.
+        animation is identical: the object is spent, something or nothing
+        falls out, and whatever heard it comes looking. The verb decides two
+        things — which sheet the client plays and how loud it was — plus
+        whether the ground goes back to floor, because a barrel that came
+        apart leaves splinters and an opened car is still parked there.
         """
-        if crate.id not in self.crates:
+        if crate.id not in self.crates or crate.opened:
             return
         kind = crate.type
-        del self.crates[crate.id]
-        # Every tile, not one: a vehicle is four wide, and leaving three of
-        # them solid would leave an invisible wall where the car used to be.
-        for tx, ty in crate.cells():
-            self.world.set_tile(tx, ty, FLOOR)
+        # IT STAYS ON THE MAP. An opened car is still a car and a searched
+        # mailbox is still a mailbox: the object flips to `opened`, holds its
+        # last animation frame and refuses every later press. Deleting it was
+        # the old behaviour and it read as the forest eating its own scenery
+        # one press at a time.
+        crate.opened = True
+        # Only a BREAK frees its ground. A barrel that came apart leaves
+        # splinters you can walk over; a boot that was opened is still a car
+        # sitting there, and handing its four tiles back to the floor would
+        # let the party walk through the bodywork. Every tile, not one: a
+        # vehicle is four wide.
+        if kind.verb == VERB_BREAK:
+            for tx, ty in crate.cells():
+                self.world.set_tile(tx, ty, FLOOR)
+            self.navigator.invalidate()
         self.world.crates = [row.to_payload() for row in self.crates.values()]
-        self.navigator.invalidate()
         self._crates_dirty = True
 
         if source is not None:
@@ -768,11 +778,11 @@ class Room:
         Reading the pocket gives both: the pad takes everything you have, and
         when you have nothing left to give it, the same press calls it in.
 
-        THE LAST PAD OF THE NIGHT NEVER OFFERS TO KEEP LOADING. An overpayment
-        only comes back while there is another console to carry it to
-        (`_drop_excess`), so on the final pad saturating it buys nothing and
-        the bag-reading rule would quietly eat a full pocket on the way out.
-        Paid means launched there, whatever you are carrying.
+        THE LAST PAD TAKES OVERPAYMENT TOO. It does not hand a core back —
+        `_drop_excess` needs a console to carry one to — but it does not need
+        to: payout at the end of the night is `sum(fed)`, so everything loaded
+        past the quota is banked as gold either way. What the last pad costs
+        you is the chance to re-feed the core, not the value.
 
         Measured from the FEET, the same way collect and smash are, so the
         prompt and the check agree.
@@ -790,9 +800,7 @@ class Room:
                 self._press_console(player, target)
             return
         if target.state == rift.OPEN and target.close_at is None:
-            if target.ready and (
-                not self._pads_left() or player.inventory.bag_value() <= 0
-            ):
+            if target.ready and player.inventory.bag_value() <= 0:
                 self._shut_rift(target)
             else:
                 self._feed_rift(player, target)

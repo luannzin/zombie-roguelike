@@ -159,7 +159,7 @@ export function rayAabb(
  * because a bus is four tiles long and a toolbox is one.
  */
 export function crateAlongRay(
-  crates: readonly { kind: string; x: number; y: number }[],
+  crates: readonly { kind: string; x: number; y: number; opened?: boolean }[],
   ox: number,
   oy: number,
   dx: number,
@@ -170,7 +170,9 @@ export function crateAlongRay(
 ): number | null {
   let best: number | null = null;
   for (const crate of crates) {
-    if (!breakable(crate.kind)) continue;
+    // An opened object is scenery: it already paid out and a round through it
+    // must not pop a second drop out of the same barrel.
+    if (crate.opened || !breakable(crate.kind)) continue;
     const { w, h } = boxOf(crate.kind);
     const half = w * 0.5;
     const dist = rayAabb(

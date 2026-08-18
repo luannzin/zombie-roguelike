@@ -177,14 +177,14 @@ seam React is allowed to read.
   (`hud-store.quests`, id `extract`, `0/N`). The console press is the tick,
   not standing nearby — that is when `feed` appears (catalog gold, coin
   badge on the HUD), carrying THAT pad's quota. Pressing a dormant console
-  starts the ceremony; feeding an open one spends bag catalog value toward
-  its quota. Paying the quota does not close anything: it makes the pad
-  `ready`, and a player shuts it by hand. Shutting the LAST pad
-  carves `world.egress`, kills the lantern
-  (`Lantern.kill`), and offers `exit`. Reaching the mouth is another
-  welcome — at the STORE, not at camp. Leaving the store is another welcome
-  again, at the NEXT night's forest: after the first expedition the run is a
-  two-zone cycle and never comes back to the camp.
+  powers the deck and the corner lamps go GREEN. Feeding an open one spends
+  bag catalog value toward its quota. Paying the quota does not call anything:
+  it makes the pad `ready`, and a player CALLS THE PICKUP by hand. Calling
+  the LAST pad carves `world.egress`, kills the lantern (`Lantern.kill`), and
+  offers `exit`. Reaching the mouth is another welcome — at the STORE, not at
+  camp. Leaving the store is another welcome again, at the NEXT night's
+  forest: after the first expedition the run is a two-zone cycle and never
+  comes back to the camp.
 - **The store is an arrival like the forest is, and an ordinary forest map.**
   Same corridor, same seal, so `arriving` is true for both zone kinds and the
   camp is the only place you simply appear in — and only ever once, at the
@@ -197,50 +197,53 @@ seam React is allowed to read.
   `nearStand` mirrors `Room._stand_in_reach` feet-to-table, and it drives all
   three of the lift, the pool and the prompt — a layer working it out for
   itself would be a second opinion about what "close enough" means.
-  - **The pad's whole feed state is on the wire** — `fed`, `need`, `level`,
-    `ready` on `RiftStateRow` — and the client re-derives none of it. `level`
-    especially: the overfeed tiers live in `server/app/rift.py` and picking
-    which colour bank to draw from is a lookup, not arithmetic, for the same
-    reason the ceremony timings are.
+  - **The pad's whole feed state is on the wire** — `fed`, `need`, `ready` on
+    `RiftStateRow` — and the client re-derives none of it. There is no `level`:
+    overfeed tiers used to pick a colour bank and a drone count, and neither
+    exists any more. Green lamps vs red sirens is the whole vocabulary.
   - Overfeeding is REPEATABLE and the pocket is what says so. E on a ready pad
-    feeds while the bag has value and shuts it when the bag is empty
-    (`riftPrompt` modes `over` / `close`, mirroring `Room.activate_rift`). A
-    tier bump chimes `rarity` at the tier's own variant; the quota landing
-    chimes variant 4. Both fire off a state row where the state STRING did not
-    change, which is exactly why they are checked separately.
+    feeds while the bag has value and CALLS THE PICKUP when the bag is empty
+    (`riftPrompt` modes `over` / `close`, mirroring `Room.activate_rift`). The
+    quota landing chimes `rarity` variant 4. It fires off a state row where
+    the state STRING did not change, which is exactly why it is checked
+    separately from `onRiftState`'s string compare.
   - `over` is NOT offered on the last pad — the overpayment is only paid back
     while there is another console to carry a core to, so on the final rift
-    paid means shut. The prompt checks that the same way the server does (is
+    paid means call. The prompt checks that the same way the server does (is
     any pad still `dormant`), because a mode the server would ignore is worse
     than no prompt at all.
   - A `busy` prompt (another pad already awake) buzzes locally instead of
     sending a packet the server would drop.
-  Two snapshot rows a pad — pressed, and open — and the four seconds between
-  them run on this client's own render clock (`Game.stepRift`), because a
-  ceremony resolved at 6 Hz would step rather than play. The server's `t` is
-  adopted on every row, so somebody joining mid-sequence picks it up in
-  progress instead of watching it replay from zero.
-  - **The stagger IS the effect.** The four stones catch one at a time
-    (`rift.PILLAR_STAGGER`), so the light visibly runs around the ring. Firing
-    them together costs nothing and reads as a light switch. Each catch is a
-    small trauma and a chime; the tear is a bigger shove. No point-light disc
-    — a `ctx.arc` gradient in world pixels becomes a hard circle at arena zoom.
-    Those beats fire on the frame `elapsed` CROSSES them, which is what makes
-    each happen exactly once when a frame runs long.
-  - Timing is ONE clock: `config.rift`, straight out of `server/app/rift.py`,
-    whose sheet durations are `frames / fps` from `make_rift.py`. Three files,
-    one set of numbers, the same discipline `SUMMON_TIME` already follows.
+  Two snapshot rows a pad — pressed, and open — and the seconds between them
+  (and the whole thirteen-second pickup) run on this client's own render clock
+  (`Game.stepRift`), because a ceremony resolved at 6 Hz would step rather than
+  play. The server's `t` is adopted on every row, so somebody joining
+  mid-sequence picks it up in progress instead of watching it replay from zero.
+  - **THE CALL IS THE SET PIECE.** `closeAt` is the press. Sirens start
+    immediately (`playSfx('siren')` once per `siren.png` sweep) and
+    `Room.sirening` has already put the pack on hunt. Four drones leave the
+    treeline staggered, each arrival and each tie is a beat, the strain grows
+    a shove rather than a hit, and the ground letting go is the only beat that
+    earns a real camera slam. Those beats fire on the frame `elapsed` CROSSES
+    them, which is what makes each happen exactly once when a frame runs long.
+    No point-light disc — a `ctx.arc` gradient in world pixels becomes a hard
+    circle at arena zoom; the light belongs to the sheets.
+  - Timing is ONE clock: `config.rift`, straight out of `server/app/rift.py`.
+    Three files, one set of numbers, the same discipline `SUMMON_TIME` already
+    follows. There is nothing about the aircraft on the wire: `closeAt` plus
+    the constants is the whole flight plan.
   - E offers a pad BEFORE a crate and before the fire: if you are standing at
     the console with a box at your elbow, you did not walk there for the box.
-    Dormant shows "abrir" (or "outra fenda está aberta"); under quota shows
-    "alimentar a fenda"; past it shows "saturar a fenda" with the tier; with an
-    empty pocket it shows "fechar a fenda". All four carry the coin badge and
+    Dormant shows "ligar a plataforma" (or "outra plataforma está ligada");
+    under quota shows "carregar a plataforma"; past it shows "sobrecarregar a
+    plataforma"; with an empty pocket it shows "chamar a extração · o barulho
+    atrai tudo" in the danger tone. All but the first carry the coin badge and
     the pad's own `have/need`. An empty bag at a hungry pad refuses audibly and
-    does not send. Spent, charging and collapsing show nothing — a prompt on a
-    structure that is already answering reads as the first press not having
-    registered.
+    does not send. Spent, charging and a pad already calling show nothing — a
+    prompt on a structure that is already answering reads as the first press
+    not having registered.
   - Activation is one-way. There is no packet to switch a pad back off, and
-    collapse is a player's second press, never a timer.
+    the pickup is a player's second press, never a timer.
   - The exit arrow (`hud/ExitGuide`, `/hud/arrow.png`) is generated HUD
     chrome, not a sprite in the forest. It sits outside `HudScreen` — the
     fish-eye would pull it off the glass — and it rides HALFWAY between the
@@ -264,7 +267,7 @@ seam React is allowed to read.
   it when that list changes: an open rift pushes a beacon onto it and a spent
   one takes it off, and the exit's torches join it when `egress` arrives
   (`rebuildLights`). A snapshot taken only at welcome leaves
-  the pad dark after the tear. The torches matter most of all here — the exit
+  the pad dark after it powers up. The torches matter most of all here — the exit
   opens during the blackout, so for the rest of that night they are the only
   thing burning on the map, and a torch that only glowed in the additive pass
   would light nothing and reveal nothing. `TileMap` lights them in BOTH

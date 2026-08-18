@@ -3,9 +3,10 @@ only thing on a map that ANSWERS BACK.
 
 WHAT IT IS
 An abandoned cargo skid — an iron box open at the front, still half loaded with
-crates nobody came back for — with four dead lift drones parked at its corners
-on the ropes they were rigged with. What is left when it goes is the hole it
-was sitting in.
+crates nobody came back for. Four corner posts, a console, a torch that burns
+from the moment the map is built. The aircraft are not part of this structure:
+they come when it calls them. What is left when it goes is the hole it was
+sitting in.
 
 The name `rift` is what this module was called when the extraction point was a
 tear in the world with stones around it. The wire, the config and twenty client
@@ -227,8 +228,8 @@ SPENT = "spent"
 # --- overfeeding ---------------------------------------------------------------
 #
 # THE QUOTA IS A FLOOR, NOT A CEILING, and that is the whole decision the pad
-# exists to offer. Paying exactly what it asks is what puts the crew in the air
-# and makes the console a launch button. Keeping the bag going past that does
+# exists to offer. Paying exactly what it asks is what turns the console into
+# a call button. Keeping the bag going past that does
 # not close anything — the platform takes everything, and what you overpaid
 # comes back as one dense object you carry to the NEXT pad (`Room._drop_excess`).
 # Overfeeding is therefore never a donation, it is moving value forward through
@@ -294,7 +295,8 @@ class Rift:
     #: platform may be awake at a time, so a night with three of them is three
     #: separate walks and three separate bills.
     need: int = 0
-    #: Catalog value put into it. May go past `need` — see `level_for`.
+    #: Catalog value put into it. May go past `need` — the overshoot is the
+    #: size of the core waiting at the far end.
     fed: int = 0
     #: What the overpayment condensed into, banked when the launch starts and
     #: spent when it finishes. Zero once the drop has been placed, so a pad

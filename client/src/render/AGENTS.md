@@ -19,7 +19,7 @@ mutation, no React.
 | `scenery.ts` | scenery atlas loading: standing props and flat decals of what people left |
 | `vfx.ts` | effect atlas loading: one-shot sheets (summon, kindle, wind, death) and the looping loot `aura` |
 | `rift.ts` | threshold atlas: the console prop with its four STATES, the torch prop and its fire, the paid console's band, the exit's paving |
-| `platform.ts` | extraction atlas: the cargo skid and lift drone props with their STATES, the rotor / strobe / downwash / burst effect sheets, the imprint decal, and the `layout` block the ropes are drawn from |
+| `platform.ts` | extraction atlas: the cargo skid (cold / green standby / red alarm) and lift drone (hover / cruise) props, rotor / strobe / standby / siren / downwash / burst effect sheets, the imprint decal, and the `layout` block the ropes and lamps are drawn from |
 | `layers/rift.ts` | extraction pads: the whole rig's timing (`riftPhase`) plus its four passes — floor, depth sort, the air, additive light |
 | `store.ts` | the merchant's own kit: tables (with `topY`), torches (with `flameY`), the mat, the torch fire and the buy pool — plus the HUD coin the price tag draws |
 | `merchant.ts` | the shopkeeper's clips and the player that picks between them (`MerchantPose`, `stepMerchant`, `merchantFrame`) |
@@ -43,9 +43,11 @@ mutation, no React.
 - `renderer.ts` only sequences passes and switches spaces; drawing lives in
   `layers/`. **The pass order is the atmosphere** — ground (soil, litter, flat
   scenery, then any extraction imprint) → dust → coins and loot sprites → entities, bonfires and standing
-  scenery (one depth sort by `y`, including live crates and smash sheets) →
+  scenery (one depth sort by `y`, including live crates and smash sheets, the
+  console, the torch and a grounded skid) → `drawRiftAir` (ropes, inbound
+  drones, an airborne skid — after the sort, before the darkness) →
   overgrowth → motes / rain / fog → darkness → combat effects → loot auras / motes /
-  epic-legendary beams / empty-crate wind / death burst / torch fire / rig glow → hunt diamond →
+  epic-legendary beams / empty-crate wind / death burst / torch fire / corner lamps / rig glow → hunt diamond →
   labels → vignette. Effects and loot light go over the darkness because
   they are light, not things being lit. An unlit drop HIDES ITS SPRITE.
   Corpses hide the same way. Blood pools sit on the floor with the boot
@@ -106,7 +108,8 @@ mutation, no React.
   only diamond on the widget — players and enemies are round, so a rotated
   square is the shape with the most silhouette left over at four pixels. It is
   mint while dormant or waking and GOLD once the quota is paid, matching the
-  console; only a live one breathes, so movement alone says which to walk to.
+  console; RED and breathing on the siren's own beat once the pickup has been
+  called. Only a live one breathes, so movement alone says which to walk to.
   Pads draw UNDER the bodies: a place does not cover a person standing on it.
 - **`Renderer.stampTiles` is the slam.** New TREE/ROCK on tiles that were VOID
   go into the prop bake (`TerrainLayer.stampProps`) without rebuilding soil —
@@ -317,58 +320,66 @@ mutation, no React.
   corridor punched through the woods.
 - **The extraction point spans all three shapes at once and is drawn in FOUR
   different places in the frame**, because it is four kinds of thing happening
-  at once. It is an abandoned cargo platform with four lift drones on ropes:
+  at once. It is an abandoned cargo platform with four corner lamps — the
+  aircraft are not on it until they are called:
   - `drawRiftGround` — the imprint the skid leaves, on the FLOOR with the boot
     prints. It does not exist until the platform breaks ground; before that the
     ground under a platform is the platform's.
-  - `riftStanding` — the console, the torch, and whatever is still standing on
-    something (the skid, and any drone still parked), MERGED into the entity
-    depth sort so a body walking behind the platform disappears behind it. Prop
-    frames are STATES, never variants — `platformPropFrame` takes the state,
-    and hashing one would make the rig flicker between running and dead.
-  - `drawRiftAir` — the ropes, the drones at station, and a skid that has come
+  - `riftStanding` — the console, the torch, and the skid while it is still on
+    the ground, MERGED into the entity depth sort so a body walking behind the
+    platform disappears behind it. NO DRONES, EVER: they arrive flying and
+    leave flying. Prop frames are STATES, never variants —
+    `platformPropFrame` takes the state, and hashing one would make the pad
+    flicker between "safe to load" and "every zombie on the map is coming".
+  - `drawRiftAir` — the ropes, the inbound aircraft, and a skid that has come
     free. Screen space, AFTER the depth sort and BEFORE the darkness. Both
     halves matter: nothing standing on the floor can plausibly be in front of a
-    machine hovering over it, and drawing before the darkness is what lets a
-    platform twenty tiles up dissolve into the night instead of staying crisp
-    and bright over a blacked-out forest.
-  - `drawRiftGlow` — rotor discs, nav lights, rotor wash, the ground-break
-    burst and the paid console's band. Additive, after the darkness pass.
+    machine hanging over it, and drawing before the darkness is what lets an
+    inbound drone resolve out of the dark instead of popping in at full
+    brightness, and what lets a platform twenty tiles up dissolve into the
+    night instead of staying crisp over a blacked-out forest.
+  - `drawRiftGlow` — corner lamps (green standby or red siren), rotor discs,
+    nav lights, rotor wash, the ground-break burst, the red wash the siren
+    throws over the clearing, and the paid console's band. Additive, after the
+    darkness pass.
 
   The exit arrow is HUD chrome (`hud/ExitGuide`), not a world sprite.
-- **THE DRONES ARE THE METER, and the server owns when each one woke.** One
-  turns the moment the pad is awake and every overfeed tier wakes another, so
-  `rift.woke` is a LIST OF TIMES rather than a count: a drone that woke thirty
-  seconds ago is already hovering while one woken this tick is still winding
-  up, and only per-drone wake times can say that. The client derives nothing
-  here — a wake time is the moment somebody pressed a button.
-- **The ropes are DRAWN, not baked.** A line between a fixed eye on the skid
-  and a drone that climbs, strains and then flies off cannot be a sprite. The
-  art ships where each rope is tied (`layout.eyes`, in pixels from the
-  platform's contact) and how much line was rigged (`layout.rope`), and
-  `drawRope` puts a catenary between them whose SAG is the difference between
-  the rope's length and how far apart its two ends actually are. That single
-  number does the whole job: a parked drone sits well inside its rope and the
-  line pools, a drone at station has used all of it and the line is dead
-  straight, and the straightening is what says the machine is about to pull.
-  `layout.rope` is also what sets the hover height — a drone climbs until its
-  line comes straight and stops there, so there is no second number to disagree
-  with it.
-- **The launch is three beats and the middle one is the point.** `liftStrain`
-  is rotors at maximum with the skid rattling in its own hole and NOT MOVING,
-  because the beat that says a thing is heavy is the one where nothing happens
-  — the shudder grows through it and is gone the instant the ground lets go.
-  Then `liftBreak`: the burst fires, the imprint is uncovered, and the server's
-  `tilePatches` hand the deck's tiles back to the floor on that same tick. Then
-  `liftClimb`: up and away along the map's heading, EASING IN, because
-  something heavy that has just come unstuck is still speeding up when it
-  leaves frame — easing out instead makes it look like it is being lowered on a
-  wire. Scale carries the distance and the ground shadow stays on the floor;
-  an object that only dims looks like it is being switched off.
-- **Drones nobody woke go with it anyway**, hanging off their own ropes as dead
-  weight and swinging on their own beat. It is free and it is what makes the
-  rig read as one machine somebody rigged rather than four sprites that happen
-  to be nearby.
+- **THE LAMPS ARE THE STATE, and there are only two things they say.** Green:
+  this pad is found, powered and taking cargo, and nothing out there has heard
+  anything. Red: somebody has called for a pickup, the corners are sweeping a
+  siren, and the server has put every creature on the map on hunt
+  (`Room.sirening`). Everything else on this pad is detail; those two colours
+  are the whole decision the extraction offers.
+- **THE DRONES ARE NOT ON THIS MAP UNTIL THEY ARE CALLED.** Nothing is parked
+  at the corners. Four aircraft come in over one treeline on `rift.approach`,
+  staggered, holding formation, and only peel to a corner each over the last
+  third of the crossing. The whole flight is one `closeAt` plus the constants
+  in `config.rift`. Four flight plans at 6 Hz to describe something fully
+  determined would be the largest message in the game for no information.
+- **The ropes are DRAWN, not baked, and they are PAID OUT.** A line between a
+  fixed eye on the skid and a drone that arrives, drops a hook, catches, strains
+  and then flies off cannot be a sprite. The art ships where each rope ends
+  (`layout.eyes`) and how much line there is (`layout.rope`); `drawRope` pays
+  it out of the winch under gravity, lets the free end swing, homes it onto the
+  eye so the catch does not jump, and only then lets the slack come out of it.
+  Sag is the difference between the rope's length and how far apart its two
+  ends actually are: a fresh tie still has line in it and pools, and by the
+  time the rig is straining there is none left and it is dead straight, which
+  is what says the machine is pulling. `layout.rope` is also what sets the
+  hover height — an arriving drone stations itself one rope above its eye.
+- **The pickup is the set piece of the night and it is deliberately long.**
+  Sirens alone first (`liftAlarm`) — the aircraft are not even on screen.
+  Then inbound, then each line dropping, then the lift waits for the LAST
+  tie. Then three beats: `liftStrain` is rotors at maximum with the skid
+  rattling in its own hole and NOT MOVING, because the beat that says a thing
+  is heavy is the one where nothing happens — the shudder grows through it and
+  is gone the instant the ground lets go. Then `liftBreak`: the burst fires,
+  the imprint is uncovered, and the server's `tilePatches` hand the deck's
+  tiles back to the floor on that same tick. Then `liftClimb`: up and away
+  along the map's heading, EASING IN, because something heavy that has just
+  come unstuck is still speeding up when it leaves frame. Scale carries the
+  distance and the ground shadow stays on the floor; an object that only dims
+  looks like it is being switched off.
 - **A spent pad is a condition, not a moment, and there are TWO of them.** A
   pad that FLEW leaves the imprint, a dead console (its fourth frame — driven
   home, every lamp out; reusing `idle` would pop the plunger back up and offer

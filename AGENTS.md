@@ -121,13 +121,14 @@ subtree.
   made.
 - **EXTRACTION is the core loop, and a night's pads are a QUEUE.** The
   extraction point is an abandoned CARGO PLATFORM: a rusted iron skid open at
-  the front, still half loaded with crates nobody came back for, with four dead
-  lift drones parked at its corners on the ropes they were rigged to. A console
-  stands in front of it and a torch — the same torch the exit corridor wears —
-  burns beside that console from the moment the map is built, because a
-  landmark you can only see once you have found it is not a landmark. The
-  platform's own tiles are SOLID: it is cargo space, and the party may not get
-  on it.
+  the front, still half loaded with crates nobody came back for, with four
+  corner lamps. A console stands in front of it and a torch — the same torch
+  the exit corridor wears — burns beside that console from the moment the map
+  is built, because a landmark you can only see once you have found it is not
+  a landmark. The platform's own tiles are SOLID: it is cargo space, and the
+  party may not get on it. **THE DRONES ARE NOT PART OF THIS STRUCTURE.**
+  Nothing is parked at the corners; the pad is a loading dock, and four
+  aircraft come in from one treeline when somebody calls for a pickup.
   - The module is still called `rift.py` and the wire still says `rifts`. That
     is history, not a second mechanic: the extraction point used to be a tear
     in the world with stones around it, and renaming twenty client files buys
@@ -141,32 +142,35 @@ subtree.
     Each pad carries its OWN quota (`rift.pad_need`, the night's bill divided
     between them) and its own `Carregue a plataforma` row (catalog gold from
     the pocket — guns stay on the belt — the HUD draws the coin badge).
-  - **THE DRONES ARE THE METER.** Pressing the console powers the deck and
-    wakes ONE drone: it spools up, climbs until its rope comes straight, and
-    holds there turning. The quota is a FLOOR, not a ceiling — E on a paid pad
-    keeps loading while the pocket has anything, and every overfeed tier wakes
-    ANOTHER drone (`rift.awake` is `1 + level`, capped at four). So how much
-    has gone into a platform is legible from across the clearing without a
-    number, and the wake order runs on the diagonal so a rig on two drones is
-    on opposite corners and hangs level. The console goes GOLD the moment the
-    quota lands and throws a rainbow band (`aura.png`) until somebody sends it.
-  - **E on a paid pad with an empty pocket LAUNCHES it**, and the launch is
-    three beats (`LIFT_STRAIN` / `LIFT_BREAK` / `LIFT_CLIMB`). The rotors go to
-    maximum and the skid rattles in its own hole without moving, because the
-    beat that says HEAVY is the one where nothing happens. Then the ground lets
-    go: a dirt burst, a camera shove, the deck's tiles are patched back to
-    floor, and the hole the platform was sitting in is uncovered as a ground
-    decal (`imprint.png`) the party watches arrive. Then it flies — up and away
-    along a heading the map rolled at placement, accelerating, shrinking and
-    fading, with the drones nobody woke dragged along underneath on their own
-    ropes. Everything paid past the quota comes back as ONE condensed core
-    (`rift_shard`), dropped in the middle of that imprint, with value, weight
-    and drawn SIZE proportional to the overpayment. That is what overfeeding
-    buys: four slots of loot become one you carry to the next console, at a
-    weight that costs real walk speed. On the LAST pad of the night there is no
-    next console, so no core is paid and the game stops offering to keep
-    loading at all.
-  - Launching the LAST pad carves a new exit on a random edge, kills every
+  - **THE LAMPS ARE THE STATE.** Pressing the console powers the deck and the
+    four corner lamps come up GREEN: found, running, safe to load, and nothing
+    out there has heard anything. The quota is a FLOOR, not a ceiling — E on a
+    paid pad keeps loading while the pocket has anything. The console goes
+    GOLD the moment the quota lands and throws a rainbow band (`aura.png`)
+    until somebody calls the pickup. Green means loading. Red means the
+    aircraft are coming. There are no overfeed tiers and the drones are not a
+    meter.
+  - **E on a paid pad with an empty pocket CALLS THE PICKUP**, and that is the
+    most expensive press in the game. The lamps go RED and start sweeping as
+    sirens. `Room._siren` throws a map-wide noise every `SIREN_PULSE`, and
+    `hunt_all` puts every creature on the map on hunt for the whole thirteen
+    seconds that follow — the party cannot leave and cannot take it back.
+    Sirens alone first (`LIFT_ALARM`); then four drones come in as a GROUP
+    from `rift.approach`, stagger off the treeline, split onto the four
+    diagonals, and each pays a line down to its eye. The lift waits until the
+    LAST rope is tied. Then three beats (`LIFT_STRAIN` / `LIFT_BREAK` /
+    `LIFT_CLIMB`): rotors to maximum with the skid rattling in its own hole
+    and not moving, because the beat that says HEAVY is the one where nothing
+    happens; the ground lets go (dirt burst, camera shove, deck tiles patched
+    back to floor, `imprint.png` uncovered); then up and away along a heading
+    the map rolled at placement, accelerating, shrinking and fading. Everything
+    paid past the quota comes back as ONE condensed core (`rift_shard`),
+    dropped in the middle of that imprint, with value, weight and drawn SIZE
+    proportional to the overpayment. That is what overfeeding buys: four slots
+    of loot become one you carry to the next console, at a weight that costs
+    real walk speed. On the LAST pad of the night there is no next console, so
+    no core is paid and the game stops offering to keep loading at all.
+  - Calling the LAST pad carves a new exit on a random edge, kills every
     lantern, puts the whole pack on hunt (`Encontre a saída`, risk), and
     SWEEPS EVERY REMAINING DROP OFF THE MAP. Extraction is what loot was for;
     with no console left to load, a bottle in the grass on the way out is only
@@ -183,7 +187,8 @@ subtree.
   **STORE**, and the day increments on the way out of THAT.
   Extraction pads are on the
   MINIMAP: dormant ones once their ground has been explored, awake ones
-  always, and gold once their quota is paid. The world is already laid out for the
+  always, gold once their quota is paid, and RED and breathing on the siren's
+  own beat once the pickup has been called. The world is already laid out for the
   walk — `server/app/scenery.py` returns the ROUTE its scenes are strung
   along (outward from the mouth ending at the landmark), `SceneLight`/
   `BEACON` is the channel a beacon arrives on, and the boot prints

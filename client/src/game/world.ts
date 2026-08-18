@@ -124,7 +124,7 @@ export interface Rift {
   /** Catalog value put into THIS pad, and the quota it asked for. */
   fed: number;
   need: number;
-  /** Quota paid, crew holding station, still on the ground: E launches it. */
+  /** Quota paid and the pickup not yet called: E on an empty bag calls it. */
   ready: boolean;
 }
 

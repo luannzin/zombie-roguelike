@@ -2743,13 +2743,13 @@ export class Game {
         empty: false,
       };
     }
-    // A pad that is already collapsing takes no more presses. `closeAt` is the
+    // A pad that is already calling takes no more presses. `closeAt` is the
     // server's word for that, and it is what stops a second E from being
-    // offered on a rift that is in the middle of imploding.
+    // offered on a pad whose aircraft are already in the air.
     if (rift.state !== 'open' || rift.closeAt !== null) return null;
     // Same split `Room.activate_rift` makes, off the same facts: whether the
-    // quota is paid, whether the crew is up, whether another console is still
-    // waiting, and whether the pocket has anything. Saturating is only offered
+    // quota is paid, whether another console is still waiting, and whether the
+    // pocket has anything. Saturating is only offered
     // while there is a pad left to carry the core to — on the last pad the
     // overpayment is not paid back, so the game must not invite it.
     //
@@ -2983,8 +2983,8 @@ export class Game {
     if (!world || world.rifts.length === 0) return;
     const befores = world.rifts.map((row) => row.elapsed);
     // Unconditionally, and BEFORE the state guard: the clock keeps running
-    // once a platform is awake because that is what phases every rotor on it.
-    // Stop it here and four machines freeze on frame 0 forever.
+    // once a platform is awake because that is what flies the inbound aircraft
+    // and phases the siren. Stop it here and a pickup freezes mid-crossing.
     world.stepRift(dt);
     if (!this.config) return;
     const timing = this.config.rift ?? null;

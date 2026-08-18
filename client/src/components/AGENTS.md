@@ -70,11 +70,14 @@ and nowhere near the frame loop.
   or move a part into `start` / `end`, which are `shrink-0`. `InteractPrompt` is ready at the fire; `LootPrompt` is a
   nearby drop; `CratePrompt` is smash ("E para destruir"); `RiftPrompt` is
   a pad, and it has FIVE things to say because the one key has four different
-  jobs: "abrir" while dormant, "outra fenda está aberta" while another pad is
-  awake, "alimentar a fenda" under the quota, "saturar a fenda · nível N" past
-  it, and "fechar a fenda" once the pocket is empty. All but the first carry
-  the coin badge and the pad's own `have/need` — which is allowed to read past
-  `need`, because the overshoot is the size of the core coming out the far end.
+  jobs: "ligar a plataforma" while dormant, "outra plataforma está ligada"
+  while another pad is awake, "carregar a plataforma" under the quota,
+  "sobrecarregar a plataforma" past it, and "chamar a extração · o barulho
+  atrai tudo" once the pocket is empty. THAT LAST ONE IS THE DANGER TONE: it
+  is the most expensive press in the game and the line has to say so before it
+  happens. All but the first two carry the coin badge and the pad's own
+  `have/need` — which is allowed to read past `need`, because the overshoot is
+  the size of the core coming out the far end.
   Empty-bag refusal at a hungry pad is in the danger tone.
   A full bag keeps the pin and says "Inventário Cheio" in
   the danger tone — hiding it would look like the drop vanished. New

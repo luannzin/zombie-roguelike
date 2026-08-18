@@ -24,7 +24,7 @@ game's scale.
 | `weapons.py` | weapon catalog (glock/deagle/famas/ak47/awp + the knife), hotbar, per-shot stats, the melee combo |
 | `crates.py` | breakable boxes/barrels: extract from scenery, smash, drop roll |
 | `corpses.py` | dead enemies left on the floor: persist until the map swaps |
-| `rift.py` | extraction pads: day-scaled count, plot, the cargo platform and its four lift drones, per-pad quota, overfeed tiers, hand-launched liftoff |
+| `rift.py` | extraction pads: day-scaled count, plot, the cargo platform and its corner lamps, inbound pickup, per-pad quota, overfeed, hand-called launch, siren / `hunt_all` |
 | `entrance.py` | forest edge VOID corridor, emerge formation, staggered seal (`seal_to`), `bounds` for a map with two corridors, extraction `open_exit` (flared at the border) |
 | `quests.py` | run objectives: progress, done, optional risk; the HUD mirrors this list |
 | `inventory.py` | the pocket: slots, stacking, weight, `spend_toward` / `spend_all` for the extraction platform, per-slot value/weight overrides |
@@ -163,28 +163,30 @@ game's scale.
   home. Do not auto-remove a row on complete — ticking `need/need` is the
   check. Camp has none.
 - **The extraction point is a CARGO PLATFORM, and `rift.py` is its historical
-  name.** An abandoned iron skid with four dead lift drones parked at its
-  corners on ropes, a console in front of it, and a torch beside that console
-  burning all night. Waking it starts one drone; each overfeed tier starts
-  another (`Rift.awake` is `1 + level`, capped at four), so `Rift.woke` is a
-  list of WAKE TIMES rather than a count — the client animates each machine off
-  its own entry, and two drones woken by one press are held apart by
-  `DRONE_LAG` so they do not spool in lockstep. `_stamp` makes the deck's tiles
-  `LOW`: the party may not get on the platform, but a five-by-two block of
-  sight-blocker in the one clearing they fight in would be worse than the thing
-  it prevents.
-- **One pad at a time, and the PLAYER launches it.** `Room._awake_rift` is the
-  gate: a dormant console refuses while another platform is charging or open.
-  `activate_rift` is a four-way switch on the pad's state plus what is in the
-  pocket — wake it, load toward the quota, keep loading past it, or launch it
-  with an empty bag. The bag is what disambiguates the last two on purpose:
-  overfeeding is only a real choice if it is repeatable, and a press that
-  launched the pad the instant the quota landed would make the tiers
-  unreachable. `Rift.begin_collapse` banks the overpayment and
-  `Room._drop_excess` pays it out on the tick the pad reaches SPENT, IN THE
-  MIDDLE OF THE IMPRINT — on the ground the skid was sitting on, because the
-  core is the thing that did not fit aboard, not a bag somebody put down near
-  the console.
+  name.** An abandoned iron skid with four corner lamps, a console in front of
+  it, and a torch beside that console burning all night. THE DRONES ARE NOT
+  PART OF THIS STRUCTURE and the server ships no position for them: they
+  arrive from off-map along `approach` when the pad calls, take a corner each
+  in the DIAGONAL order the art uses, and are gone with the platform. Waking
+  the pad powers the deck and the lamps go GREEN. Calling the pickup turns
+  them RED, starts a siren, and `Room._siren` plus `hunt_all` put every
+  creature on the map walking toward the clearing for the whole thirteen
+  seconds of the sequence (`LIFT_ALARM` / inbound / drop / strain / break /
+  climb). `_stamp` makes the deck's tiles `LOW`: the party may not get on the
+  platform, but a five-by-two block of sight-blocker in the one clearing they
+  fight in would be worse than the thing it prevents.
+- **One pad at a time, and the PLAYER calls the pickup.** `Room._awake_rift`
+  is the gate: a dormant console refuses while another platform is charging or
+  open. `activate_rift` is a four-way switch on the pad's state plus what is
+  in the pocket — wake it, load toward the quota, keep loading past it, or
+  call the pickup with an empty bag. The bag is what disambiguates the last
+  two on purpose: overfeeding is only a real choice if it is repeatable, and a
+  press that called the aircraft the instant the quota landed would make
+  keeping the bag going unreachable. `Rift.begin_collapse` banks the
+  overpayment and `Room._drop_excess` pays it out on the tick the pad reaches
+  SPENT, IN THE MIDDLE OF THE IMPRINT — on the ground the skid was sitting on,
+  because the core is the thing that did not fit aboard, not a bag somebody
+  put down near the console.
 - **The deck's tiles are handed back on the tick the skid breaks ground.**
   `Room._free_deck` fires off `Rift.lifted` (`close_at + BREAK_AT`), patches
   those tiles to `FLOOR` on the wire and rebuilds the navigator. It is a

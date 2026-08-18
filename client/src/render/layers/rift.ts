@@ -467,7 +467,7 @@ function inbound(
 }
 
 export interface RiftStanding {
-  sheet: 'console' | 'torch' | 'platform' | 'drone';
+  sheet: 'console' | 'torch' | 'platform';
   x: number;
   y: number;
   shape: number;

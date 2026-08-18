@@ -4,8 +4,8 @@
 Everything else in `scenery/` is something people left behind. This is the one
 object on the map that answers back, and what it is is a CARGO SKID somebody
 abandoned in the woods: a welded iron box open at the front, still half full of
-crates nobody came back for, with four dead lift drones parked at its corners
-on the ropes they were rigged to.
+crates nobody came back for, with four corner posts and lamps. The aircraft
+are not on it — they come when the pad calls them.
 
 Output (assets/processed/platform/):
     platform.png  3 frames,  80x64  PROP  — the skid: cold, green standby, red

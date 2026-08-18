@@ -551,9 +551,9 @@ def client_config() -> dict:
         "storeBuyTiles": STORE_BUY_TILES,
         "storeLiftTiles": STORE_LIFT_TILES,
         # The extraction platform's clock, in seconds. ONE clock: the client
-        # animates the rig off these numbers and the server ends the sequence
-        # on them, so the drone that is turning on screen is the drone the
-        # server thinks woke. See server/app/rift.py.
+        # flies the whole pickup off these numbers plus the one `closeAt` on
+        # the wire, and the server ends the sequence on them. See
+        # server/app/rift.py.
         "rift": {
             "consoleLag": rift.CONSOLE_LAG,
             "openAt": rift.OPEN_AT,

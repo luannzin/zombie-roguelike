@@ -16,14 +16,14 @@ imported by `app/` and never run at request time.
 | `make_scenery.py` | generates final pixels | `assets/processed/scenery/` (cabin, tent, fence, sign, logs, crate, firepit, blood, tracks, clothes, debris) |
 | `make_vfx.py` | generates final pixels | `assets/processed/vfx/` (summon, kindle, aura, wind, death) |
 | `make_rift.py` | generates final pixels | `assets/processed/rift/` (the CONSOLE and the threshold kit: torch, torchfire, egress paving, the paid console's aura — plus the retired anomaly sheets, still generated and no longer drawn: scar, pillar, charge, crown, emerge, rift ×4 tiers, collapse ×4 tiers, residue, corrupt) |
-| `make_platform.py` | generates final pixels | `assets/processed/platform/` (the extraction platform: the cargo skid ×2 states, its lift drone ×2 states, rotor and strobe loops, the imprint it leaves, rotor downwash, the ground-break burst) |
+| `make_platform.py` | generates final pixels | `assets/processed/platform/` (the extraction platform: the cargo skid ×3 states cold/standby/alarm, a lift drone ×2 postures hover/cruise, rotor and strobe loops, standby and siren lamp glare, the imprint it leaves, rotor downwash, the ground-break burst) |
 | `make_gore.py` | generates final pixels | `assets/processed/gore/` (6 wound decals worn by a hit body) |
 | `make_loot.py` | generates final pixels | `assets/processed/loot/` (one 16x16 frame per item, including gun icons) |
 | `make_guns.py` | generates final pixels | `assets/processed/guns/` (held side-view, one 18x8 frame per weapon, plus its carry pose) |
 | `make_merchant.py` | generates final pixels | `assets/processed/merchant/` (the shopkeeper: `idle` loop plus three one-shot flourishes — `coat`, `beckon`, `coin` — and the manifest's `randomClips` / `randomGap` that drive them) |
 | `make_store.py` | generates final pixels | `assets/processed/store/` (the merchant's own kit: table ×4 with `topY`, torch ×2 with `flameY`, rug, torchfire, buy glow) |
 | `make_hud_icons.py` | generates final pixels | `assets/processed/hud/` (battery, backpack, coin, arrow) |
-| `make_audio.py` | generates final samples | `assets/processed/audio/` (32 sounds, 59 wavs + manifest + loudness.json) |
+| `make_audio.py` | generates final samples | `assets/processed/audio/` (35 sounds, 66 wavs + manifest + loudness.json) |
 
 ## Local Contracts
 
@@ -176,12 +176,18 @@ imported by `app/` and never run at request time.
     its material. Move the CSS variable and this ramp moves with it.
 - **`make_platform.py` is the EXTRACTION POINT, and like `make_rift.py` before
   it, it writes into all three shapes at once** — because the thing it draws is
-  made of three kinds of object. `platform` and `drone` are bottom-anchored
-  PROPS in the depth sort; `imprint` is a flat DECAL split into a `multiply`
-  half and a `lighter` half; `rotor`, `strobe`, `downwash` and `burst` are
-  greyscale-vocabulary VFX resolved out of an intensity field and drawn
-  additively over the darkness. That split is the design, not an accident of
-  filing.
+  made of three kinds of object. `platform` is a bottom-anchored PROP in the
+  depth sort; `drone` is a PROP drawn in the AIR pass (the aircraft never
+  touch the floor); `imprint` is a flat DECAL split into a `multiply` half and
+  a `lighter` half; `rotor`, `strobe`, `standby`, `siren`, `downwash` and
+  `burst` are VFX resolved out of an intensity field and drawn additively over
+  the darkness. That split is the design, not an accident of filing.
+  - **THE DRONES DO NOT LIVE ON THE SKID.** They used to be parked at its
+    corners, which made the pad look like a complete machine waiting to be
+    switched on. It is a LOADING DOCK: the aircraft come when it calls them.
+    This file draws a drone in the two postures a flight has — pitched forward
+    crossing the clearing, level once it is holding station over its corner —
+    and nothing that implies one was ever standing on the ground here.
   - **`IRON` is imported from `make_rift.py`, not re-typed.** The console you
     press is bolted beside the deck it operates, and one game has one steel in
     it. The rest of the palette is local because it is local: `RUST` runs
@@ -189,34 +195,40 @@ imported by `app/` and never run at request time.
     colour on the prop and earns it (black-and-yellow chevrons are how a 16px
     world says "machinery, stand clear"), and `STATUS` is green because every
     other light in this game is fire or the beacon's mint and a machine
-    reporting that it is running must be neither.
-  - The prop frames are STATES: `platform` is cold / powered, `drone` is dead /
-    live. The drone's two frames differ by POSTURE rather than by detail —
-    parked it has settled and tipped with its blades hanging, live it sits
-    level with its lights on and **no blades drawn at all**, because the blades
-    are `rotor`'s job and a drone whose props are painted on never spins.
+    reporting that it is running must be neither. `RED_GLARE` is the alarm: the
+    same red the client washes the clearing with, so the baked lamp and the
+    siren glow are one light.
+  - The prop frames are STATES: `platform` is cold / green standby / red
+    alarm (only the corner lamps differ), `drone` is hover / cruise. A drone
+    whose props are painted on never spins — the blades are `rotor`'s job.
   - **A rotor is a SMEAR, not a shape.** Drawing blades and stepping them round
     strobes horribly at any frame rate a sheet can afford, so what is drawn is
     the disc the blades sweep with one bright arc running round it. Diagonal
     pairs counter-rotate like a real quad, so the four are never in lockstep.
+  - **`standby` and `siren` are the corner lamps' glare**, not the bulbs. The
+    bulbs are baked into the platform sheet; these sheets are additive light
+    on top. Standby breathes green. Siren is a rotating bar of red with a
+    hard leading edge, 12 frames at 16 fps — `sfx_siren` is one turn of that
+    loop.
   - `imprint` is the one sheet here the player WATCHES ARRIVE: it is uncovered
     on the frame the skid breaks ground, so it has to land as an answer to
     "what was under there" at that moment. A soft RECTANGLE, never an ellipse —
     the thing that stood here had corners, and rounding them off loses the clue
-    that says a machine was parked here rather than that something burned.
+    that says a machine was sitting here rather than that something burned.
   - `burst` is a one-shot and `build` enforces the rule every one-shot follows:
     the first and last frames must be empty. A tail with alpha in it leaves
     dust hanging over a bare imprint forever.
   - **`layout` ships the arrangement with the art**, in TILE offsets in the
     same coordinate language as `scenery.Piece` — `server/app/rift.py`'s
-    `_PLATFORM` / `_DECK` / `_DRONES` / `_CONSOLE` / `_TORCH` mirror it exactly
-    and if one moves the other has to. Two entries are in PIXELS and are the
-    exception on purpose: `eyes` (where on the sprite each rope is tied) and
-    `rope.length` (how much line each drone was rigged with). The client draws
-    the rigging from those two numbers, because a rope between a fixed eye and
-    a drone that climbs, strains and then flies off cannot be a sprite — and
-    `rope.length` alone is what sets the hover height, since a drone climbs
-    until its line comes straight and stops there.
+    `_PLATFORM` / `_DECK` / `_CONSOLE` / `_TORCH` mirror it exactly and if one
+    moves the other has to. There is no parked-drone list. Three entries are
+    in PIXELS and are the exception on purpose: `eyes` (where on the sprite
+    each rope ends), `lamps` (where the corner glare sits), and `rope.length`
+    (how much line a drone pays out). The client flies the rigging from those
+    numbers, because a rope between a fixed eye and an aircraft that arrives,
+    ties on, strains and then leaves cannot be a sprite — and `rope.length`
+    alone is what sets the hover height, since an arriving drone stations
+    itself one rope above its eye.
 - Shared helpers (`pick`, `hash01`, `clamp01`, `pack`, `rgb`, the ramps) live in
   `make_textures.py` and are imported by the other generators, so every sheet
   keeps one shading vocabulary. Do not copy them.
@@ -225,9 +237,9 @@ imported by `app/` and never run at request time.
   An effect is not painted shape by shape, it is SUMMED into a float field and
   resolved once — so overlapping shapes add up and the crossing of two tongues
   is the hot core, which is impossible to fake by drawing in order.
-  `make_vfx.py` and `make_rift.py` both build their sheets out of these, which
-  is what keeps the extraction rift lit in the same steps as the summon column
-  instead of becoming a second kind of glow.
+  `make_vfx.py`, `make_rift.py` and `make_platform.py` all build their sheets
+  out of these, which is what keeps a rotor disc, a siren sweep and the
+  summon column lit in the same steps instead of becoming three kinds of glow.
 - Shared drawing helpers live in `make_textures.py` and are imported, not
   copied, so all generated art keeps one shading vocabulary.
 - **`make_audio.py` is the same idea for sound.** The helpers above its RECIPES
@@ -247,8 +259,9 @@ imported by `app/` and never run at request time.
   - **Timelines align to the sheet they play with.** `sfx_kindle` and
   `sfx_summon` put their impact on the frame `make_vfx.py` flashes, and
   `sfx_crate_break` fits inside the crate smash strip. `sfx_zombie_death`
-  lands on `DEATH_IMPACT`. Changing a sheet's `frames / fps` means changing
-  its sound.
+  lands on `DEATH_IMPACT`. `sfx_siren` is one turn of `siren.png` (12 frames
+  at 16 fps = 0.75s) and plays once per sweep for the whole pickup. Changing
+  a sheet's `frames / fps` means changing its sound.
   - **The mix is MEASURED, not guessed.** `CATALOG` authors a `level_db` on one
     ladder; the generator renders the sound, measures its loudness with a
     BS.1770 K-weighted meter (`loudness_lufs`) and computes the manifest `gain`

@@ -21,9 +21,9 @@ game's scale.
 | `pathing.py` | BFS flow field, one per player |
 | `coins.py` | DARK GOLD, the player's purple coin: drop roll, burst, magnet, collection |
 | `loot.py` | world collectables: catalog, scene-context scatter, E-to-collect |
-| `weapons.py` | weapon catalog (glock/deagle/famas/ak47/awp + the knife), hotbar, per-shot stats, the melee combo |
+| `weapons.py` | weapon catalog (11 guns + the knife) DERIVED from CS2's stat block against the zombie's health, hotbar, per-shot stats, the melee combo, and the ammunition SIZING `ammo.py` imports |
 | `crates.py` | INTERACTIVE OBJECTS: the type table (barrels, boxes, chests, stashes, vehicles, altars), their verbs, drop tables, ambush odds and hit boxes; extract from scenery, use, roll |
-| `ammo.py` | calibres, per-player reserves, boxes gated on what the party carries, the merchant's starting load |
+| `ammo.py` | the reserve MECHANICS: per-player rounds, boxes gated on what the party carries, scatter, collection. How big a reserve is belongs to `weapons.py` — it is a question about the guns that eat it |
 | `corpses.py` | dead enemies left on the floor: persist until the map swaps |
 | `rift.py` | extraction pads: day-scaled count, plot, the cargo platform and its corner lamps, inbound pickup, per-pad quota, the pour's timing, overfeed, hand-called launch, siren / `hunt_all` |
 | `entrance.py` | forest edge VOID corridor, emerge formation, staggered seal (`seal_to`), `bounds` for a map with two corridors, extraction `open_exit` (flared at the border) |

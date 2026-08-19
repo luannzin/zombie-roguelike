@@ -1189,6 +1189,80 @@ def sfx_shot(rng: random.Random, variant: int) -> tuple[Buf, int]:
     return normalize(pad(wet, n), 0.97), rate
 
 
+def sfx_shotgun(rng: random.Random, variant: int) -> tuple[Buf, int]:
+    """A shell. The same five layers as `sfx_shot`, moved down and given room.
+
+    PITCH ALONE DOES NOT MAKE A SHOTGUN. The catalog ships one gunshot and
+    eleven weapons, and `WeaponDef.shot_pitch` is what keeps a P90 and a
+    Deagle from being the same event — but a shell played at 0.72x is a rifle
+    in slow motion, because slowing a sample stretches the CRACK along with
+    everything else and the crack is the part that says "small". What a
+    twelve-gauge actually is, next to a rifle round, is:
+
+      * far more mass under 150 Hz, and it arrives a beat LATER than the
+        transient rather than with it — you hear the bang and then feel it;
+      * a much longer, darker tail, because a shell dumps its energy into the
+        air rather than down a rifled barrel;
+      * almost no 2-5 kHz definition. A shotgun is not a crack, it is a WHUMP.
+
+    Two variants, and the caller does not force one: unlike the knife, whose
+    variant IS the combo step, both of these are the same weapon and picking
+    between them is only there to stop a pumped magazine sounding like a
+    loop.
+    """
+    rate = SFX_RATE
+    n = dur(1.1, rate)
+
+    # The transient, and it is SOFTER than a rifle's. What makes a shell sound
+    # close is the low end arriving, not the click.
+    crack_n = dur(0.012, rate)
+    crack = biquad(white(crack_n, rng), rate, "highpass", 1800, 0.7)
+    crack = mul(crack, env_perc(crack_n, rate, 0.0004, 0.011, 2.0))
+
+    # The report, swept lower and slower than the rifle's 1150 -> 450.
+    body_n = dur(0.20, rate)
+    body = biquad(white(body_n, rng), rate, "bandpass", lambda t: 780 - 470 * t**0.5, 0.5)
+    body = mul(body, env_perc(body_n, rate, 0.0008, 0.15, 2.1))
+
+    # 120-300 Hz, which is where the weight of a shell lives.
+    low_n = dur(0.26, rate)
+    low = biquad(white(low_n, rng), rate, "bandpass", 190, 0.6)
+    low = mul(low, env_perc(low_n, rate, 0.001, 0.20, 2.0))
+
+    # The sub, DELAYED by a few milliseconds so the mass lands behind the
+    # transient instead of on it. That gap is most of the difference between
+    # a big gun and a loud one.
+    boom_n = dur(0.34, rate)
+    boom = biquad(white(boom_n, rng), rate, "lowpass", lambda t: 150 - 80 * t, 0.8)
+    boom = mul(boom, env_perc(boom_n, rate, 0.004, 0.26, 2.0))
+
+    # Chest, an octave under the rifle's.
+    punch_n = dur(0.22, rate)
+    punch = mul(
+        tone(punch_n, lambda t: 108.0 - 72.0 * t**0.45, rate, "sine"),
+        env_perc(punch_n, rate, 0.0015, 0.17, 2.2),
+    )
+
+    dry = mix(
+        pad(gain(crack, 0.34), n),
+        pad(gain(body, 1.0), n),
+        pad(gain(low, 1.05), n),
+        pad(gain(boom, 0.42), n),
+        pad(gain(punch, 0.34), n),
+    )
+    dry = softclip(dry, 2.0)
+
+    # Longer and darker than a rifle's tail: more energy, less of it up top.
+    wet = reflections(
+        dry,
+        rate,
+        [(0.017, 0.30), (0.039, 0.25), (0.071, 0.19), (0.128, 0.13), (0.201, 0.09)],
+    )
+    wet = mix(wet, gain(reverb(pad(dry, len(wet)), rate, room=0.86, damp=0.62, wet=1.0), 0.26))
+    wet = biquad(wet, rate, "lowpass", 5200, 0.7)
+    return normalize(pad(wet, n), 0.97), rate
+
+
 def sfx_hurt(rng: random.Random, variant: int) -> tuple[Buf, int]:
     """Taking a hit. An impact and the breath it knocks out."""
     rate = SFX_RATE
@@ -2069,6 +2143,10 @@ CATALOG: dict[str, tuple[object, int, float, str, bool]] = {
     "void": (sfx_void, 1, -14.0, "ambient", False),
     # guns and zombies — the top of the ladder
     "shot": (sfx_shot, 3, 0.0, "sfx", False),
+    # The shotgun gets its own recipe rather than a playback rate. See the
+    # note on `sfx_shotgun`: the ONE thing pitch cannot fake is a transient
+    # that stays short while everything under it gets long.
+    "shotgun": (sfx_shotgun, 2, 0.0, "sfx", False),
     "hurt": (sfx_hurt, 3, -3.0, "sfx", False),
     "zombie-idle": (sfx_zombie_idle, 3, -9.0, "sfx", False),
     "zombie-alert": (sfx_zombie_alert, 2, -5.0, "sfx", False),

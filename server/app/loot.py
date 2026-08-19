@@ -210,11 +210,14 @@ _AMMO_RARITY: dict[str, str] = {
 
 
 def _arms_rows() -> tuple[ItemDef, ...]:
-    """Every gun row and every ammunition-box row, in catalog order.
+    """Every ammunition-box row and every gun row.
 
-    AMMUNITION FIRST, then the guns, which is the order `tools/make_loot.py`
-    draws them in — the atlas frame index is this tuple's index and the two
-    have to walk together or every weapon on the ground is the wrong picture.
+    AMMUNITION FIRST, then the guns in catalog order. The order is for a
+    reader rather than for the renderer: `tools/make_loot.py` writes a
+    manifest keyed by ITEM KEY, so a sprite finds its row by name and the two
+    lists may drift apart without anything on the ground turning into the
+    wrong picture. What a missing entry there costs is a missing icon, not a
+    scrambled sheet.
     """
     rows: list[ItemDef] = []
     for calibre in weapons.AMMO_TYPES:

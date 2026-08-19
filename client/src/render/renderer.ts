@@ -80,6 +80,7 @@ import {
 } from './layers/store';
 import { loadTerrain } from './terrain';
 import { loadVfx, type VfxAtlas } from './vfx';
+import { loadWeaponVfx, type WeaponVfxAtlas } from './weapon-vfx';
 import type { SpriteBook } from './sprites';
 import type { DrawableEntity, RenderState } from './types';
 import { HIT_FLASH_LIFE } from '../game/entity-visuals';
@@ -122,6 +123,8 @@ export class Renderer {
   private lootAtlas: LootAtlas | null = null;
   private gunAtlas: GunAtlas | null = null;
   private vfx: VfxAtlas | null = null;
+  /** Muzzle fire, the shotgun cone, and impacts. See render/weapon-vfx.ts. */
+  private weaponVfx: WeaponVfxAtlas | null = null;
   private gore: GoreAtlas | null = null;
   private riftAtlas: RiftAtlas | null = null;
   private platformAtlas: PlatformAtlas | null = null;
@@ -149,6 +152,9 @@ export class Renderer {
     });
     void loadVfx().then((atlas) => {
       this.vfx = atlas;
+    });
+    void loadWeaponVfx().then((atlas) => {
+      this.weaponVfx = atlas;
     });
     void loadGore().then((atlas) => {
       this.gore = atlas;
@@ -481,7 +487,7 @@ export class Renderer {
       state.world.tileSize,
       state.time,
     );
-    drawCombatEffects(ctx, state.effects, state.config.tileSize);
+    drawCombatEffects(ctx, state.effects, state.config.tileSize, this.weaponVfx);
     this.darkness.drawLights(ctx, state.effects.lights);
     drawLootAuras(ctx, state.loot, state.time);
     drawLootMotes(ctx, state.loot, state.time, state.config.tileSize);

@@ -17,7 +17,8 @@ mutation, no React.
 | `sprites.ts` | sheet loading, `SpriteBook`, per-colour multiply tints |
 | `terrain.ts` | terrain atlas loading (4 grounds, blend stencils, props, flat decals, the animated campfire) |
 | `scenery.ts` | scenery atlas loading: standing props and flat decals of what people left |
-| `vfx.ts` | effect atlas loading: one-shot sheets (summon, kindle, wind, death) and the looping loot `aura` |
+| `vfx.ts` | effect atlas loading: one-shot sheets (summon, kindle, wind, death) and the looping loot `aura`. GREYSCALE, tinted per player |
+| `weapon-vfx.ts` | the fire at a barrel: muzzle, the shotgun's cone, impacts. ORIENTED (rotated onto the aim about `anchorX`) and un-tinted — fire is not anybody's colour |
 | `rift.ts` | threshold atlas: the console prop with its four STATES, the torch prop and its fire, the paid console's band, the exit's paving |
 | `platform.ts` | extraction atlas: the cargo skid (cold / green standby / red alarm) and lift drone (hover / cruise) props, rotor / strobe / standby / siren / downwash / burst effect sheets, the imprint decal, and the `layout` block the ropes and lamps are drawn from |
 | `layers/rift.ts` | extraction pads: the whole rig's timing (`riftPhase`) plus its four passes — floor, depth sort, the air, additive light — and the deck's LOAD, both the pile at rest and what is still falling into it |
@@ -231,6 +232,28 @@ mutation, no React.
   the direction so two consecutive slashes cross into an X. It is the only
   WHITE effect in the palette: every other fast-moving mark is tinted, so
   an uncoloured stroke can only mean one thing.
+- **AND THE SPRITE IS ON THAT PATH.** `EntityVisuals.startSwing` runs the
+  same easing off the same `arcDegrees`, so the held knife IS the leading
+  edge rather than a second animation happening nearby: it starts cocked
+  past the near lip, crosses, thrusts the grip out along the blade at the
+  middle of the sweep, and is drawn back to rest over a follow-through that
+  outlives the path. `SWING_TRAVEL_END` is shared between the two — if it
+  moves in one it moves in both. `gunSwing` on the drawable is SCREEN space
+  and is never mirrored for a left-facing body (`gunKick` is, because "the
+  muzzle rises" changes sign with the facing and "the blade is here" does
+  not); mirroring it would uncross the two slashes every time somebody aimed
+  left. A gun's pose is a SPRING and a blade's is a CLOCK, and the two never
+  run at once — which is the bug this replaced: the knife used to borrow the
+  recoil spring, tilt up by a fixed angle and fall back, so the steel bobbed
+  upward while its own slash swept sideways past it.
+- **One flash per TRIGGER PULL, whatever the ray count.** `spawnShot` takes a
+  LIST of rays: a pistol hands it one and a shell hands it six, and the only
+  things that differ are how many tracers and impacts come out and which
+  sheet burns at the barrel (`Flash.kind` — a shotgun throws a CONE). The
+  bang, the brass, the light and the damage number are per pull, so a shell
+  is one event rather than six pistols going off in a fan. The damage number
+  lands on the deepest ray that CONNECTED, so it sits on the body it came
+  off rather than out at the mouth of the cone.
 - Colours come from `theme/palette.ts` only. Never write a literal colour here.
 - Frames are bottom-anchored, so any frame height works with no extra code.
 - A prop sheet's frames are VARIANTS unless its manifest entry carries `fps`

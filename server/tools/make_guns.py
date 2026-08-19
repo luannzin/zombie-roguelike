@@ -75,6 +75,13 @@ SLIDE: Ramp = [rgb(c) for c in ("#121418", "#1c1f24", "#2a2e34", "#3a4048", "#5a
 TAN: Ramp = [rgb(c) for c in ("#2a2218", "#3d3224", "#5a4830", "#7a6240", "#a08458", "#c4a870")]
 GRIP: Ramp = [rgb(c) for c in ("#141416", "#1c1c20", "#2a2a30", "#3a3a42")]
 CHROME: Ramp = [rgb(c) for c in ("#2a2c30", "#4a5058", "#6a727c", "#8a949e", "#c0c8d0", "#e8eef4")]
+#: The can on a suppressed weapon. A step LIGHTER than the slide it bolts to,
+#: which is backwards from the real thing — a real suppressor is matte black
+#: on a black slide. Two dark greys touching at this size are one shape, and
+#: the shape is the entire reason a player would buy the USP-S over the Glock
+#: or the M4A1-S over the AK, so the art has to say it even where a photo
+#: would not.
+CAN: Ramp = [rgb(c) for c in ("#1e2126", "#2e343c", "#434b55", "#5a636e", "#727c88")]
 WOOD: Ramp = [rgb(c) for c in ("#1c1410", "#2a1c14", "#3d2818", "#5a3820", "#7a4c28", "#a06838")]
 OLIVE: Ramp = [rgb(c) for c in ("#1a1e14", "#262c1c", "#343c26", "#485230", "#5e6a3c", "#7a8650")]
 POLY: Ramp = [rgb(c) for c in ("#16181c", "#22262c", "#32383e", "#454c54", "#5c646e")]
@@ -145,15 +152,53 @@ def _rightmost(art: Art, ch: str, ox: int, oy: int) -> tuple[int, int]:
 # trigger-guard loop. At this size a 1px hole is filled by the outline and
 # reads as a circle on the heel. The guard is a squared step under the slide.
 GUNS: list[tuple[str, Palette, Art, str, str]] = [
+    # --- pistols --------------------------------------------------------------
     (
         "glock18",
-        {"s": SLIDE, "f": POLY, "g": GRIP, "m": SLIDE},
+        {"s": SLIDE, "f": TAN, "g": TAN, "m": SLIDE},
         [
             "....sssss",
             "....ssssm",
             "...ffsss.",
             "...gf....",
             "...gg....",
+        ],
+        "g",
+        "m",
+    ),
+    # THE CAN IS THE WHOLE SILHOUETTE. A suppressed pistol at this size is a
+    # pistol with a fat cylinder where the barrel should be, three rows tall
+    # against the slide's two — and it has to be legible from across a dark
+    # clearing, because the reason to own this instead of the Glock is that
+    # it is quiet and the player has to be able to see which one is in hand.
+    (
+        "usp_s",
+        {"s": SLIDE, "f": POLY, "g": GRIP, "c": CAN, "m": CAN},
+        [
+            "....sssss.ccc.",
+            "....sssssccccm",
+            "...ffsss..ccc.",
+            "...gf.........",
+            "...gg........."
+        ],
+        "g",
+        "m",
+    ),
+    # TWO GUNS, DRAWN AS TWO SILHOUETTES. There is no room at 16 px to draw a
+    # second pistol properly, and a single pistol with a wider slide would
+    # just read as a bigger pistol. What does read is a whole second outline
+    # slung BELOW AND BEHIND the first, in the darker material so the two do
+    # not merge into one body — the eye counts guns, not detail, and this
+    # frame has two of them.
+    (
+        "dual_berettas",
+        {"t": SLIDE, "s": CHROME, "f": GRIP, "g": GRIP, "m": CHROME},
+        [
+            "....sssss.",
+            "....ssssm.",
+            "...gfsss..",
+            "..ttttt...",
+            "..tttt....",
         ],
         "g",
         "m",
@@ -171,6 +216,60 @@ GUNS: list[tuple[str, Palette, Art, str, str]] = [
         "g",
         "m",
     ),
+    # --- submachine guns ------------------------------------------------------
+    # Short, boxy, and the only two frames on this sheet with a magazine
+    # hanging BELOW the grip rather than in front of it. Length is how this
+    # sheet says range, and an SMG has to sit visibly between the pistols and
+    # the rifles or the belt stops teaching anything.
+    (
+        "mp7",
+        {"r": STEEL, "b": POLY, "g": GRIP, "n": STEEL, "z": SLIDE, "m": STEEL},
+        [
+            "..rrrrr.....",
+            "bbbbbbbbnnnm",
+            "bb.gg..nn...",
+            "...gg.......",
+            "...zz.......",
+        ],
+        "g",
+        "m",
+    ),
+    # The P90 is the one real silhouette in the SMG class: a humped shell with
+    # the magazine lying flat ALONG THE TOP and almost no barrel past it. Drawn
+    # as a solid slab with a rail hump, because every detail smaller than that
+    # is filled in by the outline pass anyway.
+    (
+        "p90",
+        {"h": SLIDE, "b": POLY, "g": GRIP, "n": STEEL, "m": STEEL},
+        [
+            "...hhhhhh...",
+            "bbbbbbbbbbnm",
+            "bb.gg.bbbb..",
+            "bb.gg.bbbb..",
+            "..bbbbbb....",
+        ],
+        "g",
+        "m",
+    ),
+    # --- shotgun --------------------------------------------------------------
+    # Long, and the tube magazine under the barrel is the tell. It is the only
+    # frame here with two parallel bars running most of its length, which is
+    # exactly what a pump gun looks like from the side and nothing else on the
+    # belt does.
+    (
+        "xm1014",
+        {"p": POLY, "b": SLIDE, "n": STEEL, "t": STEEL, "r": STEEL, "g": POLY, "m": STEEL},
+        [
+            "......rr.......",
+            "ppppppbbbnnnnnm",
+            "pg..pbbbtttttt.",
+            ".pppp..........",
+            "...pp..........",
+        ],
+        "g",
+        "m",
+    ),
+    # --- rifles ---------------------------------------------------------------
     (
         "famas",
         {"b": POLY, "h": STEEL, "n": SLIDE, "g": GRIP, "m": STEEL},
@@ -197,6 +296,23 @@ GUNS: list[tuple[str, Palette, Art, str, str]] = [
         "g",
         "m",
     ),
+    # The AK's twin with a carry handle and a CAN, and the can is the reason
+    # it costs more. Same three-row cylinder the USP-S wears, so the two
+    # suppressed weapons in the catalog say it the same way.
+    (
+        "m4a1s",
+        {"p": POLY, "h": STEEL, "b": SLIDE, "n": SLIDE, "c": CAN, "g": GRIP, "m": CAN},
+        [
+            "....hhhh...ccc.",
+            "ppppbbbbbbccccm",
+            "pg..pbbnnb.ccc.",
+            ".pppp.nn.......",
+            "......nn.......",
+        ],
+        "g",
+        "m",
+    ),
+    # --- sniper ---------------------------------------------------------------
     (
         "awp",
         {"o": OLIVE, "s": SLIDE, "k": STEEL, "c": SCOPE, "g": OLIVE, "m": STEEL},
@@ -210,6 +326,7 @@ GUNS: list[tuple[str, Palette, Art, str, str]] = [
         "g",
         "m",
     ),
+    # --- the blade ------------------------------------------------------------
     # The knife, and it is the one frame on this sheet that is not a gun.
     # It is drawn STRAIGHT — handle, crossguard and blade on one line — and
     # that is the whole silhouette decision. Every gun here hangs a grip
@@ -236,7 +353,6 @@ GUNS: list[tuple[str, Palette, Art, str, str]] = [
         "m",
     ),
 ]
-
 
 #: How far in front of the body each weapon is carried, and how big it is
 #: drawn. Written as the exceptions rather than as extra columns on every

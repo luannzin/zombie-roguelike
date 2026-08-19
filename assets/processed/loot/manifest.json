@@ -2,7 +2,7 @@
   "tile": 16,
   "frameWidth": 16,
   "frameHeight": 16,
-  "frames": 50,
+  "frames": 58,
   "items": {
     "old_tools": {
       "frame": 0
@@ -133,26 +133,50 @@
     "ammo_awp": {
       "frame": 42
     },
-    "glock18": {
+    "ammo_smg": {
       "frame": 43
     },
-    "deagle": {
+    "ammo_shell": {
       "frame": 44
     },
-    "famas": {
+    "glock18": {
       "frame": 45
     },
-    "ak47": {
+    "deagle": {
       "frame": 46
     },
-    "awp": {
+    "famas": {
       "frame": 47
     },
-    "knife": {
+    "ak47": {
       "frame": 48
     },
-    "rift_shard": {
+    "awp": {
       "frame": 49
+    },
+    "usp_s": {
+      "frame": 50
+    },
+    "dual_berettas": {
+      "frame": 51
+    },
+    "mp7": {
+      "frame": 52
+    },
+    "p90": {
+      "frame": 53
+    },
+    "xm1014": {
+      "frame": 54
+    },
+    "m4a1s": {
+      "frame": 55
+    },
+    "knife": {
+      "frame": 56
+    },
+    "rift_shard": {
+      "frame": 57
     }
   }
 }

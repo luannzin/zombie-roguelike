@@ -2,7 +2,7 @@
   "tile": 16,
   "frameWidth": 18,
   "frameHeight": 8,
-  "frames": 6,
+  "frames": 12,
   "items": {
     "glock18": {
       "frame": 0,
@@ -13,8 +13,26 @@
       "hold": 3.0,
       "scale": 1.0
     },
-    "deagle": {
+    "usp_s": {
       "frame": 1,
+      "gripX": 4,
+      "gripY": 5,
+      "muzzleX": 14,
+      "muzzleY": 2,
+      "hold": 3.0,
+      "scale": 1.0
+    },
+    "dual_berettas": {
+      "frame": 2,
+      "gripX": 4,
+      "gripY": 3,
+      "muzzleX": 9,
+      "muzzleY": 2,
+      "hold": 3.0,
+      "scale": 1.0
+    },
+    "deagle": {
+      "frame": 3,
       "gripX": 5,
       "gripY": 5,
       "muzzleX": 11,
@@ -22,8 +40,35 @@
       "hold": 3.0,
       "scale": 1.0
     },
+    "mp7": {
+      "frame": 4,
+      "gripX": 4,
+      "gripY": 4,
+      "muzzleX": 12,
+      "muzzleY": 2,
+      "hold": 3.0,
+      "scale": 1.0
+    },
+    "p90": {
+      "frame": 5,
+      "gripX": 4,
+      "gripY": 4,
+      "muzzleX": 12,
+      "muzzleY": 2,
+      "hold": 3.0,
+      "scale": 1.0
+    },
+    "xm1014": {
+      "frame": 6,
+      "gripX": 2,
+      "gripY": 3,
+      "muzzleX": 15,
+      "muzzleY": 2,
+      "hold": 3.0,
+      "scale": 1.0
+    },
     "famas": {
-      "frame": 2,
+      "frame": 7,
       "gripX": 2,
       "gripY": 3,
       "muzzleX": 12,
@@ -32,7 +77,7 @@
       "scale": 1.0
     },
     "ak47": {
-      "frame": 3,
+      "frame": 8,
       "gripX": 2,
       "gripY": 3,
       "muzzleX": 12,
@@ -40,8 +85,17 @@
       "hold": 3.0,
       "scale": 1.0
     },
+    "m4a1s": {
+      "frame": 9,
+      "gripX": 2,
+      "gripY": 3,
+      "muzzleX": 15,
+      "muzzleY": 2,
+      "hold": 3.0,
+      "scale": 1.0
+    },
     "awp": {
-      "frame": 4,
+      "frame": 10,
       "gripX": 2,
       "gripY": 3,
       "muzzleX": 15,
@@ -50,7 +104,7 @@
       "scale": 1.0
     },
     "knife": {
-      "frame": 5,
+      "frame": 11,
       "gripX": 2,
       "gripY": 2,
       "muzzleX": 10,

@@ -18,6 +18,13 @@ import { hudFont } from '../../theme/fonts';
 import { palette } from '../../theme/palette';
 import type { Projection } from '../projection';
 import { effectFrame, type VfxSheet } from '../vfx';
+import {
+  drawOriented,
+  sheetLife,
+  weaponFrame,
+  type WeaponVfxAtlas,
+  type WeaponVfxSheet,
+} from '../weapon-vfx';
 
 /** World space, under entities. */
 export function drawDust(ctx: CanvasRenderingContext2D, effects: Effects): void {
@@ -34,11 +41,20 @@ export function drawDust(ctx: CanvasRenderingContext2D, effects: Effects): void 
   ctx.globalAlpha = 1;
 }
 
-/** World space, over entities. */
+/**
+ * World space, over entities.
+ *
+ * `weapons` is the oriented fire atlas (`render/weapon-vfx.ts`). It is
+ * optional and null-safe on purpose: assets load asynchronously and may not
+ * be built at all, and the game has to keep drawing shots either way — so
+ * every sprite path below has the canvas primitive it replaced sitting next
+ * to it as a fallback.
+ */
 export function drawCombatEffects(
   ctx: CanvasRenderingContext2D,
   effects: Effects,
   tileSize: number,
+  weapons: WeaponVfxAtlas | null = null,
 ): void {
   const fx = palette().effects;
 
@@ -70,8 +86,62 @@ export function drawCombatEffects(
     );
   }
 
+  drawMuzzles(ctx, effects, tileSize, fx, weapons);
+  drawBursts(ctx, effects, tileSize, weapons);
+  drawSwings(ctx, effects, tileSize, fx);
+  drawSlashes(ctx, effects, tileSize, fx);
+
+  for (const p of effects.particles) {
+    const fade = fadeOf(p);
+    ctx.globalAlpha = fade;
+    ctx.fillStyle = p.color;
+    const s = p.size * (0.55 + 0.45 * fade);
+    ctx.fillRect(p.x - s / 2, p.y - s / 2, s, s);
+  }
+
+  ctx.globalAlpha = 1;
+}
+
+/**
+ * Fire at the barrel — one per trigger pull.
+ *
+ * ADDITIVE, because it is a light rather than paint: the whole reason this
+ * layer runs after the darkness pass is that a muzzle flash should brighten
+ * the ground it is standing on instead of being dimmed by the night it is
+ * lighting up. `lighter` is also what lets the sheet's dark red outer step
+ * disappear against the forest and its white core blow out, which is the
+ * effect doing its own tone mapping.
+ *
+ * The ART owns the timing. Each sheet is played once from `age` and simply
+ * stops when its frames run out; the list entry lives a little longer (see
+ * `Flash.life`) so nothing is swept away mid-animation. Nothing here needs
+ * to know how many frames a flash has.
+ */
+function drawMuzzles(
+  ctx: CanvasRenderingContext2D,
+  effects: Effects,
+  tileSize: number,
+  fx: ReturnType<typeof palette>['effects'],
+  weapons: WeaponVfxAtlas | null,
+): void {
+  if (effects.flashes.length === 0) return;
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
   for (const flash of effects.flashes) {
-    const fade = fadeOf(flash);
+    const sheet: WeaponVfxSheet | null | undefined =
+      flash.kind === 'blast' ? weapons?.blast : weapons?.muzzle;
+    if (sheet) {
+      if (flash.age >= sheetLife(sheet)) continue;
+      // Scaled about the barrel by the weapon's own `flash`, and by the
+      // world's tile size against the tile the art was authored at, so the
+      // fire stays the same physical size if the game is ever rescaled.
+      const scale = (flash.size ?? 1) * (tileSize / (weapons?.tile || 16));
+      drawOriented(ctx, sheet, flash.x, flash.y, flash.dx, flash.dy, flash.age, 1, scale);
+      continue;
+    }
+    // No atlas: the circle this replaced, on its original short clock.
+    const fade = Math.max(0, 1 - flash.age / 0.07);
+    if (fade <= 0) continue;
     const size = flash.size ?? 1;
     ctx.globalAlpha = fade;
     ctx.fillStyle = fx.muzzleFlash;
@@ -85,18 +155,53 @@ export function drawCombatEffects(
     );
     ctx.fill();
   }
+  ctx.restore();
+  ctx.globalAlpha = 1;
+}
 
-  drawSwings(ctx, effects, tileSize, fx);
-  drawSlashes(ctx, effects, tileSize, fx);
-
-  for (const p of effects.particles) {
-    const fade = fadeOf(p);
-    ctx.globalAlpha = fade;
-    ctx.fillStyle = p.color;
-    const s = p.size * (0.55 + 0.45 * fade);
-    ctx.fillRect(p.x - s / 2, p.y - s / 2, s, s);
+/**
+ * A round arriving: a star at the point of contact, additive like the muzzle.
+ *
+ * Un-rotated. An impact has no facing — the direction of the shot is carried
+ * by the debris `spawnImpact` kicks back along the ray, and spinning a
+ * symmetric burst to match would be work nobody can see.
+ */
+function drawBursts(
+  ctx: CanvasRenderingContext2D,
+  effects: Effects,
+  tileSize: number,
+  weapons: WeaponVfxAtlas | null,
+): void {
+  if (effects.bursts.length === 0) return;
+  const sheet = weapons?.impact;
+  // Without the atlas there is nothing to draw: the debris and the core
+  // spark from `spawnImpact` already carried this event on their own, and a
+  // circle here would be a second, worse version of the burst rather than a
+  // fallback for it.
+  if (!sheet) return;
+  const life = sheetLife(sheet);
+  const unit = tileSize / (weapons?.tile || 16);
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  for (const burst of effects.bursts) {
+    if (burst.age >= life) continue;
+    const frame = weaponFrame(sheet, burst.age);
+    const scale = burst.size * unit;
+    const w = sheet.frameWidth * scale;
+    const h = sheet.frameHeight * scale;
+    ctx.drawImage(
+      sheet.image,
+      frame * sheet.frameWidth,
+      0,
+      sheet.frameWidth,
+      sheet.frameHeight,
+      burst.x - sheet.anchorX * scale,
+      burst.y - sheet.anchorY * scale,
+      w,
+      h,
+    );
   }
-
+  ctx.restore();
   ctx.globalAlpha = 1;
 }
 

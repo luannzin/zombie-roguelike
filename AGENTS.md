@@ -87,16 +87,56 @@ When the user requests a durable behavior change, record it here or in the relev
   gun has its own weight (slows the walk) and feel. EVERY SHOT SPENDS A
   ROUND out of a per-calibre reserve, and a dry trigger clicks and eats the
   cooldown. Guns are BOUGHT and never found.
+- **THE WHOLE GUN CATALOG IS DERIVED FROM CS2'S STAT BLOCK, ANCHORED ON THE
+  ZOMBIE** (`server/app/weapons.py`). Eleven guns, and not one hand-picked
+  damage number among them: damage, cadence, reach, noise, weight and price
+  are all functions of the published source table, scaled by
+  `DAMAGE_SCALE = ZOMBIE_HP / 100` so **a zombie takes exactly what an
+  unarmoured CS2 player takes** — four Glock rounds, three AK rounds, two
+  Deagle rounds, one AWP round. The weakest creature in the game is the only
+  thing a player ever measures a new gun against, so it is the unit, and a
+  rebalance is one constant rather than twelve rows. CS2 balances its cheap
+  fast guns with recoil and spread and a top-down hitscan has no wrist, so
+  three axes carry that weight here instead: ROUNDS PER KILL (the reserve is
+  sized in kills, so an upgrade buys a longer night rather than a bigger
+  number), NOISE (the two suppressed weapons, USP-S and M4A1-S, wake barely
+  half the forest — the `S` is the whole product), and WEIGHT (ported from
+  CS2's own running-speed column). Do not add a hand-written number to that
+  file; add a row with its source columns and let the functions do it.
+- **A TRIGGER RESOLVES IN ONE OF THREE WAYS, and the catalog says which.**
+  One ray is the default. `pellets > 1` is the SHOTGUN: one pull spends one
+  SHELL and casts six rays across a fixed twenty-degree cone, so the pattern
+  thins itself with distance — a shell kills a zombie outright inside two
+  tiles, is a coin flip at three and never kills at four. That falloff is
+  geometry, not a curve, which is why it reads without a tooltip and why
+  walking one step closer is a plan. `fire_on_release` is the AWP: holding
+  the trigger scopes and NEVER fires, and letting go is the shot — the only
+  input in the game that is a sentence rather than a word, and what stops
+  the sniper being a Deagle that reaches.
 - The KNIFE is the last cell (key 3) and the one weapon that never changes:
   it cannot be picked up, swapped or dropped. **A run starts with it and
   with no gun at all.** It does not shoot — it swings a short arc that
   leaves a WHITE PATH, and the swings chain three deep: a slash, a slash
   the other way, and a cut. The cut is slower, wider and goes through more
-  than one body. Its damage is a floor, not a benchmark: quiet is the point
-  of it, and the first gun on the ground has to stay worth walking to.
+  than one body. Its damage is a floor, not a benchmark: a whole chain is
+  `KNIFE_CHAIN_SHARE` of ONE zombie and never all of it, so the blade always
+  leaves you standing in front of something still alive with your cooldown
+  spent. Quiet is the point of it, and the first gun in the shop has to stay
+  worth saving for.
   It is drawn held IN against the body and a little smaller than the guns,
   because a blade at a pistol's extension reads as a sword floating beside
   the sprite.
+- **THE BLADE FOLLOWS ITS OWN SLASH.** The held sprite runs the same easing,
+  off the same `arcDegrees`, that the white path does — it is the leading
+  edge of the arc, not a separate animation happening nearby. It starts
+  cocked past the near lip (a wind-up that costs no latency: the swing still
+  begins on the frame of the click), crosses the arc, thrusts the grip out
+  along the blade at the middle of the sweep, carries past the far lip and
+  is DRAWN BACK to rest. The two slashes cross because the second one sweeps
+  the other way, and that handedness is never mirrored for a left-facing
+  body. What this replaced was a recoil spring wearing a knife: the sprite
+  tilted up by a fixed angle and fell back, so the steel bobbed upward while
+  its own slash swept sideways past it.
 
 ## Project
 
@@ -361,7 +401,14 @@ subtree.
     buy tooltip; E takes it. A stall sells once and the table stays there
     empty, because the gap is what says you already bought it.
     Prices are the loot catalog's value times a markup, never a second list,
-    plus one stall's own HAGGLE either side of it. That spread is what makes
+    plus one stall's own HAGGLE either side of it. The catalog's value is
+    itself derived — CS2 dollars through a curve anchored so the cheapest
+    sidearm lands on day one's whole quota and the AWP lands near four
+    hundred (`weapons.catalog_value`) — so a weapon's price, its weight and
+    its damage all move together or not at all. The SHELF is sorted by price
+    and gated by day in bands (`store.STOCK_ORDER`, `_unlock_day`): four
+    sidearms on night one, the last thing on the ladder on night five,
+    however long the ladder grows. That spread is what makes
     six stalls six decisions: the stock is rolled WITH REPLACEMENT, so he can
     be holding three of the same pistol, and three tables carrying the same
     number is a shelf rather than a shop. It is small enough never to reorder
@@ -578,18 +625,33 @@ subtree.
   at a full pack's pace. Nobody runs through a cutscene or a POUR; both puppet
   the body, and the breath comes back over them.
 - **AMMUNITION IS UPKEEP, NOT CARGO** (`server/app/ammo.py`). Every gun eats a
-  round per shot out of a per-player reserve for its calibre — pistol, rifle,
-  or precision — and the knife eats nothing, which is most of why the knife is
-  still in the game. A box is worth ZERO, takes no bag slot and cannot be
-  loaded onto a platform: a round competing with a gold ring for a pocket cell
-  would make shooting a choice against extracting, which is a tax on playing
-  rather than a trade-off. THE FOREST STOCKS ITSELF AGAINST THE BELT — the map
-  is built knowing what the party carries, so a room of knives finds no
-  ammunition at all — and a box is collected only by somebody whose OWN belt
-  holds that calibre and has room for it, so the rifle rounds go to whoever
-  brought the rifle and a full reserve leaves the box there for the walk back.
-  The rounds ride on the hotbar cell of the gun they feed; the knife's cell
-  has no number on it, and that absence is the point.
+  round per TRIGGER PULL out of a per-player reserve for its calibre — pistol,
+  SMG, shell, rifle or precision, five of them, derived from the catalog
+  rather than listed — and the knife eats nothing, which is most of why the
+  knife is still in the game. A shell buys six pellets and costs one round,
+  because a shotgun spends a SHELL and not a pattern. A box is worth ZERO,
+  takes no bag slot and cannot be loaded onto a platform: a round competing
+  with a gold ring for a pocket cell would make shooting a choice against
+  extracting, which is a tax on playing rather than a trade-off. THE FOREST
+  STOCKS ITSELF AGAINST THE BELT — the map is built knowing what the party
+  carries, so a room of knives finds no ammunition at all — and a box is
+  collected only by somebody whose OWN belt holds that calibre and has room
+  for it, so the rifle rounds go to whoever brought the rifle and a full
+  reserve leaves the box there for the walk back. The rounds ride on the
+  hotbar cell of the gun they feed; the knife's cell has no number on it, and
+  that absence is the point.
+  **A RESERVE IS COUNTED IN KILLS, NOT IN SECONDS OF TRIGGER.** The caps used
+  to be sized so every calibre gave about thirty seconds of continuous fire,
+  which sounds fair and is not: thirty seconds of P90 is twenty-one zombies
+  and thirty seconds of Deagle is sixty-six, so the cheap fast gun quietly had
+  a third of the ammunition economy of the expensive slow one. They are sized
+  on `KILLS_PER_RESERVE` against the hungriest weapon that eats the calibre
+  (`weapons.py`), so a full reserve is a night's worth of answers whatever you
+  are holding, and the per-weapon difference stays where it belongs — in
+  rounds per kill, where an upgrade buys a LONGER NIGHT rather than a bigger
+  number. The shell reserve is the smallest in the game and deliberately so:
+  sixty answers to "something is already touching me" and no answer at all to
+  anything further off.
 - **The belt's last cell is the KNIFE and it is not loot.** Nobody collects
   it, drops it or rolls a second one — it is placed by `Hotbar` itself, and
   that guarantee is the feature: a run OPENS with no gun, and the hand is
@@ -691,6 +753,28 @@ subtree.
   (`Enemy.stagger`); the sprite freeze is the visual of that plant. Only
   flesh bleeds: wood takes splinters and a swing the i-frames ate takes
   nothing.
+- **THE FIRE AT THE BARREL IS PIXEL ART, NOT A CIRCLE**
+  (`server/tools/make_weapon_vfx.py`, `client/src/render/weapon-vfx.ts`). The
+  shot was the last important event in the game still drawn entirely out of
+  canvas primitives, which made the loudest thing on screen the only thing
+  that did not look like it was made of the same stuff as the forest. What is
+  drawn now comes off
+  `assets/inspiration/pixel-art-new-style/weapon-vfx.png` and follows what
+  that sheet actually teaches: a muzzle flash is a hot core with PETALS and a
+  LANCE thrown down the barrel, never a disc; the RING a beat later is what
+  makes it read as pressure leaving a gun rather than a lamp switching on;
+  white is the middle and deep red is the edge; and it ends in SMOKE, because
+  a flash that simply faded is an effect stopping rather than finishing. The
+  shotgun gets a different SHAPE and not a bigger flash — a cone that reaches,
+  holds, breaks up and drifts — which is most of what makes the two weapons
+  feel like different objects. Three sheets, all pointing right and rotated
+  onto the aim, all drawn ADDITIVELY after the darkness pass, and all with the
+  ramp BAKED IN: unlike `make_vfx.py`'s greyscale sheets, fire is not
+  anybody's colour and a muzzle flash tinted to the shooter would be the one
+  effect in the game that lied about what it was. One flash per TRIGGER PULL
+  however many pellets came out of it, one damage number per BODY however many
+  pellets reached it, and the atlas is null-safe — a client that could not
+  load it falls back to the primitives it replaced.
 - **A corpse pays a ROLL, and then it STAYS.** A creature's `gold` is the
   ceiling, not the payout — each point is flipped on its own (`COIN_DROP_CHANCE`),
   and that flip sits BELOW half, so the usual zombie pays nothing about half the

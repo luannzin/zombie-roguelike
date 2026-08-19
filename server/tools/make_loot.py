@@ -88,7 +88,12 @@ def _blit(art: Art, ramps: Palette, cell: int) -> Image.Image:
 
 
 # ---------------------------------------------------------------------------
-# Catalog order is the frame order. server/app/loot.py lists the same keys.
+# The manifest is keyed by ITEM KEY, not by position, so this list only has
+# to CONTAIN every key `server/app/loot.py` can produce — it does not have to
+# match its order. Guns and ammunition boxes are generated there off the
+# weapons catalog, so a new weapon needs one entry down at the bottom of this
+# list and nothing else; a weapon with no entry draws nothing and is still
+# collectable, which is the right way round for an art gap to fail.
 # ---------------------------------------------------------------------------
 
 ITEMS: list[tuple[str, Palette, Art]] = [
@@ -604,6 +609,39 @@ ITEMS: list[tuple[str, Palette, Art]] = [
             ".kkkkk.",
         ],
     ),
+    # Two more calibres, and they are told apart from the three above by the
+    # same rule: COUNT and HEIGHT of what is standing in the case, never by
+    # colour alone. Six stubby rounds packed tight is the SMG — more of them
+    # than the pistol has and shorter than the rifle's — and the shotgun is
+    # the one case in the set whose contents are not brass at all.
+    (
+        "ammo_smg",
+        {"g": GOLD, "o": OLIVE},
+        [
+            "gg.gg.gg.",
+            "ggggggggg",
+            ".ooooooo.",
+            ".o.....o.",
+            ".ooooooo.",
+        ],
+    ),
+    # RED SHELLS ON A BRASS BASE, and this is the only ammunition icon in the
+    # game with a colour of its own. It has earned it: a shotgun shell is the
+    # one round a player has ever actually held, everybody already knows it is
+    # a red plastic tube, and the shell reserve is the smallest and most
+    # precious in the game — it should read from further away than the others.
+    (
+        "ammo_shell",
+        {"r": RED, "g": GOLD, "o": OLIVE},
+        [
+            ".rr.rr.rr",
+            ".rr.rr.rr",
+            ".gg.gg.gg",
+            "ooooooooo",
+            "o.......o",
+            "ooooooooo",
+        ],
+    ),
     (
         "glock18",
         {"f": METAL, "s": METAL},
@@ -654,6 +692,77 @@ ITEMS: list[tuple[str, Palette, Art]] = [
             "ooooooommmmmmm",
             "o....o.mmmmmmm",
             "oooooo.m......",
+        ],
+    ),
+    # THE SIX NEW ROWS, and the rule they follow is the sheet's original one:
+    # LENGTH IS THE CLASS. A pistol is short, an SMG a little longer, a rifle
+    # longer again, the shotgun and the sniper longest. What separates two
+    # weapons of the same length is one distinguishing lump — a can, a second
+    # outline, a magazine lying flat on top, a tube under the barrel — and
+    # nothing finer than that survives a 16 px cell in a dark bag.
+    (
+        "usp_s",
+        {"m": METAL, "g": CLOTH, "c": STONE},
+        [
+            "....mmmm.ccc",
+            "...mmmmmcccc",
+            "...g....dccc",
+            "...gg.......",
+        ],
+    ),
+    (
+        "dual_berettas",
+        {"m": METAL, "s": STONE, "g": CLOTH},
+        [
+            "....ssssss..",
+            "...ssssss...",
+            "..mmmmmmm...",
+            "..gmmmmmm...",
+            "..gg........",
+        ],
+    ),
+    (
+        "mp7",
+        {"m": METAL, "s": STONE, "g": CLOTH},
+        [
+            "..ssssss....",
+            "mmmmmmmmmmm.",
+            "mm.gg...mm..",
+            "...gg.......",
+            "...mm.......",
+        ],
+    ),
+    (
+        "p90",
+        {"m": METAL, "s": STONE, "g": CLOTH},
+        [
+            "...ssssss...",
+            "mmmmmmmmmmmm",
+            "mm.gg.mmmmm.",
+            "mm.gg.mmmmm.",
+            "..mmmmmm....",
+        ],
+    ),
+    (
+        "xm1014",
+        {"m": METAL, "g": CLOTH, "t": STONE},
+        [
+            "......ss......",
+            "gggggmmmmmmmmm",
+            "gg..gmmttttttt",
+            ".gggg.........",
+            "..gg..........",
+        ],
+    ),
+    (
+        "m4a1s",
+        {"m": METAL, "s": STONE, "g": CLOTH, "c": STONE},
+        [
+            "...ssss....cc.",
+            "ggggmmmmmmcccc",
+            "gg..gmmmmm.cc.",
+            ".gggg.mm......",
+            "......mm......",
         ],
     ),
     # The knife. Never on the ground and never in a crate — this frame exists

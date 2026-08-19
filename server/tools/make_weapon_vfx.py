@@ -113,7 +113,7 @@ MUZZLE_SMOKE = 0.45
 # a pump gun.
 BLAST_FRAMES = 10
 BLAST_FPS = 34
-BLAST_W = 56
+BLAST_W = 50
 BLAST_H = 36
 BLAST_ANCHOR_X = 4
 BLAST_ANCHOR_Y = BLAST_H // 2
@@ -175,20 +175,35 @@ def _cone(
     half_at_end: float,
     strength: float,
     seed: int,
+    *,
+    spindle: bool = False,
 ) -> None:
-    """A wedge of fire opening forward from `x0` — the shotgun's whole read.
+    """Fire thrown forward from `x0`, in one of the two shapes it comes in.
 
-    Filled rather than outlined, hot along the axis and falling off toward
-    the lips, and the front face is RAGGED: a cone with a clean leading edge
-    reads as a torch beam, and what this is meant to read as is a column of
-    gas and lead that has already started to come apart.
+    A WEDGE (the default) opens all the way to the mouth and stays open: it
+    is the shotgun, and the point of it is that the mouth is the widest part,
+    because that is where the pellets are.
+
+    A SPINDLE swells just past the barrel and closes back to a point. That is
+    a rifle or a pistol, and the difference matters more than it sounds — a
+    muzzle flash drawn as a wedge is a tube of light with a flat end, which
+    reads as a torch beam that got cut off rather than as gas expanding and
+    then running out of pressure.
+
+    Either way the front face is RAGGED: a clean leading edge is a beam, and
+    what this is meant to be is a column of burning gas already coming apart.
     """
     if length < 1.0:
         return
     for step in range(int(length) + 1):
         t = step / max(length, 1.0)
-        x = x0 + step
-        half = 0.6 + half_at_end * t**0.85
+        x = int(round(x0)) + step
+        if spindle:
+            # Peaks at the third and tapers to nothing, so the widest part of
+            # the flash sits ON the barrel rather than out in front of it.
+            half = 0.6 + half_at_end * 1.9 * (t**0.45) * ((1.0 - t) ** 0.75)
+        else:
+            half = 0.6 + half_at_end * t**0.85
         # The tip frays: the last quarter loses pixels to the hash rather
         # than to a gradient, so the edge is chewed instead of soft.
         fray = 1.0 if t < 0.72 else max(0.0, 1.0 - (t - 0.72) / 0.28)
@@ -198,9 +213,15 @@ def _cone(
                 continue
             if hash01(x, y, seed) > fray:
                 continue
-            # Hot on the axis, and hotter at the throat than at the mouth.
-            core = (1.0 - offset) ** 1.3
-            throat = 1.0 - t * 0.55
+            # FLAT ACROSS, HOT ON THE AXIS. The exponent pair is the whole
+            # difference between a cone and a beam: a linear falloff over a
+            # twelve-pixel half-width leaves every off-axis pixel under
+            # `resolve`'s floor, so the wedge quantises away and what
+            # survives is the one bright row down the middle. Squaring the
+            # offset and taking a root of the result holds the body near
+            # full brightness and only lets go at the lips.
+            core = (1.0 - offset**2.0) ** 0.55
+            throat = 1.0 - t * 0.3
             add(field, x, y, strength * core * throat)
 
 
@@ -241,7 +262,7 @@ def make_muzzle_frame(index: int) -> Image.Image:
     # frame in the real world and the reference sheet honours that: frame 0 is
     # already most of the way up.
     if t <= MUZZLE_PEAK:
-        heat = 0.55 + (t / MUZZLE_PEAK) * 0.45
+        heat = 0.8 + (t / MUZZLE_PEAK) * 0.2
     else:
         heat = max(0.0, 1.0 - (t - MUZZLE_PEAK) / (1.0 - MUZZLE_PEAK)) ** 1.35
 
@@ -249,33 +270,48 @@ def make_muzzle_frame(index: int) -> Image.Image:
         grow = 0.55 + ease_out(min(1.0, t / MUZZLE_PEAK)) * 0.45
         # THE CORE. Wider than tall and pushed a pixel forward, so it sits on
         # the barrel rather than around it.
-        ellipse(fire, cx + 1.5 * grow, cy, 3.4 * grow, 2.6 * grow, 2.2 * heat)
+        ellipse(fire, cx + 2.4 * grow, cy, 4.0 * grow, 2.9 * grow, 2.3 * heat)
         # THE LANCE: gas thrown straight down the bore, and the one part of
-        # the flash that says which way the round went.
-        _cone(fire, cx, cy, 6.0 + 9.0 * grow * heat, 2.3 * grow, 1.5 * heat, seed=index * 7 + 3)
-        # THE PETALS.
+        # the flash that says which way the round went. It is the LONGEST
+        # thing in the frame — a flash whose petals outreach its lance is a
+        # firework, and a firework has no barrel.
+        _cone(
+            fire,
+            cx,
+            cy,
+            9.0 + 12.0 * grow * heat,
+            3.4 * grow,
+            1.9 * heat,
+            seed=index * 7 + 3,
+            spindle=True,
+        )
+        # THE PETALS, heavily biased down the shot.
         _petals(
             fire,
-            cx + 1.0,
+            cx + 1.5,
             cy,
             5.0 + 4.0 * grow,
             9,
             1.35 * heat,
             seed=index * 13 + 1,
-            forward=1.9,
+            forward=2.4,
         )
 
     # THE RING, one beat behind the flash and travelling out through it.
-    ring = (t - 0.08) / 0.46
+    ring = (t - 0.08) / 0.42
     if 0.0 < ring < 1.0:
-        radius = 2.0 + ease_out(ring) * 9.0
+        # SMALL AND TIGHT. An expanding torus the size of the whole frame
+        # reads as a smoke ring somebody blew; what the reference sheet
+        # actually draws is a collar barely wider than the flash, gone in
+        # three frames — pressure leaving a barrel, not a shockwave.
+        radius = 2.0 + ease_out(ring) * 5.5
         ellipse(
             fire,
-            cx + radius * 0.35,
+            cx + radius * 0.5,
             cy,
             radius,
-            radius * 0.72,
-            1.5 * (1.0 - ring),
+            radius * 0.78,
+            1.15 * (1.0 - ring),
             # Thick enough to survive the five-step alpha quantiser; a thinner
             # rim comes out as a dotted ellipse instead of a wave.
             hollow=0.45,
@@ -320,26 +356,30 @@ def make_blast_frame(index: int) -> Image.Image:
         heat = max(0.0, 1.0 - decay) ** 1.5
 
     if heat > 0.02:
-        length = 10.0 + reach * (BLAST_W - BLAST_ANCHOR_X - 12.0)
+        length = 9.0 + reach * 23.0
         # Past the break the cone stops being a wedge and starts being lumps,
         # so the fire is pulled back toward the muzzle while the smoke ahead
         # of it takes the shape over.
         if t > BLAST_BREAK:
             broken = (t - BLAST_BREAK) / (1.0 - BLAST_BREAK)
             length *= 1.0 - broken * 0.55
-        _cone(fire, cx, cy, length, 7.5 * reach, 1.7 * heat, seed=index * 11 + 2)
-        ellipse(fire, cx + 2.0, cy, 4.2, 3.4, 2.4 * heat)
+        # WIDE. Twelve pixels of half-width at the mouth is a foot and a
+        # half of spread at the game's scale, which is what makes the cone
+        # read as the same shape the pellets actually fly in — the server
+        # casts them across twenty degrees and this is that angle drawn.
+        _cone(fire, cx, cy, length, 11.5 * reach, 1.9 * heat, seed=index * 11 + 2)
+        ellipse(fire, cx + 2.5, cy, 5.0, 4.0, 2.5 * heat)
         _petals(
-            fire, cx + 1.0, cy, 7.0, 11, 1.3 * heat, seed=index * 19 + 7, forward=1.6
+            fire, cx + 1.5, cy, 8.0, 13, 1.35 * heat, seed=index * 19 + 7, forward=1.5
         )
 
     # The ring off a shell is bigger and slower than a pistol's, and it is the
     # part of this animation people will actually remember.
     ring = (t - 0.06) / 0.5
     if 0.0 < ring < 1.0:
-        radius = 3.0 + ease_out(ring) * 13.0
+        radius = 3.0 + ease_out(ring) * 8.0
         ellipse(
-            fire, cx + radius * 0.3, cy, radius, radius * 0.78, 1.7 * (1.0 - ring), hollow=0.5
+            fire, cx + radius * 0.45, cy, radius, radius * 0.8, 1.4 * (1.0 - ring), hollow=0.5
         )
 
     if t >= BLAST_PEAK:
@@ -375,15 +415,22 @@ def make_impact_frame(index: int) -> Image.Image:
     cy = (IMPACT_H - 1) / 2.0
     fire = [[0.0] * IMPACT_W for _ in range(IMPACT_H)]
 
-    heat = max(0.0, 1.0 - t) ** 1.4
+    heat = max(0.0, 1.0 - t) ** 1.3
     if heat > 0.02:
-        ellipse(fire, cx, cy, 1.8 + t * 1.6, 1.8 + t * 1.6, 2.3 * heat)
-        _petals(fire, cx, cy, 3.0 + t * 4.5, 8, 1.25 * heat, seed=index * 31 + 4)
+        # A STAR THAT SHRINKS, not a bloom that grows. The energy of a round
+        # arriving is spent in the first frame and everything after it is the
+        # spark going out — a core that swelled would read as something
+        # detonating on the far end, which is a grenade, not a bullet.
+        ellipse(fire, cx, cy, 2.6 - t * 1.0, 2.6 - t * 1.0, 2.9 * heat)
+        _petals(fire, cx, cy, 4.0 + t * 4.5, 10, 1.8 * heat, seed=index * 31 + 4)
 
-    ring = t / 0.8
+    # The ring is a HINT here, gone by the halfway frame. At impact scale a
+    # torus that outlives the star stops being a shockwave and becomes the
+    # whole effect — a smoke ring hanging where a bullet landed.
+    ring = t / 0.5
     if 0.0 < ring < 1.0:
-        radius = 1.5 + ease_out(ring) * 6.0
-        ellipse(fire, cx, cy, radius, radius, 1.3 * (1.0 - ring), hollow=0.5)
+        radius = 1.6 + ease_out(ring) * 4.5
+        ellipse(fire, cx, cy, radius, radius, 0.8 * (1.0 - ring), hollow=0.5)
 
     resolve(fire, img, FIRE, floor=0.10, tone=0.86, gain=1.1)
     return img

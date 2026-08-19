@@ -15,7 +15,8 @@ imported by `app/` and never run at request time.
 | `make_textures.py` | generates final pixels | `assets/processed/terrain/` (4 grounds, blend, patch, rock, tree, deadtree, stump, grass, bush, branch, leaves, fern, campfire) |
 | `make_scenery.py` | generates final pixels | `assets/processed/scenery/` (tent, fence, sign, logs, firepit, blood, tracks, clothes, debris) — and PACKS what `make_objects.py` drew into the same folder and the one manifest |
 | `make_objects.py` | draws only; `make_scenery.build()` packs it | the INTERACTIVE objects and the tribal ground: barrel, box, chest, stash, vehicle, altar, statue, bones, oil |
-| `make_vfx.py` | generates final pixels | `assets/processed/vfx/` (summon, kindle, aura, wind, death) |
+| `make_vfx.py` | generates final pixels | `assets/processed/vfx/` (summon, kindle, aura, wind, death) — GREYSCALE, tinted at draw time |
+| `make_weapon_vfx.py` | generates final pixels | `assets/processed/weapon-vfx/` (muzzle, blast, impact) — oriented, ramp BAKED IN: fire is not anybody's colour |
 | `make_rift.py` | generates final pixels | `assets/processed/rift/` (the CONSOLE and the threshold kit: torch, torchfire, egress paving, the paid console's aura — plus the retired anomaly sheets, still generated and no longer drawn: scar, pillar, charge, crown, emerge, rift ×4 tiers, collapse ×4 tiers, residue, corrupt) |
 | `make_platform.py` | generates final pixels | `assets/processed/platform/` (the extraction platform: the cargo skid ×3 states cold/standby/alarm, a lift drone ×2 postures hover/cruise, rotor and strobe loops, standby and siren lamp glare, the imprint it leaves, rotor downwash, the ground-break burst) |
 | `make_gore.py` | generates final pixels | `assets/processed/gore/` (6 wound decals worn by a hit body) |
@@ -26,7 +27,7 @@ imported by `app/` and never run at request time.
 | `make_machine.py` | generates final pixels | `assets/processed/machine/` (the upgrade cabinet: body ×2 idle/settled with the reel windows, pay line, lever pivot and tray mouth in its manifest; `strip.png` — the reel BAND, one tall image of ten cells the client scrolls; lever ×6 sweeping on a real angle; marquee, reel backlight and payout burst, all greyscale so the client can tint them by rarity) |
 | `make_skills.py` | generates final pixels | `assets/processed/skills/` (one 16x16 icon per skill in catalog order, plus the CANISTER in five rarity colourways — a dark pass and an emissive pass, with the icon window's rectangle on the manifest) |
 | `make_hud_icons.py` | generates final pixels | `assets/processed/hud/` (battery, backpack, coin, darkcoin, arrow, chevron) |
-| `make_audio.py` | generates final samples | `assets/processed/audio/` (42 sounds, 78 wavs + manifest + loudness.json) |
+| `make_audio.py` | generates final samples | `assets/processed/audio/` (43 sounds, 80 wavs + manifest + loudness.json) |
 
 ## Local Contracts
 
@@ -434,6 +435,7 @@ python tools/process_sprites.py --name zhat-cap-death --tile 16 --exact --side-f
 python tools/make_textures.py
 python tools/make_scenery.py
 python tools/make_vfx.py
+python tools/make_weapon_vfx.py
 python tools/make_rift.py
 python tools/make_platform.py
 python tools/make_merchant.py

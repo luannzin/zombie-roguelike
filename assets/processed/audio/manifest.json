@@ -91,6 +91,14 @@
       "bus": "sfx",
       "gain": 0.7652
     },
+    "shotgun": {
+      "files": [
+        "shotgun-0.wav",
+        "shotgun-1.wav"
+      ],
+      "bus": "sfx",
+      "gain": 0.687
+    },
     "hurt": {
       "files": [
         "hurt-0.wav",

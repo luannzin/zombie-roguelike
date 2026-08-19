@@ -16,17 +16,22 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app import protocol  # noqa: E402
+from app import ammo, protocol  # noqa: E402
 from app.config import INVENTORY_SLOTS  # noqa: E402
 from app.coins import Coin  # noqa: E402
 from app.entities import Player  # noqa: E402
 
 # What legitimately changes every tick. `held` and `ads` are in here rather
 # than on the roster because both are read by the RENDERER on the frame they
-# flip — which gun is in the hand and whether the scope is up.
+# flip — which gun is in the hand and whether the scope is up. `st` is the
+# breath: it drains and refills continuously while somebody runs, so it is a
+# moving value in the same sense position is. Its companion `wind` is NOT
+# listed, and must not be — it is omitted from the row unless it is true
+# (`entities.py`), so a resting player's row does not carry it and an
+# equality check against this set would fail the moment somebody got tired.
 MOVING = {
     "id", "x", "y", "vx", "vy", "ax", "ay", "seq", "lantern", "hp", "alive",
-    "ready", "held", "ads",
+    "ready", "held", "ads", "st",
 }
 # What rides the 5 Hz roster. `ammo` is here and not above on purpose: the
 # client predicts its own trigger and this is the resync, so paying for three
@@ -51,8 +56,17 @@ def main() -> None:
     assert set(full) == MOVING | IDENTITY, set(full) ^ (MOVING | IDENTITY)
     assert full["inv"]["cap"] == INVENTORY_SLOTS
     assert full["inv"]["bag"] == [None] * INVENTORY_SLOTS
-    # A run opens with no rounds, because it opens with no gun.
-    assert full["ammo"] == {"pistol": 0, "rifle": 0, "awp": 0}, full["ammo"]
+    # A run opens with no rounds, because it opens with no gun — and the row
+    # carries EVERY calibre, including the zeroes, so the HUD can tell "you
+    # have none" from "this calibre does not exist" without a lookup.
+    #
+    # Derived from the catalog rather than written out. The calibre list is
+    # generated from the weapons (`weapons.AMMO_TYPES`), so a new gun with a
+    # new calibre arrives with a reserve, a counter and a box already wired;
+    # a hand-written set here would turn adding one into a test failure and
+    # teach the next person that the contract is the literal rather than the
+    # rule.
+    assert full["ammo"] == {calibre: 0 for calibre in ammo.TYPES}, full["ammo"]
     # ...and with no skills and nothing owed. The first spin is paid by the
     # first level, and level 1 is where everybody starts.
     assert full["skills"] == [] and full["spins"] == 0, full["skills"]

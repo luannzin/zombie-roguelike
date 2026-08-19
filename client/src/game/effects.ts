@@ -19,12 +19,53 @@ export interface Tracer {
   width: number;
 }
 
+/**
+ * The fire at the barrel: one per TRIGGER PULL, never one per pellet.
+ *
+ * Drawn from `weapon-vfx`'s oriented sheets — a bloom with petals, a lance
+ * down the shot and a collar of smoke — with the canvas primitive it
+ * replaced kept as the fallback for a client whose atlas failed to load.
+ * `kind` picks which sheet: a shotgun throws a CONE, everything else a
+ * muzzle flash, and that difference is most of what makes the two weapons
+ * feel like different objects rather than one object with a different
+ * number on it.
+ *
+ * `size` is the weapon's own `flash`, which scales the art about the barrel
+ * so a P90 and an AWP draw the same fire at the sizes their rounds deserve.
+ */
+export type FlashKind = 'muzzle' | 'blast';
+
 export interface Flash {
   x: number;
   y: number;
   dx: number;
   dy: number;
   age: number;
+  /**
+   * EVICTION ONLY. The art owns how long it is visible — the effects layer
+   * stops drawing once `age` passes the sheet's own duration, and the frames
+   * fade themselves out, so nothing here has to keep a second copy of a
+   * timing that lives in the generator. This just has to outlast the longest
+   * sheet, or a blast would be swept out of the list mid-cone.
+   */
+  life: number;
+  kind: FlashKind;
+  size: number;
+}
+
+/**
+ * A round arriving: a shrinking star at the point of contact.
+ *
+ * Separate from the debris `spawnImpact` throws, and deliberately: the
+ * particles carry the DIRECTION (they kick back along the ray) and this
+ * carries the ENERGY. Together they read as something being struck; either
+ * one alone reads as a puff of dust.
+ */
+export interface ImpactBurst {
+  x: number;
+  y: number;
+  age: number;
+  /** Eviction only, same contract as `Flash.life`. */
   life: number;
   size: number;
 }
@@ -106,6 +147,28 @@ export interface ShotFeel {
   casings?: number;
   lightRadius?: number;
   lightLife?: number;
+  /**
+   * More than one ray came out of this pull — the shotgun. Switches the
+   * muzzle art to the CONE sheet and tells `spawnShot` that the rays it is
+   * being handed are pellets of one shell rather than separate shots.
+   */
+  pellets?: number;
+}
+
+/**
+ * One ray of a trigger pull: where it went and how far it got.
+ *
+ * A pistol hands `spawnShot` one of these and a shell hands it six. Sharing
+ * the shape is what keeps the two weapons one code path — the only thing
+ * that actually differs between a Glock shot and an XM1014 shell is how many
+ * rows are in this array and which sheet burns at the barrel.
+ */
+export interface ShotRay {
+  dx: number;
+  dy: number;
+  dist: number;
+  /** True when it stopped on something rather than running out of range. */
+  hit: boolean;
 }
 
 export interface PointLight {
@@ -270,9 +333,22 @@ export interface DeathBurst {
   life: number;
 }
 
+/**
+ * How long a muzzle flash and an impact stay in their lists.
+ *
+ * Not how long they are VISIBLE — see `Flash.life`. Both are set above the
+ * longest sheet either one can draw so the art always gets to finish, and
+ * the cost of being generous is a handful of objects living an extra tenth
+ * of a second in an array that is walked once a frame.
+ */
+const FLASH_HOLD = 0.34;
+const BURST_HOLD = 0.22;
+
 export class Effects {
   tracers: Tracer[] = [];
   flashes: Flash[] = [];
+  /** Sprite bursts at the point of contact. See ImpactBurst. */
+  bursts: ImpactBurst[] = [];
   particles: Particle[] = [];
   /** Footstep / walk puffs — drawn under entities. */
   dust: Particle[] = [];
@@ -332,7 +408,112 @@ export class Effects {
     this.lights.push({ x, y, radius, strength, color, age: 0, life });
   }
 
+  /**
+   * One trigger pull, drawn: fire at the barrel, a ray (or six) down range,
+   * and whatever each one arrived at.
+   *
+   * `rays` IS THE SHOTGUN. Everything that used to take a single `dx, dy,
+   * dist` now takes a list, and the pistol is the case where the list has
+   * one row in it. Nothing else about a shell is special-cased here — one
+   * muzzle event, one bang, one set of brass, and per-ray tracers and
+   * impacts — which is what stops a shotgun looking like six pistols going
+   * off in a fan.
+   *
+   * `damage` is what the WHOLE pull put into the primary victim, so the
+   * number that floats over a body is the number that body actually lost.
+   * It is drawn once, at the deepest ray that connected, rather than once
+   * per pellet.
+   */
   spawnShot(
+    x: number,
+    y: number,
+    dx: number,
+    dy: number,
+    rays: ShotRay[],
+    color: string,
+    damage?: number,
+    /** The thing hit was a BODY. Wood and stone throw debris but do not bleed. */
+    flesh = false,
+    feel?: ShotFeel,
+  ): void {
+    if (rays.length === 0) return;
+    const fx = palette().effects;
+    const tracerLife = feel?.tracerLife ?? 0.09;
+    const tracerWidth = feel?.tracerWidth ?? 1;
+    const flashScale = feel?.flash ?? 1;
+    const lightRadius = feel?.lightRadius ?? 74;
+    const lightLife = feel?.lightLife ?? 0.09;
+    const shell = (feel?.pellets ?? 1) > 1;
+    const power = shotPower(damage);
+
+    // A pellet's streak is thinner and shorter than a bullet's: six tracers
+    // at full weight is a fan of searchlights, and what a shell should leave
+    // behind is a scatter of sparks that are gone before you can count them.
+    const rayWidth = shell ? tracerWidth * 0.55 : tracerWidth;
+    const rayLife = shell ? tracerLife * 0.7 : tracerLife;
+
+    for (const ray of rays) {
+      this.tracers.push({
+        x,
+        y,
+        dx: ray.dx,
+        dy: ray.dy,
+        dist: ray.dist,
+        color,
+        age: 0,
+        life: rayLife,
+        width: rayWidth,
+      });
+      const ix = x + ray.dx * ray.dist;
+      const iy = y + ray.dy * ray.dist;
+      // Debris per pellet, but scaled down so a cone does not throw six
+      // shots' worth of gravel out of one body.
+      this.spawnImpact(ix, iy, ray.dx, ray.dy, ray.hit, shell ? power * 0.4 : power);
+      if (ray.hit) {
+        this.bursts.push({ x: ix, y: iy, age: 0, life: BURST_HOLD, size: shell ? 0.7 : 1 });
+        this.spawnLight(
+          ix,
+          iy,
+          26 + power * 10,
+          (0.42 + power * 0.12) * (shell ? 0.5 : 1),
+          fx.hitCore,
+          0.07 + power * 0.03,
+        );
+        if (flesh) this.spawnBlood(ix, iy, ray.dx, ray.dy, (0.5 + power * 0.95) / rays.length);
+      }
+    }
+
+    // --- one per PULL, whatever the ray count ------------------------------
+    this.flashes.push({
+      x,
+      y,
+      dx,
+      dy,
+      age: 0,
+      life: FLASH_HOLD,
+      kind: shell ? 'blast' : 'muzzle',
+      size: flashScale,
+    });
+    // The muzzle throws light, not just a sprite: brief, warm, and wide enough
+    // that a shot in the dark shows you the ground you are standing on.
+    this.spawnLight(x, y, lightRadius, 0.85 * Math.min(1.3, flashScale), fx.muzzleFlash, lightLife);
+
+    if (damage !== undefined && damage > 0) {
+      // At the deepest ray that CONNECTED, so a shell's number lands on the
+      // body it came off rather than out at the mouth of the cone.
+      let best = rays[0];
+      for (const ray of rays) {
+        if (ray.hit && (!best.hit || ray.dist > best.dist)) best = ray;
+      }
+      this.spawnDamage(x + best.dx * best.dist, y + best.dy * best.dist, damage);
+    }
+
+    const casings = feel?.casings ?? 1;
+    if (casings > 0) this.spawnCasings(x, y, dx, dy, casings);
+  }
+
+  /** The single-ray call, for everything that is not counting pellets. */
+  spawnSingleShot(
     x: number,
     y: number,
     dx: number,
@@ -341,53 +522,10 @@ export class Effects {
     color: string,
     hit: boolean,
     damage?: number,
-    /** The thing hit was a BODY. Wood and stone throw debris but do not bleed. */
     flesh = false,
     feel?: ShotFeel,
   ): void {
-    const fx = palette().effects;
-    const tracerLife = feel?.tracerLife ?? 0.09;
-    const tracerWidth = feel?.tracerWidth ?? 1;
-    const flashScale = feel?.flash ?? 1;
-    const lightRadius = feel?.lightRadius ?? 74;
-    const lightLife = feel?.lightLife ?? 0.09;
-    this.tracers.push({
-      x,
-      y,
-      dx,
-      dy,
-      dist,
-      color,
-      age: 0,
-      life: tracerLife,
-      width: tracerWidth,
-    });
-    this.flashes.push({
-      x,
-      y,
-      dx,
-      dy,
-      age: 0,
-      life: 0.06 * (0.7 + 0.3 * flashScale),
-      size: flashScale,
-    });
-    // The muzzle throws light, not just a sprite: brief, warm, and wide enough
-    // that a shot in the dark shows you the ground you are standing on.
-    this.spawnLight(x, y, lightRadius, 0.85 * Math.min(1.3, flashScale), fx.muzzleFlash, lightLife);
-
-    const ix = x + dx * dist;
-    const iy = y + dy * dist;
-    const power = shotPower(damage);
-    this.spawnImpact(ix, iy, dx, dy, hit, power);
-    if (hit) this.spawnLight(ix, iy, 26 + power * 10, 0.42 + power * 0.12, fx.hitCore, 0.07 + power * 0.03);
-    if (flesh) this.spawnBlood(ix, iy, dx, dy, 0.5 + power * 0.95);
-
-    if (hit && damage !== undefined && damage > 0) {
-      this.spawnDamage(ix, iy, damage);
-    }
-
-    const casings = feel?.casings ?? 1;
-    if (casings > 0) this.spawnCasings(x, y, dx, dy, casings);
+    this.spawnShot(x, y, dx, dy, [{ dx, dy, dist, hit }], color, damage, flesh, feel);
   }
 
   /** Brass kicked out perpendicular to the shot, falling with weight. */
@@ -855,6 +993,7 @@ export class Effects {
   update(dt: number): void {
     this.tracers = advance(this.tracers, dt);
     this.flashes = advance(this.flashes, dt);
+    this.bursts = advance(this.bursts, dt);
     this.slashes = advance(this.slashes, dt);
     this.swings = advance(this.swings, dt);
     this.lights = advance(this.lights, dt);
@@ -874,6 +1013,7 @@ export class Effects {
   clear(): void {
     this.tracers.length = 0;
     this.flashes.length = 0;
+    this.bursts.length = 0;
     this.slashes.length = 0;
     this.swings.length = 0;
     this.particles.length = 0;

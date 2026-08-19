@@ -89,7 +89,7 @@ import type {
 import { whenFontsReady } from '../theme/fonts';
 import { palette } from '../theme/palette';
 import { crateAlongRay, hitscan, type RayTarget } from './combat';
-import { Effects, type ShotFeel } from './effects';
+import { Effects, type ShotFeel, type ShotRay } from './effects';
 import { EntityVisuals, hitPower, type BloodStain } from './entity-visuals';
 import {
   EMPTY_HUD,
@@ -153,6 +153,14 @@ import {
 
 const MAX_TICKS_PER_FRAME = 5;
 /** Extra camera punch when local shot lands on a target. */
+/**
+ * How far a shotgun pellet may wander off its slot in the pattern, as a
+ * fraction of the gap between slots. Mirrors `PELLET_WOBBLE` in
+ * `server/app/room.py` — the two rolls are independent (only the local
+ * player ever sees this one) but the SHAPE of the pattern has to match, or
+ * a teammate's cone and your own would be visibly different weapons.
+ */
+const PELLET_WOBBLE = 0.25;
 const HIT_TRAUMA = 0.12;
 /** Camera punch when local player loses HP. */
 const HURT_TRAUMA = 0.55;
@@ -1144,28 +1152,45 @@ export class Game {
         shot.dy,
       );
       const tracer = aimTracer(origin.x, origin.y, shot.x, shot.y, shot.dx, shot.dy, shot.dist);
+      // The pellet list when the server sent one, and the single ray it has
+      // always sent otherwise. Rebased onto the drawn barrel the same way
+      // the centre ray is — a shell whose pellets started at the server's
+      // muzzle and whose cone started at ours would fan out of two places.
+      const rays: ShotRay[] = shot.p
+        ? shot.p.map(([dx, dy, dist, struck]) => ({
+            dx,
+            dy,
+            dist: Math.max(0, dist + tracer.dist - shot.dist),
+            hit: struck === 1,
+          }))
+        : [{ dx: tracer.dx, dy: tracer.dy, dist: tracer.dist, hit }];
       this.effects.spawnShot(
         tracer.x,
         tracer.y,
         tracer.dx,
         tracer.dy,
-        tracer.dist,
+        rays,
         shooter?.color ?? palette().effects.fallbackShot,
-        hit,
         hit ? (shot.dmg ?? weapon?.damage ?? this.config.shotDamage) : undefined,
         hit,
         weapon ? shotFeel(weapon) : undefined,
       );
       this.visuals.kickRecoil(shot.by, shot.dx, shot.dy, weapon?.kick);
       if (weapon) this.visuals.kickGun(shot.by, weapon.gunKick, weapon.gunPump);
-      if (shot.hit) {
+      // `hits` when a single pull opened more than one body, `hit`/`dmg`
+      // otherwise — the primary victim is always in both, so the fallback is
+      // the same event read at lower resolution rather than a different one.
+      if (shot.hits) {
+        for (const row of shot.hits) this.feelVictim(row.id, shot.dx, shot.dy, row.dmg);
+      } else if (shot.hit) {
         const dmg = shot.dmg ?? weapon?.damage ?? this.config.shotDamage;
         this.feelVictim(shot.hit, shot.dx, shot.dy, dmg);
       }
       // A teammate's gun is heard from where they are standing. Same sample as
       // your own; the distance falloff is the whole difference, and it is
       // enough to tell "beside me" from "somewhere over there".
-      playSfxAt('shot', shot.x, shot.y, { gain: 0.85 });
+      const bang = shotSound(weapon);
+      playSfxAt(bang.name, shot.x, shot.y, { gain: 0.85, rate: bang.rate });
       if (hit) playSfxAt('zombie-hit', shot.x + shot.dx * shot.dist, shot.y + shot.dy * shot.dist);
     }
 
@@ -2068,6 +2093,37 @@ export class Game {
     }
   }
 
+  /**
+   * The pattern one trigger pull casts, mirroring `Room._pellet_aim`.
+   *
+   * A single ray for everything but the shotgun, and for the shotgun a
+   * rosette of `pellets` angles across `spreadDegrees` with a quarter-slot
+   * of wobble on each. The wobble is rolled LOCALLY and does not match the
+   * server's roll, which is fine and deliberate: the pattern is cosmetic
+   * (the server decides every hit) and the local player never sees the
+   * server's copy of their own shot — `onSnapshot` skips shots by the local
+   * id precisely so the prediction is the only one drawn.
+   */
+  private pelletAim(weapon: WeaponConfig): { dx: number; dy: number }[] {
+    if (weapon.pellets <= 1 || weapon.spreadDegrees <= 0) {
+      return [{ dx: this.aimX, dy: this.aimY }];
+    }
+    const spread = (weapon.spreadDegrees * Math.PI) / 180;
+    const step = spread / Math.max(1, weapon.pellets - 1);
+    const centre = (weapon.pellets - 1) / 2;
+    const rays: { dx: number; dy: number }[] = [];
+    for (let i = 0; i < weapon.pellets; i++) {
+      const angle = (i - centre) * step + (Math.random() - 0.5) * 2 * step * PELLET_WOBBLE;
+      const cos = Math.cos(angle);
+      const sin = Math.sin(angle);
+      rays.push({
+        dx: this.aimX * cos - this.aimY * sin,
+        dy: this.aimY * cos + this.aimX * sin,
+      });
+    }
+    return rays;
+  }
+
   /** Immediate local tracer so shooting feels instant; server still decides damage. */
   private predictShot(weapon: WeaponConfig): void {
     const world = this.world!;
@@ -2102,53 +2158,78 @@ export class Game {
       );
     }
 
-    const result = hitscan(
-      world,
-      ox,
-      oy,
-      this.aimX,
-      this.aimY,
-      weapon.range,
-      targets,
-      this.localId,
-    );
-    const crateDist = crateAlongRay(
-      world.crates,
-      ox,
-      oy,
-      this.aimX,
-      this.aimY,
-      result.distance,
-      (kind) => objectVerb(kind) === 'break',
-      (kind) =>
-        objectHitBox(
-          kind,
-          (config.crateHitWTiles ?? 1) * config.tileSize,
-          (config.crateHitHTiles ?? 2) * config.tileSize,
-        ),
-    );
-    const crateHit = crateDist !== null;
-    const distance = crateHit ? crateDist : result.distance;
-    const hit = result.target !== null && !crateHit;
+    // ONE LOOP FOR ONE RAY OR SIX. A pistol runs it once; a shell runs it
+    // per pellet and tallies what each one found. The tally is what stops a
+    // cone through one zombie floating six separate numbers over its head —
+    // the same rule the server keeps in `Room.fire`, for the same reason.
+    const rays: ShotRay[] = [];
+    const tally = new Map<string, { target: RayTarget; dmg: number }>();
+    let anyCrate = false;
+
+    for (const aim of this.pelletAim(weapon)) {
+      const result = hitscan(world, ox, oy, aim.dx, aim.dy, weapon.range, targets, this.localId);
+      const crateDist = crateAlongRay(
+        world.crates,
+        ox,
+        oy,
+        aim.dx,
+        aim.dy,
+        result.distance,
+        (kind) => objectVerb(kind) === 'break',
+        (kind) =>
+          objectHitBox(
+            kind,
+            (config.crateHitWTiles ?? 1) * config.tileSize,
+            (config.crateHitHTiles ?? 2) * config.tileSize,
+          ),
+      );
+      const crateHit = crateDist !== null;
+      const distance = crateHit ? crateDist : result.distance;
+      const hit = result.target !== null && !crateHit;
+      rays.push({ dx: aim.dx, dy: aim.dy, dist: distance, hit: hit || crateHit });
+      if (crateHit) anyCrate = true;
+      if (hit && result.target) {
+        const row = tally.get(result.target.id);
+        if (row) row.dmg += weapon.damage;
+        else tally.set(result.target.id, { target: result.target, dmg: weapon.damage });
+      }
+    }
+
+    // Whoever the pull hurt most — the body a player would say they shot.
+    let primary: { target: RayTarget; dmg: number } | null = null;
+    for (const row of tally.values()) {
+      if (!primary || row.dmg > primary.dmg) primary = row;
+    }
+    const flesh = primary !== null;
+
     this.effects.spawnShot(
       ox,
       oy,
       this.aimX,
       this.aimY,
-      distance,
+      rays,
       this.localMeta?.color ?? palette().effects.fallbackShot,
-      hit || crateHit,
-      hit ? weapon.damage : undefined,
-      hit,
+      primary?.dmg,
+      flesh,
       shotFeel(weapon),
     );
-    this.camera.addTrauma(weapon.trauma + (hit || crateHit ? HIT_TRAUMA : 0));
+    this.camera.addTrauma(weapon.trauma + (flesh || anyCrate ? HIT_TRAUMA : 0));
     this.visuals.kickRecoil(this.localId, this.aimX, this.aimY, weapon.kick);
     this.visuals.kickGun(this.localId, weapon.gunKick, weapon.gunPump);
-    playSfx('shot');
-    if (hit && result.target) {
-      this.feelVictim(result.target.id, this.aimX, this.aimY, weapon.damage);
-      playSfxAt('zombie-hit', ox + this.aimX * distance, oy + this.aimY * distance);
+    // One bang per PULL. `shotSound` picks the sample and the rate: the
+    // catalog ships two recipes and eleven guns, and playback rate is what
+    // keeps a P90 and a Deagle from being the same event at different
+    // volumes.
+    const bang = shotSound(weapon);
+    playSfx(bang.name, { rate: bang.rate });
+    // Every body the pull opened feels it, not just the primary — a shell
+    // through two zombies staggers both.
+    for (const row of tally.values()) {
+      this.feelVictim(row.target.id, this.aimX, this.aimY, row.dmg);
+    }
+    if (primary) {
+      const deep = rays.reduce((best, ray) => (ray.hit && ray.dist > best.dist ? ray : best), rays[0]);
+      playSfxAt('zombie-hit', ox + deep.dx * deep.dist, oy + deep.dy * deep.dist);
     }
   }
 
@@ -4476,6 +4557,21 @@ function hashLootId(id: string): number {
   return ((h & 0xffff) / 0xffff) * Math.PI * 2;
 }
 
+/**
+ * Which gunshot recipe a weapon uses, and at what rate.
+ *
+ * Two samples for eleven guns. `shotPitch` carries most of the difference —
+ * a Deagle at 0.86 and a P90 at 1.3 are audibly different objects — but a
+ * shotgun is the one weapon pitch cannot fake, because slowing a sample
+ * stretches its transient and a shell's transient is SHORT while everything
+ * under it is long. So the shotgun gets its own recipe and its own flat
+ * rate; see `sfx_shotgun` in server/tools/make_audio.py.
+ */
+function shotSound(weapon: WeaponConfig | undefined): { name: string; rate: number } {
+  if (weapon && weapon.pellets > 1) return { name: 'shotgun', rate: 1 };
+  return { name: 'shot', rate: weapon?.shotPitch ?? 1 };
+}
+
 function shotFeel(weapon: WeaponConfig): ShotFeel {
   return {
     tracerLife: weapon.tracerLife,
@@ -4484,6 +4580,8 @@ function shotFeel(weapon: WeaponConfig): ShotFeel {
     casings: weapon.casings,
     lightRadius: weapon.lightRadius,
     lightLife: weapon.lightLife,
+    // What makes the barrel throw a CONE instead of a muzzle flash.
+    pellets: weapon.pellets,
   };
 }
 

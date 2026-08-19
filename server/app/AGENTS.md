@@ -28,8 +28,8 @@ game's scale.
 | `rift.py` | extraction pads: day-scaled count, plot, the cargo platform and its corner lamps, inbound pickup, per-pad quota, the pour's timing, overfeed, hand-called launch, siren / `hunt_all` |
 | `entrance.py` | forest edge VOID corridor, emerge formation, staggered seal (`seal_to`), `bounds` for a map with two corridors, extraction `open_exit` (flared at the border) |
 | `quests.py` | run objectives: progress, done, optional risk; the HUD mirrors this list |
-| `inventory.py` | the pocket: slots, stacking, weight, `tip_one` (one unit out of the bag per pour beat), per-slot value/weight overrides |
-| `world.py` | tile grid, tile alphabet, collision queries |
+| `inventory.py` | the pocket: slots, stacking, weight, `tip_one` (one unit out of the bag per pour beat), per-slot value/weight overrides. Its stacking rule is re-derived client-side in `client/src/game/interaction.ts` — see the contract below |
+| `world.py` | tile grid, tile alphabet, collision queries — **mirrored by `client/src/game/world.ts`**, which prediction runs on |
 | `maps.py` | hand-authored maps (`from_ascii`, `from_rects`) |
 | `mapgen.py` | procedural forest, seeded and connectivity-checked; `NEST_SCENES` / `HAUNT_SCENES` decide which scenes have creatures standing in them before anyone arrives |
 | `scenery.py` | story SCENES: the layouts, the thread linking them, their lights, the wire rows |
@@ -39,7 +39,7 @@ game's scale.
 | `skills.py` | what a LEVEL buys: the catalog, the rarity roll, `Loadout` (stacks + spins owed) and `Mods`, the flattened numbers every other module multiplies by |
 | `machine.py` | the upgrade machine's TIMELINE — one clock shared with `client/src/game/machine.ts`, including the third reel's per-rarity hold |
 | `protocol.py` | wire message shapes — source of truth |
-| `config.py` | tuning constants + `client_config()` |
+| `config.py` | tuning constants + `client_config()`, whose keys are held equal to the client's `GameConfig` by `tests/test_config_parity.py` |
 
 ## Local Contracts — cross-cutting
 
@@ -48,6 +48,17 @@ to the design docs indexed below.
 
 - `simulation.py` and `client/src/game/simulation.ts` are mirrors. Changing one
   without the other makes the local player rubber-band.
+- **`world.py` and `client/src/game/world.ts` are mirrors too**, and this one is
+  easy to miss: the tile alphabet (`FLOOR`..`LOW`) and `move_axis`,
+  `blocks_sight`, `box_blocked` and `raycast_tiles` all exist on both sides
+  because prediction runs on them. A tile kind added here alone is a client
+  walking through a wall the server is enforcing.
+- **`Room.collect_loot` has a client half**, `canStow` in
+  `client/src/game/interaction.ts`, which re-derives
+  the same three rules (the calibre must be on your own belt, the reserve must
+  have room, a slot carrying its own numbers never stacks). It is duplicated on
+  purpose — the prompt colours a tooltip at frame rate and cannot wait for a
+  round trip — so a change to what a collect refuses is a change in two files.
 - `protocol.py` is the single source of truth for message shapes;
   `client/src/net/protocol.ts` mirrors it.
 - Per-creature stats never enter a snapshot. The wire carries a type key and
@@ -170,12 +181,15 @@ table and the gameplay state machine.
 - Keep the tick O(entities). Anything that scales with map size belongs in a
   cached structure (see `pathing.py`, one field per player shared by the horde).
 - New tuning goes in `config.py` in tiles/seconds, plus a `client_config()` key
-  if prediction or rendering needs it. Asset folder names the client loads
+  if prediction or rendering needs it — and the matching REQUIRED field on
+  `GameConfig` in the same change, or `test_config_parity.py` fails. Asset folder names the client loads
   (`coinSprite`, `backpackSprite`, `enemyTypes[*].sprite` / `variants` /
   `hats` / `clothes`) live here too.
 
 ## Verification
 
+- `python tests/test_config_parity.py` after ANY edit to `client_config()`:
+  it is the only check that the constants actually reach the client.
 - `python tests/test_snapshot_shape.py` and `python tests/test_pour.py` from
   `server/`. Both are plain scripts and print `ok`; there is no runner.
 - Beyond that, run the server and confirm at least two clients move, shoot and

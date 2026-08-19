@@ -21,6 +21,33 @@ Zone rules the loop obeys:
 
 Rooms are created and looked up by code in `rooms.py`; nothing in this class
 assumes it is the only one.
+
+NAVIGATING THIS FILE. It is ~2.9k lines and is not meant to be read whole.
+Every handler sits under a `# --- <section> ---` banner; grep the banner, not
+the line number. In order:
+
+    lifecycle           start / stop
+    membership          spawns, seats, join, leave, the lobby payloads, ready
+    loot and the belt   collect, the gun trade
+    interactive objects break / open / lift, nests, the ambush
+    extraction          the console, the pour, the quota, the carved exit
+    the shop            the six stalls, the upgrade machine's lever
+    the bag             drop one slot back onto the ground
+    zone transit        embark / enter_store / depart_store, all via _swap_map
+    input               queue_input
+    the tick            step(), the one ordered pass
+    extraction clock    the pickup: siren, drones, the deck freeing
+    bodies + corridors  the per-tick player update, and the walk-out /
+                        arrival / seal that puppet it
+    quests              offering and ticking the run's objectives
+    enemies             the director's slice of the tick
+    combat              attacks both ways, the swing, the shot, damage, death
+    networking          broadcast, the snapshot assembly, the 30 Hz loop
+
+The banners used to be five, one of which spanned 1374 lines across eight of
+the sections above. That is worth keeping honest: `AGENTS.md` tells a reader
+to jump to the section rather than open the file, and a banner that lies turns
+that instruction into a full scan.
 """
 
 from __future__ import annotations
@@ -485,6 +512,7 @@ class Room:
         if living and all(p.ready for p in living):
             self.begin_depart()
 
+    # --- loot and the belt --------------------------------------------------
     def collect_loot(self, pid: str, drop_id: str) -> None:
         """Pick up a drop if this player is standing on it.
 
@@ -613,6 +641,7 @@ class Room:
         self.drops[drop_id] = Drop(id=drop_id, key=old, x=pos[0], y=pos[1])
         return held
 
+    # --- interactive objects: using one, and what falls out -----------------
     def break_crate(self, pid: str, crate_id: str) -> None:
         """Use the object in front of this player — break it, or open it.
 
@@ -802,6 +831,7 @@ class Room:
         ai.commit(enemy, victim)
         return True
 
+    # --- extraction: the console, the pour, the quota, the exit -------------
     def activate_rift(self, pid: str, rift_id: str | None = None) -> None:
         """Wake a platform, load a running one, or call the pickup.
 
@@ -1270,6 +1300,7 @@ class Room:
         for player in self.players.values():
             player.last_input.lantern = False
 
+    # --- the shop: the stalls and the upgrade machine -----------------------
     def buy(self, pid: str, stand_id: str | None = None) -> None:
         """Take the gun off a table and the price off the party's balance.
 
@@ -1441,6 +1472,7 @@ class Room:
             return
         self.world.store["stands"] = [row.to_payload() for row in self.stands]
 
+    # --- the bag back onto the ground ---------------------------------------
     def drop_loot(self, pid: str, slot: int) -> None:
         """Toss a bag slot onto the ground near this player's feet.
 
@@ -1489,6 +1521,7 @@ class Room:
         self._loot_dirty = True
         self._roster_dirty = True
 
+    # --- zone transit: the three legal map swaps, all via _swap_map ---------
     def begin_depart(self) -> None:
         """Lock input and line the party up for the exit."""
         if self.departing or self.zone.kind != zones.KIND_CAMP:
@@ -1696,7 +1729,7 @@ class Room:
         while len(player.inputs) > MAX_INPUT_QUEUE:
             player.inputs.popleft()
 
-    # --- simulation ---------------------------------------------------------
+    # --- the tick: one pass, in order ---------------------------------------
     def step(self, dt: float) -> None:
         # The cabinet's lockout. Off the shop map it is already zero and this
         # is one float subtraction a tick, which is cheaper than branching on
@@ -1710,6 +1743,7 @@ class Room:
         self.step_coins(dt)
         self.step_rift(dt)
 
+    # --- extraction: the pickup's clock -------------------------------------
     def step_rift(self, dt: float) -> None:
         """Run every pad's sequence. Marks dirty only on a transition.
 
@@ -1804,6 +1838,7 @@ class Room:
         self.navigator.invalidate()
         return True
 
+    # --- bodies, and the corridors that puppet them -------------------------
     def begin_arrive(self) -> None:
         """Lock input and line the party up inside the arrival corridor.
 
@@ -2060,6 +2095,7 @@ class Room:
             return
         self.world.entrance = self.gate.geometry_payload()
 
+    # --- quests -------------------------------------------------------------
     def offer_extract_quest(self) -> None:
         if not self.rifts:
             return
@@ -2137,6 +2173,7 @@ class Room:
         self._quests_dirty = True
         self._pending_return = True
 
+    # --- enemies ------------------------------------------------------------
     def step_enemies(self, dt: float) -> None:
         """Advance the pack, resolve its swings, then top the population up."""
         # A safe zone has no director and, having never spawned anything, no
@@ -2198,6 +2235,7 @@ class Room:
                 ai.commit(enemy, target)
         return enemy
 
+    # --- combat -------------------------------------------------------------
     def resolve_attack(self, attack: ai.Attack) -> None:
         """Apply one melee swing, honouring the victim's i-frames.
 

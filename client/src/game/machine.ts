@@ -29,19 +29,16 @@
 
 import type { LootRarity, MachineTimingConfig, SpinEvent } from '../net/protocol';
 
-/** Fallback clock, used only if a server predating `config.machine` answers. */
-const FALLBACK: MachineTimingConfig = {
-  armTime: 0.34,
-  spinUp: 0.52,
-  reelOne: 1.52,
-  reelTwo: 2.14,
-  reelHold: { common: 0.3, uncommon: 0.55, rare: 0.95, epic: 1.45, legendary: 1.95 },
-  ejectLag: 0.26,
-  ejectFlight: 0.55,
-  holdTime: 1.15,
-  resetTime: 0.6,
-  reachTiles: 2.2,
-};
+/**
+ * Hold for a rarity the clock has no row for, in seconds.
+ *
+ * The only number in this file that is not the server's. `reelHold` is keyed
+ * by rarity name, so an unrecognised one would otherwise put `undefined`
+ * through the whole timeline; a common's hold is the safe read of "we do not
+ * know, so do not promise anything". It is NOT a copy of the server's common —
+ * it is what to do when the key is not in the table at all.
+ */
+const UNKNOWN_RARITY_HOLD = 0.3;
 
 /** Beats a pull crosses exactly once. `Game` hangs the sounds off these. */
 export type MachineBeat =
@@ -68,11 +65,10 @@ export interface MachineTiming {
 
 /** When each beat lands, in seconds from the lever coming down. */
 export function machineTiming(
-  config: MachineTimingConfig | undefined,
+  c: MachineTimingConfig,
   rarity: string,
 ): MachineTiming {
-  const c = config ?? FALLBACK;
-  const hold = c.reelHold?.[rarity] ?? FALLBACK.reelHold[rarity] ?? 0.3;
+  const hold = c.reelHold[rarity] ?? UNKNOWN_RARITY_HOLD;
   const reel2 = c.reelTwo + hold;
   const eject = reel2 + c.ejectLag;
   const settle = eject + c.ejectFlight;
@@ -104,7 +100,7 @@ export interface MachinePull {
 
 export function beginPull(
   event: SpinEvent,
-  config: MachineTimingConfig | undefined,
+  config: MachineTimingConfig,
 ): MachinePull {
   return {
     by: event.by,

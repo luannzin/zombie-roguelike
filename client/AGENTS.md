@@ -16,7 +16,10 @@ own the HUD and routing only. Talks to the server over one WebSocket.
     buffers), `sfx.ts` (one-shots: variant, detune, world position), `beds.ts`
     (looping ambience and the crossfades between places)
   - `src/net/` — `connection.ts` (socket, reconnect, RTT, multicast delivery),
-    `protocol.ts` (wire types, mirror of `server/app/protocol.py`),
+    `protocol.ts` (wire types, mirror of `server/app/protocol.py` — and the
+    always-sent half of `GameConfig` is REQUIRED, so a gameplay constant
+    cannot be hedged with a local default; `server/tests/test_config_parity.py`
+    holds the two key sets equal),
     `endpoints.ts` (where the server is) and `rooms.ts` (the room REST pair)
   - `src/hooks/` — `useRoomSession` owns one socket per mounted room and holds
     the camp from `hello`, `useGameSession` owns one `Game` per playerId (a
@@ -82,7 +85,11 @@ Whole-system map: [`ARCHITECTURE.md`](../ARCHITECTURE.md).
   Tailwind utilities; the canvas reads the same custom properties through
   `theme/palette.ts`. Never hardcode a colour anywhere else. Type works the same
   way through `--font-hud` and `theme/fonts.ts`.
-- **Never hardcode a gameplay constant.** They arrive in `welcome.config`.
+- **Never hardcode a gameplay constant, and never default one.** They arrive
+  in `welcome.config`, and the always-sent ones are REQUIRED on `GameConfig`
+  so `config.x ?? 100` will not compile. A fallback that never fires is not a
+  safety net — it is a second, unversioned copy of the server's number, and
+  two of them had already gone stale before the types were tightened.
 - `src/net/protocol.ts` mirrors `server/app/protocol.py`; change both together.
 - **One socket per room, owned by `useRoomSession`.** It carries the lobby and
   then the arena; `Game` subscribes to it and never closes it. Anything that
@@ -132,6 +139,10 @@ cd client && bun install && bun run dev
 ## Verification
 
 - `bun run typecheck` (`tsc --noEmit`) — required after any change here.
+- If the change touched `net/protocol.ts`, also run
+  `python tests/test_config_parity.py` from `server/`: `tsc` can only see this
+  half of the contract, and a `GameConfig` field the server does not send is
+  `undefined` behind a type that promises a number.
 - `bun run build` before shipping; it typechecks then builds.
 - Open two tabs on `http://localhost:5173` and confirm both players move, shoot
   and light the world without rubber-banding.

@@ -31,7 +31,7 @@ mutation, no React.
 | `loot.ts` | loot atlas: one 16x16 frame per collectable item |
 | `guns.ts` | held-gun atlas and the shared muzzle/grip pose (`gunMuzzle`) |
 | `gore.ts` | gore atlas: small wound decals stamped on a body that has been hit |
-| `fov.ts` | shared field of view — `light` and `heat` fields |
+| `fov.ts` | shared field of view — `light` and `heat` fields. Its two sight reaches are NOT constants here: they arrive on `VisionConfig` as `eyeScale` / `sightScale`, off `config.enemyViewDarkScale` / `enemyViewLitScale`, which is what makes an enemy see a shape exactly as far as the shape sees it |
 | `wind.ts` | the shared gust field every bending thing reads |
 | `disturbance.ts` | what bodies do to the plants they walk through |
 | `layers/vision.ts` | the ENEMY's hunt diamond — fill meter and bang over the head |

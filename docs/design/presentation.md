@@ -37,7 +37,7 @@ Nearest contracts: [`client/AGENTS.md`](../../client/AGENTS.md),
 | how an effect plays | `client/src/game/effects.ts`, `client/src/render/layers/effects.ts` |
 | muzzle / impact art | `server/tools/make_weapon_vfx.py`, `client/src/render/weapon-vfx.ts` |
 | wounds | `server/tools/make_gore.py`, `client/src/render/gore.ts` |
-| darkness / vision | `client/src/render/fov.ts`, `layers/darkness.ts` — note `fov.ts` mirrors `ai.py`'s view scales |
+| darkness / vision | `client/src/render/fov.ts`, `layers/darkness.ts` — `fov.ts` draws vision at the reaches `ai.py` tests against, both read off `config.enemyViewDarkScale` / `enemyViewLitScale` |
 | colours, type | `client/src/styles/index.css` only |
 
 **Do not touch from here:** anything under `server/app/`. A presentation change

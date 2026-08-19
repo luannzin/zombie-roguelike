@@ -335,10 +335,16 @@ ENEMY_GROUP_SPREAD_TILES = 2.5
 # SIGHT IS SYMMETRIC. It is one dark forest and everybody is standing in it: if
 # you can make a shape out at that distance, it can make you out at the same
 # distance — provided it happens to be facing you. So an enemy's reach is not a
-# number of its own, it is a fraction of the LANTERN's, and it mirrors the two
-# sight models in `client/src/render/fov.ts`: the naked eye (EYE_REACH) with the
-# lamp off, and the full wash the lamp opens up (SIGHT_REACH) with it on.
+# number of its own, it is a fraction of the LANTERN's, and it is the SAME
+# fraction the client's two sight models use: the naked eye with the lamp off,
+# and the full wash the lamp opens up with it on.
 # Changing the lantern rescales the danger along with the visibility.
+#
+# BOTH SCALES SHIP IN `welcome.config` (`enemyViewDarkScale` /
+# `enemyViewLitScale`) and `client/src/render/fov.ts` reads them. They used to
+# be hand-copied there as `EYE_REACH` / `SIGHT_REACH`, which made the symmetry
+# rule a comment two files apart could break silently — a player seeing a
+# radius the creatures do not respect is invisible to every test we have.
 #
 # Which of the two applies is decided PER TARGET, by that player's own switch.
 # Switching on does not merely let you see further — it lets you BE seen
@@ -632,6 +638,13 @@ def client_config() -> dict:
         "visionAmbientTiles": VISION_AMBIENT_TILES,
         "visionLanternTiles": VISION_LANTERN_TILES,
         "visionConeDegrees": VISION_CONE_DEGREES,
+        # SIGHT SYMMETRY, as the two fractions of the lantern's reach that both
+        # sides must agree on. The client draws its naked-eye and lit washes at
+        # exactly the reaches `ai.look` tests against — see the note above
+        # `ENEMY_VIEW_DARK_SCALE`. Shipped rather than mirrored: the rule has no
+        # runtime symptom when it breaks, only a wrong game.
+        "enemyViewDarkScale": ENEMY_VIEW_DARK_SCALE,
+        "enemyViewLitScale": ENEMY_VIEW_LIT_SCALE,
         # Camp geometry. The client needs it to keep undergrowth out of the
         # hearth and to light the fire it can already see in the tiles.
         "campfireLightTiles": CAMPFIRE_LIGHT_TILES,

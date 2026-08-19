@@ -155,33 +155,6 @@ function easeIn(t: number): number {
   return t * t;
 }
 
-/**
- * The rig's clock, if the server did not send one.
- *
- * Mirrors `server/app/rift.py`. It exists so a client talking to an older
- * server animates a plausible machine instead of dividing by undefined — the
- * server's numbers win whenever they arrive, and they always do in practice.
- */
-export const RIFT_FALLBACK: RiftTimingConfig = {
-  consoleLag: 0.3,
-  openAt: 0.85,
-  lightTiles: 4.0,
-  drones: 4,
-  liftAlarm: 3.2,
-  droneStagger: 0.55,
-  droneInbound: 2.4,
-  droneDrop: 1.0,
-  tiedAt: 8.25,
-  liftStrain: 1.1,
-  liftBreak: 0.45,
-  liftClimb: 3.4,
-  breakAt: 9.35,
-  openTime: null,
-  collapseAt: null,
-  collapseTime: 13.2,
-  spentAt: null,
-};
-
 /** One inbound aircraft, on this frame. */
 export interface DronePhase {
   /** Corner index — into the atlas's eye list. */

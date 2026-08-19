@@ -4,7 +4,7 @@
  * than a 5 Hz flicker.
  *
  * The VERB comes from the object itself (`config.objects[kind].label`, via
- * `Game.cratePromptInfo`) instead of being a constant here. That is the whole
+ * `interaction.cratePromptInfo`) instead of being a constant here. That is the whole
  * point of the object vocabulary reaching the client as data: a barrel says
  * destruir, a chest says abrir, a car boot says vasculhar, and the HUD learns
  * a new one when `server/app/crates.py` grows a row.

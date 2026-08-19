@@ -47,10 +47,10 @@ export function carryScale(
   config: GameConfig,
   maxWeight?: number,
 ): number {
-  const max = maxWeight ?? config.carryMaxWeight ?? 10;
-  const start = config.carrySlowStart ?? 0.2;
-  const atMax = config.carrySlowAtMax ?? 0.55;
-  const floor = config.carrySlowFloor ?? 0.35;
+  const max = maxWeight ?? config.carryMaxWeight;
+  const start = config.carrySlowStart;
+  const atMax = config.carrySlowAtMax;
+  const floor = config.carrySlowFloor;
   if (max <= 0) return 1;
   const ratio = weight / max;
   if (ratio <= start) return 1;
@@ -70,8 +70,8 @@ export function carryBurden(
   config: GameConfig,
   maxWeight?: number,
 ): number {
-  const max = maxWeight ?? config.carryMaxWeight ?? 10;
-  const start = config.carrySlowStart ?? 0.2;
+  const max = maxWeight ?? config.carryMaxWeight;
+  const start = config.carrySlowStart;
   if (max <= 0) return 0;
   const ratio = weight / max;
   const span = 1 - start;
@@ -105,18 +105,18 @@ export function stepStamina(
   config: GameConfig,
   dt: number,
 ): void {
-  const max = config.staminaMax ?? 100;
+  const max = config.staminaMax;
   if (running) {
-    state.stamina -= (config.staminaDrain ?? 26) * dt;
+    state.stamina -= config.staminaDrain * dt;
     if (state.stamina <= 0) {
       state.stamina = 0;
       state.winded = true;
     }
     return;
   }
-  const regen = moving ? (config.staminaRegenWalk ?? 12) : (config.staminaRegenRest ?? 24);
+  const regen = moving ? config.staminaRegenWalk : config.staminaRegenRest;
   state.stamina = Math.min(max, state.stamina + regen * dt);
-  if (state.winded && state.stamina >= max * (config.staminaRecover ?? 0.33)) {
+  if (state.winded && state.stamina >= max * config.staminaRecover) {
     state.winded = false;
   }
 }
@@ -141,7 +141,7 @@ export function applyInput(
   stepStamina(state, running, moving, config, dt);
 
   let speed = config.moveSpeed * (mods?.speed ?? 1) * carryScale(weight, config, mods?.carry);
-  if (running) speed *= config.sprintSpeed ?? 1.55;
+  if (running) speed *= config.sprintSpeed;
   state.vx = dx * speed;
   state.vy = dy * speed;
 

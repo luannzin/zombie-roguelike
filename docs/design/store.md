@@ -39,7 +39,7 @@ Nearest contracts: [`server/app/AGENTS.md`](../../server/app/AGENTS.md),
 | prices | `server/app/loot.py` catalog value or `STORE_MARKUP` — never a price list |
 | the shop drawn | `client/src/render/layers/store.ts`, `client/src/render/store.ts`, `render/merchant.ts` |
 | payout ceremony | `client/src/game/payout.ts`, `client/src/render/layers/payout.ts` |
-| buy prompt | `client/src/components/hud/BuyPrompt.tsx`, `Game.buyPrompt()` |
+| buy prompt | `client/src/components/hud/BuyPrompt.tsx`, `client/src/game/interaction.ts` (`buyPrompt`, `nearStand`) |
 
 **Do not touch from here:** `rift.py`'s quota math, inventory authority, the
 skills catalog, or the wire protocol pair.

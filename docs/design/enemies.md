@@ -15,7 +15,7 @@ Nearest contract: [`server/app/AGENTS.md`](../../server/app/AGENTS.md).
 ## Invariants
 
 - **An enemy chases nothing it has not noticed.** Awareness fills only inside the sight cone; `aggro_range` is the GIVE-UP distance, not the notice distance.
-- **Sight is symmetric with the lantern.** `ENEMY_VIEW_DARK_SCALE` mirrors `EYE_REACH` and `ENEMY_VIEW_LIT_SCALE` mirrors `SIGHT_REACH` (`client/src/render/fov.ts`). Move one, move the other. Never give a creature an absolute view distance.
+- **Sight is symmetric with the lantern.** `ENEMY_VIEW_DARK_SCALE` and `ENEMY_VIEW_LIT_SCALE` are the reaches BOTH sides use — they ship as `enemyViewDarkScale` / `enemyViewLitScale` and `client/src/render/fov.ts` reads them. One source, so there is nothing to keep in step. Never give a creature an absolute view distance.
 - **Nothing snaps its head.** Every facing change outside a hunt goes through `ai.turn_towards` at a bounded rate.
 - **`ai.glare` never commits.** The beam turns heads and caps awareness below the commit line; being spotted stays the cone's job.
 - **Every non-eye awareness source goes through `ai.commit`** — a neighbour's shout (one hop), an `ai.Noise`, `ai.alarm` on damage. Do not add a damage path that skips `alarm`.
@@ -81,11 +81,18 @@ the wire protocol pair.
   `aggro_range` is now the give-up distance, not the notice distance.
 - **Sight is symmetric, and the lamp is a two-way switch.** A cone's reach is
   a fraction of the LANTERN's, chosen per target by that player's own switch:
-  `ENEMY_VIEW_DARK_SCALE` mirrors `EYE_REACH` and `ENEMY_VIEW_LIT_SCALE`
-  mirrors `SIGHT_REACH`, both in `client/src/render/fov.ts`. Move one, move
-  the other. Hunt uses the same pair: a player who kills the lamp is a
-  shorter shape, and that is how they slip a hunter. Never give a creature
-  an absolute view distance.
+  `ENEMY_VIEW_DARK_SCALE` and `ENEMY_VIEW_LIT_SCALE`. Hunt uses the same
+  pair: a player who kills the lamp is a shorter shape, and that is how they
+  slip a hunter. Never give a creature an absolute view distance.
+
+  **THE CLIENT READS THE SAME TWO NUMBERS**, shipped as `enemyViewDarkScale` /
+  `enemyViewLitScale`, and draws its naked-eye and lit washes at exactly those
+  reaches (`render/fov.ts`). They used to be copied there as `EYE_REACH` /
+  `SIGHT_REACH` under a comment asking whoever moved one to move the other.
+  That was the wrong shape for this rule: symmetry breaking produces no error,
+  no desync and no visible artefact — only a player seeing a radius the
+  creatures do not respect, which is unfalsifiable from inside the game. A
+  contract with no symptom has to be one value, not two that agree.
 - **Nothing snaps its head.** Every facing change outside an active hunt goes
   through `ai.turn_towards` at a bounded rate — `ENEMY_IDLE_TURN_DEGREES` while
   patrolling, `ENEMY_TURN_DEGREES` under a glare — and a patrolling body walks

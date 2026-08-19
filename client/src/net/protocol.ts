@@ -158,6 +158,19 @@ export interface GameConfig {
   visionLanternTiles: number;
   /** Full width of the lantern cone, in degrees. */
   visionConeDegrees: number;
+  /**
+   * SIGHT SYMMETRY: how far a creature sees a body, as a fraction of
+   * `visionLanternTiles` — with the lamp off, and with it on.
+   *
+   * `render/fov.ts` draws its naked-eye and lit washes at exactly these
+   * reaches, which is what makes the rule true: an enemy sees a shape as far
+   * as the shape sees it. Mirrors `ENEMY_VIEW_DARK_SCALE` /
+   * `ENEMY_VIEW_LIT_SCALE` in server/app/config.py — and it is a SHIPPED
+   * number rather than a copied one, because a mismatch here has no symptom
+   * except a game that is quietly wrong.
+   */
+  enemyViewDarkScale: number;
+  enemyViewLitScale: number;
   /** How far a bonfire throws light, in tiles. The camp's only light source. */
   campfireLightTiles: number;
   /** The fire plus the seat ring, in tiles: nothing grows inside it. */
@@ -168,51 +181,51 @@ export interface GameConfig {
   /** How close to the fire (tiles, feet to flame) the ready prompt answers. */
   readyRangeTiles: number;
   /** How close to a drop (tiles, feet to item) E will collect. */
-  lootCollectTiles?: number;
+  lootCollectTiles: number;
   /**
    * How close to an object (tiles) E will use it. Measured feet to the
    * nearest point of the FOOTPRINT, not to the contact point — a bus is four
    * tiles long and a centre-to-centre reach would refuse the prompt at the
    * exact doors the art is pointing at.
    */
-  crateBreakTiles?: number;
+  crateBreakTiles: number;
   /** Fallback shot box, in tiles. Per-object boxes ride `objects` and win. */
-  crateHitWTiles?: number;
-  crateHitHTiles?: number;
+  crateHitWTiles: number;
+  crateHitHTiles: number;
   /** How close to the extraction console (tiles, feet to contact) E activates. */
-  riftActivateTiles?: number;
+  riftActivateTiles: number;
   /** How close to a shop table (tiles, feet to contact) E will buy. */
-  storeBuyTiles?: number;
+  storeBuyTiles: number;
   /** How far the weapon on that table lifts while somebody is in range, in tiles. */
-  storeLiftTiles?: number;
+  storeLiftTiles: number;
   /** How close to the upgrade machine (tiles, feet to contact) E pulls. */
-  storeSpinTiles?: number;
+  storeSpinTiles: number;
   /** The upgrade machine's clock. One source: `server/app/machine.py`. */
-  machine?: MachineTimingConfig;
+  machine: MachineTimingConfig;
   /** Catalog of skills. Keyed by key; `frame` indexes the skill icon atlas. */
-  skills?: Record<string, SkillConfig>;
+  skills: Record<string, SkillConfig>;
   /** The extraction platform's clock. One source: `server/app/rift.py`. */
-  rift?: RiftTimingConfig;
+  rift: RiftTimingConfig;
   /** Catalog of world loot. Keyed by item key; `frame` indexes the loot atlas. */
-  loot?: Record<string, LootItemConfig>;
+  loot: Record<string, LootItemConfig>;
   /** Combat stats for guns. Keyed by the same keys as loot rows with pocket `hotbar`. */
-  weapons?: Record<string, WeaponConfig>;
+  weapons: Record<string, WeaponConfig>;
   /** The object vocabulary: sheet, verb, prompt and hit box per kind. */
-  objects?: Record<string, ObjectDef>;
+  objects: Record<string, ObjectDef>;
   /** Ammunition: the calibres, their boxes and how much of each fits. */
-  ammo?: AmmoConfig;
+  ammo: AmmoConfig;
   /** Starting bag size. A later upgrade grows it. */
-  inventorySlots?: number;
+  inventorySlots: number;
   /** Gun belt size. */
-  hotbarSlots?: number;
+  hotbarSlots: number;
   /** Weight the walk is tuned around. The bag may go past this. */
-  carryMaxWeight?: number;
+  carryMaxWeight: number;
   /** Fraction of max weight that is still full speed. */
-  carrySlowStart?: number;
+  carrySlowStart: number;
   /** Speed multiplier at exactly max weight. */
-  carrySlowAtMax?: number;
+  carrySlowAtMax: number;
   /** Slowest the walk is allowed to get, even overweight. */
-  carrySlowFloor?: number;
+  carrySlowFloor: number;
   /**
    * Running. SHIFT multiplies the walk by `sprintSpeed` and spends
    * `staminaDrain` points a second doing it; letting go pays back
@@ -220,12 +233,12 @@ export interface GameConfig {
    * bar spent to zero refuses the key until `staminaRecover` of it is back.
    * Mirrors `SPRINT_SPEED` / `STAMINA_*` in server/app/config.py.
    */
-  sprintSpeed?: number;
-  staminaMax?: number;
-  staminaDrain?: number;
-  staminaRegenWalk?: number;
-  staminaRegenRest?: number;
-  staminaRecover?: number;
+  sprintSpeed: number;
+  staminaMax: number;
+  staminaDrain: number;
+  staminaRegenWalk: number;
+  staminaRegenRest: number;
+  staminaRecover: number;
 }
 
 export type LootRarity = 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary';

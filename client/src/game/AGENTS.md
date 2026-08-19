@@ -10,13 +10,14 @@ seam React is allowed to read.
 
 | file | owns |
 | --- | --- |
-| `game.ts` | orchestrator: two clocks, render loop, `start()`/`dispose()`, hunt-diamond latch |
+| `game.ts` | orchestrator: two clocks, render loop, `start()`/`dispose()`, hunt-diamond latch. ~4.4k lines — navigate by the `// --- <section> ---` banners listed in its own header comment, never by line number |
+| `interaction.ts` | WHAT E IS OFFERING and whether it would be refused: the five reach tests (fire, object, drop, pad, stall), the two server rules the client re-derives (`canStow`, `swapTargetFor`), and the five prompts built from them. Pure functions over an `InteractionState`; nothing here mutates, sends, draws or makes a noise |
 | `lobby-scene.ts` | the camp, drawn before the simulation is allowed to run |
 | `simulation.ts` | movement — mirror of `server/app/simulation.py` |
 | `prediction.ts` | apply-locally, replay-on-ack reconciliation |
 | `interpolation.ts` | remote entity smoothing |
 | `input.ts` | keyboard/mouse sampling into an `InputPacket` (1/2/3 is the hotbar) |
-| `world.ts` | client tile map, collision + sight queries, fires, hearth mask, placed scenery, live interactive objects, the extraction rift |
+| `world.ts` | client tile map, collision + sight queries, fires, hearth mask, placed scenery, live interactive objects, the extraction rift. The tile alphabet and the four collision/sight queries are a **mirror of `server/app/world.py`** — prediction runs on them |
 | `objects.ts` | the client's copy of `welcome.config.objects`: which sheet, verb, prompt, footprint and hit box each object kind has. No table of its own |
 | `combat.ts` | client-side shot feel: capsules, tile DDA, per-object sprite boxes (BREAKABLE only) |
 | `effects.ts` | tracers, blade paths, dust, blood, floating text, event lights, boot prints, object one-shots, the loot pop, wind, death burst |
@@ -29,7 +30,7 @@ seam React is allowed to read.
 | `inventory-actions.ts` | bag → socket: `Game` binds `drop`; React never owns the connection |
 | `loot-flies.ts` | collect flies: hold over the head, then travel; membership is a store, pose is per-frame |
 | `pad-cargo.ts` | the POUR's other half: items in the air out of a backpack, and the pile they become on a platform's deck. Deck-relative, so the load leaves with the skid |
-| `machine.ts` | the upgrade machine's CEREMONY: one lever pull as beats, the BAND's scroll position per reel, the arm, and where the canister is. Timing comes from `config.machine` — a mirror of `server/app/machine.py` |
+| `machine.ts` | the upgrade machine's CEREMONY: one lever pull as beats, the BAND's scroll position per reel, the arm, and where the canister is. Timing comes from `config.machine` — a mirror of `server/app/machine.py`, and it is REQUIRED: there is no local copy of the clock to fall back to |
 | `payout.ts` | the night's platforms being lowered into the shop, and the gold coming off them. Presentation only; the balance was credited server-side |
 
 ## Design law
@@ -40,6 +41,16 @@ The server half of each of these lives in [`docs/design/`](../../../docs/design/
 
 - Two clocks: a fixed 30 Hz tick samples input, predicts and sends; `rAF`
   interpolates, smooths and renders. Do not move prediction into `rAF`.
+- **`welcome.config` is the only source of a gameplay constant, and it is not
+  optional.** Every field `client_config()` always sends is REQUIRED on
+  `GameConfig`, so `config.staminaMax ?? 100` is a type error rather than a
+  quiet second copy of the server's number. It was not always: two of those
+  hedges had gone stale (`inventorySlots ?? 3` against a server sending 5,
+  `carryMaxWeight ?? 10` against 14) and nothing failed, because the payload
+  always carried the real value and the fallback simply never fired. A default
+  that is never reached is not a safety net, it is an unversioned copy waiting
+  for the day the key is absent. The only legitimate fallback left is
+  `lobby-scene.ts`'s title-screen clearing, which has NO SERVER at all.
 - `simulation.ts` is the **only** place the local player may be moved, and it
   must stay a line-for-line mirror of the Python version. Carried weight
   scales `moveSpeed` (`carryScale`); prediction reads `LocalPlayer.carryWeight`,
@@ -51,6 +62,26 @@ The server half of each of these lives in [`docs/design/`](../../../docs/design/
   server-computed number would be stale for exactly the frames the player is
   watching their own speed change, so every path that can move it (welcome,
   roster, a bag toss, `selectHotbar`) reassigns `carryWeight` on the spot.
+- **`interaction.ts` answers what E offers; `Game` decides what to do about
+  it.** Every reach test and every prompt is a pure function there, taking an
+  `InteractionState` — a read-only view `Game.interactionState()` builds. The
+  effects stayed behind on purpose: `sendInteract` puts the answer on the
+  socket and plays the refusal buzz, `publishHud` puts it in the store, and
+  `syncTooltipAnchors` turns it into screen pixels. Nothing in `interaction.ts`
+  may mutate, send, draw or make a noise — that rule is the whole reason the
+  file can be read without the orchestrator around it.
+  A caller builds the state ONCE and asks several questions off it, so every
+  prompt in one HUD patch describes the same instant. `pocketGold` is a thunk
+  rather than a number because only `riftPrompt` wants it, it walks the whole
+  loot catalog, and it returns early on almost every frame.
+- **`interaction.canStow` is the client half of `Room.collect_loot`.** It
+  re-derives the same three refusals (the calibre must already be on your belt,
+  the reserve must have room, a slot carrying its own numbers never stacks)
+  because the prompt colours a tooltip at frame rate and cannot wait for a
+  round trip. `swapTargetFor` is the same deal against `Room.swap_weapon`. The
+  server still decides; these only decide what the tooltip PROMISES. A change
+  to what a collect refuses is a change in both files, and getting it wrong
+  shows up as a green prompt the server then ignores.
 - `hud-store.ts` is the only channel to the UI for state. World tooltip
   positions travel through `tooltip-anchors.ts` (written every frame, never
   subscribed). The exit arrow pose travels through `exit-guide.ts` the same
@@ -202,7 +233,7 @@ The server half of each of these lives in [`docs/design/`](../../../docs/design/
   the first time. The only client-side special case is the merchant's clip
   player, stepped on the render clock exactly like the rift's ceremony,
   because neither has ever been on the wire.
-  `nearStand` mirrors `Room._stand_in_reach` feet-to-table, and it drives all
+  `interaction.nearStand` mirrors `Room._stand_in_reach` feet-to-table, and it drives all
   three of the lift, the pool and the prompt — a layer working it out for
   itself would be a second opinion about what "close enough" means.
   - **The pad's whole feed state is on the wire** — `fed`, `need`, `ready` on

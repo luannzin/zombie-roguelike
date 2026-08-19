@@ -97,6 +97,20 @@ export interface VisionConfig {
   ambientTiles: number;
   lanternTiles: number;
   coneDegrees: number;
+  /**
+   * SIGHT SYMMETRY, as fractions of `lanternTiles`: how far the naked eye
+   * reaches with the lamp off, and how far the wash reaches with it on.
+   *
+   * These are `enemyViewDarkScale` / `enemyViewLitScale` off
+   * `welcome.config`, and they are the SAME numbers `ai.look` tests an
+   * enemy's cone against — which is the whole rule: a creature sees a shape
+   * exactly as far as the shape sees it, and a lit player exactly as far as
+   * the lamp reaches. They arrive as configuration rather than living here as
+   * constants because the two halves are in different languages and the rule
+   * breaking has no symptom.
+   */
+  eyeScale: number;
+  sightScale: number;
 }
 
 /** Light at or above this counts as "seen" and is committed to memory. */
@@ -114,7 +128,7 @@ const AMBIENT_DARK = 0.45;
 
 /**
  * SIGHT: a nearly-invisible wash over what the viewer has line of sight to,
- * lantern or no lantern, out to `lanternTiles * SIGHT_REACH`.
+ * lantern or no lantern, out to `lanternTiles * config.sightScale`.
  *
  * Without it the beam is a hard question — anything outside the cone does not
  * exist, so a zombie two tiles to your left is *nothing* until you sweep over
@@ -135,19 +149,13 @@ const AMBIENT_DARK = 0.45;
  * what the lamp costs battery to prevent.
  */
 const SIGHT_GAIN = 0.085;
-const SIGHT_REACH = 1;
 /**
- * Naked-eye cone with the lamp off: full width, and reach vs the beam's.
- *
- * `EYE_REACH` and `SIGHT_REACH` are mirrored by `ENEMY_VIEW_DARK_SCALE` and
- * `ENEMY_VIEW_LIT_SCALE` in `server/app/config.py`, which is what makes sight
- * symmetric: an enemy sees a shape exactly as far as the shape sees it, and a
- * lit player exactly as far as the lamp reaches. Move one of these and move
- * the other, or the cones the client draws stop matching the rule the server
- * is enforcing.
+ * Naked-eye cone with the lamp off: full width. Its REACH is not here — it is
+ * `config.eyeScale`, shipped from `ENEMY_VIEW_DARK_SCALE` server-side, because
+ * that reach is half of the sight-symmetry contract and a local copy of it
+ * could drift without anything failing.
  */
 const EYE_CONE_DEGREES = 110;
-const EYE_REACH = 0.62;
 /** How much of the eye cone's half-angle is spent softening its edge. */
 const EYE_SOFTNESS = 0.5;
 const EYE_COS = Math.cos((EYE_CONE_DEGREES * Math.PI) / 360);
@@ -330,7 +338,8 @@ export class FovField {
       // than a full circle. Both open back up as the lamp comes on, so a
       // stutter or a dropout closes the world in around you instead of
       // switching between two unrelated vision models.
-      const sight = config.lanternTiles * (EYE_REACH + (SIGHT_REACH - EYE_REACH) * power);
+      const sight =
+        config.lanternTiles * (config.eyeScale + (config.sightScale - config.eyeScale) * power);
       const outer = Math.max(ambientTiles, beamReach, sight);
       const radius = Math.ceil(outer);
 

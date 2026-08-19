@@ -37,7 +37,7 @@ import { get2d } from "../lib/canvas";
 import { clamp01, lerp } from "../lib/math";
 import type { GameConfig, MapPayload } from "../net/protocol";
 import { Camera } from "../render/camera";
-import { FovField, type LightSource } from "../render/fov";
+import { FovField, type LightSource, type VisionConfig } from "../render/fov";
 import { ARENA_ZOOM, CAMP_FIRE_ANCHOR, campZoom } from "../render/framing";
 import { DarknessLayer } from "../render/layers/darkness";
 import { TerrainLayer } from "../render/layers/terrain";
@@ -145,7 +145,20 @@ const EMBER_RATE = 14;
  * place — there are no viewers, so the lantern reach and cone are never read;
  * they exist because `FovField` takes one config for both kinds of light.
  */
-const FALLBACK_VISION = { ambientTiles: 3.5, lanternTiles: 11, coneDegrees: 75 };
+/**
+ * The title screen's clearing, which has NO SERVER — not an old one. There is
+ * no `hello` yet, so there is no `welcome.config` to read and these are the
+ * only numbers available. Nothing stands in that clearing (`viewers` is
+ * empty), so the two sight scales are never actually spent; they are here to
+ * satisfy the shape. Every OTHER caller has a config and must use it.
+ */
+const FALLBACK_VISION: VisionConfig = {
+	ambientTiles: 3.5,
+	lanternTiles: 11,
+	coneDegrees: 75,
+	eyeScale: 0.62,
+	sightScale: 1,
+};
 /** How far the fire reaches without a server saying. Mirrors config.py. */
 const FALLBACK_FIRE_TILES = 10;
 
@@ -1048,14 +1061,15 @@ export class LobbyScene {
 				this.world,
 				[],
 				this.lights,
-				{
-					ambientTiles:
-						this.camp?.config.visionAmbientTiles ?? FALLBACK_VISION.ambientTiles,
-					lanternTiles:
-						this.camp?.config.visionLanternTiles ?? FALLBACK_VISION.lanternTiles,
-					coneDegrees:
-						this.camp?.config.visionConeDegrees ?? FALLBACK_VISION.coneDegrees,
-				},
+				this.camp
+					? {
+							ambientTiles: this.camp.config.visionAmbientTiles,
+							lanternTiles: this.camp.config.visionLanternTiles,
+							coneDegrees: this.camp.config.visionConeDegrees,
+							eyeScale: this.camp.config.enemyViewDarkScale,
+							sightScale: this.camp.config.enemyViewLitScale,
+						}
+					: FALLBACK_VISION,
 				this.time,
 				dt,
 			);

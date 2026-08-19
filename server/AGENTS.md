@@ -23,7 +23,12 @@ Why the simulation is shaped this way: [`docs/design/`](../docs/design/) — one
 - The server is authoritative. Clients send inputs, never positions.
 - Every gameplay constant lives in `app/config.py` and reaches the client in
   `welcome.config`. A constant the client needs but the payload does not carry
-  is a bug in `client_config()`, not a reason to hardcode it client-side.
+  is a bug in `client_config()`, not a reason to hardcode it client-side — and
+  not a reason to hedge one either. Fields this payload always sends are
+  REQUIRED on the client's `GameConfig`, so `config.x ?? 100` no longer
+  compiles, and `tests/test_config_parity.py` fails if the two key sets drift
+  in either direction. Adding a key here means adding its row in
+  `client/src/net/protocol.ts` in the same change.
 - Nothing in `app/` may import from `tools/`, and nothing in either may know
   about rendering.
 - Dependencies are installed into `server/.venv`; every command below is run
@@ -40,11 +45,14 @@ Why the simulation is shaped this way: [`docs/design/`](../docs/design/) — one
 
 ## Verification
 
-- `python tests/test_snapshot_shape.py`, `python tests/test_pour.py` and
-  `python tests/test_store_walk.py` from `server/`. Plain scripts, no runner,
-  each prints `ok`. The last one flood-fills the shop and fails if the exit,
-  the merchant, a stall or the cabinet cannot be walked to — run it after any
-  edit to `store.py`'s layout offsets.
+- `python tests/test_snapshot_shape.py`, `python tests/test_pour.py`,
+  `python tests/test_store_walk.py` and `python tests/test_config_parity.py`
+  from `server/`. Plain scripts, no runner, each prints `ok`.
+  `test_store_walk.py` flood-fills the shop and fails if the exit, the
+  merchant, a stall or the cabinet cannot be walked to — run it after any edit
+  to `store.py`'s layout offsets. `test_config_parity.py` compares
+  `client_config()` against the client's `GameConfig` both ways — run it after
+  any edit to either.
 - Then run the server and join from two browser tabs; check the server stays at
   a steady tick and no client rubber-bands.
 

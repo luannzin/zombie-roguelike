@@ -37,7 +37,6 @@ import {
   egressTorches,
   riftPhase,
   riftStanding,
-  RIFT_FALLBACK,
   type RiftPhase,
   type RiftStanding,
 } from './layers/rift';
@@ -200,7 +199,7 @@ export class Renderer {
    * would put the skid's sprite and the shadow under it in different places.
    */
   private riftPhasesFor(state: RenderState): { rift: NonNullable<RenderState['world']['rifts'][number]>; phase: RiftPhase }[] {
-    const timing = state.config.rift ?? RIFT_FALLBACK;
+    const timing = state.config.rift;
     return state.world.rifts.map((rift) => ({
       rift,
       phase: riftPhase(rift, timing, this.platformAtlas, state.time),
@@ -402,7 +401,7 @@ export class Renderer {
     const scenery = this.scenery;
     // Authored server-side beside the reach that answers E, so the gun never
     // rises at a distance where the key does nothing.
-    const storeLift = (state.config.storeLiftTiles ?? 0.4) * state.world.tileSize;
+    const storeLift = state.config.storeLiftTiles * state.world.tileSize;
 
     const flushTo = (limit: number): void => {
       for (;;) {

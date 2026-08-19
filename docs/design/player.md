@@ -43,9 +43,10 @@ Nearest contracts: [`server/app/AGENTS.md`](../../server/app/AGENTS.md),
 | add a melee weapon | the same list plus a `MeleeDef` of `ComboStep`s — nothing else |
 | movement / stamina | `server/app/simulation.py` **and** `client/src/game/simulation.ts`, `config.py` |
 | ammunition | `server/app/ammo.py` (mechanics) / `weapons.py` (sizing) |
-| pocket rules | `server/app/inventory.py`, `Room.collect_loot` / `drop_loot` |
+| pocket rules | `server/app/inventory.py`, `Room.collect_loot` / `drop_loot` — and the client's mirror of what a collect refuses, `client/src/game/interaction.ts` (`canStow`, `swapTargetFor`) |
 | shot feel | `client/src/game/combat.ts`, `effects.ts`, `entity-visuals.ts` |
 | bag / belt HUD | `client/src/components/hud/Inventory.tsx`, `Hotbar.tsx`, `Game.inventoryHud()` / `hotbarHud()` |
+| what E offers, and whether it is refused | `client/src/game/interaction.ts` — every reach test and prompt, pure over an `InteractionState` |
 
 **Do not touch from here:** extraction pad state, store pricing, the skills
 catalog, or map generation.

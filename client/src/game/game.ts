@@ -13,6 +13,43 @@
  * Lifecycle is explicit — `start()` / `dispose()`. Every timer, listener,
  * observer and socket created here is released by `dispose()`, so remounting
  * (StrictMode, HMR, switching rooms) cannot leave a second loop running.
+ *
+ * NAVIGATING THIS FILE. It is ~4.4k lines and is not meant to be read whole.
+ * Everything sits under a `// --- <section> ---` banner; grep the banner, not
+ * the line number. In order:
+ *
+ *   networking       the socket's messages: welcome, snapshot, the events
+ *   the corpse model bodies that stay, and the blood under them
+ *   events + ceremony the pickup, the pour, the buy
+ *   the machine      one lever pull, on the render clock
+ *   payout / beacon  the shop payout, the exit signal, the startle wave
+ *   skill rows       tray tiles
+ *   loop             the two clocks, prediction, the shot the player predicts
+ *   sound            steps, ambience, heartbeat, growls
+ *   rendering        assembling drawables, vision, visibility
+ *   hud              the 5 Hz publish
+ *   intent           what E, TAB, 1-3 and a bag drag actually send
+ *   bag + belt       what the cells read
+ *   collect flies    pickups still in the air
+ *   weapon in hand   weight, muzzle, scope
+ *   interaction      the read-only view `interaction.ts` runs on
+ *   tally + poses    the camp count, the shop scene, the pour and exit poses
+ *   pad ceremony     the extraction platform, and the lights it owns
+ *   objects          crates and what falls out of them
+ *   loot             what gets drawn on the ground
+ *   anchors          screen-space points for world tooltips and the chevron
+ *   transit          the puppeted cameras, and tiles changing under them
+ *
+ * The banners used to be five, one of which spanned 1541 lines and was
+ * labelled `hud` while holding the pad ceremony, the lights, the crates and
+ * two cameras. Keeping them honest is load-bearing: `AGENTS.md` tells a reader
+ * to jump to the section rather than open the file.
+ *
+ * WHAT E OFFERS IS NOT HERE. Every reach test and every prompt lives in
+ * `interaction.ts` as pure functions over an `InteractionState` this class
+ * builds. What stayed is what has an effect: `sendInteract` puts the answer on
+ * the socket and plays the refusal, `publishHud` puts it in the store, and
+ * `syncTooltipAnchors` turns it into screen pixels.
  */
 
 import {
@@ -62,7 +99,7 @@ import { Camera } from '../render/camera';
 import { ARENA_ZOOM } from '../render/framing';
 import { gunMuzzle, loadGuns, type GunAtlas } from '../render/guns';
 import { projectionFor } from '../render/projection';
-import { FovField, type LightSource, type VisionConfig, type Viewer } from '../render/fov';
+import { FovField, type LightSource, type Viewer } from '../render/fov';
 import {
   loadMerchant,
   newMerchantPose,
@@ -94,17 +131,27 @@ import { EntityVisuals, hitPower, type BloodStain } from './entity-visuals';
 import {
   EMPTY_HUD,
   HUD_INTERVAL,
-  type HudBuyPrompt,
   type HudHotbar,
   type HudInventory,
-  type HudLootPrompt,
   type HudMachinePrompt,
-  type HudRiftPrompt,
   type HudSkill,
   type HudSnapshot,
   type HudStore,
 } from './hud-store';
 import { InputController } from './input';
+import {
+  buyPrompt,
+  canStow,
+  cratePromptInfo,
+  lootPromptInfo,
+  nearCrate,
+  nearLoot,
+  nearStand,
+  readyPrompt,
+  riftPrompt,
+  swapTargetFor,
+  type InteractionState,
+} from './interaction';
 import { bindInventoryDrop } from './inventory-actions';
 import { readInventoryAnchor, clearInventoryAnchors } from './inventory-anchors';
 import { Lantern } from './lantern';
@@ -125,10 +172,10 @@ import { LocalPlayer } from './prediction';
 import { carryBurden } from './simulation';
 import {
   crateCells, FLOOR, VOID, hearthMask, makeCrate, TileMap,
-  type Rift, type Stand,
+  type Rift,
 } from './world';
 import {
-  crateOpenSound, objectHitBox, objectLabel, objectSheet, objectTilesW,
+  crateOpenSound, objectHitBox, objectSheet, objectTilesW,
   objectVerb, setObjectCatalog,
 } from './objects';
 import {
@@ -348,15 +395,6 @@ const PLAYER_SHEET = 'player';
 const COIN_SHEET = 'coin';
 /** Fallback if welcome.config.backpackSprite is missing (older server). */
 const BACKPACK_SHEET = 'backpack';
-/**
- * Only used against a server too old to send vision numbers. A missing value
- * would otherwise put NaN through the light field and black out the screen.
- */
-const VISION_FALLBACK: VisionConfig = {
-  ambientTiles: 3.5,
-  lanternTiles: 11,
-  coneDegrees: 75,
-};
 /**
  * Below this much light an enemy is invisible; above the second it is solid.
  *
@@ -812,7 +850,7 @@ export class Game {
     this.hud.set(EMPTY_HUD);
   }
 
-  // --- networking ----------------------------------------------------------
+  // --- networking: the socket's messages -------------------------------------
   private onStatus(status: ConnectionStatus): void {
     if (status === 'connecting') {
       this.patchHud({ connection: status, status: 'connecting…' });
@@ -1320,6 +1358,7 @@ export class Game {
     playSfx('coin', { gain: 0.9 });
   }
 
+  // --- the corpse model: bodies that stay, and the blood under them ----------
   private replaceLoot(rows: LootState[]): void {
     this.loot.clear();
     for (const row of rows) this.loot.set(row.id, row);
@@ -1440,6 +1479,7 @@ export class Game {
     return out;
   }
 
+  // --- events with a ceremony: the pickup, the pour, the buy -----------------
   private onLootPickup(ev: LootPickupEvent): void {
     this.loot.delete(ev.id);
     if (ev.by !== this.localId) {
@@ -1597,8 +1637,14 @@ export class Game {
    * CLAIM — the canister flying into a HUD tray — which is why that beat
    * checks `by` and the rest do not.
    */
+  // --- the upgrade machine's ceremony ----------------------------------------
   private onSpin(ev: SpinEvent): void {
-    this.pull = beginPull(ev, this.config?.machine);
+    // Unreachable in practice: a spin rides a snapshot, and a snapshot cannot
+    // arrive before the `welcome` that set `config`. The guard is here because
+    // the ceremony is nothing but the clock — with no clock there is no
+    // animation to run, so there is no plausible thing to fall back to.
+    if (!this.config) return;
+    this.pull = beginPull(ev, this.config.machine);
     if (ev.by === this.localId) {
       this.spins = ev.left;
       this.skillStacks = { ...this.skillStacks, [ev.k]: ev.n };
@@ -1698,6 +1744,7 @@ export class Game {
    * a party has been hearing that noise mean "money" all night, and this is
    * the payoff for it.
    */
+  // --- the shop payout, the exit beacon, the startle wave --------------------
   private stepPayout(dt: number): void {
     const payout = this.payout;
     if (!payout) return;
@@ -1810,6 +1857,7 @@ export class Game {
   }
 
   /** One tray tile, built from the catalog. Null for a key nobody shipped. */
+  // --- skill rows for the tray -----------------------------------------------
   private skillRow(key: string, qty: number): HudSkill | null {
     const def: SkillConfig | undefined = this.config?.skills?.[key];
     if (!def) return null;
@@ -1852,7 +1900,7 @@ export class Game {
     if (!config || !local || !fixtures) return null;
     const { machineX, machineY } = fixtures;
     if (machineX === null || machineY === null) return null;
-    const range = (config.storeSpinTiles ?? 2.2) * config.tileSize;
+    const range = config.storeSpinTiles * config.tileSize;
     const dx = machineX - local.state.x;
     const dy = machineY - (local.state.y + config.playerHalfHeight);
     if (dx * dx + dy * dy > range * range) return null;
@@ -2182,8 +2230,8 @@ export class Game {
         (kind) =>
           objectHitBox(
             kind,
-            (config.crateHitWTiles ?? 1) * config.tileSize,
-            (config.crateHitHTiles ?? 2) * config.tileSize,
+            config.crateHitWTiles * config.tileSize,
+            config.crateHitHTiles * config.tileSize,
           ),
       );
       const crateHit = crateDist !== null;
@@ -2519,7 +2567,7 @@ export class Game {
             isLocal: remote.id === this.localId,
             // A server too old to send it leaves the bar full rather than
             // drawing every teammate as permanently out of breath.
-            stamina: remote.st ?? this.config.staminaMax ?? 100,
+            stamina: remote.st ?? this.config.staminaMax,
             winded: remote.wind ?? false,
             ready: preparing && (remote.ready ?? false),
           },
@@ -2774,9 +2822,11 @@ export class Game {
       viewers,
       this.lights,
       {
-        ambientTiles: config.visionAmbientTiles ?? VISION_FALLBACK.ambientTiles,
-        lanternTiles: config.visionLanternTiles ?? VISION_FALLBACK.lanternTiles,
-        coneDegrees: config.visionConeDegrees ?? VISION_FALLBACK.coneDegrees,
+        ambientTiles: config.visionAmbientTiles,
+        lanternTiles: config.visionLanternTiles,
+        coneDegrees: config.visionConeDegrees,
+        eyeScale: config.enemyViewDarkScale,
+        sightScale: config.enemyViewLitScale,
       },
       this.time,
       dt,
@@ -2882,7 +2932,7 @@ export class Game {
       hp: source.hp,
       maxHp: config.maxHp,
       stamina: source.stamina,
-      staminaMax: config.staminaMax ?? 100,
+      staminaMax: config.staminaMax,
       winded: source.winded,
       alive,
       moving,
@@ -3077,7 +3127,7 @@ export class Game {
     return ((DANGER_START - ratio) / (DANGER_START - DANGER_CRITICAL)) * 0.72;
   }
 
-  // --- hud -----------------------------------------------------------------
+  // --- hud: the 5 Hz publish -------------------------------------------------
   private patchHud(patch: Partial<HudSnapshot>): void {
     this.hud.update((previous) => ({ ...previous, ...patch }));
   }
@@ -3090,6 +3140,9 @@ export class Game {
 
     const meta = this.localMeta;
     const local = this.local;
+    // One view, five questions — so every prompt in this patch describes the
+    // same instant.
+    const ix = this.interactionState();
     const config = this.config;
 
     this.patchHud({
@@ -3113,7 +3166,7 @@ export class Game {
               // Straight off the predicted body. The bar under the HP bar is
               // the same number, so the two agree frame for frame.
               stamina: local.state.stamina,
-              staminaMax: config.staminaMax ?? 100,
+              staminaMax: config.staminaMax,
               winded: local.state.winded,
               level: meta.level,
               xpInLevel: meta.xpInLevel,
@@ -3125,11 +3178,11 @@ export class Game {
       cinematic: this.locked,
       quests: this.quests,
       ready: this.readyCount(),
-      prompt: this.readyPrompt(),
-      lootPrompt: this.lootPromptInfo(),
-      cratePrompt: this.cratePromptInfo(),
-      riftPrompt: this.riftPrompt(),
-      buyPrompt: this.buyPrompt(),
+      prompt: readyPrompt(ix),
+      lootPrompt: lootPromptInfo(ix),
+      cratePrompt: cratePromptInfo(ix),
+      riftPrompt: riftPrompt(ix),
+      buyPrompt: buyPrompt(ix),
       machinePrompt: this.machinePrompt(),
       skills: this.skillList(),
       spins: this.spins,
@@ -3156,18 +3209,20 @@ export class Game {
     });
   }
 
+  // --- intent: what E, TAB, 1-3 and a bag drag actually send -----------------
   private sendInteract(): void {
     if (this.locked || this.introLeft > 0) return;
-    const nearLoot = this.nearLoot();
-    if (nearLoot) {
+    const ix = this.interactionState();
+    const drop = nearLoot(ix);
+    if (drop) {
       // A full belt with a gun in hand is a TRADE, not a refusal, and it
       // goes through the same `collect` message — the server decides
       // whether the swap was legal (`Room.swap_weapon`), exactly as it
       // decides whether you were close enough.
       const trades =
-        this.config?.loot?.[nearLoot.k]?.pocket === 'hotbar' &&
-        this.swapTargetFor() !== null;
-      if (!trades && !this.canStow(nearLoot.k)) {
+        this.config?.loot?.[drop.k]?.pocket === 'hotbar' &&
+        swapTargetFor(ix) !== null;
+      if (!trades && !canStow(ix, drop.k)) {
         this.bagRefusals += 1;
         // A refused key has to answer, for the same reason the panel kicks:
         // a control that silently does nothing reads as a broken keybind
@@ -3177,12 +3232,12 @@ export class Game {
         if (inventory) this.patchHud({ inventory });
         return;
       }
-      this.connection.send({ type: 'collect', id: nearLoot.id });
+      this.connection.send({ type: 'collect', id: drop.id });
       return;
     }
     // Before the crate, and before the fire. If you are standing at the
     // console with a box at your elbow, you did not walk here for the box.
-    const rift = this.riftPrompt();
+    const rift = riftPrompt(ix);
     if (rift) {
       // Two dead presses, and both get the buzz rather than a packet the
       // server would drop on the floor: an empty bag at a pad still under its
@@ -3196,7 +3251,7 @@ export class Game {
     }
     // The shop's table. Before the crate and the fire for the same reason the
     // console is: there is nothing else in this corridor E could have meant.
-    const buy = this.buyPrompt();
+    const buy = buyPrompt(ix);
     if (buy) {
       // Both dead presses buzz rather than sending a packet the server would
       // drop on the floor: a price the party cannot cover, and a belt with no
@@ -3222,12 +3277,12 @@ export class Game {
       this.connection.send({ type: 'spin' });
       return;
     }
-    const nearCrate = this.nearCrate();
-    if (nearCrate) {
-      this.connection.send({ type: 'break', id: nearCrate.id });
+    const crate = nearCrate(ix);
+    if (crate) {
+      this.connection.send({ type: 'break', id: crate.id });
       return;
     }
-    if (this.readyPrompt() === 'ready') {
+    if (readyPrompt(ix) === 'ready') {
       this.connection.send({ type: 'ready' });
       this.localReady = !this.localReady;
       // Optimistic, like the nameplate tick: the server decides whether it
@@ -3289,50 +3344,12 @@ export class Game {
     if (inventory) this.patchHud({ inventory });
   }
 
-  private canStow(key: string): boolean {
-    const catalog = this.config?.loot ?? {};
-    const def = catalog[key];
-    if (def?.pocket === 'ammo') {
-      // AMMUNITION ANSWERS TO YOUR OWN BELT, and to nothing else. Mirrors
-      // `Room.collect_loot`: a calibre you are not carrying is refused (the
-      // rifle rounds belong to whoever brought the rifle) and a reserve
-      // already at its cap is refused too — the box stays on the ground and
-      // is still there on the way back, which is exactly what a player wants
-      // from ammunition they cannot use yet.
-      const calibre = def.ammo;
-      if (!calibre) return false;
-      const guns = this.localMeta?.guns;
-      const owns = (guns?.slots ?? []).some(
-        (cell) => cell !== null && this.config?.weapons?.[cell]?.ammo === calibre,
-      );
-      if (!owns) return false;
-      const cap = this.config?.ammo?.max?.[calibre];
-      return cap === undefined || (this.ammo[calibre] ?? 0) < cap;
-    }
-    if (def?.pocket === 'hotbar') {
-      const guns = this.localMeta?.guns;
-      if (!guns) return true;
-      return guns.slots.some((cell) => cell === null);
-    }
-    const inv = this.localMeta?.inv;
-    if (!inv) return true;
-    for (let i = 0; i < inv.cap; i++) {
-      const slot = inv.bag[i];
-      // A slot carrying its own numbers is not a stack anything can join —
-      // two cores worth 40 and 300 are not two of a thing. Mirrors
-      // `Inventory.can_stow` on the server.
-      if (!slot || (slot.k === key && slot.v === undefined && slot.w === undefined)) {
-        return true;
-      }
-    }
-    return false;
-  }
-
+  // --- the bag and the belt: what the cells read -----------------------------
   private inventoryHud(): HudInventory | null {
     const config = this.config;
     if (!config) return null;
-    const catalog = config.loot ?? {};
-    const cap = this.localMeta?.inv?.cap ?? config.inventorySlots ?? 3;
+    const catalog = config.loot;
+    const cap = this.localMeta?.inv?.cap ?? config.inventorySlots;
     const bag = this.localMeta?.inv?.bag ?? [];
     const slots = Array.from({ length: cap }, (_, index) => {
       const row = bag[index];
@@ -3384,7 +3401,7 @@ export class Game {
       weight: Math.round(weight * 100) / 100,
       // The pocket's own ceiling, which a skill moves. `config.carryMaxWeight`
       // is only where a run opens, exactly as `maxHp` is.
-      maxWeight: this.localMeta?.mods?.carry ?? config.carryMaxWeight ?? 10,
+      maxWeight: this.localMeta?.mods?.carry ?? config.carryMaxWeight,
       gold,
       lootFrames: Math.max(1, frames),
       catches: this.bagCatches,
@@ -3395,8 +3412,8 @@ export class Game {
   private hotbarHud(): HudHotbar | null {
     const config = this.config;
     if (!config) return null;
-    const catalog = config.loot ?? {};
-    const cap = this.localMeta?.guns?.cap ?? config.hotbarSlots ?? 3;
+    const catalog = config.loot;
+    const cap = this.localMeta?.guns?.cap ?? config.hotbarSlots;
     const cells = this.localMeta?.guns?.slots ?? [];
     const slots = Array.from({ length: cap }, (_, index) => {
       const key = cells[index];
@@ -3459,6 +3476,7 @@ export class Game {
     return rounds === null || rounds > 0;
   }
 
+  // --- collect flies still in the air ----------------------------------------
   private stepCollectFlies(dt: number): void {
     const config = this.config;
     if (!config) return;
@@ -3486,6 +3504,7 @@ export class Game {
     }
   }
 
+  // --- the weapon in hand: its weight, its muzzle, its scope -----------------
   private heldWeapon(): WeaponConfig | null {
     const key = this.weaponKeyOf(this.localId, this.heldSlot);
     if (!key) return null;
@@ -3599,18 +3618,41 @@ export class Game {
     return carryBurden(weight, this.config, this.roster.get(id)?.mods?.carry);
   }
 
-  private nearFire(): boolean {
-    const world = this.world;
-    const config = this.config;
-    const local = this.local;
-    if (!world || !config || !local) return false;
-    const fire = world.fires[0];
-    if (!fire) return false;
-    const range = (config.readyRangeTiles ?? config.hearthTiles) * config.tileSize;
-    const feetY = local.state.y + config.playerHalfHeight;
-    return Math.hypot(local.state.x - fire.x, feetY - fire.y) <= range;
+  // --- interaction: the view `interaction.ts` runs on ------------------------
+  /**
+   * A read-only snapshot of everything a reach test or a prompt reads.
+   *
+   * Cheap on purpose — a dozen field reads and one thunk — because the answer
+   * is wanted on three different clocks (the 5 Hz publish, every frame for the
+   * tooltip anchors, and the frame E is pressed) and each caller builds it
+   * once and asks several questions off it. Building it per question would be
+   * the same work; building it once per caller is what keeps the answers
+   * within a call self-consistent.
+   *
+   * `pocketGold` stays a thunk: only `riftPrompt` wants it, it walks the whole
+   * loot catalog, and `riftPrompt` returns early on almost every frame.
+   */
+  private interactionState(): InteractionState {
+    return {
+      config: this.config,
+      world: this.world,
+      local: this.local,
+      loot: this.loot,
+      meta: this.localMeta,
+      ammo: this.ammo,
+      heldSlot: this.heldSlot,
+      zoneKind: this.zone?.kind,
+      balance: this.balance,
+      pocketGold: () => this.inventoryHud()?.gold ?? 0,
+      locked: this.locked,
+      introHold: this.introLeft > 0,
+      localReady: this.localReady,
+      departing: this.departing,
+      pouring: this.localPour !== null,
+    };
   }
 
+  // --- the camp tally, the shop scene, and two poses --------------------------
   private readyCount(): { here: number; total: number } | null {
     if (this.zone?.kind !== 'camp' || this.departing) return null;
     const latest = this.snapshots.latest;
@@ -3621,78 +3663,6 @@ export class Game {
       if (ready) here += 1;
     }
     return { here, total: latest.players.size };
-  }
-
-  private readyPrompt(): 'ready' | null {
-    if (this.zone?.kind !== 'camp' || this.departing || this.introLeft > 0) return null;
-    if (this.localReady) return null;
-    if (this.nearCrate()) return null;
-    return this.nearFire() ? 'ready' : null;
-  }
-
-  /**
-   * The line E is offering on the object in front of you, or null.
-   *
-   * A STRING RATHER THAN A FLAG, because the objects no longer share a verb:
-   * a barrel says destroy, a boot says search, a chest says open. The wording
-   * is authored server-side next to the object's drop table
-   * (`crates.ObjectType.label`) so the promise and the prompt cannot drift.
-   */
-  private cratePromptInfo(): string | null {
-    if (this.locked || this.introLeft > 0) return null;
-    if (this.nearLoot()) return null;
-    if (this.riftPrompt()) return null;
-    const near = this.nearCrate();
-    return near ? objectLabel(near.kind) : null;
-  }
-
-  /**
-   * Whether E is offering an extraction pad right now, and for what.
-   *
-   * Every branch is measured feet-to-console, mirroring `Room.activate_rift`,
-   * so the prompt on screen and the check on the server agree about what
-   * "close enough" means. The MODES mirror it too — including `busy`, which is
-   * the client's copy of the one-pad-at-a-time rule: without it, walking up to
-   * a second console offers a press the server will silently ignore.
-   */
-  private riftPrompt(): HudRiftPrompt | null {
-    if (this.locked || this.introLeft > 0) return null;
-    // Mid-pour there is nothing to offer: the server refuses a second press
-    // for the length of one, and a key prompt that does nothing when pressed
-    // is worse than no prompt at all.
-    if (this.localPour !== null) return null;
-    const rift = this.nearRift();
-    if (!rift) return null;
-    const empty = (this.inventoryHud()?.gold ?? 0) <= 0;
-    if (rift.state === 'dormant') {
-      const busy = this.world?.rifts.some(
-        (row) => row.id !== rift.id && (row.state === 'charging' || row.state === 'open'),
-      ) ?? false;
-      return {
-        id: rift.id,
-        mode: busy ? 'busy' : 'open',
-        have: 0,
-        need: 0,
-        empty: false,
-      };
-    }
-    // A pad that is already calling takes no more presses. `closeAt` is the
-    // server's word for that, and it is what stops a second E from being
-    // offered on a pad whose aircraft are already in the air.
-    if (rift.state !== 'open' || rift.closeAt !== null) return null;
-    // Same split `Room.activate_rift` makes, off the same facts: whether the
-    // quota is paid and whether the pocket still has anything. Saturating is
-    // offered on EVERY pad, last one included — the payout at the end of the
-    // night is what was fed, so value loaded past the quota is banked whether
-    // or not there is another console left to carry a core to.
-    const mode = !rift.ready ? 'feed' : empty ? 'close' : 'over';
-    return {
-      id: rift.id,
-      mode,
-      have: rift.fed,
-      need: rift.need,
-      empty,
-    };
   }
 
   /**
@@ -3712,7 +3682,7 @@ export class Game {
     return {
       fixtures,
       pose: this.merchantPose,
-      nearId: this.nearStand()?.id ?? null,
+      nearId: nearStand(this.interactionState())?.id ?? null,
       pull: this.pull,
       // The cabinet burns harder for somebody holding an unspent level. It is
       // the only piece of teaching in this zone that happens at a distance,
@@ -3726,67 +3696,6 @@ export class Game {
         name: loot?.[key]?.name ?? key,
         rarity: loot?.[key]?.rarity ?? 'common',
       }),
-    };
-  }
-
-  /**
-   * The stall the local player could buy from, or null.
-   *
-   * Measured from the FEET to the table's contact, mirroring
-   * `Room._stand_in_reach`, so the prompt on screen and the check on the
-   * server agree. Sold tables are skipped: an empty table is not something to
-   * be standing at.
-   */
-  private nearStand(): Stand | null {
-    const config = this.config;
-    const local = this.local;
-    const fixtures = this.world?.store;
-    if (!config || !local || !fixtures) return null;
-    const range = (config.storeBuyTiles ?? 1.9) * config.tileSize;
-    const feetY = local.state.y + config.playerHalfHeight;
-    let best: Stand | null = null;
-    let bestD2 = range * range;
-    for (const stand of fixtures.stands) {
-      if (stand.sold) continue;
-      const dx = stand.x - local.state.x;
-      const dy = stand.y - feetY;
-      const d2 = dx * dx + dy * dy;
-      if (d2 <= bestD2) {
-        bestD2 = d2;
-        best = stand;
-      }
-    }
-    return best;
-  }
-
-  /**
-   * Whether E is offering a weapon right now, and whether it can be taken.
-   *
-   * Every refusal is NAMED rather than hidden, which is the opposite of the
-   * rule the loot prompt follows for a full bag. A price you cannot meet is
-   * the whole point of a shop — the party is supposed to look at the AWP and
-   * decide to come back for it — so the tooltip says what it costs and turns
-   * red, and the key buzzes instead of sending a packet the server would drop.
-   */
-  private buyPrompt(): HudBuyPrompt | null {
-    if (this.locked || this.introLeft > 0) return null;
-    if (this.zone?.kind !== 'store') return null;
-    const stand = this.nearStand();
-    if (!stand) return null;
-    const item = this.config?.loot?.[stand.key];
-    // A full belt is a TRADE here exactly as it is on a world drop, and the
-    // tooltip has to say whose gun is being given up — otherwise E silently
-    // costs the player the weapon in their hands.
-    const room = this.canStow(stand.key);
-    const swap = room ? null : this.swapTargetFor();
-    return {
-      id: stand.id,
-      name: item?.name ?? stand.key,
-      rarity: item?.rarity ?? 'common',
-      price: stand.price,
-      afford: stand.price <= this.balance,
-      full: !room && swap === null,
-      swap: swap ?? undefined,
     };
   }
 
@@ -3805,27 +3714,6 @@ export class Game {
     const dy = pad.deckY - this.smoothY;
     const len = Math.hypot(dx, dy) || 1;
     return { x: dx / len, y: dy / len };
-  }
-
-  private nearRift(): Rift | null {
-    const config = this.config;
-    const local = this.local;
-    const world = this.world;
-    if (!config || !local || !world) return null;
-    const range = (config.riftActivateTiles ?? 2.75) * config.tileSize;
-    const feetY = local.state.y + config.playerHalfHeight;
-    let best: Rift | null = null;
-    let bestD2 = range * range;
-    for (const rift of world.rifts) {
-      const dx = rift.consoleX - local.state.x;
-      const dy = rift.consoleY - feetY;
-      const d2 = dx * dx + dy * dy;
-      if (d2 <= bestD2) {
-        bestD2 = d2;
-        best = rift;
-      }
-    }
-    return best;
   }
 
   /**
@@ -3859,6 +3747,7 @@ export class Game {
    * server rather than zeroed, so a player who joins mid-sequence picks it up
    * in progress instead of watching it replay.
    */
+  // --- the extraction pad's ceremony, and the lights it owns -----------------
   private onRiftState(row: RiftStateRow): void {
     const world = this.world;
     if (!world) return;
@@ -3950,7 +3839,7 @@ export class Game {
     // and phases the siren. Stop it here and a pickup freezes mid-crossing.
     world.stepRift(dt);
     if (!this.config) return;
-    const timing = this.config.rift ?? null;
+    const timing = this.config.rift;
     if (!timing) return;
     for (let i = 0; i < world.rifts.length; i++) {
       const rift = world.rifts[i];
@@ -4065,37 +3954,7 @@ export class Game {
     if (before < gone && after >= gone) playSfx('lantern-off');
   }
 
-  /**
-   * The object E is offering, or null.
-   *
-   * Distance runs feet to the nearest point of the FOOTPRINT, mirroring
-   * `crates.nearest`. A bus is four tiles long: measured centre to centre,
-   * standing at its rear doors is standing two tiles away from the object,
-   * and the prompt would refuse on the exact spot the art is pointing at.
-   */
-  private nearCrate() {
-    const config = this.config;
-    const local = this.local;
-    const world = this.world;
-    if (!config || !local || !world) return null;
-    const range = (config.crateBreakTiles ?? 2.25) * config.tileSize;
-    const feetY = local.state.y + config.playerHalfHeight;
-    let best = null;
-    let bestD2 = range * range;
-    for (const crate of world.crates) {
-      if (crate.opened) continue;
-      const half = objectTilesW(crate.kind) * config.tileSize * 0.5;
-      const dx = Math.max(0, Math.abs(crate.x - local.state.x) - half);
-      const dy = crate.y - feetY;
-      const d2 = dx * dx + dy * dy;
-      if (d2 < bestD2) {
-        bestD2 = d2;
-        best = crate;
-      }
-    }
-    return best;
-  }
-
+  // --- interactive objects ---------------------------------------------------
   private replaceCrates(rows: CrateState[]): void {
     if (!this.world) return;
     // Through the same unpacker the map payload uses, so a snapshot row and a
@@ -4183,68 +4042,7 @@ export class Game {
     }
   }
 
-  private lootPromptInfo(): HudLootPrompt | null {
-    if (this.zone?.kind === 'camp' || this.locked || this.introLeft > 0) return null;
-    const near = this.nearLoot();
-    if (!near || !this.config) return null;
-    const def = this.config.loot?.[near.k];
-    if (!def) return null;
-    if (this.canStow(near.k)) {
-      return { id: near.id, name: def.name, rarity: def.rarity, full: false };
-    }
-    // Belt full. If a gun is in hand this is a TRADE, not a refusal — the
-    // prompt names what you would be putting down, because that is the half
-    // of the decision the player cannot see from the drop's own tooltip.
-    const trade = def.pocket === 'hotbar' ? this.swapTargetFor() : null;
-    return {
-      id: near.id,
-      name: def.name,
-      rarity: def.rarity,
-      full: trade === null,
-      swap: trade ?? undefined,
-    };
-  }
-
-  /**
-   * Name of the gun a pickup would trade away, or null if none can be.
-   *
-   * Mirrors `Room.swap_weapon`: the hand has to hold a GUN. The knife is not
-   * tradeable — it is the one weapon that cannot be lost, and a pickup that
-   * could consume its cell would put the floor under the whole loadout one
-   * misplaced E away. Holstered refuses too: an empty hand is not a choice
-   * about which gun to keep.
-   */
-  private swapTargetFor(): string | null {
-    const guns = this.localMeta?.guns;
-    if (!guns || this.heldSlot < 0) return null;
-    const key = guns.slots[this.heldSlot];
-    if (!key) return null;
-    const def = this.config?.loot?.[key];
-    if (!def || def.pocket !== 'hotbar') return null;
-    if (this.config?.weapons?.[key]?.melee) return null;
-    return def.name;
-  }
-
-  private nearLoot(): LootState | null {
-    const config = this.config;
-    const local = this.local;
-    if (!config || !local) return null;
-    const range = (config.lootCollectTiles ?? 2.25) * config.tileSize;
-    const feetY = local.state.y + config.playerHalfHeight;
-    let best: LootState | null = null;
-    let bestD2 = range * range;
-    for (const drop of this.loot.values()) {
-      const dx = drop.x - local.state.x;
-      const dy = drop.y - feetY;
-      const d2 = dx * dx + dy * dy;
-      if (d2 < bestD2) {
-        bestD2 = d2;
-        best = drop;
-      }
-    }
-    return best;
-  }
-
+  // --- loot on the ground: what gets drawn -----------------------------------
   private drawableLoot(dt: number): DrawableLoot[] {
     const config = this.config;
     const fov = this.fov;
@@ -4281,9 +4079,11 @@ export class Game {
    * Show/hide is still `hud-store` (5 Hz). This only writes screen pixels so
    * the tooltip can sit on the fire without a React render.
    */
+  // --- screen-space anchors: world tooltips, the exit chevron ----------------
   private syncTooltipAnchors(): void {
     const view = projectionFor(this.camera);
-    if (this.readyPrompt() === 'ready' && this.world && this.config) {
+    const ix = this.interactionState();
+    if (readyPrompt(ix) === 'ready' && this.world && this.config) {
       const fire = this.world.fires[0];
       if (fire) {
         const lift = this.config.tileSize * FIRE_TOOLTIP_LIFT_TILES;
@@ -4295,7 +4095,7 @@ export class Game {
       dropTooltipAnchor('ready');
     }
 
-    const near = this.lootPromptInfo();
+    const near = lootPromptInfo(ix);
     if (near && this.config) {
       const drop = this.loot.get(near.id);
       if (drop) {
@@ -4308,7 +4108,7 @@ export class Game {
       dropTooltipAnchor('loot');
     }
 
-    const prompt = this.riftPrompt();
+    const prompt = riftPrompt(ix);
     if (prompt && this.config) {
       const rift = this.world?.rifts.find((row) => row.id === prompt.id);
       if (rift) {
@@ -4321,7 +4121,7 @@ export class Game {
       dropTooltipAnchor('rift');
     }
 
-    const buy = this.buyPrompt();
+    const buy = buyPrompt(ix);
     if (buy && this.config) {
       const stand = this.world?.store?.stands.find((row) => row.id === buy.id);
       if (stand) {
@@ -4349,7 +4149,7 @@ export class Game {
       dropTooltipAnchor('machine');
     }
 
-    const crate = this.cratePromptInfo() !== null ? this.nearCrate() : null;
+    const crate = cratePromptInfo(ix) !== null ? nearCrate(ix) : null;
     if (crate && this.config) {
       const lift = this.config.tileSize * CRATE_TOOLTIP_LIFT_TILES;
       writeTooltipAnchor('crate', view.x(crate.x), view.y(crate.y - lift));
@@ -4401,6 +4201,7 @@ export class Game {
    * Frame the party walking east, looking a little ahead toward the mouth so
    * the exit is in the shot rather than sitting on the cut-off.
    */
+  // --- transit: the puppeted cameras, and tiles changing under them ----------
   private followDepartCamera(dt: number): void {
     const world = this.world;
     if (!world) return;

@@ -169,11 +169,14 @@ These bind every subtree. Subsystem-specific rules live in the docs above.
 
 - **The server is authoritative. Clients send inputs, never positions.**
 - **Nothing is persisted server-side.** The only durable client datum is the player's name, in `localStorage`.
-- **Every gameplay constant lives in `server/app/config.py`** and reaches the client in `welcome.config`. Never hardcode one client-side.
-- **These pairs are mirrors and change together:**
-  - `server/app/simulation.py` <-> `client/src/game/simulation.ts`
-  - `server/app/protocol.py` <-> `client/src/net/protocol.ts`
-  - `server/app/machine.py` <-> `client/src/game/machine.ts`
+- **Every gameplay constant lives in `server/app/config.py`** and reaches the client in `welcome.config`. Never hardcode one client-side — and never hedge one either. Fields `client_config()` always sends are **required** on `GameConfig`, so `config.x ?? 100` does not compile past a type error; `test_config_parity.py` keeps the two key sets equal in both directions. The client used to hedge, and two constants had silently drifted (`INVENTORY_SLOTS` 3 vs 5, `CARRY_MAX_WEIGHT` 10 vs 14) with nothing failing.
+- **These pairs are mirrors and change together.** Three are line-for-line; three are rules re-derived on the other side and are just as breakable:
+  - `server/app/simulation.py` <-> `client/src/game/simulation.ts` — movement, stamina
+  - `server/app/protocol.py` <-> `client/src/net/protocol.ts` — every wire shape
+  - `server/app/machine.py` <-> `client/src/game/machine.ts` — the pull's clock
+  - `server/app/world.py` <-> `client/src/game/world.ts` — the tile alphabet and `move_axis` / `blocks_sight` / `box_blocked` / `raycast_tiles`. Prediction runs on it; a tile kind added on one side alone desyncs collision
+  - `Room.collect_loot` + `Inventory.add` + `ammo.Reserve` <-> `client/src/game/interaction.ts` (`canStow`, `swapTargetFor`) — whether a pickup is legal. The client answers locally because the prompt cannot wait for a round trip
+  - `ai.look` <-> `client/src/render/fov.ts` — sight symmetry. No longer a copied constant: both read `enemyViewDarkScale` / `enemyViewLitScale` off `welcome.config`
 - **Sizes, speeds and distances are authored in tiles/seconds** and multiplied by `TILE_SIZE`. No raw pixel numbers.
 - **All colours and type live in `client/src/styles/index.css`**, read by the canvas through `client/src/theme/`.
 - **Rendering knows nothing about the network; networking knows nothing about rendering; `server/app/` knows nothing about either.**
@@ -185,7 +188,7 @@ These bind every subtree. Subsystem-specific rules live in the docs above.
 
 | scope | command |
 | --- | --- |
-| server | `python tests/test_snapshot_shape.py`, `test_pour.py`, `test_store_walk.py` from `server/` — plain scripts, each prints `ok` |
+| server | `python tests/test_snapshot_shape.py`, `test_pour.py`, `test_store_walk.py`, `test_config_parity.py` from `server/` — plain scripts, each prints `ok` |
 | client | `bun run typecheck` from `client/` — required after any change there |
 | both | run the server, open two browser tabs, confirm both players move, shoot and light the world without rubber-banding |
 
@@ -193,19 +196,29 @@ Run `test_store_walk.py` after any edit to `store.py`'s layout offsets: it
 flood-fills the shop and fails if the exit, the merchant, a stall or the
 cabinet cannot be reached.
 
+Run `test_config_parity.py` after touching `client_config()` or `GameConfig`:
+it fails if either side declares a key the other does not, in either
+direction. It is the only check on the constants contract — the client cannot
+tell a missing field from a wrong number at runtime.
+
 ## Large files
 
 Do not open these whole. Locate the section, then read it.
 
 | file | lines | why it is large | how to navigate |
 | --- | --- | --- | --- |
-| `client/src/game/game.ts` | ~4600 | the orchestrator every client subsystem hangs off | `// --- networking / loop / sound / rendering / hud ---` banners |
-| `server/app/room.py` | ~2800 | the authoritative room: lifecycle, tick, and every player-intent handler | grep `def ` — handlers are grouped by intent (`_pour`, `_rift`, `store`, `quest`, `attack`) |
+| `client/src/game/game.ts` | ~4400 | the orchestrator every client subsystem hangs off | 21 `// --- <section> ---` banners; the full list is in the file's own header comment. Grep the banner, never the line number |
+| `server/app/room.py` | ~2800 | the authoritative room: lifecycle, tick, and every player-intent handler | 16 `# --- <section> ---` banners; the full list is in the module docstring. Grep the banner, then `def ` inside it |
 | `server/tools/make_rift.py`, `make_audio.py`, `make_objects.py` | 1.9-2.6k | offline generators: one long recipe per asset, no shared state | grep the asset name |
 | `client/src/net/protocol.ts` | ~1400 | the whole wire surface as types | grep the message or payload name |
 
 They are not scheduled for splitting. Documenting their internal boundaries was
 the cheaper fix; see `STATE.md` if that changes.
+
+**A banner that lies is worse than no banner**, because this file tells you to
+trust it instead of opening the file. Both of the big two used to have five,
+one of which spanned >1300 lines across eight unrelated subsystems. If you add
+a handler, put it under the banner that describes it or add one.
 
 ## User preferences
 

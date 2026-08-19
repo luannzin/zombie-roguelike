@@ -150,8 +150,8 @@ it. Loot still in the bag is not money.
 | contract | rule |
 | --- | --- |
 | **authority** | clients send inputs, never positions |
-| **mirrors** | `server/app/simulation.py` <-> `client/src/game/simulation.ts`; `server/app/protocol.py` <-> `client/src/net/protocol.ts`; `server/app/machine.py` <-> `client/src/game/machine.ts`. Change each pair in one edit |
-| **config** | every gameplay constant lives in `server/app/config.py` and reaches the client in `welcome.config`. A constant the client needs but the payload lacks is a bug in `client_config()`, not a licence to hardcode |
+| **mirrors** | SIX pairs, changed in one edit. Line-for-line: `simulation.py` <-> `game/simulation.ts`; `protocol.py` <-> `net/protocol.ts`; `machine.py` <-> `game/machine.ts`. Re-derived, and no less breakable: `world.py` <-> `game/world.ts` (tile alphabet + collision); `Room.collect_loot`+`Inventory.add`+`ammo.Reserve` <-> `game/interaction.ts` (is this pickup legal — answered locally because a prompt cannot wait for a round trip); `ai.look` <-> `render/fov.ts` (sight symmetry) |
+| **config** | every gameplay constant lives in `server/app/config.py` and reaches the client in `welcome.config`. A constant the client needs but the payload lacks is a bug in `client_config()`, not a licence to hardcode. Always-sent fields are REQUIRED on `GameConfig`, so hedging one (`config.x ?? 100`) is a type error; `tests/test_config_parity.py` holds the two key sets equal both ways |
 | **units** | author sizes/speeds/distances in tiles and seconds, then multiply by `TILE_SIZE`. No raw pixel numbers |
 | **snapshot** | one payload for the whole room, serialised once. Nothing may differ per recipient (an input ack rides the player's own row as `seq`). Only what MOVES goes at 30 Hz; identity rides `roster` every `ROSTER_EVERY_N_TICKS` |
 | **economy** | the server credits extracted value exactly once, in `Room.enter_store`. The client's payout animation is presentation. **The client must never perform settlement** |
@@ -159,7 +159,7 @@ it. Loot still in the bag is not money.
 | **determinism** | `assets/processed/` is reproducible output — rerunning a generator must change only intended files. Terrain scatter is a pure function of `(tx, ty, map.seed)` |
 | **asset keys** | a folder name under `assets/processed/` is a protocol-visible string (`enemyTypes[*].sprite`, `hats`, `clothes`, `coinSprite`, `backpackSprite`). Renaming a folder is a wire change |
 | **frame order** | generator lists (`weapons.WEAPONS`, skills, loot icons) are **append-only** — inserting moves every existing frame index |
-| **sight symmetry** | `ai.py`'s view scales mirror `client/src/render/fov.ts`'s reaches. Move one, move the other |
+| **sight symmetry** | an enemy sees a shape exactly as far as the shape sees it. Both halves now read ONE source: `ENEMY_VIEW_DARK_SCALE` / `ENEMY_VIEW_LIT_SCALE` ship as `enemyViewDarkScale` / `enemyViewLitScale`, `ai.look` tests the cone against them and `render/fov.ts` draws the wash at them. They used to be hand-copied into `fov.ts` as `EYE_REACH` / `SIGHT_REACH` — a rule whose breakage has no symptom except a player seeing a radius the creatures do not respect |
 | **room ownership** | `rooms.py` owns every live `Room`; a reference held elsewhere outlives `rooms.drop()` and keeps a tick task alive |
 | **lifetime** | anything created in the client (sockets, timers, listeners, rAF) must be released in `Game.dispose()` |
 

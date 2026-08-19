@@ -60,7 +60,7 @@ export class LocalPlayer {
       // The breath the server is already holding for this body. A second
       // welcome (forest after camp) rebuilds this object mid-run, and a bar
       // that reset to full there would be a free sprint every zone.
-      stamina: initial.st ?? config.staminaMax ?? 100,
+      stamina: initial.st ?? config.staminaMax,
       winded: initial.wind ?? false,
     };
     this.hp = initial.hp;

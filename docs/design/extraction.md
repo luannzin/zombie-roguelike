@@ -40,7 +40,7 @@ Whole-system map: [`ARCHITECTURE.md`](../../ARCHITECTURE.md).
 | corridors, the exit | `server/app/entrance.py` |
 | pad/drone visuals, deck load | `client/src/render/layers/rift.ts`, `client/src/render/platform.ts`, `client/src/game/pad-cargo.ts` |
 | exit UX | `client/src/game/exit-guide.ts`, `client/src/components/hud/ExitGuide.tsx`, `client/src/render/rift.ts` (paving/torches) |
-| the prompt | `client/src/components/hud/RiftPrompt.tsx`, `Game.riftPrompt()` |
+| the prompt | `client/src/components/hud/RiftPrompt.tsx`, `client/src/game/interaction.ts` (`riftPrompt`, `nearRift`) |
 
 **Do not touch from here:** economy settlement (`Room.enter_store`), inventory
 authority (`server/app/inventory.py` slot rules), the wire protocol pair, or

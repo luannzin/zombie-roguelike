@@ -13,7 +13,7 @@ Output (assets/processed/terrain/):
     ground_litter.png  64x64
     blend.png     8 frames, 16x16   ALPHA STENCILS, graded coverage
     patch.png     6 frames, 32x32   ground stains ("manchas"), flat decal
-    rock.png      5 frames, 16x20   solid blocker
+    rock.png      8 frames, 20x26   solid blocker, 8 recipes, shadow BAKED IN
     tree.png      4 frames, 24x40   solid blocker, overhangs its tile
     deadtree.png  4 frames, 24x40   solid blocker, bare — a blighted TREE tile
     stump.png     4 frames, 16x14   solid blocker, a felled trunk
@@ -72,7 +72,7 @@ import math
 import random
 from pathlib import Path
 
-from PIL import Image
+from PIL import Image, ImageDraw
 
 ROOT = Path(__file__).resolve().parents[2]
 PROCESSED_DIR = ROOT / "assets" / "processed"
@@ -157,7 +157,6 @@ PATCH_GRAVEL: Ramp = [rgb(c) for c in ("#2a2823", "#37342e", "#454139", "#534e44
 
 ROCK_RAMP: Ramp = [rgb(c) for c in ("#242327", "#312f34", "#403d43", "#4e4a51", "#5d5860")]
 ROCK_OUTLINE = rgb("#131418")
-ROCK_MOSS = rgb("#33422c")
 
 BARK: Ramp = [rgb(c) for c in ("#231a13", "#2e231a", "#3b2d21", "#493829")]
 LEAF: Ramp = [rgb(c) for c in ("#1a2618", "#22321f", "#2b3f26", "#354d2d", "#425e37")]
@@ -653,48 +652,403 @@ def paint_coin(
     return img
 
 
-def make_rock(width: int, height: int, rng: random.Random, scale: float) -> Image.Image:
-    """A squat boulder: jagged radial silhouette, lit from the upper left."""
-    img = Image.new("RGBA", (width, height), TRANSPARENT)
+# --- rocks ------------------------------------------------------------------
+# Rocks are drawn as EXTRUDED PRISMS, not as shaded blobs. A blob has one
+# surface and therefore one shading rule, and at 20px that reads as a lump of
+# gravel however carefully it is lit. A prism has a top face and two side
+# faces, each a flat band of one colour, and the eye reconstructs the volume
+# from the plane break alone — the same trick the reference sheets use. See
+# PIXEL-ART-DIRECTION.md: stacked convex masses (§2), top plane 35-45% of the
+# silhouette (§3), hard cel bands with no dithering (§7), key light from the
+# upper left (§8).
+#
+# Eight rocks, eight different recipes, because randomising one recipe eight
+# times gives eight rocks with the same silhouette and different noise.
+
+# Four stone families. Each is a 5-step ramp that shifts hue as it climbs —
+# shadow toward violet/blue, light toward warm ochre (§11) — kept inside this
+# game's night value key, which is much darker than the reference sheets. A
+# rock painted at reference brightness would read as a lamp on this floor.
+ROCK_STONE: dict[str, tuple[Ramp, RGBA]] = {
+    "granite": (
+        [rgb(c) for c in ("#17161c", "#25232c", "#3b3841", "#565059", "#7a6e64")],
+        rgb("#0d0c11"),
+    ),
+    "sandstone": (
+        [rgb(c) for c in ("#1a1410", "#2b2118", "#3f3122", "#5d4830", "#856a43")],
+        rgb("#0f0b08"),
+    ),
+    "basalt": (
+        [rgb(c) for c in ("#101319", "#1d222b", "#323945", "#4b535f", "#6b727a")],
+        rgb("#07090d"),
+    ),
+    "limestone": (
+        [rgb(c) for c in ("#1b1c23", "#292b34", "#454750", "#63646a", "#87867e")],
+        rgb("#121218"),
+    ),
+}
+
+# A chunk: (cx, base_y, rx, ry, height, sides, jag, skew, taper), every value a
+# fraction of the frame — width for the x terms, body height for the y terms —
+# so the recipes survive a change of TILE_SIZE.
+#   cx, base_y  where the chunk stands
+#   rx, ry      rx is the half-width; ry is a RATIO of rx (~0.5 = 55deg pitch)
+#   height      how far it is extruded upward
+#   sides, jag  vertex count and how far each vertex may be bitten inward
+#   skew        lean: horizontal drift of the top face over the extrusion
+#   taper       how much the section shrinks on the way up (shards, spires)
+ROCK_RECIPES: dict[str, dict] = {
+    # Wide table rock. One dominant top plane, deliberately the flattest of the
+    # eight, so the set has a clear horizontal anchor.
+    "slab": {
+        "stone": "limestone",
+        "cracks": 2,
+        "chunks": [
+            (0.30, 0.84, 0.19, 0.83, 0.10, 5, 0.24, 0.02, 0.05),
+            (0.53, 1.00, 0.41, 0.81, 0.15, 6, 0.20, -0.02, 0.04),
+        ],
+    },
+    # Standing stone: tall, narrow, leaning. Height:footprint ~1.6, the top of
+    # the range (§17).
+    "monolith": {
+        "stone": "basalt",
+        "cracks": 1,
+        "chunks": [
+            (0.44, 1.00, 0.23, 0.86, 0.49, 5, 0.18, 0.12, 0.16),
+            (0.69, 1.00, 0.16, 0.88, 0.21, 5, 0.22, -0.04, 0.08),
+        ],
+    },
+    # Three masses stacked at 1 : 0.7 : 0.5, the size rhythm from §17.
+    "stack": {
+        "stone": "granite",
+        "cracks": 1,
+        "chunks": [
+            (0.50, 1.00, 0.32, 0.83, 0.14, 6, 0.20, 0.00, 0.05),
+            (0.38, 0.78, 0.23, 0.86, 0.13, 5, 0.22, 0.06, 0.08),
+            (0.62, 0.58, 0.16, 0.88, 0.10, 5, 0.24, -0.05, 0.10),
+        ],
+    },
+    # Fanned shards: the spikiest silhouette in the set, and the only one whose
+    # top faces are small enough to carry no cracks.
+    "shards": {
+        "stone": "basalt",
+        "cracks": 0,
+        "chunks": [
+            (0.27, 1.00, 0.13, 0.66, 0.30, 5, 0.16, -0.07, 0.34),
+            (0.44, 1.00, 0.14, 0.66, 0.54, 5, 0.14, 0.06, 0.40),
+            (0.60, 0.96, 0.12, 0.68, 0.40, 5, 0.16, 0.09, 0.36),
+            (0.75, 1.00, 0.11, 0.70, 0.22, 4, 0.18, 0.04, 0.26),
+        ],
+    },
+    # One boulder cleaved in two. The gap between the halves is the silhouette
+    # feature, so the halves stand apart far enough for the floor to show
+    # through — overlap them and the split is just a drawn line.
+    "split": {
+        "stone": "sandstone",
+        "cracks": 1,
+        "chunks": [
+            (0.28, 1.00, 0.23, 0.83, 0.34, 5, 0.20, 0.07, 0.12),
+            (0.73, 1.00, 0.23, 0.86, 0.26, 5, 0.22, -0.07, 0.10),
+            (0.50, 1.00, 0.11, 0.88, 0.08, 4, 0.24, 0.00, 0.08),
+        ],
+    },
+    # Low rubble: wide, ragged, no single dominant mass. The horizontal
+    # counterweight to the monolith.
+    "rubble": {
+        "stone": "granite",
+        "cracks": 0,
+        "chunks": [
+            (0.20, 0.90, 0.15, 0.86, 0.09, 5, 0.22, 0.02, 0.08),
+            (0.46, 1.00, 0.20, 0.83, 0.12, 5, 0.20, -0.04, 0.06),
+            (0.69, 0.96, 0.17, 0.86, 0.10, 5, 0.22, 0.05, 0.08),
+            (0.85, 1.00, 0.11, 0.88, 0.07, 4, 0.24, 0.00, 0.10),
+            (0.33, 0.74, 0.12, 0.88, 0.08, 4, 0.26, 0.03, 0.12),
+        ],
+    },
+    # Asymmetric wedge: one steep face, one long ramp. Carries the largest skew
+    # in the set, which is what stops the eight from averaging out upright.
+    "wedge": {
+        "stone": "sandstone",
+        "cracks": 2,
+        "chunks": [
+            (0.40, 1.00, 0.31, 0.81, 0.30, 5, 0.18, 0.26, 0.26),
+            (0.75, 1.00, 0.16, 0.86, 0.11, 5, 0.22, -0.05, 0.08),
+        ],
+    },
+    # The bottom of the ladder. Detail is DELETED, not shrunk (§16): three
+    # tones instead of five, no crest accent, no cracks.
+    "pebbles": {
+        "stone": "limestone",
+        "cracks": 0,
+        "lod": True,
+        "chunks": [
+            (0.37, 1.00, 0.13, 0.86, 0.07, 5, 0.22, 0.02, 0.10),
+            (0.62, 0.98, 0.10, 0.88, 0.06, 4, 0.24, -0.02, 0.12),
+            (0.50, 0.80, 0.08, 0.91, 0.05, 4, 0.26, 0.03, 0.14),
+        ],
+    },
+}
+
+# Reserved at the bottom of the frame for the cast shadow, in fractions of the
+# frame height. The rock stands on top of this band, not in it.
+ROCK_SHADOW_BAND = 0.16
+
+
+def _rock_poly(
+    cx: float, cy: float, rx: float, ry: float, sides: int, jag: float,
+    rng: random.Random,
+) -> list[tuple[float, float]]:
+    """An irregular convex-ish top face: vertices walked in angle order so the
+    ring never self-crosses, each pulled inward by its own bite (§15)."""
+    start = rng.uniform(0, math.tau)
+    points = []
+    for index in range(sides):
+        angle = start + math.tau * index / sides + rng.uniform(-0.10, 0.10)
+        radius = 1.0 - rng.uniform(0.0, jag)
+        points.append((round(cx + math.cos(angle) * rx * radius),
+                       round(cy + math.sin(angle) * ry * radius)))
+    return points
+
+
+def _rock_prism(
+    size: tuple[int, int], chunk: tuple, width: int, body_h: int, base: float,
+    rng: random.Random,
+) -> tuple[Image.Image, Image.Image, list[tuple[float, float]]]:
+    """Extrude one chunk. Returns (whole body mask, top face mask, top polygon).
+
+    The body is every polygon from the base to the top stamped in place; the
+    top face is the last one. Subtracting gives the vertical sides, and that
+    subtraction — not a normal — is what makes the plane break land on an exact
+    pixel row.
+    """
+    fx, fy, frx, fry, fh, sides, jag, skew, taper = chunk
+    cx = fx * (width - 1)
+    base_y = base - (1.0 - fy) * body_h
+    rx = max(1.5, frx * width)
+    # The top face is foreshortened by the camera pitch, so its depth is a
+    # fixed fraction of its width (§3) — never a fraction of the frame, which
+    # is what shrank it to a two-pixel sliver and killed the volume.
+    ry = max(1.5, fry * rx)
+    height = max(1.0, fh * body_h)
+    poly = _rock_poly(cx, base_y, rx, ry, sides, jag, rng)
+
+    body = Image.new("1", size, 0)
+    draw = ImageDraw.Draw(body)
+    steps = max(1, int(round(height)))
+    top = Image.new("1", size, 0)
+    for step in range(steps + 1):
+        t = step / steps
+        shift_x = skew * width * t
+        shift_y = -height * t
+        keep = 1.0 - taper * t
+        pts = [
+            (x * keep + cx * (1 - keep) + shift_x,
+             y * keep + base_y * (1 - keep) + shift_y)
+            for x, y in poly
+        ]
+        draw.polygon(pts, fill=1)
+        if step == steps:
+            ImageDraw.Draw(top).polygon(pts, fill=1)
+            cap = pts
+    return body, top, cap
+
+
+def _rock_faces(poly: list[tuple[float, float]], width: int) -> dict[int, int]:
+    """Which ramp step each COLUMN of the sides takes.
+
+    A prism's vertical faces are the edges of its top polygon dragged
+    downward, so an edge's outward normal decides the whole column of pixels
+    under it. Shading by distance from the chunk's centre instead — which is
+    what a blob does — gives two soft bands and a sack; shading by edge gives
+    the hard planar break the reference sheets are built on (§2, §3).
+
+    Only the edges facing the camera are visible. Where two of them cover the
+    same column the FRONT one wins, because that is the face that occludes.
+    Each normal is read against the key at 135deg: facing left is lit, facing
+    right is in shade, facing the viewer sits between.
+    """
+    count = len(poly)
+    cx = sum(x for x, _ in poly) / count
+    cy = sum(y for _, y in poly) / count
+    columns: dict[int, tuple[float, int]] = {}
+    for index in range(count):
+        x0, y0 = poly[index]
+        x1, y1 = poly[(index + 1) % count]
+        if x1 == x0:
+            continue
+        nx, ny = (y1 - y0), -(x1 - x0)
+        # Wind-independent: flip the normal until it points away from the
+        # centroid, so the recipe order of the vertices cannot invert the light.
+        mid_x, mid_y = (x0 + x1) / 2, (y0 + y1) / 2
+        if nx * (mid_x - cx) + ny * (mid_y - cy) < 0:
+            nx, ny = -nx, -ny
+        length = math.hypot(nx, ny) or 1.0
+        nx, ny = nx / length, ny / length
+        if ny <= 0.05:
+            continue
+        step = 3 if nx < -0.30 else (1 if nx > 0.30 else 2)
+        lo, hi = sorted((x0, x1))
+        for x in range(max(0, int(math.floor(lo))), min(width, int(math.ceil(hi)) + 1)):
+            t = 0.0 if x1 == x0 else (x - x0) / (x1 - x0)
+            depth = y0 + (y1 - y0) * min(1.0, max(0.0, t))
+            if x not in columns or depth > columns[x][0]:
+                columns[x] = (depth, step)
+    return {x: step for x, (_, step) in columns.items()}
+
+
+def _rock_crest(img: Image.Image, top_mask, ramp: Ramp, accent: int) -> None:
+    """Roll the far edge of a top face off by one step.
+
+    A flat top and a flat side meeting at a hard value jump reads as a folded
+    sheet. One step of roll on the edge that faces away from the key gives the
+    plane a thickness, and it is the only place on a rock where two steps are
+    allowed to touch without a plane break between them (§7).
+    """
     px = img.load()
-
-    cx = (width - 1) / 2.0
-    base_y = height - 1.0
-    rx = width * 0.48 * scale
-    ry = height * 0.62 * scale
-    # Per-rock lumpiness: a few sine harmonics on the radius, so no two frames
-    # share a silhouette but every one still reads as a rounded boulder. Kept
-    # small — big amplitudes turn a boulder into gravel at this size.
-    harmonics = [(rng.uniform(0.03, 0.09), rng.uniform(0, math.tau)) for _ in range(3)]
-
-    for y in range(height):
-        for x in range(width):
-            dx = (x - cx) / rx
-            dy = (y - base_y) / ry
-            if dy > 0.15:
+    mask = top_mask.load()
+    for y in range(img.height):
+        for x in range(img.width):
+            if not mask[x, y]:
                 continue
-            angle = math.atan2(dy, dx)
-            wobble = 1.0
-            for index, (amp, phase) in enumerate(harmonics):
-                wobble += amp * math.sin(angle * (index + 2) + phase)
-            if dx * dx + dy * dy > wobble * wobble:
-                continue
-            # Shade by height on the rock plus a light direction from up-left.
-            up = clamp01(-dy)
-            side = clamp01(0.5 - dx * 0.45)
-            shade = up * 0.55 + side * 0.45 + (hash01(x, y, 7) - 0.5) * 0.14
-            px[x, y] = pick(ROCK_RAMP, shade, x, y)
+            down = y + 1 >= img.height or not mask[x, y + 1]
+            right = x + 1 >= img.width or not mask[x + 1, y]
+            if down or right:
+                px[x, y] = ramp[accent]
 
-    # Moss creeps up the shaded base — ties the rock to the forest floor.
-    for y in range(height):
-        for x in range(width):
-            if px[x, y][3] == 0:
-                continue
-            if y > height * 0.62 and hash01(x, y, 313) > 0.72:
-                px[x, y] = ROCK_MOSS
 
-    outline(img, ROCK_OUTLINE)
-    return img
+def _rock_crack(
+    img: Image.Image, top_mask, ramp: Ramp, rng: random.Random, count: int,
+) -> None:
+    """Split a top face with 1px fissures: dark line, one lit lip above it.
+
+    The lip is what stops a crack reading as a scratch — a real fissure has a
+    near wall catching the key and a far wall in shadow.
+    """
+    mask = top_mask.load()
+    cells = [(x, y) for y in range(img.height) for x in range(img.width) if mask[x, y]]
+    if len(cells) < 24:
+        return
+    px = img.load()
+    xs = [c[0] for c in cells]
+    ys = [c[1] for c in cells]
+    for _ in range(count):
+        x = float(rng.choice(range(min(xs), max(xs) + 1)))
+        y = float(rng.uniform(min(ys), max(ys)))
+        drift = rng.uniform(-0.8, 0.8)
+        for _ in range(max(xs) - min(xs) + 2):
+            ix, iy = int(round(x)), int(round(y))
+            inside = (
+                0 <= ix < img.width and 0 <= iy < img.height and mask[ix, iy]
+                and (iy + 1 < img.height and mask[ix, iy + 1])
+            )
+            if inside:
+                # Two steps under the top face, never the contact black: a
+                # crack cut to step 0 punches a hole straight through the rock.
+                px[ix, iy] = ramp[2]
+                if iy > 0 and mask[ix, iy - 1]:
+                    px[ix, iy - 1] = ramp[4]
+            x += 1
+            y += drift * rng.uniform(0.2, 1.0)
+            if not (min(xs) - 1 <= x <= max(xs) + 1):
+                break
+
+
+def _rock_shadow(
+    size: tuple[int, int], body: Image.Image, tone: RGBA,
+) -> Image.Image:
+    """The cast shadow, offset down-right off the footprint (§9).
+
+    Drawn as a flat two-band ellipse sized from the FOOTPRINT, not the
+    silhouette — a shadow that traces the outline reads as a mirror, and the
+    reference sheets never do it.
+    """
+    layer = Image.new("RGBA", size, TRANSPARENT)
+    px = body.load()
+    columns = [
+        (x, max(y for y in range(size[1]) if px[x, y][3] != 0))
+        for x in range(size[0])
+        if any(px[x, y][3] != 0 for y in range(size[1]))
+    ]
+    if not columns:
+        return layer
+    left = min(x for x, _ in columns)
+    right = max(x for x, _ in columns)
+    bottom = max(y for _, y in columns)
+    span = right - left + 1
+    cx = (left + right) / 2 + span * 0.12          # offset right  (§9)
+    cy = bottom + max(1.0, size[1] * 0.04)         # offset down   (§9)
+    rx = span * 0.55
+    ry = max(1.5, rx * 0.32)
+    draw = ImageDraw.Draw(layer)
+    outer = (tone[0], tone[1], tone[2], 46)
+    core = (tone[0], tone[1], tone[2], 92)
+    draw.ellipse((cx - rx, cy - ry, cx + rx, cy + ry), fill=outer)
+    draw.ellipse((cx - rx * 0.66, cy - ry * 0.62, cx + rx * 0.66, cy + ry * 0.62),
+                 fill=core)
+    return layer
+
+
+def make_rock(width: int, height: int, kind: str, rng: random.Random) -> Image.Image:
+    """One of the eight rocks, by name. Prisms, hard bands, cast shadow."""
+    recipe = ROCK_RECIPES[kind]
+    ramp, edge = ROCK_STONE[recipe["stone"]]
+    lod = recipe.get("lod", False)
+    # Full detail spends all five steps: top, lit face, near face, shade face,
+    # contact. The pebbles get three (§16), so their faces are clamped.
+    top_i, side_i, accent_i = (2, 1, 2) if lod else (4, 2, 3)
+
+    size = (width, height)
+    body = Image.new("RGBA", size, TRANSPARENT)
+    px = body.load()
+    band = height * ROCK_SHADOW_BAND
+    base = height - 1 - band
+    body_h = base - 1
+
+    for chunk in recipe["chunks"]:
+        mask, top, poly = _rock_prism(size, chunk, width, body_h, base, rng)
+        solid = mask.load()
+        cap = top.load()
+        faces = _rock_faces(poly, width)
+
+        # Seam occlusion: whatever this chunk lands against loses a step, so
+        # two masses meeting read as one in front of the other (§10).
+        for y in range(height):
+            for x in range(width):
+                if solid[x, y] or px[x, y][3] == 0:
+                    continue
+                if any(
+                    0 <= x + dx < width and 0 <= y + dy < height and solid[x + dx, y + dy]
+                    for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1))
+                ):
+                    px[x, y] = ramp[0]
+
+        for y in range(height):
+            for x in range(width):
+                if not solid[x, y]:
+                    continue
+                if cap[x, y]:
+                    px[x, y] = ramp[top_i]
+                else:
+                    step = faces.get(x, side_i)
+                    px[x, y] = ramp[min(step, side_i) if lod else step]
+
+        _rock_crest(body, top, ramp, accent_i)
+        if recipe["cracks"]:
+            _rock_crack(body, top, ramp, rng, recipe["cracks"])
+
+    # Contact darkening, INSIDE the silhouette and above the cast shadow (§10).
+    for x in range(width):
+        column = [y for y in range(height) if px[x, y][3] != 0]
+        if not column:
+            continue
+        floor = max(column)
+        px[x, floor] = ramp[0]
+        if not lod and floor - 1 in column:
+            px[x, floor - 1] = ramp[min(1, len(ramp) - 1)]
+
+    outline(body, edge)
+    shadow = _rock_shadow(size, body, ramp[0])
+    return Image.alpha_composite(shadow, body)
 
 
 def make_tree(width: int, height: int, tile: int, rng: random.Random) -> Image.Image:
@@ -1288,13 +1642,13 @@ def build(args) -> Path:
     ]
     pack(patches, patch_size, patch_size).save(out_dir / "patch.png")
 
-    rock_w, rock_h = tile, round(tile * 1.25)
+    # Wider and taller than a tile: a rock overhangs its own footprint the way
+    # a tree does, and the bottom sixteenth is the cast shadow's band.
+    rock_w, rock_h = round(tile * 1.25), round(tile * 1.625)
     rng = random.Random(args.seed + 101)
-    # Sizes stagger from pebble to boulder so a cluster does not look stamped.
-    rocks = [
-        make_rock(rock_w, rock_h, rng, scale)
-        for scale in (0.55, 0.72, 0.86, 1.0, 0.94)
-    ]
+    # Eight recipes, not eight rolls of one recipe — silhouette is the thing
+    # that has to vary, and noise does not vary a silhouette.
+    rocks = [make_rock(rock_w, rock_h, kind, rng) for kind in ROCK_RECIPES]
     pack(rocks, rock_w, rock_h).save(out_dir / "rock.png")
 
     tree_w, tree_h = round(tile * 1.5), round(tile * 2.5)

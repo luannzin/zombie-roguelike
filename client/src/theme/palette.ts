@@ -147,6 +147,20 @@ export interface Palette {
    * column itself is a greyscale sheet tinted with the player's own colour. */
   summon: { spark: string; core: string };
 
+  /**
+   * The grade's tones, as bare `R G B`. Read by `render/post/looks.ts` and
+   * mixed by the grade stack, so every one of them has to be a channel triple
+   * that can be interpolated rather than a finished colour.
+   */
+  grade: {
+    fogForest: Channels;
+    fogShop: Channels;
+    fogCamp: Channels;
+    vignette: Channels;
+    washBlood: Channels;
+    washFlash: Channels;
+  };
+
   /** Bare `R G B` channels — the vignette computes alpha per stop. */
   danger: {
     inner: string;
@@ -288,6 +302,15 @@ function resolve(): Palette {
     summon: {
       spark: v('--summon-spark'),
       core: v('--summon-core'),
+    },
+
+    grade: {
+      fogForest: rgb('--grade-fog-forest'),
+      fogShop: rgb('--grade-fog-shop'),
+      fogCamp: rgb('--grade-fog-camp'),
+      vignette: rgb('--grade-vignette'),
+      washBlood: rgb('--grade-wash-blood'),
+      washFlash: rgb('--grade-wash-flash'),
     },
 
     danger: {

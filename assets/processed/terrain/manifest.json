@@ -60,9 +60,9 @@
   "props": {
     "rock": {
       "file": "rock.png",
-      "frameWidth": 16,
-      "frameHeight": 20,
-      "frames": 5,
+      "frameWidth": 20,
+      "frameHeight": 26,
+      "frames": 8,
       "solid": true
     },
     "tree": {

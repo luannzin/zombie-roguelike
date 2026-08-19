@@ -817,20 +817,25 @@ function paintProps(
       const frame = variant(sheet, tx, ty, seed, tile === TREE ? 2 : 3);
 
       const baseY = (ty + 1) * ts;
-      ctx.globalAlpha = SHADOW_ALPHA;
-      ctx.fillStyle = shadow;
-      ctx.beginPath();
-      ctx.ellipse(
-        tx * ts + ts / 2,
-        baseY - (ts * SHADOW_HEIGHT) / 2,
-        (ts * SHADOW_WIDTH) / 2,
-        (ts * SHADOW_HEIGHT) / 2,
-        0,
-        0,
-        Math.PI * 2,
-      );
-      ctx.fill();
-      ctx.globalAlpha = 1;
+      // Rocks carry their own shadow, baked by `make_textures.py` and shaped to
+      // that rock's footprint with the offset the key light implies. A generic
+      // ellipse under one would be a second shadow pointing nowhere.
+      if (tile !== ROCK) {
+        ctx.globalAlpha = SHADOW_ALPHA;
+        ctx.fillStyle = shadow;
+        ctx.beginPath();
+        ctx.ellipse(
+          tx * ts + ts / 2,
+          baseY - (ts * SHADOW_HEIGHT) / 2,
+          (ts * SHADOW_WIDTH) / 2,
+          (ts * SHADOW_HEIGHT) / 2,
+          0,
+          0,
+          Math.PI * 2,
+        );
+        ctx.fill();
+        ctx.globalAlpha = 1;
+      }
 
       ctx.drawImage(
         sheet.image,

@@ -288,6 +288,24 @@
   --danger-outer: 140 6 18;
   --danger-wash: 160 12 28;
   --danger-edge: 0 0 0;
+
+  /*
+   * The GRADE — the colour the whole frame is finished in, after every layer
+   * has drawn (`render/post/`). Bare `R G B` channels: the post chain computes
+   * every amount itself from the grade stack, so a finished colour here would
+   * be a colour that could not be faded between two events.
+   *
+   * These are TONES, not the tint of any one thing. `--grade-fog-*` is the air
+   * a place is seen through, `--grade-vignette` is what the frame falls off
+   * into, and the washes are the flat colour an event throws over everything
+   * for a few frames.
+   */
+  --grade-fog-forest: 44 58 62;
+  --grade-fog-shop: 84 64 42;
+  --grade-fog-camp: 52 56 74;
+  --grade-vignette: 4 5 9;
+  --grade-wash-blood: 122 10 18;
+  --grade-wash-flash: 255 244 218;
   --destructive-foreground: var(--color-red-700);
   --info: var(--color-blue-500);
   --info-foreground: var(--color-blue-700);

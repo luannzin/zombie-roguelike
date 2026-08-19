@@ -10,7 +10,14 @@
  */
 
 import { get2d } from '../lib/canvas';
-import { drawCombatEffects, drawDeathBursts, drawDust, drawTextFloats, drawWindPuffs } from './layers/effects';
+import {
+  drawCombatEffects,
+  drawDeathBursts,
+  drawDust,
+  drawLevelUps,
+  drawTextFloats,
+  drawWindPuffs,
+} from './layers/effects';
 import {
   drawCoinShadows,
   drawCoins,
@@ -67,7 +74,6 @@ import {
   drawPayoutRigs,
   drawPayoutTotal,
 } from './layers/payout';
-import { loadSkills, type SkillAtlas } from './skills';
 import {
   drawStoreFloor,
   drawStoreLight,
@@ -129,7 +135,6 @@ export class Renderer {
   private storeAtlas: StoreAtlas | null = null;
   private merchantAtlas: MerchantAtlas | null = null;
   private machineAtlas: MachineAtlas | null = null;
-  private skillAtlas: SkillAtlas | null = null;
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
@@ -171,9 +176,6 @@ export class Renderer {
     });
     void loadMachine().then((atlas) => {
       this.machineAtlas = atlas;
-    });
-    void loadSkills().then((atlas) => {
-      this.skillAtlas = atlas;
     });
     void loadMerchant().then((atlas) => {
       this.merchantAtlas = atlas;
@@ -426,8 +428,7 @@ export class Renderer {
             if (this.storeAtlas && store) {
               drawStoreProp(
                 ctx, view, this.storeAtlas, this.gunAtlas, this.merchantAtlas,
-                row.store, store, storeLift, this.machineAtlas, this.skillAtlas,
-                state.time,
+                row.store, store, storeLift, this.machineAtlas, state.time,
               );
             }
           } else if (scenery && row.piece) {
@@ -492,6 +493,7 @@ export class Renderer {
     drawLootBeams(ctx, this.vfx?.aura ?? null, state.loot, state.time);
     drawWindPuffs(ctx, this.vfx?.wind ?? null, state.effects.winds);
     drawDeathBursts(ctx, this.vfx?.death ?? null, state.effects.deaths);
+    drawLevelUps(ctx, this.vfx?.summon ?? null, state.effects.levelUps);
     // Every torch on the map, the exit's and the pads'. Before the rigs,
     // because a platform under power is the brighter thing and should sit over
     // them — and once every pad has flown these are the only fire left burning

@@ -1,12 +1,14 @@
 /**
- * DARK GOLD badge — the player's own purple coin, the face of the disc that
- * spins in the woods (`server/tools/make_coin.py`).
+ * DARK GOLD badge — the player's own ANOMALY SHARD, frame 0 of the sphere
+ * that turns in the woods (`server/tools/make_coin.py`, which paints both).
  *
- * Deliberately the same 8x8 silhouette as `CoinIcon`: at this size the METAL
- * is the whole message, and giving the two currencies different shapes would
- * make the panel look like it holds two unrelated icons instead of two kinds
- * of money. Gold is the GROUP's and rides on catalog value, platform quotas
- * and shop prices; this one is personal, and the only one anybody walks over.
+ * It used to be a struck disc sharing `CoinIcon`'s silhouette, on the argument
+ * that at 8px the METAL is the whole message. That stopped being true when the
+ * pickup stopped being metal: one of these is money and the other is a piece
+ * of the thing the night is spent feeding, and a ball against a disc says so
+ * before the colour does. Gold is the GROUP's and rides on catalog value,
+ * platform quotas and shop prices; this one is personal, and the only one
+ * anybody walks over.
  */
 
 import { cn } from '@/lib/utils';

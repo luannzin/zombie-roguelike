@@ -3,8 +3,8 @@
 
 Output (assets/processed/skills/):
     sheet.png      one 16x16 icon per skill, left to right in catalog order
-    can.png        5 frames, 16x24 — one canister per rarity
-    cap.png        5 frames, 16x24 — the same canister, lit, for the additive
+    can.png        5 frames, 16x18 — one tin per rarity
+    cap.png        5 frames, 16x18 — the same tin, lit, for the additive
                    pass, so a legendary can actually glows in a dark glade
     manifest.json  frame index per skill key, plus the canister geometry
 
@@ -17,14 +17,14 @@ the tray sitting one pixel low.
 
 The CANISTER is the physical object — the thing that comes out of the tray, and
 the only reason the skill is not a menu entry. It is one silhouette in five
-colourways: a steel tube with a domed cap, a band, and a WINDOW in the middle
+colourways: a steel-lidded tin with a coloured label and a WINDOW in the middle
 that is deliberately left as a flat plate, because the client composites the
 icon into it. One can plus eighteen icons is eighteen readable objects out of
 twenty-three drawings, and every one of them is guaranteed to read as the same
 KIND of thing — which is the whole point of a machine that dispenses them.
 
-RARITY IS THE METAL AND THE GLOW, NOT THE SHAPE.
-A legendary canister is the same tube as a common one. Changing the silhouette
+RARITY IS THE LABEL AND THE GLOW, NOT THE SHAPE.
+A legendary tin is the same tin as a common one. Changing the silhouette
 per tier would mean the player reads the tier off the outline before the colour
 has said anything, and the colour is the language loot already taught them.
 
@@ -92,13 +92,22 @@ Art = list[str]
 Palette = dict[str, Ramp]
 
 ICON_CELL = 16
+#: A TIN OF FOOD, and it is deliberately SMALL. It was a 16x24 aerosol tube:
+#: at that height it read as a spray can or a battery, it stood taller than
+#: the icon it was carrying, and it needed the whole width of the tray to be
+#: legible. A canned-good tin is squatter than it is tall-looking, the shape
+#: everybody already recognises, and at 16x18 it is barely taller than one
+#: HUD row — which is what lets it fly into the tray and become that row
+#: without changing size on the way.
 CAN_W = 16
-CAN_H = 24
+CAN_H = 18
 #: Where the icon is stamped on the canister, top-left in frame pixels. The
-#: window is 10x10 and the icon is 16x16, so the client scales it — the number
-#: the client needs is this corner and that size, which is why both ride the
-#: manifest instead of being guessed from the sheet.
-WINDOW = (3, 8, 10, 10)
+#: window is the LABEL — on a real tin it is most of the body and it is what
+#: says which tin this is, so it takes 8x8 of a 16x18 tin rather than the
+#: postage stamp the tube wore. The icon is 16x16, so the client scales it —
+#: the number the client needs is this corner and that size, which is why both
+#: ride the manifest instead of being guessed from the sheet.
+WINDOW = (4, 5, 8, 8)
 
 
 def _blit(art: Art, ramps: Palette, cell: int = ICON_CELL) -> Image.Image:
@@ -407,36 +416,56 @@ ICONS: list[tuple[str, Palette, Art]] = [
 # --- the canister -----------------------------------------------------------
 
 
-#: Half-width of the tube at each row, out of a 16-wide cell. THE SHAPE OF THE
-#: OBJECT IS THIS LIST and nothing else: a domed cap so the thing reads as
-#: pressurised rather than as a box, a straight barrel, and a foot that pulls
-#: in one pixel so it looks like it is standing on the tray instead of sunk
-#: into it. It was a plain rectangle first and a rectangle is a crate.
+#: Half-width of the tin at each row, out of a 16-wide cell. THE SHAPE OF THE
+#: OBJECT IS THIS LIST and nothing else: a lid disc one pixel narrower than the
+#: body so the rim reads as a seam you could get a finger under, a straight
+#: barrel, and a foot that pulls in at the very bottom so the thing is standing
+#: rather than floating.
+#:
+#: IT IS NOT A CYLINDER ANY MORE, IT IS A TIN. The old profile domed at the top
+#: because it was a pressurised canister; a food tin is flat-topped with a
+#: pull-ring, and that flat top is most of why the silhouette is readable at
+#: this size — a dome and a barrel at this size are the same blob.
 CAN_PROFILE = (
-    2, 4, 5, 5,      # dome
-    5, 5, 5, 5,      # shoulder band
-    5, 5, 5, 5, 5,   # barrel — the window lives in here
-    5, 5, 5, 5, 5,
-    5, 5, 5, 5,      # base band
-    4, 3,            # foot
+    6, 7, 7,             # lid: disc, ring, rim seam
+    7, 7,                # label — top band
+    7, 7, 7, 7,          # label — the window lives in here
+    7, 7, 7, 7,
+    7, 7, 7,             # label — bottom band, where a brand name would go
+    7,                   # base rim
+    6,                   # foot
 )
-#: Which rows are the rarity METAL rather than steel: the shoulder and the
-#: base. Everything between them is the same tube on every tier, which is what
-#: makes the colour read as a grade rather than as a different object.
-CAP_ROWS = range(0, 8)
-BASE_ROWS = range(18, 24)
+#: The steel: the lid at the top, the rim at the bottom. Everything between
+#: them is the LABEL and it is the rarity colour, which is the inversion of
+#: what the tube did — that wore rarity on two thin bands and steel everywhere
+#: else, so at a glance five tiers were five grey tubes. On a tin the label IS
+#: the object's colour, which is the whole reason a legendary reads from across
+#: the clearing.
+LID_ROWS = range(0, 3)
+BASE_ROWS = range(16, CAN_H)
+#: Where two pieces of metal meet, and the only rows drawn dark on purpose. A
+#: tin without these is a coloured rectangle with a grey cap on it.
+SEAM_ROWS = (2, 16)
+#: The pull-ring, the only thing drawn on the lid. At three rows of lid a ring
+#: cannot be a ring, but an interruption in the metal in the right place reads
+#: as one.
+TAB_X = (6, 7, 8)
 
 
 def make_can(ramp: Ramp, lit: bool) -> Image.Image:
-    """One rarity's canister. `lit` is the additive copy.
+    """One rarity's tin. `lit` is the additive copy.
 
     The dark pass is a real object in the world and takes the darkness multiply
     like anything else. The LIT pass is drawn after it, additively, and carries
-    only the parts that are actually emitting — the seam between cap and
-    barrel, and the rim around the window. That split is why a legendary can
-    lying on the tray of a machine in a dark glade is visible from the other
-    end of the lane while a common one is just an object somebody has to walk
-    over to.
+    only the parts that are actually emitting — the seams where lid meets label
+    and the edge of the label plate. That split is why a legendary tin lying on
+    the tray of a machine in a dark glade is visible from the other end of the
+    lane while a common one is just an object somebody has to walk over to.
+
+    THERE IS NO DRAWN RIM AROUND THE WINDOW. The plate is near-black and the
+    label is a saturated mid-tone, so value alone separates them; a lit rim on
+    top of that ate two of the columns the label had left and turned the
+    whole object into a picture frame.
     """
     img = Image.new("RGBA", (CAN_W, CAN_H), TRANSPARENT)
     px = img.load()
@@ -449,38 +478,46 @@ def make_can(ramp: Ramp, lit: bool) -> Image.Image:
             continue
         left = int(centre - half)
         right = int(centre + half) - 1
-        band = y in CAP_ROWS or y in BASE_ROWS
-        source = ramp if band else STEEL
-        seam = y in (7, 8, 17, 18)
+        metal = y in LID_ROWS or y in BASE_ROWS
+        source = STEEL if metal else ramp
+        seam = y in SEAM_ROWS
         for x in range(left, right + 1):
-            # A cylinder is a horizontal ramp and nothing else at this size:
+            # A tin is a horizontal ramp and nothing else at this size:
             # brightest a third of the way in from the left, falling off both
-            # ways. Same light direction as every icon above it.
+            # ways. SHALLOW, because the body is twelve pixels wide — the tube
+            # used a curve steep enough to reach black by the right edge, which
+            # on something this small just looked like half the object was
+            # missing.
             t = (x - left) / max(1, right - left)
-            shade = 1.0 - abs(t - 0.32) * 1.5
-            if y <= 1 or y >= CAN_H - 2:
-                shade -= 0.2
+            shade = 0.95 - abs(t - 0.35) * 0.85
+            if metal:
+                shade += 0.12
+            if y == 0 or y >= CAN_H - 1:
+                shade -= 0.25
+            if seam:
+                shade -= 0.45
             in_window = wx <= x < wx + ww and wy <= y < wy + wh
-            rim = (
-                (wx - 1 <= x <= wx + ww and y in (wy - 1, wy + wh))
-                or (wy - 1 <= y <= wy + wh and x in (wx - 1, wx + ww))
-            )
             if lit:
-                if not (rim or seam):
+                edge = in_window and (
+                    y in (wy, wy + wh - 1) or x in (wx, wx + ww - 1)
+                )
+                if not (edge or seam):
                     continue
                 colour = pick(ramp, min(1.0, max(0.35, shade) + 0.4), x, y)
                 px[x, y] = (colour[0], colour[1], colour[2], quantize_alpha(0.8))
                 continue
             if in_window:
-                # Flat, dark, and slightly cooler than the tube: the icon is
+                # Flat, dark, and slightly cooler than the label: the icon is
                 # what is being read here and a shaded plate behind it would
                 # fight its own shading.
                 px[x, y] = pick(DARK, 0.3 + (y - wy) / (wh * 3.0), x, y)
                 continue
-            if rim:
-                px[x, y] = pick(ramp, 0.85, x, y)
+            if y == 1 and x in TAB_X:
+                # The ring. Dark on the left where it lifts off the lid, bright
+                # on the right where the metal turns over.
+                px[x, y] = pick(STEEL, 0.1 if x < TAB_X[-1] else 0.95, x, y)
                 continue
-            px[x, y] = pick(source, max(0.06, shade), x, y)
+            px[x, y] = pick(source, min(1.0, max(0.06, shade)), x, y)
 
     if not lit:
         outline(img, OUTLINE)

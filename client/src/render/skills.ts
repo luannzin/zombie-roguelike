@@ -5,14 +5,16 @@
  * Frame index comes from `welcome.config.skills[key].frame` — the client never
  * invents a skill, exactly as it never invents a loot item.
  *
- * TWO SHEETS, THREE PLACES. The ICONS are drawn on the HUD tray above the bag,
- * and again — scaled into the canister's window — on the canister itself. The
- * CANISTER is drawn in the world when a machine pays out, and once more as the
- * sprite that flies into the tray. Everything else about a skill is text.
+ * TWO SHEETS, AND NEITHER IS DRAWN ON THE CANVAS. The ICONS are drawn on the
+ * HUD tray above the bag; the TIN is the sprite that comes out of the machine,
+ * hangs over the winner's head and flies into that tray. Both of those are DOM
+ * (`SkillCanIcon`, `LootFly`), so what this module ships is the GEOMETRY — how
+ * big a frame is, which frame a rarity uses, where the label window sits — and
+ * the images, so the fetch is shared and happens once.
  *
- * `can` takes the darkness multiply like any prop; `lit` is the additive copy
- * and carries only the parts that emit, so a legendary lying on a tray in a
- * dark glade is visible from the far end of the lane and a common one is not.
+ * The tin was drawn on the canvas, lying on the machine's tray, until the
+ * payout became a pickup like every other pickup. `lit` survives that as the
+ * additive copy the world draw used; nothing reads it today.
  */
 
 import { loadImage, loadJson } from '../lib/image';
@@ -83,61 +85,5 @@ async function fetchSkills(): Promise<SkillAtlas | null> {
     console.warn('[skills] no skill atlas:', err);
     atlasPromise = null;
     return null;
-  }
-}
-
-/** Which canister frame a rarity uses. Falls back to the first. */
-export function canFrame(atlas: SkillAtlas, rarity: string): number {
-  const index = atlas.rarities.indexOf(rarity);
-  return index >= 0 ? index : 0;
-}
-
-/**
- * Draw one canister with its icon in the window, centred on `(cx, bottom)`.
- *
- * The three passes go in one call because their order is not negotiable and
- * splitting them across call sites is how an icon ends up painted over the
- * emissive rim: body, then icon, then the lit copy on top additively.
- */
-export function drawCanister(
-  ctx: CanvasRenderingContext2D,
-  atlas: SkillAtlas,
-  rarity: string,
-  iconFrame: number,
-  cx: number,
-  bottom: number,
-  scale: number,
-  glow = 1,
-): void {
-  const frame = canFrame(atlas, rarity);
-  const w = atlas.canWidth * scale;
-  const h = atlas.canHeight * scale;
-  const left = Math.round(cx - w / 2);
-  const top = Math.round(bottom - h);
-  ctx.drawImage(
-    atlas.can,
-    frame * atlas.canWidth, 0, atlas.canWidth, atlas.canHeight,
-    left, top, w, h,
-  );
-
-  const [wx, wy, ww, wh] = atlas.window;
-  ctx.drawImage(
-    atlas.image,
-    iconFrame * atlas.frameWidth, 0, atlas.frameWidth, atlas.frameHeight,
-    left + wx * scale, top + wy * scale, ww * scale, wh * scale,
-  );
-
-  if (glow > 0) {
-    const previous = ctx.globalCompositeOperation;
-    const alpha = ctx.globalAlpha;
-    ctx.globalCompositeOperation = 'lighter';
-    ctx.globalAlpha = alpha * Math.min(1, glow);
-    ctx.drawImage(
-      atlas.lit,
-      frame * atlas.canWidth, 0, atlas.canWidth, atlas.canHeight,
-      left, top, w, h,
-    );
-    ctx.globalAlpha = alpha;
-    ctx.globalCompositeOperation = previous;
   }
 }

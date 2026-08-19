@@ -36,13 +36,9 @@ import type { StoreAtlas } from '../store';
 import { COIN_PX, tableTopY, torchFlameY } from '../store';
 import type { MachineAtlas } from '../machine';
 import { bandCell } from '../machine';
-import type { SkillAtlas } from '../skills';
-import { drawCanister } from '../skills';
 import type { MachinePull } from '../../game/machine';
 import {
-  CAN_THROW,
   burstProgress,
-  canPose,
   leverPose,
   payLineFlash,
   pullGain,
@@ -115,8 +111,6 @@ export interface StoreScene {
    * the one thing a HUD line could never do at that distance.
    */
   invite: number;
-  /** Skill icon frame per catalog key, straight off `config.skills`. */
-  iconOf: (key: string) => number;
   /**
    * The catalog row behind a stall's key: what to call it and what colour to
    * say it in. Straight off `config.loot`, so the shop and the buy tooltip
@@ -191,7 +185,6 @@ export function drawStoreProp(
   scene: StoreScene,
   liftPx: number,
   machine: MachineAtlas | null,
-  skills: SkillAtlas | null,
   time: number,
 ): void {
   if (piece.kind === 'merchant') {
@@ -199,7 +192,7 @@ export function drawStoreProp(
     return;
   }
   if (piece.kind === 'machine') {
-    drawMachine(ctx, view, machine, skills, scene, piece);
+    drawMachine(ctx, view, machine, scene, piece);
     return;
   }
   if (piece.kind === 'kit') {
@@ -286,16 +279,16 @@ function standLift(near: boolean, liftPx: number, time: number): number {
  * `machine.leverAnchor`), so drawing them anywhere else would mean a second
  * opinion about where the front panel is.
  *
- * The canister is drawn HERE rather than with the effects for the same reason
- * the gun on a table is drawn with the table: it is lying on the machine, and
- * a sort that could put a body between a tray and the thing in it would be
- * visibly wrong from the first frame.
+ * WHAT COMES OUT OF IT IS NOT DRAWN HERE. The tin used to be thrown onto the
+ * tray and left lying in the world for a second and a half; it is a collect
+ * fly now (`loot-flies.ts`), over the winner's head and then into the tray on
+ * the HUD, because that is what every other thing this game hands a player
+ * does. A prize lying on furniture is not a prize somebody received.
  */
 function drawMachine(
   ctx: CanvasRenderingContext2D,
   view: Projection,
   atlas: MachineAtlas | null,
-  skills: SkillAtlas | null,
   scene: StoreScene,
   piece: StoreStanding,
 ): void {
@@ -348,29 +341,6 @@ function drawMachine(
     lever.frameWidth * zoom, lever.frameHeight * zoom,
   );
 
-  if (!pull || !skills) return;
-  const can = canPose(pull);
-  if (!can) return;
-  const [tx, ty] = atlas.trayMouth;
-  // Out of the hole and to the right, so it lands clear of the tray lip
-  // instead of on top of it. A canister that settled inside the slot it came
-  // out of would read as never having been delivered.
-  const cx = left + (tx + can.travel * CAN_THROW) * zoom;
-  const cy = top + (ty - can.lift) * zoom;
-  ctx.globalAlpha = can.claimed ? Math.max(0, 1 - (can.lift - 0) / 26) : 1;
-  drawCanister(
-    ctx,
-    skills,
-    pull.rarity,
-    scene.iconOf(pull.key),
-    cx,
-    cy,
-    zoom,
-    // Breathes while it is sitting there being looked at, and the breath is
-    // bigger the better the pull was.
-    pullGain(pull) * (0.7 + 0.3 * Math.sin(pull.elapsed * 7)),
-  );
-  ctx.globalAlpha = 1;
 }
 
 /**

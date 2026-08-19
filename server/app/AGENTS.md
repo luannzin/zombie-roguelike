@@ -152,6 +152,24 @@ table and the gameplay state machine.
   and nothing else: the swing resolver, the arc the client draws and the
   HUD cell are all driven off that block. Append to `WEAPONS` and to both
   generators' lists — never insert, or every existing frame index moves.
+- **A CATALOG ON `client_config()` IS A LOOKUP TABLE, KEYED BY KEY.** `loot`,
+  `weapons`, `objects` and `skills` are all indexed client-side by a key that
+  arrived on the roster or on an event, so every one of them ships as a dict.
+  `skills.catalog_payload` shipped a LIST of `{"k": ...}` rows while
+  `protocol.ts` declared `Record<string, SkillConfig>`: `config.skills[key]`
+  was `undefined` for every skill in the game, the HUD tray stayed empty for a
+  whole run and the payout tin always wore frame 0. Nothing errored on either
+  side — an array is an object in JS, and `test_config_parity.py` compared only
+  the top-level key sets. It checks the shape of all four now.
+- **A LOOT FRAME COMES FROM THE ATLAS MANIFEST, NEVER FROM CATALOG POSITION.**
+  `loot.catalog_payload` reads `assets/processed/loot/manifest.json`, which
+  `tools/make_loot.py` keys by item KEY and writes in its OWN order. The two
+  lists cover the same items and do not have to agree on sequence; they used
+  to be assumed to, and appending the knife and the condensed core to `ITEMS`
+  silently handed them frames 40 and 41 — two boxes of ammunition — and shifted
+  every gun under them onto somebody else's weapon. Nothing failed; the client
+  just drew the wrong picture. `tests/test_loot_frames.py` is the check: run it
+  after adding any item on either side.
 - Adding a WEAPON to the shop is a row on `store.STOCK_ORDER` plus its unlock
   day. The price, the table it lands on and the tooltip all derive; the client
   needs no change. Keep at least three weapons unlocked on day one — the roll

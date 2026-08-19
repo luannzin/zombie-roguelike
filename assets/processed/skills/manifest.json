@@ -30,7 +30,7 @@
     "file": "can.png",
     "litFile": "cap.png",
     "frameWidth": 16,
-    "frameHeight": 24,
+    "frameHeight": 18,
     "frames": 5,
     "rarities": [
       "common",
@@ -40,10 +40,10 @@
       "legendary"
     ],
     "window": [
-      3,
+      4,
+      5,
       8,
-      10,
-      10
+      8
     ]
   }
 }

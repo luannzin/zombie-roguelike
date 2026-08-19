@@ -7,9 +7,11 @@
  * set piece resolved at snapshot rate would step rather than play.
  *
  * Nothing here talks to the socket and nothing here draws. It owns one struct
- * — the pull in progress — and answers, for any instant, where the arm is,
- * what each reel is doing, and where the canister is. `layers/machine.ts`
- * paints that answer and `Game` plays the sounds against the beats it crosses.
+ * — the pull in progress — and answers, for any instant, where the arm is and
+ * what each reel is doing. `layers/store.ts` paints that answer and `Game`
+ * plays the sounds against the beats it crosses. What comes OUT of the machine
+ * is not here at all: the tin is a collect fly (`loot-flies.ts`), because it is
+ * the same event a looted item is.
  *
  * THE THIRD REEL IS THE WHOLE DESIGN. Two of them stop on a fixed rhythm the
  * player learns inside two visits; the third holds for `reelHold[rarity]`, and
@@ -40,17 +42,25 @@ import type { LootRarity, MachineTimingConfig, SpinEvent } from '../net/protocol
  */
 const UNKNOWN_RARITY_HOLD = 0.3;
 
-/** Beats a pull crosses exactly once. `Game` hangs the sounds off these. */
-export type MachineBeat =
-  | 'arm'
-  | 'reel0'
-  | 'reel1'
-  | 'reel2'
-  | 'eject'
-  | 'settle'
-  | 'claim';
+/**
+ * Beats a pull crosses exactly once. `Game` hangs the sounds off these.
+ *
+ * THE PULL ENDS AT THE EJECT and the rest of the ceremony belongs to the
+ * player, not to the cabinet. The tin used to be thrown onto the tray, land in
+ * the world, sit there being looked at, and only then fly to the HUD — three
+ * beats (`settle`, `claim`) spent on an object lying on furniture while the
+ * person who won it stood beside it doing nothing. It is a PICKUP, and this
+ * game already knows what a pickup looks like: it appears over your head and
+ * it flies into the thing that keeps it (`loot-flies.ts`). So `eject` hands
+ * off, and the collect fly owns every frame after that.
+ *
+ * `MachineTiming` still carries `settle` and `claim` because the server's
+ * clock does — `duration()` is what locks the lever, and shortening the
+ * lockout is a change to `machine.py`, not to what the client draws.
+ */
+export type MachineBeat = 'arm' | 'reel0' | 'reel1' | 'reel2' | 'eject';
 
-const BEATS: MachineBeat[] = ['arm', 'reel0', 'reel1', 'reel2', 'eject', 'settle', 'claim'];
+const BEATS: MachineBeat[] = ['arm', 'reel0', 'reel1', 'reel2', 'eject'];
 
 export interface MachineTiming {
   arm: number;
@@ -277,47 +287,6 @@ export function leverPose(pull: MachinePull | null): number {
   if (pull.elapsed < claim) return 1;
   const t = (pull.elapsed - claim) / Math.max(0.001, done - claim);
   return Math.max(0, 1 - t);
-}
-
-/** Where the canister is, or null before the eject and after the claim. */
-export interface CanPose {
-  /** 0 at the tray mouth, 1 at its resting place on the lip. */
-  travel: number;
-  /** Height above the landing point, in world pixels. */
-  lift: number;
-  /** 0..1 while it is being looked at; 1 the instant it starts to leave. */
-  held: number;
-  /** True once it has begun flying to the HUD tray. */
-  claimed: boolean;
-}
-
-/** How far out of the tray a canister lands, in world pixels. */
-export const CAN_THROW = 9;
-/** How high it arcs on the way. */
-export const CAN_ARC = 11;
-
-export function canPose(pull: MachinePull): CanPose | null {
-  const { eject, settle, claim, done } = pull.timing;
-  if (pull.elapsed < eject) return null;
-  if (pull.elapsed < settle) {
-    const t = (pull.elapsed - eject) / Math.max(0.001, settle - eject);
-    return {
-      travel: t,
-      // A parabola, not an ease: the thing was thrown out of a slot by a
-      // spring, so it goes up, slows, and comes down on the frame it lands.
-      lift: Math.sin(t * Math.PI) * CAN_ARC,
-      held: 0,
-      claimed: false,
-    };
-  }
-  if (pull.elapsed < claim) {
-    return { travel: 1, lift: 0, held: (pull.elapsed - settle) / Math.max(0.001, claim - settle), claimed: false };
-  }
-  if (pull.elapsed < done) {
-    const t = (pull.elapsed - claim) / Math.max(0.001, done - claim);
-    return { travel: 1, lift: t * 26, held: 1, claimed: true };
-  }
-  return null;
 }
 
 /**

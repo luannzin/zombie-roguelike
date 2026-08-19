@@ -17,14 +17,14 @@ mutation, no React.
 | `sprites.ts` | sheet loading, `SpriteBook`, per-colour multiply tints |
 | `terrain.ts` | terrain atlas loading (4 grounds, blend stencils, props, flat decals, the animated campfire) |
 | `scenery.ts` | scenery atlas loading: standing props and flat decals of what people left |
-| `vfx.ts` | effect atlas loading: one-shot sheets (summon, kindle, wind, death) and the looping loot `aura`. GREYSCALE, tinted per player |
+| `vfx.ts` | effect atlas loading: one-shot sheets (summon — a lobby arrival AND a level-up — kindle, wind, death) and the looping loot `aura`. GREYSCALE, tinted per player |
 | `weapon-vfx.ts` | the fire at a barrel: muzzle, the shotgun's cone, impacts. ORIENTED (rotated onto the aim about `anchorX`) and un-tinted — fire is not anybody's colour |
 | `rift.ts` | threshold atlas: the console prop with its four STATES, the torch prop and its fire, the paid console's band, the exit's paving |
 | `platform.ts` | extraction atlas: the cargo skid (cold / green standby / red alarm) and lift drone (hover / cruise) props, rotor / strobe / standby / siren / downwash / burst effect sheets, the imprint decal, and the `layout` block the ropes and lamps are drawn from |
 | `layers/rift.ts` | extraction pads: the whole rig's timing (`riftPhase`) plus its four passes — floor, depth sort, the air, additive light — and the deck's LOAD, both the pile at rest and what is still falling into it |
 | `store.ts` | the merchant's own kit: his WAGON and his counter, the six small round tables (with `topY`), his gear (`kit`), torches (with `flameY`), the mat, the torch fire and the buy pool — plus the HUD coin the price tag draws |
 | `machine.ts` | the upgrade cabinet's atlas: body, the reel BAND (`strip.png` — one tall image, scrolled and wrapped), lever, pay line, and the three greyscale lights (marquee, reel backlight, payout burst) the layer tints |
-| `skills.ts` | skill icons and the canister, plus `drawCanister` — body, icon, emissive pass, in that unnegotiable order |
+| `skills.ts` | the skill atlas as GEOMETRY ONLY: frame sizes, rarity order, the label window. Nothing here draws — both places a skill appears (the tray row, the payout tin) are DOM, and this is where they read the manifest from so the fetch happens once |
 | `merchant.ts` | the shopkeeper's clips and the player that picks between them (`MerchantPose`, `stepMerchant`, `merchantFrame`) |
 | `layers/store.ts` | his pitch drawn: mat, depth-sorted wagon / counter / tables / gear / torches / merchant / MACHINE, stock FLOATING over the table you are at, the fires, the cabinet's tinted light, the scrolling bands, the pay-line flash and the price tags |
 | `layers/payout.ts` | the night's platforms being lowered into the shop's apron, the drones leaving, and the gold flying to the HUD balance |
@@ -367,6 +367,13 @@ mutation, no React.
   bake a hue into a sheet in `make_vfx.py`. `wind` and `death` stay
   greyscale at draw time — a gust of air, dirt off the ground, not a
   player-coloured beam.
+- **The `summon` sheet has two callers now**, and the second is the argument
+  for not making a new one. `lobby-scene.ts` delivers an arriving body with
+  it; `drawLevelUps` in `layers/effects` fires the same column on a player who
+  just levelled, tinted `summon.spark` rather than greyscale. Both mean *this
+  body is being remade*, which is the one thing a level does that no pickup
+  does — and reusing the art the player already learned in the lobby says it
+  without teaching a second vocabulary.
 - `terrain.ts` and `layers/terrain.ts` are also used by `game/lobby-scene.ts`
   over a locally generated map. Nothing in them may assume a server sent the
   `TileMap`.

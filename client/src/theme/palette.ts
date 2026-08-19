@@ -79,7 +79,7 @@ export interface Palette {
     goldText: string;
     goldParticles: string[];
     goldCore: string;
-    /** The purple pickup: dark gold is the only currency with a world sprite. */
+    /** The anomaly shard: dark gold is the only currency with a world sprite. */
     darkGoldText: string;
     darkGoldParticles: string[];
     darkGoldCore: string;

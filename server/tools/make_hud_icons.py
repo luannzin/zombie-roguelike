@@ -18,8 +18,8 @@ Output (assets/processed/hud/):
     battery.png    one 10x18 frame — a single cell of the lantern's battery
     backpack.png   one 16x16 frame — the pocket on the HUD, seen from the back
     coin.png       one 8x8 frame — GROUP gold: catalog value, quota, price
-    darkcoin.png   one 8x8 frame — the player's dark gold, face of the
-                   purple pickup `make_coin.py` spins in the world
+    darkcoin.png   one 8x8 frame — the player's dark gold, frame 0 of the
+                   anomaly shard `make_coin.py` turns in the world
     arrow.png      one 21x13 frame — gold dart, authored pointing right;
                    still used wherever a thin pointer is wanted
     chevron.png    one 17x17 frame — gold TRIANGLE, authored pointing right;
@@ -46,9 +46,8 @@ from pathlib import Path
 
 from PIL import Image
 
+from make_coin import make_spin_frame as shard_frame
 from make_textures import (
-    DARK_COIN_OUTLINE,
-    DARK_COIN_RAMP,
     RGBA,
     Ramp,
     outline,
@@ -189,18 +188,21 @@ def make_coin(size: int = 8) -> Image.Image:
 
 
 def make_dark_coin(size: int = 8) -> Image.Image:
-    """The player's dark gold — the face of the purple disc in the woods.
+    """The player's dark gold — the face of the anomaly shard in the woods.
 
-    Same 8x8 badge as its gold sibling, and deliberately the same silhouette:
-    at this size the METAL is the whole message, and two different shapes
-    would make the panel look like it holds two unrelated icons rather than
-    two currencies. The groove is shallower than the world coin's — an 8px
-    disc has half the room for it.
+    IT IS THE WORLD SPRITE'S OWN PAINTER, at 8px and at rest (frame 0), which
+    is the whole reason this function is three lines. The badge and the thing
+    on the floor used to be two struck discs that merely agreed on a palette,
+    and they drifted the first time either was retouched; now the panel cannot
+    say anything the ground does not.
+
+    It no longer shares the gold coin's silhouette, and that was a deliberate
+    trade. The old argument was that at 8px the METAL is the whole message, so
+    two shapes would read as two unrelated icons — but the currencies are not
+    two metals any more. One is money and one is a piece of the anomaly, and a
+    round ball against a struck disc is the shortest way to say so.
     """
-    img = Image.new("RGBA", (size, size), TRANSPARENT)
-    return paint_coin(
-        img, ramp=DARK_COIN_RAMP, edge=DARK_COIN_OUTLINE, groove=0.22
-    )
+    return shard_frame(0, size=size, light=1.45)
 
 
 #: Where the head starts, as a fraction of the sprite's length. The rest is

@@ -28,6 +28,7 @@ import type { RefObject } from 'react';
 import type { HudSnapshot } from '../../game/hud-store';
 import { cn } from '@/lib/utils';
 import { MinimapCanvas } from '../game/MinimapCanvas';
+import { Announce } from './Announce';
 import { BatteryGauge } from './BatteryGauge';
 import { Hotbar } from './Hotbar';
 import { ControlsHint } from './ControlsHint';
@@ -160,6 +161,12 @@ export function Hud({ snapshot, minimapRef, error }: HudProps) {
               make them never overlap. */}
           <Balance balance={snapshot.balance} visible={snapshot.zone?.kind === 'store'} />
         </div>
+
+        {/* Mid-run news, upper third. Above the corners and below the arrival
+            card: the two never overlap in practice — nothing is announced
+            while the game is holding the player still — and if they ever did,
+            the one that owns the whole screen should win. */}
+        <Announce announce={snapshot.announce} />
 
         {/* Last, so the arrival card sits over every corner — it is the one thing
             here that is allowed to own the whole screen, and only for a moment. */}

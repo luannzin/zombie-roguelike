@@ -211,6 +211,20 @@ export interface HudArrival {
   zone: ZoneInfo;
 }
 
+/**
+ * One mid-run announcement: a card at the upper third, read and gone.
+ *
+ * `key` is the EVENT, not the kind of event — `level-7`, never `level` —
+ * because the card is a one-shot that replays on the key changing and the
+ * store never clears it. Two levels in one night with the same key would
+ * announce once.
+ */
+export interface HudAnnounce {
+  key: string;
+  title: string;
+  subtitle: string;
+}
+
 export interface HudSnapshot {
   connection: ConnectionStatus;
   /** Human-readable connection line. */
@@ -229,6 +243,12 @@ export interface HudSnapshot {
   zone: ZoneInfo | null;
   /** Set on entering a zone; the title card plays and then leaves it alone. */
   arrival: HudArrival | null;
+  /**
+   * The last thing worth interrupting the player for, or null before there
+   * has been one. Same one-shot contract `arrival` has — set it and forget
+   * it; `Announce` owns how long it stays up.
+   */
+  announce: HudAnnounce | null;
   /**
    * True while the arrival is still holding the player.
    *
@@ -332,6 +352,7 @@ export const EMPTY_HUD: HudSnapshot = {
   lantern: null,
   zone: null,
   arrival: null,
+  announce: null,
   introducing: true,
   cinematic: false,
   ready: null,

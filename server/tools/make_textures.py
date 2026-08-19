@@ -106,32 +106,19 @@ def rgb(hex_code: str) -> RGBA:
 # multiplies over this, so a bright texture would leave nothing for the light to
 # add. Ramps run darkest -> lightest and are indexed by noise.
 
-# TWO CURRENCIES, TWO METALS, ONE DISC. `paint_coin` strikes both — the shape
-# is shared so a coin always reads as a coin, and only the metal says which.
-# GOLD is the GROUP's: catalog value, the platform's quota, a shop price. It is
-# never a thing on the floor; it is a number the party earned by extracting.
+# GOLD IS THE GROUP'S, and it is the only currency `paint_coin` still strikes:
+# catalog value, the platform's quota, a shop price. It is never a thing on the
+# floor; it is a number the party earned by extracting.
 COIN_RAMP: Ramp = [rgb(c) for c in ("#a05a1c", "#f2a541", "#ffd678", "#fff1c2")]
 COIN_OUTLINE = rgb("#482a12")
 
-# DARK GOLD is the PLAYER's, and it is the one that falls in the woods. Purple
-# because it has to be legible as a different metal at 16px in the dark and at
-# 8px on a panel — a duller yellow would just read as a gold coin the lantern
-# had not reached yet. FIVE steps where the gold has four, and that is not
-# symmetry for its own sake: purple has less luminance range to spend than
-# yellow does, so the same four-step dither came out as static, not metal.
-#
-# IT IS DEEP ROYAL AND NOT LAVENDER, and that is the constraint that picked
-# these exact steps. `--rarity-epic` (#b46ee8) is already a purple the forest
-# throws in the dark, as an aura and as motes around an epic drop — and the
-# first cut of this coin landed on nearly that hue, which would have taught the
-# player that a purple glow across a clearing means a good item right up until
-# the night it meant three coins. So dark gold is separated by VALUE: its mass
-# sits well below epic's, it never reaches epic's brightness, and the name is
-# the art direction — this is gold that went dark, not a gem.
-DARK_COIN_RAMP: Ramp = [
-    rgb(c) for c in ("#2a0f4a", "#48197a", "#6d2bb0", "#9247d8", "#c98cf0")
-]
-DARK_COIN_OUTLINE = rgb("#160726")
+# DARK GOLD USED TO BE THE SECOND METAL HERE — a purple disc off the same
+# painter, kept clear of `--rarity-epic` so a purple glow across a clearing
+# could not mean two things. It is no longer struck from anything: it is a
+# piece of the anomaly, painted with the anomaly's own prism in
+# `make_rift.PRISM`, and `make_coin.py` owns it end to end. The ramp is gone
+# rather than kept "in case" — a palette nobody paints with is a palette that
+# drifts out of agreement with what is on screen.
 
 # The only near-red in the game, and shared for the same reason as the coin:
 # the stain a scene left on the floor (make_scenery) and the wound a bullet

@@ -156,7 +156,14 @@ import { bindInventoryDrop } from './inventory-actions';
 import { readInventoryAnchor, clearInventoryAnchors } from './inventory-anchors';
 import { Lantern } from './lantern';
 import { SnapshotBuffer, type RenderedEnemy, type RenderedPlayer } from './interpolation';
-import { clearLootFlies, listLootFlies, spawnLootFly, stepLootFlies } from './loot-flies';
+import {
+  anchorFor,
+  clearLootFlies,
+  listLootFlies,
+  spawnLootFly,
+  stepLootFlies,
+  type LootFlySpec,
+} from './loot-flies';
 import {
   POUR_DUMP,
   POUR_LIFT,
@@ -288,6 +295,8 @@ const CRATE_BREAK_LIFE = 0.85;
 const LOOT_POP_LIFE = 0.62;
 /** Empty-crate gust. Matches `make_vfx.py` wind (8 frames @ 14 fps). */
 const WIND_LIFE = 8 / 14;
+/** A level landing on the body. Matches `make_vfx.py` summon (14 frames @ 14 fps). */
+const LEVEL_UP_TIME = 14 / 14;
 /**
  * How far above a shop table the buy tooltip sits, in tiles.
  *
@@ -548,8 +557,30 @@ export class Game {
   private pull: MachinePull | null = null;
   /** Pulls the local player has banked. Read off the roster. */
   private spins = 0;
+  /**
+   * The level this client has already announced.
+   *
+   * A LEVEL-UP HAS NO EVENT ON THE WIRE — the server derives the level from
+   * lifetime xp and ships it on the roster row, which arrives whenever it
+   * arrives, several times a second. So the edge is found here by comparing
+   * against the last one seen, and this is seeded from `welcome` for the one
+   * case that matters: a reconnect at level 9 must not celebrate nine levels
+   * (or one) the player already earned. 0 means nothing has been seen yet.
+   */
+  private shownLevel = 0;
   /** This player's skills, keyed by catalog key. Read off the roster. */
   private skillStacks: Record<string, number> = {};
+  /**
+   * The skill inside a tin that is still in the air, or null.
+   *
+   * THE TRAY MUST NOT KNOW BEFORE THE PLAYER DOES. The server banks the skill
+   * on the frame the lever moves and marks the roster dirty, so the authoritative
+   * stacks arrive a fifth of a second later — four seconds before the ceremony
+   * that is supposed to be delivering it. `skillList` subtracts this copy back
+   * out until the tin actually lands, which is the same trick a bag cell plays
+   * with `incomingHas` while a collect fly is still crossing the screen.
+   */
+  private pendingSkill: { key: string; copies: number } | null = null;
   /** The skill that just landed, held for a beat so the tray can play it in. */
   private reward: HudSkill | null = null;
   /**
@@ -907,6 +938,7 @@ export class Game {
     this.fov = new FovField(this.world.width, this.world.height);
     this.localId = msg.playerId;
     this.localMeta = msg.player;
+    this.shownLevel = msg.player.level;
     this.ammo = { ...(msg.player.ammo ?? {}) };
     // Seeds the cache: the first snapshot may land before the first roster.
     this.roster.clear();
@@ -1128,6 +1160,8 @@ export class Game {
       for (const meta of msg.roster) this.roster.set(meta.id, meta);
       const mine = this.roster.get(this.localId);
       if (mine) {
+        if (this.shownLevel > 0 && mine.level > this.shownLevel) this.onLevelUp(mine.level);
+        this.shownLevel = mine.level;
         this.localMeta = mine;
         // Authoritative resync. Replaces rather than merges: a calibre the
         // server has dropped to zero has to come back as zero, not survive
@@ -1479,7 +1513,33 @@ export class Game {
     return out;
   }
 
-  // --- events with a ceremony: the pickup, the pour, the buy -----------------
+  // --- events with a ceremony: the level, the pickup, the pour, the buy ------
+
+  /**
+   * A LEVEL, said twice: once on the body and once in words.
+   *
+   * The column is who — in a party of four, a banner alone leaves three
+   * players wondering whether it was theirs. The card is what, because the
+   * thing a level actually pays out is a spin at a cabinet that is not on
+   * this map, and a player who is not told that has been given an invisible
+   * reward.
+   *
+   * Nothing here is authoritative and nothing is acknowledged: the spin is
+   * already banked on the roster row that triggered this.
+   */
+  private onLevelUp(level: number): void {
+    if (this.local) {
+      this.effects.spawnLevelUp(this.local.state.x, this.local.state.y, LEVEL_UP_TIME);
+    }
+    this.patchHud({
+      announce: {
+        key: `level-${level}`,
+        title: 'Subiu de Nível',
+        subtitle: '+1 ponto de habilidade',
+      },
+    });
+  }
+
   private onLootPickup(ev: LootPickupEvent): void {
     this.loot.delete(ev.id);
     if (ev.by !== this.localId) {
@@ -1502,7 +1562,7 @@ export class Game {
       // cell holding the weapon of that calibre, so the sprite lands on the
       // thing it just topped up rather than on a bag that never held it —
       // and it must not open the pack, because nothing went in there.
-      const dest = ev.dest === 'bag' || ev.dest === undefined ? 'bag' : 'hotbar';
+      const dest = ev.dest ?? 'bag';
       if (dest === 'bag') this.inventoryOpen = true;
       else if (ev.dest === 'hotbar' && this.heldSlot < 0) this.heldSlot = ev.slot;
       spawnLootFly({
@@ -1634,7 +1694,7 @@ export class Game {
    * EVERY CLIENT IN THE GLADE RUNS THIS, not just the puller's, because a slot
    * machine going off is the loudest thing in the shop and a party should be
    * able to look over at somebody else's legendary. What is local-only is the
-   * CLAIM — the canister flying into a HUD tray — which is why that beat
+   * EJECT — the tin appearing over the winner's head — which is why that beat
    * checks `by` and the rest do not.
    */
   // --- the upgrade machine's ceremony ----------------------------------------
@@ -1647,8 +1707,17 @@ export class Game {
     this.pull = beginPull(ev, this.config.machine);
     if (ev.by === this.localId) {
       this.spins = ev.left;
-      this.skillStacks = { ...this.skillStacks, [ev.k]: ev.n };
-      this.patchHud({ spins: this.spins, machinePrompt: this.machinePrompt() });
+      // The stack is NOT written here. It is already true on the server and
+      // the next roster row will say so, which is precisely the problem: the
+      // tray would grow its row four seconds before the machine got round to
+      // handing anything over. `pendingSkill` holds that copy back until the
+      // tin lands — see the field.
+      this.pendingSkill = { key: ev.k, copies: ev.n };
+      this.patchHud({
+        spins: this.spins,
+        skills: this.skillList(),
+        machinePrompt: this.machinePrompt(),
+      });
     }
   }
 
@@ -1675,6 +1744,11 @@ export class Game {
       // permanent record, and leaving the banner up would make a HUD region
       // that only ever grows.
       this.reward = null;
+      // Belt and braces on the withheld copy. The tin lands long before the
+      // lever resets, so this is normally already null — but a zone change
+      // clears every fly in the air, and a `pendingSkill` nobody ever landed
+      // would subtract one copy off that row for the rest of the run.
+      this.pendingSkill = null;
     }
   }
 
@@ -1711,27 +1785,64 @@ export class Game {
         this.camera.addTrauma(PICKUP_TRAUMA * (1 + tier * 0.8));
         break;
       case 'eject':
+        // The tray firing, and then metal — deliberately not `drop`, which is
+        // loot landing on soil.
         playSfxAt('lever', x, y, { gain: 0.4, rate: 1.6 });
-        break;
-      case 'settle':
-        // Metal in a steel tray. Deliberately not `drop`, which is loot
-        // landing on soil.
         playSfxAt('can', x, y, { gain: 0.85 });
-        break;
-      case 'claim':
-        if (pull.by !== this.localId) break;
-        // It goes into the tray the way a collect goes into the bag, because
-        // it is the same statement: this is mine now.
-        playSfx('bag-open', { gain: 0.7 });
-        this.reward = this.skillRow(pull.key, pull.copies);
-        this.patchHud({
-          skills: this.skillList(),
-          reward: this.reward,
-          spins: this.spins,
-          machinePrompt: this.machinePrompt(),
-        });
+        // AND THE WINNER IS HOLDING IT. Everybody in the clearing heard the
+        // machine; only the person who pulled it takes delivery, which is the
+        // same split every collect in this game already makes.
+        if (pull.by === this.localId) this.spawnSkillFly(pull);
         break;
     }
+  }
+
+  /**
+   * Put the tin over the local player's head and send it at the tray.
+   *
+   * REUSED, NOT REBUILT. `loot-flies` already owns the hold, the bob, the arc
+   * and the rAF pose that every pickup in this game plays, and a machine
+   * payout is a pickup: a thing you did not have, over your head, then in the
+   * part of the HUD that keeps it. The only two differences ride the spec —
+   * the sprite is a tin (`LootFly` branches on `dest`) and the target is the
+   * tray as a whole rather than a cell, because on a first copy the row it is
+   * landing in does not exist yet.
+   */
+  private spawnSkillFly(pull: MachinePull): void {
+    const def = this.config?.skills?.[pull.key];
+    if (!def) return;
+    spawnLootFly({
+      id: `skill-${pull.key}-${pull.copies}`,
+      key: pull.key,
+      frame: def.frame,
+      rarity: pull.rarity,
+      slot: 0,
+      dest: 'skill',
+      copies: pull.copies,
+    });
+  }
+
+  /**
+   * A tin reached the tray. Hand the skill over and let the row play in.
+   *
+   * This is the ONLY place the local stacks learn about a pull. The roster has
+   * been carrying the truth since the frame the lever moved; `pendingSkill` was
+   * subtracting it back out, and dropping it here is what makes the count move
+   * on the frame the player watches the tin arrive.
+   */
+  private landSkillFly(fly: LootFlySpec): void {
+    // It goes into the tray the way a collect goes into the bag, because it is
+    // the same statement: this is mine now.
+    playSfx('bag-open', { gain: 0.7 });
+    this.pendingSkill = null;
+    this.skillStacks = { ...this.skillStacks, [fly.key]: fly.copies ?? 1 };
+    this.reward = this.skillRow(fly.key, fly.copies ?? 1);
+    this.patchHud({
+      skills: this.skillList(),
+      reward: this.reward,
+      spins: this.spins,
+      machinePrompt: this.machinePrompt(),
+    });
   }
 
   /**
@@ -1872,11 +1983,23 @@ export class Game {
     };
   }
 
-  /** The whole tray, in catalog order. Empty until the first pull. */
+  /**
+   * The whole tray, in catalog order. Empty until the first pull.
+   *
+   * MINUS WHATEVER IS STILL IN THE AIR. The server banks a pulled skill on the
+   * frame the lever moves, so the roster is already carrying it while the
+   * ceremony that is supposed to deliver it has three seconds left to run —
+   * and a row that appears before the tin does makes the flight decorative.
+   * The copy comes back the instant it lands (`landSkillFly`); a first copy
+   * withheld takes the row with it, because `x0` is not a thing to draw.
+   */
   private skillList(): HudSkill[] {
+    const pending = this.pendingSkill;
     const out: HudSkill[] = [];
     for (const [key, qty] of Object.entries(this.skillStacks)) {
-      const row = this.skillRow(key, qty);
+      const held = pending?.key === key ? qty - 1 : qty;
+      if (held <= 0) continue;
+      const row = this.skillRow(key, held);
       if (row) out.push(row);
     }
     out.sort((a, b) => a.frame - b.frame);
@@ -3486,22 +3609,28 @@ export class Game {
       this.smoothY + config.playerHalfHeight - config.spriteHeight - config.tileSize * 0.35,
     );
     const landed = stepLootFlies(dt, (fly) => {
-      const dest = fly.dest === 'hotbar' ? `hotbar-${fly.slot}` : `slot-${fly.slot}`;
-      const slot = readInventoryAnchor(dest);
+      const slot = readInventoryAnchor(anchorFor(fly));
       const from = { x: headX, y: headY };
       if (!slot) return { from, to: from, ready: false };
       const to = warpHudPoint(slot.x, slot.y, window.innerWidth, window.innerHeight);
       return { from, to, ready: true };
     });
-    if (landed > 0) {
-      this.bagCatches += landed;
-      const inventory = this.inventoryHud();
-      const hotbar = this.hotbarHud();
-      this.patchHud({
-        inventory: inventory ?? undefined,
-        hotbar: hotbar ?? undefined,
-      });
+    if (landed.length === 0) return;
+    // A tin landing is the skill arriving; a crate landing is the bag bumping.
+    // Two consequences off one list, because they are the same flight.
+    let catches = 0;
+    for (const fly of landed) {
+      if (fly.dest === 'skill') this.landSkillFly(fly);
+      else catches += 1;
     }
+    if (catches === 0) return;
+    this.bagCatches += catches;
+    const inventory = this.inventoryHud();
+    const hotbar = this.hotbarHud();
+    this.patchHud({
+      inventory: inventory ?? undefined,
+      hotbar: hotbar ?? undefined,
+    });
   }
 
   // --- the weapon in hand: its weight, its muzzle, its scope -----------------
@@ -3677,7 +3806,6 @@ export class Game {
   private storeScene(): StoreScene | null {
     const fixtures = this.world?.store;
     if (!fixtures) return null;
-    const skills = this.config?.skills;
     const loot = this.config?.loot;
     return {
       fixtures,
@@ -3688,7 +3816,6 @@ export class Game {
       // the only piece of teaching in this zone that happens at a distance,
       // and it costs one float.
       invite: this.spins > 0 ? 1 : 0,
-      iconOf: (key: string) => skills?.[key]?.frame ?? 0,
       // The same catalog row the buy tooltip reads. A shop that named its
       // stock out of a second table would be a shop whose price tag and whose
       // prompt could disagree about what is on the table.

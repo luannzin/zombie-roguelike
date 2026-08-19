@@ -135,9 +135,11 @@ the wire protocol pair.
 
 - **A corpse pays a ROLL, not a receipt.** A creature's `gold` is the most it
   can drop in DARK GOLD; each point is flipped on its own at
-  `COIN_DROP_CHANCE` (`coins.roll_drop`), and that chance sits below half, so
-  a 3-gold zombie pays nothing about half the time and three about once in a
-  hundred. Nothing is credited — the coins hit the ground and somebody has to
+  `COIN_DROP_CHANCE` (`coins.roll_drop`), and that chance is now RARE rather
+  than merely low — a 3-gold zombie pays nothing four times in five and three
+  about twice in ten thousand. It was cut when the coin became an anomaly
+  shard: see `docs/design/store.md`, where the art is the argument for the
+  rate. Nothing is credited — the shards hit the ground and somebody has to
   walk over them. `COIN_DROP_CHANCE` and `crates.DROP_COIN` are the only two
   taps on this currency and they are set together; turning one alone just
   moves where the same money comes from. xp is the opposite and stays fixed: what the kill was worth does

@@ -11,7 +11,7 @@ Nearest contracts: [`server/app/AGENTS.md`](../../server/app/AGENTS.md),
 | **Depends on** | `machine.py` (the timeline), `store.py` (the cabinet's spot), `config.py` (the base numbers `Mods` diverges from) |
 | **Consumers** | `simulation.apply_input` (speed, carry ceiling), `Player.max_hp`, `Room.fire` / `Room.swing` (damage), `damage_enemy` (xp, coin odds), `Room._tip_item` (what a platform credits), the client's battery |
 | **Authoritative** | the roll, the stacks, the spins owed, every number in `Mods` |
-| **Presentation** | reels, the lever, the pay-line flash, the canister's arc, the tray row |
+| **Presentation** | reels, the lever, the pay-line flash, the tin's flight to the tray, the tray row |
 
 ## Invariants
 
@@ -28,8 +28,10 @@ Nearest contracts: [`server/app/AGENTS.md`](../../server/app/AGENTS.md),
 | --- | --- |
 | add/retune a skill | `server/app/skills.py` + every consumer site above + an icon in `server/tools/make_skills.py` |
 | machine timing | `server/app/machine.py` AND `client/src/game/machine.ts` |
-| the ceremony drawn | `client/src/render/layers/store.ts`, `client/src/render/machine.ts`, `render/skills.ts` |
+| the ceremony drawn | `client/src/render/layers/store.ts`, `client/src/render/machine.ts` |
+| the payout tin | `server/tools/make_skills.py` (the art), `client/src/components/hud/SkillCanIcon.tsx` (the sprite), `Game.spawnSkillFly` / `landSkillFly` |
 | the HUD tray | `client/src/components/hud/SkillTray.tsx`, `Game.skillList()` |
+| the level-up beat | `Game.onLevelUp`, `client/src/components/hud/Announce.tsx`, `drawLevelUps` in `render/layers/effects.ts` |
 
 **Do not touch from here:** the store's stock/prices, extraction quotas, or the
 economy settlement.
@@ -83,10 +85,32 @@ must be read through `Mods` at its consumer site -> icon in
     scales the burst, the marquee tint, the canister's glow and the camera
     shove; the sounds ladder the same way, and the `jackpot` flourish is EPIC
     AND UP only, because a celebration that fires on every pull stops being one.
-  - What comes out is a physical CANISTER — the machine's tray fires it, it
-    arcs, it lands, it sits there being looked at, then it flies into the tray
-    ABOVE the bag on the HUD, where it becomes one ROW: icon, name in its
-    rarity colour, and `x{n}`. A skill is a stack, so a duplicate is a smaller
+  - **WHAT COMES OUT IS A PICKUP, AND THE PLAYER IS THE ONE HOLDING IT.** The
+    tray fires a TIN and it goes straight over the winner's head, hangs there
+    the way every looted item in this game does, then flies into the tray ABOVE
+    the bag on the HUD, where it becomes one ROW: icon, name in its rarity
+    colour, and `x{n}`. It used to be thrown onto the machine's own tray to lie
+    in the world for a second and a half before it left — which spent the beat
+    after the reels on an object sitting on furniture while the person who won
+    it stood beside it doing nothing. It is the same event a collect is, so it
+    reuses the same flight (`loot-flies.ts`) rather than owning a second one;
+    the only differences are the sprite and that it lands on the shelf rather
+    than in a cell, because on a first copy the row it is landing in does not
+    exist yet.
+  - **THE TRAY MUST NOT KNOW BEFORE THE PLAYER DOES.** The server banks the
+    skill on the frame the lever moves and marks the roster dirty, so the
+    authoritative stacks arrive a fifth of a second later — three seconds
+    before the ceremony that is supposed to be delivering it. `Game.pendingSkill`
+    subtracts that copy back out of `skillList()` until the tin lands, the same
+    trick a bag cell plays with `incomingHas` while a collect is still crossing
+    the screen. Without it the flight is decorative: the row is already there
+    when the tin arrives.
+  - **THE TIN IS A TIN.** It was a 16x24 aerosol tube with two thin rarity
+    bands on a steel body, which meant five tiers read as five grey tubes and
+    the object stood taller than the icon it was carrying. It is a 16x18 canned
+    good now — steel lid with a pull ring, base rim, and the rarity as the
+    LABEL, which is most of the object — so the colour is legible at the size
+    it actually appears at and the silhouette is one everybody already knows. A skill is a stack, so a duplicate is a smaller
     pull rather than a dead one. The tray is a list of labelled rows and not a
     grid of tiles, because a wall of 16px icons asks the player to hover
     eighteen things to find out what they own — which is a spreadsheet with the
@@ -105,6 +129,18 @@ must be read through `Mods` at its consumer site -> icon in
     That is the only teaching in the zone that happens at a distance, it costs
     one float, and it is the thing a HUD line could never do from the far side
     of a clearing.
+  - **THE LEVEL ITSELF IS ANNOUNCED, IN THE WOODS, TWICE.** It was silent: the
+    only evidence a level had happened was a marquee in a zone the player was
+    not standing in, hours later. Now a SUMMON COLUMN fires on the body that
+    earned it and a card says "Subiu de Nível / +1 ponto de habilidade" at the
+    upper third (`Announce`). Two halves, and each covers the other's gap — in
+    a party of four a banner alone never says WHOSE level it was, and a column
+    alone never says what a level pays out. The card names the payout rather
+    than the level number because the number is on the bar already and the
+    spin is the thing the player cannot see.
+    There is no wire event for it: the server derives the level from lifetime
+    xp and puts it on the roster row, so the client watches for the edge and
+    seeds itself from `welcome` — a reconnect at level 9 must not celebrate.
 
 ---
 

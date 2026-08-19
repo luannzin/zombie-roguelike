@@ -169,19 +169,27 @@ skills catalog, or the wire protocol pair.
     party's, it survives the day, and it is the number a night is scored on —
     it is also never an object, which is why nothing in the world is drawn in
     gold except the sparks off a platform tearing out of the ground.
-    DARK GOLD is the PLAYER's, and it is the opposite in every way: a PURPLE
-    coin (`server/tools/make_coin.py`) that falls off corpses and out of
+    DARK GOLD is the PLAYER's, and it is the opposite in every way: an ANOMALY
+    SHARD (`server/tools/make_coin.py`) that falls off corpses and out of
     explorables, that somebody has to walk over, that pools in `Player.gold`
-    and rides on the `GOLD` row of their own panel behind a purple badge. It
+    and rides on the `GOLD` row of their own panel behind its own badge. It
     buys nothing yet — it is being saved for things that belong to one player
-    rather than to the party — so its taps are set deliberately low: about half
-    what they were, split across `config.COIN_DROP_CHANCE` for corpses and
-    `crates.DROP_COIN` for objects. Move those two together. Do not merge the
-    two currencies, and do not let dark gold pay for anything the group earned.
-    The purple is separated from `--rarity-epic` by VALUE on purpose: epic loot
-    already glows lavender in the dark, and a coin that glowed the same would
-    teach the party that a purple light across a clearing means a good item
-    right up until the night it meant three coins.
+    rather than to the party — so its taps are set deliberately low, split
+    across `config.COIN_DROP_CHANCE` for corpses and `crates.DROP_COIN` for
+    objects. Move those two together. Do not merge the two currencies, and do
+    not let dark gold pay for anything the group earned.
+    **IT STOPPED BEING A COIN, AND THAT DECIDED THE RATE.** A struck purple
+    disc said there was a mint somewhere, which is a thing this world does not
+    have — the only thing that pays out here is the rift. So it is a fragment
+    of the rift, painted from the anomaly's own prism, and once it was that,
+    the old rate was wrong by its own art: a piece of the thing the entire
+    night is spent feeding cannot fall out of a third of the corpses in the
+    forest without becoming litter. Both taps were cut hard (0.22 -> 0.07 on
+    corpses, 14 -> 5 weight on objects, with the difference going to EMPTY
+    rather than to more items) so that finding one is an event. The old
+    constraint it replaces — keeping the purple clear of `--rarity-epic` so a
+    lavender glow could not mean two things — is now handled by SHAPE and by
+    scarcity instead of by luminance.
   - Each table shows the item's NAME in its rarity colour with a coin and a
     price under it. Walking close FLOATS the weapon off the boards — a slow
     breath, not a fixed offset, because a sprite that rose and stopped is a bug

@@ -217,7 +217,7 @@ export interface Footprint {
  *
  * There is no `gold` tone, and that is not an omission: group gold is never
  * picked up off the ground, so nothing in the world ever floats a number in it.
- * `darkGold` is the purple coin, the only currency with a sprite.
+ * `darkGold` is the anomaly shard, the only currency with a sprite.
  */
 export type FloatTone = 'damage' | 'reward' | 'darkGold';
 
@@ -334,6 +334,28 @@ export interface DeathBurst {
 }
 
 /**
+ * A LEVEL, landing on the body that earned it.
+ *
+ * It reuses the SUMMON column — the sheet that delivers a player into the
+ * lobby — and that reuse is the argument rather than a saving. A level is the
+ * one thing in a run that changes what you ARE instead of what you are
+ * carrying, and the game already has a piece of art that means "this body is
+ * being remade": firing it in the field says the same sentence in the same
+ * words, in a place the player has already learned to read it.
+ *
+ * It is drawn ON the player and nowhere else. A level is personal — the
+ * banner at the top of the screen says what happened, this says who it
+ * happened to, and in a party of four that second half is the whole job.
+ */
+export interface LevelUp {
+  x: number;
+  y: number;
+  age: number;
+  /** Eviction only. The sheet owns how long it is visible, like `Flash.life`. */
+  life: number;
+}
+
+/**
  * How long a muzzle flash and an impact stay in their lists.
  *
  * Not how long they are VISIBLE — see `Flash.life`. Both are set above the
@@ -364,6 +386,7 @@ export class Effects {
   lootPops: LootPop[] = [];
   winds: WindPuff[] = [];
   deaths: DeathBurst[] = [];
+  levelUps: LevelUp[] = [];
 
   /**
    * Leave one print. `dx`/`dy` is the heading it was walking.
@@ -897,6 +920,10 @@ export class Effects {
     this.deaths.push({ x, y, age: 0, life });
   }
 
+  spawnLevelUp(x: number, y: number, life: number): void {
+    this.levelUps.push({ x, y, age: 0, life });
+  }
+
   /**
    * A body hitting the floor. `dx`/`dy` is the killing blow, used to throw
    * dirt along the fall. Dust and wind, not blood — the pool and the wounds
@@ -943,7 +970,7 @@ export class Effects {
   }
 
   /**
-   * Dark gold pickup: float + sparkle burst, in the coin's own purple.
+   * Dark gold pickup: float + sparkle burst, in the shard's own violet.
    *
    * The burst is the disc's ramp rather than a generic sparkle — it is the
    * coin coming apart, so it has to be made of the coin.
@@ -1002,6 +1029,7 @@ export class Effects {
     this.lootPops = advance(this.lootPops, dt);
     this.winds = advance(this.winds, dt);
     this.deaths = advance(this.deaths, dt);
+    this.levelUps = advance(this.levelUps, dt);
     this.particles = stepParticles(this.particles, dt, PARTICLE_DRAG);
     this.dust = stepParticles(this.dust, dt, DUST_DRAG);
     this.textFloats = advance(this.textFloats, dt, (d) => {
@@ -1025,6 +1053,7 @@ export class Effects {
     this.lootPops.length = 0;
     this.winds.length = 0;
     this.deaths.length = 0;
+    this.levelUps.length = 0;
   }
 }
 

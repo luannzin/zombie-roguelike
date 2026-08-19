@@ -104,6 +104,26 @@ def main() -> None:
         "exactly the drift this pair cannot survive"
     )
 
+    # 5. THE CATALOGS ARE LOOKUP TABLES, and their SHAPE is a contract the
+    #    parity check above cannot see: it only compares the top-level key
+    #    sets, so `skills` was declared `Record<string, SkillConfig>` on the
+    #    client and shipped as a LIST of `{"k": ...}` rows for as long as
+    #    nobody looked. `config.skills[key]` resolved to `undefined` for every
+    #    skill in the game — an empty HUD tray for a whole run, no error on
+    #    either side, because an array is an object in JS.
+    #
+    #    Every one of these is indexed by a key that arrived on the roster or
+    #    on an event, so a list is never the right shape for one.
+    for name in ("skills", "loot", "weapons", "objects"):
+        table = payload[name]
+        assert isinstance(table, dict), (
+            f"client_config()['{name}'] is a {type(table).__name__}; the client "
+            "indexes it by key, so it must be a dict keyed by that key"
+        )
+        assert all(isinstance(key, str) for key in table), (
+            f"client_config()['{name}'] has non-string keys"
+        )
+
     print("ok")
 
 

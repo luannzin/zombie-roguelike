@@ -1,5 +1,7 @@
 /**
- * Collect juice: the item lifts off the head and lands in the bag.
+ * Collect juice: the item lifts off the head and lands in the bag — or, for
+ * the upgrade machine's payout, the tin lifts off the head and lands in the
+ * skill tray.
  *
  * Membership comes from `loot-flies` (spawn / land only). Pose is a
  * transform written in rAF, same idea as a world tooltip.
@@ -13,6 +15,7 @@ import {
   type LootFlySpec,
 } from '../../game/loot-flies';
 import { LootIcon } from './LootIcon';
+import { SkillCanIcon } from './SkillCanIcon';
 
 export interface LootFlyProps {
   lootFrames: number;
@@ -60,7 +63,15 @@ function LootFlySprite({ fly, lootFrames }: { fly: LootFlySpec; lootFrames: numb
       style={{ visibility: 'hidden' }}
       aria-hidden="true"
     >
-      <LootIcon frame={fly.frame} frames={lootFrames} zoom={2} />
+      {/* A skill arrives in a TIN and an item arrives as itself. Same flight,
+          same hold over the head, different object in the hand — which is the
+          whole reason the machine's payout reuses this and does not grow a
+          second animation beside it. */}
+      {fly.dest === 'skill' ? (
+        <SkillCanIcon rarity={fly.rarity} frame={fly.frame} zoom={3} />
+      ) : (
+        <LootIcon frame={fly.frame} frames={lootFrames} zoom={2} />
+      )}
     </div>
   );
 }

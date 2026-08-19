@@ -18,9 +18,11 @@ is the client's job.
 
 from __future__ import annotations
 
+import json
 import math
 import random
 from dataclasses import dataclass
+from pathlib import Path
 
 from . import weapons
 from .config import TILE_SIZE
@@ -417,14 +419,34 @@ class LootPickup:
         return row
 
 
+#: THE ATLAS IS THE AUTHORITY ON ITS OWN FRAME ORDER, and this is the only
+#: place that reads it.
+#:
+#: A frame used to be the catalog POSITION, which was right by coincidence and
+#: stopped being right the moment anything was appended above the generated
+#: rows: `tools/make_loot.py` keys its manifest by item KEY and paints in its
+#: own order, so the knife and the condensed core landed on frames 40 and 41 —
+#: a box of pistol rounds and a box of rifle rounds — and every gun under them
+#: drew a different weapon. Two lists cannot both own an ordering; the one
+#: that produced the pixels owns it.
+_ATLAS = json.loads(
+    (Path(__file__).resolve().parents[2] / "assets/processed/loot/manifest.json").read_text()
+)
+_FRAMES: dict[str, int] = {key: row["frame"] for key, row in _ATLAS["items"].items()}
+#: One past the end of the sheet, so a key the generator has no art for draws
+#: NOTHING rather than somebody else's picture. `tests/test_loot_frames.py` is
+#: what stops that being a surprise.
+_NO_FRAME: int = int(_ATLAS["frames"])
+
+
 def catalog_payload() -> dict:
     """Item defs the client needs to draw a name, a rarity, a frame and a slot."""
     payload: dict[str, dict] = {}
-    for index, item in enumerate(ITEMS):
+    for item in ITEMS:
         row = {
             "name": item.name,
             "rarity": item.rarity,
-            "frame": index,
+            "frame": _FRAMES.get(item.key, _NO_FRAME),
             "weight": item.weight,
             "value": item.value,
             "pocket": item.pocket,

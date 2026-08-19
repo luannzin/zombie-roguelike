@@ -26,6 +26,8 @@
 
 import { useEffect, useRef, useState } from 'react';
 import type { HudSkill } from '../../game/hud-store';
+import { dropInventoryAnchor, writeInventoryAnchor } from '../../game/inventory-anchors';
+import { SKILL_TRAY_ANCHOR } from '../../game/loot-flies';
 import type { LootRarity } from '../../net/protocol';
 import { cn } from '@/lib/utils';
 import { Panel } from './Panel';
@@ -65,9 +67,10 @@ const RARITY_TEXT: Record<LootRarity, string> = {
 export function SkillTray({ skills, reward, frames }: SkillTrayProps) {
   const [hover, setHover] = useState<HudSkill | null>(null);
   const landed = useLanded(reward);
+  const box = useTrayAnchor();
 
   return (
-    <div className="relative flex flex-col items-start gap-px">
+    <div ref={box} className="relative flex flex-col items-start gap-px">
       {hover ? (
         /* What it DOES. The row already carries the name, so the card is only
            ever the sentence underneath it — which is the same trade the bag
@@ -100,7 +103,14 @@ export function SkillTray({ skills, reward, frames }: SkillTrayProps) {
               landed === skill.key && 'animate-skill-land',
             )}
             onPointerEnter={() => setHover(skill)}
-            onPointerLeave={() => setHover((current) => (current === skill ? null : current))}
+            /* BY KEY, NOT BY IDENTITY. `skills` is rebuilt from the catalog on
+               every HUD publish — five times a second — so the object under
+               the cursor is a different object from the one `setHover` was
+               given a moment ago, and an identity test never matched. The card
+               stayed up until the pointer happened to enter another row. */
+            onPointerLeave={() =>
+              setHover((current) => (current?.key === skill.key ? null : current))
+            }
           >
             <SkillIcon frame={skill.frame} frames={frames} zoom={1} />
             <span
@@ -127,6 +137,46 @@ export function SkillTray({ skills, reward, frames }: SkillTrayProps) {
       )}
     </div>
   );
+}
+
+/**
+ * Publish the tray's own box as the target a payout tin flies at.
+ *
+ * ONE ANCHOR FOR THE WHOLE TRAY, not one per row, because on a first copy the
+ * row does not exist yet — it is what the landing CREATES. Aiming at the shelf
+ * and letting the row appear underneath is also the honest reading of what
+ * happened: the skill went into the collection, and the collection then grew
+ * a line for it.
+ *
+ * Written every frame from layout rather than once on mount, for the reason
+ * every other anchor in this HUD is: the shelf moves down the screen as the
+ * bag below it opens, and a tin aimed at where the tray was half a second ago
+ * lands beside it.
+ *
+ * Unconditional, unlike a bag cell's — the tray is 0x0 with nothing pulled
+ * yet, and that empty box sits exactly where the first row is about to be.
+ */
+function useTrayAnchor() {
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    let raf = 0;
+    const tick = () => {
+      const el = ref.current;
+      if (el) {
+        const rect = el.getBoundingClientRect();
+        writeInventoryAnchor(SKILL_TRAY_ANCHOR, rect.left + rect.width / 2, rect.top);
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => {
+      cancelAnimationFrame(raf);
+      dropInventoryAnchor(SKILL_TRAY_ANCHOR);
+    };
+  }, []);
+
+  return ref;
 }
 
 /**

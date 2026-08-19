@@ -349,15 +349,24 @@ class Loadout:
         ]
 
 
-def catalog_payload() -> list[dict]:
-    """`welcome.config.skills` — the client's whole table.
+def catalog_payload() -> dict[str, dict]:
+    """`welcome.config.skills` — the client's whole table, KEYED BY KEY.
 
     Same contract as the loot catalog: name, rarity and atlas frame ride the
     config so the HUD can draw a tile the server only ever names by key.
+
+    A DICT AND NOT A LIST, because every consumer on the other side is a
+    lookup: the tray row, the canister's icon and the hover card all start
+    from a key that arrived on the roster or on a spin event. This shipped a
+    list of `{"k": ...}` rows once while the client declared
+    `Record<string, SkillConfig>`, and the result was `config.skills[key]`
+    resolving to `undefined` for every skill in the game — the tray stayed
+    empty for a whole run and the canister always wore frame 0. Nothing
+    errored, on either side, because an array IS an object in JS and
+    `test_config_parity` only compares the top-level key sets.
     """
-    return [
-        {
-            "k": row.key,
+    return {
+        row.key: {
             "name": row.name,
             "rarity": row.rarity,
             "blurb": row.blurb,
@@ -365,7 +374,7 @@ def catalog_payload() -> list[dict]:
             "cap": row.cap,
         }
         for row in SKILLS
-    ]
+    }
 
 
 def luck_chance(mods: Mods) -> float:

@@ -477,15 +477,21 @@ MAX_LEVEL = 30
 # payout makes every corpse the same corpse; a roll makes a good one worth
 # noticing.
 #
-# THIS NUMBER IS THE FAUCET, and it is deliberately set below the halfway mark:
-# most corpses pay NOTHING now. Dark gold is not the resource a night is scored
-# on — that is group gold, and the party earns it by carrying loot to a
-# platform — so a coin every second kill would make the currency the party is
-# actually playing for the quieter of the two. At 0.22 a 3-gold zombie pays
-# nothing about half the time, one coin most of the rest, and three about once
-# in a hundred. Move this and `crates.DROP_COIN` together: they are the two
-# taps, and turning one alone just changes where the same money comes from.
-COIN_DROP_CHANCE = 0.22
+# THIS NUMBER IS THE FAUCET, and it is now set for a RARE DROP rather than a
+# quiet one. Dark gold is not the resource a night is scored on — that is group
+# gold, and the party earns it by carrying loot to a platform — so a shard off
+# every second corpse would make the currency the party is actually playing for
+# the quieter of the two.
+#
+# IT WENT FROM 0.22 TO 0.07 WHEN THE COIN BECAME AN ANOMALY SHARD, and the art
+# is the argument. A struck purple coin can fall out of anything; a fragment of
+# the thing the whole night is spent feeding cannot fall out of a third of the
+# corpses in the forest without becoming litter. At 0.07 a 3-gold zombie pays
+# nothing four times in five, one shard most of the rest, and three about twice
+# in ten thousand — so finding one is an event, which is what the sprite now
+# promises. Move this and `crates.DROP_COIN` together: they are the two taps,
+# and turning one alone just changes where the same money comes from.
+COIN_DROP_CHANCE = 0.07
 COIN_MAGNET_TILES = 2.4
 COIN_COLLECT_TILES = 0.4
 COIN_BURST_TILES_PER_SEC = 5.5    # pop off the corpse

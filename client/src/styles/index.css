@@ -159,18 +159,23 @@
   --fx-gold-core: #ffe9a8;
   /*
    * DARK GOLD is the PLAYER's, and the only currency that falls on the floor.
-   * These are `make_textures.DARK_COIN_RAMP` — the pickup burst has to be the
-   * same metal as the coin that threw it, or the sparkle reads as a second
-   * effect landing on top of the pickup. It runs BRIGHTER than the disc does:
-   * a purple spark on a dark forest at night has to clear the darkness
-   * multiply, which the gold one never had to worry about.
+   * It is an ANOMALY SHARD, so these are the VIOLET ramp of
+   * `make_rift.PRISM` — the same material the rift is painted from, and the
+   * same one `make_coin.py` turns in the world. The burst has to be the stuff
+   * the pickup is made of, or the sparkle reads as a second effect landing on
+   * top of it. They were the retired `DARK_COIN_RAMP` while the pickup was a
+   * struck disc; the disc is gone and the ramp went with it.
+   *
+   * Still the BRIGHT end of that ramp: a spark on a dark forest at night has
+   * to clear the darkness multiply, which the gold one never had to worry
+   * about.
    */
-  --fx-dark-gold-text: #a862e6;
-  --fx-dark-gold-a: #6d2bb0;
-  --fx-dark-gold-b: #9247d8;
-  --fx-dark-gold-c: #c98cf0;
-  --fx-dark-gold-d: #48197a;
-  --fx-dark-gold-core: #d9a8ff;
+  --fx-dark-gold-text: #b08cf0;
+  --fx-dark-gold-a: #7a55c4;
+  --fx-dark-gold-b: #b08cf0;
+  --fx-dark-gold-c: #d4bcff;
+  --fx-dark-gold-d: #3a2470;
+  --fx-dark-gold-core: #f0e6ff;
 
   /* entity chrome */
   --entity-shadow: rgb(0 0 0 / 0.32);

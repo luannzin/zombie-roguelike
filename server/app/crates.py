@@ -58,16 +58,18 @@ DROP_ITEM = "item"
 
 #: The default table. Empty is the common case — a pile of wood is not a shop.
 #:
-#: COIN is DARK GOLD (`coins.py`), the player's own purple currency, and it is
-#: the thinnest slice on every object in the game on purpose. What an explorable
-#: is FOR is the ITEM: that is what gets carried to a platform and becomes the
-#: group's balance, which is the number a night is scored on. Coin weight is the
-#: second tap on dark gold — the first is `config.COIN_DROP_CHANCE` on corpses —
-#: and the two were cut together, so a party that opens everything and kills
-#: everything now walks out of a night with roughly half the purple it used to.
-#: Item weight was left exactly where it was: this pass made a currency scarcer,
-#: not the forest poorer.
-BASE_DROPS: dict[str, float] = {DROP_EMPTY: 68, DROP_COIN: 14, DROP_ITEM: 18}
+#: COIN is DARK GOLD (`coins.py`), the player's own currency and now an ANOMALY
+#: SHARD, and it is the thinnest slice on every object in the game on purpose.
+#: What an explorable is FOR is the ITEM: that is what gets carried to a
+#: platform and becomes the group's balance, which is the number a night is
+#: scored on. Coin weight is the second tap on dark gold — the first is
+#: `config.COIN_DROP_CHANCE` on corpses — and the two move together. Both were
+#: cut again when the coin became a shard: a piece of the anomaly is a rare
+#: find or it is nothing, and the weight that survives here is what stops a
+#: party who opens every crate in the forest from routing around the corpse
+#: tap. Item weight is untouched, as it was the last time: this made a currency
+#: scarcer, not the forest poorer — the difference goes to EMPTY.
+BASE_DROPS: dict[str, float] = {DROP_EMPTY: 77, DROP_COIN: 5, DROP_ITEM: 18}
 
 
 @dataclass(frozen=True)

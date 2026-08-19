@@ -4,12 +4,17 @@
     {
       "name": "client",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["--prefix", "client", "run", "dev"],
+      "runtimeArgs": [
+        "--prefix",
+        "client",
+        "run",
+        "dev"
+      ],
       "port": 5173
     },
     {
       "name": "server",
-      "runtimeExecutable": "server/.venv/Scripts/python.exe",
+      "runtimeExecutable": "server/.venv/bin/python",
       "runtimeArgs": [
         "-m",
         "uvicorn",

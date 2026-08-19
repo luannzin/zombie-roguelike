@@ -10,8 +10,8 @@ and nowhere near the frame loop.
 - `game/` — `GameCanvas`, `MinimapCanvas`. Mount a canvas and hand the ref to
   `Game`; React never touches those pixels again.
 - `hud/` — ours: `Hud`, `HudScreen`, `Panel`, `Vitals`, `BatteryGauge`,
-  `ProgressBar`, `StatusLine`, `NetStats`, `ControlsHint`, `ZoneTitle`,
-  `ReadyCount`, `Balance`, `QuestLog`, `QuestRow`, `QuestAnnounce`, `QuestCount`, `InteractPrompt`, `LootPrompt`, `CratePrompt`, `RiftPrompt`, `BuyPrompt`, `MachinePrompt`, `ExitGuide`, `SkillTray`, `SkillIcon`, `Inventory`, `InventorySlot`,
+  `ProgressBar`, `StatusLine`, `NetStats`, `ControlsHint`, `ZoneTitle`, `Announce`,
+  `ReadyCount`, `Balance`, `QuestLog`, `QuestRow`, `QuestAnnounce`, `QuestCount`, `InteractPrompt`, `LootPrompt`, `CratePrompt`, `RiftPrompt`, `BuyPrompt`, `MachinePrompt`, `ExitGuide`, `SkillTray`, `SkillIcon`, `SkillCanIcon`, `Inventory`, `InventorySlot`,
   `InventoryGold`, `WeightBar`, `LootIcon`, `CoinIcon`, `DarkCoinIcon`, `SlotValue`, `LootFly`, `LootCard`,
   `LootCardRow`, `TooltipCard`, `InventoryGhost`, `Tooltip`, `TooltipKey`,
   `Hotbar`, `HotbarSlot`.
@@ -54,6 +54,23 @@ its subsystem's design law in [`docs/design/`](../../../docs/design/) —
   INTRO_TIME in `game/game.ts` are one timeline — the card has to clear before
   the corners come back. The slash is a CSS keyframe on mount, not per-frame
   state; reduced motion drops it.
+- `Announce` is `ZoneTitle` one size down, for news that arrives MID-RUN.
+  Same language — rules out from the centre, type into focus, a second line a
+  beat later, reusing the `zone-*` keyframes at a shorter
+  `animation-duration`, which is what those percentage keyframes are written
+  for. Everything that differs is about the frame it lands in: an arrival owns
+  an empty screen, this one lands over live gameplay. 24px not 44px, one rule
+  not two, upper third not the middle (the middle is the player's own body and
+  where they are aiming), `ANNOUNCE_MS` not three seconds, and no slash — that
+  bar is the arrival card's one beat and firing it at every event would spend
+  it. It does NOT dim the corners: `introducing` is the arrival's flag and
+  nothing here holds the player still.
+  It is a one-shot keyed on `announce.key`, so the key is the EVENT
+  (`level-7`) and never the kind of event — the store keeps the last one
+  forever and a repeated key announces once. First caller is the level-up
+  ("Subiu de Nível" / "+1 ponto de habilidade"); the world half of that beat
+  is a summon column on the body, in `render/layers/effects.ts`, because a
+  banner alone leaves the other three players wondering whose level it was.
 - **Anything that must exist on the arena's FIRST painted frame is driven by
   `introducing`, not by `arrival`.** The store's initial snapshot has
   `introducing: true`, so those elements are up before the game has said
@@ -126,12 +143,15 @@ its subsystem's design law in [`docs/design/`](../../../docs/design/) —
   APART.** `CoinIcon` (`/hud/coin.png`, gold) is the GROUP's, and it goes
   everywhere the group's money is quoted: `Balance`, `SlotValue`,
   `InventoryGold`, the gold `QuestCount` rows, the store's prices.
-  `DarkCoinIcon` (`/hud/darkcoin.png`, purple) is the PLAYER's dark gold and
-  appears in exactly one place — the `GOLD` row of `Vitals`. The two icons
-  share a silhouette on purpose: at 8px the metal is the whole message, and
-  two different shapes would read as two unrelated icons rather than two kinds
-  of money. Do not put the gold coin on a personal number or the purple one on
-  a party number.
+  `DarkCoinIcon` (`/hud/darkcoin.png`) is the PLAYER's dark gold and appears in
+  exactly one place — the `GOLD` row of `Vitals`. It is an ANOMALY SHARD: a
+  sphere in the rift's own prism, and frame 0 of the same painter that turns
+  the pickup in the world, so the badge cannot drift from the thing on the
+  floor. The two icons used to share a disc silhouette on the argument that at
+  8px the metal is the whole message; that ended when one of them stopped
+  being metal. A ball against a struck disc is now the fastest way to read
+  which currency a number is. Do not put the gold coin on a personal number or
+  the shard on a party number.
 - `Balance` is the party's purse and it is drawn ONLY in the store, sharing
   the top-centre slot with `ReadyCount` (same kind of statement about the
   party; the two zones never overlap). It exists from the moment the party
@@ -191,7 +211,14 @@ its subsystem's design law in [`docs/design/`](../../../docs/design/) —
   border, no value, no weight on the bar) until it lands. Slot anchors
   are written every frame while the drawer is open, and travel waits
   until the cell is on screen so the sprite cannot aim at a collapsed
-  row. Hovering a filled cell is a pointer and opens `LootCard`
+  row. `SkillTray` publishes its own box on the SAME anchor map
+  (`SKILL_TRAY_ANCHOR`), unconditionally, because the machine's payout
+  is a fly too: one anchor for the whole shelf rather than one per row,
+  since on a first copy the row is what the landing creates. That fly
+  draws `SkillCanIcon` instead of `LootIcon` — the tin body picked by
+  rarity with the skill's own icon scaled into its label window, all
+  three numbers read off the skill manifest so the art can be redrawn
+  at another size without a component changing. Hovering a filled cell is a pointer and opens `LootCard`
   (`TooltipCard` chrome: same fill, bar, staircase arrow). The card
   measures and flips or shifts so a left-edge slot cannot push it off
   the screen; the arrow slides with it. Name and rarity both take the

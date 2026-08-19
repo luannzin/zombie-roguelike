@@ -30,7 +30,7 @@ seam React is allowed to read.
 | `inventory-actions.ts` | bag → socket: `Game` binds `drop`; React never owns the connection |
 | `loot-flies.ts` | collect flies: hold over the head, then travel; membership is a store, pose is per-frame |
 | `pad-cargo.ts` | the POUR's other half: items in the air out of a backpack, and the pile they become on a platform's deck. Deck-relative, so the load leaves with the skid |
-| `machine.ts` | the upgrade machine's CEREMONY: one lever pull as beats, the BAND's scroll position per reel, the arm, and where the canister is. Timing comes from `config.machine` — a mirror of `server/app/machine.py`, and it is REQUIRED: there is no local copy of the clock to fall back to |
+| `machine.ts` | the upgrade machine's CEREMONY: one lever pull as beats, the BAND's scroll position per reel, and the arm. What comes OUT of the machine is not here: the tin is a collect fly (`loot-flies.ts`), because it is the same event a looted item is. Timing comes from `config.machine` — a mirror of `server/app/machine.py`, and it is REQUIRED: there is no local copy of the clock to fall back to |
 | `payout.ts` | the night's platforms being lowered into the shop, and the gold coming off them. Presentation only; the balance was credited server-side |
 
 ## Design law
@@ -358,7 +358,19 @@ The server half of each of these lives in [`docs/design/`](../../../docs/design/
   happens exactly once when a frame runs long. Every client in the glade runs
   it — a slot machine going off is the loudest thing in the shop and the party
   should be able to look over at somebody else's legendary — and only the
-  PULLER's client claims the canister into its HUD tray.
+  PULLER's client takes delivery of the tin.
+  - **THE PRIZE IS A PICKUP.** On `eject` the tin appears over the puller's
+    head and flies to the skill tray on the same `loot-flies` flight every
+    collect uses; it used to be thrown onto the machine's tray and left lying
+    in the world for a second and a half first. `MachineTiming` still carries
+    `settle` and `claim` because the SERVER's clock does — `duration()` is what
+    locks the lever — but no beat fires on them.
+  - **THE TRAY MUST NOT KNOW BEFORE THE PLAYER DOES.** The skill is banked
+    server-side on the press, so the roster carries it three seconds before the
+    tin arrives. `Game.pendingSkill` withholds that copy from `skillList()`
+    until the fly lands, which is the same thing `incomingHas` does for a bag
+    cell mid-collect. Drop it and the row is already there when the tin gets
+    to it.
   - THE THIRD REEL IS THE DESIGN. Two stop on a fixed rhythm; the third holds
     for `reelHold[rarity]`, longer the better the pull was. Because the roll
     already happened the wait is honest — the machine is taking its time
@@ -381,7 +393,7 @@ The server half of each of these lives in [`docs/design/`](../../../docs/design/
     is where it was decided, and the machine reacting to its own result has to
     come before the consequence of it.
   - RARITY IS A MULTIPLIER, NOT A SECOND ANIMATION. `pullGain` scales the
-    burst, the marquee and the canister's glow off ONE curve, and the sounds
+    burst and the marquee off ONE curve, and the sounds
     ladder the same way (`reel` pitched with the tier, `rarity` behind it,
     `jackpot` only at epic and up). Five hand-authored ceremonies would be five
     things to learn instead of one.
@@ -629,7 +641,14 @@ The server half of each of these lives in [`docs/design/`](../../../docs/design/
   The hotbar is `hotbar` on the same snapshot: two gun slots and the
   knife, above the lantern, always visible. 1/2/3 selects (same key
   holsters) and is patched immediately, like TAB. A gun fly uses dest
-  `hotbar` and anchor `hotbar-N`. `held` rides the input packet. AWP
+  `hotbar` and anchor `hotbar-N`.
+  **A fly's `dest` says two things and `ammo` is where they part.** It picks
+  the anchor to travel to AND whether the target cell is empty until the fly
+  lands. Ammunition flies at the belt cell holding the gun it just topped up,
+  so it shares `hotbar`'s anchor — but that cell already holds a weapon, and
+  folding the two together blanked the gun for the length of every ammo
+  pickup. `ammo` is its own `LootFlyDest`: same anchor, not the cell's sprite,
+  and still out of the bag's weight and gold totals. `held` rides the input packet. AWP
   hold-to-aim zooms the camera toward `scopeZoom`; ammo is named and unused.
 - Anything long-lived created here gets a matching release in `Game.dispose()`
   in the same change.

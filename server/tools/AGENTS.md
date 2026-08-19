@@ -11,7 +11,7 @@ imported by `app/` and never run at request time.
 | --- | --- | --- |
 | `make_placeholder_sheet.py` | generates raw art | `assets/raw/<name>.png` (player, zombie variants, backpack, zhat-*, zcloth-*) plus `<name>-death.png` for exact creatures and their overlays |
 | `process_sprites.py` | raw → production | `assets/processed/<name>/` |
-| `make_coin.py` | generates final pixels | `assets/processed/coin/` (8-frame Y-spin of the PURPLE dark gold disc — the player's currency, and the only one with a world sprite) |
+| `make_coin.py` | generates final pixels | `assets/processed/coin/` (8-frame turn of the ANOMALY SHARD — dark gold, the player's currency and the only one with a world sprite. Also paints `hud/darkcoin.png` for `make_hud_icons`) |
 | `make_textures.py` | generates final pixels | `assets/processed/terrain/` (4 grounds, blend, patch, rock, tree, deadtree, stump, grass, bush, branch, leaves, fern, campfire) |
 | `make_scenery.py` | generates final pixels | `assets/processed/scenery/` (tent, fence, sign, logs, firepit, blood, tracks, clothes, debris) — and PACKS what `make_objects.py` drew into the same folder and the one manifest |
 | `make_objects.py` | draws only; `make_scenery.build()` packs it | the INTERACTIVE objects and the tribal ground: barrel, box, chest, stash, vehicle, altar, statue, bones, oil |
@@ -25,7 +25,7 @@ imported by `app/` and never run at request time.
 | `make_merchant.py` | generates final pixels | `assets/processed/merchant/` (the shopkeeper — green coat, brimmed HAT, a face with two eyes in it: `idle` loop plus three one-shot flourishes — `coat`, `beckon`, `coin` — and the manifest's `randomClips` / `randomGap` that drive them) |
 | `make_store.py` | generates final pixels | `assets/processed/store/` (the merchant's own kit, all in the shop's own warm `WOOD`/`LINEN` and flat-filled: his WAGON ×1 and counter ×1, small round table ×4 with `topY`, `kit` ×5 — crates, a barrel of rods, a rack, a shelf, a padlocked strongbox, all drawn SHUT because nothing in this zone opens — torch ×2 with `flameY`, rug, torchfire, buy glow) |
 | `make_machine.py` | generates final pixels | `assets/processed/machine/` (the upgrade cabinet, two tiles wide and cartoon-flat: body ×2 idle/settled with the reel windows, pay line, lever pivot and tray mouth in its manifest; `strip.png` — the reel BAND, one tall image of ten cells the client scrolls; lever ×6 sweeping on a real angle; marquee, reel backlight and payout burst, all greyscale so the client can tint them by rarity) |
-| `make_skills.py` | generates final pixels | `assets/processed/skills/` (one 16x16 icon per skill in catalog order, plus the CANISTER in five rarity colourways — a dark pass and an emissive pass, with the icon window's rectangle on the manifest) |
+| `make_skills.py` | generates final pixels | `assets/processed/skills/` (one 16x16 icon per skill in catalog order, plus the payout TIN in five rarity colourways at 16x18 — a dark pass and an emissive pass, with the label window's rectangle on the manifest) |
 | `make_hud_icons.py` | generates final pixels | `assets/processed/hud/` (battery, backpack, coin, darkcoin, arrow, chevron) |
 | `make_audio.py` | generates final samples | `assets/processed/audio/` (43 sounds, 80 wavs + manifest + loudness.json) |
 
@@ -50,18 +50,21 @@ surface. Output rules live in [`assets/AGENTS.md`](../../assets/AGENTS.md).
   writes `<name>-death.png`: an N-column collapse timeline, last column the
   prone rest. Process that with the same `--exact --side-facing right`
   command. Never rotate a 16px walk frame to fake a corpse.
-- `paint_coin` strikes BOTH currencies and `ramp` is the only thing that
-  differs: `COIN_RAMP` is the group's gold (`hud/coin.png` alone), and
-  `DARK_COIN_RAMP` is the player's dark gold (`coin/` plus `hud/darkcoin.png`).
-  The purple ramp has five steps to gold's four because purple has less
-  luminance to spend, and it is held below `--rarity-epic`'s brightness so a
-  coin on the ground cannot be mistaken for an epic drop's aura. `groove`
-  sinks a struck ring in NORMALISED radius, so it squashes with the spin
-  instead of sliding off the face.
-- Terrain, HUD icons and the world coin have **no raw stage** — they are
-  generated straight into `assets/processed/`. The coin disc is `paint_coin`
-  in `make_textures.py`; the HUD badge is that disc face-on, the pickup
-  sheet is the same disc spun. Guns are the same: `make_guns.py` writes the
+- **THE TWO CURRENCIES ARE NO LONGER TWO METALS.** `paint_coin` now strikes
+  one thing — `COIN_RAMP`, the group's gold, and `hud/coin.png` is its only
+  output. Dark gold is an ANOMALY SHARD: a sphere painted with `make_rift`'s
+  `Prism` and its six-ramp `PRISM`, so the player's currency is made of the
+  same material as the thing the whole night is spent feeding. `make_coin.py`
+  owns it and paints both sizes — `coin/sheet.png` at 16px and
+  `hud/darkcoin.png` at 8px, which is frame 0 with `light` turned up because
+  the badge sits on a panel the night never dims. `DARK_COIN_RAMP` is deleted;
+  do not reintroduce a purple ramp, the prism is the palette. `groove` on
+  `paint_coin` survives for the gold disc alone.
+- Terrain, HUD icons and both currencies have **no raw stage** — they are
+  generated straight into `assets/processed/`. The gold disc is `paint_coin`
+  in `make_textures.py`; the shard is `make_coin.make_spin_frame`, and the
+  HUD badge is its frame 0 rather than a second drawing of the same object.
+  Guns are the same: `make_guns.py` writes the
   held side-view; `make_loot.py` writes the 16x16 ground/HUD icons under the
   same keys. Do not fold them — a 16px isometric pistol rotated around a
   grip is mush. Pistol grips are a solid block — no heel hole, no selector.
@@ -407,13 +410,16 @@ surface. Output rules live in [`assets/AGENTS.md`](../../assets/AGENTS.md).
   are the likeliest roll, so the strip looks like the odds it pays. Do not sort
   the band: ascending order would teach the player that blue means purple is
   next, and turn the last half second into arithmetic.
-- **RARITY IS THE METAL AND THE LIGHT, NEVER THE SHAPE.** A legendary canister
-  is the same tube as a common one and a legendary reel face is the same
-  lozenge; only the ramp changes. `make_skills.py` and `make_machine.py` both
+- **RARITY IS THE LABEL AND THE LIGHT, NEVER THE SHAPE.** A legendary tin is
+  the same tin as a common one and a legendary reel face is the same lozenge;
+  only the ramp changes. The tin used to wear its rarity on two thin bands of a
+  steel tube, which at the size it actually appears at meant five tiers were
+  five grey tubes — the colour is the LABEL now, the largest area on the
+  object. `make_skills.py` and `make_machine.py` both
   duplicate the five `--rarity-*` colours from `client/src/styles/index.css`
   rather than importing them (these are offline scripts), and the two lists
-  must stay identical — a canister that is not the colour the bag paints the
-  same grade would be a second colour language for one idea.
+  must stay identical — a tin that is not the colour the bag paints the same
+  grade would be a second colour language for one idea.
 - **The camp's torch is NOT the threshold torch.** `make_rift.py` also draws a
   torch and its fire, but that one burns the prism — cyan and violet, because
   it marks a way through: the exit corridor and every extraction pad. This one

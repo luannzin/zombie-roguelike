@@ -12,12 +12,12 @@
  * not a player-tinted beam.
  */
 
-import type { Effects, WindPuff, DeathBurst } from '../../game/effects';
+import type { Effects, WindPuff, DeathBurst, LevelUp } from '../../game/effects';
 import { fadeOf } from '../../lib/math';
 import { hudFont } from '../../theme/fonts';
 import { palette } from '../../theme/palette';
 import type { Projection } from '../projection';
-import { effectFrame, type VfxSheet } from '../vfx';
+import { effectFrame, effectImage, type VfxSheet } from '../vfx';
 import {
   drawOriented,
   sheetLife,
@@ -468,6 +468,44 @@ export function drawDeathBursts(
       sheet.frameHeight,
       Math.round(burst.x - sheet.frameWidth / 2),
       Math.round(burst.y - sheet.anchorY),
+      sheet.frameWidth,
+      sheet.frameHeight,
+    );
+  }
+  ctx.restore();
+}
+
+/**
+ * A level arriving on the player who earned it: the summon column, in the
+ * summon's own cold light.
+ *
+ * TINTED RATHER THAN GREYSCALE, unlike the gust and the death puff either
+ * side of it. Those are AIR — dirt and pressure, which have no colour of
+ * their own and take the scene's. This is the same beam that delivers a body
+ * into the lobby, and that beam has always been light with a hue; drawn grey
+ * in the middle of a forest it would read as one more puff of dust on a
+ * player who just did the most important thing they will do all night.
+ */
+export function drawLevelUps(
+  ctx: CanvasRenderingContext2D,
+  sheet: VfxSheet | null,
+  levelUps: LevelUp[],
+): void {
+  if (!sheet || levelUps.length === 0) return;
+  const image = effectImage(sheet, palette().summon.spark);
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  for (const up of levelUps) {
+    const frame = effectFrame(sheet, up.age);
+    ctx.globalAlpha = 0.9 * fadeOf(up);
+    ctx.drawImage(
+      image,
+      frame * sheet.frameWidth,
+      0,
+      sheet.frameWidth,
+      sheet.frameHeight,
+      Math.round(up.x - sheet.frameWidth / 2),
+      Math.round(up.y - sheet.anchorY),
       sheet.frameWidth,
       sheet.frameHeight,
     );

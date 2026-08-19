@@ -188,13 +188,18 @@ These bind every subtree. Subsystem-specific rules live in the docs above.
 
 | scope | command |
 | --- | --- |
-| server | `python tests/test_snapshot_shape.py`, `test_pour.py`, `test_store_walk.py`, `test_config_parity.py` from `server/` — plain scripts, each prints `ok` |
+| server | `python tests/test_snapshot_shape.py`, `test_pour.py`, `test_store_walk.py`, `test_config_parity.py`, `test_loot_frames.py` from `server/` — plain scripts, each prints `ok` |
 | client | `bun run typecheck` from `client/` — required after any change there |
 | both | run the server, open two browser tabs, confirm both players move, shoot and light the world without rubber-banding |
 
 Run `test_store_walk.py` after any edit to `store.py`'s layout offsets: it
 flood-fills the shop and fails if the exit, the merchant, a stall or the
 cabinet cannot be reached.
+
+Run `test_loot_frames.py` after adding an item to `loot.ITEMS` or a drawing
+to `make_loot.py`: it fails if the catalog names a key the atlas has no art
+for. A frame is taken from the atlas manifest, not from catalog position —
+the two lists deliberately do not share an order.
 
 Run `test_config_parity.py` after touching `client_config()` or `GameConfig`:
 it fails if either side declares a key the other does not, in either

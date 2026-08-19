@@ -29,6 +29,15 @@ imported by `app/` and never run at request time.
 | `make_hud_icons.py` | generates final pixels | `assets/processed/hud/` (battery, backpack, coin, darkcoin, arrow, chevron) |
 | `make_audio.py` | generates final samples | `assets/processed/audio/` (43 sounds, 80 wavs + manifest + loudness.json) |
 
+## Route
+
+A generator draws a thing the **game** already defines. If the task changes what
+the thing IS — its footprint, verb, drop table, where it is placed — that is
+[`docs/design/world.md`](../../docs/design/world.md) and `server/app/`, and the
+art follows. If it only changes how it LOOKS or SOUNDS, this directory plus
+[`docs/design/presentation.md`](../../docs/design/presentation.md) is the whole
+surface. Output rules live in [`assets/AGENTS.md`](../../assets/AGENTS.md).
+
 ## Local Contracts
 
 - Raw sprite input is a grid of frames on solid magenta (`#FF00FF`); rows

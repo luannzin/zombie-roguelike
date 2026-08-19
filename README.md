@@ -1,5 +1,9 @@
 # Zombie Roguelike — Vertical Slice
 
+> Working on the code? Start with [`ARCHITECTURE.md`](ARCHITECTURE.md)
+> (system model), [`STATE.md`](STATE.md) (where things stand) and
+> [`AGENTS.md`](AGENTS.md) (the work contract). This file is the human tour.
+
 Browser-based multiplayer 2D pixel-art expedition roguelike. No auth, no setup,
 no install: open the link, take a name, and you are at a campfire with your
 friends. One of you presses start and the night begins.

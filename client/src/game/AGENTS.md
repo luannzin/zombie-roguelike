@@ -32,6 +32,10 @@ seam React is allowed to read.
 | `machine.ts` | the upgrade machine's CEREMONY: one lever pull as beats, the BAND's scroll position per reel, the arm, and where the canister is. Timing comes from `config.machine` — a mirror of `server/app/machine.py` |
 | `payout.ts` | the night's platforms being lowered into the shop, and the gold coming off them. Presentation only; the balance was credited server-side |
 
+## Design law
+
+The server half of each of these lives in [`docs/design/`](../../../docs/design/): [`player.md`](../../../docs/design/player.md) (prediction, stamina, the two weights, the belt), [`extraction.md`](../../../docs/design/extraction.md) (the pour, the exit), [`store.md`](../../../docs/design/store.md) (the payout is presentation only), [`skills.md`](../../../docs/design/skills.md) (the machine's shared clock).
+
 ## Local Contracts
 
 - Two clocks: a fixed 30 Hz tick samples input, predicts and sends; `rAF`

@@ -39,6 +39,16 @@ output the game actually loads.
   arrives placed in groups from `server/app/scenery.py`. Two folders because
   they are positioned by two different systems, not because they look different.
 
+## Route
+
+A change to anything in `processed/` is a change to its **generator**: go to
+[`server/tools/AGENTS.md`](../server/tools/AGENTS.md), which names the script per
+folder and carries the regeneration commands. Nothing here is edited directly.
+
+## Design law
+
+[`docs/design/presentation.md`](../docs/design/presentation.md) — the sound and effect rules these folders are generated under.
+
 ## Local Contracts
 
 - Files here are **generated output, not hand-edited source.** Everything in

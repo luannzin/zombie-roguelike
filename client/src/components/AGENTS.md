@@ -23,6 +23,18 @@ and nowhere near the frame loop.
 - `ui/` — coss primitives (Base UI + shadcn-style copy-in). **Generated. Do not
   hand-edit.**
 
+## Route
+
+A HUD element is the **face** of a subsystem, never its owner. What it shows is
+decided in `client/src/game/` and, above that, on the server. If the task is
+about what the panel *means* rather than how it looks, follow the element to
+its subsystem's design law in [`docs/design/`](../../../docs/design/) —
+`RiftPrompt`/`ExitGuide` -> `extraction.md`, `BuyPrompt`/`Balance` ->
+`store.md`, `SkillTray`/`MachinePrompt` -> `skills.md`,
+`Inventory`/`Hotbar`/`WeightBar` -> `player.md`. The seam between them is
+`client/src/game/hud-store.ts` (see
+[`../game/AGENTS.md`](../game/AGENTS.md)).
+
 ## Local Contracts
 
 - HUD state is read from `hud-store` through `useHud`, republished at 5 Hz.

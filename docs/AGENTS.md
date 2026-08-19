@@ -27,3 +27,12 @@ live in a code comment.
 
 - Prefer updating an existing doc over adding one. A new file here needs a
   durable audience beyond the change that produced it.
+
+## Child DOX Index
+
+- `design/` — per-subsystem DESIGN LAW: the argument behind each system, its
+  ownership, invariants, danger zones and change surface. Seven files, one per
+  subsystem, indexed from the root `AGENTS.md`. They are the "why"; the
+  `AGENTS.md` chain is the "must". A rule that binds work belongs in an
+  `AGENTS.md`; the reasoning that produced it belongs here.
+  Do not add an eighth without a subsystem to match it.

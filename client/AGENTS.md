@@ -32,6 +32,16 @@ own the HUD and routing only. Talks to the server over one WebSocket.
   - `src/assets/fonts/` — Departure Mono, bundled and hashed by Vite
   - `vite.config.ts`, `tsconfig.json`, `package.json`, `components.json`
 
+## Design law
+
+Why the client is shaped this way — read the one that owns your task:
+[`docs/design/presentation.md`](../docs/design/presentation.md) (audio, VFX, light budget),
+[`docs/design/player.md`](../docs/design/player.md) (movement, belt, pocket),
+[`docs/design/extraction.md`](../docs/design/extraction.md),
+[`docs/design/store.md`](../docs/design/store.md),
+[`docs/design/skills.md`](../docs/design/skills.md).
+Whole-system map: [`ARCHITECTURE.md`](../ARCHITECTURE.md).
+
 ## Local Contracts
 
 - **Layering:** rendering knows nothing about the network; networking knows

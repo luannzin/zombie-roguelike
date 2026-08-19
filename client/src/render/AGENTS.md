@@ -40,6 +40,10 @@ mutation, no React.
 | `minimap.ts` | the minimap canvas |
 | `layers/` | the actual drawing: terrain, entities, loot, vision, effects, atmosphere, darkness, vignette |
 
+## Design law
+
+[`docs/design/presentation.md`](../../../docs/design/presentation.md) — the light budget, effect sheets, gore, and the rule that this layer owns no state.
+
 ## Local Contracts
 
 - The renderer consumes state and never mutates it. Players and enemies arrive

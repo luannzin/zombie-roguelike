@@ -14,6 +14,10 @@ pipeline that produces everything the client renders.
 - `tools/` — asset generation and processing scripts (child doc)
 - Root-owned here: `requirements.txt` (fastapi, uvicorn, pillow)
 
+## Design law
+
+Why the simulation is shaped this way: [`docs/design/`](../docs/design/) — one file per subsystem, indexed from the root `AGENTS.md`. Whole-system map: [`ARCHITECTURE.md`](../ARCHITECTURE.md).
+
 ## Local Contracts
 
 - The server is authoritative. Clients send inputs, never positions.

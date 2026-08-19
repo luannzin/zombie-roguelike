@@ -101,7 +101,7 @@ export interface BuyPacket {
 
 /**
  * Pull the upgrade machine's lever. No id: there is exactly one cabinet in the
- * glade, so naming it would be a field that could only ever hold one value.
+ * clearing, so naming it would be a field that could only ever hold one value.
  *
  * The server refuses silently when the feet are out of range, when no level is
  * owed, or while somebody else's pull is still running — all three are things
@@ -703,8 +703,8 @@ export interface StorePayload {
   /** Centre of the mat the merchant trades over. */
   rug: [number, number];
   /**
-   * Contact point of the upgrade machine, at the far end of the lane. Absent
-   * on a map built before the cabinet existed, which the layer treats as "no
+   * Contact point of the upgrade machine, on the north-west arc. Absent on a
+   * map built before the cabinet existed, which the layer treats as "no
    * machine here" rather than as an error.
    */
   machine?: [number, number];
@@ -712,9 +712,9 @@ export interface StorePayload {
    * His own gear: `[x, y, variant]` per piece, all of it BEHIND the counter.
    *
    * It is on the store payload rather than in `props` because it is his, the
-   * same way the tables and the torches are — and because the south side of
-   * the lane is the half that answers E. Nothing here is interactive; the art
-   * is drawn roped and padlocked so the silhouette says so.
+   * same way the tables and the torches are — and because the WEST arc is the
+   * half that does not answer E. Nothing here is interactive; the art is drawn
+   * roped and padlocked so the silhouette says so.
    */
   kit?: [number, number, number][];
   /**

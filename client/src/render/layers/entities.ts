@@ -637,17 +637,21 @@ function drawAimFallback(
 }
 
 /**
- * Health over a body, and — for a player who is spending it — breath under it.
+ * The gauge over a body: health, and under it — for a player — breath.
  *
- * The run bar is deliberately the LESSER of the two: a hairline strip with no
- * frame of its own, hung off the bottom edge of the health bar, at the width of
- * the health FILL rather than the health frame. Two bars of equal weight over
- * every teammate would make a party read as a row of gauges, and the one that
- * has to be legible at a glance across a dark forest is the one that says
- * somebody is about to die.
+ * ONE PLATE, TWO ROWS. Both bars live inside the same backdrop, separated by a
+ * single pixel of it, because two separately framed meters floating over a head
+ * read as HUD stuck to the world rather than as one thing belonging to that
+ * body. The run row is inset a pixel on each side and is the quieter colour: it
+ * is the LESSER reading, and the one that has to carry across a dark forest at
+ * a glance is the one that says somebody is about to die.
  *
- * It is also transient: a full bar draws nothing at all. Breath is only news
- * while it is being spent or coming back, which is exactly when it is not full.
+ * The plate is anchored by its BOTTOM edge, always the same distance off the
+ * head. A player's is two rows tall and an enemy's is one, and a player's stays
+ * two rows whether the bar is full or not — geometry that changed with the
+ * number would jog the health bar up and down the head every time somebody
+ * sprinted, which is exactly the twitch that makes a world-space meter look
+ * pasted on.
  */
 function drawHealthBar(
   { ctx, view, config }: EntityContext,
@@ -658,25 +662,27 @@ function drawHealthBar(
   const ts = config.tileSize;
   const unit = Math.max(1, Math.round(ts * 0.0625) * view.zoom); // 1 world px
   const barW = Math.round(ts * 0.875) * view.zoom;
-  const barH = unit * 3;
-  const ratio = clamp01(target.hp / target.maxHp);
   const barX = Math.round(centerX - barW / 2);
-  const barY = view.y(spriteTop - ts * 0.125);
   const innerW = barW - 2 * unit;
+  const runs = target.staminaMax > 0;
+  // 1px border, the health row, then — for a body that runs — 1px of backdrop
+  // as a separator, the breath row, and the bottom border.
+  const plateH = unit * (runs ? 5 : 3);
+  const bottom = view.y(spriteTop - ts * 0.125) + unit * 3;
+  const plateY = bottom - plateH;
 
+  const ratio = clamp01(target.hp / target.maxHp);
   ctx.fillStyle = palette().entity.barBackdrop;
-  ctx.fillRect(barX, barY, barW, barH);
+  ctx.fillRect(barX, plateY, barW, plateH);
   ctx.fillStyle = hpColor(ratio);
-  ctx.fillRect(barX + unit, barY + unit, Math.round(innerW * ratio), unit);
+  ctx.fillRect(barX + unit, plateY + unit, Math.round(innerW * ratio), unit);
 
-  if (target.staminaMax <= 0 || target.stamina >= target.staminaMax - 0.5) return;
+  if (!runs) return;
   const breath = clamp01(target.stamina / target.staminaMax);
   const tone = palette().stamina;
-  const runY = barY + barH;
-  ctx.fillStyle = palette().entity.barBackdrop;
-  ctx.fillRect(barX + unit, runY, innerW, unit);
+  const runW = innerW - 2 * unit;
   ctx.fillStyle = target.winded ? tone.spent : tone.ready;
-  ctx.fillRect(barX + unit, runY, Math.round(innerW * breath), unit);
+  ctx.fillRect(barX + 2 * unit, plateY + unit * 3, Math.round(runW * breath), unit);
 }
 
 /**

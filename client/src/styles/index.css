@@ -72,12 +72,14 @@
   --hp-mid: #f2a541;
   --hp-low: #e6484f;
   --xp: #6ea8fe;
-  /* Breath. Deliberately off the HP ramp: green-amber-red is a life reading,
-     and a second bar that spoke the same language would have the player
-     reading a wound where there is only a run. Spent is the same hue with the
-     light taken out of it — the bar is still there, it just stops offering. */
-  --stamina: #6fd3c4;
-  --stamina-spent: #4a6b68;
+  /* Breath. YELLOW, and it is the one meter that never changes colour with its
+     own number: green-amber-red is a life reading, and a run bar that ramped
+     would have the player seeing a wound where there is only a sprint. It sits
+     brighter and flatter than `--hp-mid` so the two never trade places on a
+     body that is both hurt and out of breath. Spent is the same hue with the
+     light taken out — the bar is still there, it just stops offering. */
+  --stamina: #e8c53c;
+  --stamina-spent: #7d6a28;
   --neutral: #8b8ba3;
 
   /* world tiles (canvas + minimap) */

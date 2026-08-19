@@ -2,7 +2,9 @@
 """Asset pipeline: the MERCHANT'S CAMP — where the night's take gets spent.
 
 Output (assets/processed/store/):
-    table.png    4 frames, 32x20    PROP   — the trestles a weapon lies on
+    wagon.png    1 frame,  96x80    PROP   — his cart, and the zone's backdrop
+    counter.png  1 frame,  35x22    PROP   — the plank he trades over
+    table.png    4 frames, 36x32    PROP   — the round pedestals goods lie on
     kit.png      5 frames, 26x24    PROP   — his own gear, and NOT for sale
     torch.png    2 frames, 12x30    PROP   — the posts lighting the pitch
     rug.png      2 frames, 48x32    DECAL  — the mat he trades over
@@ -20,10 +22,11 @@ the same trees, the same soil, the same dark, with a trader's pitch set up in
 the middle of it and torches keeping the night off the stock.
 
 So this file no longer draws a floor, a wall or a hanging lamp. The ground is
-`make_textures.py`'s forest soil, unchanged, because it is the same forest;
-the shelter is the TENT out of `make_scenery.py`, because a trader sleeping
-under canvas in the woods is a thing that already exists in this game's world
-and a second tent sheet would only be a slightly different one.
+`make_textures.py`'s forest soil, unchanged, because it is the same forest. The
+shelter is his own WAGON, which is drawn here — a covered cart is the one piece
+of a trader nobody else in this game owns, and it is also where his stock, his
+shelter and the answer to "where did all this come from" fit into one
+silhouette.
 
 WHAT IS LEFT IS WHAT IS HIS. The tables, the mat under his feet, and the
 torches he drove into the ground when he pitched — plus the pool that says
@@ -32,7 +35,7 @@ forest and comes from the forest's own generators, which is the same rule
 `server/app/scenery.py` keeps for every other scene.
 
 THE KIT IS THE STORY, AND IT IS DELIBERATELY NOT INTERACTIVE.
-Four tables in a clearing is a shop. Four tables with crates roped up behind
+Six tables in a clearing is a shop. Six tables with crates roped up behind
 them, a rack of spare barrels, a plank shelf of tins and a padlocked strongbox
 is somebody LIVING out here and selling out of what they have. Nothing in
 `kit.png` can be opened, bought or broken — and the ART has to say so, because
@@ -49,14 +52,14 @@ rift are the same kind of thing, which is the one thing the scene must not say.
 
 THE TABLE SHIPS ITS SURFACE. `topY` in the manifest is the row a weapon lies
 on, in frame pixels, and it is part of the ART rather than a number the client
-picks: three of the four tables are different heights on purpose (a trestle, a
-board over crates, a board over a barrel), and a single hardcoded offset would
-float one gun and sink another.
+picks: the four pedestals are different heights on purpose (a turned column, a
+barrel, a cable spool, a stone drum), and a single hardcoded offset would float
+one gun and sink another.
 
-MATERIALS COME FROM `make_scenery.py`. The stall is built out of the same
-worked timber, canvas and rope as the crates and the cabin, for the reason
-there is only one blood in the game: a shop that shares no material with the
-world outside it reads as a different game's asset pack.
+MATERIALS COME FROM `make_scenery.py`. The wagon, the counter and the stalls
+are built out of the same worked timber, canvas and rope as the crates and the
+cabin, for the reason there is only one blood in the game: a shop that shares no
+material with the world outside it reads as a different game's asset pack.
 
 Usage:
     python tools/make_store.py
@@ -344,7 +347,7 @@ def make_kit(w: int, h: int, variant: int, rng: random.Random) -> Image.Image:
         for x in range(3, w - 3):  # the lid's lip
             px[x, h - 12] = pick(METAL, 0.78, x, h - 12)
         # The hasp and the lock: small, central, and the reason this piece
-        # reads as CLOSED from the far end of the glade.
+        # reads as CLOSED from across the clearing.
         for y in range(h - 13, h - 9):
             px[w // 2, y] = pick(METAL, 0.85, w // 2, y)
         box(w // 2 - 2, h - 10, w // 2 + 1, h - 7, METAL, 0.86, 7)

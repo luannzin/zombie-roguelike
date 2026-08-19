@@ -223,11 +223,21 @@ subtree.
   screen when the camera is pointed somewhere it can be seen, which is what
   makes finding it a matter of looking. A slow spatial PING sounds from the
   mouth every few seconds, and that is the channel that still works while the
-  player is facing the other way. The gold HUD chevron (`/hud/arrow.png`) is
-  the fourth and it is now TEMPORARY: it burns while the news is news and then
-  fades out. It used to be permanent, which meant the world never had to say
+  player is facing the other way. The gold HUD chevron (`/hud/chevron.png`) is
+  the fourth and it BLINKS: a long solid burst on the frame the exit is carved,
+  then dark, then a couple of seconds every few, for as long as the way out is
+  uncrossed. It was permanent once, which meant the world never had to say
   anything — a marker that answers "which way out" forever turns a column of
-  fire over a black forest into decoration.
+  fire over a black forest into decoration. Then it faded out after ten
+  seconds, which left a party that turned the wrong way at second twelve with
+  nothing to ask. Pulsing is both: the map does the work most of the time and
+  the glass is there when somebody has lost their bearings. It is a solid
+  TRIANGLE rather than the thin dart on `arrow.png`, because what the eye
+  catches in a half-second flash is area, not line.
+  The quest row is an ORDER now and not a task — "A saída abriu — corra". The
+  platform left, every lantern on the map died, every drop was swept and the
+  whole pack is hunting; "find the exit" is the same grammar as "find the
+  extraction point" and this moment is nothing like that one.
   Crossing that corridor ends the night — but it does not go home yet. It opens
   on the **STORE**, and the day increments on the way out of THAT.
   Extraction pads are on the
@@ -239,26 +249,50 @@ subtree.
   `BEACON` is the channel a beacon arrives on, and the boot prints
   players leave behind are navigation for the trip back.
 - **The STORE is the fourth beat of the loop and the only place money exists.**
-  A trader's camp in a long forest GLADE, read left to right
-  (`server/app/store.py`), and it is READ IN THREE BEATS in that order: the
-  party walks in from the west and the night's PLATFORMS are being lowered into
-  the apron in front of them; past that the merchant is pitched in the middle —
-  his tent, his campfire, his torches, his own crates and racks behind the
-  counter — with his three or four rustic tables in front of him, one gun on
-  each; and past HIM, alone at the far end on the walk to the way out, the
-  upgrade MACHINE. Get paid, see what it buys, spend a level, leave. The way
-  back seals behind them exactly as the forest's did; the east end stands open
-  the whole time, and walking out of it is the next day — straight into the
-  next night's forest, arriving through an edge corridor that seals behind
-  them, exactly as leaving the campfire does.
+  A trader's pitch in a round forest CLEARING, walked SOUTH TO NORTH
+  (`server/app/store.py`): corridor, room, corridor. The party comes up out of
+  the arrival throat and the night's PLATFORMS are being lowered onto the apron
+  in front of them and to their left; the trader is parked on the WEST rim with
+  his wagon, his counter, his fire and his own gear; his six stalls stand in a
+  2x3 GRID on the EAST rim; and the upgrade MACHINE stands alone on the
+  NORTH-WEST arc, on the side of the room the way out is on. Get paid, see what
+  it buys, spend a level, leave. The way back seals behind them exactly as the
+  forest's did; the north end stands open the whole time, and walking out of it
+  is the next day — straight into the next night's forest, arriving through an
+  edge corridor that seals behind them, exactly as leaving the campfire does.
+  - **IT IS A ROOM AND IT USED TO BE A LANE.** The glade was long and
+    east-west, with the tables strung along it, and the shape was doing exactly
+    one thing: guaranteeing nobody walked past the stock. That is a corridor's
+    argument and it is a weak one — the party has to walk the same straight
+    line every night whether or not they can afford anything, and a shop that
+    is a queue is a shop nobody stands still in. A round room is somewhere you
+    STAND: everything in it is visible from the middle at once, two players can
+    be at the trader and at the cabinet at the same time without one of them
+    walking back through the other, and a party who came home broke can cross
+    it in a straight line instead of being marched past six prices. The
+    corridors on the ends are the half of the lane that was worth keeping —
+    they keep the arrival and the departure as separate events.
+  - **THE WAGON IS WHO HE IS.** He had a tent when he was a man camped in a
+    glade; he has a CART now, because he did not walk here with six tables on
+    his back — he drives, he was somewhere else last week, and that is the
+    reason he is worth finding. It is also the only sprite in the game carrying
+    the world's history on it: guns racked along the flank, masks strung on a
+    line, salvage lashed to the boards, and two covered bodies laid out at the
+    wheels. That last one is drawn as quietly as it can be and is never said
+    out loud anywhere; the party works out where the stock comes from on their
+    own, from across the clearing.
   - **IT IS THE ONE LIT PLACE, AND THAT IS THE ZONE'S JOB.** Everywhere else a
     party goes is a black wood with a torch in it somewhere; here they can see
-    the treeline, the far end of the lane and each other. `Zone.ambient` is
-    how — a floor under the darkness pass, zero in every zone somebody can be
-    killed in and `zones.STORE_AMBIENT` here. It is well under 1: the glade is
-    visible, not daylit, and his fire, the lane torches and the machine's
-    marquee are still the brightest things in it. The contrast is the reward —
-    a night is only frightening if there is somewhere that is not.
+    the treeline, the far arc of the room, the way out and each other.
+    `Zone.ambient` is how — a floor under the darkness pass, zero in every zone
+    somebody can be killed in and `zones.STORE_AMBIENT` here. On top of that
+    floor a RING of torches burns around the rim, a chain runs down each throat
+    and paired ranks dress both mouths. The ring is what a party sees before
+    they see anything standing in it, and it is the difference between walking
+    into a room and walking into more woods. It is still well under 1: the
+    clearing is visible, not daylit, and his fire and the machine's marquee are
+    the brightest things in it. The contrast is the reward — a night is only
+    frightening if there is somewhere that is not.
   - **THE NIGHT'S PLATFORMS COME HOME WITH THE PARTY, AND GETTING PAID IS AN
     EVENT.** The same four aircraft that took the skids set them down on the
     apron, the lines let go, the drones climb out, and the cargo on the decks
@@ -270,29 +304,36 @@ subtree.
     machine that visibly came back is money. The balance itself is credited
     server-side on the crossing (`Room.enter_store`); everything above is
     presentation, so a reconnect mid-animation cannot pay anybody twice.
-  - **HIS GEAR IS BEHIND THE COUNTER AND NONE OF IT OPENS.** Crates, a barrel
-    of rods, a rack of spare barrels, a shelf of tins, a padlocked strongbox —
-    all on the NORTH side with his tent and his fire, because everything a
-    party may touch is on the SOUTH side. That split teaches which half of the
-    glade answers E in one visit. The art carries the other half of it: every
-    frame is drawn roped, strapped and padlocked, because the player spent the
-    previous night learning that a box in this game is a thing you open.
+  - **HIS GEAR IS ON HIS SIDE AND NONE OF IT OPENS.** Crates, a barrel of rods,
+    a rack of spare barrels, a shelf of tins, a padlocked strongbox — all on
+    the WEST arc around the wagon and the fire, because everything a party may
+    touch is on the EAST one. That split teaches which half of the room answers
+    E in one visit. The art carries the other half of it: every frame is drawn
+    roped, strapped and padlocked, because the player spent the previous night
+    learning that a box in this game is a thing you open.
   - **It is OUTDOORS, and that is load-bearing.** It was an interior first, a
     plank corridor with walls and hanging lamps, and the problem outweighed
-    everything it got right: it was the only room in the game, so it read as a
-    menu the game had cut to rather than as somewhere the party walked. A
-    clearing with a tent in it reads as a person who is also out here. The
-    glade is an ordinary forest map — the same soil, trees and darkness as
+    everything it got right: it was the only building in the game, so it read
+    as a menu the game had cut to rather than as somewhere the party walked. A
+    clearing with a cart parked in it reads as a person who is also out here.
+    It is an ordinary forest map — the same soil, trees and darkness as
     everywhere else — which is also why almost none of it needs special code:
-    his tent is a scenery prop, his campfire is a `FIRE` tile, and his torches
-    are `SceneLight`s like any cabin lamp.
-  - The lane is a corridor made of WOODS rather than of walls, and the shape is
-    the point: one decision repeated three or four times, so the treeline
-    squeezes the walkable ground into a lane and every table sits between the
-    way in and the way out. A round clearing lets a party cut a diagonal and
-    leave without seeing half the stock. The tables are placed on an even
-    rhythm and then pushed off it — four identical stalls at four identical
-    intervals is the loudest tell that nobody set this up by hand.
+    his campfire is a `FIRE` tile and every torch is a `SceneLight` like any
+    cabin lamp.
+  - **THE STOCK IS THE ONE THING IN THE ROOM THAT WAS ARRANGED.** Six round
+    tables in two columns of three, on the grid, priced cheapest-first and read
+    south to north — because that is the direction the party walks in, so the
+    first table they reach is the one they can afford and the last is the one
+    they are saving for. Everything AROUND the grid is irregular: the wagon,
+    the fire, the gear, the torch ring. The old lane jittered its tables off an
+    even rhythm on the argument that four identical stalls at four identical
+    intervals is the tell that nobody set this up by hand — which is right
+    about a corridor and wrong about a market. A trader who lays goods out in
+    rows wants them compared; six prices scattered round a clearing is six
+    things to hunt rather than one decision to make.
+    The tables are ROUND because they are now walked around: a board has a
+    front and a back and reads wrong from three of the four sides a room lets
+    you approach it from.
   - **THERE ARE TWO CURRENCIES AND THEY ARE TWO METALS.** GOLD is the GROUP's:
     everything the party loaded onto the night's platforms becomes the balance
     on the way in here, and nothing else, anywhere, adds to it. Loot still in
@@ -313,20 +354,29 @@ subtree.
     already glows lavender in the dark, and a coin that glowed the same would
     teach the party that a purple light across a clearing means a good item
     right up until the night it meant three coins.
-  - Each table shows a coin and a price above it. Walking close LIFTS the
-    weapon off the boards, lights a pool under it, and opens the buy tooltip;
-    E takes it. A stall sells once and the table stays there empty, because
-    the gap is what says you already bought it. Prices are the loot catalog's
-    value times a markup, never a second list. A price the party cannot cover
-    is shown anyway, in red — the AWP priced out of reach is doing more work
-    than a tutorial line about saving up would. The colour is the whole
-    message; the tooltip does not also spell out that you are short.
+  - Each table shows the item's NAME in its rarity colour with a coin and a
+    price under it. Walking close FLOATS the weapon off the boards — a slow
+    breath, not a fixed offset, because a sprite that rose and stopped is a bug
+    and one still moving is an offer — lights a pool under it, and opens the
+    buy tooltip; E takes it. A stall sells once and the table stays there
+    empty, because the gap is what says you already bought it.
+    Prices are the loot catalog's value times a markup, never a second list,
+    plus one stall's own HAGGLE either side of it. That spread is what makes
+    six stalls six decisions: the stock is rolled WITH REPLACEMENT, so he can
+    be holding three of the same pistol, and three tables carrying the same
+    number is a shelf rather than a shop. It is small enough never to reorder
+    the catalog — a haggled AK never undercuts a full-price FAMAS — because the
+    price ladder is teaching what the guns are worth.
+    A price the party cannot cover is shown anyway, muted — the AWP priced out
+    of reach is doing more work than a tutorial line about saving up would. The
+    colour is the whole message; the tooltip does not also spell out that you
+    are short.
   - It runs the darkness like every other forest map, because it IS one — the
     ambient floor above is a value on the zone, not a branch in the renderer.
-    The pitch being the brightest pool in a lit-but-dim glade is the whole
-    picture, and the torches lining the lane are still NAVIGATION: the lantern
-    is off here, and they are what point a party emerging from the west
-    corridor at the trader. The merchant
+    The pitch being the brightest pool in a lit-but-dim clearing is the whole
+    picture, and the torches are still NAVIGATION: the lantern is off here, and
+    the chain down the south throat is what points a party at the room before
+    they can see into it. The merchant
     (`server/tools/make_merchant.py`) is not an entity — he stands still and
     plays an idle loop with three flourishes interrupting it, entirely
     client-side, because nothing about which frame he is on has ever been
@@ -334,10 +384,14 @@ subtree.
 - **A LEVEL IS A TOKEN AND THE MACHINE IS THE ONLY THING THAT TAKES IT.**
   xp used to be a bar that filled and changed nothing. A level now pays one
   SPIN (`server/app/skills.py`), spins bank across nights, and the only place
-  one can be spent is a scavenged slot cabinet standing alone at the far end of
-  the merchant's glade — dented, chrome gone, one corner of its marquee smashed
-  off, wired to a car battery on the ground beside it. That battery is the
-  whole answer to "why is there a slot machine in a forest".
+  one can be spent is a scavenged slot cabinet standing alone on the north-west
+  arc of the merchant's clearing — three tiles wide and four and a half tall,
+  dented, chrome gone, one corner of its marquee smashed off, wired to a car
+  battery on the ground beside it. That battery is the whole answer to "why is
+  there a slot machine in a forest". It stands ACROSS the room from everything
+  that is about money, on the side the exit is on, so it is somewhere a party
+  WALKS to after they have spent — which is the whole difference between a
+  machine and a menu item.
   - **IT IS A ROLL, NOT A MENU.** A list of upgrades with prices is a
     spreadsheet the player solves once and then executes every run afterwards;
     a roll is a moment. The ladder is the SAME five rarities loot already uses,
@@ -349,15 +403,36 @@ subtree.
     the lever moves, so that wait is honest — the machine is taking its time
     telling them, not deciding late. By the third shop a long third reel is
     good news before the colour lands, and that is the whole feeling.
+  - **A REEL IS A BAND THAT GOES PAST, NOT A PICTURE THAT CHANGES.** Each
+    window is a scrolling view onto one tall strip of ten cells
+    (`/machine/strip.png`), and it DECELERATES into its stop over half a
+    second. That ramp is where the whole ceremony actually lives: the reel
+    crawls past six or seven faces one at a time with the answer already
+    decided, and because the strip's fixed order puts a legendary next to a
+    common, a near miss is a real thing that happened rather than an effect
+    somebody wrote. Commons sit on the band four times, so the strip looks like
+    the odds it pays. It used to be four frames of blur and a hard cut to a
+    colour, which read as a colour appearing in a box.
+  - The PAY LINE — the row all three windows have to agree on, marked in brass
+    between them — flashes on the frame the last reel lands, before the tray
+    fires. The machine reacting to its own result has to come before the
+    consequence of it.
   - **RARITY IS A MULTIPLIER, NOT A SECOND CEREMONY.** One curve (`pullGain`)
     scales the burst, the marquee tint, the canister's glow and the camera
     shove; the sounds ladder the same way, and the `jackpot` flourish is EPIC
     AND UP only, because a celebration that fires on every pull stops being one.
   - What comes out is a physical CANISTER — the machine's tray fires it, it
     arcs, it lands, it sits there being looked at, then it flies into the tray
-    ABOVE the bag on the HUD, where it is one tile: icon, rarity border, stack
-    count, name on hover. A skill is a stack, so a duplicate is a smaller pull
-    rather than a dead one.
+    ABOVE the bag on the HUD, where it becomes one ROW: icon, name in its
+    rarity colour, and `x{n}`. A skill is a stack, so a duplicate is a smaller
+    pull rather than a dead one. The tray is a list of labelled rows and not a
+    grid of tiles, because a wall of 16px icons asks the player to hover
+    eighteen things to find out what they own — which is a spreadsheet with the
+    words hidden. With nothing pulled yet it says so in one muted word rather
+    than disappearing: a HUD region that shows up for the first time at the
+    first shop is a region the player has to learn mid-run. There is no
+    "giros guardados" badge any more — it repeated one fact for a whole night,
+    and the marquee below already says it from across the room.
   - **A SKILL HAS TO ACTUALLY DO SOMETHING**, and `skills.Mods` is the one
     place a player's numbers diverge from `config.py`. Speed, carry ceiling,
     health ceiling, gun and blade damage, xp, dark-gold odds, lantern life and
@@ -366,8 +441,8 @@ subtree.
     `server/app/AGENTS.md`.
   - The cabinet's MARQUEE burns harder for a player holding an unspent level.
     That is the only teaching in the zone that happens at a distance, it costs
-    one float, and it is the thing a HUD line could never do from the far end
-    of a glade.
+    one float, and it is the thing a HUD line could never do from the far side
+    of a clearing.
 - The room's ZONE (`server/app/zones.py`) says where the run is and how that
   place behaves: its title card, whether enemies spawn and guns fire
   (`hostile`), whether the lantern may be switched on (`lantern`), and how much

@@ -167,9 +167,9 @@ export interface Stand {
 /**
  * The merchant's pitch. Null on every map that is not the store.
  *
- * Only what is HIS. The glade around it is an ordinary forest map — its soil
- * is hashed from the seed and his tent is a scenery prop — so nothing about
- * the place he is standing in needs to be here.
+ * Only what is HIS. The clearing around it is an ordinary forest map — its
+ * soil is hashed from the seed and its lights are ordinary `SceneLight`s — so
+ * nothing about the place he is parked in needs to be here.
  */
 export interface StoreFixtures {
   merchantX: number;
@@ -189,8 +189,8 @@ export interface StoreFixtures {
   rugX: number;
   rugY: number;
   /**
-   * Contact point of the upgrade machine, at the far end of the lane. Null on
-   * a payload with no cabinet — the layer draws nothing rather than guessing a
+   * Contact point of the upgrade machine, on the north-west arc. Null on a
+   * payload with no cabinet — the layer draws nothing rather than guessing a
    * position, the same way it treats a missing atlas.
    */
   machineX: number | null;

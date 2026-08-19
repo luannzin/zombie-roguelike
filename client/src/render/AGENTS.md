@@ -21,11 +21,11 @@ mutation, no React.
 | `rift.ts` | threshold atlas: the console prop with its four STATES, the torch prop and its fire, the paid console's band, the exit's paving |
 | `platform.ts` | extraction atlas: the cargo skid (cold / green standby / red alarm) and lift drone (hover / cruise) props, rotor / strobe / standby / siren / downwash / burst effect sheets, the imprint decal, and the `layout` block the ropes and lamps are drawn from |
 | `layers/rift.ts` | extraction pads: the whole rig's timing (`riftPhase`) plus its four passes — floor, depth sort, the air, additive light — and the deck's LOAD, both the pile at rest and what is still falling into it |
-| `store.ts` | the merchant's own kit: tables (with `topY`), his gear (`kit`), torches (with `flameY`), the mat, the torch fire and the buy pool — plus the HUD coin the price tag draws |
-| `machine.ts` | the upgrade cabinet's atlas: body, reels, lever, and the three greyscale lights (marquee, reel backlight, payout burst) the layer tints |
+| `store.ts` | the merchant's own kit: his WAGON and his counter, the six round tables (with `topY`), his gear (`kit`), torches (with `flameY`), the mat, the torch fire and the buy pool — plus the HUD coin the price tag draws |
+| `machine.ts` | the upgrade cabinet's atlas: body, the reel BAND (`strip.png` — one tall image, scrolled and wrapped), lever, pay line, and the three greyscale lights (marquee, reel backlight, payout burst) the layer tints |
 | `skills.ts` | skill icons and the canister, plus `drawCanister` — body, icon, emissive pass, in that unnegotiable order |
 | `merchant.ts` | the shopkeeper's clips and the player that picks between them (`MerchantPose`, `stepMerchant`, `merchantFrame`) |
-| `layers/store.ts` | his pitch drawn: mat, depth-sorted tables / gear / torches / merchant / MACHINE, stock with its lift, the fires, the cabinet's tinted light and the price tags |
+| `layers/store.ts` | his pitch drawn: mat, depth-sorted wagon / counter / tables / gear / torches / merchant / MACHINE, stock FLOATING over the table you are at, the fires, the cabinet's tinted light, the scrolling bands, the pay-line flash and the price tags |
 | `layers/payout.ts` | the night's platforms being lowered into the shop's apron, the drones leaving, and the gold flying to the HUD balance |
 | `loot.ts` | loot atlas: one 16x16 frame per collectable item |
 | `guns.ts` | held-gun atlas and the shared muzzle/grip pose (`gunMuzzle`) |
@@ -455,31 +455,43 @@ mutation, no React.
   same for the pads' torches, on the same sheet: one flame in this game means
   "a threshold somebody dressed".
 - **The STORE draws almost nothing of its own, and that is the design.** It is
-  an ordinary forest map: the glade's soil, grass and trees come from
-  `layers/terrain`, the merchant's tent is a scenery prop in the standing sort,
-  his campfire is a `FIRE` tile drawn by the terrain layer like the camp's, and
-  his torches feed the same light field a cabin lamp does. Only his own kit is
-  special-cased — the mat goes flat with the boot prints, the tables, torches
-  and the merchant go IN the entity sort (each table drawing its own stock
-  immediately after itself, so a gun is never sorted away from what it is lying
-  on), the torch flames and the buy pool are additive after the darkness like
-  every other light, and the prices go last with the name labels.
+  an ordinary forest map: the clearing's soil, grass and trees come from
+  `layers/terrain`, his campfire is a `FIRE` tile drawn by the terrain layer
+  like the camp's, and his torch ring feeds the same light field a cabin lamp
+  does. Only what is HIS is special-cased — the mat goes flat with the boot
+  prints; the wagon, the counter, the tables, his gear, the torches and the man
+  go IN the entity sort (each table drawing its own goods immediately after
+  itself, so a gun is never sorted away from the pedestal it is floating over);
+  the torch flames and the buy pool are additive after the darkness like every
+  other light; and the tags go last.
   It had a plank floor, walls, a baseboard and hanging lamps when it was an
   interior. All of that is gone; do not reintroduce a floor override or a wall
-  pass for it. If the camp needs a new object, prefer a scenery prop or a tile
-  kind that already draws itself over a fifth entry point in `layers/store`.
-- **It runs the darkness like every other forest map.** The pitch being a pool
-  of firelight in a dark glade is the whole picture; an evenly lit clearing
-  reads as somewhere with no night in it. The lantern is off, so the torches
-  lining the lane are the only thing telling the party which way the trader is
-  — their spacing is chosen so the pools overlap into one lit path, because a
-  chain of separate islands of light reads as somewhere to be careful.
+  pass for it. If the shop needs a new object, prefer a scenery prop or a tile
+  kind that already draws itself over a sixth entry point in `layers/store`.
+- **It runs the darkness like every other forest map**, on an ambient FLOOR
+  (`zones.STORE_AMBIENT`) rather than on a branch in the renderer. The whole
+  room is legible from the middle of it and his fire, the torch RING around the
+  rim and the cabinet's marquee are still the brightest things in it. The
+  lantern is off here; the ring is what says "this is a room" before anything
+  standing in it is read, and its spacing is chosen so the pools overlap into
+  one continuous lit rim, because a chain of separate islands of light reads as
+  somewhere to be careful — the opposite of what this zone is for.
 - **A price tag is the shop talking, not an object in the room.** It is drawn
   in the label pass so nothing can occlude it, and it is on the world rather
-  than in the HUD because "what does that cost" has to be answerable from
-  across the corridor — otherwise the zone is four identical tables you have to
-  visit in turn to compare. An unaffordable price is MUTED, never hidden: a
-  shop that greys out its own stock is telling you what to want.
+  than in the HUD because "what is that and what does it cost" has to be
+  answerable from the middle of the clearing. It carries the item's NAME in its
+  rarity colour above the price, and that is what the GRID cost: six pedestals
+  in a square are compared at a glance instead of walked past in order, the
+  stock is rolled WITH REPLACEMENT so two of them really can be the same gun at
+  two prices, and six bare numbers over six identical tables is a puzzle. An
+  unaffordable price is MUTED, never hidden: a shop that greys out its own
+  stock is telling you what to want.
+- **The goods FLOAT, and floating is a breath rather than an offset.** A gun on
+  the table you are standing at lifts off the boards and keeps moving
+  (`standLift`, `config.storeLiftTiles`); a sprite that rose to a fixed height
+  and stopped is a bug, and one that is still breathing is an offer. The pool
+  underneath (`glow`) is the other half of the same statement, and both are
+  keyed off the SAME `nearId` the buy prompt is.
 - **The merchant is not an entity and must not become one.** He has no
   position that changes, no aim, no walk cycle — so he has a CLIP PLAYER
   instead, and it is entirely client-side. Two players watching him see

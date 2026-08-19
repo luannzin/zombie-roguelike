@@ -437,13 +437,18 @@ seam React is allowed to read.
   the body server-side, so the key is dropped there rather than predicted
   against a run that never happened. While `locked` there is no prediction at
   all, so the snapshot path snaps the breath with the position.
-- **The run bar is drawn twice and it is the LESSER bar in both places.** Over
-  the body it is a hairline under the health bar, no frame of its own, and it
-  is not drawn at all while it is full — breath is only news while it is being
-  spent (`render/layers/entities.ts` `drawHealthBar`). In the corner it sits
-  directly under HP in `Vitals`, off the HP colour ramp on purpose: green to
-  red is a wound reading and this is not a wound. `winded` is a STATE, not a
-  low number, so it changes the colour and says so in a word.
+- **The run bar is drawn twice, it is YELLOW in both places, and it is the
+  LESSER bar in both.** Over the body it is the second row of ONE plate
+  (`render/layers/entities.ts` `drawHealthBar`): same backdrop as the health
+  bar, a pixel of it as the separator, inset a pixel each side. The plate is
+  anchored by its bottom edge and a player's is always two rows tall, full or
+  not — geometry that tracked the number would jog the health bar up and down
+  the head on every sprint, which is what makes a world-space meter read as
+  pasted on rather than worn. Enemies have no second row at all. In the corner
+  it sits directly under HP in `Vitals`. Neither one ramps with its own number:
+  green-to-red is a wound reading, and breath is not a wound. `winded` is a
+  STATE rather than a low number, so it drains the colour and says so in a
+  word.
 - **A gun is in the hand, selected locally.** `held` rides the input packet
   the way the lantern switch does (slot index, or -1 holstered). The belt
   itself is roster `guns`; a collect with `dest: "hotbar"` flies to

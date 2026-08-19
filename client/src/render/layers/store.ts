@@ -111,8 +111,8 @@ export interface StoreScene {
    *
    * THIS IS THE WORLD DOING THE TUTORIAL. A machine that burns harder the
    * moment you have something to spend on it says "this is for you" from the
-   * far end of the glade, before any prompt, before any tooltip — which is the
-   * one thing a HUD line could never do at that distance.
+   * far side of the clearing, before any prompt, before any tooltip — which is
+   * the one thing a HUD line could never do at that distance.
    */
   invite: number;
   /** Skill icon frame per catalog key, straight off `config.skills`. */
@@ -403,7 +403,11 @@ function drawBand(
   const width = atlas.reelWidth;
 
   const blit = (offset: number, alpha: number) => {
-    const from = ((offset % bandH) + bandH) % bandH;
+    // WHOLE SOURCE PIXELS. A fractional source rectangle is sampled rather
+    // than blitted even with smoothing off, which on a scaled draw comes out
+    // as a seam that crawls up the window — the one artefact a reel cannot
+    // have, because it is exactly what a reel moving looks like.
+    const from = Math.floor(((offset % bandH) + bandH) % bandH);
     const first = Math.min(cellH, bandH - from);
     ctx.globalAlpha = alpha;
     ctx.drawImage(
@@ -590,10 +594,11 @@ function rarityInk(rarity: string): string {
  * The torches burning, and the pool under the weapon E is offering.
  *
  * Additive, after the darkness pass. The torches are what make this clearing
- * navigable at all — the lantern is off here and the glade is a forest at
- * night, so the line of fires down the lane is both the light and the
- * direction. Their POOLS come from the map's own light rows (they are
- * `SceneLight`s like any cabin lamp); this is the visible flame on top.
+ * navigable at all — the lantern is off here and the clearing is a forest at
+ * night, so the RING around the rim and the chains down the two throats are
+ * both the light and the shape of the place. Their POOLS come from the map's
+ * own light rows (they are `SceneLight`s like any cabin lamp); this is the
+ * visible flame on top.
  */
 export function drawStoreLight(
   ctx: CanvasRenderingContext2D,
@@ -658,7 +663,7 @@ export function drawStoreLight(
  * `--scene-neon` — the only electric colour in the game, so a party reads
  * "there is a machine down there" off a colour they have seen nowhere else.
  * Mid-pull it burns the WINNING RARITY, so the light coming off the cabinet is
- * already telling the glade what came out before the canister has cleared the
+ * already telling the room what came out before the canister has cleared the
  * tray. The tint is the whole payload; the sheet never changes.
  *
  * The burst is scaled by `pullGain`, which is the rarity ladder and nothing
@@ -682,22 +687,40 @@ function drawMachineLight(
   const tone = palette();
   const rarity = pull ? rarityTone(pull.rarity) : tone.scene.neon;
 
-  // The reels' backlight. Steady, and only really visible once the glade is
+  // The reels' backlight. Steady, and only really visible once the room is
   // dark around it — it is a lamp behind glass, not a signal.
   const win = atlas.window;
   const [firstX, firstY] = atlas.reelSlots[0] ?? [0, 0];
   const winStep = Math.floor(time * win.fps) % win.frames;
+  // CENTRED ON THE WINDOWS, derived rather than nudged: the sheet is drawn
+  // wider and taller than the glass so the light spills past it, and a fixed
+  // one-pixel offset would put the spill on one side the first time either
+  // the cabinet or the sheet was redrawn at another size.
+  const [lastX] = atlas.reelSlots[atlas.reelSlots.length - 1] ?? [firstX, 0];
+  const glass = lastX + atlas.reelWidth - firstX;
+  const winX = firstX - (win.frameWidth - glass) / 2;
+  const winY = firstY - (win.frameHeight - atlas.reelHeight) / 2;
   ctx.globalAlpha = 0.85;
   tinted(ctx, win.image, winStep * win.frameWidth, win.frameWidth, win.frameHeight,
-    Math.round(originX + firstX - 1), Math.round(originY + firstY - 1), rarity);
+    Math.round(originX + winX), Math.round(originY + winY), rarity);
 
   // The crown. `invite` is the local player holding an unspent level: the
   // machine burns harder for somebody who can use it, which is the world doing
   // the job a tutorial line would otherwise be asked to do.
+  //
+  // AND IT RACES WHILE THE THIRD REEL HOLDS. Two reels have agreed and the
+  // last one has not decided — that is the beat the whole ceremony is built
+  // around, and the cabinet getting visibly excited about its own result is
+  // the cheapest possible way to say so from across the room. The chase's
+  // phase jumps when the rate changes, and it does not matter: both changes
+  // land on a frame that already has a reel stopping on it.
   const marquee = atlas.marquee;
-  const step = Math.floor(time * marquee.fps * (1 + scene.invite * 0.6)) % marquee.frames;
+  const holding =
+    pull && pull.elapsed >= pull.timing.reel1 && pull.elapsed < pull.timing.reel2 ? 1 : 0;
+  const rate = 1 + scene.invite * 0.6 + holding * 1.6;
+  const step = Math.floor(time * marquee.fps * rate) % marquee.frames;
   const [crownX, crownY] = atlas.crown;
-  ctx.globalAlpha = 0.55 + scene.invite * 0.45;
+  ctx.globalAlpha = Math.min(1, 0.55 + scene.invite * 0.45 + holding * 0.35);
   tinted(ctx, marquee.image, step * marquee.frameWidth, marquee.frameWidth, marquee.frameHeight,
     Math.round(originX + crownX - marquee.frameWidth / 2),
     Math.round(originY + crownY - marquee.anchorY),
@@ -714,15 +737,14 @@ function drawMachineLight(
     if (flash >= 0) {
       const fade = (1 - flash) ** 1.5;
       const height = 1 + pullGain(pull) * 2.5;
-      const [firstX] = atlas.reelSlots[0] ?? [0, 0];
-      const [lastX] = atlas.reelSlots[atlas.reelSlots.length - 1] ?? [0, 0];
-      const span = lastX + atlas.reelWidth - firstX;
       ctx.globalAlpha = Math.min(1, fade * pullGain(pull));
       ctx.fillStyle = `rgb(${rarity[0]} ${rarity[1]} ${rarity[2]})`;
+      // A pixel past the glass either side, so the bar reads as a line drawn
+      // ACROSS the three windows rather than as a fourth thing sitting in them.
       ctx.fillRect(
         Math.round(originX + firstX - 1),
         Math.round(originY + atlas.payLine - height / 2),
-        span + 2,
+        glass + 2,
         Math.max(1, Math.round(height)),
       );
     }

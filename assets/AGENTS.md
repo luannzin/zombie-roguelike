@@ -21,8 +21,9 @@ output the game actually loads.
   (`sheet.png` + `manifest.json`), `terrain/`, `scenery/`, `vfx/`, `gore/`,
   `rift/` (the extraction console and the threshold torches), `platform/` (the
   cargo skid, inbound lift drones, corner lamps, imprint), `merchant/`, `store/`
-  (his tables, his gear, his torches and mat), `machine/` (the upgrade cabinet
-  and its lights), `skills/` (skill icons and the canisters they come out in),
+  (his WAGON, his counter, the six round tables, his gear, his torches and
+  mat), `machine/` (the upgrade cabinet, its reel BAND `strip.png`, and its
+  lights), `skills/` (skill icons and the canisters they come out in),
   `loot/`, `guns/` (held side-view), `hud/`, and `audio/` (16-bit mono wavs +
   `manifest.json`) — the folder is art too,
   generated the same way, and `/audio/shot-0.wav` is served like any sprite.
@@ -30,7 +31,7 @@ output the game actually loads.
   `/player/sheet.png`, `/backpack/sheet.png`, `/zombie-husk/sheet.png`,
   `/zhat-cap/sheet.png`, `/terrain/ground_loam.png`,
   `/scenery/vehicle.png`, `/loot/sheet.png`, `/guns/sheet.png`, `/hud/backpack.png`,
-  `/hud/coin.png`, `/hud/darkcoin.png`, `/hud/arrow.png`, ….
+  `/hud/coin.png`, `/hud/darkcoin.png`, `/hud/arrow.png`, `/hud/chevron.png`, ….
 - `terrain/` is the PLACE — soil, stone, wood that grew there — and the client
   scatters it off the map seed. `scenery/` was carried in by somebody, and it
   arrives placed in groups from `server/app/scenery.py`. Two folders because

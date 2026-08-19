@@ -34,7 +34,7 @@ game's scale.
 | `mapgen.py` | procedural forest, seeded and connectivity-checked; `NEST_SCENES` / `HAUNT_SCENES` decide which scenes have creatures standing in them before anyone arrives |
 | `scenery.py` | story SCENES: the layouts, the thread linking them, their lights, the wire rows |
 | `camp.py` | the camp clearing, its bonfire, the seat ring, the VOID exit, and the walk-out formation |
-| `store.py` | the merchant's glade: its treeline and lane, the two end corridors, his tent / fire / torches, his own gear (`KIT_SPOTS`), the tables and the stock rolled onto them, `price_of`, the upgrade machine's spot, and the apron the night's platforms land on (`PAYOUT_SPOTS`) |
+| `store.py` | the merchant's CLEARING: corridor / round room / corridor, the two end gates, his wagon, counter, fire, gear (`KIT_SPOTS`) and torch ring, the six-stall grid and the stock rolled onto it, `price_of` + `_haggle`, the cabinet's spot, and the apron the night's platforms land on (`PAYOUT_SPOTS`) |
 | `zones.py` | where a run is: title card, `hostile`, `lantern`, `ambient` (zero everywhere but the shop) |
 | `skills.py` | what a LEVEL buys: the catalog, the rarity roll, `Loadout` (stacks + spins owed) and `Mods`, the flattened numbers every other module multiplies by |
 | `machine.py` | the upgrade machine's TIMELINE — one clock shared with `client/src/game/machine.ts`, including the third reel's per-rarity hold |
@@ -272,48 +272,95 @@ game's scale.
   merchant arrives in an edge corridor and seals behind them exactly as
   leaving the fire does. There is no `return_home`; do not add one back
   without a reason the camp has to exist mid-run.
-- **A store map has TWO corridors and the forest has one.** That is the whole
-  reason `Entrance.bounds` exists: `_ranks` finds a corridor's tiles by
-  scanning for VOID, and on this map that scan would hand the sealing entrance
-  every tile of the exit as well — bricking up the door the party is meant to
-  leave by. (`seal_to` exists for the same family of problem and is currently
-  left at its TREE default here, because the glade is woods like anywhere
-  else.)
-- **The store is a FOREST map, not a room.** It was an interior once and the
-  lesson is worth keeping: a building was the only room in the game, so it read
-  as a menu rather than as somewhere the party walked to. Its ground, trees and
-  darkness are the ordinary ones, his tent is a `scenery.Prop`, his campfire is
-  a `world.FIRE` tile, and his torches are `SceneLight`s — so almost nothing
-  about the zone needs client code. Keep it that way: a new object here should
-  be an existing prop kind or tile kind before it is a new payload field.
-- **`_tiles` clears a SPINE and that is a guarantee, not dressing.** The lane's
-  width is noise (two sines plus a hash) and a pinch plus an unlucky boulder
-  could in principle wall the glade in half. Unlike `mapgen`, this module has
-  no retry loop to fall back on — there is exactly one store map and the party
-  is already walking into it — so a narrow band down the centreline is cleared
-  unconditionally. It also reads: a trader walks that line every day.
+- **A store map has TWO corridors and the forest has one**, and they run
+  SOUTH (the arrival, which seals) and NORTH (the way on, which never does).
+  That is the whole reason `Entrance.bounds` exists: `_ranks` finds a
+  corridor's tiles by scanning for VOID, and on this map that scan would hand
+  the entrance every tile of the exit as well — bricking up the door the party
+  is meant to leave by. (`seal_to` exists for the same family of problem and is
+  left at its TREE default here, because the clearing is woods like anywhere
+  else.) Nothing about either gate may be hardcoded to a compass point:
+  `store.formation_slots` builds its files off `gate.dx/dy` for exactly that
+  reason, and the zone turning from east-west to south-north is why.
+- **The store is a FOREST map, not a building.** It was an interior once and
+  the lesson is worth keeping: a building was the only room in the game, so it
+  read as a menu rather than as somewhere the party walked to. Its ground,
+  trees and darkness are the ordinary ones, his campfire is a `world.FIRE`
+  tile, and every torch is a `SceneLight` — so almost nothing about the zone
+  needs client code. Keep it that way: a new object here should be an existing
+  prop kind or tile kind before it is a new payload field.
+- **ITS SHAPE IS A ROOM BETWEEN TWO THROATS, AND THE ROOM IS THE POINT.**
+  `_tiles` opens the UNION of a circle (`STORE_CIRCLE_TILES`, breathing on two
+  harmonics plus a hash) and a neck that runs the full height of the map. It
+  was a long east-west lane first, and that shape had exactly one argument —
+  nobody can walk past the stock — which is a corridor's argument and a weak
+  one: the party walks the same straight line every night whether or not they
+  can afford anything. A round room is somewhere you STAND. Everything is
+  visible from the middle at once, two players can be at the trader and at the
+  cabinet without walking through each other, and a party with nothing to spend
+  crosses it instead of being marched past six prices. The corridors on the
+  ends keep the arrival and the departure as separate events, which is the half
+  of the lane worth keeping.
+  The composition is a RING read from the middle and every fixture is authored
+  as a `(column, row)` offset from the clearing's centre (`_at`): the WAGON and
+  the man on the west arc, his gear around them, the six stalls on the east
+  arc, the cabinet on the north-west, and the platform apron in the south-west.
+  An offset measured from a map edge would move the day the map got taller.
+- **THE WAGON IS THE ANSWER TO "WHO IS THIS MAN".** He does not have a tent any
+  more — a tent pitched beside a covered cart is the same statement twice. The
+  cart carries his shelter, his stock and the world's history in one
+  silhouette: guns racked on the flank, masks strung on a line, salvage lashed
+  to the boards, and two covered bodies laid out at the wheels. That last one
+  is drawn as quietly as it can be and never mentioned anywhere else; the party
+  works out where the stock comes from on their own, from across the clearing.
+- **THE TORCH RING IS THE ZONE, not decoration.** `RING_TORCHES` around the rim
+  plus a chain down each neck plus paired ranks at both thresholds, all `EMBER`
+  `SceneLight`s, all placed clear of anything meant to be LOOKED at
+  (`TORCH_CLEAR`). The rim is what a party sees before they see anything
+  standing in it, and it is the difference between walking into a room and
+  walking into more woods. The thresholds are the one thing in the zone allowed
+  to look arranged — a doorway is a thing somebody built. They are the STORE's
+  torches and not the `Entrance`'s on purpose: an `Entrance` can carry torches,
+  but those are drawn out of the rift atlas and burn cyan, and four cold lights
+  at the top of the one warm zone in the game would be the wrong note.
+- **`_tiles` clears a SPINE and that is a guarantee, not dressing.** The rim
+  and the necks are noise (harmonics plus a hash) and a pinch plus an unlucky
+  boulder could in principle wall the room off from its own door. Unlike
+  `mapgen`, this module has no retry loop to fall back on — there is exactly
+  one store map and the party is already walking into it — so a narrow band up
+  the centreline is cleared unconditionally, and nothing (a stall, a skid, the
+  cabinet) may be authored inside `SPINE_TILES`. It also reads: a trader who
+  parked here walks that line every day.
 - **A stall sells ONCE.** It is a specific weapon on a specific table, not a
   shelf with stock behind it, so `Stand.sold` is checked and set on the same
   tick and the row STAYS on the wire — the gap where a gun was is information,
-  and a table that vanished would make the corridor look shorter every time
-  somebody spent something. A purchase lands on the belt through the same two
+  and a table that vanished would put a hole in the grid every time somebody
+  spent something. A purchase lands on the belt through the same two
   rules a found gun does: it arms an empty hand, and a full belt TRADES
   (`swap_weapon`), leaving the old gun on the shop floor so the decision is
   reversible one step later. A refused trade must not charge.
 - Prices are DERIVED — `store.price_of` is the loot catalog's `value` times
   `STORE_MARKUP`. A hand-written price list would be a second opinion about
   what an AK is worth and the two would drift the first time one was
-  rebalanced. Which guns are on the tables is rolled against the day
-  (`STOCK_UNLOCK`), distinct per table, cheapest first left to right.
-- **The tables are placed on a rhythm and then knocked off it.** Even spacing,
-  then a bounded jitter along and across the lane plus a shuffled table frame
-  (`TABLE_JITTER_*`). Four identical stalls at four identical intervals is the
-  loudest tell that nobody set this up by hand; scattering them properly is the
-  opposite mistake, because it turns a sequence of decisions into a search. The
-  jitter is also why the LOW footprint is derived from the sprite width rather
-  than assumed — a jittered centre no longer lands on a tile boundary — and why
-  `_torches` keeps clear of the stands that actually landed rather than of a
-  guess at where they would be.
+  rebalanced. On top of that each stall rolls its own haggle (`_haggle`,
+  `STORE_PRICE_SPREAD`), which is what makes six stalls six decisions: the
+  stock is rolled WITH REPLACEMENT against the day (`STOCK_UNLOCK`), so he can
+  be holding three of the same pistol, and three tables carrying the same
+  number is a shelf rather than a shop. The spread is small enough never to
+  reorder the catalog — a haggled AK never undercuts a full-price FAMAS —
+  because the price ladder is teaching the value of the guns.
+- **The stalls are a GRID and everything around them is not.** Two columns of
+  three on the east arc (`STALL_COLS` / `STALL_ROWS`), priced cheapest-first and
+  filled SOUTH TO NORTH, because that is the order the party walks in. The old
+  lane jittered its tables off an even rhythm on the argument that four
+  identical stalls at four identical intervals is the tell that nobody set this
+  up by hand — right about a corridor, wrong about a market. A trader who lays
+  goods out in rows wants them compared, and six prices scattered round a
+  clearing is six things to hunt rather than one decision. The irregularity
+  lives in the clearing; the stock is the one thing in it that was arranged.
+  The LOW footprint under every fixture is still derived from the sprite WIDTH
+  rather than assumed (`_claim`), because a centre is a float and does not land
+  on a tile boundary.
 - Zone rules are enforced HERE, not just described to the client. A
   non-hostile zone runs no spawn director and drops the GUN half of
   `handle_attack`. A client that ignores `zone.lantern` gets light it cannot
@@ -696,8 +743,8 @@ game's scale.
   generators' lists — never insert, or every existing frame index moves.
 - Adding a WEAPON to the shop is a row on `store.STOCK_ORDER` plus its unlock
   day. The price, the table it lands on and the tooltip all derive; the client
-  needs no change. Keep at least three weapons unlocked on day one, or the
-  first shop is two tables and a gap.
+  needs no change. Keep at least three weapons unlocked on day one — the roll
+  is with replacement, so a shorter pool is a grid of six of the same pistol.
 - Adding a zone = one `zones.Zone` and whatever builds its map. Its title card,
   its safety and its lighting rules are all data; the client needs no change to
   announce or obey a new one. A forest's subtitle is `night_clock()` — a time

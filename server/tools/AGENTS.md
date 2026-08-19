@@ -90,20 +90,37 @@ surface. Output rules live in [`assets/AGENTS.md`](../../assets/AGENTS.md).
   everything in `scenery/props`) are bottom-anchored silhouettes with alpha,
   centred on their tile or contact point; only the `ground_*.png` atlases tile
   seamlessly.
-- **`rock` and `tree` are NAMED RECIPES, not rolls of one recipe** —
-  `ROCK_RECIPES` (8) and `TREE_RECIPES` (6, by species), and the sheet's frame
-  order is the dict's order. What has to differ between two of them is the
-  SILHOUETTE, and rerolling one recipe varies the noise inside a shape it
-  never varies. Both are built the same way and the construction is documented
-  in `make_textures.py`'s own section comments: masses with hard plane breaks
-  between them, one key at 135deg/60deg, a step-0 seam wherever a near mass
-  lands against a far one, and a flat offset ellipse under the footprint. A
-  tree's footprint is its ROOT SPREAD and not its canopy — `_cast_shadow` takes
-  the extent as numbers for exactly that reason, while `_rock_shadow` reads it
-  off the silhouette. Adding a species means adding a recipe, and the client
-  picks its variant off `frames` in the manifest, so nothing there has to know.
+- **Every solid prop is a set of NAMED RECIPES, not rolls of one recipe** —
+  `ROCK_RECIPES` (8), `TREE_RECIPES` (6 species), `DEADTREE_RECIPES` (6),
+  `STUMP_RECIPES` (4 states), `BUSH_RECIPES` (5), `FERN_RECIPES` (5), and the
+  sheet's frame order is the dict's order. What has to differ between two of
+  them is the SILHOUETTE, and rerolling one recipe varies the noise inside a
+  shape it never varies. Adding one means adding a recipe; the client picks
+  its variant off `frames` in the manifest, so nothing there has to know.
+- **They share one construction, and it is documented in `make_textures.py`'s
+  own section comments**: masses with hard plane breaks between them, one key
+  at 135deg/60deg, a step-0 seam wherever a near mass lands against a far one
+  (`_tree_clump` + `_clump_stack`), root claws at the contact line
+  (`_root_spurs`), a contact band inside the silhouette (`_contact`), and a
+  flat offset ellipse under the FOOTPRINT (`_cast_shadow`). A tree's footprint
+  is its root spread and not its canopy, which is why `_cast_shadow` takes the
+  extent as numbers while `_rock_shadow` reads it off the silhouette.
+- **Organic props do not carry a closed outline.** `outline()` draws one, then
+  `_break_crest` removes it where the key lands (§6 of
+  [`PIXEL-ART-DIRECTION.md`](../../PIXEL-ART-DIRECTION.md)). This is not
+  cosmetic: on a bare `deadtree` armature the border was 41% of every opaque
+  pixel and six silhouettes resolved as six scribbles.
+- **The three low greens are ordered by DRAW DEPTH, not by taste.** `bush` is
+  drawn behind bodies, `fern` in front of them, `grass` underfoot, so
+  `SHRUB` > `FROND` in value and the fern gets NO cast shadow — its ellipse
+  would land on the player's chest. Keep that order when touching the ramps.
 - `deadtree` shares `tree`'s frame size and anchor so a blighted tile swaps
   sheets and nothing else moves. It does NOT have to share the frame COUNT.
+- `campfire` is the exception to the light rule and stays one: its flame is
+  EMISSIVE (§14) and ignores the key. Its stones and logs do not — they are
+  built like every other prop. It is also a LOOP, so nothing in it may use
+  `rng`; per-pixel variation there comes from `hash01`, which is stable across
+  frames.
 - **DECALS are the third shape and they are drawn differently.** `patch`,
   `branch`, `leaves` and everything in `scenery/decals` lie FLAT: no outline, no
   silhouette, no implied face toward the camera. The client bakes them into its

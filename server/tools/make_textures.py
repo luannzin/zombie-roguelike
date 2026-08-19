@@ -15,13 +15,13 @@ Output (assets/processed/terrain/):
     patch.png     6 frames, 32x32   ground stains ("manchas"), flat decal
     rock.png      8 frames, 20x26   solid blocker, 8 recipes, shadow BAKED IN
     tree.png      6 frames, 24x40   solid blocker, 6 species, overhangs its tile
-    deadtree.png  4 frames, 24x40   solid blocker, bare — a blighted TREE tile
-    stump.png     4 frames, 16x14   solid blocker, a felled trunk
-    grass.png     6 frames, 10x10   decoration, non-solid, sways
+    deadtree.png  6 frames, 24x40   solid blocker, bare — a blighted TREE tile
+    stump.png     4 frames, 16x14   solid blocker, a felled trunk, 4 states
+    grass.png     6 frames, 10x10   decoration, non-solid, sways, LOD floor
     bush.png      5 frames, 20x16   decoration, non-solid, sways, BEHIND bodies
     branch.png    5 frames, 16x7    flat decal, baked into the ground
     leaves.png    6 frames, 16x12   flat decal, baked into the ground
-    fern.png      5 frames, 20x18   FOREGROUND decoration, drawn over characters
+    fern.png      5 frames, 20x18   FOREGROUND decoration, over characters, NO shadow
     campfire.png  8 frames, 24x28   solid blocker, ANIMATED (a frame loop)
     manifest.json
 
@@ -170,15 +170,15 @@ TREE_OUTLINE = rgb("#10160f")
 # Dead wood is GREY, not brown. A dead tree drawn in the same bark ramp as a
 # living one only reads as a tree that lost its leaves; drained of hue it reads
 # as bone, and a stand of them reads as something that happened here.
-DEADWOOD: Ramp = [rgb(c) for c in ("#1d1b19", "#2b2825", "#3b3733", "#4b4641", "#5d5750")]
+DEADWOOD: Ramp = [rgb(c) for c in ("#1a1917", "#2a2724", "#3e3a35", "#565049", "#726a60")]
 DEAD_OUTLINE = rgb("#0f0e0d")
 # The heartwood of a fresh stump: still warm, so a cut trunk reads as recent.
-HEARTWOOD: Ramp = [rgb(c) for c in ("#33261a", "#443322", "#55402a", "#664d33")]
+HEARTWOOD: Ramp = [rgb(c) for c in ("#2a1e14", "#3b2c1c", "#4e3b26", "#644c31", "#7d613e")]
 
 # Bushes sit BEHIND the player and in front of the floor, so they are lighter
 # than a fern (which is in front and must not fight the character) and darker
 # than grass (which is underfoot and catches the lantern first).
-SHRUB: Ramp = [rgb(c) for c in ("#151f14", "#1d2b1a", "#263822", "#31462b", "#3d5735")]
+SHRUB: Ramp = [rgb(c) for c in ("#101a0f", "#1b2a17", "#2b3f21", "#3d5629", "#526d33")]
 # Fallen wood on the floor: read at a glance as "not soil", nothing more.
 TWIG: Ramp = [rgb(c) for c in ("#1b150f", "#261d14", "#33281b", "#413324")]
 FALLEN_LEAF: Ramp = [rgb(c) for c in ("#2b1f11", "#3a2a16", "#4a361c", "#5a4222", "#6b5029")]
@@ -189,14 +189,14 @@ FALLEN_LEAF: Ramp = [rgb(c) for c in ("#2b1f11", "#3a2a16", "#4a361c", "#5a4222"
 # have nothing left to read as fire.
 FLAME: Ramp = [rgb(c) for c in ("#5c1606", "#a82c0c", "#d9531a", "#f5892a", "#ffc44e", "#fff2bd")]
 COAL: Ramp = [rgb(c) for c in ("#140f0c", "#2a1710", "#4d2410", "#8a3a12", "#d4600f")]
-TIMBER: Ramp = [rgb(c) for c in ("#241a11", "#332417", "#46311f", "#5e4229")]
+TIMBER: Ramp = [rgb(c) for c in ("#1d1510", "#2c2016", "#402d1d", "#573d26", "#755233")]
 TIMBER_OUTLINE = rgb("#0d0907")
 
-BLADE: Ramp = [rgb(c) for c in ("#26331f", "#324428", "#3f5632", "#4d693d")]
+BLADE: Ramp = [rgb(c) for c in ("#1a2615", "#2a3a20", "#3c5229", "#557036")]
 # Ferns are FOREGROUND: they draw over the player, so they are deliberately
 # darker and cooler than the grass underfoot. A bright silhouette in front of
 # the character would read as an obstruction; a dark one reads as depth.
-FROND: Ramp = [rgb(c) for c in ("#0b100b", "#131c12", "#1d2b1b", "#2a3f28")]
+FROND: Ramp = [rgb(c) for c in ("#080d08", "#111a10", "#1e2d1a", "#2e4526")]
 
 TRANSPARENT: RGBA = (0, 0, 0, 0)
 
@@ -958,6 +958,23 @@ def _rock_crack(
                 break
 
 
+def _footprint(body: Image.Image, foot: list[int]) -> tuple[int, int]:
+    """The horizontal extent a cast shadow is sized from.
+
+    `foot` is what touched the contact line. When nothing did — a mass drawn
+    a pixel shy of it — falling back to the whole frame draws a shadow slab
+    wider than the sprite, so the fallback is the object's own opaque extent.
+    """
+    if foot:
+        return min(foot), max(foot)
+    px = body.load()
+    columns = [
+        x for x in range(body.width)
+        if any(px[x, y][3] != 0 for y in range(body.height))
+    ]
+    return (min(columns), max(columns)) if columns else (0, body.width - 1)
+
+
 def _cast_shadow(
     size: tuple[int, int], left: int, right: int, bottom: float, tone: RGBA,
     drop: float = 0.04,
@@ -1235,7 +1252,7 @@ TREE_RECIPES: dict[str, dict] = {
 
 def _tree_stem(
     px, size: tuple[int, int], stem: tuple, base: float, roots: int,
-    rng: random.Random,
+    rng: random.Random, ramp: Ramp = BARK,
 ) -> None:
     """One bole and its root spurs, shaded by FACE rather than by radius.
 
@@ -1268,13 +1285,32 @@ def _tree_stem(
                 step = min(step + 1, 3)
             elif grain < 0.20:
                 step = max(step - 1, 0)
-            px[x, y] = BARK[step]
+            px[x, y] = ramp[step]
 
+    _root_spurs(px, size, cx, half0, base, roots, rng, ramp)
+
+
+def _root_spurs(
+    px, size: tuple[int, int], cx: float, half0: float, base: float,
+    roots: int, rng: random.Random, ramp: Ramp, rise_max: float | None = None,
+) -> None:
+    """Claws fanning to the contact line, 1px apart at the tips.
+
+    They exist to break the silhouette away from the cast ellipse (§19): a
+    trunk that meets the ground on a flat edge and a soft blob under it are
+    two concentric shapes, and the object floats between them. Spur COUNT must
+    stay even — an odd one puts a root straight down the middle of the bole
+    where it draws nothing.
+    """
+    width, height = size
     for index in range(roots):
         frac = (index + 0.5) / roots - 0.5
         side = 1.0 if frac > 0 else -1.0
         reach = side * half0 * (0.9 + 2.4 * abs(frac)) * rng.uniform(0.85, 1.15)
-        rise = half0 * rng.uniform(1.4, 2.6)
+        rise = (
+            half0 * rng.uniform(1.4, 2.6) if rise_max is None
+            else rise_max * rng.uniform(0.55, 1.0)
+        )
         steps = max(2, int(abs(reach)) + 2)
         step_i = 3 if reach < 0 else 1
         for s in range(steps + 1):
@@ -1284,9 +1320,9 @@ def _tree_stem(
             ix, iy = int(round(fx)), int(round(fy))
             if not (0 <= ix < width and 0 <= iy < height):
                 continue
-            px[ix, iy] = BARK[step_i]
+            px[ix, iy] = ramp[step_i]
             if t < 0.25 and iy - 1 >= 0:
-                px[ix, iy - 1] = BARK[step_i]
+                px[ix, iy - 1] = ramp[step_i]
 
 
 def _tree_limbs(
@@ -1328,6 +1364,32 @@ def _tree_limbs(
                 px[ix, iy + 1] = BARK[1]
                 trail.append((ix, iy + 1))
     return trail
+
+
+def _contact(
+    px, size: tuple[int, int], base: float, ramp: Ramp, band: int = 2,
+) -> list[int]:
+    """Darken where the object meets the floor, and report the footprint (§19).
+
+    Only columns whose LOWEST pixel is at the contact line get the band. An
+    overhanging mass — a canopy, a shrub's shoulder — does not touch the
+    ground, and darkening its underside here draws a second contact line
+    halfway up the sprite, which reads as the object being cut in two.
+    """
+    width, height = size
+    foot: list[int] = []
+    for x in range(width):
+        column = [y for y in range(height) if px[x, y][3] != 0]
+        if not column:
+            continue
+        floor = max(column)
+        if floor < base - 1.5:
+            continue
+        foot.append(x)
+        px[x, floor] = ramp[0]
+        if band > 1 and floor - 1 in column:
+            px[x, floor - 1] = ramp[1]
+    return foot
 
 
 def _tree_clump(
@@ -1435,22 +1497,7 @@ def make_tree(width: int, height: int, kind: str, rng: random.Random) -> Image.I
     if recipe["strands"]:
         _tree_strands(px, size)
 
-    # Contact darkening, inside the silhouette and above the cast shadow (§10).
-    # Skipped for any column whose lowest pixel is canopy: an overhanging crown
-    # does not touch the floor, and darkening its underside here would draw a
-    # second contact line halfway up the sprite.
-    foot: list[int] = []
-    for x in range(width):
-        column = [y for y in range(height) if px[x, y][3] != 0]
-        if not column:
-            continue
-        floor = max(column)
-        if floor < base - 1.5:
-            continue
-        foot.append(x)
-        px[x, floor] = BARK[0]
-        if floor - 1 in column:
-            px[x, floor - 1] = BARK[1]
+    foot = _contact(px, size, base, BARK)
 
     outline(body, TREE_OUTLINE)
     _break_crest(body, TREE_OUTLINE, (LEAF[3], LEAF[4]))
@@ -1506,45 +1553,6 @@ def _tree_strands(px, size: tuple[int, int]) -> None:
             px[x, y] = LEAF[1] if k < length else LEAF[0]
 
 
-def make_fern(width: int, height: int, rng: random.Random) -> Image.Image:
-    """A low bush of arcing fronds. Drawn IN FRONT of characters.
-
-    This is the depth trick: a handful of these scattered over open ground means
-    the player walks behind foliage instead of across a flat plane, and it costs
-    one sprite plus a draw pass. Kept sparse and dark so it never fights the
-    character for attention.
-    """
-    img = Image.new("RGBA", (width, height), TRANSPARENT)
-    px = img.load()
-
-    root_x = width / 2.0
-    for _ in range(rng.randint(11, 15)):
-        # Fronds fan out from a common base, arcing over as they rise.
-        angle = rng.uniform(-1.2, 1.2)
-        length = rng.uniform(height * 0.6, height * 1.1)
-        arc = rng.uniform(0.4, 1.1) * (1 if angle >= 0 else -1)
-        x = root_x + rng.uniform(-2.0, 2.0)
-        y = float(height - 1)
-        for step in range(int(length)):
-            t = step / max(length - 1, 1)
-            # Straighten near the root, curl over near the tip.
-            bend = angle + arc * t * t
-            x += math.sin(bend) * 0.9
-            y -= math.cos(bend) * 0.9
-            ix, iy = int(round(x)), int(round(y))
-            if not (0 <= ix < width and 0 <= iy < height):
-                break
-            # Only the tips catch any light; the mass stays near-black so the
-            # bush reads as a silhouette against lit ground.
-            px[ix, iy] = pick(FROND, t * t * 0.95, ix, iy)
-            # Thicken toward the root so it has a body, not just strands.
-            thickness = 2 if t < 0.35 else 1
-            for offset in range(1, thickness + 1):
-                if ix + offset < width:
-                    px[ix + offset, iy] = pick(FROND, t * t * 0.7, ix + offset, iy)
-    return img
-
-
 # --- campfire ---------------------------------------------------------------
 # The only animated prop, and the only light source that is actually drawn
 # rather than composited. Frames are a LOOP: every wobble is a sine of the frame
@@ -1554,17 +1562,27 @@ def make_fern(width: int, height: int, rng: random.Random) -> Image.Image:
 
 
 def _blob(px, cx: float, cy: float, radius: float, ramp: Ramp, shade: float) -> None:
-    """A small round mass, lit from the upper left. Used for the pit stones."""
+    """A small round mass in HARD bands, lit from the upper left (§7, §8).
+
+    Used for the pit stones. It is the rock construction at four pixels
+    across: a dome normal against the one key, quantised, with no dither —
+    running this through `pick` softened the only plane break the stone had
+    and the ring came out as a row of grey dots.
+    """
+    top = len(ramp) - 1
+    kx, ky, kz = TREE_KEY
     r2 = radius * radius
     for y in range(int(cy - radius) - 1, int(cy + radius) + 2):
         for x in range(int(cx - radius) - 1, int(cx + radius) + 2):
-            dx = x - cx
-            dy = y - cy
-            if dx * dx + dy * dy > r2:
+            dx = (x - cx) / radius
+            dy = (y - cy) / radius
+            if (x - cx) ** 2 + (y - cy) ** 2 > r2:
                 continue
-            lit = clamp01(shade + (-dy / radius) * 0.28 + (-dx / radius) * 0.18)
+            up = math.sqrt(max(0.0, 1.0 - dx * dx - dy * dy))
+            lam = dx * kx + dy * ky + up * kz
+            band = 4 if lam > 0.88 else 3 if lam > 0.58 else 2 if lam > 0.10 else 1
             try:
-                px[x, y] = pick(ramp, lit, x, y)
+                px[x, y] = ramp[min(top, max(0, int(band * shade * 2.0)))]
             except IndexError:
                 pass
 
@@ -1679,17 +1697,25 @@ def make_campfire(width: int, height: int, frame: int, frames: int) -> Image.Ima
             y = int(round(ly + math.sin(angle) * step * 0.42))
             if not (0 <= x < width and 0 <= y < height):
                 continue
-            grain = (hash01(x, y, 151) - 0.5) * 0.35
             # The end nearest the middle is glowing, not wood any more.
             burn = clamp01(1.0 - abs(t - 0.62) * 3.2)
-            for w in (0, 1):
+            for w, band in ((-1, 3), (0, 2), (1, 1)):
                 yy = y + w
                 if not 0 <= yy < height:
                     continue
                 if burn > 0.4:
                     px[x, yy] = pick(COAL, 0.5 + burn * 0.45 * (0.6 + pulse * 0.4), x, yy)
                 else:
-                    px[x, yy] = pick(TIMBER, clamp01(0.62 - w * 0.3 + grain), x, yy)
+                    # Long banded strips along the grain axis (§14), keyed off
+                    # the column so a strip is one value end to end.
+                    dark = hash01(x, 0, 151) > 0.76
+                    px[x, yy] = TIMBER[max(0, band - 1) if dark else band]
+            if step == 0:
+                # The sawn end: the log's one camera-facing plane.
+                for w in (-1, 0, 1):
+                    yy = y + w
+                    if 0 <= yy < height:
+                        px[x, yy] = TIMBER[4 if w < 1 else 2]
 
     # Flame.
     reach = height * 0.56 * (0.86 + 0.14 * math.sin(phase * 2 + 0.6))
@@ -1728,110 +1754,227 @@ def make_campfire(width: int, height: int, frame: int, frames: int) -> Image.Ima
     return img
 
 
-def make_grass(width: int, height: int, rng: random.Random) -> Image.Image:
-    """A tuft of blades rising from the bottom edge. Decoration only."""
-    img = Image.new("RGBA", (width, height), TRANSPARENT)
-    px = img.load()
+# --- dead wood --------------------------------------------------------------
+# A blighted TREE tile swaps this sheet in for `tree.png`, so it shares the
+# frame, the anchor and the construction: bole shaded by FACE, root claws at
+# the contact line, a cast ellipse sized from those claws. What it does not
+# share is the mass — there is no canopy, so the whole read has to come off the
+# limb armature, and that is why the limbs are built properly here rather than
+# walked as 1px strokes. A branch with no cross-section is a wire, and four
+# trees' worth of wire is a scribble.
+#
+# The wood is GREY (see `DEADWOOD`): drawn in the living bark ramp this is a
+# tree that lost its leaves, and drained of hue it reads as bone.
 
-    for _ in range(rng.randint(5, 9)):
-        root = rng.uniform(width * 0.15, width * 0.85)
-        length = rng.uniform(height * 0.55, height * 1.0)
-        bend = rng.uniform(-0.45, 0.45)
-        for step in range(int(length)):
-            t = step / max(length - 1, 1)
-            x = int(round(root + bend * step * t))
-            y = height - 1 - step
-            if not (0 <= x < width and 0 <= y < height):
-                break
-            # Tips catch the light, roots stay in shadow.
-            px[x, y] = pick(BLADE, 0.15 + t * 0.85, x, y)
-    return img
+# stems / roots as in TREE_RECIPES. Extra fields:
+#   splinter  spikes left standing where the bole broke off. 0 = it did not.
+#   limbs     [(start, angle, length, thick, depth)] — start is a fraction of
+#             frame height, angle is radians off vertical, length a fraction of
+#             frame height, depth how many times it forks.
+DEADTREE_RECIPES: dict[str, dict] = {
+    # Broken bole with one limb that survived it. The tallest solid shape in
+    # the set and the one that still reads as a trunk at a distance.
+    "snag": {
+        "stems": [(0.48, 0.105, 0.30, 0.02, 0.04)],
+        "roots": 4, "splinter": 3,
+        "limbs": [(0.46, -0.62, 0.26, 2.2, 2)],
+    },
+    # A clean Y. Two heavy limbs of equal weight is the one place the
+    # no-two-heads rule (§15) is worth breaking: a forked snag is a shape
+    # people recognise, and the trunk under it supplies the single thrust.
+    "fork": {
+        "stems": [(0.50, 0.10, 0.46, 0.0, 0.045)],
+        "roots": 4, "splinter": 0,
+        "limbs": [(0.48, -0.55, 0.30, 2.6, 2), (0.48, 0.55, 0.30, 2.6, 2)],
+    },
+    # Five thin limbs off a short bole: the widest, busiest silhouette, and
+    # the counterweight to the spire.
+    "claw": {
+        "stems": [(0.50, 0.115, 0.52, -0.02, 0.05)],
+        "roots": 4, "splinter": 0,
+        "limbs": [
+            (0.54, -1.05, 0.22, 1.6, 2),
+            (0.53, -0.50, 0.26, 1.6, 2),
+            (0.52, 0.00, 0.28, 1.6, 2),
+            (0.53, 0.50, 0.26, 1.6, 2),
+            (0.54, 1.05, 0.22, 1.6, 2),
+        ],
+    },
+    # Wind-killed: the bole leans and every limb went with it. One direction
+    # of thrust, and the only asymmetric armature in the set.
+    "lean": {
+        "stems": [(0.60, 0.09, 0.40, -0.13, 0.04)],
+        "roots": 4, "splinter": 1,
+        "limbs": [(0.44, -0.85, 0.26, 2.0, 2), (0.48, -0.35, 0.30, 2.0, 2)],
+    },
+    # Tall, thin, almost bare. Height : footprint at the top of the range
+    # (§17), which is what makes a stand of these read as depth rather than
+    # as clutter.
+    "spire": {
+        "stems": [(0.50, 0.065, 0.16, 0.03, 0.03)],
+        "roots": 4, "splinter": 2,
+        "limbs": [
+            (0.28, -0.75, 0.16, 1.4, 1),
+            (0.34, 0.70, 0.14, 1.4, 1),
+            (0.22, 0.35, 0.12, 1.2, 1),
+        ],
+    },
+    # Snapped off low and thick, wearing the heaviest splinter crown. The
+    # bottom of the ladder: almost no armature, all bole.
+    "stub": {
+        "stems": [(0.46, 0.14, 0.52, 0.03, 0.06)],
+        "roots": 6, "splinter": 4,
+        "limbs": [(0.56, 0.80, 0.20, 2.0, 1)],
+    },
+}
 
 
-def make_dead_tree(width: int, height: int, rng: random.Random) -> Image.Image:
-    """A bare trunk with forked limbs. Same footprint as a living tree.
+def _dead_limb(
+    px, size: tuple[int, int], x: float, y: float, angle: float, length: float,
+    thick: float, depth: int, ramp: Ramp, rng: random.Random,
+) -> None:
+    """One tapering branch that forks. The cross-section is the point.
 
-    Drawn on a TREE tile the client has decided is blighted, so it must occupy
-    the same frame and anchor identically — a dead tree that sat differently on
-    its tile would make a blighted stand pop as the material changed. What
-    changes is the silhouette: no canopy mass, so the sky (such as it is) comes
-    through, and a grove of them opens sightlines that a living thicket closes.
+    Each step lays a horizontal span whose columns are lit / mid / shade, which
+    is the trunk's three faces at branch scale. A limb painted one colour
+    across is a wire however carefully it is routed, and the recursion then
+    multiplies that into a scribble.
     """
-    img = Image.new("RGBA", (width, height), TRANSPARENT)
-    px = img.load()
-
-    cx = (width - 1) / 2.0
-    lean = rng.uniform(-0.10, 0.10)
-    trunk_top = height * rng.uniform(0.20, 0.30)
-    trunk_half = rng.uniform(1.6, 2.4)
-
-    def limb(x: float, y: float, angle: float, length: float, thick: float, depth: int) -> None:
-        """One tapering branch, forking twice. Recursion is the whole shape."""
-        for step in range(int(length)):
-            t = step / max(length - 1, 1)
-            # Branches curl as they thin, so the silhouette is never a starburst.
-            bend = angle + math.sin(t * 2.2) * 0.18
-            x += math.sin(bend)
-            y -= math.cos(bend)
-            ix, iy = int(round(x)), int(round(y))
-            if not (0 <= ix < width and 0 <= iy < height):
-                return
-            half = max(0.0, thick * (1.0 - t))
-            for offset in range(-int(half), int(half) + 1):
-                jx = ix + offset
-                if 0 <= jx < width:
-                    px[jx, iy] = pick(DEADWOOD, 0.28 + t * 0.5 - offset * 0.12, jx, iy)
-        if depth <= 0:
+    width, height = size
+    for step in range(int(length)):
+        t = step / max(length - 1, 1)
+        # Curl as it thins: straight limbs off a straight bole make a starburst.
+        bend = angle + math.sin(t * 2.2) * 0.20
+        x += math.sin(bend)
+        y -= math.cos(bend)
+        ix, iy = int(round(x)), int(round(y))
+        if not (0 <= ix < width and 0 <= iy < height):
             return
-        for side in (-1, 1):
-            limb(
-                x,
-                y,
-                angle + side * rng.uniform(0.35, 0.75),
-                length * rng.uniform(0.44, 0.62),
-                thick * 0.55,
-                depth - 1,
-            )
-
-    for y in range(height - 1, int(trunk_top) - 1, -1):
-        centre = cx + (height - y) * lean
-        half = trunk_half + max(0.0, (y - (height - 5)) * 0.5)
-        for x in range(width):
-            offset = x - centre
-            if abs(offset) > half:
+        span = max(0, int(thick * (1.0 - t * 0.85)))
+        for offset in range(-span, span + 1):
+            jx = ix + offset
+            if not 0 <= jx < width:
                 continue
-            shade = clamp01(0.68 - offset / max(half, 0.1) * 0.40)
-            shade += (hash01(x, y, 811) - 0.5) * 0.28
-            px[x, y] = pick(DEADWOOD, shade, x, y)
-
-    # Three limbs off the top of the trunk, each forking twice.
-    for _ in range(rng.randint(3, 4)):
-        limb(
-            cx + (height - trunk_top) * lean + rng.uniform(-1.0, 1.0),
-            trunk_top + rng.uniform(0.0, height * 0.14),
-            rng.uniform(-1.15, 1.15),
-            height * rng.uniform(0.16, 0.26),
-            2.0,
-            2,
+            if span == 0:
+                face = 2
+            else:
+                across = offset / span
+                face = 3 if across < -0.35 else 2 if across < 0.35 else 1
+            px[jx, iy] = ramp[face]
+        # The shade edge survives down to a 2px limb. It is the last thing to
+        # go, because it is the only thing saying the branch has a far side.
+        if span >= 1 and ix + span < width:
+            px[ix + span, iy] = ramp[0] if span >= 2 else ramp[1]
+    if depth <= 0:
+        return
+    for side in (-1, 1):
+        _dead_limb(
+            px, size, x, y,
+            angle + side * rng.uniform(0.38, 0.80),
+            length * rng.uniform(0.44, 0.62),
+            thick * 0.55, depth - 1, ramp, rng,
         )
 
-    outline(img, DEAD_OUTLINE)
-    return img
+
+def _dead_splinter(
+    px, size: tuple[int, int], cx: float, top: float, half: float,
+    count: int, ramp: Ramp, rng: random.Random,
+) -> None:
+    """The spikes left standing where a bole snapped.
+
+    A flat break reads as a sawn post, which is the stump's job and says
+    somebody did it on purpose. Splinters say it came down on its own.
+    """
+    width, height = size
+    for index in range(count):
+        frac = (index + 0.5) / count - 0.5
+        sx = cx + frac * half * 2.1
+        rise = rng.uniform(1.5, 4.0)
+        for step in range(int(rise)):
+            ix = int(round(sx + frac * step * 0.35))
+            iy = int(round(top - step))
+            if 0 <= ix < width and 0 <= iy < height:
+                px[ix, iy] = ramp[3 if frac < 0 else 1]
 
 
-def make_stump(width: int, height: int, rng: random.Random) -> Image.Image:
-    """A felled trunk, cut face up. Growth rings are the whole read."""
-    img = Image.new("RGBA", (width, height), TRANSPARENT)
-    px = img.load()
+def make_dead_tree(width: int, height: int, kind: str, rng: random.Random) -> Image.Image:
+    """One of the six dead trees, by name. Same frame and anchor as a living one."""
+    recipe = DEADTREE_RECIPES[kind]
+    size = (width, height)
+    body = Image.new("RGBA", size, TRANSPARENT)
+    px = body.load()
+    base = height - 1 - height * TREE_SHADOW_BAND
 
+    for stem in recipe["stems"]:
+        _tree_stem(px, size, stem, base, recipe["roots"], rng, DEADWOOD)
+
+    stem = recipe["stems"][0]
+    cx = stem[0] * (width - 1)
+    lean = stem[3]
+    for start, angle, length, thick, depth in recipe["limbs"]:
+        origin_y = start * height
+        _dead_limb(
+            px, size, cx + (base - origin_y) * lean, origin_y,
+            angle, max(3.0, length * height), thick, depth, DEADWOOD, rng,
+        )
+    if recipe["splinter"]:
+        top = stem[2] * height
+        _dead_splinter(
+            px, size, cx + (base - top) * lean, top,
+            max(1.2, stem[1] * width), recipe["splinter"], DEADWOOD, rng,
+        )
+
+    foot = _contact(px, size, base, DEADWOOD)
+    outline(body, DEAD_OUTLINE)
+    _break_crest(body, DEAD_OUTLINE, (DEADWOOD[2], DEADWOOD[3], DEADWOOD[4]))
+    left, right = (min(foot), max(foot)) if foot else (0, width - 1)
+    shadow = _cast_shadow(size, left, right, base, DEAD_OUTLINE, drop=0.03)
+    return Image.alpha_composite(shadow, body)
+
+
+# --- stumps -----------------------------------------------------------------
+# The one prop in the set whose TOP FACE is most of what you see, so it is the
+# clearest statement of the camera (§1): a broad lit ellipse with the bark
+# extruded down from it, and the rings are a material detail ON that plane
+# rather than the drawing itself. It used to be a rectangle of rings over a
+# rectangle of bark, which reads as a low table.
+#
+# Four states of the same cut, because a stump is a story about what happened
+# to a tree and there is more than one story.
+STUMP_SHADOW_BAND = 0.14
+
+STUMP_RECIPES: dict[str, dict] = {
+    # Sawn flat. Fresh heartwood, full rings — somebody took this one.
+    "cut": {"rx": 0.40, "rise": 0.15, "roots": 4, "face": "rings", "wobble": 0.05},
+    # Axe-split: a wedge driven out of the cut face. The notch is the
+    # silhouette feature and it has to break the top CONTOUR, not just shade it.
+    "split": {"rx": 0.42, "rise": 0.13, "roots": 4, "face": "split", "wobble": 0.06},
+    # Burnt through. No heartwood at all — the face is char in the dead ramp,
+    # which is the only reason four stumps do not read as one recolour.
+    "burnt": {"rx": 0.34, "rise": 0.30, "roots": 4, "face": "char", "wobble": 0.07},
+    # Rotted hollow. The rim survives, the middle is gone, and the hole is the
+    # darkest thing on the sprite.
+    "rotten": {"rx": 0.43, "rise": 0.11, "roots": 6, "face": "hollow", "wobble": 0.09},
+}
+
+
+def make_stump(width: int, height: int, kind: str, rng: random.Random) -> Image.Image:
+    """One of the four stumps: a lit top plane on an extruded bark drum."""
+    recipe = STUMP_RECIPES[kind]
+    size = (width, height)
+    body = Image.new("RGBA", size, TRANSPARENT)
+    px = body.load()
+
+    base = height - 1 - height * STUMP_SHADOW_BAND
     cx = (width - 1) / 2.0
-    # Wide and low. A stump the proportions of a barrel is a barrel; the read
-    # is "something was cut down here", and that lives entirely in a broad cut
-    # face sitting close to the ground.
-    rx = width * rng.uniform(0.40, 0.46)
-    ry = max(2.0, rx * 0.42)
-    top_y = height - 1.0 - ry - rng.uniform(1.0, 2.5)
-    lumps = [(rng.uniform(0.06, 0.14), rng.uniform(0, math.tau)) for _ in range(2)]
+    rx = width * recipe["rx"]
+    # Foreshortened by the camera pitch: the top face's depth is a fraction of
+    # its WIDTH (§3), never of the frame, which is what shrinks it to a sliver.
+    ry = max(1.6, rx * 0.50)
+    bottom_y = base - ry
+    top_y = bottom_y - height * recipe["rise"]
+    lumps = [(rng.uniform(0.5, 1.0) * recipe["wobble"], rng.uniform(0, math.tau))
+             for _ in range(2)]
 
     def edge(angle: float) -> float:
         """Radius multiplier at this angle — bark is not a smooth cylinder."""
@@ -1840,88 +1983,294 @@ def make_stump(width: int, height: int, rng: random.Random) -> Image.Image:
             wobble += amp * math.sin(angle * (index + 3) + phase)
         return wobble
 
-    # Bark sides: the cut ellipse extruded down to the ground.
-    for y in range(int(top_y), height):
-        for x in range(width):
-            dx = (x - cx) / (rx * edge(0.0 if x >= cx else math.pi))
-            if dx * dx > 1.0:
-                continue
-            shade = clamp01(0.55 - dx * 0.40 + (hash01(x, y, 97) - 0.5) * 0.34)
-            # Vertical grain: a plain gradient reads as metal at this size.
-            if hash01(x, 0, 313) > 0.72:
-                shade -= 0.18
-            px[x, y] = pick(DEADWOOD, shade, x, y)
+    # The drum: the cut ellipse dragged down to the contact line, in three
+    # vertical faces off one key.
+    for x in range(width):
+        across = (x - cx) / (rx * edge(0.0 if x >= cx else math.pi))
+        if abs(across) > 1.0:
+            continue
+        face = 3 if across < -0.35 else 2 if across < 0.45 else 1
+        # Bark grain: long banded strips along the grain axis (§14), keyed off
+        # the frame column so the whole strip is one value top to bottom.
+        if hash01(x, 0, 313) > 0.74:
+            face = max(face - 1, 0)
+        floor = bottom_y + ry * math.sqrt(max(0.0, 1.0 - across * across))
+        for y in range(int(top_y), int(round(floor)) + 1):
+            if 0 <= y < height:
+                px[x, y] = DEADWOOD[face]
 
-    # Cut face: concentric rings in warm heartwood, so it reads as fresh.
+    # The cut face. Its mask is kept so the rim can roll off it (§7) — a flat
+    # top meeting a flat side on a hard jump reads as folded paper.
+    cap = Image.new("1", size, 0)
+    cap_px = cap.load()
+    char = recipe["face"] == "char"
+    notch = rng.uniform(-0.9, -0.3)
     for y in range(int(top_y - ry) - 1, int(top_y + ry) + 2):
+        if not 0 <= y < height:
+            continue
         for x in range(width):
-            if not (0 <= y < height):
-                continue
             dx = (x - cx) / rx
             dy = (y - top_y) / ry
-            dist = math.sqrt(dx * dx + dy * dy)
-            if dist > edge(math.atan2(dy, dx)):
+            dist = math.hypot(dx, dy)
+            angle = math.atan2(dy, dx)
+            if dist > edge(angle):
                 continue
-            # Alternating hard rings, not a smooth sine: at 6px across, a
-            # gradient of rings averages out into one flat disc.
-            ring = 1.0 if math.sin(dist * 11.0) > 0 else 0.0
-            px[x, y] = pick(HEARTWOOD, 0.22 + ring * 0.62 - dist * 0.15, x, y)
+            if recipe["face"] == "split" and abs(angle - notch) < 0.55 and dist > 0.2:
+                # The split runs INTO the drum, so it takes the wall's darkest
+                # step rather than a darker ring: it is a hole, not a mark.
+                px[x, y] = DEADWOOD[0]
+                continue
+            # An upward plane is one value before its material lands on it
+            # (§18.3); the rings are that material, banded HARD because a sine
+            # of the radius averages to one flat disc at 5px of radius.
+            face = 3 if 0.45 < dist < 0.64 else 4
+            if dist < 0.18:
+                face = 2                       # the pith, and it is not a ring
+            if char:
+                px[x, y] = DEADWOOD[max(1, face - 2)]
+            elif recipe["face"] == "hollow" and dist < 0.46:
+                px[x, y] = DEADWOOD[0]
+            else:
+                px[x, y] = HEARTWOOD[face]
+            cap_px[x, y] = 1
 
-    outline(img, DEAD_OUTLINE)
+    _rock_crest(body, cap, HEARTWOOD, 2)
+    _root_spurs(
+        px, size, cx, rx * 0.45, base, recipe["roots"], rng, DEADWOOD,
+        rise_max=max(1.5, base - bottom_y),
+    )
+    foot = _contact(px, size, base, DEADWOOD, band=1)
+    outline(body, DEAD_OUTLINE)
+    _break_crest(body, DEAD_OUTLINE, (HEARTWOOD[3], HEARTWOOD[4], DEADWOOD[3]))
+    left, right = (min(foot), max(foot)) if foot else (0, width - 1)
+    shadow = _cast_shadow(size, left, right, base, DEAD_OUTLINE, drop=0.05)
+    return Image.alpha_composite(shadow, body)
+
+
+# --- low green --------------------------------------------------------------
+# Bush, fern and grass are the three depths a body walks through: a bush is
+# BEHIND you, a fern is IN FRONT of you, grass is under your feet. That is a
+# rendering fact (see `client/src/render/layers/`) and it decides how each one
+# is lit, which is why they do not share a ramp even though they share a
+# construction.
+#
+# All three are built from the canopy's clump — a lobed dome, hard cel bands
+# off the one key, a step-0 rim under the lower arc — because a shrub IS a
+# small canopy sitting on the ground. What changes per prop is the value key
+# and how much of the mass is allowed to be leaves rather than stems:
+#
+#   bush   lit like the canopy, then sprigs break its outline. It sits behind
+#          the player, so it may be the brightest of the three.
+#   fern   the same masses drawn two steps down and cooler, with the FRONDS on
+#          top of them. It draws OVER the character, so a bright silhouette in
+#          front of a body reads as an obstruction rather than as depth — and
+#          it gets no cast shadow for the same reason: the ellipse would land
+#          on the player.
+#   grass  the bottom of the LOD ladder (§16). Three steps, one mass, no
+#          accent, no shadow. Detail is DELETED here, not shrunk.
+
+BUSH_SHADOW_BAND = 0.12
+
+# (cx, cy, rx, ry) fractions of the frame, back to front — as TREE_RECIPES.
+BUSH_RECIPES: dict[str, dict] = {
+    # One dominant mass with two shoulders. The default hedge shape.
+    "round": {
+        "lobes": 5, "bite": 0.28, "hang": 1.2, "sprigs": 3,
+        "clumps": [(0.28, 0.62, 0.26, 0.23), (0.72, 0.60, 0.24, 0.22),
+                   (0.48, 0.44, 0.34, 0.27)],
+    },
+    # Low and wide: reads as ground cover from two tiles away, which is what
+    # keeps a clearing's edge from being a line of identical domes.
+    "sprawl": {
+        "lobes": 6, "bite": 0.32, "hang": 1.1, "sprigs": 4,
+        "clumps": [(0.20, 0.66, 0.24, 0.20), (0.52, 0.58, 0.32, 0.25),
+                   (0.82, 0.64, 0.22, 0.19)],
+    },
+    # Tall and narrow, one thrust. The vertical in the set.
+    "tuft": {
+        "lobes": 5, "bite": 0.32, "hang": 1.3, "sprigs": 4,
+        "clumps": [(0.38, 0.66, 0.24, 0.22), (0.58, 0.40, 0.24, 0.27)],
+    },
+    # Two masses with floor between them — a shrub somebody walked through.
+    "split": {
+        "lobes": 6, "bite": 0.34, "hang": 1.2, "sprigs": 3,
+        "clumps": [(0.24, 0.62, 0.24, 0.24), (0.74, 0.54, 0.29, 0.29)],
+    },
+    # Half-dead: the smallest mass in the set, so a scattering of these reads
+    # as thinning cover rather than as more of the same bush.
+    "thin": {
+        "lobes": 7, "bite": 0.38, "hang": 1.1, "sprigs": 5,
+        "clumps": [(0.38, 0.68, 0.21, 0.20), (0.66, 0.60, 0.23, 0.22)],
+    },
+}
+
+
+def _clump_stack(
+    px, size: tuple[int, int], recipe: dict, ramp: Ramp, rng: random.Random,
+    shade: int = 0,
+) -> None:
+    """Paint a recipe's clumps back to front, with the seam AO between them.
+
+    `shade` drops every band by that many steps — how the fern gets to be the
+    same construction as the bush while staying dark enough to draw over a
+    character without fighting it.
+    """
+    width, height = size
+    top = len(ramp) - 1
+    for clump in recipe["clumps"]:
+        cells = _tree_clump(
+            size, clump, recipe["hang"], recipe["lobes"], recipe["bite"],
+            rng.randrange(1 << 20),
+        )
+        mask = {(x, y) for x, y, _ in cells}
+        for x, y in mask:
+            for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                nx, ny = x + dx, y + dy
+                if not (0 <= nx < width and 0 <= ny < height):
+                    continue
+                if (nx, ny) in mask or px[nx, ny][3] == 0:
+                    continue
+                px[nx, ny] = ramp[0]
+        for x, y, step in cells:
+            px[x, y] = ramp[max(0, min(top, step - shade))]
+
+
+def _sprigs(
+    px, size: tuple[int, int], count: int, ramp: Ramp, rng: random.Random,
+    step: int,
+) -> None:
+    """Loose shoots off the top of a mass, breaking its contour (§15).
+
+    Without them a shrub is a dome, and a dome with hard bands on it is a
+    boulder painted green.
+    """
+    width, height = size
+    columns = [x for x in range(width) if any(px[x, y][3] for y in range(height))]
+    if not columns:
+        return
+    for _ in range(count):
+        sx = rng.choice(columns)
+        crown = min(y for y in range(height) if px[sx, y][3])
+        angle = rng.uniform(-0.7, 0.7)
+        for k in range(1, rng.randint(3, 4)):
+            ix = int(round(sx + math.sin(angle) * k))
+            iy = int(round(crown - math.cos(angle) * k))
+            if 0 <= ix < width and 0 <= iy < height:
+                px[ix, iy] = ramp[step if k < 3 else max(0, step - 1)]
+                if k < 2 and ix + 1 < width and px[ix + 1, iy][3] == 0:
+                    px[ix + 1, iy] = ramp[max(0, step - 2)]
+
+
+def make_bush(width: int, height: int, kind: str, rng: random.Random) -> Image.Image:
+    """One of the five shrubs. Drawn BEHIND characters, and it sways."""
+    recipe = BUSH_RECIPES[kind]
+    size = (width, height)
+    body = Image.new("RGBA", size, TRANSPARENT)
+    px = body.load()
+    base = height - 1 - height * BUSH_SHADOW_BAND
+
+    _clump_stack(px, size, recipe, SHRUB, rng)
+    _sprigs(px, size, recipe["sprigs"], SHRUB, rng, 3)
+    foot = _contact(px, size, base, SHRUB, band=1)
+    outline(body, TREE_OUTLINE)
+    _break_crest(body, TREE_OUTLINE, (SHRUB[3], SHRUB[4]))
+    left, right = _footprint(body, foot)
+    shadow = _cast_shadow(size, left, right, base, SHRUB[0], drop=0.05)
+    return Image.alpha_composite(shadow, body)
+
+
+# One mass, a fan of fronds over it, and how far the fan leans. Ferns are the
+# ones the player pushes through face-first, so the set varies by LEAN more
+# than by outline: five ferns all standing up straight is a fence.
+FERN_RECIPES: dict[str, dict] = {
+    "open":  {"fronds": 11, "fan": 2.3, "lean": 0.00, "arc": 0.75, "reach": 0.92},
+    "left":  {"fronds": 10, "fan": 1.9, "lean": -0.42, "arc": 0.95, "reach": 0.88},
+    "right": {"fronds": 10, "fan": 1.9, "lean": 0.42, "arc": 0.95, "reach": 0.88},
+    "tall":  {"fronds": 9, "fan": 1.5, "lean": 0.06, "arc": 0.55, "reach": 1.10},
+    "flat":  {"fronds": 13, "fan": 2.7, "lean": -0.10, "arc": 1.15, "reach": 0.74},
+}
+
+# The crown the fronds rise out of. Shared by all five: what varies is the fan,
+# not the root mass, and giving each its own would have been five drawings of
+# a thing that is 90% hidden by the fronds standing in front of it.
+FERN_CROWN = {
+    "lobes": 5, "bite": 0.42, "hang": 1.0,
+    "clumps": [(0.34, 0.80, 0.24, 0.16), (0.64, 0.78, 0.26, 0.17)],
+}
+
+
+def make_fern(width: int, height: int, kind: str, rng: random.Random) -> Image.Image:
+    """One of the five ferns. Drawn IN FRONT of characters.
+
+    This is the depth trick: a handful scattered over open ground means the
+    player walks behind foliage instead of across a flat plane, and it costs
+    one sprite plus a draw pass. It gets NO cast shadow — the sprite is drawn
+    over the character, so its ellipse would land on the player's chest.
+    """
+    recipe = FERN_RECIPES[kind]
+    size = (width, height)
+    img = Image.new("RGBA", size, TRANSPARENT)
+    px = img.load()
+
+    _clump_stack(px, size, FERN_CROWN, FROND, rng, shade=1)
+
+    root_x = width * (0.5 + recipe["lean"] * 0.12)
+    for index in range(recipe["fronds"]):
+        frac = (index + 0.5) / recipe["fronds"] - 0.5
+        angle = frac * recipe["fan"] + recipe["lean"]
+        arc = recipe["arc"] * (1 if angle >= 0 else -1)
+        length = height * recipe["reach"] * rng.uniform(0.62, 1.0)
+        x = root_x + rng.uniform(-1.5, 1.5)
+        y = float(height - 1)
+        for step in range(int(length)):
+            t = step / max(length - 1, 1)
+            # Straight at the root, curling over at the tip.
+            bend = angle + arc * t * t
+            x += math.sin(bend) * 0.9
+            y -= math.cos(bend) * 0.9
+            ix, iy = int(round(x)), int(round(y))
+            if not (0 <= ix < width and 0 <= iy < height):
+                break
+            # A frond has a lit upper edge and a shade under it — that 1px
+            # pair is the only volume a 1px stalk can carry, and without it
+            # five ferns are a scribble of identical strands.
+            px[ix, iy] = FROND[3 if t > 0.45 else 2]
+            if iy + 1 < height:
+                px[ix, iy + 1] = FROND[1 if t > 0.45 else 0]
+            if t < 0.35 and ix + 1 < width:
+                px[ix + 1, iy] = FROND[1]
     return img
 
 
-def make_bush(width: int, height: int, rng: random.Random) -> Image.Image:
-    """A round shrub. Drawn BEHIND characters and it sways.
-
-    The counterpart to the fern: a fern is in front of you and dark, a bush is
-    behind you and lighter. Between them a body walking across open ground
-    passes through three depths instead of sliding over one plane.
-    """
+def make_grass(width: int, height: int, rng: random.Random) -> Image.Image:
+    """A tuft of blades. The bottom of the LOD ladder (§16): three steps, one
+    mass, no accent, no shadow — at 10px the ramp is spent on saying which side
+    the light is on and nothing else."""
     img = Image.new("RGBA", (width, height), TRANSPARENT)
     px = img.load()
 
-    base_y = height - 1.0
-    cx = (width - 1) / 2.0
-    # A cluster of overlapping lobes, so the outline is lumpy rather than
-    # domed. One big lobe carries the mass and the rest break its edge — an
-    # even spread of equal lobes came out as a flat green mat, which reads as
-    # ground cover rather than as something with a front and a back.
-    lobes = [(cx + rng.uniform(-1.5, 1.5), base_y - height * 0.46, height * 0.52)]
-    for _ in range(rng.randint(3, 5)):
-        lobes.append(
-            (
-                cx + rng.uniform(-width * 0.26, width * 0.26),
-                base_y - rng.uniform(height * 0.28, height * 0.72),
-                rng.uniform(height * 0.26, height * 0.40),
-            )
-        )
-
-    for y in range(height):
-        for x in range(width):
-            best = 0.0
-            for bx, by, radius in lobes:
-                dx = (x - bx) / radius
-                dy = (y - by) / (radius * 0.92)
-                dist = dx * dx + dy * dy
-                if dist < 1.0:
-                    best = max(best, 1.0 - math.sqrt(dist))
-            if best <= 0.0:
-                continue
-            lit = clamp01(0.22 + best * 0.6 - (y / height) * 0.35)
-            lit += (hash01(x, y, 421) - 0.5) * 0.45
-            px[x, y] = pick(SHRUB, lit, x, y)
-
-    # A handful of loose sprigs breaking the outline, so it is not a blob.
-    for _ in range(rng.randint(3, 6)):
-        sx = cx + rng.uniform(-width * 0.4, width * 0.4)
-        sy = base_y - rng.uniform(height * 0.4, height * 0.85)
-        angle = rng.uniform(-0.9, 0.9)
-        for step in range(rng.randint(2, 4)):
-            ix = int(round(sx + math.sin(angle) * step))
-            iy = int(round(sy - math.cos(angle) * step))
-            if 0 <= ix < width and 0 <= iy < height:
-                px[ix, iy] = pick(SHRUB, 0.75, ix, iy)
+    root_x = width * rng.uniform(0.42, 0.58)
+    for _ in range(rng.randint(5, 8)):
+        root = root_x + rng.uniform(-width * 0.3, width * 0.3)
+        length = rng.uniform(height * 0.55, height * 1.0)
+        bend = rng.uniform(-0.45, 0.45)
+        for step in range(int(length)):
+            t = step / max(length - 1, 1)
+            x = int(round(root + bend * step * t))
+            y = height - 1 - step
+            if not (0 <= x < width and 0 <= y < height):
+                break
+            # Tips catch the lantern, the mass stays down the ramp, and the
+            # blade's right side carries the shade — three steps, hard.
+            px[x, y] = BLADE[3 if t > 0.6 else 2]
+            if x + 1 < width and px[x + 1, y][3] == 0:
+                px[x + 1, y] = BLADE[1]
+    # The tuft plants on a 1px contact line rather than a cast ellipse: a blob
+    # of shadow under something 10px tall is bigger than the thing throwing it.
+    for x in range(width):
+        column = [y for y in range(height) if px[x, y][3] != 0]
+        if column:
+            px[x, max(column)] = BLADE[0]
     return img
 
 
@@ -2058,12 +2407,12 @@ def build(args) -> Path:
     # Same frame as a living tree, so a blighted tile swaps sheets and nothing
     # else — see the client's `blight` field.
     rng = random.Random(args.seed + 212)
-    dead_trees = [make_dead_tree(tree_w, tree_h, rng) for _ in range(4)]
+    dead_trees = [make_dead_tree(tree_w, tree_h, kind, rng) for kind in DEADTREE_RECIPES]
     pack(dead_trees, tree_w, tree_h).save(out_dir / "deadtree.png")
 
     stump_w, stump_h = tile, round(tile * 0.875)
     rng = random.Random(args.seed + 222)
-    stumps = [make_stump(stump_w, stump_h, rng) for _ in range(4)]
+    stumps = [make_stump(stump_w, stump_h, kind, rng) for kind in STUMP_RECIPES]
     pack(stumps, stump_w, stump_h).save(out_dir / "stump.png")
 
     grass_w = grass_h = round(tile * 0.625)
@@ -2073,7 +2422,7 @@ def build(args) -> Path:
 
     bush_w, bush_h = round(tile * 1.25), tile
     rng = random.Random(args.seed + 313)
-    bushes = [make_bush(bush_w, bush_h, rng) for _ in range(5)]
+    bushes = [make_bush(bush_w, bush_h, kind, rng) for kind in BUSH_RECIPES]
     pack(bushes, bush_w, bush_h).save(out_dir / "bush.png")
 
     branch_w, branch_h = tile, round(tile * 0.4375)
@@ -2088,7 +2437,7 @@ def build(args) -> Path:
 
     fern_w, fern_h = round(tile * 1.25), round(tile * 1.125)
     rng = random.Random(args.seed + 404)
-    ferns = [make_fern(fern_w, fern_h, rng) for _ in range(5)]
+    ferns = [make_fern(fern_w, fern_h, kind, rng) for kind in FERN_RECIPES]
     pack(ferns, fern_w, fern_h).save(out_dir / "fern.png")
 
     fire_w, fire_h = round(tile * 1.5), round(tile * 1.75)

@@ -14,7 +14,7 @@ Output (assets/processed/terrain/):
     blend.png     8 frames, 16x16   ALPHA STENCILS, graded coverage
     patch.png     6 frames, 32x32   ground stains ("manchas"), flat decal
     rock.png      8 frames, 20x26   solid blocker, 8 recipes, shadow BAKED IN
-    tree.png      4 frames, 24x40   solid blocker, overhangs its tile
+    tree.png      6 frames, 24x40   solid blocker, 6 species, overhangs its tile
     deadtree.png  4 frames, 24x40   solid blocker, bare — a blighted TREE tile
     stump.png     4 frames, 16x14   solid blocker, a felled trunk
     grass.png     6 frames, 10x10   decoration, non-solid, sways
@@ -158,8 +158,13 @@ PATCH_GRAVEL: Ramp = [rgb(c) for c in ("#2a2823", "#37342e", "#454139", "#534e44
 ROCK_RAMP: Ramp = [rgb(c) for c in ("#242327", "#312f34", "#403d43", "#4e4a51", "#5d5860")]
 ROCK_OUTLINE = rgb("#131418")
 
-BARK: Ramp = [rgb(c) for c in ("#231a13", "#2e231a", "#3b2d21", "#493829")]
-LEAF: Ramp = [rgb(c) for c in ("#1a2618", "#22321f", "#2b3f26", "#354d2d", "#425e37")]
+BARK: Ramp = [rgb(c) for c in ("#17120f", "#241a12", "#33261a", "#453421", "#5a442a")]
+# Foliage. The span from step 1 to step 4 is the whole budget the canopy has
+# to say which mass is in front of which (§13), and it used to be 17 L —
+# five clumps in that range are one silhouette with texture in it. Widened
+# to the same reach the rock ramps get, hue shifting cool at the bottom and
+# toward yellow at the top (§11), still under the night key.
+LEAF: Ramp = [rgb(c) for c in ("#111a10", "#1b2916", "#2a3d1f", "#3d5628", "#597033")]
 TREE_OUTLINE = rgb("#10160f")
 
 # Dead wood is GREY, not brown. A dead tree drawn in the same bark ramp as a
@@ -953,30 +958,21 @@ def _rock_crack(
                 break
 
 
-def _rock_shadow(
-    size: tuple[int, int], body: Image.Image, tone: RGBA,
+def _cast_shadow(
+    size: tuple[int, int], left: int, right: int, bottom: float, tone: RGBA,
+    drop: float = 0.04,
 ) -> Image.Image:
-    """The cast shadow, offset down-right off the footprint (§9).
+    """A flat two-band ellipse under a footprint, offset down-right (§9).
 
-    Drawn as a flat two-band ellipse sized from the FOOTPRINT, not the
-    silhouette — a shadow that traces the outline reads as a mirror, and the
-    reference sheets never do it.
+    Takes the footprint as numbers rather than reading it off the sprite,
+    because the two callers disagree about what their footprint is: a rock's
+    is its own silhouette, and a tree's is its ROOTS — a shadow as wide as a
+    canopy puts the tree on a plate.
     """
     layer = Image.new("RGBA", size, TRANSPARENT)
-    px = body.load()
-    columns = [
-        (x, max(y for y in range(size[1]) if px[x, y][3] != 0))
-        for x in range(size[0])
-        if any(px[x, y][3] != 0 for y in range(size[1]))
-    ]
-    if not columns:
-        return layer
-    left = min(x for x, _ in columns)
-    right = max(x for x, _ in columns)
-    bottom = max(y for _, y in columns)
     span = right - left + 1
     cx = (left + right) / 2 + span * 0.12          # offset right  (§9)
-    cy = bottom + max(1.0, size[1] * 0.04)         # offset down   (§9)
+    cy = bottom + max(1.0, size[1] * drop)         # offset down   (§9)
     rx = span * 0.55
     ry = max(1.5, rx * 0.32)
     draw = ImageDraw.Draw(layer)
@@ -986,6 +982,28 @@ def _rock_shadow(
     draw.ellipse((cx - rx * 0.66, cy - ry * 0.62, cx + rx * 0.66, cy + ry * 0.62),
                  fill=core)
     return layer
+
+
+def _rock_shadow(
+    size: tuple[int, int], body: Image.Image, tone: RGBA,
+) -> Image.Image:
+    """The rock's cast shadow. Its footprint IS its silhouette — nothing on a
+    rock overhangs far enough for the two to disagree."""
+    px = body.load()
+    columns = [
+        (x, max(y for y in range(size[1]) if px[x, y][3] != 0))
+        for x in range(size[0])
+        if any(px[x, y][3] != 0 for y in range(size[1]))
+    ]
+    if not columns:
+        return Image.new("RGBA", size, TRANSPARENT)
+    return _cast_shadow(
+        size,
+        min(x for x, _ in columns),
+        max(x for x, _ in columns),
+        max(y for _, y in columns),
+        tone,
+    )
 
 
 def make_rock(width: int, height: int, kind: str, rng: random.Random) -> Image.Image:
@@ -1051,62 +1069,441 @@ def make_rock(width: int, height: int, kind: str, rng: random.Random) -> Image.I
     return Image.alpha_composite(shadow, body)
 
 
-def make_tree(width: int, height: int, tile: int, rng: random.Random) -> Image.Image:
-    """Trunk rooted in its own tile, canopy overhanging the tile above."""
-    img = Image.new("RGBA", (width, height), TRANSPARENT)
-    px = img.load()
+# --- trees ------------------------------------------------------------------
+# A tree used to be a trunk with a cluster of circles on it, and at 24x40 that
+# reads as a lollipop: one surface, one shading rule, no information about
+# which part of it is in front of which. It is now built the way the rocks are
+# (see the rock section above) — as MASSES with plane breaks between them —
+# because the same argument applies. A canopy is not a ball of leaves, it is
+# three or four clumps hanging off limbs at different depths, and what tells
+# the eye that is the 1px dark seam where the near one cuts the far one, not
+# the shading inside either.
+#
+# Five things carry the volume, and each of them is cheap:
+#   trunk    three vertical value bands (lit left face, front, shade face) plus
+#            long bark strips along the grain axis (§14). A trunk shaded by
+#            distance from its own centre is a cylinder in a gradient; shaded
+#            by face it is a solid with sides.
+#   roots    spurs fanning to the contact line. They break the silhouette away
+#            from the cast ellipse (§19) — without them the sprite and its
+#            shadow are two concentric shapes and the tree floats.
+#   limbs    drawn BEFORE the foliage, then painted back in afterwards wherever
+#            the leaves above them landed on ramp step 0 or 1. That is what
+#            "seen through the canopy" is: a limb only shows where the foliage
+#            is in shadow, and where it is lit the leaves win.
+#   clumps   lobed domes, hard cel bands off one key (§7, §8), with a step-0
+#            rim under the lower arc. Painted back to front; each one darkens
+#            whatever it lands against by a step first (§10), so the stack has
+#            depth instead of being one silhouette with texture in it.
+#   shadow   the flat offset ellipse every prop in this game stands on, sized
+#            from the ROOT SPREAD and not from the canopy — a shadow as wide as
+#            the crown puts the tree on a plate.
+#
+# Six species, six recipes, for the reason the rocks have eight: silhouette is
+# what has to differ between two trees, and rerolling one recipe six times
+# varies the noise inside a shape it never varies. Their top contours (§15) are
+# broad dome / tiered spire / open and sparse / weeping / twin-lobed / leaning
+# wedge, and each is identifiable in solid black.
+#
+# One green for all six. The reference sheet gets its variety from hue — a pink
+# blossom next to an autumn orange — and that is a daylight sheet on a neutral
+# field. This is one forest at night under a lantern that multiplies over
+# everything, and six foliage hues would collapse into the same dark smear two
+# tiles from the light while breaking the palette economy that makes the rest
+# of the set look authored (§11).
 
-    cx = (width - 1) / 2.0
-    trunk_half = rng.uniform(2.0, 3.0)
-    # Trunk runs up INTO the canopy, otherwise the two read as separate objects
-    # with a gap of ground showing between them.
-    trunk_top = height * rng.uniform(0.40, 0.48)
-    lean = rng.uniform(-0.06, 0.06)
+# The key, as a unit vector: 135deg azimuth, ~60deg elevation (§8). Written out
+# rather than derived so the foliage cannot drift away from the rocks' light.
+TREE_KEY = (-0.50, -0.50, 0.71)
 
-    for y in range(height - 1, int(trunk_top) - 1, -1):
-        centre = cx + (height - y) * lean
-        # Flare at the base so the trunk plants instead of floating.
-        half = trunk_half + max(0.0, (y - (height - 4)) * 0.55)
+# Reserved at the bottom of the frame for the cast shadow. Smaller than the
+# rock's band because a tree is anchored by its roots, which are already wide:
+# the ellipse only has to escape the trunk, not the whole footprint.
+TREE_SHADOW_BAND = 0.08
+
+# stems:   (cx, half, top, lean, flare) — x fractions of width, y fractions of
+#          frame height from the TOP, lean in px of drift per row climbed.
+# roots:   spur count. Even: an odd count puts one root straight down the
+#          middle of the trunk where it draws nothing.
+# limbs:   (count, start, fan, droop, reach). `droop` is signed — negative
+#          lifts the limb as it runs out, positive weeps it over.
+# lobes,
+# bite:    the angular ripple that keeps a clump's edge notched (§15). More
+#          lobes and a deeper bite is a conifer; fewer and shallower is a
+#          broadleaf.
+# hang:    how far a clump's lower half is stretched past its upper. 1.0 is a
+#          dome, 2.0 hangs.
+# clumps:  (cx, cy, rx, ry) fractions, listed BACK TO FRONT. The order is the
+#          depth order and it is the whole reason the canopy has any.
+TREE_RECIPES: dict[str, dict] = {
+    # Broad dome, heavy bole. The set's horizontal anchor and the one whose
+    # crown actually fills the frame.
+    "oak": {
+        "stems": [(0.48, 0.105, 0.50, 0.02, 0.045)],
+        "roots": 4,
+        "limbs": (4, 0.58, 2.2, -0.35, 0.30),
+        "lobes": 5, "bite": 0.42, "hang": 1.15, "strands": 0,
+        "clumps": [
+            (0.30, 0.33, 0.24, 0.115),
+            (0.70, 0.30, 0.22, 0.11),
+            (0.50, 0.20, 0.29, 0.14),
+            (0.38, 0.45, 0.25, 0.115),
+            (0.66, 0.43, 0.20, 0.10),
+        ],
+    },
+    # Tiered spire. Four skirts on the 1 : 0.7 : 0.5 rhythm (§17), each hung
+    # past its own centre so the tier reads as a cone and not as a disc, and
+    # the deepest bite in the set so the outline stays needled.
+    "pine": {
+        "stems": [(0.50, 0.075, 0.30, 0.0, 0.03)],
+        "roots": 4,
+        "limbs": (3, 0.40, 1.6, -0.15, 0.16),
+        "lobes": 7, "bite": 0.55, "hang": 1.7, "strands": 0,
+        "clumps": [
+            (0.50, 0.10, 0.14, 0.055),
+            (0.46, 0.22, 0.20, 0.065),
+            (0.54, 0.34, 0.26, 0.075),
+            (0.48, 0.47, 0.32, 0.085),
+        ],
+    },
+    # Slender and leaning, with the crown deliberately left OPEN: four small
+    # clumps with floor between them, so this is the one where the limb
+    # armature is most of what you read.
+    "birch": {
+        "stems": [(0.42, 0.062, 0.42, 0.075, 0.025)],
+        "roots": 4,
+        "limbs": (5, 0.50, 2.4, -0.45, 0.34),
+        "lobes": 4, "bite": 0.46, "hang": 1.0, "strands": 0,
+        "clumps": [
+            (0.26, 0.27, 0.16, 0.085),
+            (0.56, 0.16, 0.19, 0.095),
+            (0.76, 0.31, 0.15, 0.08),
+            (0.48, 0.38, 0.17, 0.085),
+        ],
+    },
+    # Weeping. The only recipe with a positive droop and the only one that
+    # grows strands: 1px tails off the underside of the canopy. They are what
+    # makes the shape read as hanging rather than as a wide oak.
+    "willow": {
+        "stems": [(0.50, 0.10, 0.46, -0.03, 0.045)],
+        "roots": 4,
+        "limbs": (5, 0.54, 2.6, 0.55, 0.32),
+        "lobes": 6, "bite": 0.44, "hang": 2.0, "strands": 1,
+        "clumps": [
+            (0.24, 0.30, 0.20, 0.075),
+            (0.50, 0.20, 0.27, 0.10),
+            (0.76, 0.32, 0.19, 0.075),
+            (0.36, 0.40, 0.21, 0.08),
+            (0.64, 0.41, 0.18, 0.075),
+        ],
+    },
+    # Two stems from one root plate. The right lobe is nearly twice the left on
+    # purpose: two equal heads is the shape §15 bans, and a split trunk under
+    # one dominant crown still reads as ONE tree.
+    "twin": {
+        "stems": [
+            (0.34, 0.075, 0.48, -0.055, 0.03),
+            (0.62, 0.085, 0.42, 0.05, 0.035),
+        ],
+        "roots": 4,
+        "limbs": (3, 0.56, 2.0, -0.25, 0.24),
+        "lobes": 5, "bite": 0.42, "hang": 1.2, "strands": 0,
+        "clumps": [
+            (0.26, 0.36, 0.17, 0.085),
+            (0.68, 0.22, 0.26, 0.13),
+            (0.30, 0.48, 0.15, 0.075),
+            (0.72, 0.44, 0.21, 0.10),
+        ],
+    },
+    # Wind-leaned: the bole drifts one way and the crown is shoved the other,
+    # carrying the largest lean in the set. It is what stops six trees from
+    # averaging out upright the way eight rocks would have.
+    "spread": {
+        "stems": [(0.60, 0.095, 0.50, -0.095, 0.04)],
+        "roots": 4,
+        "limbs": (4, 0.58, 2.3, -0.20, 0.34),
+        "lobes": 5, "bite": 0.44, "hang": 1.3, "strands": 0,
+        "clumps": [
+            (0.36, 0.22, 0.27, 0.135),
+            (0.64, 0.30, 0.19, 0.095),
+            (0.32, 0.42, 0.23, 0.105),
+            (0.56, 0.46, 0.16, 0.08),
+        ],
+    },
+}
+
+
+def _tree_stem(
+    px, size: tuple[int, int], stem: tuple, base: float, roots: int,
+    rng: random.Random,
+) -> None:
+    """One bole and its root spurs, shaded by FACE rather than by radius.
+
+    Three bands across the width — lit left, front, shade right — is the same
+    plane break `_rock_faces` gives a prism, done in the one direction a trunk
+    actually has. The grain strips are keyed off the frame column, not off the
+    leaning centre line, so a leaning trunk slides across its own bark instead
+    of dragging a fixed pattern with it.
+    """
+    width, height = size
+    fcx, fhalf, ftop, lean, fflare = stem
+    cx = fcx * (width - 1)
+    half0 = max(1.2, fhalf * width)
+    top = ftop * height
+    flare = fflare * width
+    run = max(1.0, base - top)
+
+    for y in range(int(round(base)), int(top) - 1, -1):
+        up = (base - y) / run
+        centre = cx + (base - y) * lean
+        # Taper up the bole, and a flare in the bottom sixth so it plants.
+        half = half0 * (1.0 - 0.28 * up) + flare * max(0.0, 1.0 - up * 6.0) ** 2
         for x in range(width):
-            offset = x - centre
-            if abs(offset) > half:
+            t = (x - centre) / max(half, 0.6)
+            if abs(t) > 1.0:
                 continue
-            # Bark: dark on the right (away from the light), grooved vertically.
-            shade = clamp01(0.72 - offset / max(half, 0.1) * 0.42)
-            shade += (hash01(x, y, 41) - 0.5) * 0.25
-            px[x, y] = pick(BARK, shade, x, y)
+            step = 3 if t < -0.55 else 2 if t < 0.15 else 1 if t < 0.62 else 0
+            grain = hash01(x, 0, 7717)
+            if grain > 0.74:
+                step = min(step + 1, 3)
+            elif grain < 0.20:
+                step = max(step - 1, 0)
+            px[x, y] = BARK[step]
 
-    # Canopy: a cluster of blobs so the silhouette is lumpy, not a circle.
-    blob_cx = cx + rng.uniform(-1.0, 1.0)
-    blob_cy = height * 0.28
-    blobs = [(blob_cx, blob_cy, min(width, height * 0.55) * 0.46)]
-    for _ in range(rng.randint(3, 4)):
-        blobs.append(
-            (
-                blob_cx + rng.uniform(-width * 0.28, width * 0.28),
-                blob_cy + rng.uniform(-height * 0.10, height * 0.14),
-                min(width, height * 0.55) * rng.uniform(0.24, 0.36),
-            )
-        )
+    for index in range(roots):
+        frac = (index + 0.5) / roots - 0.5
+        side = 1.0 if frac > 0 else -1.0
+        reach = side * half0 * (0.9 + 2.4 * abs(frac)) * rng.uniform(0.85, 1.15)
+        rise = half0 * rng.uniform(1.4, 2.6)
+        steps = max(2, int(abs(reach)) + 2)
+        step_i = 3 if reach < 0 else 1
+        for s in range(steps + 1):
+            t = s / steps
+            fx = cx + reach * t
+            fy = base - rise * (1.0 - t) ** 1.3
+            ix, iy = int(round(fx)), int(round(fy))
+            if not (0 <= ix < width and 0 <= iy < height):
+                continue
+            px[ix, iy] = BARK[step_i]
+            if t < 0.25 and iy - 1 >= 0:
+                px[ix, iy - 1] = BARK[step_i]
 
+
+def _tree_limbs(
+    px, size: tuple[int, int], stem: tuple, spec: tuple, base: float,
+    rng: random.Random,
+) -> list[tuple[int, int]]:
+    """The armature, drawn before the leaves. Returns every pixel it touched.
+
+    The trail is the point: the foliage is painted straight over this, and the
+    caller then puts the limb back wherever the leaves above it landed dark.
+    Drawing branches on TOP of a canopy instead gives twigs lying on the
+    leaves; drawing them only underneath gives a canopy with nothing in it.
+    """
+    width, height = size
+    count, fstart, fan, droop, reach = spec
+    fcx, _, _, lean, _ = stem
+    start_y = fstart * height
+    origin = fcx * (width - 1) + (base - start_y) * lean
+    trail: list[tuple[int, int]] = []
+
+    for index in range(count):
+        frac = (index + 0.5) / count - 0.5
+        angle = -math.pi / 2 + frac * fan
+        length = max(3.0, reach * width * rng.uniform(0.7, 1.25))
+        x, y = origin, start_y
+        steps = max(2, int(length))
+        for s in range(steps):
+            t = s / (steps - 1)
+            bend = angle + droop * t * t
+            x += math.cos(bend)
+            y += math.sin(bend)
+            ix, iy = int(round(x)), int(round(y))
+            if not (0 <= ix < width and 0 <= iy < height):
+                break
+            px[ix, iy] = BARK[2 if t < 0.6 else 1]
+            trail.append((ix, iy))
+            # Thick at the shoulder, 1px at the tip (§17).
+            if t < 0.4 and iy + 1 < height:
+                px[ix, iy + 1] = BARK[1]
+                trail.append((ix, iy + 1))
+    return trail
+
+
+def _tree_clump(
+    size: tuple[int, int], clump: tuple, hang: float, lobes: int, bite: float,
+    seed: int,
+) -> list[tuple[int, int, int]]:
+    """One foliage mass as (x, y, ramp step). No pixels written yet.
+
+    The boundary is a lobed radius rather than a circle — an ellipse at this
+    size is unmistakably a stamp, and five of them is a stamp repeated. The
+    shading is a dome normal against the one key, quantised hard: no dither,
+    because `pick` would soften exactly the plane break the mass is made of.
+    The step-0 band under the lower arc is not shading, it is the SEAM the
+    next clump forward will sit against.
+    """
+    width, height = size
+    fcx, fcy, frx, fry = clump
+    cx = fcx * (width - 1)
+    cy = fcy * height
+    rx = max(2.0, frx * width)
+    ry = max(2.0, fry * height)
+    phase = hash01(seed, 3, 11) * math.tau
+    kx, ky, kz = TREE_KEY
+
+    cells: list[tuple[int, int, int]] = []
     for y in range(height):
         for x in range(width):
-            best = 0.0
-            for bx, by, radius in blobs:
-                dx = (x - bx) / radius
-                dy = (y - by) / (radius * 0.86)
-                dist = dx * dx + dy * dy
-                if dist < 1.0:
-                    best = max(best, 1.0 - math.sqrt(dist))
-            if best <= 0.0:
+            dx = (x - cx) / rx
+            dy = (y - cy) / (ry * (hang if y > cy else 1.0))
+            dist = math.hypot(dx, dy)
+            if dist > 1e-6:
+                angle = math.atan2(dy, dx)
+                ripple = (
+                    0.65 * (0.5 + 0.5 * math.sin(lobes * angle + phase))
+                    + 0.35 * (0.5 + 0.5 * math.sin(2 * lobes * angle + phase * 2.3))
+                )
+                edge = 1.0 - bite * ripple * ripple
+            else:
+                edge = 1.0
+            if dist > edge:
                 continue
-            # Light from up-left again, plus leaf-scale noise for texture.
-            lit = clamp01(0.30 + best * 0.55 - (y - blob_cy) / height * 0.6)
-            lit += (hash01(x, y, 613) - 0.5) * 0.42
-            px[x, y] = pick(LEAF, lit, x, y)
+            near = min(1.0, dist)
+            up = math.sqrt(max(0.0, 1.0 - near * near))
+            lam = dx * kx + dy * ky + up * kz
+            step = (
+                4 if lam > 0.93 else
+                3 if lam > 0.62 else
+                2 if lam > 0.05 else
+                1 if lam > -0.35 else 0
+            )
+            # Leaf texture is CLUSTERED, never per-pixel noise (§5): the hash
+            # is read at half resolution so the smallest bump is 2x2.
+            bump = hash01(x >> 1, y >> 1, seed)
+            if bump > 0.87:
+                step = min(step + 1, 4)
+            elif bump < 0.13:
+                step = max(step - 1, 0)
+            if near > 0.72 and dy > 0.28:
+                step = 0
+            cells.append((x, y, step))
+    return cells
 
-    outline(img, TREE_OUTLINE)
-    return img
+
+def make_tree(width: int, height: int, kind: str, rng: random.Random) -> Image.Image:
+    """One of the six trees, by name. Masses, plane breaks, cast shadow."""
+    recipe = TREE_RECIPES[kind]
+    size = (width, height)
+    body = Image.new("RGBA", size, TRANSPARENT)
+    px = body.load()
+    base = height - 1 - height * TREE_SHADOW_BAND
+
+    for stem in recipe["stems"]:
+        _tree_stem(px, size, stem, base, recipe["roots"], rng)
+    trail: list[tuple[int, int]] = []
+    for stem in recipe["stems"]:
+        trail += _tree_limbs(px, size, stem, recipe["limbs"], base, rng)
+
+    for clump in recipe["clumps"]:
+        cells = _tree_clump(
+            size, clump, recipe["hang"], recipe["lobes"], recipe["bite"],
+            rng.randrange(1 << 20),
+        )
+        mask = {(x, y) for x, y, _ in cells}
+        # Everything this mass lands against loses a step, so the stack reads
+        # as one clump IN FRONT of another rather than as a textured blob
+        # (§10, §18). Same trick the rocks use between chunks.
+        for x, y in list(mask):
+            for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                nx, ny = x + dx, y + dy
+                if not (0 <= nx < width and 0 <= ny < height):
+                    continue
+                if (nx, ny) in mask or px[nx, ny][3] == 0:
+                    continue
+                px[nx, ny] = LEAF[0]
+        for x, y, step in cells:
+            px[x, y] = LEAF[step]
+
+    # The limbs, back through the gaps. Only where the canopy above them is in
+    # its own shadow, and only on about half of those pixels — a solid limb
+    # through a solid canopy is a stick lying on top of it.
+    for ix, iy in trail:
+        if px[ix, iy] in (LEAF[0], LEAF[1], LEAF[2]) and hash01(ix, iy, 977) > 0.38:
+            px[ix, iy] = BARK[1]
+
+    if recipe["strands"]:
+        _tree_strands(px, size)
+
+    # Contact darkening, inside the silhouette and above the cast shadow (§10).
+    # Skipped for any column whose lowest pixel is canopy: an overhanging crown
+    # does not touch the floor, and darkening its underside here would draw a
+    # second contact line halfway up the sprite.
+    foot: list[int] = []
+    for x in range(width):
+        column = [y for y in range(height) if px[x, y][3] != 0]
+        if not column:
+            continue
+        floor = max(column)
+        if floor < base - 1.5:
+            continue
+        foot.append(x)
+        px[x, floor] = BARK[0]
+        if floor - 1 in column:
+            px[x, floor - 1] = BARK[1]
+
+    outline(body, TREE_OUTLINE)
+    _break_crest(body, TREE_OUTLINE, (LEAF[3], LEAF[4]))
+    left, right = (min(foot), max(foot)) if foot else (0, width - 1)
+    shadow = _cast_shadow(size, left, right, base, LEAF[0], drop=0.03)
+    return Image.alpha_composite(shadow, body)
+
+
+def _break_crest(img: Image.Image, edge: RGBA, lit: tuple[RGBA, ...]) -> None:
+    """Drop the outline wherever it sits up-light of a lit foliage pixel (§6).
+
+    `outline()` draws a closed border, which is right for the man-made class
+    and wrong for a canopy: a ring all the way round reads as a decal cut out
+    and laid on the ground. The line is only removed on the crest facing the
+    135deg key — the shade side keeps its border, which is what still holds the
+    silhouette up against a lit floor tile.
+    """
+    px = img.load()
+    doomed = [
+        (x, y)
+        for y in range(img.height)
+        for x in range(img.width)
+        if px[x, y] == edge
+        and any(
+            x + dx < img.width and y + dy < img.height and px[x + dx, y + dy] in lit
+            for dx, dy in ((1, 0), (0, 1), (1, 1))
+        )
+    ]
+    for x, y in doomed:
+        px[x, y] = TRANSPARENT
+
+
+def _tree_strands(px, size: tuple[int, int]) -> None:
+    """1px tails off the underside of a canopy. The willow's whole identity.
+
+    They hang from wherever the foliage currently ends in a column, not from
+    the clump centres, so they follow the shape that was actually drawn. Capped
+    short of the trunk band: a strand that reaches the floor is a vine.
+    """
+    width, height = size
+    leaf = set(LEAF)
+    limit = height * 0.68
+    for x in range(width):
+        column = [y for y in range(height) if px[x, y] in leaf]
+        if not column or hash01(x, 5, 331) > 0.68:
+            continue
+        bottom = max(column)
+        length = 3 + int(hash01(x, 9, 337) * 4)
+        for k in range(1, length + 1):
+            y = bottom + k
+            if y >= height or y > limit or px[x, y][3] != 0:
+                break
+            px[x, y] = LEAF[1] if k < length else LEAF[0]
 
 
 def make_fern(width: int, height: int, rng: random.Random) -> Image.Image:
@@ -1653,7 +2050,9 @@ def build(args) -> Path:
 
     tree_w, tree_h = round(tile * 1.5), round(tile * 2.5)
     rng = random.Random(args.seed + 202)
-    trees = [make_tree(tree_w, tree_h, tile, rng) for _ in range(4)]
+    # Six species, six recipes — the rocks' argument again: what has to differ
+    # between two trees is the silhouette, and noise does not vary a silhouette.
+    trees = [make_tree(tree_w, tree_h, kind, rng) for kind in TREE_RECIPES]
     pack(trees, tree_w, tree_h).save(out_dir / "tree.png")
 
     # Same frame as a living tree, so a blighted tile swaps sheets and nothing

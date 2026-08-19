@@ -69,7 +69,7 @@
       "file": "tree.png",
       "frameWidth": 24,
       "frameHeight": 40,
-      "frames": 4,
+      "frames": 6,
       "solid": true,
       "canopyHeight": 24
     },

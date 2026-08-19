@@ -90,6 +90,20 @@ surface. Output rules live in [`assets/AGENTS.md`](../../assets/AGENTS.md).
   everything in `scenery/props`) are bottom-anchored silhouettes with alpha,
   centred on their tile or contact point; only the `ground_*.png` atlases tile
   seamlessly.
+- **`rock` and `tree` are NAMED RECIPES, not rolls of one recipe** —
+  `ROCK_RECIPES` (8) and `TREE_RECIPES` (6, by species), and the sheet's frame
+  order is the dict's order. What has to differ between two of them is the
+  SILHOUETTE, and rerolling one recipe varies the noise inside a shape it
+  never varies. Both are built the same way and the construction is documented
+  in `make_textures.py`'s own section comments: masses with hard plane breaks
+  between them, one key at 135deg/60deg, a step-0 seam wherever a near mass
+  lands against a far one, and a flat offset ellipse under the footprint. A
+  tree's footprint is its ROOT SPREAD and not its canopy — `_cast_shadow` takes
+  the extent as numbers for exactly that reason, while `_rock_shadow` reads it
+  off the silhouette. Adding a species means adding a recipe, and the client
+  picks its variant off `frames` in the manifest, so nothing there has to know.
+- `deadtree` shares `tree`'s frame size and anchor so a blighted tile swaps
+  sheets and nothing else moves. It does NOT have to share the frame COUNT.
 - **DECALS are the third shape and they are drawn differently.** `patch`,
   `branch`, `leaves` and everything in `scenery/decals` lie FLAT: no outline, no
   silhouette, no implied face toward the camera. The client bakes them into its

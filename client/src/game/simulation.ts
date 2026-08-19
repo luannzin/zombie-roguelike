@@ -18,6 +18,10 @@ export interface MovableState {
   vy: number;
   ax: number;
   ay: number;
+  /** Breath left, in the server's points. Mirror of `Player.stamina`. */
+  stamina: number;
+  /** Bar spent: SHIFT is refused until `staminaRecover` of it is back. */
+  winded: boolean;
 }
 
 export function moveDir(input: InputPacket): { dx: number; dy: number } {
@@ -75,6 +79,48 @@ export function carryBurden(
   return Math.max(0, (ratio - start) / span);
 }
 
+/**
+ * Whether this body is actually RUNNING this tick.
+ * Mirror of `running` in server/app/simulation.py.
+ *
+ * SHIFT is a request, not a state: a body standing still is not running, and a
+ * body that spent the bar is locked out until it has recovered.
+ */
+export function isRunning(state: MovableState, input: InputPacket, moving: boolean): boolean {
+  return moving && input.sprint && !state.winded && state.stamina > 0;
+}
+
+/**
+ * Spend or refill the breath, and work the exhaustion latch.
+ * Mirror of `step_stamina` in server/app/simulation.py.
+ *
+ * Stateless apart from the latch, which is what lets reconciliation replay it:
+ * snap `stamina` / `winded` from the authoritative row, replay the pending
+ * inputs through here, and the client lands on the number the server holds.
+ */
+export function stepStamina(
+  state: MovableState,
+  running: boolean,
+  moving: boolean,
+  config: GameConfig,
+  dt: number,
+): void {
+  const max = config.staminaMax ?? 100;
+  if (running) {
+    state.stamina -= (config.staminaDrain ?? 26) * dt;
+    if (state.stamina <= 0) {
+      state.stamina = 0;
+      state.winded = true;
+    }
+    return;
+  }
+  const regen = moving ? (config.staminaRegenWalk ?? 12) : (config.staminaRegenRest ?? 24);
+  state.stamina = Math.min(max, state.stamina + regen * dt);
+  if (state.winded && state.stamina >= max * (config.staminaRecover ?? 0.33)) {
+    state.winded = false;
+  }
+}
+
 export function applyInput(
   state: MovableState,
   input: InputPacket,
@@ -90,8 +136,12 @@ export function applyInput(
   mods?: { speed: number; carry: number },
 ): void {
   const { dx, dy } = moveDir(input);
-  const speed =
-    config.moveSpeed * (mods?.speed ?? 1) * carryScale(weight, config, mods?.carry);
+  const moving = dx !== 0 || dy !== 0;
+  const running = isRunning(state, input, moving);
+  stepStamina(state, running, moving, config, dt);
+
+  let speed = config.moveSpeed * (mods?.speed ?? 1) * carryScale(weight, config, mods?.carry);
+  if (running) speed *= config.sprintSpeed ?? 1.55;
   state.vx = dx * speed;
   state.vy = dy * speed;
 

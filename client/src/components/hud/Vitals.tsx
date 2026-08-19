@@ -51,6 +51,19 @@ export function Vitals({ vitals }: VitalsProps) {
       </div>
 
       <ProgressBar current={vitals.hp} max={vitals.maxHp} label="HP" tone="hp" />
+      {/*
+       * Directly under HP, and in that order on purpose: they are the two
+       * meters that describe the BODY, and the one above it is the one that
+       * ends the run. XP stays below both — it is the only row here that is
+       * about the character rather than the person standing in the forest.
+       */}
+      <ProgressBar
+        className="mt-2"
+        current={vitals.stamina}
+        max={vitals.staminaMax}
+        label="STA"
+        tone={vitals.winded ? 'stamina-spent' : 'stamina'}
+      />
       <ProgressBar
         className="mt-2"
         current={vitals.xpInLevel}
@@ -58,6 +71,17 @@ export function Vitals({ vitals }: VitalsProps) {
         label="XP"
         tone="xp"
       />
+
+      {/*
+       * An empty bar refuses SHIFT until a third of it is back, and a key that
+       * stops answering with nothing on screen reads as a dropped input. This
+       * is one word, and it leaves with the lockout.
+       */}
+      {vitals.alive && vitals.winded && (
+        <div className="text-ink-muted mt-1.5 text-[11px] leading-[11px] tracking-[0.04em]">
+          winded…
+        </div>
+      )}
 
       {!vitals.alive && (
         <div className="text-hp-low mt-1.5 text-[11px] leading-[11px] tracking-[0.04em]">

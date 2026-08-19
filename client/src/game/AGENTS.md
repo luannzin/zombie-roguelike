@@ -24,12 +24,12 @@ seam React is allowed to read.
 | `lantern.ts` | four-cell battery, produces `output` 0..1 |
 | `hud-store.ts` | the only seam to React; `HUD_INTERVAL` = 0.2 s |
 | `tooltip-anchors.ts` | screen-space points for world `Tooltip`s, written every frame |
-| `exit-guide.ts` | extraction-exit chevron: where on screen it belongs, and the smoothing between the raw target and what is drawn. It FADES — see the exit contract below |
+| `exit-guide.ts` | the way-out chevron: where on screen it belongs, and the smoothing between the raw target and what is drawn. It BLINKS — see the exit contract below |
 | `inventory-anchors.ts` | screen-space centres for the HUD bag (pack + slots) |
 | `inventory-actions.ts` | bag → socket: `Game` binds `drop`; React never owns the connection |
 | `loot-flies.ts` | collect flies: hold over the head, then travel; membership is a store, pose is per-frame |
 | `pad-cargo.ts` | the POUR's other half: items in the air out of a backpack, and the pile they become on a platform's deck. Deck-relative, so the load leaves with the skid |
-| `machine.ts` | the upgrade machine's CEREMONY: one lever pull as beats, reel poses, the arm, and where the canister is. Timing comes from `config.machine` — a mirror of `server/app/machine.py` |
+| `machine.ts` | the upgrade machine's CEREMONY: one lever pull as beats, the BAND's scroll position per reel, the arm, and where the canister is. Timing comes from `config.machine` — a mirror of `server/app/machine.py` |
 | `payout.ts` | the night's platforms being lowered into the shop, and the gold coming off them. Presentation only; the balance was credited server-side |
 
 ## Local Contracts
@@ -248,15 +248,16 @@ seam React is allowed to read.
     not having registered.
   - Activation is one-way. There is no packet to switch a pad back off, and
     the pickup is a player's second press, never a timer.
-  - The exit arrow (`hud/ExitGuide`, `/hud/arrow.png`) is generated HUD
-    chrome, not a sprite in the forest. It sits outside `HudScreen` — the
-    fish-eye would pull it off the glass — and it rides HALFWAY between the
-    player and the screen edge rather than on the bezel: on the bezel it is
-    furthest from the thing it is about, it fights the hotbar and the minimap
-    for the corner, and it is where the jitter is worst because the ray is
-    longest there. The ray leaves the player's UPPER half, so the arrow rides
-    above the action instead of over the ground they are walking onto.
-  - **The arrow's target is not smooth and cannot be made smooth upstream.**
+  - The way-out chevron (`hud/ExitGuide`, `/hud/chevron.png` — a TRIANGLE, not
+    the thin dart on `arrow.png`) is generated HUD chrome, not a sprite in the
+    forest. It sits outside `HudScreen` — the fish-eye would pull it off the
+    glass — and it rides HALFWAY between the player and the screen edge rather
+    than on the bezel: on the bezel it is furthest from the thing it is about,
+    it fights the hotbar and the minimap for the corner, and it is where the
+    jitter is worst because the ray is longest there. The ray leaves the
+    player's UPPER half, so it rides above the action instead of over the
+    ground they are walking onto.
+  - **The chevron's target is not smooth and cannot be made smooth upstream.**
     `projectionFor` rounds the camera offset to a whole screen pixel, so the
     projected player position twitches every frame, and a ray cast from it
     multiplies the twitch by the distance to the edge. `game.ts` writes a
@@ -264,7 +265,10 @@ seam React is allowed to read.
     exponential in `exp(-dt/tau)` so it is frame-rate independent, shortest-arc
     on the angle so it never spins the long way round the ±pi seam) and
     `ExitGuide` applies it as a sub-pixel `translate3d`. Do not round that
-    transform — it puts the jitter straight back.
+    transform — it puts the jitter straight back. `snapExitGuide` drops the
+    drawn pose without dropping the target, so the first painted frame of a
+    night's chevron is ON the bearing rather than sweeping onto it from
+    wherever the previous night left it.
 - `Game.lights` is bonfires read off the tiles PLUS whatever the map's scenes
   are still burning (`world.scenery.lights`), on one list. The lighting has no
   concept of a camp light versus a forest light and must not grow one. Rebuild
@@ -324,6 +328,23 @@ seam React is allowed to read.
     for `reelHold[rarity]`, longer the better the pull was. Because the roll
     already happened the wait is honest — the machine is taking its time
     telling them, not deciding late.
+  - **A REEL IS A BAND, NOT A FRAME INDEX.** `reelScroll` returns where a
+    window sits on one tall strip of ten cells (`/machine/strip.png`), and the
+    layer blits one or two source rects out of it — so a spin is a strip going
+    past, the TEASE is the band decelerating through six or seven faces with
+    the answer already decided, and the NEAR MISS is free, because the strip's
+    fixed order puts a legendary next to a common. It is modelled BACKWARD from
+    the stop (`landing - remaining(timeLeft)`), never integrated forward, so
+    the reel arrives exactly on its face on exactly the frame it is due; a slot
+    machine that stops between two symbols is broken in the one way everybody
+    can see. Motion blur is the same blit again, offset and faded by the band's
+    own speed. The two reel gaps in `server/app/machine.py` must stay longer
+    than `REEL_DECEL`, or nothing in the middle of a pull is ever a blur.
+  - The PAY LINE flashes across all three windows on the frame the last reel
+    lands (`payLineFlash`), scaled by `pullGain` like everything else. The
+    burst fires at the TRAY, which is where the prize comes out; the pay line
+    is where it was decided, and the machine reacting to its own result has to
+    come before the consequence of it.
   - RARITY IS A MULTIPLIER, NOT A SECOND ANIMATION. `pullGain` scales the
     burst, the marquee and the canister's glow off ONE curve, and the sounds
     ladder the same way (`reel` pitched with the tier, `rarity` behind it,
@@ -336,14 +357,21 @@ seam React is allowed to read.
   HUD is allowed to SAY while gold is still in the air — driven off the
   ceremony's own clock rather than off however many coin sprites got drawn, so
   the number is exactly right when it stops.
-- **THE EXIT IS FOUND, NOT FOLLOWED.** The chevron used to be permanent, which
-  made every other channel the exit has into decoration. It now burns for
-  `EXIT_GUIDE_HOLD` and fades (`Game.guideStrength`; `hud-store.exitGuide` is a
-  0..1 number, not a flag), and the three channels that carry it afterwards
-  are: the COLUMN of light over the treeline (`drawEgressBeacon`, world space,
-  so it is only on screen when you look toward it), the four torches at the
-  threshold, and a slow spatial PING from the mouth (`Game.stepBeacon`) — which
-  is the one that still works while the player is looking the other way.
+- **THE EXIT IS FOUND, NOT FOLLOWED, AND THE CHEVRON BLINKS.** It used to be
+  permanent, which made every other channel the exit has into decoration; then
+  it faded out after ten seconds, which left a party that turned the wrong way
+  at second twelve with nothing to ask. It now PULSES — a long solid burst on
+  the frame the exit is carved, then dark, then a couple of seconds every few,
+  for as long as the way out is uncrossed. `hud-store.exitGuide` is ONE BIT
+  (there is an uncrossed exit) and the envelope lives in `hud/ExitGuide` on the
+  render clock, because its ramps are shorter than the store's 200 ms
+  republish. The other three channels carry the dark beats: the COLUMN of light
+  over the treeline (`drawEgressBeacon`, world space, so it is only on screen
+  when you look toward it), the four torches at the threshold, and a slow
+  spatial PING from the mouth (`Game.stepBeacon`) — which is the one that still
+  works while the player is looking the other way. The quest row is an ORDER
+  now rather than a task (`quests.EXIT_LABEL`): the night is over and they are
+  still in it.
 - **A SNARL IS QUEUED, NOT PLAYED** (`Game.drainAlertQueue`). One creature
   noticing you is one snarl; the extraction alarm commits everything in earshot
   on the same frame, and stacking those is a wall of noise that says nothing
@@ -397,6 +425,25 @@ seam React is allowed to read.
   `[welcome.config.backpackSprite]` and the lobby draws the same overlay on
   every seat. It is always on for now — unequip is a later field, not a
   missing sprite. The sheet is greyscale and tinted with the player's colour.
+- **SHIFT IS PREDICTED LIKE MOVEMENT IS, because it IS movement.** The key
+  rides the packet as `sprint` and means "I want to run", nothing more:
+  `simulation.isRunning` / `stepStamina` are line-for-line mirrors of
+  `server/app/simulation.py`, so the bar drains on the frame the key goes down
+  and lands on the server's number a round trip later. `reconcile` snaps `st` /
+  `wind` off the tick row before it replays the pending inputs — breath is
+  authoritative exactly like position, and the replay is only correct because
+  the step is a pure function of (running, moving). Two masks, both in
+  `liveInput` for the reason written there: a cutscene and a POUR both puppet
+  the body server-side, so the key is dropped there rather than predicted
+  against a run that never happened. While `locked` there is no prediction at
+  all, so the snapshot path snaps the breath with the position.
+- **The run bar is drawn twice and it is the LESSER bar in both places.** Over
+  the body it is a hairline under the health bar, no frame of its own, and it
+  is not drawn at all while it is full — breath is only news while it is being
+  spent (`render/layers/entities.ts` `drawHealthBar`). In the corner it sits
+  directly under HP in `Vitals`, off the HP colour ramp on purpose: green to
+  red is a wound reading and this is not a wound. `winded` is a STATE, not a
+  low number, so it changes the colour and says so in a word.
 - **A gun is in the hand, selected locally.** `held` rides the input packet
   the way the lantern switch does (slot index, or -1 holstered). The belt
   itself is roster `guns`; a collect with `dest: "hotbar"` flies to

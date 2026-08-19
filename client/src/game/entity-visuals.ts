@@ -170,11 +170,19 @@ export class EntityVisuals {
   }
 
   // --- animation -----------------------------------------------------------
-  /** Advance and return the walk-cycle clock. Idle resets to frame 0. */
-  advanceAnim(id: string, moving: boolean, dt: number): number {
+  /**
+   * Advance and return the walk-cycle clock. Idle resets to frame 0.
+   *
+   * `rate` quickens the cycle for a body covering ground faster than a walk —
+   * a sprint at 1.55x playing the authored cadence is a character skating. It
+   * is only ever used to speed the legs UP: the walk's own timing is art, and
+   * a carry-slowed body still walks like a person carrying something rather
+   * than one in slow motion.
+   */
+  advanceAnim(id: string, moving: boolean, dt: number, rate = 1): number {
     const state = this.state(id);
     const planted = state.stunLeft > PLANT_STUN;
-    state.animTime = moving && !planted ? state.animTime + dt : 0;
+    state.animTime = moving && !planted ? state.animTime + dt * Math.max(1, rate) : 0;
     return state.animTime;
   }
 

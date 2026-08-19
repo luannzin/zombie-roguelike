@@ -10,7 +10,7 @@ import { clamp01 } from '../../lib/math';
 import { cn } from '@/lib/utils';
 import { hpLevel } from '../../theme/palette';
 
-export type ProgressTone = 'hp' | 'xp' | 'neutral';
+export type ProgressTone = 'hp' | 'xp' | 'stamina' | 'stamina-spent' | 'neutral';
 
 export interface ProgressBarProps {
   current: number;
@@ -30,7 +30,13 @@ const HP_FILL = {
 
 function fillClass(tone: ProgressTone, ratio: number): string {
   if (tone === 'hp') return HP_FILL[hpLevel(ratio)];
-  return tone === 'xp' ? 'bg-xp' : 'bg-neutral';
+  if (tone === 'xp') return 'bg-xp';
+  // Breath does not change colour as it drains — a meter that ramped would be
+  // claiming the last third is dangerous, and it is not. The one change is
+  // being SPENT, which is a different state, not a lower number.
+  if (tone === 'stamina') return 'bg-stamina';
+  if (tone === 'stamina-spent') return 'bg-stamina-spent';
+  return 'bg-neutral';
 }
 
 export function ProgressBar({ current, max, label, tone = 'neutral', className }: ProgressBarProps) {

@@ -74,7 +74,12 @@ from pathlib import Path
 from PIL import Image
 
 from make_scenery import (
+    BONE,
     CANVAS,
+    CHAR,
+    CLOTH_BLUE,
+    CLOTH_OLIVE,
+    CLOTH_PALE,
     CLOTH_RUST,
     LEATHER,
     METAL,
@@ -82,6 +87,7 @@ from make_scenery import (
     PLANK,
     PLANK_DARK,
     ROPE,
+    STONE,
 )
 from make_textures import (
     DEFAULT_TILE,
@@ -114,88 +120,129 @@ IRON: Ramp = [rgb(c) for c in ("#1b1a1d", "#2b2a2f", "#3d3b42", "#514e57", "#6a6
 #: own flame. Warm, so an unlit frame still reads as something that burns.
 COALS: Ramp = [rgb(c) for c in ("#3a1608", "#6b2a0d", "#9c4415", "#c96a22")]
 
-TILE_TABLE_W = 2.0
-TILE_TABLE_H = 1.25
+TILE_TABLE_W = 2.25
+TILE_TABLE_H = 2.0
 
 
-# --- the tables -------------------------------------------------------------
-# Four stalls, three heights. `topY` is the row the stock lies on and it ships
-# with the art; see the module docstring.
+# --- the stalls -------------------------------------------------------------
+# SIX ROUND TABLES, and round is the whole point of them.
+#
+# They were trestles once — a board on two sawhorses, a board over crates, a
+# board over a barrel — which is what a trader in a lane puts his stock on. The
+# zone is a ROOM now (see server/app/store.py) and the stock stands in a grid
+# in the middle of it, which means every one of these is walked AROUND rather
+# than along. A rectangular board has a front and a back and reads wrong from
+# three of the four sides you can now approach it from; a disc reads the same
+# from all of them, and it puts the goods on a pedestal in the literal sense —
+# one object, dead centre, lit from underneath.
+#
+# `topY` is the row the stock rests on and it ships with the art: the four
+# pedestals are deliberately different heights, so a single hardcoded offset
+# would float one gun and sink another.
+
+#: Half-depth of a table's disc, in pixels. It is the whole reason these read
+#: as ROUND rather than as a plank seen edge-on: a top one pixel deep is a
+#: line, and one much deeper is a drum seen from the side.
+TABLE_DISC_RY = 3.4
+
+#: The row each pedestal's disc sits at, per variant.
+TABLE_TOP_Y = (7, 6, 10, 5)
 
 
-def _board_top(img: Image.Image, top: int, thickness: int, inset: int) -> None:
-    px = img.load()
-    for y in range(top, top + thickness):
-        for x in range(inset, img.width - inset):
-            lit = 0.92 if y == top else (0.7 if y == top + 1 else 0.4)
-            px[x, y] = pick(PLANK, lit - hash01(x, y, 61) * 0.14, x, y)
+def _disc(
+    px,
+    w: int,
+    h: int,
+    cx: float,
+    cy: float,
+    rx: float,
+    ry: float,
+    ramp,
+    base: float,
+    salt: int,
+) -> None:
+    """A flat elliptical top, lit along its far edge.
+
+    The gradient runs front to back rather than left to right, because that is
+    where the light in this zone comes from — his fire and the torch ring are
+    around the party, and a disc lit from one side would read as a coin
+    standing up.
+    """
+    for y in range(max(0, int(cy - ry - 1)), min(h, int(cy + ry + 2))):
+        for x in range(max(0, int(cx - rx - 1)), min(w, int(cx + rx + 2))):
+            nx = (x - cx) / rx
+            ny = (y - cy) / ry
+            radius = nx * nx + ny * ny
+            if radius > 1.0:
+                continue
+            # The rim is the darkest ring: it is the edge of the board turning
+            # away, and it is what stops the top reading as a painted circle.
+            rim = radius > 0.66
+            back = 0.5 - ny * 0.5
+            value = (0.30 if rim else base + back * 0.30) - hash01(x, y, salt) * 0.12
+            px[x, y] = pick(ramp, clamp01(value), x, y)
 
 
 def make_table(w: int, h: int, variant: int, rng: random.Random) -> Image.Image:
-    """One stall. Bottom-anchored, outlined, depth-sorted with the party."""
+    """One round stall. Bottom-anchored, outlined, depth-sorted with the party.
+
+    Four pedestals under four discs. They are different objects rather than one
+    object at four heights, because six of these stand in one grid and a grid of
+    identical furniture is a shop that was generated — the disc is the constant
+    the eye reads and the leg is where the variation goes.
+    """
     img = Image.new("RGBA", (w, h), TRANSPARENT)
     px = img.load()
+    cx = (w - 1) / 2.0
+    top = TABLE_TOP_Y[variant]
+    rx = w / 2.0 - 1.5
 
-    if variant == 0:  # a trestle: two sawhorses and a board
-        _board_top(img, 4, 3, 0)
-        for foot in (4, w - 8):
-            for step in range(h - 8):
-                y = 7 + step
-                spread = step // 3
-                for x in (foot - spread, foot + 3 + spread):
-                    if 0 <= x < w:
-                        px[x, y] = pick(PLANK, 0.55 - step * 0.02, x, y)
-            for x in range(foot - 1, foot + 5):  # the cross-brace
-                px[x, h - 7] = pick(PLANK, 0.45, x, h - 7)
+    def column(half_at, y0: int, y1: int, ramp, base: float, salt: int) -> None:
+        """A vertical solid whose half-width is a function of the row."""
+        for y in range(max(0, y0), min(h, y1 + 1)):
+            half = half_at(y)
+            for x in range(int(cx - half), int(cx + half) + 1):
+                if not (0 <= x < w):
+                    continue
+                across = abs(x - cx) / max(half, 0.6)
+                value = base + (1.0 - across) * 0.30 - hash01(x, y, salt) * 0.13
+                px[x, y] = pick(ramp, clamp01(value), x, y)
 
-    elif variant == 1:  # a board over two crates
-        _board_top(img, 3, 3, 0)
-        for box in (1, w - 12):
-            for y in range(6, h - 1):
-                for x in range(box, box + 11):
-                    edge = x in (box, box + 10) or y in (6, h - 2)
-                    value = 0.35 if edge else 0.6 - hash01(x, y, 131) * 0.2
-                    px[x, y] = pick(PLANK, value, x, y)
-            for y in range(6, h - 1):  # the diagonal batten
-                run = box + (y - 6)
-                if box <= run < box + 11:
-                    px[run, y] = pick(PLANK_DARK, 0.7, run, y)
+    if variant == 0:  # a turned pedestal on a round foot
+        column(lambda y: 2.6 - (y - top) * 0.03, top + 2, h - 5, PLANK, 0.34, 61)
+        _disc(px, w, h, cx, h - 3.0, rx * 0.62, 2.2, PLANK, 0.34, 67)
 
-    elif variant == 2:  # a board over a barrel: the tall one
-        _board_top(img, 1, 3, 2)
-        cx = w // 2
-        for y in range(4, h - 1):
-            span = 8 - abs(y - (h // 2)) // 5
-            for x in range(cx - span, cx + span):
-                rim = y in (5, 10, h - 5)
-                curve = 1.0 - abs(x - cx + 0.5) / (span + 1.0)
-                value = 0.28 if rim else 0.3 + curve * 0.5
-                px[x, y] = pick(PLANK, value - hash01(x, y, 211) * 0.12, x, y)
-        for y in (5, 10, h - 5):  # the iron hoops
-            for x in range(cx - 8, cx + 8):
-                if px[x, y][3]:
-                    px[x, y] = pick(METAL, 0.5 + hash01(x, y, 17) * 0.2, x, y)
+    elif variant == 1:  # a barrel, hoops and all
+        def barrel(y: int) -> float:
+            mid = (top + h) / 2.0
+            return 7.0 - abs(y - mid) * 0.26
+        column(barrel, top + 2, h - 2, PLANK, 0.30, 71)
+        for band in (top + 5, (top + h) // 2, h - 4):
+            for x in range(w):
+                if 0 <= band < h and px[x, band][3]:
+                    px[x, band] = pick(METAL, 0.5 + hash01(x, band, 17) * 0.2, x, band)
 
-    else:  # a table under a cloth: the one that hides its legs
-        _board_top(img, 5, 2, 1)
-        for y in range(7, h - 1):
-            for x in range(1, w - 1):
-                hem = y >= h - 3
-                fold = math.sin(x * 0.7 + y * 0.15) * 0.12
-                value = 0.5 + fold - (0.22 if hem else 0.0)
-                if hem and (x % 5) in (0, 1):
+    elif variant == 2:  # a cable spool stood on its end: the tall one
+        column(lambda y: 3.0, top + 3, h - 4, PLANK_DARK, 0.5, 83)
+        _disc(px, w, h, cx, top + 3.0, rx * 0.78, 1.8, PLANK, 0.28, 87)
+        _disc(px, w, h, cx, h - 2.5, rx * 0.88, 2.2, PLANK, 0.30, 89)
+
+    else:  # a stone drum with a cloth thrown over its foot
+        column(lambda y: 5.2, top + 2, h - 6, STONE, 0.32, 97)
+        for y in range(h - 7, h - 1):
+            for x in range(2, w - 2):
+                if abs(x - cx) > 6.0 + (y - (h - 7)) * 0.5:
+                    continue
+                fold = math.sin(x * 0.7 + y * 0.2) * 0.12
+                if y >= h - 2 and (x % 5) in (0, 1):
                     continue  # the cloth is cut, and it does not reach the floor
-                px[x, y] = pick(CANVAS, clamp01(value), x, y)
-        for x in range(1, w - 1):  # a cord holding it on
-            px[x, 9] = pick(ROPE, 0.6 + hash01(x, 9, 5) * 0.2, x, 9)
+                px[x, y] = pick(CANVAS, clamp01(0.46 + fold - hash01(x, y, 101) * 0.12), x, y)
 
+    # The top goes on LAST so it sits over whatever the pedestal did, which is
+    # what makes the leg read as being under the board rather than beside it.
+    _disc(px, w, h, cx, float(top), rx, TABLE_DISC_RY, PLANK, 0.48, 53)
     outline(img, OUTLINE_WOOD)
     return img
-
-
-#: The row a weapon lies on, per table variant. Part of the art: the four
-#: stalls are deliberately different heights.
-TABLE_TOP_Y = (4, 3, 1, 5)
 
 
 # --- his own kit ------------------------------------------------------------
@@ -311,6 +358,271 @@ def make_kit(w: int, h: int, variant: int, rng: random.Random) -> Image.Image:
     outline(img, OUTLINE_WOOD)
     return img
 
+
+# --- the wagon --------------------------------------------------------------
+# THE BIGGEST SPRITE IN THE ZONE, AND THE ONLY PIECE OF SCENE IN THE GAME THAT
+# CARRIES THE WORLD'S HISTORY ON IT.
+#
+# The question the shop has always had to answer is "who is this man and why is
+# he in a forest full of the dead". A tent answered half of it: somebody is
+# camped out here. A WAGON answers the rest — he did not walk here with six
+# tables on his back, he DRIVES, which means he was somewhere else last week
+# and will be somewhere else next week, and the reason he is worth finding is
+# that he is the only thing in the run that moves between the places the party
+# cannot reach.
+#
+# The second half of the brief is what is ON it, and none of it is decoration:
+#
+#   GUNS racked along the flank      he sells firearms and nothing else does
+#   MASKS strung on a line           he takes what people were wearing
+#   ITEMS lashed to the boards       a helmet, a canteen, tins: salvage
+#   TWO COVERED BODIES at the wheel  where all of the above came from
+#
+# That last one is the whole point and it is deliberately QUIET — two long
+# shapes under a tarp with a pair of boots out the end, laid out neatly, at the
+# edge of the frame. A trader who displayed corpses would be a villain and this
+# man is not one; a trader who has two of them laid out and covered beside his
+# cart is somebody doing an unpleasant job carefully. The party works out where
+# the stock comes from on their own, from the far side of the clearing, and
+# nobody ever says it out loud.
+#
+# IT IS ONE FRAME. The wagon does not animate, does not open and does not sell:
+# it is the backdrop the pitch is arranged against, and everything the party
+# may touch stands in front of it.
+
+TILE_WAGON_W = 6.0
+TILE_WAGON_H = 5.0
+
+#: A lantern hanging off the front bow. Warm, so it still reads as a flame
+#: under the darkness multiply even though the additive fire is drawn
+#: separately from the torches.
+EMBER: Ramp = [rgb(c) for c in ("#3a1608", "#7a3410", "#b3591a", "#e08a2c")]
+
+
+def make_wagon(w: int, h: int, rng: random.Random) -> Image.Image:
+    """His cart. Bottom-anchored, outlined, depth-sorted with the party."""
+    img = Image.new("RGBA", (w, h), TRANSPARENT)
+    px = img.load()
+
+    def put(x: int, y: int, ramp, value: float, salt: int = 3) -> None:
+        if 0 <= x < w and 0 <= y < h:
+            px[x, y] = pick(ramp, clamp01(value - hash01(x, y, salt) * 0.11), x, y)
+
+    def box(x0: int, y0: int, x1: int, y1: int, ramp, base: float, salt: int) -> None:
+        for y in range(max(0, y0), min(h, y1 + 1)):
+            for x in range(max(0, x0), min(w, x1 + 1)):
+                edge = x in (x0, x1) or y in (y0, y1)
+                put(x, y, ramp, base - (0.20 if edge else 0.0), salt)
+
+    # Everything below is authored against a 96x80 frame and scaled, so the
+    # composition survives a change of tile size without being re-eyeballed.
+    sx = w / 96.0
+    sy = h / 80.0
+
+    def X(v: float) -> int:
+        return int(round(v * sx))
+
+    def Y(v: float) -> int:
+        return int(round(v * sy))
+
+    # 1. THE CANOPY. An arch of canvas over six hoops. The hoops are drawn as
+    #    darker columns THROUGH the cloth rather than as arcs behind it: at
+    #    this scale a rib you can see the shape of is a rib that has become the
+    #    subject, and what is wanted is only the ribbing that says "cloth over
+    #    a frame" instead of "a painted lump".
+    bed_top = 34.0
+    for xv in range(18, 97):
+        span = abs(xv - 57.0) / 39.0
+        if span > 1.0:
+            continue
+        crown = 9.0 + span * span * 15.0
+        # A shallow sag between the hoops. Without it the arch is an extruded
+        # curve and the canvas reads as sheet metal.
+        crown += math.sin(xv * 0.52) * 0.9
+        rib = (xv % 13) in (0, 1)
+        for yv in range(int(crown), int(bed_top) + 1):
+            down = (yv - crown) / max(bed_top - crown, 1.0)
+            value = 0.86 - down * 0.30 - span * 0.20
+            put(X(xv), Y(yv), CANVAS, value - (0.42 if rib else 0.0), 211)
+        # The eave: the cloth hangs a little past the boards it is lashed to.
+        put(X(xv), Y(bed_top + 1), CANVAS, 0.22, 213)
+
+    # 2. THE BED. Worked planks with three seams, a rail along the top and a
+    #    tailgate down at the right — which is the end the merchant stands at,
+    #    so the one opening in the whole sprite faces the person using it.
+    box(X(20), Y(34), X(94), Y(58), PLANK, 0.26, 217)
+    for seam in (40, 46, 52):
+        for xv in range(21, 94):
+            put(X(xv), Y(seam), PLANK_DARK, 0.15, 219)
+    for xv in range(20, 95):
+        put(X(xv), Y(35), PLANK, 0.98, 223)
+    # The tail, dropped. Dark inside, because a hole in a wagon at night is a
+    # hole and the eye should not be offered anything to read in it.
+    box(X(86), Y(38), X(94), Y(56), CHAR, 0.18, 227)
+    for yv in range(38, 57, 3):
+        put(X(93), Y(yv), METAL, 0.85, 229)
+
+    # 3. THE MASK LINE, strung along the flank under the eave. Three faces and
+    #    two pieces of salvage on one cord — the cord is what makes them read
+    #    as a display rather than as things stuck to a wall.
+    for xv in range(24, 49):
+        put(X(xv), Y(38 + int(math.sin((xv - 24) * 0.25) * 1.2)), ROPE, 0.95, 231)
+    for index, (mx, drop, tone) in enumerate(
+        ((27, 41, BONE), (34, 43, CLOTH_PALE), (41, 41, BONE))
+    ):
+        for yv in range(drop, drop + 9):
+            half = 3.4 - abs(yv - (drop + 4)) * 0.28
+            for xv in range(int(mx - half), int(mx + half) + 1):
+                put(X(xv), Y(yv), tone, 0.92 - abs(xv - mx) * 0.10, 233 + index)
+        # Two eye holes and a mouth. Three dark pixels is the entire face, and
+        # it is enough: a mask at nine pixels tall is a silhouette with holes.
+        put(X(mx - 1), Y(drop + 3), CHAR, 0.2, 5)
+        put(X(mx + 1), Y(drop + 3), CHAR, 0.2, 5)
+        put(X(mx), Y(drop + 6), CHAR, 0.25, 5)
+    # A canteen and a helmet, on the same cord. Not masks, and that is the
+    # point: the line is everything he took off people, not a trophy wall.
+    box(X(50), Y(40), X(54), Y(46), METAL, 0.82, 239)
+    for yv in range(40, 46):
+        half = 3.6 - abs(yv - 42) * 0.5
+        for xv in range(int(20 - half), int(20 + half) + 1):
+            put(X(xv), Y(yv), METAL, 0.78, 241)
+
+    # 4. THE GUN RACK, on the near flank. Four leaning barrels with wooden
+    #    stocks — the one thing on this cart the party can actually buy, so it
+    #    is the detail placed at eye height and dead centre of the sprite.
+    for index, foot in enumerate((58, 65, 72, 79)):
+        lean = -0.22 - (index % 2) * 0.08
+        for step in range(20):
+            yv = 58 - step
+            xv = foot + lean * step
+            ramp = PLANK if step < 6 else METAL
+            put(X(xv), Y(yv), ramp, 0.95 - step * 0.010, 251 + index)
+            put(X(xv + 1), Y(yv), ramp, 0.60 - step * 0.008, 251 + index)
+        # The stock's cheek, which is what stops four vertical bars reading as
+        # a fence.
+        for yv in range(53, 59):
+            put(X(foot - 1), Y(yv), PLANK, 0.88, 257)
+
+    # 5. WHEELS AND AXLE. Spoked, because a solid disc at this size is a bin
+    #    lid — the spokes are the only thing that says the cart rolls.
+    box(X(34), Y(59), X(82), Y(62), METAL, 0.22, 263)
+    for hub_x in (36.0, 80.0):
+        for yv in range(48, 77):
+            for xv in range(int(hub_x - 13), int(hub_x + 14)):
+                dx = (xv - hub_x) / 12.4
+                dy = (yv - 62.0) / 12.4
+                radius = math.hypot(dx, dy)
+                if radius > 1.0:
+                    continue
+                if radius > 0.80:
+                    put(X(xv), Y(yv), PLANK, 0.30, 269)   # the felloe
+                    continue
+                angle = math.atan2(dy, dx)
+                spoke = abs(math.sin(angle * 4.0)) < 0.16
+                if radius < 0.20:
+                    put(X(xv), Y(yv), METAL, 0.90, 271)   # the hub
+                elif spoke:
+                    put(X(xv), Y(yv), PLANK, 0.72, 273)
+    # The iron tyre, one ring outside the felloe, so the wheel has an edge that
+    # is not the keyline.
+    for hub_x in (36.0, 80.0):
+        for step in range(64):
+            angle = step / 64.0 * math.tau
+            put(
+                X(hub_x + math.cos(angle) * 12.0),
+                Y(62.0 + math.sin(angle) * 12.0),
+                METAL,
+                0.80,
+                277,
+            )
+
+    # 6. THE TWO COVERED BODIES, laid out at the front wheel. See the module
+    #    comment: this is the loudest thing on the sprite and it is drawn as
+    #    quietly as it can be — two long low shapes under one tarp, and a pair
+    #    of boots out of the end so nobody has to guess.
+    for index, (x0, base) in enumerate(((2, 76), (7, 79))):
+        length = 22
+        for step in range(length):
+            xv = x0 + step
+            crest = math.sin((step / length) * math.pi)
+            for yv in range(int(base - crest * 7.0), base + 1):
+                shade = 0.30 + crest * 0.16 - (base - yv) * 0.010
+                put(X(xv), Y(yv), CLOTH_OLIVE if index else CLOTH_BLUE, shade, 281 + index)
+        # Boots. Two dark blocks past the hem, and the only part of a person
+        # anybody ever sees in this zone.
+        for boot in (0, 3):
+            box(X(x0 + length), Y(base - 4 + boot), X(x0 + length + 3), Y(base - 2 + boot),
+                LEATHER, 0.70, 283)
+
+    # 7. THE LANTERN on the front bow. Small, warm, and the only light source
+    #    the sprite carries of its own — the wagon is parked at the dark end of
+    #    the clearing and this is what says somebody is home.
+    for yv in range(16, 22):
+        put(X(20), Y(yv), METAL, 0.5, 293)
+    box(X(17), Y(22), X(23), Y(30), METAL, 0.44, 295)
+    box(X(18), Y(24), X(22), Y(28), EMBER, 0.72, 297)
+
+    outline(img, OUTLINE_WOOD)
+    return img
+
+
+# --- his counter ------------------------------------------------------------
+
+
+TILE_COUNTER_W = 2.2
+TILE_COUNTER_H = 1.4
+
+
+def make_counter(w: int, h: int, rng: random.Random) -> Image.Image:
+    """The plank he trades over. Bottom-anchored, outlined.
+
+    A COUNTER AND NOT A STALL. The six round tables in the middle of the
+    clearing are the stock; this is where the man himself stands, and it is
+    deliberately the plainest object in the zone — a board on two trestles with
+    a ledger, a scale and a lamp on it. Everything about the pitch that is
+    supposed to catch the eye is behind him on the wagon or in front of him on
+    the grid, and a counter competing with either would be a third thing to
+    read at the exact moment somebody is trying to decide what to buy.
+    """
+    img = Image.new("RGBA", (w, h), TRANSPARENT)
+    px = img.load()
+
+    def put(x: int, y: int, ramp, value: float, salt: int = 3) -> None:
+        if 0 <= x < w and 0 <= y < h:
+            px[x, y] = pick(ramp, clamp01(value - hash01(x, y, salt) * 0.12), x, y)
+
+    top = 4
+    for y in range(top, top + 3):
+        for x in range(w):
+            lit = 0.88 if y == top else (0.66 if y == top + 1 else 0.42)
+            put(x, y, PLANK, lit, 61)
+    # Two trestles, splayed, and a cross-brace. Splayed rather than vertical
+    # because a board on two straight posts is a table and a board on two
+    # splayed ones is a thing somebody set up this morning.
+    for foot in (3, w - 5):
+        for step in range(h - top - 4):
+            yv = top + 3 + step
+            spread = step // 3
+            for xv in (foot - spread, foot + 1 + spread):
+                put(xv, yv, PLANK, 0.52 - step * 0.02, 67)
+    for x in range(2, w - 2):
+        put(x, h - 5, PLANK_DARK, 0.6, 71)
+    # The ledger, the scale and the tin lamp, in that order left to right.
+    for x in range(4, 11):
+        put(x, top - 1, CLOTH_PALE, 0.62 - (x - 4) * 0.02, 73)
+        put(x, top - 2, CLOTH_PALE, 0.5, 73)
+    for x in range(w // 2 - 3, w // 2 + 4):
+        put(x, top - 1, METAL, 0.58, 79)
+    put(w // 2, top - 4, METAL, 0.5, 79)
+    put(w // 2, top - 3, METAL, 0.5, 79)
+    for x in range(w - 8, w - 4):
+        for y in range(top - 5, top - 1):
+            put(x, y, METAL, 0.46, 83)
+    put(w - 6, top - 3, EMBER, 0.8, 83)
+    put(w - 7, top - 3, EMBER, 0.62, 83)
+
+    outline(img, OUTLINE_WOOD)
+    return img
 
 # --- the torches ------------------------------------------------------------
 
@@ -591,6 +903,15 @@ def build(args) -> Path:
     ]
     pack(kits, TILE_KIT_W, TILE_KIT_H).save(out_dir / "kit.png")
 
+    wagon_w, wagon_h = round(tile * TILE_WAGON_W), round(tile * TILE_WAGON_H)
+    wagon = make_wagon(wagon_w, wagon_h, random.Random(args.seed + 1300))
+    pack([wagon], wagon_w, wagon_h).save(out_dir / "wagon.png")
+
+    counter_w = round(tile * TILE_COUNTER_W)
+    counter_h = round(tile * TILE_COUNTER_H)
+    counter = make_counter(counter_w, counter_h, random.Random(args.seed + 1400))
+    pack([counter], counter_w, counter_h).save(out_dir / "counter.png")
+
     manifest = {
         "tile": tile,
         "seed": args.seed,
@@ -610,6 +931,18 @@ def build(args) -> Path:
             "kit": {
                 "file": "kit.png", "frameWidth": TILE_KIT_W,
                 "frameHeight": TILE_KIT_H, "frames": len(kits), "sway": 0,
+            },
+            # HIS CART, one frame, parked on the west rim of the clearing. The
+            # biggest sprite in the zone and the one that says where the stock
+            # comes from — see the section comment above `make_wagon`.
+            "wagon": {
+                "file": "wagon.png", "frameWidth": wagon_w,
+                "frameHeight": wagon_h, "frames": 1, "sway": 0,
+            },
+            # The plank he stands behind. Deliberately the plainest thing here.
+            "counter": {
+                "file": "counter.png", "frameWidth": counter_w,
+                "frameHeight": counter_h, "frames": 1, "sway": 0,
             },
             "torch": {
                 "file": "torch.png", "frameWidth": torch_w, "frameHeight": torch_h,
@@ -643,6 +976,8 @@ def build(args) -> Path:
 
     print(
         f"wrote {out_dir}: "
+        f"wagon 1x{wagon_w}x{wagon_h}, "
+        f"counter 1x{counter_w}x{counter_h}, "
         f"table {len(tables)}x{table_w}x{table_h}, "
         f"torch {len(torches)}x{torch_w}x{torch_h}, "
         f"rug {len(rugs)}x{rug_w}x{rug_h}, "

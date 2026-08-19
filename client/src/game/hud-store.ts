@@ -170,6 +170,19 @@ export interface HudVitals {
   hp: number;
   maxHp: number;
   alive: boolean;
+  /**
+   * Breath, 0..`staminaMax`. Read from the PREDICTED body, not the roster:
+   * SHIFT has to empty the bar on the frame it is pressed, and a value that
+   * waited for a snapshot would lag the speed the player can already feel.
+   */
+  stamina: number;
+  staminaMax: number;
+  /**
+   * The bar was spent to zero and SHIFT is refused until a third of it is
+   * back. The HUD says so — an unresponsive key with no explanation reads as
+   * a dropped input.
+   */
+  winded: boolean;
   /** Progression, paid out by the enemies you kill. */
   level: number;
   xpInLevel: number;

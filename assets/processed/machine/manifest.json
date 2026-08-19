@@ -2,90 +2,95 @@
   "seed": 1337,
   "cabinet": {
     "file": "cabinet.png",
-    "frameWidth": 36,
-    "frameHeight": 50,
+    "frameWidth": 48,
+    "frameHeight": 72,
     "frames": 2,
     "reels": [
       [
-        6,
-        14
+        8,
+        20
       ],
       [
-        15,
-        14
+        20,
+        20
       ],
       [
-        24,
-        14
+        32,
+        20
       ]
     ],
-    "reelWidth": 8,
-    "reelHeight": 12,
+    "reelWidth": 10,
+    "reelHeight": 16,
     "lever": [
-      29,
-      19
+      43,
+      28
     ],
     "trayMouth": [
-      17,
-      39
+      23,
+      57
     ],
     "crown": [
-      18,
-      4
-    ]
+      24,
+      6
+    ],
+    "payLine": 28
   },
   "reel": {
-    "file": "reel.png",
-    "frameWidth": 8,
-    "frameHeight": 12,
-    "frames": 9,
-    "spinFrames": 4,
-    "rarities": [
+    "file": "strip.png",
+    "frameWidth": 10,
+    "frameHeight": 16,
+    "cells": 10,
+    "band": [
+      "common",
+      "rare",
+      "common",
+      "legendary",
+      "uncommon",
+      "epic",
       "common",
       "uncommon",
       "rare",
-      "epic",
-      "legendary"
+      "common"
     ]
   },
   "lever": {
     "file": "lever.png",
-    "frameWidth": 12,
-    "frameHeight": 26,
-    "frames": 5,
+    "frameWidth": 16,
+    "frameHeight": 36,
+    "frames": 6,
     "pivot": [
-      2,
-      13
+      3,
+      18
     ]
   },
   "effects": {
     "marquee": {
       "file": "marquee.png",
-      "frameWidth": 40,
-      "frameHeight": 18,
-      "frames": 8,
+      "frameWidth": 54,
+      "frameHeight": 24,
+      "frames": 10,
       "fps": 14,
-      "anchorY": 9,
+      "anchorY": 12,
       "loop": true,
       "tinted": true
     },
     "window": {
       "file": "window.png",
-      "frameWidth": 30,
-      "frameHeight": 14,
+      "frameWidth": 40,
+      "frameHeight": 22,
       "frames": 6,
       "fps": 8,
-      "anchorY": 7,
+      "anchorY": 11,
       "loop": true,
       "tinted": true
     },
     "burst": {
       "file": "burst.png",
-      "frameWidth": 48,
-      "frameHeight": 48,
-      "frames": 10,
+      "frameWidth": 64,
+      "frameHeight": 64,
+      "frames": 12,
       "fps": 18,
-      "anchorY": 24,
+      "anchorY": 32,
       "loop": false,
       "tinted": true
     }

@@ -53,6 +53,15 @@ export interface DrawableEntity {
   ay: number;
   hp: number;
   maxHp: number;
+  /**
+   * Breath, 0..`staminaMax`, drawn as a thinner bar UNDER the health bar.
+   * Always 0/0 for enemies: a zombie does not get tired, and a second meter
+   * over every body in a horde would bury the one that matters.
+   */
+  stamina: number;
+  staminaMax: number;
+  /** Bar spent, key locked out. Drains the colour out of the run bar. */
+  winded: boolean;
   alive: boolean;
   moving: boolean;
   animTime: number;

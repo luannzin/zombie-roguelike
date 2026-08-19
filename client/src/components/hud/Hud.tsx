@@ -140,13 +140,10 @@ export function Hud({ snapshot, minimapRef, error }: HudProps) {
           {/* ABOVE the bag, because the two are the same statement about what
               you are carrying — one you can still lose tonight and one you
               keep. Stacking them is also what stops the HUD growing a fifth
-              region for a system that is empty until the first shop. */}
-          <SkillTray
-            skills={snapshot.skills}
-            spins={snapshot.spins}
-            reward={snapshot.reward}
-            frames={SKILL_FRAMES}
-          />
+              region. It is drawn even when it is empty — a region that
+              appeared for the first time at the first shop would be one more
+              thing to learn in the middle of a run. */}
+          <SkillTray skills={snapshot.skills} reward={snapshot.reward} frames={SKILL_FRAMES} />
           <Inventory inventory={snapshot.inventory} />
           <ControlsHint zone={snapshot.zone} />
         </div>

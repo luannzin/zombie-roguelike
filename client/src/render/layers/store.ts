@@ -1,24 +1,31 @@
 /**
- * The merchant's camp, drawn.
+ * The merchant's clearing, drawn.
  *
- * Only his own kit is here. The glade he is standing in is an ordinary forest
- * map — its soil, grass and trees come from `layers/terrain`, his tent is a
- * scenery prop in the standing sort, and his torches feed the same light field
- * a cabin lamp does. That is the whole reason the camp stopped being an
- * interior: almost none of it needs special drawing any more.
+ * Only what is HIS is here. The room he is parked in is an ordinary forest map
+ * — its soil, grass and trees come from `layers/terrain`, and his torch ring
+ * feeds the same light field a cabin lamp does. That is the whole reason the
+ * shop stopped being an interior: almost none of it needs special drawing any
+ * more.
  *
  * What is left goes in four places in the frame:
  *
  *   MAT          flat on the ground, with the boot prints. Under everybody.
- *   TABLES,      IN the entity sort, merged like scenery: a player walking
- *   TORCHES,     behind a table has to disappear behind it, and the merchant
- *   MERCHANT     is a body standing on the ground like any other. A table
- *                draws its own stock immediately after itself, so a gun is
- *                never sorted away from what it is lying on.
+ *   WAGON,       IN the entity sort, merged like scenery: a player walking
+ *   COUNTER,     behind the cart has to disappear behind it, and the merchant
+ *   TABLES,      is a body standing on the ground like any other. A table
+ *   TORCHES,     draws its own goods immediately after itself, so a gun is
+ *   MERCHANT     never sorted away from the pedestal it is floating over.
  *   FIRE, GLOW   additive, after the darkness pass, like every other light.
- *   PRICES       last, with the name labels. A price tag is a thing the
- *                MERCHANT is telling you, not an object in the clearing, so
- *                nothing in the clearing may occlude it.
+ *   PRICES       last. A price tag is a thing the MERCHANT is telling you, not
+ *                an object in the clearing, so nothing in the clearing may
+ *                occlude it — and it carries the item's NAME in its rarity
+ *                colour, because six tables in a grid with six numbers over
+ *                them is a spreadsheet until you can tell them apart.
+ *
+ * THE GOODS FLOAT. A gun on a table you are standing at lifts off the boards
+ * and BREATHES there — it does not rise to a fixed offset and stop, because a
+ * sprite parked in mid-air is a bug and one that is still moving is an offer.
+ * The pool underneath (`glow`) is the other half of the same statement.
  */
 
 import type { Projection } from '../projection';
@@ -28,26 +35,50 @@ import { merchantFrame } from '../merchant';
 import type { StoreAtlas } from '../store';
 import { COIN_PX, tableTopY, torchFlameY } from '../store';
 import type { MachineAtlas } from '../machine';
-import { reelBlur, reelFace } from '../machine';
+import { bandCell } from '../machine';
 import type { SkillAtlas } from '../skills';
 import { drawCanister } from '../skills';
 import type { MachinePull } from '../../game/machine';
-import { CAN_THROW, burstProgress, canPose, leverPose, pullGain, reelPose } from '../../game/machine';
+import {
+  CAN_THROW,
+  burstProgress,
+  canPose,
+  leverPose,
+  payLineFlash,
+  pullGain,
+  reelScroll,
+} from '../../game/machine';
 import { palette } from '../../theme/palette';
 import { hudFont } from '../../theme/fonts';
 import type { StoreFixtures, Stand } from '../../game/world';
 
 /** Price tag geometry, in screen pixels. */
 const PRICE_TEXT_PX = 11;
+const NAME_TEXT_PX = 10;
 const PRICE_PAD_X = 4;
 const PRICE_CARD_H = 14;
+const NAME_ROW_H = 12;
 const PRICE_GAP = 3;
 /** How far above the table's surface the tag floats, in world pixels. */
-const PRICE_LIFT = 13;
+const PRICE_LIFT = 20;
+
+/**
+ * How fast the goods breathe on a table you are standing at, in radians a
+ * second, and how much of the lift the breath is.
+ *
+ * SLOW AND SHALLOW. The lift is what says "this is being offered"; the breath
+ * is what stops the lift reading as a sprite that got stuck one row too high.
+ * Anything faster than this is a bobbing collectible out of a different game.
+ */
+const FLOAT_RATE = 2.6;
+const FLOAT_DEPTH = 0.28;
+
+/** How long the pay line stays lit after the third reel lands, in seconds. */
+const PAY_LINE_FLASH = 0.55;
 
 /** One thing on the pitch that stands up and has to be depth-sorted. */
 export interface StoreStanding {
-  kind: 'table' | 'kit' | 'torch' | 'merchant' | 'machine';
+  kind: 'table' | 'kit' | 'wagon' | 'counter' | 'torch' | 'merchant' | 'machine';
   /** Contact row, world pixels — what it is sorted by. */
   y: number;
   x: number;
@@ -86,6 +117,12 @@ export interface StoreScene {
   invite: number;
   /** Skill icon frame per catalog key, straight off `config.skills`. */
   iconOf: (key: string) => number;
+  /**
+   * The catalog row behind a stall's key: what to call it and what colour to
+   * say it in. Straight off `config.loot`, so the shop and the buy tooltip
+   * name the same gun the same way.
+   */
+  labelOf: (key: string) => { name: string; rarity: string };
 }
 
 /** Everything that goes into the entity depth sort, in ascending contact. */
@@ -102,6 +139,12 @@ export function storeStanding(scene: StoreScene | null): StoreStanding[] {
   }
   for (const piece of scene.fixtures.kit) {
     out.push({ kind: 'kit', x: piece.x, y: piece.y, variant: piece.variant });
+  }
+  if (scene.fixtures.wagonX !== null && scene.fixtures.wagonY !== null) {
+    out.push({ kind: 'wagon', x: scene.fixtures.wagonX, y: scene.fixtures.wagonY });
+  }
+  if (scene.fixtures.counterX !== null && scene.fixtures.counterY !== null) {
+    out.push({ kind: 'counter', x: scene.fixtures.counterX, y: scene.fixtures.counterY });
   }
   out.push({
     kind: 'merchant',
@@ -149,6 +192,7 @@ export function drawStoreProp(
   liftPx: number,
   machine: MachineAtlas | null,
   skills: SkillAtlas | null,
+  time: number,
 ): void {
   if (piece.kind === 'merchant') {
     drawMerchant(ctx, view, merchant, scene, piece);
@@ -159,10 +203,19 @@ export function drawStoreProp(
     return;
   }
   if (piece.kind === 'kit') {
-    // His gear, behind the counter. Drawn exactly like a torch and with no
-    // state of its own: nothing here opens, lifts or sells, and the ART is
+    // His gear, on his side of the room. Drawn exactly like a torch and with
+    // no state of its own: nothing here opens, lifts or sells, and the ART is
     // what says so — see the module docstring in make_store.py.
     drawSheet(ctx, view, atlas.kit, piece.variant ?? 0, piece.x, piece.y);
+    return;
+  }
+  if (piece.kind === 'wagon') {
+    // One frame, no state. It is the backdrop the pitch is arranged against.
+    drawSheet(ctx, view, atlas.wagon, 0, piece.x, piece.y);
+    return;
+  }
+  if (piece.kind === 'counter') {
+    drawSheet(ctx, view, atlas.counter, 0, piece.x, piece.y);
     return;
   }
   if (piece.kind === 'torch') {
@@ -200,7 +253,7 @@ export function drawStoreProp(
   // the table frame's own top edge, so it has to be added to where that edge
   // landed on screen rather than to the contact.
   const surface = top + tableTopY(table, frame) * zoom;
-  const lift = stand.id === scene.nearId ? liftPx * zoom : 0;
+  const lift = standLift(stand.id === scene.nearId, liftPx, time) * zoom;
   ctx.drawImage(
     guns.image,
     gun.frame * guns.frameWidth, 0, guns.frameWidth, guns.frameHeight,
@@ -209,6 +262,20 @@ export function drawStoreProp(
     guns.frameWidth * zoom,
     guns.frameHeight * zoom,
   );
+}
+
+/**
+ * How far the goods on one table are off its boards right now, in world pixels.
+ *
+ * ZERO WHEN NOBODY IS AT IT, and everything else is the breath. The lift is
+ * not eased in from zero on the frame the player walks into range: it snaps to
+ * the bottom of the breath and starts rising, which is a smaller lie than a
+ * ramp (the item is only ever a couple of pixels out) and reads as the table
+ * answering rather than as an animation starting.
+ */
+function standLift(near: boolean, liftPx: number, time: number): number {
+  if (!near) return 0;
+  return liftPx * (1 - FLOAT_DEPTH + FLOAT_DEPTH * Math.sin(time * FLOAT_RATE));
 }
 
 /**
@@ -249,28 +316,22 @@ function drawMachine(
     left, top, cab.frameWidth * zoom, cab.frameHeight * zoom,
   );
 
-  // The three reels. Spinning ones cycle blur frames out of phase; a landed
-  // one shows its rarity face and drops a pixel on the bounce, which is what
-  // gives the stop weight.
+  // THE THREE BANDS. Each window is a scrolling view onto one tall strip, so a
+  // spin is a strip going past rather than a frame index changing — see
+  // `reelScroll`. An idle machine parks each band on a different cell, which
+  // is what makes an unpulled cabinet read as three reels instead of one
+  // pattern printed three times.
   for (let index = 0; index < atlas.reelSlots.length; index++) {
     const [rx, ry] = atlas.reelSlots[index];
-    let frame = index % Math.max(1, atlas.spinFrames);
-    let sag = 0;
-    if (pull) {
-      const pose = reelPose(pull, index);
-      if (pose.spinning) {
-        frame = reelBlur(atlas, pull.elapsed, index);
-      } else {
-        frame = reelFace(atlas, pull.rarity);
-        if (pose.bounce >= 0) sag = Math.sin(pose.bounce * Math.PI) * 1.4;
-      }
+    const dx = left + rx * zoom;
+    const dy = top + ry * zoom;
+    if (!pull) {
+      drawBand(ctx, atlas, index * 3 + 1, dx, dy, zoom, 0);
+      continue;
     }
-    ctx.drawImage(
-      atlas.reel.image,
-      frame * atlas.reelWidth, 0, atlas.reelWidth, atlas.reelHeight,
-      left + rx * zoom, top + (ry + sag) * zoom,
-      atlas.reelWidth * zoom, atlas.reelHeight * zoom,
-    );
+    const landing = bandCell(atlas, pull.rarity, index);
+    const pose = reelScroll(pull, index, atlas.reelHeight, atlas.bandCells, landing);
+    drawBand(ctx, atlas, pose.offset / atlas.reelHeight, dx, dy, zoom, pose.speed);
   }
 
   // The arm. `leverPose` is 0..1 and the sheet's frames are the sweep, so the
@@ -309,6 +370,65 @@ function drawMachine(
     // bigger the better the pull was.
     pullGain(pull) * (0.7 + 0.3 * Math.sin(pull.elapsed * 7)),
   );
+  ctx.globalAlpha = 1;
+}
+
+/**
+ * One reel window: a `reelHeight` slice of the band at `cells` cells down it.
+ *
+ * TWO BLITS, because the window wraps. The strip has no ends — the last cell is
+ * followed by the first — so a view that straddles the seam is the bottom of
+ * the sheet and then the top of it, and the alternative (a sheet with a
+ * duplicate cell glued on) is a second copy of the art that has to be kept in
+ * step with the first.
+ *
+ * THE BLUR IS THE SAME DRAW AGAIN, offset by how far the band travels in a
+ * frame and faded by how fast it is going. It costs one more blit per reel and
+ * it is the entire difference between a strip that is moving and a strip that
+ * is teleporting: at full speed the cells smear into each other, and as the
+ * reel slows the smear closes up until the last few faces go past one at a
+ * time, readable, which is the beat the whole ceremony is built around.
+ */
+function drawBand(
+  ctx: CanvasRenderingContext2D,
+  atlas: MachineAtlas,
+  cells: number,
+  dx: number,
+  dy: number,
+  zoom: number,
+  speed: number,
+): void {
+  const cellH = atlas.reelHeight;
+  const bandH = Math.max(1, atlas.bandCells * cellH);
+  const width = atlas.reelWidth;
+
+  const blit = (offset: number, alpha: number) => {
+    const from = ((offset % bandH) + bandH) % bandH;
+    const first = Math.min(cellH, bandH - from);
+    ctx.globalAlpha = alpha;
+    ctx.drawImage(
+      atlas.strip.image,
+      0, from, width, first,
+      dx, dy, width * zoom, first * zoom,
+    );
+    if (first < cellH) {
+      ctx.drawImage(
+        atlas.strip.image,
+        0, 0, width, cellH - first,
+        dx, dy + first * zoom, width * zoom, (cellH - first) * zoom,
+      );
+    }
+  };
+
+  const base = cells * cellH;
+  blit(base, 1);
+  if (speed > 0.02) {
+    // Half a cell of smear at full tilt. More than that and the band stops
+    // reading as a band; less and a spinning reel looks like a still.
+    const smear = speed * cellH * 0.5;
+    blit(base - smear, speed * 0.5);
+    blit(base + smear, speed * 0.35);
+  }
   ctx.globalAlpha = 1;
 }
 
@@ -355,14 +475,23 @@ function drawMerchant(
 }
 
 /**
- * The price over each table: a coin and a number.
+ * The tag over each table: what it is, in its rarity colour, and what it costs.
  *
- * Drawn LAST, in screen space, with the name labels — because a price is
- * something the merchant is telling you rather than an object in the clearing,
- * and a tree in front of it must never hide it. It is on the world for the
- * same reason the loot tooltip is: the answer to "what does that cost" has to
- * be readable from down the glade, before you have walked to anything, or the
- * zone becomes four identical tables you have to visit to compare.
+ * Drawn LAST, in screen space — because a price is something the merchant is
+ * telling you rather than an object in the clearing, and a tree in front of it
+ * must never hide it. It is on the world for the same reason the loot tooltip
+ * is: the answer to "what is that and what does it cost" has to be readable
+ * from the middle of the room, before you have walked to anything.
+ *
+ * THE NAME IS ON IT NOW, and that is what the grid cost. Four tables strung
+ * along a lane could be read as a sequence — you walked past them in order and
+ * the prices climbed. Six in a square are compared at a glance and at a
+ * distance, and six bare numbers over six identical pedestals is a puzzle: the
+ * stock is rolled WITH REPLACEMENT, so two of them really can be the same gun
+ * at two prices, and the only way to see that from across the clearing is to
+ * write it down. The rarity colour does the rest of the work — it is the same
+ * ladder loot already uses, so "the purple one is the good one" needs no
+ * second language.
  *
  * AFFORDABILITY IS IN THE COLOUR. A price the party cannot meet is drawn muted
  * rather than hidden or struck through: it is still the information, and a
@@ -380,7 +509,6 @@ export function drawStorePrices(
   const tone = palette();
   const table = atlas.table;
 
-  ctx.font = hudFont(PRICE_TEXT_PX);
   ctx.textAlign = 'left';
   ctx.textBaseline = 'alphabetic';
 
@@ -390,12 +518,18 @@ export function drawStorePrices(
     const surface = stand.y - table.frameHeight + tableTopY(table, frame);
     const cx = view.x(stand.x);
     const bottom = view.y(surface - PRICE_LIFT);
-    const top = bottom - PRICE_CARD_H;
+    const card = PRICE_CARD_H + NAME_ROW_H;
+    const top = bottom - card;
 
+    const item = scene.labelOf(stand.key);
     const label = String(stand.price);
-    const textWidth = Math.ceil(ctx.measureText(label).width);
+
+    ctx.font = hudFont(PRICE_TEXT_PX);
+    const priceWidth = Math.ceil(ctx.measureText(label).width);
+    ctx.font = hudFont(NAME_TEXT_PX);
+    const nameWidth = Math.ceil(ctx.measureText(item.name).width);
     const coinWidth = atlas.coin ? COIN_PX + PRICE_GAP : 0;
-    const width = PRICE_PAD_X * 2 + coinWidth + textWidth;
+    const width = PRICE_PAD_X * 2 + Math.max(coinWidth + priceWidth, nameWidth);
     const left = Math.round(cx - width / 2);
 
     const afford = stand.price <= balance;
@@ -403,25 +537,39 @@ export function drawStorePrices(
 
     ctx.globalAlpha = near ? 0.94 : 0.82;
     ctx.fillStyle = tone.panelInset;
-    ctx.fillRect(left, top, width, PRICE_CARD_H);
+    ctx.fillRect(left, top, width, card);
     // Border as four fills rather than a stroke: at this size a 1px stroke
     // straddles the path and comes out as two half-lit rows.
     ctx.globalAlpha = near ? 0.95 : 0.5;
     ctx.fillStyle = tone.panelBorder;
     ctx.fillRect(left, top, width, 1);
     ctx.fillRect(left, bottom - 1, width, 1);
-    ctx.fillRect(left, top, 1, PRICE_CARD_H);
-    ctx.fillRect(left + width - 1, top, 1, PRICE_CARD_H);
+    ctx.fillRect(left, top, 1, card);
+    ctx.fillRect(left + width - 1, top, 1, card);
+    // The hairline between the two rows. It is what stops a name and a number
+    // in different colours reading as one string that changed its mind.
+    ctx.globalAlpha = near ? 0.55 : 0.3;
+    ctx.fillRect(left + 1, top + NAME_ROW_H, width - 2, 1);
+
+    ctx.globalAlpha = near ? 1 : 0.85;
+    ctx.font = hudFont(NAME_TEXT_PX);
+    ctx.fillStyle = rarityInk(item.rarity);
+    ctx.fillText(
+      item.name,
+      left + Math.round((width - nameWidth) / 2),
+      top + NAME_ROW_H - Math.round((NAME_ROW_H - NAME_TEXT_PX) / 2) - 1,
+    );
 
     ctx.globalAlpha = afford ? 1 : 0.45;
     if (atlas.coin) {
       ctx.drawImage(
         atlas.coin, 0, 0, COIN_PX, COIN_PX,
         left + PRICE_PAD_X,
-        top + Math.round((PRICE_CARD_H - COIN_PX) / 2),
+        top + NAME_ROW_H + Math.round((PRICE_CARD_H - COIN_PX) / 2),
         COIN_PX, COIN_PX,
       );
     }
+    ctx.font = hudFont(PRICE_TEXT_PX);
     ctx.fillStyle = afford ? tone.ink : tone.inkMuted;
     ctx.fillText(
       label,
@@ -430,6 +578,12 @@ export function drawStorePrices(
     );
   }
   ctx.globalAlpha = 1;
+}
+
+/** One rarity ink as a CSS colour, out of the same tokens the HUD uses. */
+function rarityInk(rarity: string): string {
+  const [r, g, b] = rarityTone(rarity);
+  return `rgb(${r} ${g} ${b})`;
 }
 
 /**
@@ -549,7 +703,30 @@ function drawMachineLight(
     Math.round(originY + crownY - marquee.anchorY),
     rarity);
 
+  // THE PAY LINE. Three windows agreeing on one row is the rule a slot machine
+  // has, and until now nothing on this cabinet ever said the row had happened:
+  // the burst fired at the TRAY, which is where the prize comes out rather than
+  // where it was decided. A bar across all three windows on the frame the last
+  // reel lands is the machine reacting to its own result, and the burst below
+  // is the consequence of it.
   if (pull) {
+    const flash = payLineFlash(pull, PAY_LINE_FLASH);
+    if (flash >= 0) {
+      const fade = (1 - flash) ** 1.5;
+      const height = 1 + pullGain(pull) * 2.5;
+      const [firstX] = atlas.reelSlots[0] ?? [0, 0];
+      const [lastX] = atlas.reelSlots[atlas.reelSlots.length - 1] ?? [0, 0];
+      const span = lastX + atlas.reelWidth - firstX;
+      ctx.globalAlpha = Math.min(1, fade * pullGain(pull));
+      ctx.fillStyle = `rgb(${rarity[0]} ${rarity[1]} ${rarity[2]})`;
+      ctx.fillRect(
+        Math.round(originX + firstX - 1),
+        Math.round(originY + atlas.payLine - height / 2),
+        span + 2,
+        Math.max(1, Math.round(height)),
+      );
+    }
+
     const burst = atlas.burst;
     const seconds = burst.frames / burst.fps;
     const progress = burstProgress(pull, seconds);

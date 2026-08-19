@@ -174,18 +174,6 @@ const POUR_LAND_TRAUMA = 0.012;
  */
 const PAYOUT_LAND_TRAUMA = 0.09;
 
-/**
- * How long the exit chevron stays at full strength, and how long it takes to
- * leave, in seconds.
- *
- * IT LEAVES. The arrow used to be permanent, which made every other channel
- * the exit has — a column of light over the treeline, four torches burning on
- * a map with nothing else alight, a ping from the mouth — decoration nobody
- * had a reason to read. The hold is long enough to point somebody the right
- * way out of the clearing they are standing in; after that the world says it.
- */
-const EXIT_GUIDE_HOLD = 7;
-const EXIT_GUIDE_FADE = 3.5;
 /** Seconds between the exit's distant signal pings. See `stepBeacon`. */
 const BEACON_PING_INTERVAL = 3.4;
 /**
@@ -411,6 +399,13 @@ interface PlayerSource {
   ax: number;
   ay: number;
   hp: number;
+  /**
+   * Breath. The local body reads it off PREDICTION and everyone else off the
+   * snapshot row (`st`/`wind`) — same as position, and for the same reason:
+   * your own bar has to answer on the frame SHIFT went down.
+   */
+  stamina: number;
+  winded: boolean;
   alive: boolean;
   moving: boolean;
   isLocal: boolean;
@@ -879,7 +874,7 @@ export class Game {
     // you spawn in the forest unable to leave the tile.
     const continued = this.local?.sequence ?? 0;
     const ack = msg.ack ?? 0;
-    this.local = new LocalPlayer(msg.player, {
+    this.local = new LocalPlayer(msg.player, msg.config, {
       sequence: Math.max(continued, ack),
       lastAck: ack,
     });
@@ -1110,6 +1105,12 @@ export class Game {
           this.local.state.vy = state.vy;
           this.local.state.ax = state.ax;
           this.local.state.ay = state.ay;
+          // Breath comes back over the march (the server ticks it through the
+          // cutscene), and prediction is off for the duration — so it is
+          // snapped here with everything else, or the bar sits frozen for the
+          // walk and then jumps on the first frame the player has control.
+          if (state.st !== undefined) this.local.state.stamina = state.st;
+          this.local.state.winded = state.wind ?? false;
           this.local.pending = [];
           this.local.lastAck = state.seq;
         } else {
@@ -1754,23 +1755,6 @@ export class Game {
   }
 
   /**
-   * How strongly to draw the exit chevron, 0..1.
-   *
-   * IT FADES, and that is the change. A permanent arrow answers "where is the
-   * exit" forever, which means the world never has to — the column over the
-   * trees, the torches at the threshold and the ping from the mouth all become
-   * decoration the moment a chevron is doing their job. So it burns while the
-   * news is news and then leaves, and everything after that is the map.
-   */
-  private guideStrength(): number {
-    if (!this.world?.egress) return 0;
-    const since = this.time - this.egressAt;
-    if (since <= EXIT_GUIDE_HOLD) return 1;
-    const fade = 1 - (since - EXIT_GUIDE_HOLD) / EXIT_GUIDE_FADE;
-    return fade > 0 ? fade : 0;
-  }
-
-  /**
    * Let one queued snarl through per `ALERT_SNARL_GAP`, nearest first.
    *
    * The queue is sorted every drain rather than on push because it is nearly
@@ -2001,6 +1985,9 @@ export class Game {
             : { x: INTRO_AIM_X, y: INTRO_AIM_Y },
         shoot: false,
         lantern: this.lantern.on,
+        // Nobody runs through a cutscene. The march is on rails and the
+        // breath comes back over it, server-side as well as here.
+        sprint: false,
         held: this.heldSlot,
       };
     }
@@ -2011,6 +1998,10 @@ export class Game {
       aim: { x: this.aimX, y: this.aimY },
       shoot: this.input.shooting && this.canAttack(),
       lantern: this.lantern.on,
+      // Masked for the same reason the trigger is: a body mid-POUR is a puppet
+      // the server walks, and it drops the key outright. Predicting a sprint
+      // there would drain the bar against a run that never happened.
+      sprint: this.input.sprinting && this.localPour === null,
       held: this.heldSlot,
     };
   }
@@ -2406,6 +2397,10 @@ export class Game {
             name: meta?.name ?? '',
             color: meta?.color ?? palette().effects.fallbackShot,
             isLocal: remote.id === this.localId,
+            // A server too old to send it leaves the bar full rather than
+            // drawing every teammate as permanently out of breath.
+            stamina: remote.st ?? this.config.staminaMax ?? 100,
+            winded: remote.wind ?? false,
             ready: preparing && (remote.ready ?? false),
           },
           dt,
@@ -2433,6 +2428,8 @@ export class Game {
             ax: pourAim?.x ?? this.aimX,
             ay: pourAim?.y ?? this.aimY,
             hp: this.local.hp,
+            stamina: this.local.state.stamina,
+            winded: this.local.state.winded,
             alive: this.local.alive,
             // The walk up to the mark is the server's, so locally there is no
             // predicted velocity to read it off — the legs have to be told.
@@ -2765,9 +2762,14 @@ export class Game {
       ay: source.ay,
       hp: source.hp,
       maxHp: config.maxHp,
+      stamina: source.stamina,
+      staminaMax: config.staminaMax ?? 100,
+      winded: source.winded,
       alive,
       moving,
-      animTime: this.visuals.advanceAnim(id, moving, dt),
+      // The legs keep up with the ground: a run is 1.55x the walk, and the
+      // walk cycle at its authored cadence under it is a character skating.
+      animTime: this.visuals.advanceAnim(id, moving, dt, Math.hypot(vx, vy) / config.moveSpeed),
       isLocal: source.isLocal,
       visibility: 1,
       awareness: 0,
@@ -2887,6 +2889,10 @@ export class Game {
       ay: enemy.ay,
       hp: enemy.hp,
       maxHp: type.maxHp,
+      // Nothing dead gets tired. The run bar is a player tell.
+      stamina: 0,
+      staminaMax: 0,
+      winded: false,
       alive: true,
       moving: moving && !planted,
       animTime: this.visuals.advanceAnim(id, moving && !planted, dt),
@@ -2983,6 +2989,11 @@ export class Game {
               // while the player was thirty points down.
               maxHp: meta.mods?.maxHp ?? config.maxHp,
               alive: local.alive,
+              // Straight off the predicted body. The bar under the HP bar is
+              // the same number, so the two agree frame for frame.
+              stamina: local.state.stamina,
+              staminaMax: config.staminaMax ?? 100,
+              winded: local.state.winded,
               level: meta.level,
               xpInLevel: meta.xpInLevel,
               xpToLevel: meta.xpToLevel,
@@ -3005,7 +3016,12 @@ export class Game {
       // What the HUD may SAY. It trails the real number only while a payout is
       // running; see `balanceShown`.
       balance: this.payout ? this.balanceShown : this.balance,
-      exitGuide: this.guidePose() !== null ? this.guideStrength() : 0,
+      // ONE BIT, not an envelope. Whether the chevron is on screen at this
+      // instant is a BLINK, and the blink is on the render clock inside
+      // `ExitGuide` — a fade published five times a second would arrive as
+      // five steps. All the game says here is that there is a way out and
+      // that it has not been crossed yet.
+      exitGuide: this.guidePose() !== null ? 1 : 0,
       inventory: this.inventoryHud(),
       hotbar: this.hotbarHud(),
       net: {
@@ -3571,6 +3587,7 @@ export class Game {
     const fixtures = this.world?.store;
     if (!fixtures) return null;
     const skills = this.config?.skills;
+    const loot = this.config?.loot;
     return {
       fixtures,
       pose: this.merchantPose,
@@ -3581,6 +3598,13 @@ export class Game {
       // and it costs one float.
       invite: this.spins > 0 ? 1 : 0,
       iconOf: (key: string) => skills?.[key]?.frame ?? 0,
+      // The same catalog row the buy tooltip reads. A shop that named its
+      // stock out of a second table would be a shop whose price tag and whose
+      // prompt could disagree about what is on the table.
+      labelOf: (key: string) => ({
+        name: loot?.[key]?.name ?? key,
+        rarity: loot?.[key]?.rarity ?? 'common',
+      }),
     };
   }
 

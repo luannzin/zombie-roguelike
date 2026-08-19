@@ -62,6 +62,7 @@ from .config import (
     SNAPSHOT_EVERY_N_TICKS,
     SPAWN_RING,
     SPAWN_SEPARATION,
+    STAMINA_MAX,
     TILE_SIZE,
     client_config,
     level_progress,
@@ -80,7 +81,7 @@ from .entities import (
     InputCmd, Player, Pour, clean_name, pick_color, random_name,
 )
 from .pathing import Navigator
-from .simulation import apply_input, carry_scale
+from .simulation import apply_input, carry_scale, step_stamina
 
 #: How many creatures stand on a nest, and how far from its middle they are
 #: scattered, in tiles.
@@ -991,6 +992,11 @@ class Room:
 
         player.vx = 0.0
         player.vy = 0.0
+        # `apply_input` is skipped for a puppet, and it is what normally ticks
+        # the breath — so the pour refills it here. Three seconds standing at a
+        # skid is exactly the moment a bar that only refills in the simulation
+        # loop would visibly freeze.
+        step_stamina(player, False, False, dt)
         # Face the deck for the whole ceremony. A body tipping a bag out over
         # its own shoulder is the one thing that would make this read as a bug.
         dx = target.deck_x - player.x
@@ -1863,6 +1869,12 @@ class Room:
                     apply_input(player, player.last_input, self.world, dt)
                     player.hotbar.apply_held(player.last_input.held)
                     self.handle_attack(player, player.last_input, dt)
+                else:
+                    # Past the extrapolation window nothing calls `apply_input`
+                    # any more, and that is what normally ticks the breath. A
+                    # body standing still on a quiet socket is RESTING, not
+                    # holding its bar wherever the last packet left it.
+                    step_stamina(player, False, False, dt)
                 player.idle_ticks += 1
             else:
                 player.idle_ticks = 0
@@ -1875,6 +1887,9 @@ class Room:
                 player.last_processed_seq = cmd.sequence
                 player.last_input = cmd
             player.idle_ticks = 0
+            # Nobody is holding SHIFT through a cutscene, and the march is not
+            # the party's walk — the breath comes back over it.
+            step_stamina(player, False, False, dt)
 
         if self._depart_phase == "hold":
             self._depart_hold -= dt
@@ -1944,6 +1959,7 @@ class Room:
                 player.last_processed_seq = cmd.sequence
                 player.last_input = cmd
             player.idle_ticks = 0
+            step_stamina(player, False, False, dt)
 
         if self._arrive_phase == "hold":
             self._arrive_hold -= dt
@@ -2546,6 +2562,10 @@ class Room:
         player.hp = player.max_hp
         player.alive = True
         player.vx = player.vy = 0.0
+        # A new body is a rested one. The bar is not a punishment that outlives
+        # the death that emptied it.
+        player.stamina = STAMINA_MAX
+        player.winded = False
         player.respawn_timer = 0.0
         player.idle_ticks = 0
         player.combo_step = 0

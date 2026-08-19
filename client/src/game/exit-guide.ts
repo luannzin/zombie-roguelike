@@ -68,6 +68,17 @@ export function dropExitGuide(): void {
 }
 
 /**
+ * Forget the drawn pose without forgetting the target.
+ *
+ * `ExitGuide` calls it when it starts drawing, so the first painted frame is
+ * ON the exit's bearing rather than easing onto it from wherever the previous
+ * night's chevron was parked.
+ */
+export function snapExitGuide(): void {
+  shown = null;
+}
+
+/**
  * Advance the drawn pose toward the target and hand it back.
  *
  * Frame-rate independent: the fraction covered comes out of `exp(-dt / tau)`,

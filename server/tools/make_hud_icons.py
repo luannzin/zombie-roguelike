@@ -21,7 +21,9 @@ Output (assets/processed/hud/):
     darkcoin.png   one 8x8 frame — the player's dark gold, face of the
                    purple pickup `make_coin.py` spins in the world
     arrow.png      one 21x13 frame — gold dart, authored pointing right;
-                   ExitGuide rotates it toward the extraction corridor
+                   still used wherever a thin pointer is wanted
+    chevron.png    one 17x17 frame — gold TRIANGLE, authored pointing right;
+                   ExitGuide rotates it toward the way out and blinks it
 
 Why one frame and not a strip of charge levels: the HUD draws this sprite FOUR
 times side by side and drains each one from the top down by clipping a
@@ -259,6 +261,61 @@ def make_arrow(width: int = 19, height: int = 11) -> Image.Image:
     return img
 
 
+#: How far back from the tip the triangle's base sits, as a fraction of the
+#: sprite. A shallow triangle is a dart and a deep one is a diamond; two
+#: thirds is the shape that still says "this way" at a glance after it has been
+#: rotated somewhere unhelpful.
+CHEVRON_REACH = 0.66
+#: How far the back edge is scooped IN toward the tip. It is what stops the
+#: base reading as a flat wall — the notch gives the shape a back the eye can
+#: tell from its front even when the sprite is upside down.
+CHEVRON_NOTCH = 0.30
+
+
+def make_chevron(size: int = 15) -> Image.Image:
+    """Gold TRIANGLE for the way out. Points RIGHT, 1px pad for the keyline.
+
+    A DIFFERENT SPRITE FROM `arrow.png`, on purpose. The dart is a thin thing
+    that reads by its length: it works parked halfway to the screen edge with
+    a steady hand on it. This one has to survive being BLINKED — it appears,
+    it is gone, it comes back — and a shape that is mostly empty space loses
+    that contest, because what the eye catches in a half-second flash is AREA,
+    not line. So the chevron is a solid mass with a notched back: bulk to be
+    seen, one point to be read.
+
+    The gradient runs the other way from the arrow's. The tip is the hottest
+    pixel here as well, but the mass behind it is deliberately deep rather
+    than mid — a flat gold triangle at this size is a lozenge, and the falloff
+    is the only thing that keeps a direction in it.
+    """
+    img = Image.new("RGBA", (size + 2, size + 2), TRANSPARENT)
+    px = img.load()
+    cy = (size - 1) / 2.0
+    tip = float(size - 1)
+    base = tip * (1.0 - CHEVRON_REACH)
+
+    for y in range(size):
+        dy = abs(y - cy)
+        for x in range(size):
+            if x < base:
+                continue
+            # The triangle: full height at the base, nothing at the tip.
+            reach = (tip - x) / max(tip - base, 1.0)
+            if dy > reach * cy:
+                continue
+            # The notch, cut out of the back edge along the same taper. It is
+            # subtracted rather than drawn so the keyline pass finds it.
+            notch = base + (tip - base) * CHEVRON_NOTCH
+            if x < notch and dy < (notch - x) / max(notch - base, 1.0) * cy * 0.9:
+                continue
+            ahead = (x - base) / max(tip - base, 1.0)
+            spine = 1.0 - (dy / max(cy, 0.5))
+            value = 0.16 + ahead * 0.62 + spine * 0.26
+            px[1 + x, 1 + y] = pick(POINT, value, 1 + x, 1 + y)
+    outline(img, OUTLINE)
+    return img
+
+
 def stamp(
     px,
     art: tuple[str, ...],
@@ -309,6 +366,11 @@ def build(args) -> Path:
     arrow_path = out_dir / "arrow.png"
     arrow.save(arrow_path)
     print(f"wrote {arrow_path} ({arrow.width}x{arrow.height})")
+
+    chevron = make_chevron()
+    chevron_path = out_dir / "chevron.png"
+    chevron.save(chevron_path)
+    print(f"wrote {chevron_path} ({chevron.width}x{chevron.height})")
     return out_dir
 
 

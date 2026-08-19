@@ -417,6 +417,19 @@ game's scale.
   `loot.place_near`); camp and the walk-out refuse it. A stack is one
   world drop per unit. Guns are not tossed from the belt yet, except by
   being traded out from under the hand.
+- **SHIFT is a REQUEST, and the breath is what answers it.** `sprint` rides
+  every input packet, but nothing reads it as a state: `simulation.running`
+  decides per tick whether the body is actually running (moving, key down, bar
+  not empty, not `winded`) and `simulation.step_stamina` spends or refills it.
+  `SPRINT_SPEED` MULTIPLIES the walk, so a skill's speed bonus and the carry
+  penalty both still apply underneath. The system is deliberately stateless
+  apart from the `winded` LATCH — no rest timer, no cooldown — because that is
+  what lets the client replay it: `st` (and `wind` only while it is set) go out
+  on the player's tick row, prediction snaps them and replays the inputs the
+  server has not seen yet. A tick that does not call `apply_input` has to tick
+  the breath itself, and every one of them does: the pour, both cutscene
+  marches, and a socket that has gone quiet past the extrapolation window.
+  Respawn refills it — the bar is not a punishment that outlives the death.
 - **Two weights, and conflating them is the bug this split exists to fix.**
   Roster `inv.w` is the POCKET alone — it is what the bag's `current / maxkg`
   bar measures, so a rifle must never eat into it: that budget answers "how

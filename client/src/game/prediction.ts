@@ -47,6 +47,7 @@ export class LocalPlayer {
 
   constructor(
     initial: PlayerState,
+    config: GameConfig,
     resume?: { sequence: number; lastAck: number },
   ) {
     this.state = {
@@ -56,6 +57,11 @@ export class LocalPlayer {
       vy: 0,
       ax: initial.ax,
       ay: initial.ay,
+      // The breath the server is already holding for this body. A second
+      // welcome (forest after camp) rebuilds this object mid-run, and a bar
+      // that reset to full there would be a free sprint every zone.
+      stamina: initial.st ?? config.staminaMax ?? 100,
+      winded: initial.wind ?? false,
     };
     this.hp = initial.hp;
     // A second welcome (forest after camp) rebuilds this object. Sequence is
@@ -86,6 +92,12 @@ export class LocalPlayer {
     this.lastAck = ack;
     this.alive = server.alive;
     this.hp = server.hp;
+    // Breath is authoritative like position is: snap it, then let the replay
+    // below spend the inputs the server has not seen yet. `stepStamina` is a
+    // pure function of (running, moving), so the replay lands on the number
+    // the server will hold a round trip from now.
+    if (server.st !== undefined) this.state.stamina = server.st;
+    this.state.winded = server.wind ?? false;
 
     const beforeX = this.state.x;
     const beforeY = this.state.y;

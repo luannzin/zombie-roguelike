@@ -35,6 +35,12 @@ export interface InputPacket {
   shoot: boolean;
   /** Switch state. Battery/flicker stay client-local; remotes only need on/off. */
   lantern: boolean;
+  /**
+   * SHIFT. A REQUEST to run: the server decides what it buys against the
+   * breath the body has left, and so does prediction — see
+   * `game/simulation.ts` `isRunning`.
+   */
+  sprint: boolean;
   /** Hotbar slot in hand. -1 is holstered. Empty slots are treated as -1. */
   held: number;
 }
@@ -207,6 +213,19 @@ export interface GameConfig {
   carrySlowAtMax?: number;
   /** Slowest the walk is allowed to get, even overweight. */
   carrySlowFloor?: number;
+  /**
+   * Running. SHIFT multiplies the walk by `sprintSpeed` and spends
+   * `staminaDrain` points a second doing it; letting go pays back
+   * `staminaRegenWalk` on the move or `staminaRegenRest` standing still, and a
+   * bar spent to zero refuses the key until `staminaRecover` of it is back.
+   * Mirrors `SPRINT_SPEED` / `STAMINA_*` in server/app/config.py.
+   */
+  sprintSpeed?: number;
+  staminaMax?: number;
+  staminaDrain?: number;
+  staminaRegenWalk?: number;
+  staminaRegenRest?: number;
+  staminaRecover?: number;
 }
 
 export type LootRarity = 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary';
@@ -663,13 +682,21 @@ export interface MachineTimingConfig {
 /**
  * Where the merchant's pitch stands. Placed by `server/app/store.py`.
  *
- * Only what is HIS is here. The glade around it — soil, trees, the tent he
- * sleeps under — comes through the ordinary map channels (`seed` for texture,
- * `props` for the tent), because it is the same forest as everywhere else and
- * the client already knows how to draw all of it.
+ * Only what is HIS is here. The clearing around it — soil, trees, the rim —
+ * comes through the ordinary map channels (`seed` for texture, `props` and
+ * `lights` for everything placed on it), because it is the same forest as
+ * everywhere else and the client already knows how to draw all of it.
  */
 export interface StorePayload {
   merchant: [number, number];
+  /**
+   * Contact point of his CART, parked on the west rim. Absent on a map built
+   * before he had one, which the layer treats as "no wagon here" rather than
+   * as an error — the same way it treats the machine.
+   */
+  wagon?: [number, number];
+  /** Contact point of the plank he trades over, in front of him. */
+  counter?: [number, number];
   stands: StandState[];
   /** Torch contact points: `[x, y, variant]`. */
   torches: [number, number, number][];
@@ -895,6 +922,18 @@ export interface PlayerState {
   held?: number;
   /** True while a scoped gun is being held to fire. */
   ads?: boolean;
+  /**
+   * Breath left, in `config.staminaMax` points. On the TICK row rather than
+   * the roster because it moves every tick a key is down, and because the bar
+   * under the health bar is drawn over every body, not only your own.
+   */
+  st?: number;
+  /**
+   * The exhaustion latch: the bar was spent to zero and SHIFT is refused until
+   * `config.staminaRecover` of it is back. Omitted while there is breath left,
+   * which is almost always.
+   */
+  wind?: boolean;
   /**
    * Which beat of a POUR this body is on — 0 walk, 1 lift, 2 dump, 3 stow.
    * Absent for everybody who is not emptying their pocket into a platform,

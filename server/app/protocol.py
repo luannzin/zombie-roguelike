@@ -12,7 +12,14 @@ is no second socket and no re-handshake.
 client -> server
   {"type":"input","sequence":183,
    "movement":{"up":true,"down":false,"left":false,"right":true},
-   "aim":{"x":0.72,"y":-0.69},"shoot":true,"lantern":true,"held":0}
+   "aim":{"x":0.72,"y":-0.69},"shoot":true,"lantern":true,"sprint":true,
+   "held":0}                            `sprint` is SHIFT, and it is a request:
+                                        what it buys is decided server-side
+                                        against the breath the body has left
+                                        (`simulation.running`). The answer
+                                        comes back on the player row as `st`
+                                        (breath left) plus `wind` while the bar
+                                        is spent and the key is locked out
   {"type":"ping","t":<client ms>}
   {"type":"start"}                      host only; ignored otherwise
   {"type":"ready"}                      toggle ready, camp only, near the fire

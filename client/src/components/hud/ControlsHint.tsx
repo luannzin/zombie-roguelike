@@ -14,7 +14,7 @@ export interface ControlsHintProps {
 }
 
 export function ControlsHint({ zone }: ControlsHintProps) {
-  const parts = ['WASD mover', 'mouse mirar'];
+  const parts = ['WASD mover', 'SHIFT correr', 'mouse mirar'];
   // Always offered, because the knife always answers — `zone.hostile` gates
   // the gun, not the swing, so even the campfire has something on the
   // trigger. Listing it only in the forest would teach the player that the

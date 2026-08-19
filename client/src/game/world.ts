@@ -174,6 +174,16 @@ export interface Stand {
 export interface StoreFixtures {
   merchantX: number;
   merchantY: number;
+  /**
+   * Contact point of his CART, on the west rim of the clearing. Null on a
+   * payload without one — the layer draws nothing rather than guessing a
+   * position, the same way it treats a missing atlas.
+   */
+  wagonX: number | null;
+  wagonY: number | null;
+  /** The plank he trades over, standing in front of him. */
+  counterX: number | null;
+  counterY: number | null;
   stands: Stand[];
   torches: readonly { x: number; y: number; variant: number }[];
   rugX: number;
@@ -670,6 +680,10 @@ function unpackStore(payload: MapPayload): StoreFixtures | null {
   return {
     merchantX: row.merchant[0],
     merchantY: row.merchant[1],
+    wagonX: row.wagon ? row.wagon[0] : null,
+    wagonY: row.wagon ? row.wagon[1] : null,
+    counterX: row.counter ? row.counter[0] : null,
+    counterY: row.counter ? row.counter[1] : null,
     stands: (row.stands ?? []).map((stand) => ({
       id: stand.id,
       key: stand.k,

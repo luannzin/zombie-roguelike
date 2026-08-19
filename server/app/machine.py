@@ -1,14 +1,14 @@
 """The upgrade machine: one clock, shared by three files.
 
-A cabinet with three reels, a lever and a tray, standing at the far end of the
-merchant's glade. A level buys one pull; a pull pays one skill. That is the
+A cabinet with three reels, a lever and a tray, standing alone on the north-west
+arc of the merchant's clearing. A level buys one pull; a pull pays one skill. That is the
 entire mechanic, and almost none of it is here — `skills.py` owns what can come
 out, `store.py` owns where it stands, `room.py` owns the press, and the client
 owns every frame of what it looks like.
 
 WHAT IS HERE IS THE TIMELINE, and it is here for the same reason `rift.py`
 holds the pickup's: the ceremony is four seconds long, it is watched by
-everybody in the glade, and it must not be resolved at snapshot rate. The
+everybody in the clearing, and it must not be resolved at snapshot rate. The
 server decides WHAT came out on the frame the lever moves and says so once; the
 client flies the arm, the reels, the lamps and the canister off these constants
 plus that one timestamp, on its own render clock. Three files, one set of
@@ -33,8 +33,15 @@ ARM_TIME = 0.34
 SPIN_UP = ARM_TIME + 0.18
 #: When reel 0 and reel 1 land. Fixed, so the rhythm of a pull is a thing the
 #: player learns and the only variable is the wait at the end of it.
-REEL_ONE = SPIN_UP + 0.85
-REEL_TWO = REEL_ONE + 0.52
+#:
+#: BOTH GAPS ARE LONGER THAN THE CLIENT'S DECELERATION (`REEL_DECEL` in
+#: `client/src/game/machine.ts`) and that is the constraint, not a taste. A reel
+#: now SLOWS into its stop over half a second of visibly crawling faces; a gap
+#: shorter than that ramp means the band never reaches full speed between two
+#: stops, so the middle of a pull is three reels all decelerating at once and
+#: nothing in it is ever a blur. Move either number and check the other.
+REEL_ONE = SPIN_UP + 1.0
+REEL_TWO = REEL_ONE + 0.62
 
 #: How long the third reel keeps spinning after the second lands, by rarity.
 #: A common is over almost as soon as the second reel stops; a legendary sits

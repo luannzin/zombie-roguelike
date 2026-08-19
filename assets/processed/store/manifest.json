@@ -4,14 +4,14 @@
   "props": {
     "table": {
       "file": "table.png",
-      "frameWidth": 32,
-      "frameHeight": 20,
+      "frameWidth": 36,
+      "frameHeight": 32,
       "frames": 4,
       "sway": 0,
       "topY": [
-        4,
-        3,
-        1,
+        7,
+        6,
+        10,
         5
       ]
     },
@@ -20,6 +20,20 @@
       "frameWidth": 26,
       "frameHeight": 24,
       "frames": 5,
+      "sway": 0
+    },
+    "wagon": {
+      "file": "wagon.png",
+      "frameWidth": 96,
+      "frameHeight": 80,
+      "frames": 1,
+      "sway": 0
+    },
+    "counter": {
+      "file": "counter.png",
+      "frameWidth": 35,
+      "frameHeight": 22,
+      "frames": 1,
       "sway": 0
     },
     "torch": {

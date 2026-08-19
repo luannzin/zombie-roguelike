@@ -1,12 +1,12 @@
 /**
- * THE PAYOUT — what the night was for, arriving in the glade.
+ * THE PAYOUT — what the night was for, arriving in the clearing.
  *
- * The party walks out of the west corridor and the platforms they loaded an
- * hour ago are being lowered into the clearing in front of them by the same
- * four aircraft that took them. The skids touch down, the lines let go, the
- * drones climb out, and the cargo on the decks becomes GOLD: a spray of coins
- * off each platform, arcing toward the balance on the HUD, counting it up as
- * they land.
+ * The party walks up out of the south corridor and the platforms they loaded an
+ * hour ago are being lowered onto the apron in front of them and to their left,
+ * by the same four aircraft that took them. The skids touch down, the lines let
+ * go, the drones climb out, and the cargo on the decks becomes GOLD: a spray of
+ * coins off each platform, arcing toward the balance on the HUD, counting it up
+ * as they land.
  *
  * WHY IT IS AN EVENT AND NOT A NUMBER.
  * The balance was credited server-side the moment the party crossed the

@@ -28,7 +28,17 @@ EXTRACT_LABEL = "Encontre o ponto de extração"
 FEED = "feed"
 FEED_LABEL = "Carregue a plataforma"
 EXIT = "exit"
-EXIT_LABEL = "Encontre a saída"
+#: THE LAST ROW OF A NIGHT, AND IT IS AN ORDER RATHER THAN A TASK.
+#:
+#: It used to read "Encontre a saída", which is the same grammar as "find the
+#: extraction point" — and it should not be, because nothing else about this
+#: moment is the same. The platform left, every lantern on the map died, every
+#: drop on the ground was swept, and the whole pack is hunting. The party is
+#: not being given a job; they are being told the night is over and they are
+#: still in it. The row says the two things they actually need in that order:
+#: something changed (a way out exists now, it did not a second ago), and they
+#: should be moving.
+EXIT_LABEL = "A saída abriu — corra"
 #: The store's row. Same id as the forest's, because it is the same mechanic —
 #: a living body crossing the VOID at the end of the map — and `Room` ticks it
 #: through one path. Only the wording differs, and it differs completely: the

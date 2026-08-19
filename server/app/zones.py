@@ -54,12 +54,16 @@ WEATHER_FOG = "fog"
 # 20:00 through 03:00 inclusive, in minutes from 20:00.
 _NIGHT_SPAN_MINUTES = 7 * 60 + 1
 
-#: How much light the merchant's glade has of its own. See `store`.
+#: How much light the merchant's clearing has of its own. See `store`.
 #:
 #: TUNED AGAINST THE TORCHES, not against a screenshot of an empty map. At this
-#: value the lane is legible end to end and the pitch is still visibly the
-#: brightest thing in it; a step higher and the fire stops reading as a fire.
-STORE_AMBIENT = 0.55
+#: value the whole room is legible from the middle of it — the rim, the far
+#: arc, the way out and the other players — and his fire, the torch ring and
+#: the cabinet's marquee are still visibly the brightest things in it. It went
+#: UP when the zone became a round room: a lane could be lit end to end by the
+#: chain of torches running down it, and a clearing has a middle those pools do
+#: not reach. A step higher than this and the fire stops reading as a fire.
+STORE_AMBIENT = 0.7
 
 # Most nights are dry. Rain is common enough that a second expedition often
 # feels like a different place; fog is the rarer coat.

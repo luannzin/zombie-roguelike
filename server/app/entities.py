@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 from .config import (
     INVENTORY_SLOTS,
     MAX_HP,
+    STAMINA_MAX,
     PLAYER_HALF_HEIGHT,
     PLAYER_HIT_RADIUS,
     SPRITE_HEIGHT,
@@ -45,6 +46,9 @@ class InputCmd:
     aim_y: float = 0.0
     shoot: bool = False
     lantern: bool = False
+    #: SHIFT. A REQUEST to run, not a state: what it actually buys is decided
+    #: in `simulation.running` against the breath the body has left.
+    sprint: bool = False
     #: Hotbar slot the client wants in hand. -1 is holstered.
     held: int = 0
 
@@ -74,6 +78,7 @@ class InputCmd:
             aim_y=ay,
             shoot=bool(msg.get("shoot")),
             lantern=bool(msg.get("lantern")),
+            sprint=bool(msg.get("sprint")),
             held=held,
         )
 
@@ -132,6 +137,13 @@ class Player:
     hp: int = MAX_HP
     alive: bool = True
     radius: float = PLAYER_HIT_RADIUS
+    #: Breath. Spent by SHIFT, refilled by not holding it — the whole system is
+    #: `simulation.step_stamina`, and it is on the body rather than in a side
+    #: table because the client mirrors it to predict its own speed.
+    stamina: float = STAMINA_MAX
+    #: Spent the bar to zero. SHIFT is refused until `STAMINA_RECOVER` of it is
+    #: back; a latch rather than a timer, so prediction can replay it.
+    winded: bool = False
 
     kills: int = 0
     deaths: int = 0
@@ -251,7 +263,16 @@ class Player:
             "ready": self.ready,
             "held": self.hotbar.held,
             "ads": ads,
+            # Breath. It is on the TICK row and not the roster because it moves
+            # every tick a key is down, and because every client draws the bar
+            # under the health bar over every body — not only its own.
+            "st": round(self.stamina, 1),
         }
+        # Omitted while there is breath left, which is almost always: it is the
+        # exhaustion LATCH, and a false on every row all night costs more than
+        # the moment it describes.
+        if self.winded:
+            row["wind"] = True
         # Omitted for everybody who is not pouring, which is everybody almost
         # all of the time — this is a per-tick row and a field that is null for
         # eight players costs more than the one it describes.

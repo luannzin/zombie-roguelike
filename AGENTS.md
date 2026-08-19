@@ -487,6 +487,21 @@ subtree.
   gun cell does not refuse a better gun: the drop's tooltip becomes
   "trocar {held} por {new}" and E trades, leaving the old one at your feet.
   That is refused while holding the knife, which is not yours to trade away.
+- **RUNNING IS A DECISION, AND STAMINA IS WHAT MAKES IT ONE.** SHIFT runs at
+  1.55x the walk and spends a bar to do it (`STAMINA_*` in
+  `server/app/config.py`). It is the party's answer to ground it has already
+  read — the walk back to a console, the last stretch to a pad with the pack
+  coming — and it is bounded well under a hunting creature's charge on purpose:
+  it outruns a shamble and never outruns a hunt. The bar costs more than
+  standing still pays back, so a night cannot be sprinted end to end, and
+  catching your breath is FASTER STANDING STILL than walking, which is the one
+  place the system asks the player to stop and look at the dark. Spend it to
+  zero and the key stops answering until a third of it is back — the HUD says
+  "winded…", because a control that goes quiet with no explanation reads as a
+  dropped input. The multiplier sits ON TOP of the walk, so a skill's speed
+  bonus and the bag's weight both still apply: a body hauling a full pack runs
+  at a full pack's pace. Nobody runs through a cutscene or a POUR; both puppet
+  the body, and the breath comes back over them.
 - **AMMUNITION IS UPKEEP, NOT CARGO** (`server/app/ammo.py`). Every gun eats a
   round per shot out of a per-player reserve for its calibre — pistol, rifle,
   or precision — and the knife eats nothing, which is most of why the knife is

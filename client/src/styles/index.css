@@ -72,6 +72,12 @@
   --hp-mid: #f2a541;
   --hp-low: #e6484f;
   --xp: #6ea8fe;
+  /* Breath. Deliberately off the HP ramp: green-amber-red is a life reading,
+     and a second bar that spoke the same language would have the player
+     reading a wound where there is only a run. Spent is the same hue with the
+     light taken out of it — the bar is still there, it just stops offering. */
+  --stamina: #6fd3c4;
+  --stamina-spent: #4a6b68;
   --neutral: #8b8ba3;
 
   /* world tiles (canvas + minimap) */
@@ -347,6 +353,8 @@
   --color-hp-mid: var(--hp-mid);
   --color-hp-low: var(--hp-low);
   --color-xp: var(--xp);
+  --color-stamina: var(--stamina);
+  --color-stamina-spent: var(--stamina-spent);
   --color-neutral: var(--neutral);
 
   /* coss uses --font-mono for code/kbd/pre; keep the game on one face. */

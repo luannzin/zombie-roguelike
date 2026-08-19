@@ -18,6 +18,13 @@
  * becomes the thing they are actually there for. Because the roll already
  * happened, the machine is never deciding late; it is taking its time telling
  * them.
+ *
+ * AND THE BAND IS WHAT MAKES THAT WAIT VISIBLE. `reelScroll` moves a window
+ * over one tall strip of cells (`render/machine.ts`), decelerating into the
+ * stop over `REEL_DECEL` seconds — so the last beat of a pull is the reel
+ * crawling past faces one at a time, and a legendary sitting next to a common
+ * on the strip means the near miss is a real thing that happened rather than
+ * an effect somebody authored.
  */
 
 import type { LootRarity, MachineTimingConfig, SpinEvent } from '../net/protocol';
@@ -26,8 +33,8 @@ import type { LootRarity, MachineTimingConfig, SpinEvent } from '../net/protocol
 const FALLBACK: MachineTimingConfig = {
   armTime: 0.34,
   spinUp: 0.52,
-  reelOne: 1.37,
-  reelTwo: 1.89,
+  reelOne: 1.52,
+  reelTwo: 2.14,
   reelHold: { common: 0.3, uncommon: 0.55, rare: 0.95, epic: 1.45, legendary: 1.95 },
   ejectLag: 0.26,
   ejectFlight: 0.55,
@@ -134,30 +141,127 @@ export function pullFinished(pull: MachinePull): boolean {
   return pull.elapsed >= pull.timing.done;
 }
 
-/** What one reel is doing right now. */
+/**
+ * What one reel is doing right now.
+ *
+ * `offset` is the whole animation. It is where the top of the visible window
+ * sits on the BAND, in strip pixels, and it wraps — the layer blits one or two
+ * source rectangles out of `strip.png` at that offset and nothing else about a
+ * spin exists. See `reelScroll`.
+ */
 export interface ReelPose {
-  /** True while the strip is still going past. */
-  spinning: boolean;
-  /**
-   * How far into its landing bounce, 0..1, or -1 when it is not bouncing. A
-   * reel that simply stops has no weight; one that overshoots by a pixel and
-   * comes back has mass, and mass is the only thing separating this from a
-   * number appearing in a box.
-   */
-  bounce: number;
+  /** Scroll position of the window on the band, in strip pixels. Wrapped. */
+  offset: number;
+  /** How fast the band is going past, 0..1 of full speed. Drives the blur. */
+  speed: number;
+  /** True once this reel has landed and is showing its face. */
+  landed: boolean;
 }
 
-/** How long a reel is visibly settling after it stops, in seconds. */
-const REEL_BOUNCE = 0.16;
+/**
+ * How long a reel is visibly settling after it stops, in seconds, and how far
+ * past the face it carries before it comes back.
+ *
+ * A reel that simply stops has no weight; one that overshoots by a couple of
+ * pixels and comes back has mass, and mass is the only thing separating this
+ * from a colour appearing in a box. The overshoot is a fraction of a CELL
+ * rather than a pixel count, so it survives the art being redrawn at another
+ * size.
+ */
+const REEL_BOUNCE = 0.18;
+const REEL_OVERSHOOT = 0.22;
 
-export function reelPose(pull: MachinePull, index: number): ReelPose {
+/**
+ * How fast the band runs at full speed, in CELLS a second, and how long it
+ * spends slowing down.
+ *
+ * THE DECELERATION IS THE WHOLE MACHINE. At full speed the strip is a blur and
+ * says nothing; the last `REEL_DECEL` seconds are where it crawls past six or
+ * seven faces one at a time with the answer already decided, and that is the
+ * thing a slot machine is actually for. Long enough to read individual cells,
+ * short enough that three of them in sequence is still under two seconds of
+ * the player's life.
+ */
+const REEL_SPEED_CELLS = 17;
+const REEL_DECEL = 0.62;
+
+/** Where each reel's window sits on the band before the lever comes down. */
+function idleCell(index: number): number {
+  return index * 3 + 1;
+}
+
+/**
+ * Where reel `index`'s window sits on the band at this instant.
+ *
+ * MODELLED BACKWARD FROM THE STOP, not forward from the pull. The reel has to
+ * arrive EXACTLY on its face on exactly the frame it is due, so the position is
+ * `landing - (distance still to run)`, and the distance is a function of the
+ * time LEFT rather than the time spent. Integrating a speed forward would put
+ * the face a few pixels off after a long frame, and a slot machine that stops
+ * between two symbols is broken in the one way everybody can see.
+ *
+ * The speed profile is linear-in, linear-decelerate-out:
+ *
+ *   left >= decel   running flat out; remaining = the ramp plus the cruise
+ *   left <  decel   on the ramp; remaining = speed * left^2 / (2 * decel)
+ *
+ * The two agree at `left == decel`, so there is no seam where it changes mode.
+ */
+export function reelScroll(
+  pull: MachinePull,
+  index: number,
+  cellHeight: number,
+  cells: number,
+  landingCell: number,
+): ReelPose {
+  const bandHeight = Math.max(1, cells * cellHeight);
+  const landing = landingCell * cellHeight;
   const stops = [pull.timing.reel0, pull.timing.reel1, pull.timing.reel2];
   const stop = stops[Math.min(index, stops.length - 1)];
-  if (pull.elapsed < stop) {
-    return { spinning: pull.elapsed >= pull.timing.arm, bounce: -1 };
+
+  if (pull.elapsed <= pull.timing.arm) {
+    return { offset: idleCell(index) * cellHeight % bandHeight, speed: 0, landed: false };
   }
-  const since = pull.elapsed - stop;
-  return { spinning: false, bounce: since < REEL_BOUNCE ? since / REEL_BOUNCE : -1 };
+
+  if (pull.elapsed >= stop) {
+    // The bounce. It carries PAST the face and comes back, because a band
+    // under tension does not stop dead on the pixel it was aiming at.
+    const since = pull.elapsed - stop;
+    const bounce =
+      since < REEL_BOUNCE
+        ? Math.sin((since / REEL_BOUNCE) * Math.PI) * REEL_OVERSHOOT * cellHeight
+        : 0;
+    return { offset: wrap(landing + bounce, bandHeight), speed: 0, landed: true };
+  }
+
+  const speed = REEL_SPEED_CELLS * cellHeight;
+  const left = stop - pull.elapsed;
+  const remaining =
+    left >= REEL_DECEL
+      ? (speed * REEL_DECEL) / 2 + speed * (left - REEL_DECEL)
+      : (speed * left * left) / (2 * REEL_DECEL);
+  return {
+    offset: wrap(landing - remaining, bandHeight),
+    speed: Math.min(1, left / REEL_DECEL),
+    landed: false,
+  };
+}
+
+function wrap(value: number, span: number): number {
+  return ((value % span) + span) % span;
+}
+
+/**
+ * 0..1 while the three windows agree and the pay line is lit, else -1.
+ *
+ * It starts on the LAST reel landing, which is the frame the machine has
+ * actually said something, and it is the visual half of the same beat the
+ * rarity chime plays.
+ */
+export function payLineFlash(pull: MachinePull, seconds: number): number {
+  const since = pull.elapsed - pull.timing.reel2;
+  if (since < 0 || since > seconds) return -1;
+  return since / seconds;
 }
 
 /**

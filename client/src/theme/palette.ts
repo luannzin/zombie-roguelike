@@ -103,6 +103,8 @@ export interface Palette {
   };
 
   hp: { high: string; mid: string; low: string };
+  /** Breath, and breath that has been spent. Off the HP ramp on purpose. */
+  stamina: { ready: string; spent: string };
   progress: { xp: string; neutral: string };
   minimap: { localRing: string; enemy: string; fog: string; unseen: string };
 
@@ -247,6 +249,7 @@ function resolve(): Palette {
     },
 
     hp: { high: v('--hp-high'), mid: v('--hp-mid'), low: v('--hp-low') },
+    stamina: { ready: v('--stamina'), spent: v('--stamina-spent') },
     progress: { xp: v('--xp'), neutral: v('--neutral') },
     minimap: {
       localRing: v('--minimap-local-ring'),

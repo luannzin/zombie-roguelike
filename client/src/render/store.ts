@@ -3,18 +3,18 @@
  *
  * Produced by server/tools/make_store.py and served from /store/.
  *
- * It is a SMALL atlas on purpose. The camp used to be an interior and shipped
+ * It is a SMALL atlas on purpose. The shop used to be an interior and shipped
  * its own floor, walls and hanging lamps; it is a clearing now, so the ground
- * is `terrain/`'s forest soil, the shelter is `scenery/`'s tent, and the trees
- * are the same trees as everywhere else. What is left here is only what the
- * trader brought with him: his tables, the mat he trades over, the torches he
- * drove in, and the pool that says which weapon you are standing at.
+ * is `terrain/`'s forest soil and the trees are the same trees as everywhere
+ * else. What is left here is only what the trader brought with him: his cart,
+ * his counter, his round tables, the mat he stands on, the torches he drove in
+ * and his own gear — plus the pool that says which table you are standing at.
  *
  * Three shapes, drawn in three different places in the frame:
  *
- *   PROPS stand up — tables and torches. Bottom-anchored on a contact point
- *   and depth-sorted with the party, so a body passes in front of and behind
- *   them.
+ *   PROPS stand up — the wagon, the counter, the tables, his gear and the
+ *   torches. Bottom-anchored on a contact point and depth-sorted with the
+ *   party, so a body passes in front of and behind them.
  *
  *   DECALS lie flat. Just the mat, drawn on the ground under the merchant.
  *
@@ -25,9 +25,9 @@
  *   cannot produce a ramp — the same call `make_rift.py` makes.
  *
  * `table.topY` is the one piece of gameplay geometry that lives in the art:
- * the pixel row a weapon rests on, per table frame. Three of the four tables
- * are different heights on purpose, so a single hardcoded offset would float
- * one gun and sink another.
+ * the pixel row the goods rest on, per pedestal frame. The four pedestals are
+ * deliberately different heights, so a single hardcoded offset would float one
+ * gun and sink another.
  *
  * Loading is best-effort, like every other atlas here: a missing manifest
  * resolves to `null` and the layer draws nothing rather than taking the zone
@@ -66,9 +66,18 @@ export interface StoreEffect {
 }
 
 export interface StoreAtlas {
+  /** Six round pedestals. `topY` is the row the goods rest on, per frame. */
   table: StoreProp;
   /** His gear: crates, a barrel, a rack, a shelf, a strongbox. Never opened. */
   kit: StoreProp;
+  /**
+   * HIS CART, one frame, parked on the west rim — the biggest sprite in the
+   * zone and the one that says where the stock came from. See the section
+   * comment above `make_wagon` in server/tools/make_store.py.
+   */
+  wagon: StoreProp;
+  /** The plank he stands behind. */
+  counter: StoreProp;
   torch: StoreProp;
   rug: StoreDecal;
   torchfire: StoreEffect;
@@ -102,7 +111,7 @@ interface SheetManifest {
 
 interface StoreManifest {
   tile: number;
-  props: Record<'table' | 'kit' | 'torch', SheetManifest>;
+  props: Record<'table' | 'kit' | 'wagon' | 'counter' | 'torch', SheetManifest>;
   decals: Record<'rug', SheetManifest>;
   effects: Record<'torchfire' | 'glow', SheetManifest>;
 }
@@ -124,9 +133,11 @@ export function loadStore(): Promise<StoreAtlas | null> {
 async function fetchStore(): Promise<StoreAtlas | null> {
   try {
     const manifest = await loadJson<StoreManifest>(`${ROOT}/manifest.json`);
-    const [table, kit, torch, rug, torchfire, glow, coin] = await Promise.all([
+    const [table, kit, wagon, counter, torch, rug, torchfire, glow, coin] = await Promise.all([
       loadProp(manifest.props.table),
       loadProp(manifest.props.kit),
+      loadProp(manifest.props.wagon),
+      loadProp(manifest.props.counter),
       loadProp(manifest.props.torch),
       loadDecal(manifest.decals.rug),
       loadEffect(manifest.effects.torchfire),
@@ -134,7 +145,7 @@ async function fetchStore(): Promise<StoreAtlas | null> {
       // Not fatal: a price with no coin beside it is still a price.
       loadImage('/hud/coin.png').catch(() => null),
     ]);
-    return { table, kit, torch, rug, torchfire, glow, coin };
+    return { table, kit, wagon, counter, torch, rug, torchfire, glow, coin };
   } catch (err) {
     console.warn('[store] no store atlas:', err);
     // Not memoized as a permanent failure: the next day should get another go.
@@ -175,7 +186,7 @@ async function loadEffect(sheet: SheetManifest): Promise<StoreEffect> {
   };
 }
 
-/** The row a weapon rests on for table frame `variant`, in frame pixels. */
+/** The row the goods rest on for table frame `variant`, in frame pixels. */
 export function tableTopY(table: StoreProp, variant: number): number {
   const rows = table.topY;
   if (!rows || rows.length === 0) return 0;

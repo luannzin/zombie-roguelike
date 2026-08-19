@@ -17,6 +17,11 @@ const KEY_MAP: Record<string, keyof MovementInput> = {
   ArrowRight: 'right',
 };
 
+/**
+ * RUN. Held, not toggled — and both shifts answer, because which hand is on
+ * the movement keys decides which one is free.
+ */
+const SPRINT_KEYS = ['ShiftLeft', 'ShiftRight'];
 /** Toggles the lantern. Physical key, so it lands on F under any layout. */
 const LANTERN_KEY = 'KeyF';
 /** Ready at the campfire. Physical key, so it lands on E under any layout. */
@@ -36,6 +41,12 @@ const HOTBAR_KEYS: Record<string, number> = {
 export class InputController {
   readonly movement: MovementInput = { up: false, down: false, left: false, right: false };
   shooting = false;
+  /**
+   * SHIFT is down. A REQUEST to run and nothing more: whether the body
+   * actually runs is decided against its breath, in `simulation.isRunning`,
+   * by the same code the server runs.
+   */
+  sprinting = false;
   mouseX = 0;
   mouseY = 0;
 
@@ -93,6 +104,10 @@ export class InputController {
       e.preventDefault();
       return;
     }
+    if (SPRINT_KEYS.includes(e.code)) {
+      this.sprinting = true;
+      return;
+    }
     if (e.code === LANTERN_KEY && !e.repeat) {
       this.onToggleLantern?.();
       e.preventDefault();
@@ -120,12 +135,17 @@ export class InputController {
     if (key) {
       this.movement[key] = false;
       e.preventDefault();
+      return;
     }
+    if (SPRINT_KEYS.includes(e.code)) this.sprinting = false;
   };
 
   private onBlur = () => {
     this.movement.up = this.movement.down = this.movement.left = this.movement.right = false;
     this.shooting = false;
+    // A window that lost focus under a held SHIFT never sees the keyup, and a
+    // body that came back sprinting on nobody's finger would empty the bar.
+    this.sprinting = false;
   };
 
   private onMouseMove = (e: MouseEvent) => {

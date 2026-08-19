@@ -341,6 +341,9 @@ function corpseAsTarget(body: DrawableCorpse): DrawableEntity {
     ay: body.ay,
     hp: 0,
     maxHp: 1,
+    stamina: 0,
+    staminaMax: 0,
+    winded: false,
     alive: false,
     moving: false,
     animTime: 0,
@@ -633,6 +636,19 @@ function drawAimFallback(
   ctx.stroke();
 }
 
+/**
+ * Health over a body, and — for a player who is spending it — breath under it.
+ *
+ * The run bar is deliberately the LESSER of the two: a hairline strip with no
+ * frame of its own, hung off the bottom edge of the health bar, at the width of
+ * the health FILL rather than the health frame. Two bars of equal weight over
+ * every teammate would make a party read as a row of gauges, and the one that
+ * has to be legible at a glance across a dark forest is the one that says
+ * somebody is about to die.
+ *
+ * It is also transient: a full bar draws nothing at all. Breath is only news
+ * while it is being spent or coming back, which is exactly when it is not full.
+ */
 function drawHealthBar(
   { ctx, view, config }: EntityContext,
   target: DrawableEntity,
@@ -646,11 +662,21 @@ function drawHealthBar(
   const ratio = clamp01(target.hp / target.maxHp);
   const barX = Math.round(centerX - barW / 2);
   const barY = view.y(spriteTop - ts * 0.125);
+  const innerW = barW - 2 * unit;
 
   ctx.fillStyle = palette().entity.barBackdrop;
   ctx.fillRect(barX, barY, barW, barH);
   ctx.fillStyle = hpColor(ratio);
-  ctx.fillRect(barX + unit, barY + unit, Math.round((barW - 2 * unit) * ratio), unit);
+  ctx.fillRect(barX + unit, barY + unit, Math.round(innerW * ratio), unit);
+
+  if (target.staminaMax <= 0 || target.stamina >= target.staminaMax - 0.5) return;
+  const breath = clamp01(target.stamina / target.staminaMax);
+  const tone = palette().stamina;
+  const runY = barY + barH;
+  ctx.fillStyle = palette().entity.barBackdrop;
+  ctx.fillRect(barX + unit, runY, innerW, unit);
+  ctx.fillStyle = target.winded ? tone.spent : tone.ready;
+  ctx.fillRect(barX + unit, runY, Math.round(innerW * breath), unit);
 }
 
 /**

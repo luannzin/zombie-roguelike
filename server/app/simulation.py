@@ -19,6 +19,12 @@ from .config import (
     MOVE_SPEED,
     PLAYER_HALF_HEIGHT,
     PLAYER_HALF_WIDTH,
+    SPRINT_SPEED,
+    STAMINA_DRAIN,
+    STAMINA_MAX,
+    STAMINA_RECOVER,
+    STAMINA_REGEN_REST,
+    STAMINA_REGEN_WALK,
 )
 from .entities import InputCmd, Player
 from .world import TileMap
@@ -57,10 +63,52 @@ def move_dir(cmd: InputCmd) -> tuple[float, float]:
     return dx, dy
 
 
+def running(player: Player, cmd: InputCmd, moving: bool) -> bool:
+    """Whether this body is actually RUNNING this tick.
+
+    Holding SHIFT is a request, not a state: a body standing still is not
+    running (it would drain the bar for nothing), and a body that spent the bar
+    is locked out until `STAMINA_RECOVER` of it is back — see `Player.winded`.
+    Mirror: client/src/game/simulation.ts.
+    """
+    return moving and cmd.sprint and not player.winded and player.stamina > 0.0
+
+
+def step_stamina(player: Player, run: bool, moving: bool, dt: float) -> None:
+    """Spend or refill the breath, and work the exhaustion latch.
+
+    STATELESS BY DESIGN — no rest timer, no cooldown. What the bar reads is
+    decided entirely by (running, moving), so prediction can replay it from the
+    server's number and land on exactly the value the server holds. The one
+    piece of memory is `winded`, and it is a latch rather than a clock, which
+    is why it rides the snapshot beside the number.
+
+    Standing still refills faster than walking does. That is the only place the
+    system asks for a decision: catching your breath properly means stopping in
+    a dark forest. Mirror: client/src/game/simulation.ts.
+    """
+    if run:
+        player.stamina -= STAMINA_DRAIN * dt
+        if player.stamina <= 0.0:
+            player.stamina = 0.0
+            player.winded = True
+        return
+    regen = STAMINA_REGEN_WALK if moving else STAMINA_REGEN_REST
+    player.stamina = min(STAMINA_MAX, player.stamina + regen * dt)
+    if player.winded and player.stamina >= STAMINA_MAX * STAMINA_RECOVER:
+        player.winded = False
+
+
 def apply_input(player: Player, cmd: InputCmd, world: TileMap, dt: float) -> None:
     dx, dy = move_dir(cmd)
+    moving = dx != 0.0 or dy != 0.0
+    run = running(player, cmd, moving)
+    step_stamina(player, run, moving, dt)
+
     mods = player.skills.mods
     speed = MOVE_SPEED * mods.speed * carry_scale(player.carry_weight, mods.carry)
+    if run:
+        speed *= SPRINT_SPEED
     player.vx = dx * speed
     player.vy = dy * speed
 

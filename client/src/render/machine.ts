@@ -7,12 +7,19 @@
  *
  *   The CABINET is a bottom-anchored PROP. It stands in the entity depth sort
  *   beside the tables and the merchant, so a body walks in front of and behind
- *   it, and it takes the darkness multiply like any other object in a glade.
+ *   it, and it takes the darkness multiply like any other object in a clearing.
  *
- *   The REEL and the LEVER are PARTS. They are blitted into the cabinet's own
+ *   The BAND and the LEVER are PARTS. They are blitted into the cabinet's own
  *   frame at offsets the manifest carries (`reels`, `lever`), because where a
  *   window is on the front panel is a property of the ART and a hardcoded
  *   offset here would drift the first time the cabinet was redrawn.
+ *
+ *   THE BAND IS ONE TALL IMAGE, NOT A STRIP OF FRAMES. `strip.png` holds the
+ *   ten cells of the reel in a fixed order and the client scrolls a
+ *   `reelHeight` window over it, wrapping — see `game/machine.ts`
+ *   `reelScroll`. That is what makes a spin a strip going past instead of a
+ *   frame index changing, and it is where the slow-down, the near miss and the
+ *   motion blur all come from for free.
  *
  *   The EFFECTS — marquee, window backlight, payout burst — are additive and
  *   drawn AFTER the darkness pass, because they are light rather than things
@@ -46,9 +53,10 @@ export interface MachineEffect extends MachinePart {
 }
 
 export interface MachineAtlas {
-  cabinet: MachinePart;
   /** Frame 0 is idle; frame 1 is the shell settled after a pull. */
-  reel: MachinePart;
+  cabinet: MachinePart;
+  /** The reel BAND: one image, `bandCells` cells tall, scrolled and wrapped. */
+  strip: MachinePart;
   lever: MachinePart;
   marquee: MachineEffect;
   window: MachineEffect;
@@ -57,10 +65,11 @@ export interface MachineAtlas {
   reelSlots: Array<[number, number]>;
   reelWidth: number;
   reelHeight: number;
-  /** How many of the reel sheet's frames are spin blur, before the faces. */
-  spinFrames: number;
-  /** Rarity order of the reel faces, after the blur frames. */
-  rarities: string[];
+  /** How many cells the band holds, and what each of them is. */
+  bandCells: number;
+  band: string[];
+  /** The row the three windows have to agree on, in cabinet-frame pixels. */
+  payLine: number;
   /** Where the lever's pivot lands in the cabinet frame. */
   leverAnchor: [number, number];
   /** Where that pivot is inside the lever sheet. */
@@ -75,13 +84,14 @@ interface SheetManifest {
   file: string;
   frameWidth: number;
   frameHeight: number;
-  frames: number;
+  frames?: number;
   fps?: number;
   anchorY?: number;
   loop?: boolean;
   pivot?: [number, number];
-  spinFrames?: number;
-  rarities?: string[];
+  /** Band only: how many cells the strip holds, and their rarity order. */
+  cells?: number;
+  band?: string[];
 }
 
 interface CabinetManifest extends SheetManifest {
@@ -91,10 +101,12 @@ interface CabinetManifest extends SheetManifest {
   lever: [number, number];
   trayMouth: [number, number];
   crown: [number, number];
+  payLine: number;
 }
 
 interface MachineManifest {
   cabinet: CabinetManifest;
+  /** The band. `file` is strip.png; `frameHeight` is the WINDOW, not the sheet. */
   reel: SheetManifest;
   lever: SheetManifest;
   effects: Record<'marquee' | 'window' | 'burst', SheetManifest>;
@@ -113,7 +125,7 @@ export function loadMachine(): Promise<MachineAtlas | null> {
 async function fetchMachine(): Promise<MachineAtlas | null> {
   try {
     const manifest = await loadJson<MachineManifest>(`${ROOT}/manifest.json`);
-    const [cabinet, reel, lever, marquee, window_, burst] = await Promise.all([
+    const [cabinet, strip, lever, marquee, window_, burst] = await Promise.all([
       loadPart(manifest.cabinet),
       loadPart(manifest.reel),
       loadPart(manifest.lever),
@@ -123,7 +135,7 @@ async function fetchMachine(): Promise<MachineAtlas | null> {
     ]);
     return {
       cabinet,
-      reel,
+      strip,
       lever,
       marquee,
       window: window_,
@@ -131,8 +143,9 @@ async function fetchMachine(): Promise<MachineAtlas | null> {
       reelSlots: manifest.cabinet.reels,
       reelWidth: manifest.cabinet.reelWidth,
       reelHeight: manifest.cabinet.reelHeight,
-      spinFrames: manifest.reel.spinFrames ?? 4,
-      rarities: manifest.reel.rarities ?? [],
+      bandCells: manifest.reel.cells ?? 1,
+      band: manifest.reel.band ?? [],
+      payLine: manifest.cabinet.payLine ?? manifest.cabinet.reelHeight / 2,
       leverAnchor: manifest.cabinet.lever,
       leverPivot: manifest.lever.pivot ?? [0, 0],
       trayMouth: manifest.cabinet.trayMouth,
@@ -151,7 +164,7 @@ async function loadPart(sheet: SheetManifest): Promise<MachinePart> {
     image: await loadImage(`${ROOT}/${sheet.file}`),
     frameWidth: sheet.frameWidth,
     frameHeight: sheet.frameHeight,
-    frames: sheet.frames,
+    frames: sheet.frames ?? 1,
   };
 }
 
@@ -165,20 +178,24 @@ async function loadEffect(sheet: SheetManifest): Promise<MachineEffect> {
 }
 
 /**
- * Which reel-sheet frame shows rarity `rarity`.
+ * Which CELL of the band shows `rarity` for reel `index`.
  *
- * Falls back to the FIRST face rather than to a blur frame: a reel that
- * settled on a tier the sheet has never heard of should stop on something,
- * because a window that keeps spinning after the machine has paid out reads as
- * the ceremony having hung.
+ * A rarity sits in the band more than once (commons four times), and the three
+ * reels deliberately pick DIFFERENT occurrences of it: three windows landing on
+ * the identical cell would mean the band ran the same distance three times,
+ * which is visible in the last half second as three reels stopping in lockstep.
+ * Walking round the occurrences by reel index lands them on the same COLOUR out
+ * of three different places on the strip, which is what a real machine does.
+ *
+ * Falls back to cell 0 rather than throwing: a reel that settled on a tier the
+ * band has never heard of should still stop somewhere, because a window that
+ * keeps spinning after the machine has paid out reads as a hung ceremony.
  */
-export function reelFace(atlas: MachineAtlas, rarity: string): number {
-  const index = atlas.rarities.indexOf(rarity);
-  return atlas.spinFrames + (index >= 0 ? index : 0);
-}
-
-/** The blur frame for `time`, offset per reel so the three never lock step. */
-export function reelBlur(atlas: MachineAtlas, time: number, reel: number): number {
-  const spin = Math.max(1, atlas.spinFrames);
-  return Math.floor(time * 26 + reel * 1.7) % spin;
+export function bandCell(atlas: MachineAtlas, rarity: string, index: number): number {
+  const hits: number[] = [];
+  for (let cell = 0; cell < atlas.band.length; cell++) {
+    if (atlas.band[cell] === rarity) hits.push(cell);
+  }
+  if (hits.length === 0) return 0;
+  return hits[index % hits.length];
 }

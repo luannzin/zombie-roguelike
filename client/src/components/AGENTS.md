@@ -85,11 +85,11 @@ and nowhere near the frame loop.
   A full bag keeps the pin and says "Inventário Cheio" in
   the danger tone — hiding it would look like the drop vanished. New
   items get a new caller, not a fork of the chrome.
-  `ExitGuide` is the gold arrow for the extraction exit (`/hud/arrow.png`):
-  outside the glass, halfway between the player and the screen edge in the
-  corridor's direction, positioned by `stepExitGuide` in its own rAF. The
-  transform is sub-pixel `translate3d` on purpose — rounding it undoes the
-  smoothing that module exists for.
+  `ExitGuide` is the gold TRIANGLE for the way out (`/hud/chevron.png`, not
+  `arrow.png`): outside the glass, halfway between the player and the screen
+  edge in the corridor's direction, positioned by `stepExitGuide` in its own
+  rAF. The transform is sub-pixel `translate3d` on purpose — rounding it undoes
+  the smoothing that module exists for.
   `LootPrompt` has THREE states, and the middle one is why `full` is not
   enough on its own: a full BELT with a gun in hand is a trade, so the copy
   becomes "trocar {held} por {new}" with the gun being given up in the muted
@@ -132,16 +132,22 @@ and nowhere near the frame loop.
 - `SkillTray` sits ABOVE the bag, in the same column, and that is the whole
   placement argument: a skill and a pocket are the same kind of statement —
   *this is what I am carrying* — one you can still lose tonight and one you
-  keep, and stacking them is what stops the HUD growing a fifth region. It is
-  EMPTY until the first pull and draws nothing at all when it is; a run opens
-  with no skills, and a frame labelled "skills" over nothing would be the HUD
-  explaining a system the player has not met. One tile per skill: icon, rarity
-  border, stack count, and the NAME only on hover — eighteen labelled rows
-  would be a spreadsheet in the corner of a horror game. A tile at its cap says
-  so, because a number that silently stopped meaning anything is worse than no
-  number. The `spins guardados` badge is the one piece of it that exists purely
-  to cross a zone boundary: a level earned in the woods is spendable only at
-  the machine in the shop, so something has to carry that fact through a night.
+  keep, and stacking them is what stops the HUD growing a fifth region.
+  It is a LIST OF LABELLED ROWS, not a grid of tiles: icon, NAME in the
+  rarity colour, and `x{qty}`, one row per skill, stacked with no gap so they
+  read as one shelf that grew. A wall of 16px icons asked the player to hover
+  eighteen things to find out what they owned, which is a spreadsheet with the
+  words hidden; the hover card is now only the sentence about what the skill
+  DOES. A row at its cap is muted, because a number that silently stopped
+  meaning anything is worse than no number.
+  It is NEVER EMPTY — with no skills it says `habilidades: nenhuma` in one
+  muted row. A region that appeared for the first time at the first shop is a
+  region the player has to learn mid-run, and the empty row is also the only
+  place the HUD admits the system exists before it has paid out.
+  There is NO spins badge. It said the same thing five times a second for a
+  whole night, and the cabinet's own marquee already burns harder for a player
+  holding an unspent level — teaching at a distance, in the world, which is
+  the one thing a HUD line could never do.
 - `MachinePrompt` answers even when the player has NOTHING to spend, which is
   why it has three states rather than one. A machine that only spoke to
   somebody already holding a level would be scenery for the whole first shop —
@@ -149,12 +155,21 @@ and nowhere near the frame loop.
   glade would never get made. The empty copy states the CURRENCY ("suba de
   nível para girar") rather than the refusal, because where a spin comes from
   is the one thing a player standing at the cabinet does not know yet.
-- `ExitGuide` is a 0..1 STRENGTH, not a flag. It burns for a few seconds after
-  the exit opens and then fades out — the column of light over the treeline,
-  the torches at the threshold and the ping from the mouth are what carry
-  navigation from there, and none of them means anything while a chevron is
-  answering the same question for free. It still sits outside `HudScreen`: the
-  glass would bend it off the screen edge.
+- **`ExitGuide` BLINKS, and the blink is on the render clock.** `hud-store`
+  carries ONE BIT — there is an uncrossed way out — and the component owns the
+  envelope: a long solid burst while the news is news, then it goes dark, then
+  it comes back for a couple of seconds every few, forever. A permanent marker
+  answers "which way out" for the rest of the night, so the column of light
+  over the treeline, the torches at the threshold and the ping from the mouth
+  become decoration nobody has a reason to read; a marker that simply faded out
+  left a party that turned the wrong way at second twelve with nothing to ask.
+  The ramps at each end of a pulse are shorter than the store's 200 ms
+  republish, which is why the envelope cannot live in the snapshot — pushed
+  through it, a fade arrives as two steps and a pop.
+  The sprite is a TRIANGLE for the same reason: what the eye catches in a
+  half-second flash is AREA, not line, and the old dart is a thin thing that
+  reads by its length. It still sits outside `HudScreen`: the glass would bend
+  it off the screen edge.
 - `Inventory` is the left-side pocket. Collapsed it is the backpack sprite
   and a TAB hint; TAB expands the slots in place, not a dialog. A collect
   opens it so the slot is on screen before the fly leaves the head. Slot

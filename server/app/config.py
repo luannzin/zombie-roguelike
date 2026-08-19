@@ -70,6 +70,31 @@ MOVE_SPEED = TILE_SIZE * MOVE_TILES_PER_SEC             # 70.4 px/s
 MAX_HP = 100
 RESPAWN_DELAY = 2.0          # seconds
 
+# --- running (authored as multipliers and points per second) ----------------
+# SHIFT IS A DECISION, NOT A SECOND WALK SPEED. Sprinting is how a party
+# crosses ground it has already read — the walk back to a console, the last
+# stretch to the exit while the pack is coming — and stamina is what stops it
+# being the only speed anybody ever uses. The whole system is four numbers:
+#
+#   * the run is worth taking (SPRINT_SPEED), and it is bounded well under a
+#     zombie's charge, so it outruns a shamble and never outruns a hunt;
+#   * it costs more than standing still pays back, so a night cannot be
+#     sprinted end to end;
+#   * catching your breath is FASTER STANDING STILL than walking, which is the
+#     one place the bar asks the player to stop and look at the dark;
+#   * spending it to zero locks the key until a THIRD of the bar is back
+#     (`STAMINA_RECOVER`). Without that lockout an empty bar stutters between
+#     one frame of run and one frame of walk for as long as SHIFT is held.
+#
+# It multiplies the walk, so a skill's speed bonus and the carry penalty both
+# still apply underneath — a body hauling a full bag runs at a full bag's pace.
+SPRINT_SPEED = 1.55
+STAMINA_MAX = 100.0
+STAMINA_DRAIN = 26.0         # points/s while actually running
+STAMINA_REGEN_WALK = 12.0    # points/s while still on your feet and moving
+STAMINA_REGEN_REST = 24.0    # points/s standing still
+STAMINA_RECOVER = 0.33       # fraction back before SHIFT answers again
+
 # --- spawning (authored in tiles) -------------------------------------------
 # After the camp walk-out the party emerges from a VOID corridor on a random
 # map edge, then that path seals. Respawn (and a late join) uses a ring around
@@ -147,53 +172,64 @@ ENTRANCE_MOUTH_TILES = 4.6
 EXIT_DEPTH_TILES = 5
 
 # --- the store (authored in tiles) ------------------------------------------
-# The night's takings, spent. A trader's pitch in a long forest GLADE, read
-# left to right: the way in at one end, the way out at the other, and his
-# tables strung between them.
+# The night's takings, spent. The zone is ONE WALK, SOUTH TO NORTH: the party
+# arrives through a corridor at the bottom of the map, the corridor opens into
+# a round CLEARING with everything worth stopping for around its rim, and a
+# second corridor leaves from the top. Come in, go round, go on.
 #
-# `STORE_LANE_TILES` is the load-bearing one. It is the typical height of the
-# walkable lane, not a hard width — `store._lane_half` breathes and frays
-# around it so the treeline reads as woods rather than as two drawn lines. Kept
-# narrow on purpose: this is the one zone whose whole content is "walk past
-# four tables and decide", and a glade wide enough to cut a diagonal across is
-# a glade where a party leaves without seeing half the stock.
+# WHY A CIRCLE AND NOT A LANE. It was a long east-west glade first, with the
+# tables strung along it, and the shape was doing exactly one thing: making
+# sure nobody could walk past the stock. That is a corridor's whole argument,
+# and it is a weak one, because the party has to walk the same straight line
+# every night whether or not they have anything to spend. A ROOM is different:
+# it is somewhere you STAND. Everything in it is visible from the middle at
+# once, so the visit is a decision about where to go rather than a queue, and
+# two players can be at the trader and at the machine at the same time without
+# one of them walking back through the other. The two corridors on the ends
+# keep the entrance and the exit as separate events, which is the part of the
+# lane that was worth keeping.
 #
-# The map is TALLER than the lane so the treeline has depth to thicken into;
-# most of that height is woods the party never walks in.
-#
-# IT GOT WIDER WHEN THE PAYOUT LANDED IN IT, and those are one decision. The
-# night's platforms are set down at the WEST end, in front of the party, before
-# the first table — so the glade is read as three beats rather than one: you
-# get paid, you see what it buys, you leave. At the old width the skids came
-# down on top of the stalls and the two events happened in the same square of
-# ground, which is how a reward becomes a thing that happened while you were
-# reading a price tag.
-STORE_WIDTH_TILES = 68
-STORE_HEIGHT_TILES = 24
+# `STORE_CIRCLE_TILES` is the load-bearing one — the radius of that clearing,
+# in tiles. Big enough that the wagon on the west, the six stalls on the east
+# and the platforms coming down in the south are three places rather than one
+# crowd; small enough that all of it is on screen from the middle. The map is
+# WIDER and TALLER than the clearing so the treeline has depth to thicken into
+# and the two necks have somewhere to run.
+STORE_WIDTH_TILES = 52
+STORE_HEIGHT_TILES = 62
+#: Radius of the clearing, in tiles. `store._circle_half` breathes around it so
+#: the rim reads as woods rather than as a stamped disc.
+STORE_CIRCLE_TILES = 16.0
+#: Typical width of the two NECKS — the walkable throat between a corridor
+#: mouth and the clearing. Narrow, so arriving and leaving are both a squeeze
+#: that opens out; the clearing does the breathing.
 STORE_LANE_TILES = 9.0
-#: VOID at each end: the way in (which seals) and the way out (which does not).
+#: VOID at each end: the way in at the bottom (which seals) and the way out at
+#: the top (which does not).
 STORE_CORRIDOR_TILES = 7
 #: How close the feet have to be for E to buy. Tighter than a crate — the
-#: tables are shoulder to shoulder and a loose radius would offer two at once.
+#: stalls stand in a grid and a loose radius would offer two at once.
 STORE_BUY_TILES = 1.9
 STORE_BUY_DIST = TILE_SIZE * STORE_BUY_TILES
-#: How far a weapon lifts off its table when somebody is in range, in tiles.
-#: Client-side juice, authored here so the lift and the reach cannot drift.
+#: How far the goods FLOAT off a table when somebody is in range, in tiles.
+#: The client bobs them through this rather than parking them at it — a lift
+#: that stopped would be a levitating sprite, and a lift that breathes is the
+#: table saying it is offering something. Authored here so the bob and the
+#: reach cannot drift.
 STORE_LIFT_TILES = 0.4
 #: How close the feet have to be for E to pull the machine's lever, in tiles.
 #: Wider than a table, narrower than a rift console: the cabinet is a big
-#: object and standing at it should be unambiguous, but the last table in the
-#: glade must never be offering itself at the same time as the lever.
+#: object and standing at it should be unambiguous, but the nearest stall must
+#: never be offering itself at the same time as the lever.
 STORE_SPIN_TILES = 2.2
 STORE_SPIN_DIST = TILE_SIZE * STORE_SPIN_TILES
 #: How far the machine's own marquee throws, in tiles. It is a LIT OBJECT — the
-#: only electrical thing in the game — and it is placed at the far end of the
-#: glade, so its pool is what tells a party there is one more thing down there
-#: after the last table.
-STORE_MACHINE_LIGHT_TILES = 7.5
+#: only electrical thing in the game — and it stands alone on the north-west
+#: arc of the clearing, so its pool is what pulls a party across to it.
+STORE_MACHINE_LIGHT_TILES = 8.5
 
-#: What the merchant charges, as a multiple of the gun's catalog value. He is
-#: the only place to buy one and he knows it.
+#: What the merchant charges, as a multiple of the item's catalog value. He is
+#: the only place to buy a gun and he knows it.
 #:
 #: KEPT LOW ON PURPOSE, and the number is pinned to the first night rather than
 #: to a feeling about margins. Day one has a single pad, a single pad is always
@@ -201,12 +237,23 @@ STORE_MACHINE_LIGHT_TILES = 7.5
 #: night banks its quota (`rift.night_need`, 40) plus whatever the final item
 #: overshot by, and nothing else. At this markup the cheapest gun on the
 #: cheapest table is 46, which the first night clears. Push the markup up and
-#: that shop becomes a corridor of things nobody can buy, which is the worst
+#: that shop becomes a room of things nobody can buy, which is the worst
 #: possible first impression for a zone whose whole job is to make the night's
 #: take feel like it bought something — and, now that guns are ONLY sold here
 #: and never found, a first shop nobody can buy from is a second night with a
 #: knife.
 STORE_MARKUP = 1.15
+#: How far one stall's price may wander off that markup, either way.
+#:
+#: THIS IS WHAT MAKES SIX STALLS SIX DECISIONS. The stock is rolled WITH
+#: REPLACEMENT — he can be holding three Glocks — and six tables carrying the
+#: same number is a shelf, not a shop. A spread turns a duplicate into the one
+#: question a trader's stall is actually about: this one or the cheaper one
+#: over there. It is small enough that it never reorders the catalog (a
+#: haggled AK never undercuts a full-price FAMAS), because the price ladder is
+#: teaching the value of the guns and a spread that shuffled it would be
+#: teaching noise.
+STORE_PRICE_SPREAD = 0.16
 
 # --- vision (authored in tiles) ---------------------------------------------
 # The client draws the darkness; these numbers decide its shape. They live here
@@ -669,4 +716,12 @@ def client_config() -> dict:
         "carrySlowStart": CARRY_SLOW_START,
         "carrySlowAtMax": CARRY_SLOW_AT_MAX,
         "carrySlowFloor": CARRY_SLOW_FLOOR,
+        # Running. The client predicts its own body, so every number the
+        # sprint reads has to be here — see `simulation.step_stamina`.
+        "sprintSpeed": SPRINT_SPEED,
+        "staminaMax": STAMINA_MAX,
+        "staminaDrain": STAMINA_DRAIN,
+        "staminaRegenWalk": STAMINA_REGEN_WALK,
+        "staminaRegenRest": STAMINA_REGEN_REST,
+        "staminaRecover": STAMINA_RECOVER,
     }

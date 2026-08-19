@@ -592,15 +592,14 @@ export class Renderer {
     const width = this.canvas.width;
     const height = this.canvas.height;
     if (this.post) {
-      const done = this.post.render(
+      // A lost context draws nothing at all rather than a stale frame; it
+      // restores on its own within a frame or two.
+      this.post.render(
         this.scene.canvas,
         state.grade,
         this.gatherShafts(state, view, width, height),
         state.time,
       );
-      // A lost context draws nothing at all rather than a stale frame; it
-      // restores on its own within a frame or two.
-      if (!done) return;
       return;
     }
     if (!this.blit) return;

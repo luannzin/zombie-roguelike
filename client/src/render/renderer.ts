@@ -7,9 +7,20 @@
  *
  * This file only sequences passes and owns the transform between world space
  * and screen space. The drawing itself lives in `layers/`.
+ *
+ * IT DOES NOT DRAW ONTO THE VISIBLE CANVAS. Every pass goes into an offscreen
+ * 2D surface, and that surface is handed to `post/chain.ts` to be finished on
+ * the GPU — bloom, shafts, grade, vignette, grain. The visible canvas is a
+ * WebGL2 context and nothing here ever touches it.
+ *
+ * The split is the house rule made structural: the WORLD is pixel art at one
+ * pixel per pixel and every layer below still draws it that way, while LIGHT,
+ * AIR and the LENS are smooth and live on the other side of the handoff. A
+ * client without WebGL2 falls back to blitting the surface out and painting
+ * the old 2D danger vignette on top — the same game, without the finish.
  */
 
-import { get2d } from '../lib/canvas';
+import { createSurface, get2d, type OffscreenSurface } from '../lib/canvas';
 import {
   drawCombatEffects,
   drawDeathBursts,
@@ -59,7 +70,9 @@ import {
 } from './layers/loot';
 import { TerrainLayer, type DecorationMask } from './layers/terrain';
 import { drawVignette } from './layers/vignette';
-import { projectionFor } from './projection';
+import { PostChain, type ShaftLight } from './post/chain';
+import { MAX_SHAFTS } from './post/chain';
+import { projectionFor, type Projection } from './projection';
 import { palette } from '../theme/palette';
 import { loadGore, type GoreAtlas } from './gore';
 import { loadGuns, type GunAtlas } from './guns';
@@ -88,12 +101,24 @@ import { loadWeaponVfx, type WeaponVfxAtlas } from './weapon-vfx';
 import type { SpriteBook } from './sprites';
 import type { DrawableEntity, RenderState } from './types';
 import { HIT_FLASH_LIFE } from '../game/entity-visuals';
+import { clamp01, fadeOf } from '../lib/math';
 import type { SceneryPiece, TileMap } from '../game/world';
 
 export type { DrawableEntity, RenderState } from './types';
 
 export class Renderer {
   private readonly ctx: CanvasRenderingContext2D;
+  /**
+   * Where every pass actually draws. Kept at the visible canvas's size and
+   * handed to the post chain whole; see the file header.
+   */
+  private readonly scene: OffscreenSurface;
+  /** Null when WebGL2 is unavailable — then `blit` is the whole finish. */
+  private readonly post: PostChain | null;
+  /** Only exists on the fallback path, and only to blit `scene` out. */
+  private readonly blit: CanvasRenderingContext2D | null;
+  /** Scratch for `gatherShafts`. Rebuilt every frame, never outlives one. */
+  private readonly shafts: ShaftLight[] = [];
   private readonly terrain = new TerrainLayer();
   private readonly darkness = new DarknessLayer();
   private readonly atmosphere = new AtmosphereLayer();
@@ -140,7 +165,12 @@ export class Renderer {
     private readonly canvas: HTMLCanvasElement,
     private readonly book: SpriteBook,
   ) {
-    this.ctx = get2d(canvas, 'renderer', { alpha: false });
+    // Decided once: a canvas element gets exactly one kind of context for its
+    // whole life, so the fallback has to be chosen before anything is drawn.
+    this.post = PostChain.create(canvas);
+    this.scene = createSurface(1, 1, 'scene');
+    this.ctx = this.scene.ctx;
+    this.blit = this.post ? null : get2d(canvas, 'renderer', { alpha: false });
     // Fire-and-forget: until the atlases land the terrain layer paints flat
     // colours and no scenery is drawn, so the first frames are plain rather
     // than blank. The scenery atlas goes to the terrain layer as well as being
@@ -216,7 +246,12 @@ export class Renderer {
       this.canvas.width = width;
       this.canvas.height = height;
     }
+    if (this.scene.canvas.width !== width || this.scene.canvas.height !== height) {
+      this.scene.canvas.width = width;
+      this.scene.canvas.height = height;
+    }
     this.ctx.imageSmoothingEnabled = false;
+    if (this.blit) this.blit.imageSmoothingEnabled = false;
   }
 
   /** Release cached bitmaps. Safe to call more than once. */
@@ -226,6 +261,7 @@ export class Renderer {
     this.atmosphere.reset();
     this.disturbance.clear();
     this.book.clearTints();
+    this.post?.dispose();
   }
 
   /**
@@ -537,7 +573,108 @@ export class Renderer {
       this.canvas.width, this.canvas.height,
     );
     drawPayoutTotal(ctx, state.payout, this.canvas.width, this.canvas.height);
-    drawVignette(ctx, this.canvas.width, this.canvas.height, state.danger, state.time);
+
+    // The finish. Everything above went into `scene`; this is the only place
+    // anything reaches the visible canvas.
+    this.finish(state, view);
+  }
+
+  /**
+   * Hand the frame to the GPU, or blit it out unfinished.
+   *
+   * The fallback is deliberately not a 2D imitation of the chain. Bloom by
+   * repeated `drawImage` is slow and banded, and a half-done version of a look
+   * is worse than the look's absence — so a client without WebGL2 gets exactly
+   * what this game looked like before the chain existed, danger vignette and
+   * all, rather than a smeared approximation of what it looks like now.
+   */
+  private finish(state: RenderState, view: Projection): void {
+    const width = this.canvas.width;
+    const height = this.canvas.height;
+    if (this.post) {
+      const done = this.post.render(
+        this.scene.canvas,
+        state.grade,
+        this.gatherShafts(state, view, width, height),
+        state.time,
+      );
+      // A lost context draws nothing at all rather than a stale frame; it
+      // restores on its own within a frame or two.
+      if (!done) return;
+      return;
+    }
+    if (!this.blit) return;
+    this.blit.drawImage(this.scene.canvas, 0, 0);
+    drawVignette(this.blit, width, height, state.danger, state.time);
+  }
+
+  /**
+   * The lights worth throwing shafts out of, in canvas pixels.
+   *
+   * A shaft pass smears the BRIGHT buffer toward a point, so what it needs
+   * from here is only the point — the light's own pixels are already in that
+   * buffer, and so is every trunk standing between it and the camera, which is
+   * what punches the gaps in the beam. Picking the point is therefore the whole
+   * job, and there is no geometry in it.
+   *
+   * Four at most, and they are ranked by brightness AND by how near the middle
+   * of the frame they are: a source at the very edge rakes the whole screen at
+   * a glancing angle, which reads as a smudge on the lens rather than light
+   * coming through trees.
+   */
+  private gatherShafts(
+    state: RenderState,
+    view: Projection,
+    width: number,
+    height: number,
+  ): ShaftLight[] {
+    const out = this.shafts;
+    out.length = 0;
+    if (state.grade.shafts <= 0.001) return out;
+
+    const centreX = width * 0.5;
+    const centreY = height * 0.5;
+    const reach = Math.hypot(centreX, centreY);
+    /** Ranked in place: power, weighted by nearness to the middle. */
+    const scored: { light: ShaftLight; score: number }[] = [];
+
+    const consider = (worldX: number, worldY: number, power: number): void => {
+      if (power <= 0.02) return;
+      const x = view.rawX(worldX);
+      const y = view.rawY(worldY);
+      // A source well outside the frame still throws shafts INTO it, so the
+      // cull is generous — but not unbounded, or every lamp on the map is a
+      // candidate every frame.
+      if (x < -width * 0.4 || x > width * 1.4) return;
+      if (y < -height * 0.4 || y > height * 1.4) return;
+      const nearness = 1 - clamp01(Math.hypot(x - centreX, y - centreY) / (reach * 1.6));
+      scored.push({ light: { x, y, power }, score: power * (0.35 + 0.65 * nearness) });
+    };
+
+    // Fire is the warmest and the most reliable thing on the map.
+    for (const fire of state.world.fires) consider(fire.x, fire.y, 0.9);
+    // Lamps, embers, beacons and the machine's marquee. Reach is the tell:
+    // a bigger radius is a source with more to give a beam.
+    for (const light of state.world.scenery.lights) {
+      consider(light.x, light.y, clamp01(light.radiusTiles / 9) * 0.8);
+    }
+    // A pad under power outshines everything else in the forest, and the
+    // extraction look leans on exactly that.
+    for (const rift of state.world.rifts) {
+      if (rift.state === 'dormant' || rift.state === 'spent') continue;
+      consider(rift.x, rift.y, 1);
+    }
+    // Muzzle flashes and event lights. Weak and brief on purpose: a gun going
+    // off should throw one frame of light through the trees, not hold a beam.
+    for (const light of state.effects.lights) {
+      consider(light.x, light.y, light.strength * fadeOf(light) * 0.55);
+    }
+
+    scored.sort((a, b) => b.score - a.score);
+    for (let i = 0; i < scored.length && out.length < MAX_SHAFTS; i++) {
+      out.push(scored[i].light);
+    }
+    return out;
   }
 
   private clear(): void {

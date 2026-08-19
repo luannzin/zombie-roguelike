@@ -18,6 +18,7 @@ import type { Camera } from './camera';
 import type { FovField } from './fov';
 import type { StoreScene } from './layers/store';
 import type { Payout } from '../game/payout';
+import type { Grade } from './post/grade';
 
 export type EntityKind = 'player' | 'enemy';
 
@@ -238,8 +239,19 @@ export interface RenderState {
   effects: Effects;
   /** Team light + explored memory. Null disables the darkness pass entirely. */
   fov: FovField | null;
-  /** 0..1 local low-HP danger for screen vignette (0 = healthy). */
+  /**
+   * 0..1 local low-HP danger. Only the FALLBACK vignette reads it now — on the
+   * normal path danger is one layer in the grade stack like everything else,
+   * so it composes with an extraction instead of being painted over one.
+   */
   danger: number;
+  /**
+   * How the frame is finished: exposure, the wheels, bloom, shafts, fog, the
+   * lens, the vignette, the grain. Resolved by `Game`'s `GradeStack` — the
+   * renderer consumes it and never decides it, the same rule that keeps
+   * gameplay state out of every other pass.
+   */
+  grade: Grade;
   /** Elapsed seconds — drives the heartbeat pulse, sway, flicker and drift. */
   time: number;
   /** Seconds since the previous frame — for effects that integrate motion. */

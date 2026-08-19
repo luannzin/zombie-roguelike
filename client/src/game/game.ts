@@ -39,6 +39,7 @@
  *   loot             what gets drawn on the ground
  *   anchors          screen-space points for world tooltips and the chevron
  *   transit          the puppeted cameras, and tiles changing under them
+ *   the grade        what the frame is finished in, and what changes it
  *
  * The banners used to be five, one of which spanned 1541 lines and was
  * labelled `hud` while holding the pad ceremony, the lights, the crates and
@@ -64,6 +65,17 @@ import {
   throttled,
 } from '../audio';
 import { clamp01, expDamp } from '../lib/math';
+import { GradeStack } from '../render/post/grade';
+import {
+  dangerLook,
+  deathLook,
+  extractionLook,
+  hitLook,
+  lookFor,
+  payoutLook,
+  scopeLook,
+  surgeLook,
+} from '../render/post/looks';
 import type { Connection, ConnectionStatus, Unsubscribe } from '../net/connection';
 import type {
   AttackEvent,
@@ -264,6 +276,13 @@ const BLOOD_STEP_KEEP = 0.72;
 const DANGER_START = 0.45;
 /** HP ratio where vignette hits full crush. */
 const DANGER_CRITICAL = 0.2;
+/**
+ * How near a pad has to be for its ceremony to own the frame, in tiles, and
+ * how far before it owns none of it. Presentation only — the reach that
+ * answers E is the server's, and it is nowhere near either of these.
+ */
+const GRADE_RIFT_NEAR = 11;
+const GRADE_RIFT_FAR = 34;
 /** Speed (world px/s) above which the local player reads as walking. */
 const MOVING_SPEED = 1;
 /**
@@ -641,6 +660,15 @@ export class Game {
    */
   private localPour: number | null = null;
   /**
+   * How the frame is finished. Owned here rather than by the renderer for the
+   * same reason the camera is: a grade is a reaction to the GAME — how hurt
+   * you are, which place this is, whether a pickup is coming down — and the
+   * renderer is not allowed to know any of that. See `stepGrade`.
+   */
+  private readonly grade = new GradeStack(lookFor(undefined));
+  /** 0..1 down the scope. Eased alongside the zoom by `stepScope`. */
+  private scopeAmount = 0;
+  /**
    * How far each body's backpack is off its shoulders, keyed by player.
    *
    * The BEAT is the server's and the POSE is this client's: one integer on the
@@ -923,6 +951,12 @@ export class Game {
   private onWelcome(msg: WelcomeMessage): void {
     this.config = msg.config;
     this.zone = msg.zone;
+    // A new zone is a new look, and it is a CUT rather than a fade: a welcome
+    // is a new map arriving behind a screen transition, so a crossfade here
+    // would be a colour drift over the first second of a place the player is
+    // already looking at.
+    this.grade.clear();
+    this.grade.setBase(lookFor(msg.zone?.kind), 0);
     // BEFORE the map, and that order is load-bearing: `TileMap` resolves each
     // object row's atlas sheet as it unpacks it, and it can only do that once
     // the catalog the server just sent is in place.
@@ -1199,6 +1233,15 @@ export class Game {
       // the only signal that works for local and remote players alike.
       if (this.visuals.noteHp(state.id, state.hp) && state.id === this.localId) {
         this.camera.addTrauma(HURT_TRAUMA);
+        // The lens takes the hit too. Short and hard: the wash is gone inside
+        // a third of a second, which is what keeps it a flinch rather than a
+        // damage overlay the player learns to read.
+        const severity = 1 - clamp01(this.dangerLevel());
+        this.grade.pulse('hit', hitLook(1 - severity * 0.55), {
+          attack: 0.03,
+          hold: 0.05,
+          release: 0.32,
+        });
         playSfx('hurt');
       }
     }
@@ -1531,6 +1574,7 @@ export class Game {
     if (this.local) {
       this.effects.spawnLevelUp(this.local.state.x, this.local.state.y, LEVEL_UP_TIME);
     }
+    this.grade.pulse('surge', surgeLook(), { attack: 0.07, hold: 0.14, release: 0.75 });
     this.patchHud({
       announce: {
         key: `level-${level}`,
@@ -2388,6 +2432,10 @@ export class Game {
       shotFeel(weapon),
     );
     this.camera.addTrauma(weapon.trauma + (flesh || anyCrate ? HIT_TRAUMA : 0));
+    // And a shove BACK down the barrel. Trauma alone says "that was violent";
+    // the impulse says which way, so a shot to the left and a shot to the
+    // right stop being the same event.
+    this.camera.addImpulse(ox - this.aimX, oy - this.aimY, weapon.trauma * 2.6);
     this.visuals.kickRecoil(this.localId, this.aimX, this.aimY, weapon.kick);
     this.visuals.kickGun(this.localId, weapon.gunKick, weapon.gunPump);
     // One bang per PULL. `shotSound` picks the sample and the rate: the
@@ -2795,6 +2843,9 @@ export class Game {
     // The exit's distant signal, once it exists.
     this.stepBeacon(dt);
     this.syncTooltipAnchors();
+    // Last thing before the draw: the grade has to see everything the frame
+    // already decided, including the ceremonies stepped just above.
+    this.stepGrade(dt);
 
     this.renderer.draw({
       world: this.world,
@@ -2818,6 +2869,7 @@ export class Game {
       // evenly lit clearing would read as somewhere with no night in it.
       fov: this.fov,
       danger: this.dangerLevel(),
+      grade: this.grade.resolve(),
       time: this.time,
       dt,
     });
@@ -3697,6 +3749,9 @@ export class Game {
       !this.locked;
     const want = ads && weapon ? weapon.scopeZoom : ARENA_ZOOM;
     const k = 1 - expDamp(9, dt);
+    // Eased on the same curve as the zoom, so the defocus and the push-in are
+    // one move. Read by `stepGrade`.
+    this.scopeAmount += ((ads ? 1 : 0) - this.scopeAmount) * k;
     this.camera.zoom += (want - this.camera.zoom) * k;
     if (Math.abs(this.camera.zoom - want) < 0.02) this.camera.zoom = want;
     this.camera.resize(this.canvas.width, this.canvas.height);
@@ -4420,6 +4475,108 @@ export class Game {
     }
     this.renderer?.stampTiles(world, patches);
     this.minimap.rebuildTiles();
+  }
+
+  // --- the grade: what the frame is finished in ------------------------------
+
+  /**
+   * State this frame onto the grade stack, then advance it.
+   *
+   * Every branch here is `hold` / `release`, never "set" — that is the whole
+   * reason the stack exists. Danger, death, the scope, an extraction and a
+   * payout can all be true at once, and each one only names the fields it has
+   * an opinion about, so the composition is the answer rather than whichever
+   * of them ran last. A one-shot (a hit landing, a level) is pushed from the
+   * event that caused it, not from here: it has no state to re-state.
+   *
+   * The ceremonies get long attacks on purpose. A pickup's grade takes over a
+   * second to arrive, which is what turns "the numbers changed" into a machine
+   * coming down through the trees — the envelope IS the choreography, so the
+   * light, the exposure, the bloom and the shafts do not each need their own
+   * clock.
+   */
+  private stepGrade(dt: number): void {
+    const danger = this.dangerLevel();
+    if (danger > 0.005) {
+      // The heartbeat the old 2D vignette used to own, moved into the layer
+      // that now draws it. Faster and heavier as it gets worse.
+      const bpm = 1.1 + danger * 2.4;
+      const beat = Math.sin(this.time * Math.PI * 2 * bpm);
+      const pulse = Math.pow(0.5 + 0.5 * beat, 1.6);
+      this.grade.hold('danger', dangerLook(danger, pulse), { attack: 0.5, release: 0.9 });
+    } else {
+      this.grade.release('danger', 0.9);
+    }
+
+    // Dead. Slow in, quick out — the picture should take a moment to stop
+    // being a place, and none at all to start being one again.
+    if (this.local && !this.local.alive) {
+      this.grade.hold('death', deathLook(), { attack: 1.1, release: 0.5 });
+    } else {
+      this.grade.release('death', 0.5);
+    }
+
+    if (this.scopeAmount > 0.01) {
+      this.grade.hold('scope', scopeLook(this.scopeAmount), { attack: 0.12, release: 0.2 });
+    } else {
+      this.grade.release('scope', 0.2);
+    }
+
+    const extraction = this.extractionHeat();
+    if (extraction > 0.005) {
+      this.grade.hold('extraction', extractionLook(extraction), {
+        attack: 1.1,
+        release: 1.6,
+      });
+    } else {
+      this.grade.release('extraction', 1.6);
+    }
+
+    if (this.payout) {
+      this.grade.hold('payout', payoutLook(1), { attack: 0.9, release: 1.4 });
+    } else {
+      this.grade.release('payout', 1.4);
+    }
+
+    this.grade.step(dt);
+  }
+
+  /**
+   * 0..1 how much the loudest extraction on this map owns the frame.
+   *
+   * Two multiplied terms, and both are load-bearing. STAGE is how far through
+   * its own ceremony the pad is — pressing the console is not the same event
+   * as four aircraft arriving. NEARNESS is how close the player is standing to
+   * it, because a grade is the local camera's and a pickup happening forty
+   * tiles away through the trees has no business relighting somebody else's
+   * fight. A pad the party has walked away from fades out on its own.
+   */
+  private extractionHeat(): number {
+    const world = this.world;
+    const config = this.config;
+    if (!world || !config || !this.local) return 0;
+    const timing = config.rift;
+    const tile = world.tileSize;
+    let heat = 0;
+    for (const rift of world.rifts) {
+      if (rift.state === 'dormant' || rift.state === 'spent') continue;
+      // Charging is the quiet half: the console is lit and nothing has
+      // arrived. It never gets past a third of the way up.
+      let stage = clamp01(rift.elapsed / Math.max(0.1, timing.openAt)) * 0.35;
+      if (rift.state === 'open') {
+        stage = 0.35;
+        // A paid pad WAITS. Only once the pickup has actually been called
+        // does the look go all the way, tracking the aircraft coming in.
+        if (rift.closeAt !== null) {
+          const since = rift.elapsed - rift.closeAt;
+          stage = 0.35 + 0.65 * clamp01(since / Math.max(0.1, timing.tiedAt));
+        }
+      }
+      const tiles = Math.hypot(this.smoothX - rift.x, this.smoothY - rift.y) / tile;
+      const near = 1 - clamp01((tiles - GRADE_RIFT_NEAR) / (GRADE_RIFT_FAR - GRADE_RIFT_NEAR));
+      heat = Math.max(heat, stage * near);
+    }
+    return heat;
   }
 }
 

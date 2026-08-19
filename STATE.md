@@ -9,7 +9,7 @@ recently changed system, when something looks like a regression, before
 modifying anything under *Do not touch*, or when the task asks what to work on
 next. Skip it for a self-contained change to a stable system.
 
-_Last verified: 2026-08-19 against `main` @ `b1338e5`._
+_Last verified: 2026-08-19 against `main` @ `54e94d6`._
 
 ## Current phase
 
@@ -21,6 +21,10 @@ ceremony.
 
 ## Currently working on
 
+- **The visual refactor toward depth / 3D-ish volume** (`PIXEL-ART-DIRECTION.md`).
+  The art half is moving asset by asset; the RENDER half just landed as a whole
+  (see below), so new art is now being authored against a frame that has bloom,
+  shafts, fog and a grade on it.
 - Shop map iteration (`78da442` is the newest layout; `store.py` offsets are still moving).
 - Weapon feel: shotgun cone and melee swing landed; the catalog's derivation from CS2 stats is stable.
 
@@ -28,6 +32,9 @@ ceremony.
 
 | | |
 | --- | --- |
+| **the finish** | the renderer no longer draws on the visible canvas. Every layer draws into an offscreen 2D surface; `client/src/render/post/` finishes it in WebGL2 — bright pass, three-level bloom, radial light shafts, defocus, chromatic aberration, fog, a full grade (exposure / shoulder / contrast / saturation / temperature / tint / lift / gamma / gain), wash, vignette and grain. Driven by a `GradeStack`: a base LOOK per place plus named event layers on their own envelopes. The old 2D danger vignette is now one of those layers, and survives as the no-WebGL2 fallback |
+| camera feel | breath and sway on two slow sines, a directional spring IMPULSE (recoil goes back down the barrel), and the shake moved off `Math.random()` onto summed detuned sines |
+| ground fog | a fourth atmosphere field: low banks drifting on the wind, drawn smooth (one baked blob, stamped), under the darkness so it only exists where there is light |
 | skill payout | the tin is a canned good at 16x18 (was a 16x24 aerosol tube), it no longer drops onto the machine's tray — it appears over the winner's head and flies to the HUD like any collect |
 | loot frames | a frame now comes from the atlas manifest, not from catalog position — the knife and the condensed core had been drawing ammunition boxes, and every gun was drawing another gun. `test_loot_frames.py` guards it |
 | dark gold | the purple coin is an ANOMALY SHARD, painted from the rift's prism at both sizes, and both drop taps cut hard so it is a rare find |
@@ -42,6 +49,9 @@ ceremony.
 
 ## Known problems
 
+- **The post chain has no automated check and cannot have one.** `bun tests/grade.ts` covers the stack's envelopes and composition — the arithmetic — and nothing covers the shader. Judge it by looking: a bonfire should bloom and the grass beside it should not.
+- **The lobby is not graded.** `LobbyScene` / `CampfireCanvas` own their own 2D canvases and do not go through the post chain, so the title screen and the arena are finished differently. Nobody sees them side by side today, but the seam is real and it is where a "the camp looks flatter than the game" report will come from.
+- **`texImage2D` from the scene canvas every frame** is the one unavoidable cost of the hybrid, and it scales with window size rather than with what is on screen. Marked `ponytail:` in `post/chain.ts`; the upgrade is drawing the world into a GL target directly, which is a renderer rewrite.
 - **Additive light does not clamp.** The store's flat-white bug was fixed by spending one budget across four places (`STORE_AMBIENT`, `RING_TORCHES`, `TORCH_LIGHT_TILES`, `layers/payout` alphas). The underlying renderer still has no clamp, so the next zone with many lights will hit it again.
 - **Naming drift is permanent and deliberate.** `rift.py` / wire `rifts` mean the extraction platform; `crates.py` / wire `crates` mean all interactive objects. Do not rename either — the cost is twenty client files for nothing.
 - **Two giant files** (`server/app/room.py` 2.8k lines, `client/src/game/game.ts` 4.4k lines) — see below. Their section banners were rewritten to be honest (5 → 16 and 5 → 21); the files themselves are unchanged and still unsplit.
@@ -76,4 +86,5 @@ Unless the task is explicitly about them:
 | map generation | `mapgen`/`scenery` failures are seed-dependent; a bad edit ships and breaks one night in twenty |
 | light budget | additive, unclamped; new lights saturate a zone rather than erroring |
 | `Navigator.invalidate()` | forgetting it after freeing tiles leaves pathing walking into walls that are gone |
-| no automated client tests | `bun run typecheck` is the only gate; everything else is two browser tabs. It is a stronger gate than it was: the always-sent half of `GameConfig` is now required, so a hedged constant is a type error rather than a silent stale value |
+| grade knobs added halfway | a field on `Grade` that is not in `SCALARS`/`TRIPLES` is a knob that silently refuses to animate. The `satisfies` on both lists is what turns that into a type error |
+| no automated client tests | `bun run typecheck` and `bun tests/grade.ts` are the only gates; everything else is two browser tabs. It is a stronger gate than it was: the always-sent half of `GameConfig` is now required, so a hedged constant is a type error rather than a silent stale value |

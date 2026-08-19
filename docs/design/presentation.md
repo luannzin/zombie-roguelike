@@ -39,6 +39,11 @@ Nearest contracts: [`client/AGENTS.md`](../../client/AGENTS.md),
 | wounds | `server/tools/make_gore.py`, `client/src/render/gore.ts` |
 | darkness / vision | `client/src/render/fov.ts`, `layers/darkness.ts` — `fov.ts` draws vision at the reaches `ai.py` tests against, both read off `config.enemyViewDarkScale` / `enemyViewLitScale` |
 | colours, type | `client/src/styles/index.css` only |
+| how a place looks | one of the three PLACE functions in `client/src/render/post/looks.ts` |
+| how an event changes the picture | an EVENT partial in `post/looks.ts` + one `hold`/`release` in `Game.stepGrade`, or one `pulse` at the event |
+| a new grade knob | `Grade` + its `SCALARS`/`TRIPLES` row in `post/grade.ts`, one uniform, its use in the composite shader in `post/chain.ts` |
+| bloom / shafts / fog / lens maths | `post/chain.ts` only |
+| camera feel | `client/src/render/camera.ts` |
 
 **Do not touch from here:** anything under `server/app/`. A presentation change
 that needs a server change is a sign the boundary is in the wrong place — say
@@ -66,6 +71,87 @@ so rather than reaching across it.
   which is what makes the lantern pay off — a creature you cannot see but can
   place is the difference between tension and ambush. Ambience is stated, never
   started: a zone declares what it sounds like and the beds crossfade to it.
+
+- **TWENTY SMALL THINGS, NONE OF THEM VISIBLE.** The frame is finished on the
+  GPU (`client/src/render/post/`) and every term in it is deliberately below
+  the threshold where a player could name it. The base looks sit within a few
+  percent of neutral; the events rarely go a third of the way to their own
+  extreme; the grain is 2-3%; the aberration is under half a pixel until
+  something is wrong. The test for any number in `looks.ts` is not "can I see
+  it" — it is "can I see it MISSING". A grade the player can point at is a
+  filter, and a filter is the one thing this is not.
+
+- **PIXEL ART IS THE WORLD. IT IS NOT THE LIGHT, THE AIR OR THE LENS.** This
+  is the split the whole finish rests on, and it is structural rather than a
+  preference: every `layers/` pass draws into an offscreen 2D surface at one
+  pixel per pixel, and that surface is handed to a WebGL2 chain that is never
+  nearest-filtered. Bloom, shafts, fog, defocus and grain are smooth; the
+  forest under them is not. The alternative — pixelating the effects to
+  "match" — was rejected because it makes the effects look like more world
+  instead of like light, and the contrast between a hard sprite and soft light
+  is most of what reads as production value. The same rule is why
+  `layers/atmosphere.ts` turns image smoothing ON for its ground fog and off
+  again after: fog is air, and air has no pixel grid.
+
+- **THE GRADE IS A STACK, NOT A SETTING, BECAUSE EVENTS OVERLAP.** The
+  interesting looks in this game are momentary — a pad lighting up, a round
+  landing, the merchant's clearing, a critical wound — and they do not take
+  turns. One shared grade means whichever event fires last wins and whichever
+  finishes last clears it, so a hit taken during an extraction ends by
+  resetting the extraction back to the forest. So: a base LOOK per place, and
+  every event a named PARTIAL layer with its own attack/hold/release, fading in
+  over whatever the current answer is. A layer only names the fields it has an
+  opinion about, which is what lets "the anomaly" say *colder shadows, more
+  aberration* without also having an opinion about the shop's bloom.
+  The envelope is also the CHOREOGRAPHY: a ceremony does not need seven clocks
+  for its light and its exposure and its bloom and its shafts, it needs one
+  layer with a long attack. The extraction's grade takes over a second to
+  arrive, and that alone is the difference between "the numbers changed" and a
+  machine coming down through the trees.
+
+- **BLOOM BELONGS TO LIGHTS, NOT TO BRIGHT THINGS.** The threshold sits high
+  (0.72 at rest) with a soft knee, so a lit patch of grass does not glow and a
+  campfire does. Three blur levels are summed at falling weights rather than
+  one wide blur, because a single radius has one shape and real spill has a
+  hot core and a wide skirt. The tone curve rolls highlights off instead of
+  clipping them, which is the only reason bloom can be pushed at all — without
+  a shoulder, every added photon lands on a pixel that is already white.
+
+- **LIGHT SHAFTS ARE A RADIAL BLUR OF THE BRIGHT BUFFER, AND THAT IS WHY THEY
+  NEED NO GEOMETRY.** The bright pass has already thrown away everything that
+  is not a light. Smearing what is left toward a source produces a beam that
+  only survives where nothing occludes the line back to it — so a trunk
+  between the player and a burning rig punches a real gap in the shaft, for
+  free, because the trunk is dark in that buffer. Four sources at most, ranked
+  by brightness AND by nearness to the middle of the frame: a light at the very
+  edge rakes the screen at a glancing angle and reads as a smudge on the lens
+  rather than as light coming through trees.
+
+- **THE DANGER VIGNETTE IS NOW A LAYER LIKE EVERYTHING ELSE.** It used to be a
+  2D pass painted over the finished frame, which meant it was the one reaction
+  in the game that could not compose with another — it sat on top of an
+  extraction instead of being part of the same picture. Same heartbeat, same
+  crush, same blood tone; it is simply in the stack now, and the corner falloff
+  is a smooth gradient in a shader rather than four rectangles. The old pass
+  survives only as the no-WebGL2 fallback, and that fallback is deliberately
+  NOT a 2D imitation of the chain: bloom by repeated `drawImage` is slow and
+  banded, and a half-done look is worse than the look's absence.
+
+- **A CAMERA, NOT A VIEWPORT.** Three things ride on top of the follow and none
+  of them is meant to be noticed. A permanent sub-pixel BREATH on two slow
+  incommensurate sines, because a frame that is perfectly still between two
+  footsteps reads as a screenshot. A directional IMPULSE with a spring under it
+  — recoil goes back down the barrel — because trauma says *how violent* and
+  only a direction says *which way*, and a shot to the left and a shot to the
+  right should not be the same event. And the SHAKE itself moved off
+  `Math.random()` onto summed detuned sines: white noise at 60 Hz is television
+  static, two sines that never quite repeat are a hand that got hit.
+
+- **DEPTH OF FIELD IS FOR THE SCOPE AND FOR DEATH, AND ESSENTIALLY NOWHERE
+  ELSE.** During play it is zero. Down the scope the forest goes soft around
+  what the gun is pointed at, which is the same statement the zoom is already
+  making; on death the picture stops being a place and becomes a photograph of
+  one. Any other use is a phone in portrait mode.
 
 - **A hit shows on the body, and it keeps showing.** A landed shot throws
   debris BACK along the ray and blood FORWARD out the far side, so the two

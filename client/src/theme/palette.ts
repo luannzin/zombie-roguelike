@@ -156,6 +156,7 @@ export interface Palette {
     fogForest: Channels;
     fogShop: Channels;
     fogCamp: Channels;
+    fogGround: Channels;
     vignette: Channels;
     washBlood: Channels;
     washFlash: Channels;
@@ -308,6 +309,7 @@ function resolve(): Palette {
       fogForest: rgb('--grade-fog-forest'),
       fogShop: rgb('--grade-fog-shop'),
       fogCamp: rgb('--grade-fog-camp'),
+      fogGround: rgb('--grade-fog-ground'),
       vignette: rgb('--grade-vignette'),
       washBlood: rgb('--grade-wash-blood'),
       washFlash: rgb('--grade-wash-flash'),

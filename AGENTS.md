@@ -64,6 +64,7 @@ never all of them.
 | **finding, loading or leaving** an extraction point | **extraction** | `docs/design/extraction.md` |
 | the **merchant, prices, buying, the payout** | **store** | `docs/design/store.md` |
 | **levels, upgrades, the cabinet** | **skills** | `docs/design/skills.md` |
+| the **look of the picture** — grade, bloom, fog, the lens, camera feel | **presentation** | `client/src/render/post/` + `docs/design/presentation.md` |
 | how **creatures notice, chase or react** | **enemies** | `docs/design/enemies.md` |
 | **maps, scenes, props, objects, weather, zones** | **world** | `docs/design/world.md` |
 | **moving, carrying, shooting, the bag or the belt** | **player** | `docs/design/player.md` |
@@ -179,6 +180,7 @@ These bind every subtree. Subsystem-specific rules live in the docs above.
   - `ai.look` <-> `client/src/render/fov.ts` — sight symmetry. No longer a copied constant: both read `enemyViewDarkScale` / `enemyViewLitScale` off `welcome.config`
 - **Sizes, speeds and distances are authored in tiles/seconds** and multiplied by `TILE_SIZE`. No raw pixel numbers.
 - **All colours and type live in `client/src/styles/index.css`**, read by the canvas through `client/src/theme/`.
+- **The WORLD is pixel art; the LIGHT, the AIR and the LENS are not.** Every `render/layers/` pass draws into an offscreen 2D surface at one pixel per pixel, and `render/post/` finishes that surface on the GPU with nothing nearest-filtered. Do not pixelate an effect to "match", and do not draw on the visible canvas from anywhere but the post chain.
 - **Rendering knows nothing about the network; networking knows nothing about rendering; `server/app/` knows nothing about either.**
 - **`assets/processed/` is generated output.** Edit the generator in `server/tools/`, never the PNG.
 - **Generated-asset lists are append-only.** Inserting a row moves every existing frame index.
@@ -190,6 +192,7 @@ These bind every subtree. Subsystem-specific rules live in the docs above.
 | --- | --- |
 | server | `python tests/test_snapshot_shape.py`, `test_pour.py`, `test_store_walk.py`, `test_config_parity.py`, `test_loot_frames.py` from `server/` — plain scripts, each prints `ok` |
 | client | `bun run typecheck` from `client/` — required after any change there |
+| client | `bun tests/grade.ts` from `client/` after touching `render/post/grade.ts` — plain script, prints `ok` |
 | both | run the server, open two browser tabs, confirm both players move, shoot and light the world without rubber-banding |
 
 Run `test_store_walk.py` after any edit to `store.py`'s layout offsets: it

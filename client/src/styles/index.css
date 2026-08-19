@@ -303,6 +303,10 @@
   --grade-fog-forest: 44 58 62;
   --grade-fog-shop: 84 64 42;
   --grade-fog-camp: 52 56 74;
+  /* The GROUND fog is a thing in the world, not a screen tint: it is lit by
+     whatever reaches it, so it is bright where the air is and reads against
+     the floor rather than washing it. */
+  --grade-fog-ground: 152 170 176;
   --grade-vignette: 4 5 9;
   --grade-wash-blood: 122 10 18;
   --grade-wash-flash: 255 244 218;

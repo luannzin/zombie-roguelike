@@ -39,6 +39,9 @@ mutation, no React.
 | `layers/corpses.ts` | blood pools under dead enemies — scenery `blood.png`, growing, world space |
 | `minimap.ts` | the minimap canvas |
 | `layers/` | the actual drawing: terrain, entities, loot, vision, effects, atmosphere, darkness, vignette |
+| `post/grade.ts` | the `Grade` — the whole screen-effect state as one object — and the `GradeStack` that composes a base LOOK with named event layers on their own envelopes. Pure arithmetic, no DOM, no GL |
+| `post/looks.ts` | every look this game wears: the three PLACES (`forestLook` / `campLook` / `shopLook`, full grades) and the EVENTS (danger, hit, extraction, payout, surge, scope, death — partials). Functions, not constants, because every colour in them comes off `index.css` |
+| `post/chain.ts` | the WebGL2 finish: bright pass, three-level bloom, radial light shafts, defocus, and one composite that does aberration, fog, the grade, the wash, the vignette and the grain. Returns null on a machine without WebGL2 |
 
 ## Design law
 
@@ -56,7 +59,7 @@ mutation, no React.
   drones, an airborne skid — after the sort, before the darkness) →
   overgrowth → motes / rain / fog → darkness → combat effects → loot auras / motes /
   epic-legendary beams / empty-object wind / death burst / torch fire / corner lamps / rig glow → hunt diamond →
-  labels → vignette. Effects and loot light go over the darkness because
+  labels → THE FINISH. Effects and loot light go over the darkness because
   they are light, not things being lit. An unlit drop HIDES ITS SPRITE.
   Corpses hide the same way. Blood pools sit on the floor with the boot
   prints; the fallen sprite sits with the loot, under living bodies.
@@ -544,18 +547,77 @@ mutation, no React.
   instead, and it is entirely client-side. Two players watching him see
   different flourishes, which is fine: synchronising that would cost a message
   per animation to buy an agreement nobody can perceive.
-- Cached bitmaps and tints are released in `Renderer.dispose()`.
-- `imageSmoothingEnabled` stays `false` — this is pixel art.
+- **NOTHING IN THIS DIRECTORY DRAWS ON THE VISIBLE CANVAS.** Every pass draws
+  into an offscreen 2D surface `Renderer` owns; the visible element is a WebGL2
+  context and only `post/chain.ts` ever touches it. That is the house split
+  made structural — the WORLD is pixel art at one pixel per pixel and every
+  layer still draws it that way, while LIGHT, AIR and the LENS are smooth and
+  live on the far side of the handoff. A client without WebGL2 gets a plain
+  blit of the surface plus the old 2D danger vignette: the same game, without
+  the finish. The fallback is deliberately NOT a 2D imitation of the chain —
+  bloom by repeated `drawImage` is slow and banded, and a half-done look is
+  worse than no look.
+- **The renderer consumes a `Grade`; it never decides one.** A grade is a
+  reaction to the GAME — how hurt you are, which place this is, whether a
+  pickup is coming down — and this layer is not allowed to know any of that.
+  `Game` owns the `GradeStack`, steps it in `stepGrade`, and puts the resolved
+  grade on `RenderState`. The one thing the renderer does derive is
+  `gatherShafts`: which lights to smear from, because that is screen geometry
+  and it already has the projection.
+- **`resolve()` returns a REUSED object.** Read it or upload it in the same
+  frame; never keep the reference.
+- **An event is a LAYER, never a setting.** Danger, death, the scope, an
+  extraction and a payout can all be true at once, and each names only the
+  fields it has an opinion about. Writing into one shared grade would mean
+  whichever event fired last wins and whichever finished last clears it — so a
+  hit taken during an extraction would end by resetting the extraction back to
+  the forest. `hold`/`release` for anything with state, `pulse` for a one-shot.
+- **The envelope IS the choreography.** A ceremony does not need seven clocks
+  for its light, its exposure, its bloom and its shafts — it needs one layer
+  with a long `attack`. The extraction's grade takes over a second to arrive,
+  and that alone is what turns "the numbers changed" into a machine coming
+  down through the trees.
+- **Shafts are a radial blur of the BRIGHT buffer toward a point, and that is
+  why they need no geometry.** The bright pass has already discarded
+  everything that is not a light, so the smear only survives where nothing
+  occludes the line back to the source — a trunk between the player and a
+  burning rig punches a real gap in the beam because the trunk is dark in that
+  buffer. Four sources at most, ranked by brightness AND nearness to the middle
+  of the frame: a source at the very edge rakes the screen at a glancing angle,
+  which reads as a smudge on the lens rather than light through trees.
+- **Every chain pass is skipped when its grade term is zero.** A frame with no
+  bloom, no shafts and no defocus is one upload and one draw. Do not add a pass
+  that runs unconditionally.
+- Cached bitmaps and tints are released in `Renderer.dispose()`, and the post
+  chain with them.
+- `imageSmoothingEnabled` stays `false` — this is pixel art. **Two deliberate
+  exceptions, both air:** `layers/atmosphere.ts` turns it on for the ground-fog
+  stamp and back off after, and nothing in `post/` is ever nearest-filtered.
 
 ## Work Guidance
 
 - A new visual pass is a new module in `layers/` plus one call in
   `Renderer.draw()`, placed deliberately relative to the darkness pass.
+- A new REACTION to an event is a look in `post/looks.ts` plus one
+  `hold`/`release` in `Game.stepGrade` or one `pulse` at the event. It is not a
+  new pass and it is not a field on `RenderState`.
+- A new grade FIELD is one entry in `Grade`, one in `SCALARS` or `TRIPLES`, one
+  uniform, and its use in the composite shader. The list is what makes a
+  forgotten field a type error instead of a knob that silently will not
+  animate.
 - Anything read every frame belongs in `RenderState`, not fetched inside a
   layer.
 
 ## Verification
 
 - `bun run typecheck` from `client/`.
+- `bun tests/grade.ts` from `client/` after touching `post/grade.ts` — plain
+  script, prints `ok`. It is the only check on the envelopes and on the
+  property the whole design rests on: a partial layer must leave every field it
+  does not name alone.
 - Check in the browser at two zoom-relevant window sizes that props still
   overlap characters correctly and the lantern cone has a soft spill.
+- The chain has no automated check and cannot have one — look at it. A bonfire
+  should bloom and the grass beside it should not; walking to low HP should
+  close the frame and drain it; going down the scope should soften the forest
+  and leave the target sharp.

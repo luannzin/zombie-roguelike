@@ -33,6 +33,8 @@ own the HUD and routing only. Talks to the server over one WebSocket.
   - `src/lib/` — framework-free helpers: math, canvas, store, image, lens, utils
   - `src/styles/index.css` — Tailwind entry and **all** design tokens
   - `src/assets/fonts/` — Departure Mono, bundled and hashed by Vite
+  - `tests/` — plain runnable scripts, no framework, each prints `ok`. Same
+    shape as `server/tests/`: run one with `bun tests/<name>.ts`
   - `vite.config.ts`, `tsconfig.json`, `package.json`, `components.json`
 
 ## Design law
@@ -143,6 +145,9 @@ cd client && bun install && bun run dev
   `python tests/test_config_parity.py` from `server/`: `tsc` can only see this
   half of the contract, and a `GameConfig` field the server does not send is
   `undefined` behind a type that promises a number.
+- `bun tests/grade.ts` after touching `render/post/grade.ts` — plain script,
+  prints `ok`. It is the only automated check on the grade stack; the shader
+  half of the post chain has none and cannot have one, so look at the game.
 - `bun run build` before shipping; it typechecks then builds.
 - Open two tabs on `http://localhost:5173` and confirm both players move, shoot
   and light the world without rubber-banding.

@@ -34,7 +34,7 @@ game's scale.
 | `mapgen.py` | procedural forest, seeded and connectivity-checked; `NEST_SCENES` / `HAUNT_SCENES` decide which scenes have creatures standing in them before anyone arrives |
 | `scenery.py` | story SCENES: the layouts, the thread linking them, their lights, the wire rows |
 | `camp.py` | the camp clearing, its bonfire, the seat ring, the VOID exit, and the walk-out formation |
-| `store.py` | the merchant's CLEARING: corridor / round room / corridor, the two end gates, his wagon, counter, fire, gear (`KIT_SPOTS`) and torch ring, the six-stall grid and the stock rolled onto it, `price_of` + `_haggle`, the cabinet's spot, and the apron the night's platforms land on (`PAYOUT_SPOTS`) |
+| `store.py` | the merchant's CLEARING: corridor / small round room / corridor, the two end gates, the man in the middle with his wagon, counter, fire, gear (`KIT_SPOTS`) and torches, the six-stall grid in front of him and the stock rolled onto it, `price_of` + `_haggle`, the cabinet's spot, and the apron the night's platforms land on (`PAYOUT_SPOTS`) |
 | `zones.py` | where a run is: title card, `hostile`, `lantern`, `ambient` (zero everywhere but the shop) |
 | `skills.py` | what a LEVEL buys: the catalog, the rarity roll, `Loadout` (stacks + spins owed) and `Mods`, the flattened numbers every other module multiplies by |
 | `machine.py` | the upgrade machine's TIMELINE — one clock shared with `client/src/game/machine.ts`, including the third reel's per-rarity hold |
@@ -301,36 +301,62 @@ game's scale.
   crosses it instead of being marched past six prices. The corridors on the
   ends keep the arrival and the departure as separate events, which is the half
   of the lane worth keeping.
-  The composition is a RING read from the middle and every fixture is authored
-  as a `(column, row)` offset from the clearing's centre (`_at`): the WAGON and
-  the man on the west arc, his gear around them, the six stalls on the east
-  arc, the cabinet on the north-west, and the platform apron in the south-west.
-  An offset measured from a map edge would move the day the map got taller.
+  **AND IT IS A SMALL ROOM WITH THE MAN IN THE MIDDLE OF IT.** The first
+  circle was sixteen tiles of radius with the trader on the west rim and the
+  stalls on the east one, which is not a shop, it is a field: twenty tiles to
+  read a price and twenty back to pay for it, and two halves that read as two
+  unrelated places. `STORE_CIRCLE_TILES` is 11 now on a 38x46 map, and the
+  composition is what every shop the player has ever seen looks like — ONE MAN
+  IN THE MIDDLE, his cart behind him, his counter in front of him, his six
+  stalls laid out in front of that, and everything else (the cabinet, his gear,
+  the torches) around the rim. Every fixture is still authored as a
+  `(column, row)` offset from the clearing's centre (`_at`); an offset measured
+  from a map edge would move the day the map got taller.
 - **THE WAGON IS THE ANSWER TO "WHO IS THIS MAN".** He does not have a tent any
   more — a tent pitched beside a covered cart is the same statement twice. The
-  cart carries his shelter, his stock and the world's history in one
-  silhouette: guns racked on the flank, masks strung on a line, salvage lashed
-  to the boards, and two covered bodies laid out at the wheels. That last one
-  is drawn as quietly as it can be and never mentioned anywhere else; the party
-  works out where the stock comes from on their own, from across the clearing.
-- **THE TORCH RING IS THE ZONE, not decoration.** `RING_TORCHES` around the rim
-  plus a chain down each neck plus paired ranks at both thresholds, all `EMBER`
-  `SceneLight`s, all placed clear of anything meant to be LOOKED at
-  (`TORCH_CLEAR`). The rim is what a party sees before they see anything
-  standing in it, and it is the difference between walking into a room and
-  walking into more woods. The thresholds are the one thing in the zone allowed
-  to look arranged — a doorway is a thing somebody built. They are the STORE's
-  torches and not the `Entrance`'s on purpose: an `Entrance` can carry torches,
-  but those are drawn out of the rift atlas and burn cyan, and four cold lights
-  at the top of the one warm zone in the game would be the wrong note.
+  cart carries his shelter and his stock in one silhouette: guns racked on the
+  flank, lanterns strung on a line, crates roped at the wheels. It is parked
+  BEHIND him and stepped a little west, because a shopkeeper has a back wall
+  and a canopy directly over his head is a hat.
+  **IT IS NOT A HEARSE ANY MORE.** It used to hang bone masks on that line and
+  lay two covered bodies with their boots out at the front wheel, on the
+  argument that the party should work out where the stock comes from on their
+  own. The argument was fine and the result was not: this is the one beat of
+  the loop that exists to be a relief from the night, and the biggest sprite in
+  it was a cart with corpses under a tarp. Same rule for anything added here —
+  the shop may be poor, worn and improvised; it may not be grim.
+- **THE TORCHES AND THE AMBIENT FLOOR ARE ONE LIGHT BUDGET.** `RING_TORCHES`
+  around the rim, a chain down each neck and a pair at each threshold, all
+  `EMBER` `SceneLight`s, all placed clear of anything meant to be LOOKED at
+  (`TORCH_CLEAR`). They are the STORE's torches and not the `Entrance`'s on
+  purpose: an `Entrance` can carry torches, but those are drawn out of the rift
+  atlas and burn cyan, and cold lights at the top of the one warm zone in the
+  game would be the wrong note.
+  **THE COUNT AND THE REACH ARE PART OF A BUG FIX, NOT A TASTE.** The client
+  draws every light in this zone ADDITIVELY over `zones.STORE_AMBIENT` and
+  additive pools SUM with nothing clamping the total. The zone went FLAT WHITE
+  on arrival, and the loudest contributor was the APRON, not the ring: three
+  skids used to land within five tiles of each other at 0.85 alpha of rotor
+  wash each — two overlapping washes is 1.7 of a full-bright sheet before eight
+  rotors and eight strobes go on top — on a 0.7 floor with eleven seven-tile
+  torches behind them. The fix is one budget spent in four places:
+  `PAYOUT_SPOTS` spread so no two washes touch, `RING_TORCHES` /
+  `TORCH_LIGHT_TILES` cut to 7 / 4.5, `zones.STORE_AMBIENT` to 0.45, and
+  `layers/payout`'s alphas down with them. They move TOGETHER or not at all,
+  and the check is walking in during a three-platform payout.
 - **`_tiles` clears a SPINE and that is a guarantee, not dressing.** The rim
   and the necks are noise (harmonics plus a hash) and a pinch plus an unlucky
   boulder could in principle wall the room off from its own door. Unlike
   `mapgen`, this module has no retry loop to fall back on — there is exactly
   one store map and the party is already walking into it — so a narrow band up
-  the centreline is cleared unconditionally, and nothing (a stall, a skid, the
-  cabinet) may be authored inside `SPINE_TILES`. It also reads: a trader who
-  parked here walks that line every day.
+  the centreline is cleared unconditionally. What it does NOT promise any more
+  is a straight walk: the man stands in the middle of his own shop now, so his
+  counter, the middle column of stalls and one landing skid all claim tiles on
+  the spine and the walk goes AROUND them. The spine is there to stop the
+  GENERATOR sealing the room; the guarantee that the party can actually cross
+  it is a check rather than a rule — `tests/test_store_walk.py` flood-fills the
+  finished map and fails if the exit, the merchant, any stall or the cabinet is
+  unreachable. Run it after touching any offset in the pitch block.
 - **A stall sells ONCE.** It is a specific weapon on a specific table, not a
   shelf with stock behind it, so `Stand.sold` is checked and set on the same
   tick and the row STAYS on the wire — the gap where a gun was is information,
@@ -349,9 +375,12 @@ game's scale.
   number is a shelf rather than a shop. The spread is small enough never to
   reorder the catalog — a haggled AK never undercuts a full-price FAMAS —
   because the price ladder is teaching the value of the guns.
-- **The stalls are a GRID and everything around them is not.** Two columns of
-  three on the east arc (`STALL_COLS` / `STALL_ROWS`), priced cheapest-first and
-  filled SOUTH TO NORTH, because that is the order the party walks in. The old
+- **The stalls are a GRID, IN FRONT OF THE MAN, and everything around them is
+  not.** Three across and two deep on his own axis (`STALL_COLS` /
+  `STALL_ROWS`), priced cheapest-first and filled SOUTH TO NORTH, because that
+  is the order the party walks in. They are in front of him rather than off on
+  the opposite rim because the stock is what he is SELLING: it belongs between
+  the party and the man, in the space they are walking into anyway. The old
   lane jittered its tables off an even rhythm on the argument that four
   identical stalls at four identical intervals is the tell that nobody set this
   up by hand — right about a corridor, wrong about a market. A trader who lays

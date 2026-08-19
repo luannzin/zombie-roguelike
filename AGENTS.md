@@ -253,22 +253,27 @@ subtree.
     snarls are queued client-side and drained nearest-first for the same
     reason — eight of them stacked on one tick is a wall of noise that says
     nothing about how many there are or where they are.
-  **THE WAY OUT IS FOUND, NOT FOLLOWED, AND THAT IS FOUR CHANNELS.** The exit
+  **THE WAY OUT IS FOUND, NOT FOLLOWED, AND THAT IS THREE CHANNELS.** The exit
   is a VOID corridor carved on a random map edge — the same dark gap as the
   camp exit, and its outer end FLARES so it is a visible hole in the border
   treeline rather than a crack. The threshold is DRESSED: four torches in two
-  ranks of two, and cut paving with light in its seams. Over all of it stands a
-  COLUMN of light thrown straight up over the trees, hard for its first few
-  seconds and then a steady pulse — drawn in WORLD space, so it is only on
-  screen when the camera is pointed somewhere it can be seen, which is what
-  makes finding it a matter of looking. A slow spatial PING sounds from the
-  mouth every few seconds, and that is the channel that still works while the
-  player is facing the other way. The gold HUD chevron (`/hud/chevron.png`) is
-  the fourth and it BLINKS: a long solid burst on the frame the exit is carved,
-  then dark, then a couple of seconds every few, for as long as the way out is
-  uncrossed. It was permanent once, which meant the world never had to say
-  anything — a marker that answers "which way out" forever turns a column of
-  fire over a black forest into decoration. Then it faded out after ten
+  ranks of two, and cut paving with light in its seams. A slow spatial PING
+  sounds from the mouth every few seconds, and that is the channel that still
+  works while the player is facing the other way.
+  **THERE USED TO BE A FOURTH: a COLUMN of light thrown straight up over the
+  trees**, drawn in world space so finding it was a matter of looking. It was
+  the best of the four and it is gone, because it was drawn off `world.egress`
+  and the STORE has an egress too — its north corridor. A party walking into
+  the merchant's clearing shortly after calling the pickup got a flaring pillar
+  of light standing in the exit of the one zone with nothing to navigate. It
+  was deleted rather than special-cased: a world marker that has to ask which
+  map it is on belongs to the map, and the exit already had three channels.
+  The gold HUD chevron (`/hud/chevron.png`) is the third and it BLINKS: a long
+  solid burst on the frame the exit is carved, then dark, then a couple of
+  seconds every few, for as long as the way out is uncrossed. It was permanent
+  once, which meant the world never had to say anything — a marker that answers
+  "which way out" forever turns fire burning over a black forest into
+  decoration. Then it faded out after ten
   seconds, which left a party that turned the wrong way at second twelve with
   nothing to ask. Pulsing is both: the map does the work most of the time and
   the glass is there when somebody has lost their bearings. It is a solid
@@ -289,50 +294,74 @@ subtree.
   `BEACON` is the channel a beacon arrives on, and the boot prints
   players leave behind are navigation for the trip back.
 - **The STORE is the fourth beat of the loop and the only place money exists.**
-  A trader's pitch in a round forest CLEARING, walked SOUTH TO NORTH
+  A trader's pitch in a small round forest CLEARING, walked SOUTH TO NORTH
   (`server/app/store.py`): corridor, room, corridor. The party comes up out of
   the arrival throat and the night's PLATFORMS are being lowered onto the apron
-  in front of them and to their left; the trader is parked on the WEST rim with
-  his wagon, his counter, his fire and his own gear; his six stalls stand in a
-  2x3 GRID on the EAST rim; and the upgrade MACHINE stands alone on the
-  NORTH-WEST arc, on the side of the room the way out is on. Get paid, see what
-  it buys, spend a level, leave. The way back seals behind them exactly as the
+  across the south of the room; the trader stands in the MIDDLE of it with his
+  wagon behind him, his counter in front of him and his six stalls laid out in
+  a 3x2 GRID in front of that; his own gear and his fire are around the rim;
+  and the upgrade MACHINE stands on the WEST arc. Get paid, see what it buys,
+  spend a level, leave. The way back seals behind them exactly as the
   forest's did; the north end stands open the whole time, and walking out of it
   is the next day — straight into the next night's forest, arriving through an
   edge corridor that seals behind them, exactly as leaving the campfire does.
-  - **IT IS A ROOM AND IT USED TO BE A LANE.** The glade was long and
-    east-west, with the tables strung along it, and the shape was doing exactly
-    one thing: guaranteeing nobody walked past the stock. That is a corridor's
-    argument and it is a weak one — the party has to walk the same straight
-    line every night whether or not they can afford anything, and a shop that
-    is a queue is a shop nobody stands still in. A round room is somewhere you
-    STAND: everything in it is visible from the middle at once, two players can
-    be at the trader and at the cabinet at the same time without one of them
-    walking back through the other, and a party who came home broke can cross
-    it in a straight line instead of being marched past six prices. The
-    corridors on the ends are the half of the lane that was worth keeping —
+  - **IT IS A SMALL ROOM WITH THE MAN IN THE MIDDLE, AND IT TOOK TWO GOES.**
+    The glade was a long east-west lane first, with the tables strung along it,
+    doing exactly one thing: guaranteeing nobody walked past the stock. That is
+    a corridor's argument and a weak one — a shop that is a queue is a shop
+    nobody stands still in. So it became a round room, and the round room was
+    sixteen tiles of radius with the trader on the west rim and the stock on
+    the east one, which is not a shop either: it is a FIELD. Twenty tiles to
+    read a price and twenty back to pay for it, and two halves that read as two
+    unrelated places.
+    A SHOP IS A COUNTER YOU STAND AT. The clearing is eleven tiles of radius
+    now, the man is in the centre of it with his cart at his back and his goods
+    in front of him, and the whole thing is legible from the door in one look.
+    The corridors on the ends are the half of the lane that was worth keeping —
     they keep the arrival and the departure as separate events.
   - **THE WAGON IS WHO HE IS.** He had a tent when he was a man camped in a
     glade; he has a CART now, because he did not walk here with six tables on
     his back — he drives, he was somewhere else last week, and that is the
-    reason he is worth finding. It is also the only sprite in the game carrying
-    the world's history on it: guns racked along the flank, masks strung on a
-    line, salvage lashed to the boards, and two covered bodies laid out at the
-    wheels. That last one is drawn as quietly as it can be and is never said
-    out loud anywhere; the party works out where the stock comes from on their
-    own, from across the clearing.
+    reason he is worth finding. It is parked BEHIND him: a shopkeeper has a
+    back wall. Guns racked along the flank, lanterns strung on a line under the
+    eave, crates roped at the wheels, a lamp on the bow.
+    **IT USED TO CARRY BONE MASKS AND TWO COVERED BODIES**, on the argument
+    that the party should work out where the stock comes from on their own.
+    The argument was fine and the result was not: this is the one beat of the
+    loop that exists as a relief from the night, and the biggest sprite in it
+    was a cart with corpses under a tarp. THE RULE FOR THIS ZONE'S ART, and it
+    applies to the man, his kit, his machine and anything added later: it may
+    be poor, worn and improvised; it may not be grim.
+  - **THE MAN HAS A FACE.** He was a hooded figure with six pixels of void
+    where a face goes — the same silhouette the game uses for everything that
+    wants to kill you. That was survivable while he stood on a dark rim and is
+    not now that he is the thing in the middle of the room, so he has a brimmed
+    hat, skin, two eyes and a red scarf, over a GREEN coat that separates him
+    from every warm wooden object he is ever seen against.
   - **IT IS THE ONE LIT PLACE, AND THAT IS THE ZONE'S JOB.** Everywhere else a
     party goes is a black wood with a torch in it somewhere; here they can see
     the treeline, the far arc of the room, the way out and each other.
     `Zone.ambient` is how — a floor under the darkness pass, zero in every zone
     somebody can be killed in and `zones.STORE_AMBIENT` here. On top of that
-    floor a RING of torches burns around the rim, a chain runs down each throat
-    and paired ranks dress both mouths. The ring is what a party sees before
-    they see anything standing in it, and it is the difference between walking
-    into a room and walking into more woods. It is still well under 1: the
-    clearing is visible, not daylit, and his fire and the machine's marquee are
-    the brightest things in it. The contrast is the reward — a night is only
-    frightening if there is somewhere that is not.
+    floor a ring of torches marks the rim, a chain runs down each throat and a
+    pair dresses each mouth. It is well under 1: the clearing is visible, not
+    daylit, and his fire and the machine's marquee are the brightest things in
+    it. The contrast is the reward — a night is only frightening if there is
+    somewhere that is not.
+    **THE FLOOR AND EVERY LIGHT ON TOP OF IT ARE ONE BUDGET, AND THAT IS THE
+    ZONE'S ONE REAL BUG.** The client composites every light with `lighter` —
+    scene lights, fires, the shop's flames, the landing platforms — and nothing
+    clamps the total, so this room went FLAT WHITE on arrival and the party
+    could not see the shop at all. The loudest contributor was the APRON: three
+    skids setting down within five tiles of each other, each throwing a
+    seven-tile rotor wash at 0.85, which is 1.7 of a full-bright sheet where
+    two of them overlapped — before eight rotors and eight strobes went on top,
+    on a 0.7 ambient floor with eleven seven-tile torches behind them. The fix
+    is one budget spent in four places: the skids land far enough apart that no
+    two washes touch, the torch ring is seven at 4.5 tiles, the floor is 0.45,
+    and `layers/payout`'s alphas came down with them. Adding a light source
+    here means taking brightness out of another one, and the check is walking
+    in during a three-platform payout.
   - **THE NIGHT'S PLATFORMS COME HOME WITH THE PARTY, AND GETTING PAID IS AN
     EVENT.** The same four aircraft that took the skids set them down on the
     apron, the lines let go, the drones climb out, and the cargo on the decks
@@ -344,11 +373,10 @@ subtree.
     machine that visibly came back is money. The balance itself is credited
     server-side on the crossing (`Room.enter_store`); everything above is
     presentation, so a reconnect mid-animation cannot pay anybody twice.
-  - **HIS GEAR IS ON HIS SIDE AND NONE OF IT OPENS.** Crates, a barrel of rods,
-    a rack of spare barrels, a shelf of tins, a padlocked strongbox — all on
-    the WEST arc around the wagon and the fire, because everything a party may
-    touch is on the EAST one. That split teaches which half of the room answers
-    E in one visit. The art carries the other half of it: every frame is drawn
+  - **HIS GEAR IS AROUND THE RIM AND NONE OF IT OPENS.** Crates, a barrel of
+    rods, a shelf of tins, a padlocked strongbox — out at the edges, behind and
+    beside the cart, because the middle of the room belongs to the man and the
+    stock. That split teaches what answers E in one visit. The art carries the other half of it: every frame is drawn
     roped, strapped and padlocked, because the player spent the previous night
     learning that a box in this game is a thing you open.
   - **It is OUTDOORS, and that is load-bearing.** It was an interior first, a
@@ -360,11 +388,16 @@ subtree.
     everywhere else — which is also why almost none of it needs special code:
     his campfire is a `FIRE` tile and every torch is a `SceneLight` like any
     cabin lamp.
-  - **THE STOCK IS THE ONE THING IN THE ROOM THAT WAS ARRANGED.** Six round
-    tables in two columns of three, on the grid, priced cheapest-first and read
-    south to north — because that is the direction the party walks in, so the
-    first table they reach is the one they can afford and the last is the one
-    they are saving for. Everything AROUND the grid is irregular: the wagon,
+  - **THE STOCK IS THE ONE THING IN THE ROOM THAT WAS ARRANGED.** Six small
+    round tables, three across and two deep IN FRONT OF THE MAN, on the grid,
+    priced cheapest-first and read south to north — because that is the
+    direction the party walks in, so the first table they reach is the one they
+    can afford and the last is the one they are saving for. They stand in front
+    of him rather than on the opposite rim because the stock is what he is
+    SELLING: it belongs between the party and the man. They are also SMALL —
+    they used to be taller than the guns lying on them, which put six pieces of
+    furniture in the middle of the shop that outweighed everything they were
+    selling. Everything AROUND the grid is irregular: the wagon,
     the fire, the gear, the torch ring. The old lane jittered its tables off an
     even rhythm on the argument that four identical stalls at four identical
     intervals is the tell that nobody set this up by hand — which is right
@@ -431,14 +464,15 @@ subtree.
 - **A LEVEL IS A TOKEN AND THE MACHINE IS THE ONLY THING THAT TAKES IT.**
   xp used to be a bar that filled and changed nothing. A level now pays one
   SPIN (`server/app/skills.py`), spins bank across nights, and the only place
-  one can be spent is a scavenged slot cabinet standing alone on the north-west
-  arc of the merchant's clearing — three tiles wide and four and a half tall,
-  dented, chrome gone, one corner of its marquee smashed off, wired to a car
-  battery on the ground beside it. That battery is the whole answer to "why is
-  there a slot machine in a forest". It stands ACROSS the room from everything
-  that is about money, on the side the exit is on, so it is somewhere a party
-  WALKS to after they have spent — which is the whole difference between a
-  machine and a menu item.
+  one can be spent is a slot cabinet standing on the WEST arc of the merchant's
+  clearing — two tiles wide, red, with a gold hood of bulbs, three windows, a
+  lever and a tray. It used to be a three-tile dented grey wreck with a car
+  battery cabled to its base, which was a good story and a bad object: at that
+  size it was a wall in a small shop, and a dark dented box at night is
+  indistinguishable from the market stalls beside it. It stands ACROSS the room
+  from everything that is about money, so it is somewhere a party WALKS to
+  after they have spent — which is the whole difference between a machine and a
+  menu item.
   - **IT IS A ROLL, NOT A MENU.** A list of upgrades with prices is a
     spreadsheet the player solves once and then executes every run afterwards;
     a roll is a moment. The ladder is the SAME five rarities loot already uses,

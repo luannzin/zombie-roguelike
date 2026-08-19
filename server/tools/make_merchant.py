@@ -93,21 +93,31 @@ Art = list[str]
 
 
 # --- palette ----------------------------------------------------------------
-# A wanderer's kit against the forest palette. The coat is a cold grey-blue so
-# he does not read as another piece of scenery wood, the load is warm burlap so
-# the back of him separates from the front of him, and the bandana is the one
+# A wanderer's kit against the forest palette. The load is warm burlap so the
+# back of him separates from the front of him, and the scarf is the one
 # saturated colour on the body.
+#
+# HE USED TO BE COLD GREY-BLUE WITH A HOLE FOR A FACE, and that was a mistake
+# the shop could carry while he stood on a rim in the dark and cannot carry now
+# that he is the thing in the middle of the room. A hooded figure whose face is
+# six pixels of void reads as a threat — it is the same silhouette the game
+# uses for everything that wants to kill you — and this is the one person in
+# the run who does not. So the coat is warm brown, the hood is a HAT, and there
+# is a face under it with two eyes in it. Nothing else about him changed.
 
 PALETTE: Palette = {
-    "o": rgb("#141219"),  # outline
-    "k": rgb("#292a34"),  # coat, deep shade / the lining seen from inside
-    "c": rgb("#3a3c47"),  # coat, mid — the mass of him
-    "C": rgb("#4c4f5e"),  # coat, lit from the upper left
-    "H": rgb("#5f6374"),  # coat, rim highlight (sparingly)
-    "f": rgb("#191620"),  # the void under the hood
-    "e": rgb("#b9c0d0"),  # eye glint — one pixel, and it is the whole face
-    "p": rgb("#5f4570"),  # bandana
-    "P": rgb("#7d5c90"),  # bandana, lit
+    "o": rgb("#1a1410"),  # outline
+    "k": rgb("#20302b"),  # coat, deep shade / the lining seen from inside
+    "c": rgb("#31473e"),  # coat, mid — the mass of him
+    "C": rgb("#456055"),  # coat, lit from the upper left
+    "H": rgb("#5d7a69"),  # coat, rim highlight (sparingly)
+    "h": rgb("#4a3324"),  # the hat's crown
+    "N": rgb("#6b4b32"),  # the hat's brim, catching the light
+    "f": rgb("#c9a07a"),  # his face
+    "F": rgb("#a97f5c"),  # his face, in shade
+    "e": rgb("#241c18"),  # eyes — two pixels, and they are the whole face
+    "p": rgb("#8c3a3a"),  # scarf
+    "P": rgb("#b45050"),  # scarf, lit
     "b": rgb("#6f6247"),  # burlap bundle
     "B": rgb("#8a7b59"),  # burlap, lit
     "r": rgb("#4c3f28"),  # rope
@@ -165,36 +175,36 @@ BUNDLE = _rows(
 
 
 # --- head -------------------------------------------------------------------
-# The hood is wider than the skull under it and hangs forward, so the face is a
-# hole rather than a face: six pixels of void, one glint, and a bandana across
-# the bottom of it. The bandana is four pixels at the eye line and six at the
-# jaw — a full-width block of purple was a stripe painted on a bag, not cloth
-# wrapped round a head.
+# A BRIMMED HAT AND A FACE UNDER IT. The brim is wider than the crown and wider
+# than the head, which is what makes a hat read as a hat at eight pixels
+# across, and the face below it is skin with two dark eyes and a scarf at the
+# jaw. See the palette note: he is the one person in the run who is not trying
+# to kill anybody, and the sprite has to say so before he has done anything.
 
 HEAD_REST = _rows(
-    "........oooooo........",
-    "......oCCcccckko......",
-    ".....oCCcccccckko.....",
-    ".....oCcffffffcko.....",
-    ".....oCcfffeffcko.....",
-    ".....oCcfppppfcko.....",
-    ".....oCcfpPppfcko.....",
-    "......occppppcko......",
-    ".......occcccko.......",
+    ".......oooooooo.......",
+    "......ohhhhhhhho......",
+    "......ohhhhhhhho......",
+    "....oNNNNNNNNNNNNo....",
+    "......oFffffffFo......",
+    "......oFfeffeffo......",
+    "......oFfffffffo......",
+    "......opppPPpppo......",
+    ".......occcccco.......",
 )
 
-#: The glint is gone: a blink, or his attention somewhere else. One pixel of
+#: The eyes are shut: a blink, or his attention somewhere else. Two pixels of
 #: difference, and it is the difference between a person and a mannequin.
 HEAD_BLIND = _rows(
-    "........oooooo........",
-    "......oCCcccckko......",
-    ".....oCCcccccckko.....",
-    ".....oCcffffffcko.....",
-    ".....oCcffffffcko.....",
-    ".....oCcfppppfcko.....",
-    ".....oCcfpPppfcko.....",
-    "......occppppcko......",
-    ".......occcccko.......",
+    ".......oooooooo.......",
+    "......ohhhhhhhho......",
+    "......ohhhhhhhho......",
+    "....oNNNNNNNNNNNNo....",
+    "......oFffffffFo......",
+    "......oFfffffffo......",
+    "......oFfffffffo......",
+    "......opppPPpppo......",
+    ".......occcccco.......",
 )
 
 

@@ -231,14 +231,6 @@ export interface RenderState {
    */
   payout: Payout | null;
   /**
-   * Seconds since the extraction exit opened, or 0 when there is none.
-   *
-   * The signal column over the treeline burns hard for its first few seconds
-   * and then settles into a steady pulse — the opening is an event and the ten
-   * minutes afterwards are navigation, and one number is the whole difference.
-   */
-  egressAge: number;
-  /**
    * The party's balance. Read by the price tags, which mute a price the group
    * cannot meet — so it has to be here rather than fetched inside the layer.
    */

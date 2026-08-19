@@ -182,33 +182,32 @@ EXIT_DEPTH_TILES = 5
 # sure nobody could walk past the stock. That is a corridor's whole argument,
 # and it is a weak one, because the party has to walk the same straight line
 # every night whether or not they have anything to spend. A ROOM is different:
-# it is somewhere you STAND. Everything in it is visible from the middle at
-# once, so the visit is a decision about where to go rather than a queue, and
-# two players can be at the trader and at the machine at the same time without
-# one of them walking back through the other. The two corridors on the ends
-# keep the entrance and the exit as separate events, which is the part of the
-# lane that was worth keeping.
+# it is somewhere you STAND. The two corridors on the ends keep the entrance
+# and the exit as separate events, which is the part of the lane that was
+# worth keeping.
 #
-# `STORE_CIRCLE_TILES` is the load-bearing one — the radius of that clearing,
-# in tiles. Big enough that the wagon on the west, the six stalls on the east
-# and the platforms coming down in the south are three places rather than one
-# crowd; small enough that all of it is on screen from the middle. The map is
-# WIDER and TALLER than the clearing so the treeline has depth to thicken into
-# and the two necks have somewhere to run.
-STORE_WIDTH_TILES = 52
-STORE_HEIGHT_TILES = 62
+# AND IT IS A SMALL ROOM. The first circle was sixteen tiles of radius on a
+# 52x62 map, on the argument that the wagon, the stalls and the apron should
+# read as three separate places. What that actually bought was a field: the
+# stock was a long walk from the trader, the cabinet was across a clearing
+# from both, and the party spent the whole visit crossing ground rather than
+# looking at prices. A SHOP IS A COUNTER YOU STAND AT. Everything in it now
+# fits in one screen from the door — the trader in the middle, his stock in
+# front of him, the machine on the west arc — and the map is only as big as it
+# has to be for the treeline to have depth and the two necks to have somewhere
+# to run.
+STORE_WIDTH_TILES = 38
+STORE_HEIGHT_TILES = 46
 #: Radius of the clearing, in tiles. `store._circle_half` breathes around it so
 #: the rim reads as woods rather than as a stamped disc.
-STORE_CIRCLE_TILES = 16.0
+STORE_CIRCLE_TILES = 11.0
 #: Typical width of the two NECKS — the walkable throat between a corridor
 #: mouth and the clearing. Narrow, so arriving and leaving are both a squeeze
 #: that opens out; the clearing does the breathing.
-STORE_LANE_TILES = 9.0
+STORE_LANE_TILES = 8.0
 #: VOID at each end: the way in at the bottom (which seals) and the way out at
 #: the top (which does not).
-STORE_CORRIDOR_TILES = 7
-#: How close the feet have to be for E to buy. Tighter than a crate — the
-#: stalls stand in a grid and a loose radius would offer two at once.
+STORE_CORRIDOR_TILES = 5
 STORE_BUY_TILES = 1.9
 STORE_BUY_DIST = TILE_SIZE * STORE_BUY_TILES
 #: How far the goods FLOAT off a table when somebody is in range, in tiles.
@@ -224,9 +223,13 @@ STORE_LIFT_TILES = 0.4
 STORE_SPIN_TILES = 2.2
 STORE_SPIN_DIST = TILE_SIZE * STORE_SPIN_TILES
 #: How far the machine's own marquee throws, in tiles. It is a LIT OBJECT — the
-#: only electrical thing in the game — and it stands alone on the north-west
-#: arc of the clearing, so its pool is what pulls a party across to it.
-STORE_MACHINE_LIGHT_TILES = 8.5
+#: only electrical thing in the game — and it stands alone on the west arc of
+#: the clearing, so its pool is what pulls a party across to it. Kept SHORT: it
+#: is a marquee on a small cabinet in a small room, and every one of these
+#: pools is drawn additively on top of the zone's ambient floor — see
+#: `zones.STORE_AMBIENT` and `store.TORCH_LIGHT_TILES` for what happens when
+#: they are allowed to pile up.
+STORE_MACHINE_LIGHT_TILES = 4.5
 
 #: What the merchant charges, as a multiple of the item's catalog value. He is
 #: the only place to buy a gun and he knows it.

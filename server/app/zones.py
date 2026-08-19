@@ -58,12 +58,23 @@ _NIGHT_SPAN_MINUTES = 7 * 60 + 1
 #:
 #: TUNED AGAINST THE TORCHES, not against a screenshot of an empty map. At this
 #: value the whole room is legible from the middle of it — the rim, the far
-#: arc, the way out and the other players — and his fire, the torch ring and
-#: the cabinet's marquee are still visibly the brightest things in it. It went
-#: UP when the zone became a round room: a lane could be lit end to end by the
-#: chain of torches running down it, and a clearing has a middle those pools do
-#: not reach. A step higher than this and the fire stops reading as a fire.
-STORE_AMBIENT = 0.7
+#: arc, the way out and the other players — and his fire, the torches and the
+#: cabinet's marquee are still visibly the brightest things in it.
+#:
+#: IT CAME BACK DOWN, and the reason is the one bug this zone has ever really
+#: had. Every light in the world is drawn ADDITIVELY over this floor —
+#: `layers/darkness`'s scene lights and fires, `layers/store`'s flames, and
+#: `layers/payout`'s rotor wash — and additive pools SUM with nothing clamping
+#: the total. Three skids used to land within five tiles of each other on the
+#: apron at 0.85 alpha a wash; two overlapping washes is 1.7 of a full-bright
+#: sheet before eight rotors and eight strobes go on top, and on a 0.7 floor
+#: the south half of the room saturated to WHITE for the length of the payout.
+#: The floor and every light above it are one budget, and this is that budget's
+#: share of it. Raising this means taking the same amount back out of
+#: `store.RING_TORCHES`, `store.TORCH_LIGHT_TILES`,
+#: `config.STORE_MACHINE_LIGHT_TILES` or `layers/payout`'s alphas — never on
+#: its own.
+STORE_AMBIENT = 0.45
 
 # Most nights are dry. Rain is common enough that a second expedition often
 # feels like a different place; fog is the rarer coat.

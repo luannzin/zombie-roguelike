@@ -2,43 +2,43 @@
   "seed": 1337,
   "cabinet": {
     "file": "cabinet.png",
-    "frameWidth": 48,
-    "frameHeight": 72,
+    "frameWidth": 32,
+    "frameHeight": 46,
     "frames": 2,
     "reels": [
       [
-        8,
-        20
+        5,
+        15
       ],
       [
-        20,
-        20
+        13,
+        15
       ],
       [
-        32,
-        20
+        21,
+        15
       ]
     ],
-    "reelWidth": 10,
-    "reelHeight": 16,
+    "reelWidth": 6,
+    "reelHeight": 10,
     "lever": [
-      43,
-      28
+      29,
+      24
     ],
     "trayMouth": [
-      23,
-      57
+      15,
+      36
     ],
     "crown": [
-      24,
-      6
+      16,
+      5
     ],
-    "payLine": 28
+    "payLine": 20
   },
   "reel": {
     "file": "strip.png",
-    "frameWidth": 10,
-    "frameHeight": 16,
+    "frameWidth": 6,
+    "frameHeight": 10,
     "cells": 10,
     "band": [
       "common",
@@ -55,42 +55,42 @@
   },
   "lever": {
     "file": "lever.png",
-    "frameWidth": 16,
-    "frameHeight": 36,
+    "frameWidth": 11,
+    "frameHeight": 24,
     "frames": 6,
     "pivot": [
-      3,
-      18
+      2,
+      12
     ]
   },
   "effects": {
     "marquee": {
       "file": "marquee.png",
-      "frameWidth": 54,
-      "frameHeight": 24,
+      "frameWidth": 38,
+      "frameHeight": 18,
       "frames": 10,
       "fps": 14,
-      "anchorY": 12,
+      "anchorY": 9,
       "loop": true,
       "tinted": true
     },
     "window": {
       "file": "window.png",
-      "frameWidth": 40,
-      "frameHeight": 22,
+      "frameWidth": 30,
+      "frameHeight": 16,
       "frames": 6,
       "fps": 8,
-      "anchorY": 11,
+      "anchorY": 8,
       "loop": true,
       "tinted": true
     },
     "burst": {
       "file": "burst.png",
-      "frameWidth": 64,
-      "frameHeight": 64,
+      "frameWidth": 48,
+      "frameHeight": 48,
       "frames": 12,
       "fps": 18,
-      "anchorY": 32,
+      "anchorY": 24,
       "loop": false,
       "tinted": true
     }

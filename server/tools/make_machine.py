@@ -1,30 +1,32 @@
 #!/usr/bin/env python3
-"""Asset pipeline: THE UPGRADE MACHINE — a slot cabinet somebody dragged into
-the woods and wired to a car battery.
+"""Asset pipeline: THE UPGRADE MACHINE — the slot cabinet in the merchant's shop.
 
 Output (assets/processed/machine/):
-    cabinet.png    2 frames, 48x72   PROP   — idle, and settled after a pull
-    strip.png      1 frame, 10x160   PART   — the REEL BAND: ten cells, looped
-    lever.png      6 frames, 16x34   PART   — the arm, up to fully pulled
-    marquee.png   10 frames, 54x24   VFX    — loop, the crown lights chasing
-    window.png     6 frames, 40x20   VFX    — loop, the backlight behind the reels
-    burst.png     12 frames, 64x64   VFX    — one-shot, the payout flash
+    cabinet.png    2 frames, 32x46   PROP   — idle, and settled after a pull
+    strip.png      1 frame,  6x100   PART   — the REEL BAND: ten cells, looped
+    lever.png      6 frames, 11x24   PART   — the arm, up to fully pulled
+    marquee.png   10 frames, 38x18   VFX    — loop, the hood lights chasing
+    window.png     6 frames, 30x16   VFX    — loop, the backlight behind the reels
+    burst.png     12 frames, 48x48   VFX    — one-shot, the payout flash
     manifest.json
 
-WHY IT IS A WRECK AND NOT A CASINO MACHINE.
-Everything else in this forest is something the world left behind, and a clean
-Vegas cabinet would be the one object in the game that came from a different
-one. So it is DENTED, its chrome is gone, one corner of the marquee is smashed,
-and there is a car battery on the ground beside it with a cable running up into
-the base. That cable is the whole story: somebody found this thing, hauled it
-here, and got it working — which is a better answer to "why is there a slot
-machine in a shop in a forest" than any sign could be.
+IT IS A TOY, AND IT USED TO BE A WRECK.
+The first cabinet was three tiles wide, grey, dented, missing a corner of its
+hood, with a car battery cabled to its base — the argument being that a clean
+machine would be the one object in the game that came from a different one. Two
+things were wrong with it. It was drawn for a clearing twice this size, so in
+the shop as it now stands it read as a wall rather than as something to walk up
+to; and a dark dented box is indistinguishable, at a glance and at night, from
+the market stalls beside it. So it is SMALL, RED and FLAT-SHADED now: a gold
+hood with bulbs in it, a cream fascia with three windows, a lever and a tray.
+Nothing is grimy, because grime at this size is noise, and the shop is the one
+beat of the loop that is supposed to feel safe.
 
 WHY IT IS STILL UNMISTAKABLY A SLOT MACHINE.
-Three lit windows in a row, a crown of bulbs, a lever on the right and a tray
-at the bottom. Those four are the whole vocabulary and none of them may be
-subtle — a player has to read it from across the clearing, before the prompt,
-before the tooltip, and think *that thing is for me*.
+Three lit windows in a row, a hood of bulbs, a lever on the right and a tray at
+the bottom. Those four are the whole vocabulary and none of them may be subtle
+— a player has to read it from the door, before the prompt, before the tooltip,
+and think *that thing is for me*.
 
 IT IS A BAND, NOT A FRAME NUMBER, AND THAT IS THE REWRITE.
 The reels used to be nine sprites: four frames of horizontal blur cycled while
@@ -55,7 +57,7 @@ THE LIGHT IS THE POINT AND IT IS ADDITIVE.
 The cabinet body takes the darkness multiply like every other prop. The
 marquee, the window backlight and the payout burst are drawn AFTER that pass,
 additively, because they are light sources and not things being lit. The
-marquee and the burst are GREYSCALE so the client can tint them: the crown
+marquee and the burst are GREYSCALE so the client can tint them: the hood
 burns `--scene-neon` while the machine is idle and the winning RARITY's colour
 while a canister is coming out, and one multiply gets both out of one sheet.
 
@@ -69,7 +71,6 @@ from __future__ import annotations
 import argparse
 import json
 import math
-import random
 from pathlib import Path
 
 from PIL import Image
@@ -81,9 +82,7 @@ from make_textures import (
     Ramp,
     TRANSPARENT,
     add,
-    clamp01,
     ellipse,
-    hash01,
     outline,
     pack,
     pick,
@@ -96,17 +95,27 @@ from make_textures import (
 # only saturated things here are the reel faces and the lever ball, and both
 # are small — the cabinet reads as a dark shape with light coming out of it,
 # which is what a machine at night looks like.
+#
+# EXCEPT THAT IT IS THE ONE FRIENDLY OBJECT IN THE ZONE, so the body is not
+# scenery-toned any more. It was a dented grey locker with a brass hood, which
+# at two tiles across read as a market stall with the lights off; it is a RED
+# cabinet with a cream fascia and a gold hood now. Three flat colours, one
+# highlight each, no dents and no grime — the same read a toy has. The shop is
+# the safe beat of the loop and the machine is the toy in it.
 
-SHELL: Ramp = [rgb(c) for c in ("#131519", "#1c2026", "#272c34", "#343a45", "#454c59", "#5a6270")]
-SHELL_WORN: Ramp = [rgb(c) for c in ("#1a1610", "#251f16", "#33291d", "#453626", "#5c4832")]
-TRIM: Ramp = [rgb(c) for c in ("#2a1d0c", "#463012", "#6b4a1c", "#8f6626", "#b78633")]
+#: The shell. Cherry red, because nothing else in a forest at night is, and the
+#: whole job of this sprite is to be picked out from the middle of the room.
+SHELL: Ramp = [rgb(c) for c in ("#4a1220", "#7a1c2c", "#ad2a3c", "#d44352", "#ef6f79")]
+#: The fascia the windows are set into, and the plinth. Warm cream: it is the
+#: contrast that makes the red read as paint rather than as rust.
+PANEL: Ramp = [rgb(c) for c in ("#5b4632", "#8a6c4c", "#bd9a70", "#e0c69a", "#f6e6c8")]
+#: The hood, the bezel and the tray lip. Gold, flat, and the only metal left.
+TRIM: Ramp = [rgb(c) for c in ("#4a3410", "#7a5518", "#b08028", "#dfae42", "#f7d878")]
 CHROME: Ramp = [rgb(c) for c in ("#1b1f25", "#2b3239", "#434b54", "#5f6872", "#818b96")]
 GLASSDARK: Ramp = [rgb(c) for c in ("#080a0e", "#0e1218", "#151b23", "#1d242e")]
-BULB: Ramp = [rgb(c) for c in ("#2a1a22", "#4a2438", "#7a3358", "#b04a80", "#e86aa8")]
+BULB: Ramp = [rgb(c) for c in ("#4a3a1a", "#7a5f22", "#b08a2c", "#e0bb52", "#fbe89a")]
 RED: Ramp = [rgb(c) for c in ("#3a0d0c", "#5e1512", "#8a1f19", "#b52c22", "#d94a34")]
-BATTERY: Ramp = [rgb(c) for c in ("#101a14", "#18261c", "#223326", "#2e4432", "#3d5a41")]
-CABLE: Ramp = [rgb(c) for c in ("#0b0c0e", "#131519", "#1c1f24", "#262a31")]
-OUTLINE: RGBA = rgb("#06070a")
+OUTLINE: RGBA = rgb("#120a10")
 
 #: The five rarity ramps, same five as `make_skills.py` and the same five the
 #: HUD paints. A reel face that stopped on a colour the bag does not use would
@@ -138,19 +147,25 @@ BAND: tuple[str, ...] = (
 )
 
 # --- geometry ---------------------------------------------------------------
-# The cabinet is THREE TILES wide and four and a half tall, which is the size a
-# body has to stand next to and look UP at. It grew when the shop became a room:
-# in a lane it was the last thing on a walk and had a corridor's worth of
-# attention, and standing alone on the arc of a clearing it has to hold the eye
-# from the middle of that clearing instead. Everything below is measured inside
-# this frame, bottom-anchored on the contact row.
+# TWO TILES WIDE AND UNDER THREE TALL, and it used to be three by four and a
+# half. The big one was authored for a cabinet standing alone on the arc of a
+# wide clearing, and the clearing shrank: in a small shop a sprite that size is
+# a wall the party walks around rather than an object in the room, and it made
+# every table beside it look like furniture for somebody else. Small enough to
+# stand next to and still read as a slot machine from the door is the brief,
+# and the four things that carry that read — hood, three windows, lever, tray —
+# are exactly what the pixels are spent on. Everything else went.
+#
+# Everything below is measured inside this frame, bottom-anchored on the
+# contact row.
 
-CAB_W, CAB_H = 48, 72
-BODY_L, BODY_R = 5, 42
-CROWN_TOP, CROWN_BOTTOM = 1, 12
+CAB_W, CAB_H = 32, 46
+BODY_L, BODY_R = 3, 28
+CROWN_TOP, CROWN_BOTTOM = 1, 9
 #: The three reel windows: left edge of the first, cell size, and the gap.
-REEL_X, REEL_Y = 8, 20
-REEL_W, REEL_H = 10, 16
+#: Centred in the body by hand — `BODY_L + (26 - (3 * REEL_W + 2 * REEL_GAP)) // 2`.
+REEL_X, REEL_Y = 5, 15
+REEL_W, REEL_H = 6, 10
 REEL_GAP = 2
 #: How many cells the band holds. The client scrolls a `REEL_H` window over
 #: `CELLS * REEL_H` pixels and wraps, so the strip has no ends.
@@ -158,34 +173,25 @@ CELLS = len(BAND)
 #: The tray the canister comes out of. `trayMouth` is the pixel the client
 #: launches a can from, and it rides the manifest so the arc starts at the hole
 #: rather than at a guess about where the hole is.
-TRAY_L, TRAY_R = 13, 34
-TRAY_TOP, TRAY_BOTTOM = 48, 58
+TRAY_L, TRAY_R = 9, 22
+TRAY_TOP, TRAY_BOTTOM = 31, 37
 #: Where the lever's pivot sits in the cabinet frame. The arm sheet is drawn
 #: separately and pinned here, because it is the one part that moves.
 #: The pivot is in the LEVER frame's own left margin, and `LEVER_ANCHOR` is
 #: where that pivot lands in the cabinet frame — so the client blits the arm at
 #: `anchor - pivot` and the two never have to agree about anything else.
-LEVER_ANCHOR = (43, 28)
-LEVER_PIVOT = (3, 18)
-LEVER_W, LEVER_H = 16, 36
+LEVER_ANCHOR = (29, 24)
+LEVER_PIVOT = (2, 12)
+LEVER_W, LEVER_H = 11, 24
 
-MARQUEE_W, MARQUEE_H = 54, 24
-WINDOW_W, WINDOW_H = 40, 22
-BURST = 64
+MARQUEE_W, MARQUEE_H = 38, 18
+WINDOW_W, WINDOW_H = 30, 16
+BURST = 48
 
-#: How many bulbs ride the crown. Odd, so one of them is dead centre and the
-#: chase reads as going round a sign rather than as two rows blinking.
-BULBS = 11
-
-
-def _rect(px, x0: int, y0: int, x1: int, y1: int, ramp: Ramp, shade: float,
-          fall: float = 0.0) -> None:
-    """Fill a box out of a ramp, optionally darkening toward the bottom."""
-    span = max(1, y1 - y0)
-    for y in range(y0, y1 + 1):
-        for x in range(x0, x1 + 1):
-            value = shade - fall * ((y - y0) / span)
-            px[x, y] = pick(ramp, clamp01(value), x, y)
+#: How many bulbs ride the hood. Odd, so one of them is dead centre and the
+#: chase reads as going round a sign rather than as two rows blinking. Seven
+#: rather than eleven: at this width eleven bulbs are one lit bar.
+BULBS = 7
 
 
 def _reel_slot(index: int) -> tuple[int, int]:
@@ -196,115 +202,152 @@ def _reel_slot(index: int) -> tuple[int, int]:
 # --- the cabinet ------------------------------------------------------------
 
 
-def make_cabinet(rng: random.Random, settled: bool) -> Image.Image:
+def _step(ramp: Ramp, index: int) -> RGBA:
+    """One exact ramp step, no dithering.
+
+    `pick` dithers between the two nearest steps, which is right for soil and
+    wrong for a painted machine: at this size a Bayer checker between two reds
+    reads as rust. Flat fills are the whole cartoon style — every surface on
+    this cabinet is ONE colour with a lighter row on top and a darker one under.
+    """
+    return ramp[max(0, min(len(ramp) - 1, index))]
+
+
+def _round_box(
+    px,
+    x0: int,
+    y0: int,
+    x1: int,
+    y1: int,
+    ramp: Ramp,
+    step: int,
+    radius: int = 2,
+) -> None:
+    """A flat box with its corners knocked off, lit on top and shaded right.
+
+    `step` indexes the ramp directly — see `_step`. The corner cut is a taxicab
+    step in from each end, so the silhouette rounds off without ever costing an
+    anti-aliased pixel.
+    """
+    for y in range(y0, y1 + 1):
+        for x in range(x0, x1 + 1):
+            if radius > 0:
+                dx = min(x - x0, x1 - x)
+                dy = min(y - y0, y1 - y)
+                if dx < radius and dy < radius and (dx + dy) < radius:
+                    continue
+            shift = 0
+            if y == y0:
+                shift = 1
+            elif y == y1 or x == x1:
+                shift = -1
+            px[x, y] = _step(ramp, step + shift)
+
+
+def make_cabinet(settled: bool) -> Image.Image:
     """The body. `settled` is the frame after a pull: the shell sits one pixel
-    lower on its feet and the dents catch differently, which is the whole tell
-    that the thing just took a hit from its own lever."""
+    lower on its feet, which is the whole tell that the thing just took a hit
+    from its own lever.
+
+    FOUR THINGS AND NOTHING ELSE: a gold hood with bulbs in it, three windows in
+    a cream fascia, a lever post on the right and a tray at the bottom. Every
+    pixel that was spent on dents, worn stripes, maker's plates, dead buttons
+    and a car battery is gone — at two tiles across those details were noise
+    that made the silhouette harder to read, which is the opposite of what
+    detail is for. The story ("somebody dragged this out here") is now told by
+    where it stands, not by grime painted onto it.
+    """
     img = Image.new("RGBA", (CAB_W, CAB_H), TRANSPARENT)
     px = img.load()
     drop = 1 if settled else 0
-    floor = CAB_H - 3
+    floor = CAB_H - 2
 
-    # Plinth: wider than the body, so the machine stands on something rather
-    # than being a box balanced on the soil.
-    _rect(px, BODY_L - 3, floor - 12 + drop, BODY_R + 3, floor - 1, SHELL, 0.30, 0.18)
-    _rect(px, BODY_L - 3, floor - 1, BODY_R + 3, floor, SHELL, 0.12)
+    # 1. THE PLINTH it stands on, cream, wider than the body. A machine sitting
+    #    straight on soil looks dropped; a machine on a base looks placed.
+    _round_box(px, 1, floor - 5 + drop, CAB_W - 2, floor, PANEL, 1, radius=2)
 
-    # Body.
-    _rect(px, BODY_L, CROWN_BOTTOM + drop, BODY_R, floor - 12 + drop, SHELL, 0.62, 0.34)
-    # Worn stripe down the left edge — the side that got dragged.
-    _rect(px, BODY_L, CROWN_BOTTOM + drop, BODY_L + 3, floor - 12 + drop,
-          SHELL_WORN, 0.55, 0.3)
-    # Two chrome rails running the height of the front. They are what makes a
-    # tall dark box read as a CABINET at a distance: a silhouette this size
-    # with nothing vertical in it is a locker.
-    for rail in (BODY_L + 1, BODY_R - 1):
-        _rect(px, rail, CROWN_BOTTOM + 1 + drop, rail, floor - 13 + drop, CHROME, 0.72, 0.35)
+    # 2. THE BODY. One red block with its corners knocked off.
+    _round_box(px, BODY_L, CROWN_BOTTOM + drop, BODY_R, floor - 4 + drop, SHELL, 2,
+               radius=3)
 
-    # Crown. Wider than the body and a step brighter: it is the part that is
-    # lit, and the silhouette has to say so before any light is drawn on it.
-    _rect(px, BODY_L - 3, CROWN_TOP + drop, BODY_R + 3, CROWN_BOTTOM + drop, TRIM, 0.62, 0.3)
-    # ...with the top-right corner smashed off. One asymmetry is what stops a
-    # symmetrical object reading as a decal.
-    for y in range(CROWN_TOP + drop, CROWN_TOP + 5 + drop):
-        for x in range(BODY_R - 2, BODY_R + 4):
-            if x - BODY_R + 3 > (y - CROWN_TOP - drop):
-                px[x, y] = TRANSPARENT
-
-    # The bulb sockets along the crown. Dark here; the marquee sheet is what
-    # lights them, so an unpowered machine still reads as a thing with bulbs.
-    span = (BODY_R + 2) - (BODY_L - 2)
+    # 3. THE HOOD, wider than the body and gold, with the bulb sockets in it.
+    #    It is the part that lights up, so the silhouette has to say so before
+    #    a single additive pixel is drawn on it.
+    _round_box(px, 1, CROWN_TOP + drop, CAB_W - 2, CROWN_BOTTOM + drop, TRIM, 2,
+               radius=3)
+    span = (CAB_W - 4) - 3
     for i in range(BULBS):
-        bx = BODY_L - 2 + round(i * span / (BULBS - 1))
+        bx = 3 + round(i * span / (BULBS - 1))
         by = CROWN_TOP + 3 + drop
         if 0 <= bx < CAB_W and 0 <= by < CAB_H and px[bx, by][3]:
-            _rect(px, bx, by, bx, by + 1, BULB, 0.42)
+            # A dark socket with a lit bead in it. Gold bulbs on a gold hood
+            # are invisible until the marquee sheet fires; the socket is what
+            # says "bulb" on an unpowered machine.
+            px[bx, by] = _step(TRIM, 0)
+            if by + 1 < CAB_H and px[bx, by + 1][3]:
+                px[bx, by + 1] = _step(BULB, 4)
 
-    # The glass band the reels sit behind: one recessed panel, so the three
-    # windows read as one instrument and not as three portholes. A chrome lip
-    # top and bottom is the bezel that band is set into.
-    _rect(px, BODY_L + 1, REEL_Y - 3 + drop, BODY_R - 1, REEL_Y + REEL_H + 2 + drop,
-          GLASSDARK, 0.75, 0.35)
+    # 4. THE FASCIA: one cream panel the three windows are cut into, with a gold
+    #    bezel top and bottom. One panel rather than three portholes, because
+    #    three cells on ONE line is the only rule this machine has.
+    _round_box(px, BODY_L + 1, REEL_Y - 3 + drop, BODY_R - 1, REEL_Y + REEL_H + 2 + drop,
+               PANEL, 3, radius=1)
     for lip in (REEL_Y - 3 + drop, REEL_Y + REEL_H + 2 + drop):
-        _rect(px, BODY_L + 1, lip, BODY_R - 1, lip, CHROME, 0.66)
+        for x in range(BODY_L + 2, BODY_R - 1):
+            px[x, lip] = _step(TRIM, 3)
     for index in range(3):
         rx, ry = _reel_slot(index)
-        _rect(px, rx, ry + drop, rx + REEL_W - 1, ry + REEL_H - 1 + drop, GLASSDARK, 0.18)
+        for y in range(ry + drop, ry + REEL_H + drop):
+            for x in range(rx, rx + REEL_W):
+                px[x, y] = _step(GLASSDARK, 1)
 
-    # THE PAY LINE: a brass tick in each of the two gaps BETWEEN the windows.
-    # It is the one piece of a slot machine that explains the rules without a
-    # word — three cells across one line — and it is why the client can flash
-    # that row and have it mean something. In the gaps rather than at the ends
-    # because the reels are blitted over their own windows every frame, and a
-    # marker inside one would be painted out on the first tick of a spin.
+    # THE PAY LINE: a gold tick in each of the two gaps BETWEEN the windows. It
+    # is the one piece of a slot machine that explains the rules without a word,
+    # and it is why the client can flash that row and have it mean something. In
+    # the gaps rather than in the windows, which are painted over every frame of
+    # a spin.
     mid = REEL_Y + REEL_H // 2 + drop
     for gap in range(2):
         tick = REEL_X + REEL_W + gap * (REEL_W + REEL_GAP)
-        _rect(px, tick, mid - 1, tick + REEL_GAP - 1, mid + 1, TRIM, 0.85)
+        for y in range(mid - 1, mid + 1):
+            for x in range(tick, tick + REEL_GAP):
+                px[x, y] = _step(TRIM, 4)
 
-    # The front panel under the glass: a brass strip, a maker's plate and two
-    # dead buttons. They do nothing — there is one control on this machine and
-    # it is the lever — but a fascia with no detail reads as an unfinished box.
-    plate_y = REEL_Y + REEL_H + 6
-    _rect(px, BODY_L + 2, plate_y + drop, BODY_R - 2, plate_y + 3 + drop, TRIM, 0.5, 0.2)
-    for row in range(2):
-        for slot in range(6):
-            gx = BODY_L + 5 + slot * 5
-            gy = plate_y + 1 + row + drop
-            if px[gx, gy][3]:
-                px[gx, gy] = pick(TRIM, 0.2, gx, gy)
-    for bx in (BODY_L + 5, BODY_L + 12):
-        _rect(px, bx, plate_y + 6 + drop, bx + 4, plate_y + 8 + drop, RED, 0.5)
-        _rect(px, bx, plate_y + 6 + drop, bx + 4, plate_y + 6 + drop, RED, 0.85)
+    # 5. THE COIN SLOT under the glass. Two rows of gold with a dark mouth: the
+    #    one detail on the fascia, and it is the one that says a machine like
+    #    this takes something from you.
+    slot_y = REEL_Y + REEL_H + 5 + drop
+    for x in range(CAB_W // 2 - 4, CAB_W // 2 + 4):
+        px[x, slot_y] = _step(TRIM, 3)
+        px[x, slot_y + 1] = _step(GLASSDARK, 1)
 
-    # The tray: a recess with a lip. Drawn dark and hollow so the eye reads a
-    # HOLE, which is what makes a canister appearing in it read as delivery.
-    _rect(px, TRAY_L, TRAY_TOP + drop, TRAY_R, TRAY_BOTTOM + drop, GLASSDARK, 0.9, 0.5)
-    _rect(px, TRAY_L - 2, TRAY_BOTTOM + drop, TRAY_R + 2, TRAY_BOTTOM + 2 + drop,
-          CHROME, 0.6, 0.3)
+    # 6. THE TRAY: a recess with a gold lip. Drawn dark and hollow so the eye
+    #    reads a HOLE, which is what makes a canister appearing in it read as a
+    #    delivery rather than as a sprite that faded in.
+    for y in range(TRAY_TOP + drop, TRAY_BOTTOM + drop):
+        for x in range(TRAY_L, TRAY_R + 1):
+            px[x, y] = _step(GLASSDARK, 1 if y == TRAY_TOP + drop else 0)
+    # A gold surround, all the way round the hole. Without it the tray is a
+    # black rectangle painted on a red box; with it, it is a mouth in a machine.
+    for x in range(TRAY_L - 1, TRAY_R + 2):
+        for y in (TRAY_TOP - 1 + drop, TRAY_BOTTOM + drop, TRAY_BOTTOM + 1 + drop):
+            if 0 <= y < CAB_H:
+                px[x, y] = _step(TRIM, 3 if y != TRAY_BOTTOM + 1 + drop else 1)
+    for y in range(TRAY_TOP + drop, TRAY_BOTTOM + drop):
+        for x in (TRAY_L - 1, TRAY_R + 1):
+            px[x, y] = _step(TRIM, 2)
 
-    # THE STORY, and it costs twenty pixels: a car battery on the ground beside
-    # the plinth with a cable running up into the base. Nobody built this here;
-    # somebody found it and got it running.
-    bat_top = floor - 8
-    _rect(px, BODY_R + 1, bat_top, BODY_R + 5, floor - 1, BATTERY, 0.6, 0.25)
-    _rect(px, BODY_R + 2, bat_top - 1, BODY_R + 2, bat_top - 1, TRIM, 0.7)
-    _rect(px, BODY_R + 4, bat_top - 1, BODY_R + 4, bat_top - 1, RED, 0.7)
-    for step, y in enumerate(range(bat_top - 8, bat_top)):
-        cx = BODY_R + 1 - (7 - step) // 2
-        if 0 <= cx < CAB_W:
-            px[cx, y] = pick(CABLE, 0.6, cx, y)
-
-    # Dents. Seeded, so the wreck is the same wreck every build.
-    for _ in range(26):
-        dx = rng.randint(BODY_L, BODY_R)
-        dy = rng.randint(CROWN_BOTTOM + 2, floor - 13)
-        if px[dx, dy][3] == 0:
-            continue
-        px[dx, dy] = pick(SHELL, 0.22 + hash01(dx, dy, 3) * 0.18, dx, dy)
+    # 7. THE LEVER POST: a short gold stub on the right flank for the arm to
+    #    pivot on, so the sheet the client blits over it has something to be
+    #    attached to at every angle.
+    ax, ay = LEVER_ANCHOR
+    for y in range(ay - 1 + drop, ay + 2 + drop):
+        for x in range(BODY_R - 1, min(CAB_W - 1, ax + 1)):
+            px[x, y] = _step(TRIM, 2)
 
     outline(img, OUTLINE)
     return img
+
 
 
 # --- the reel band ----------------------------------------------------------
@@ -375,7 +418,7 @@ def make_lever(frame: int, frames: int) -> Image.Image:
     # horizontal: an arm that ends level reads as a handle that came off.
     angle = math.radians(-72.0 + t * 118.0)
     pivot_x, pivot_y = LEVER_PIVOT
-    reach_x, reach_y = 9.0, 15.0
+    reach_x, reach_y = 6.0, 10.0
 
     steps = 22
     for step in range(steps + 1):
@@ -385,21 +428,24 @@ def make_lever(frame: int, frames: int) -> Image.Image:
         ix, iy = int(round(x)), int(round(y))
         if not (0 <= ix < LEVER_W and 0 <= iy < LEVER_H):
             continue
-        px[ix, iy] = pick(CHROME, 0.78 - f * 0.18, ix, iy)
+        px[ix, iy] = _step(CHROME, 4)
         # A second column, so the shaft has thickness and does not disappear
         # into the cabinet behind it at the angles where it is nearly vertical.
         if ix + 1 < LEVER_W:
-            px[ix + 1, iy] = pick(CHROME, 0.46 - f * 0.12, ix + 1, iy)
+            px[ix + 1, iy] = _step(CHROME, 2)
 
     bx = pivot_x + math.cos(angle) * reach_x
     by = pivot_y + math.sin(angle) * reach_y
-    for dy in range(-3, 4):
-        for dx in range(-3, 4):
-            if dx * dx + dy * dy > 10:
+    for dy in range(-2, 3):
+        for dx in range(-2, 3):
+            if dx * dx + dy * dy > 5:
                 continue
             ix, iy = int(round(bx + dx)), int(round(by + dy))
             if 0 <= ix < LEVER_W and 0 <= iy < LEVER_H:
-                px[ix, iy] = pick(RED, 0.92 - (dx + dy) * 0.07, ix, iy)
+                # One white bead top-left, which is the whole cartoon
+                # highlight vocabulary and the reason the knob reads as a
+                # sphere at five pixels across.
+                px[ix, iy] = _step(RED, 4) if (dx, dy) == (-1, -1) else _step(RED, 3)
     outline(img, OUTLINE)
     return img
 
@@ -422,10 +468,10 @@ def make_marquee(frame: int, frames: int) -> Image.Image:
         # Each bulb peaks a fraction of a cycle after the one to its left.
         local = (phase - i / BULBS) % 1.0
         heat = max(0.0, 1.0 - abs(local - 0.5) * 3.2)
-        ellipse(field, bx, 7.0, 2.6, 2.6, 0.55 + heat * 1.5)
-        ellipse(field, bx, 7.0, 5.4, 4.6, 0.12 + heat * 0.3)
+        ellipse(field, bx, 5.0, 2.2, 2.2, 0.55 + heat * 1.5)
+        ellipse(field, bx, 5.0, 4.4, 3.8, 0.12 + heat * 0.3)
     # The wash the whole crown throws down over the glass.
-    ellipse(field, MARQUEE_W / 2.0, 14.0, 25.0, 9.0, 0.28)
+    ellipse(field, MARQUEE_W / 2.0, 11.0, 17.0, 7.0, 0.28)
     img = Image.new("RGBA", (MARQUEE_W, MARQUEE_H), TRANSPARENT)
     resolve(field, img, BEAM)
     return img
@@ -441,9 +487,13 @@ def make_window(frame: int, frames: int) -> Image.Image:
     field = [[0.0] * WINDOW_W for _ in range(WINDOW_H)]
     sag = 0.88 + 0.12 * math.sin(frame / frames * math.tau)
     for index in range(3):
-        cx = 6.0 + index * (REEL_W + REEL_GAP)
-        ellipse(field, cx, WINDOW_H / 2.0, 5.4, 9.0, 0.85 * sag)
-        ellipse(field, cx, WINDOW_H / 2.0, 9.0, 11.0, 0.2 * sag)
+        # Centred on the glass the client centres this sheet on, derived from
+        # the same three numbers rather than eyeballed — see `drawMachineLight`.
+        cx = (WINDOW_W - (3 * REEL_W + 2 * REEL_GAP)) / 2.0 + index * (
+            REEL_W + REEL_GAP
+        ) + REEL_W / 2.0
+        ellipse(field, cx, WINDOW_H / 2.0, 4.0, 6.5, 0.85 * sag)
+        ellipse(field, cx, WINDOW_H / 2.0, 6.5, 8.0, 0.2 * sag)
     img = Image.new("RGBA", (WINDOW_W, WINDOW_H), TRANSPARENT)
     resolve(field, img, BEAM)
     return img
@@ -463,12 +513,12 @@ def make_burst(frame: int, frames: int) -> Image.Image:
     field = [[0.0] * BURST for _ in range(BURST)]
     t = frame / max(1, frames - 1)
     cx = cy = BURST / 2.0
-    grow = 4.0 + t * 26.0
+    grow = 3.0 + t * 19.0
     fade = (1.0 - t) ** 1.6
     ellipse(field, cx, cy, grow, grow * 0.82, 1.5 * fade, hollow=0.62)
-    ellipse(field, cx, cy, 6.5 - t * 4.0, 6.5 - t * 4.0, 2.2 * (1.0 - t) ** 3)
+    ellipse(field, cx, cy, 5.0 - t * 3.0, 5.0 - t * 3.0, 2.2 * (1.0 - t) ** 3)
     # Four spikes, on the diagonals so they do not sit on the ring's own axes.
-    reach = 8.0 + t * 26.0
+    reach = 6.0 + t * 19.0
     for angle in (0.7854, 2.3562, 3.9270, 5.4978):
         for step in range(int(reach)):
             f = step / max(1.0, reach)
@@ -487,7 +537,7 @@ def build(args) -> Path:
     out_dir = PROCESSED_DIR / "machine"
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    cabinets = [make_cabinet(random.Random(args.seed), settled) for settled in (False, True)]
+    cabinets = [make_cabinet(settled) for settled in (False, True)]
     pack(cabinets, CAB_W, CAB_H).save(out_dir / "cabinet.png")
 
     strip = make_strip()

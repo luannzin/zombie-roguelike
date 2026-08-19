@@ -531,8 +531,6 @@ export class Game {
    * been there since before they left the deck.
    */
   private balanceShown = 0;
-  /** Render-clock time the extraction exit opened. Drives the beacon's flare. */
-  private egressAt = 0;
   /** Seconds until the next spatial ping from the exit's mouth. */
   private beaconLeft = 0;
   /**
@@ -1741,11 +1739,17 @@ export class Game {
   /**
    * THE EXIT OPENED. Three channels, and the split is the whole point.
    *
-   * WORLD    a column of light straight up over the treeline
-   *          (`drawEgressBeacon`), plus the four torches at the threshold. It
-   *          is drawn in world space, so it is only on screen when the camera
-   *          is pointed at it — which is what turns finding the way out into
-   *          looking for something rather than following a marker.
+   * WORLD    the four torches at the threshold, and the paving under them.
+   *          THERE IS NO LIGHT COLUMN ANY MORE. There used to be one — a beam
+   *          thrown straight up over the treeline, drawn in world space so
+   *          finding the way out was a matter of looking. What killed it was
+   *          not the idea: it was drawn off `world.egress`, and the SHOP has
+   *          an egress too (its north corridor), so the merchant's clearing
+   *          got a flaring pillar of light standing in its exit every time the
+   *          party walked in shortly after calling the pickup. A navigation
+   *          aid that fires in the one zone with nothing to navigate is a bug
+   *          in the world, and the HUD and audio channels below already carry
+   *          the job on their own.
    * HUD      the quest row announces itself at top-centre and flies into the
    *          card, exactly as every other objective does, and the chevron
    *          burns for a few seconds and then FADES OUT. It is a statement,
@@ -1756,7 +1760,6 @@ export class Game {
    *          moment they need it.
    */
   private onExitOpened(): void {
-    this.egressAt = this.time;
     playSfx('siren', { jitter: 0, rate: 0.72, gain: 0.55 });
     playSfx('void', { jitter: 0, delay: 0.25 });
     this.beaconLeft = BEACON_PING_INTERVAL;
@@ -2636,7 +2639,6 @@ export class Game {
       ambient: this.zone?.ambient ?? 0,
       store: this.storeScene(),
       payout: this.payout,
-      egressAge: this.world?.egress ? this.time - this.egressAt : 0,
       balance: this.balance,
       effects: this.effects,
       // The merchant's camp runs the darkness like every other forest map: it

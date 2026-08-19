@@ -22,9 +22,9 @@ imported by `app/` and never run at request time.
 | `make_gore.py` | generates final pixels | `assets/processed/gore/` (6 wound decals worn by a hit body) |
 | `make_loot.py` | generates final pixels | `assets/processed/loot/` (one 16x16 frame per item, including gun icons) |
 | `make_guns.py` | generates final pixels | `assets/processed/guns/` (held side-view, one 18x8 frame per weapon, plus its carry pose) |
-| `make_merchant.py` | generates final pixels | `assets/processed/merchant/` (the shopkeeper: `idle` loop plus three one-shot flourishes — `coat`, `beckon`, `coin` — and the manifest's `randomClips` / `randomGap` that drive them) |
-| `make_store.py` | generates final pixels | `assets/processed/store/` (the merchant's own kit: his WAGON ×1 and counter ×1, round table ×4 with `topY`, `kit` ×5 — crates, a barrel of rods, a rack, a shelf, a padlocked strongbox, all drawn SHUT because nothing in this zone opens — torch ×2 with `flameY`, rug, torchfire, buy glow) |
-| `make_machine.py` | generates final pixels | `assets/processed/machine/` (the upgrade cabinet: body ×2 idle/settled with the reel windows, pay line, lever pivot and tray mouth in its manifest; `strip.png` — the reel BAND, one tall image of ten cells the client scrolls; lever ×6 sweeping on a real angle; marquee, reel backlight and payout burst, all greyscale so the client can tint them by rarity) |
+| `make_merchant.py` | generates final pixels | `assets/processed/merchant/` (the shopkeeper — green coat, brimmed HAT, a face with two eyes in it: `idle` loop plus three one-shot flourishes — `coat`, `beckon`, `coin` — and the manifest's `randomClips` / `randomGap` that drive them) |
+| `make_store.py` | generates final pixels | `assets/processed/store/` (the merchant's own kit, all in the shop's own warm `WOOD`/`LINEN` and flat-filled: his WAGON ×1 and counter ×1, small round table ×4 with `topY`, `kit` ×5 — crates, a barrel of rods, a rack, a shelf, a padlocked strongbox, all drawn SHUT because nothing in this zone opens — torch ×2 with `flameY`, rug, torchfire, buy glow) |
+| `make_machine.py` | generates final pixels | `assets/processed/machine/` (the upgrade cabinet, two tiles wide and cartoon-flat: body ×2 idle/settled with the reel windows, pay line, lever pivot and tray mouth in its manifest; `strip.png` — the reel BAND, one tall image of ten cells the client scrolls; lever ×6 sweeping on a real angle; marquee, reel backlight and payout burst, all greyscale so the client can tint them by rarity) |
 | `make_skills.py` | generates final pixels | `assets/processed/skills/` (one 16x16 icon per skill in catalog order, plus the CANISTER in five rarity colourways — a dark pass and an emissive pass, with the icon window's rectangle on the manifest) |
 | `make_hud_icons.py` | generates final pixels | `assets/processed/hud/` (battery, backpack, coin, darkcoin, arrow, chevron) |
 | `make_audio.py` | generates final samples | `assets/processed/audio/` (43 sounds, 80 wavs + manifest + loudness.json) |
@@ -342,37 +342,50 @@ imported by `app/` and never run at request time.
 - **`make_store.py` draws only what the trader BROUGHT.** No ground, no walls:
   the clearing is `make_textures.py`'s soil and trees. A store-specific floor
   would put a rectangle of somewhere else in the middle of a forest.
-- **THE WAGON IS THE ONE SPRITE IN THE GAME THAT CARRIES THE WORLD'S
-  HISTORY.** Guns racked on the flank, masks strung on a line, salvage lashed
-  to the boards, and two covered bodies laid out at the wheels. The bodies are
-  the loudest thing on it and are drawn as quietly as they can be — two long
-  shapes under a tarp with one pair of boots out the end, laid out neatly, at
-  the edge of the frame. A trader who displayed corpses would be a villain and
-  this man is not one; a trader who has two of them covered beside his cart is
-  somebody doing an unpleasant job carefully.
-- **THE STALLS ARE ROUND BECAUSE THEY ARE WALKED AROUND.** They were trestles
-  when the shop was a lane and the party passed them in single file. The stock
-  now stands in a grid in the middle of a room, so every table is approached
-  from any side: a rectangular board has a front and a back and reads wrong
-  from three of them, and a disc reads the same from all four. Four pedestals
-  under four discs — the disc is the constant the eye reads and the leg is
-  where the variation goes.
+- **THE WAGON SAYS HE TRAVELS AND LIVES OUT OF IT, AND NOTHING WORSE.** Guns
+  racked on the flank, a line of lanterns under the eave, crates roped at the
+  wheels, a lamp on the front bow. It used to hang BONE MASKS on that line and
+  lay two covered bodies with their boots out at the front wheel — the argument
+  being that the party should work out where the stock comes from on their own.
+  The argument was fine and the result was not: the shop is the one beat of the
+  loop that exists as relief from the night, and the biggest sprite in it was a
+  cart with corpses under a tarp. THE RULE FOR THIS WHOLE FOLDER'S SHOP ART: it
+  may be poor, worn and improvised; it may not be grim.
+- **THE SHOP HAS ITS OWN TIMBER AND ITS OWN SHADING.** `WOOD` and `LINEN` in
+  `make_store.py` are a step warmer and a step brighter than `make_scenery`'s
+  `PLANK` and `CANVAS`, and everything on the pitch is filled FLAT (`flat()`,
+  exact ramp steps) instead of dithered with `pick`. Two reasons, and both are
+  about size: these props are half the size they were, and at that size a Bayer
+  checker between two browns reads as dirt rather than as grain. Scenery is
+  something you FIND and can be filthy; a shop is something somebody keeps.
+- **THE STALLS ARE ROUND BECAUSE THEY ARE WALKED AROUND, AND SMALL BECAUSE
+  THEY ARE FURNITURE.** Round: every table is approached from any side, and a
+  rectangular board has a front and a back that read wrong from three of them.
+  Four pedestals under four discs — the disc is the constant the eye reads and
+  the leg is where the variation goes. SMALL: they were 2.25 x 2 tiles, taller
+  than the gun lying on them and nearly as wide as the merchant, which put six
+  objects in the middle of the shop that outweighed everything they were
+  selling. 1.5 x 1.25 makes a pedestal a stand for a weapon rather than a piece
+  of scenery with a weapon on it. Keep the leg THICK relative to the top: a
+  wide disc on a thin stalk is a mushroom, which is exactly what the first pass
+  of these looked like standing in a forest.
 - **HIS GEAR IS DRAWN SHUT, and that is a gameplay contract in the art.** The
   player spent the previous night learning that a box in this game is a thing
   you open, so every frame of `kit.png` is roped, strapped, lidded or padlocked
   — a silhouette that reads "closed" is what keeps a safe zone from reading as
   unclaimed loot, and it is cheaper than any amount of prompt suppression.
-- **THE MACHINE IS A WRECK SOMEBODY WIRED UP.** `make_machine.py` draws a
-  dented cabinet with its chrome gone, one corner of the marquee smashed off,
-  and a car battery on the ground beside it with a cable running into the base.
-  That cable is the whole answer to "why is there a slot machine in a forest",
-  and it costs twenty pixels. What may NOT be subtle is the vocabulary: three
-  lit windows in a row, a crown of bulbs, a lever on the right and a tray at
-  the bottom, because a player has to read it from across the clearing, before
-  any prompt, and think *that thing is for me*. It is three tiles wide and four
-  and a half tall — it grew when the shop became a room, because a cabinet that
-  was the last thing on a walk had a corridor's worth of attention and one
-  standing alone on an arc has to hold the eye from the middle of the room.
+- **THE MACHINE IS A TOY AND IT USED TO BE A WRECK.** `make_machine.py` drew a
+  three-tile dented grey cabinet with its chrome gone, a smashed marquee corner
+  and a car battery cabled to the base — the argument being that a clean
+  machine would be the one object in the game that came from a different one.
+  It failed twice over: at that size it was a wall in a small shop, and a dark
+  dented box at night is indistinguishable from the market stalls beside it. It
+  is 32x46 now — two tiles wide — and drawn FLAT in three colours: a gold hood
+  with bulb sockets, a red shell, a cream fascia. The vocabulary is what may
+  never be subtle: three windows in a row, a hood of bulbs, a lever on the
+  right, a tray at the bottom, because a player has to read it from the door,
+  before any prompt, and think *that thing is for me*. Grime is not part of
+  that vocabulary and at this size it is noise on top of it.
 - **THE REEL IS A BAND, NOT A FRAME NUMBER.** `strip.png` is one tall image of
   ten cells in a FIXED, deliberately unsorted order, and the client scrolls a
   one-cell window over it. It used to be nine sprites — four frames of blur
@@ -410,6 +423,14 @@ imported by `app/` and never run at request time.
   interrupt (`randomClips`) and how long the gaps are (`randomGap`). Adding a
   fourth flourish is a recipe here plus a name on that list — the client reads
   both and needs no change. Nothing about him is on the wire.
+- **HE HAS A FACE, AND THAT IS NOT A DETAIL.** He was a cold grey-blue hooded
+  figure whose face was six pixels of void with one eye glint in it. That is
+  the same silhouette this game uses for everything that wants to kill you, and
+  it was survivable only while he stood on a dark rim; he is the thing in the
+  MIDDLE of the shop now. So: a brimmed hat instead of a hood, skin with two
+  eyes under it, a red scarf, and a GREEN coat — green because he is otherwise
+  always seen against warm timber (his cart, his counter, his mat) and a brown
+  coat put a brown man in front of a brown wagon.
 
 ## Work Guidance
 

@@ -365,11 +365,18 @@ seam React is allowed to read.
   for as long as the way out is uncrossed. `hud-store.exitGuide` is ONE BIT
   (there is an uncrossed exit) and the envelope lives in `hud/ExitGuide` on the
   render clock, because its ramps are shorter than the store's 200 ms
-  republish. The other three channels carry the dark beats: the COLUMN of light
-  over the treeline (`drawEgressBeacon`, world space, so it is only on screen
-  when you look toward it), the four torches at the threshold, and a slow
-  spatial PING from the mouth (`Game.stepBeacon`) — which is the one that still
-  works while the player is looking the other way. The quest row is an ORDER
+  republish. The other two channels carry the dark beats: the four torches at
+  the threshold, and a slow spatial PING from the mouth (`Game.stepBeacon`) —
+  which is the one that still works while the player is looking the other way.
+  THERE IS NO COLUMN OF LIGHT ANY MORE. `drawEgressBeacon` threw one straight
+  up over the treeline in world space, which was the best of the four channels
+  right up until somebody noticed it was drawn off `world.egress` — and the
+  SHOP has an egress (its north corridor). A party who walked into the
+  merchant's clearing soon after calling the pickup got a flaring pillar
+  standing in the exit of the one zone with nothing to navigate. It was deleted
+  rather than special-cased: a marker that has to ask which map it is on is a
+  marker that belongs to the map, and the exit already had three channels. The
+  quest row is an ORDER
   now rather than a task (`quests.EXIT_LABEL`): the night is over and they are
   still in it.
 - **A SNARL IS QUEUED, NOT PLAYED** (`Game.drainAlertQueue`). One creature

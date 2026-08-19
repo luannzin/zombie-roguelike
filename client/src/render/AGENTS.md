@@ -22,7 +22,7 @@ mutation, no React.
 | `rift.ts` | threshold atlas: the console prop with its four STATES, the torch prop and its fire, the paid console's band, the exit's paving |
 | `platform.ts` | extraction atlas: the cargo skid (cold / green standby / red alarm) and lift drone (hover / cruise) props, rotor / strobe / standby / siren / downwash / burst effect sheets, the imprint decal, and the `layout` block the ropes and lamps are drawn from |
 | `layers/rift.ts` | extraction pads: the whole rig's timing (`riftPhase`) plus its four passes — floor, depth sort, the air, additive light — and the deck's LOAD, both the pile at rest and what is still falling into it |
-| `store.ts` | the merchant's own kit: his WAGON and his counter, the six round tables (with `topY`), his gear (`kit`), torches (with `flameY`), the mat, the torch fire and the buy pool — plus the HUD coin the price tag draws |
+| `store.ts` | the merchant's own kit: his WAGON and his counter, the six small round tables (with `topY`), his gear (`kit`), torches (with `flameY`), the mat, the torch fire and the buy pool — plus the HUD coin the price tag draws |
 | `machine.ts` | the upgrade cabinet's atlas: body, the reel BAND (`strip.png` — one tall image, scrolled and wrapped), lever, pay line, and the three greyscale lights (marquee, reel backlight, payout burst) the layer tints |
 | `skills.ts` | skill icons and the canister, plus `drawCanister` — body, icon, emissive pass, in that unnegotiable order |
 | `merchant.ts` | the shopkeeper's clips and the player that picks between them (`MerchantPose`, `stepMerchant`, `merchantFrame`) |
@@ -493,18 +493,31 @@ mutation, no React.
   kind that already draws itself over a sixth entry point in `layers/store`.
 - **It runs the darkness like every other forest map**, on an ambient FLOOR
   (`zones.STORE_AMBIENT`) rather than on a branch in the renderer. The whole
-  room is legible from the middle of it and his fire, the torch RING around the
+  room is legible from the middle of it and his fire, the torches around the
   rim and the cabinet's marquee are still the brightest things in it. The
-  lantern is off here; the ring is what says "this is a room" before anything
-  standing in it is read, and its spacing is chosen so the pools overlap into
-  one continuous lit rim, because a chain of separate islands of light reads as
-  somewhere to be careful — the opposite of what this zone is for.
+  lantern is off here; the torches are what say "somebody lit this" before
+  anything standing in them is read.
+- **THE AMBIENT FLOOR AND EVERY ADDITIVE LIGHT ON TOP OF IT ARE ONE BUDGET.**
+  `drawSceneLights`, `drawFires`, `drawStoreLight` and `drawPayoutLight` all
+  composite with `lighter`, which SUMS — nothing in this renderer clamps a
+  total. The shop is the only zone that stacks a high ambient floor, a ring of
+  torches, a campfire and three landing platforms in one small room, and it
+  went FLAT WHITE on arrival. The loudest contributor was `drawPayoutLight`:
+  three skids setting down within five tiles of each other, each with a
+  seven-tile `downwash` sheet at 0.85 — two overlapping is already 1.7 of a
+  full-bright sheet, before eight rotors at 0.9 and eight strobes at 0.8 go on
+  top. The fix is spent on both sides (the skids land far apart and the ambient
+  floor and torch ring came down on the server; the alphas here came down with
+  them) and it stays a shared budget: adding a light source here means taking
+  brightness out of another one, and "it looked fine on my screenshot" is not a
+  check — walk in during a three-platform payout.
 - **A price tag is the shop talking, not an object in the room.** It is drawn
   in the label pass so nothing can occlude it, and it is on the world rather
   than in the HUD because "what is that and what does it cost" has to be
   answerable from the middle of the clearing. It carries the item's NAME in its
   rarity colour above the price, and that is what the GRID cost: six pedestals
-  in a square are compared at a glance instead of walked past in order, the
+  laid out in front of the man are compared at a glance instead of walked past
+  in order, the
   stock is rolled WITH REPLACEMENT so two of them really can be the same gun at
   two prices, and six bare numbers over six identical tables is a puzzle. An
   unaffordable price is MUTED, never hidden: a shop that greys out its own

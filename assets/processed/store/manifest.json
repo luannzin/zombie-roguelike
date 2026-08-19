@@ -4,35 +4,35 @@
   "props": {
     "table": {
       "file": "table.png",
-      "frameWidth": 36,
-      "frameHeight": 32,
+      "frameWidth": 24,
+      "frameHeight": 20,
       "frames": 4,
       "sway": 0,
       "topY": [
-        7,
         6,
-        10,
-        5
+        7,
+        5,
+        8
       ]
     },
     "kit": {
       "file": "kit.png",
-      "frameWidth": 26,
-      "frameHeight": 24,
+      "frameWidth": 22,
+      "frameHeight": 20,
       "frames": 5,
       "sway": 0
     },
     "wagon": {
       "file": "wagon.png",
-      "frameWidth": 96,
-      "frameHeight": 80,
+      "frameWidth": 72,
+      "frameHeight": 56,
       "frames": 1,
       "sway": 0
     },
     "counter": {
       "file": "counter.png",
-      "frameWidth": 35,
-      "frameHeight": 22,
+      "frameWidth": 30,
+      "frameHeight": 20,
       "frames": 1,
       "sway": 0
     },

@@ -27,7 +27,6 @@ import { DarknessLayer } from './layers/darkness';
 import { crateAnimFrame, drawFootprints, drawSceneryProp } from './layers/scenery';
 import { drawBloodPools } from './layers/corpses';
 import {
-  drawEgressBeacon,
   drawEgressFire,
   drawEgressGround,
   drawRiftAir,
@@ -499,17 +498,6 @@ export class Renderer {
     // them — and once every pad has flown these are the only fire left burning
     // anyway.
     drawEgressFire(ctx, this.riftAtlas, state.world.egress, state.time);
-    // The column over the treeline. Before the pads' own light, because a
-    // platform under power is the brighter thing and should sit over it —
-    // though by the time this exists every pad has already flown.
-    drawEgressBeacon(
-      ctx,
-      state.world.egress,
-      state.world.tileSize,
-      state.time,
-      state.egressAge,
-      palette().scene.beacon,
-    );
     drawRiftFire(ctx, this.riftAtlas, state.world.rifts, state.time);
     // The rigs' own light, last of the additive passes: rotor wash, the burst
     // and four sets of nav lights are the brightest things on the map once a

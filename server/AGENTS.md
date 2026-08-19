@@ -36,8 +36,11 @@ pipeline that produces everything the client renders.
 
 ## Verification
 
-- `python tests/test_snapshot_shape.py` and `python tests/test_pour.py` from
-  `server/`. Plain scripts, no runner, each prints `ok`.
+- `python tests/test_snapshot_shape.py`, `python tests/test_pour.py` and
+  `python tests/test_store_walk.py` from `server/`. Plain scripts, no runner,
+  each prints `ok`. The last one flood-fills the shop and fails if the exit,
+  the merchant, a stall or the cabinet cannot be walked to — run it after any
+  edit to `store.py`'s layout offsets.
 - Then run the server and join from two browser tabs; check the server stays at
   a steady tick and no client rubber-bands.
 

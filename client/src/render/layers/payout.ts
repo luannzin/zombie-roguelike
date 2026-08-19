@@ -155,6 +155,16 @@ export function drawPayoutRigs(
  * the skid is close enough to the ground for the downdraft to hit it, and it
  * is what makes a landing feel like air moving rather than like a sprite
  * arriving at a Y coordinate.
+ *
+ * EVERY ALPHA HERE IS DELIBERATELY LOW, because three pads land at once in the
+ * one lit room in the game. `lighter` SUMS and nothing clamps the total: the
+ * wash sheet is seven tiles wide, the pads used to set down within five tiles
+ * of each other, and at the old 0.85 two overlapping washes were already 1.7
+ * of a full-bright sheet — before eight rotors and eight strobes went on top
+ * of them, on the shop's ambient floor. That is how the apron saturated to
+ * flat white for the length of a payout. The other half of the fix is on the
+ * server (`store.PAYOUT_SPOTS` now land far enough apart that the washes do
+ * not touch); it is one budget, documented at `zones.STORE_AMBIENT`.
  */
 export function drawPayoutLight(
   ctx: CanvasRenderingContext2D,
@@ -178,7 +188,7 @@ export function drawPayoutLight(
     if (wash && progress > 0.55) {
       const bite = (progress - 0.55) / 0.45;
       const step = Math.floor(time * wash.fps) % wash.frames;
-      ctx.globalAlpha = bite * 0.85 * fade;
+      ctx.globalAlpha = bite * 0.5 * fade;
       ctx.drawImage(
         wash.image,
         step * wash.frameWidth, 0, wash.frameWidth, wash.frameHeight,
@@ -197,7 +207,7 @@ export function drawPayoutLight(
         pad.y - lift + eye.dy - atlas.layout.ropeLength - (leaving < 0 ? 0 : leaving * CLIMB);
       if (rotor) {
         const step = Math.floor(time * rotor.fps + corner * 2) % rotor.frames;
-        ctx.globalAlpha = 0.9 * fade;
+        ctx.globalAlpha = 0.6 * fade;
         ctx.drawImage(
           rotor.image,
           step * rotor.frameWidth, 0, rotor.frameWidth, rotor.frameHeight,
@@ -208,7 +218,7 @@ export function drawPayoutLight(
       }
       if (strobe) {
         const step = Math.floor(time * strobe.fps + corner * 3) % strobe.frames;
-        ctx.globalAlpha = 0.8 * fade;
+        ctx.globalAlpha = 0.6 * fade;
         ctx.drawImage(
           strobe.image,
           step * strobe.frameWidth, 0, strobe.frameWidth, strobe.frameHeight,

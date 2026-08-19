@@ -263,6 +263,18 @@ FOOTPRINTS: dict[str, tuple[int, int, int]] = {
     "barrel": (1, 1, LOW),
     "drum": (1, 1, LOW),
     "fuel_drum": (1, 1, LOW),
+    # Eight crates, one tile each — the stacked one included. It is drawn two
+    # boxes tall and it still stands on one footprint, which is the same rule
+    # the statue and the bus follow: you claim the ground the thing touches,
+    # not the air above it.
+    "crate": (1, 1, LOW),
+    "crate_broken": (1, 1, LOW),
+    "crate_braced": (1, 1, LOW),
+    "crate_stacked": (1, 1, LOW),
+    "crate_battered": (1, 1, LOW),
+    "crate_rotted": (1, 1, LOW),
+    "crate_ironbound": (1, 1, LOW),
+    "crate_collapsed": (1, 1, LOW),
     "box": (1, 1, LOW),
     "ammo_case": (1, 1, LOW),
     "tote": (1, 1, LOW),
@@ -439,6 +451,24 @@ STASH_POOL = (
 
 BARREL_POOL = (("barrel", 46.0), ("drum", 34.0), ("fuel_drum", 20.0))
 
+#: Crates, weighted by how much of the forest is wreckage. The three CLEAN
+#: builds — plain, braced, ironbound — are together a third of the pool, and
+#: that split is the point of drawing eight of them: a player who learns the
+#: silhouettes is reading a table before they commit to the walk, and a pool
+#: where the good builds were common would turn that reading into a formality.
+#: The other five are what a year outdoors does, and they are the ones that
+#: teach the shapes, because they are the ones you keep seeing.
+CRATE_POOL = (
+    ("crate", 22.0),
+    ("crate_broken", 16.0),
+    ("crate_battered", 15.0),
+    ("crate_rotted", 13.0),
+    ("crate_collapsed", 12.0),
+    ("crate_stacked", 10.0),
+    ("crate_braced", 7.0),
+    ("crate_ironbound", 5.0),
+)
+
 
 def _from_pool(rng: random.Random, pool, dx: float, dy: float) -> Piece:
     total = sum(weight for _, weight in pool)
@@ -585,6 +615,11 @@ def _checkpoint(rng: random.Random) -> Layout:
     if rng.random() < 0.6:
         pieces.append(Piece("ammo_case", STANDING, rng.uniform(2.5, width - 2.5),
                             row + rng.uniform(1.4, 2.6), 0, rng.random() < 0.5))
+    # What the roadblock was issued. Behind the line, so reading it means
+    # committing to the gap first.
+    for _ in range(rng.randint(1, 2)):
+        pieces.append(_from_pool(rng, CRATE_POOL, rng.uniform(2.5, width - 2.5),
+                                 row + rng.uniform(-2.4, -1.2)))
     pieces.append(Piece("sign", STANDING, gap + 0.5, row - 0.4, rng.randrange(3)))
     for _ in range(rng.randint(2, 5)):
         pieces.append(Piece("debris", DECAL, rng.uniform(2, width - 2),
@@ -619,7 +654,14 @@ def _haulage(rng: random.Random) -> Layout:
         t = rng.random()
         x = width * 0.52 + t * width * 0.42
         y = cy + rng.uniform(-1.0 - t * 2.0, 1.4 + t * 2.0)
-        pieces.append(_from_pool(rng, BARREL_POOL if rng.random() < 0.55 else STASH_POOL, x, y))
+        # CRATES ARE THE LOAD, and this is the scene they belong to before any
+        # other: a lorry sheds boxes, not bins. They lead the roll here, which
+        # is also the only place in the forest a player reliably sees several
+        # of the eight builds side by side — which is how the silhouettes get
+        # learned in the first place.
+        roll = rng.random()
+        pool = CRATE_POOL if roll < 0.5 else BARREL_POOL if roll < 0.78 else STASH_POOL
+        pieces.append(_from_pool(rng, pool, x, y))
     for _ in range(rng.randint(2, 4)):
         pieces.append(Piece("debris", DECAL, rng.uniform(2, width - 1),
                             cy + rng.uniform(-2.5, 2.5), rng.randrange(6)))
@@ -842,7 +884,8 @@ def _dumpsite(rng: random.Random) -> Layout:
     cx, cy = width / 2, height / 2
     pieces = [Piece("debris", DECAL, cx + rng.uniform(-1, 1), cy + rng.uniform(-1, 1), 5)]
     for _ in range(rng.randint(3, 6)):
-        pieces.append(_from_pool(rng, BARREL_POOL, cx + rng.uniform(-2.6, 2.6),
+        pieces.append(_from_pool(rng, BARREL_POOL if rng.random() < 0.55 else CRATE_POOL,
+                                 cx + rng.uniform(-2.6, 2.6),
                                  cy + rng.uniform(-1.8, 2.2)))
     for _ in range(rng.randint(1, 3)):
         pieces.append(_from_pool(rng, STASH_POOL, cx + rng.uniform(-2.8, 2.8),

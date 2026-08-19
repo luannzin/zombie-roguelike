@@ -1,28 +1,80 @@
 #!/usr/bin/env python3
-"""Asset pipeline: held gun sprites.
+"""Asset pipeline: held weapon sprites.
 
-Side-view, pointing RIGHT, one frame per weapon — the knife included, since
-a blade in the hand is drawn by exactly the same code as a barrel in the
-hand. The client rotates the frame around the grip and mirrors it when the
+Twelve weapons, one frame each, drawn from ABOVE at the same high 3/4 the rest
+of the world is drawn at (PIXEL-ART-DIRECTION.md S1). The knife is on the sheet
+too, since a blade in the hand is drawn by exactly the same code as a barrel in
+the hand. The client rotates the frame around the grip and mirrors it when the
 aim is left, so a single row is every facing.
 
-These are IN HAND, not loot icons. Ground / HUD icons live in
-make_loot.py under the same keys, because a drop is a standing prop on
-the 16x16 loot atlas. Do not fold the two together: a 16px isometric
-pistol rotated around a grip is mush, and a side-view rifle planted on
-a tile reads as a signpost.
+These are IN HAND, not loot icons. Ground / HUD icons live in make_loot.py
+under the same keys, because a drop is a standing prop on the 16x16 loot
+atlas. Do not fold the two together: a 16px isometric pistol rotated around a
+grip is mush, and a side-view rifle planted on a tile reads as a signpost.
 
-Every weapon is the same pixel SCALE and the same silhouette HEIGHT
-(5 authored rows, barrel on row 1). Length is the class: knife shortest,
-pistols short, rifles longer, AWP longest. A mixed scale next to a 16px
-body reads as six different toys.
+Every weapon is the same pixel SCALE and the same authored HEIGHT (seven rows,
+the bore always on row 1). Length is the class: knife shortest, pistols short,
+rifles longer, AWP longest. A mixed scale next to a 16px body reads as twelve
+different toys.
+
+THE CAMERA IS A ROW GRID, AND THAT IS THE WHOLE CONSTRUCTION.
+
+These used to be flat side elevations shaded by a diagonal gradient, which is a
+drawing of a gun rather than a gun: no top face, so no thickness, so twelve
+decals lying on a world that had just been rebuilt out of stacked volumes. The
+fix is not more pixels, it is committing to one camera — and because the frame
+ROTATES with the aim, that camera cannot be expressed as a light azimuth. Spin
+a sprite lit from the upper left through 360 degrees and the key light spins
+with it.
+
+What survives the rotation is PITCH. A face that points at the sky points at
+the sky at every heading, so the plane a pixel belongs to is a function of its
+ROW and nothing else, identical for all twelve:
+
+    row 0   crown       step 4   sight, optic, carry handle, a mag lying on top
+    row 1   BORE        step 3   the lit top plane: barrel, receiver, stock
+    row 2   near side   step 2   the same masses turning away from the camera
+    row 3   under-shelf step 1   handguard belly, tube mag, trigger group
+    row 4   hang upper  step 2   grip and magazine, the near face of each
+    row 5   hang lower  step 1   the same, receding under the gun
+    row 6   heel        step 0   floorplate, butt, the contact-dark tip
+
+Row 3 is deliberately darker than row 4. It is the seam where the body ends and
+the things hanging off it begin (S10's contact band), and without it a rifle's
+magazine welds itself to the receiver and the whole silhouette is one slab.
+
+THICKNESS IS ROW COUNT, AND THAT IS THE OTHER HALF OF IT. A row grid gives
+every mass its plane, but it says nothing about how thick that mass is; the
+first cut of this sheet ran barrel, receiver and butt all three rows deep for
+the entire length of every rifle, and three rows deep for the entire length is
+a slab with a bright line painted on it. A real weapon tapers, and on this
+camera the taper is vertical: the butt is the thickest thing on the gun, the
+receiver next, the handguard next, and the barrel is TWO rows against their
+three. Five of the twelve used to be one shared blob at 1x for exactly this
+reason. Read the maps as a taper first and as parts second.
+
+The alphabet is one letter per PART; the plane comes from the row and the
+material from the palette beside each map, so the art maps read as engineering
+drawings rather than as shading. Two modifiers:
+
+    UPPERCASE   lift one ramp step. The specular streak along a form's length
+                (S14, bare metal) and a lit crest. Nothing else.
+    x           a recess, in the shared VOID ramp: ejection port, dust-cover
+                seam, stock seam, trigger notch, bolt cut. Interior form breaks
+                are value steps and never lines (S6), and a recess is the one
+                value step allowed to be a single pixel wide.
+
+Frames are CENTRED in the cell, not left-aligned. The grip and the muzzle are
+derived from the same offset, so nothing downstream notices — but the store
+tables blit this sheet centred on the boards (render/layers/store.ts), and a
+left-aligned knife sat off the edge of its own pedestal.
 
 Output (assets/processed/guns/):
-    sheet.png      one row, 18x8 frames, catalog order
+    sheet.png      one row, 24x9 frames, catalog order
     manifest.json  frame, grip, muzzle, hold, scale per key
 
-The grip is the pivot (hand). The muzzle is where the tracer starts.
-Both are pixel coordinates inside the frame.
+The grip is the pivot (hand). The muzzle is where the tracer starts. Both are
+pixel coordinates inside the frame.
 
 `hold` and `scale` are the odd ones out, and both are pose rather than art.
 `hold` is WORLD pixels along the aim from the body centre out to that pivot
@@ -41,6 +93,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import colorsys
 import json
 from pathlib import Path
 
@@ -53,12 +106,20 @@ from make_textures import (
     TRANSPARENT,
     outline,
     pack,
-    pick,
     rgb,
 )
 
-FRAME_W = 18
-FRAME_H = 8
+#: Authored rows per weapon. Every art map is exactly this tall — a shorter one
+#: would centre differently and its bore would leave the line.
+ROWS = 7
+#: Two wider than the longest map (the AWP, at 22), which is the outline's
+#: margin. Nothing downstream reads a frame size that is not in the manifest.
+FRAME_W = 24
+FRAME_H = 9
+
+#: Ramp step per authored row: the camera, written down. See the module
+#: docstring — this table is the reason twelve weapons read as one set.
+ROW_STEP: tuple[int, ...] = (4, 3, 2, 1, 2, 1, 0)
 
 #: World px along aim from the body centre to the grip, for something held
 #: out at arm's length. Every gun uses it; see `hold` in the module docstring.
@@ -68,28 +129,106 @@ HOLD_OUT = 3.0
 #: this size — what reaches forward is the blade's length, never the arm's.
 HOLD_IN = 0.0
 
-# Materials against the night. Bright enough to read at 4x, dark enough
-# not to glow like a HUD icon on a body.
-STEEL: Ramp = [rgb(c) for c in ("#1a1c20", "#2a2e34", "#3c424a", "#555c66", "#7a828c", "#b0b6be")]
-SLIDE: Ramp = [rgb(c) for c in ("#121418", "#1c1f24", "#2a2e34", "#3a4048", "#5a616c")]
-TAN: Ramp = [rgb(c) for c in ("#2a2218", "#3d3224", "#5a4830", "#7a6240", "#a08458", "#c4a870")]
-GRIP: Ramp = [rgb(c) for c in ("#141416", "#1c1c20", "#2a2a30", "#3a3a42")]
-CHROME: Ramp = [rgb(c) for c in ("#2a2c30", "#4a5058", "#6a727c", "#8a949e", "#c0c8d0", "#e8eef4")]
-#: The can on a suppressed weapon. A step LIGHTER than the slide it bolts to,
-#: which is backwards from the real thing — a real suppressor is matte black
-#: on a black slide. Two dark greys touching at this size are one shape, and
-#: the shape is the entire reason a player would buy the USP-S over the Glock
-#: or the M4A1-S over the AK, so the art has to say it even where a photo
-#: would not.
-CAN: Ramp = [rgb(c) for c in ("#1e2126", "#2e343c", "#434b55", "#5a636e", "#727c88")]
-WOOD: Ramp = [rgb(c) for c in ("#1c1410", "#2a1c14", "#3d2818", "#5a3820", "#7a4c28", "#a06838")]
-OLIVE: Ramp = [rgb(c) for c in ("#1a1e14", "#262c1c", "#343c26", "#485230", "#5e6a3c", "#7a8650")]
-POLY: Ramp = [rgb(c) for c in ("#16181c", "#22262c", "#32383e", "#454c54", "#5c646e")]
-SCOPE: Ramp = [rgb(c) for c in ("#121410", "#1c2018", "#2a3224", "#3c4630")]
-OUTLINE = rgb("#07080a")
+# Materials against the night, DERIVED rather than picked. Every ramp is five
+# steps built by `_ramp` out of PIXEL-ART-DIRECTION.md S11's table, so a
+# material is authored as the three things that actually differ — its hue, how
+# saturated it is, and how far its darkest and lightest steps sit apart — and
+# the hue-shift and saturation law is written once instead of twelve times in
+# hex.
+#
+# The `lo` end is the important number and it is the one this sheet had wrong.
+# These ramps used to bottom out around #0b0d11, a hair off the outline, which
+# meant every plane the row grid puts on step 0 or 1 — the whole underside of
+# the gun, and the entire grip and magazine — collapsed into the outline. A
+# grip you cannot see is not a grip, and twelve dark blobs with a bright strip
+# on top is what that produces. S7 is explicit that step 2 is the ambient
+# reference and "not black", and S13 caps the internal span at ~55 L; the floor
+# here is set so the darkest fill still reads against `OUTLINE`, and the
+# ceilings stay under the world's own (`ROCK_RAMP` tops out at #5d5860) because
+# the lantern multiplies over all of it.
+
+#: S11's five steps, normalised off its L column (21/36/54/70/84) so a material
+#: only has to say where its own ends are. Non-linear on purpose: the gap from
+#: base to key light is wider than the gap from core shadow to base.
+_STEP_L: tuple[float, ...] = (0.0, 0.238, 0.524, 0.778, 1.0)
+#: S12: saturation peaks in the mid-to-shadow range and DROPS at the highlight,
+#: which is what keeps a specular from reading as a white sticker.
+_STEP_S: tuple[float, ...] = (1.10, 1.06, 1.00, 0.95, 0.72)
+#: S11: shadows cool, lights warm, never the reverse.
+_STEP_H: tuple[int, ...] = (-18, -10, 0, 8, 14)
+
+
+def _ramp(hue: float, sat: float, lo: float, hi: float) -> Ramp:
+    """A five-step material ramp from S11's law.
+
+    `hue` in degrees, `sat` at step 2, `lo`/`hi` the lightness of steps 0 and 4
+    as fractions. Everything between is the table above — the point being that
+    a new material here is four numbers and not fifteen hex triples that may or
+    may not shift hue the way the rest of the world does.
+    """
+    steps: Ramp = []
+    for index in range(5):
+        light = lo + (hi - lo) * _STEP_L[index]
+        red, green, blue = colorsys.hls_to_rgb(
+            ((hue + _STEP_H[index]) % 360) / 360.0,
+            light,
+            min(1.0, sat * _STEP_S[index]),
+        )
+        steps.append((round(red * 255), round(green * 255), round(blue * 255), 255))
+    return steps
+
+
+#: Painted metal (S14): large flat planes, one long streak along the form.
+STEEL: Ramp = _ramp(214, 0.15, 0.09, 0.58)
+#: Polymer furniture. The same cool family as steel but flatter and darker at
+#: the top, so a polymer receiver never out-reads the barrel bolted to it.
+POLY: Ramp = _ramp(220, 0.13, 0.08, 0.46)
+#: The grip, and the one deliberately WARM neutral on the sheet. A grip cut
+#: from the receiver's own ramp is a grip you have to already know is there;
+#: a hue apart at the same value is a shape the eye separates without any
+#: value step at all, which matters because the grip hangs on the rows the row
+#: grid has already darkened.
+GRIP: Ramp = _ramp(28, 0.14, 0.10, 0.44)
+#: Magazine steel. A step cooler and darker than the receiver so the mag reads
+#: as a separate object hung off it rather than as part of the same casting.
+MAG: Ramp = _ramp(206, 0.17, 0.09, 0.50)
+#: AK bakelite and the P90's translucent shell — the sheet's warm magazines.
+TAN: Ramp = _ramp(34, 0.38, 0.12, 0.56)
+#: AK furniture. The only wood on the sheet and the reason the AK is the one
+#: weapon identifiable across a dark clearing without reading its outline.
+WOOD: Ramp = _ramp(26, 0.42, 0.10, 0.52)
+#: The can on a suppressed weapon. A step LIGHTER than the receiver it bolts
+#: to, which is backwards from the real thing — a real suppressor is matte
+#: black on a black upper. Two dark greys touching at this size are one shape,
+#: and that shape is the entire reason a player buys the USP-S over the Glock
+#: or the M4A1-S over the AK, so the art says it where a photograph would not.
+CAN: Ramp = _ramp(210, 0.11, 0.13, 0.62)
+#: Bare metal (S14): the same planes plus a tight step-4 to step-1 jump. Nickel
+#: on the Deagle, the Berettas and the knife — the brightest frames here.
+CHROME: Ramp = _ramp(205, 0.07, 0.12, 0.72)
+#: The AWP's stock. The one saturated body on the sheet.
+OLIVE: Ramp = _ramp(78, 0.26, 0.10, 0.48)
+#: Optic housing: matte, low-saturation, and darker than the rifle under it so
+#: the tube reads as a thing sitting ON the receiver.
+OPTIC: Ramp = _ramp(150, 0.09, 0.07, 0.36)
+#: The AWP's objective. The one accent hue on this sheet (S12), two pixels
+#: wide, which is the whole budget an accent gets.
+LENS: Ramp = _ramp(196, 0.62, 0.12, 0.74)
+#: `x`. Not a material — a hole in one. Shared by every weapon, so a port on a
+#: Glock and a port on an AK are the same darkness. It is the only ramp allowed
+#: to sit near the outline, because that is what a hole looks like.
+VOID: Ramp = _ramp(225, 0.18, 0.04, 0.15)
+OUTLINE = rgb("#06070b")
 
 Art = list[str]
 Palette = dict[str, Ramp]
+
+#: The grip — the pivot the hand closes on and the sprite turns around.
+#: Matched case-insensitively, so a lit crest on a grip still counts as grip.
+GRIP_CHARS = frozenset("g")
+#: The muzzle face. Exactly one per weapon, always on the bore row, because the
+#: tracer leaves from it.
+MUZZLE_CHARS = frozenset("m")
 
 
 def _pad(art: Art) -> Art:
@@ -97,36 +236,47 @@ def _pad(art: Art) -> Art:
     return [row.ljust(width, ".") for row in art]
 
 
+def _origin(art: Art, width: int, height: int) -> tuple[int, int]:
+    """Where the art map's (0, 0) lands in the frame. Centred both ways."""
+    return ((width - len(art[0])) // 2, (height - len(art)) // 2)
+
+
 def _blit(art: Art, ramps: Palette, width: int, height: int) -> Image.Image:
-    """Side-view: left is the grip, right is the muzzle. Vertically centred."""
+    """One weapon, painted flat.
+
+    No gradient and no dither: a pixel's value is its ROW's plane (`ROW_STEP`)
+    and its letter's material, and that pair is the only rule this whole sheet
+    is shaded by. The old diagonal falloff is what made twelve guns look like
+    twelve stickers — it lit them from a direction the client then spun.
+    """
     art = _pad(art)
     img = Image.new("RGBA", (width, height), TRANSPARENT)
     px = img.load()
-    art_w = len(art[0])
-    art_h = len(art)
-    ox = 1
-    oy = (height - art_h) // 2
+    ox, oy = _origin(art, width, height)
     for y, row in enumerate(art):
+        plane = ROW_STEP[y]
         for x, ch in enumerate(row):
             if ch == ".":
                 continue
-            ramp = ramps.get(ch)
+            if ch == "x":
+                px[ox + x, oy + y] = VOID[plane]
+                continue
+            ramp = ramps.get(ch.lower())
             if ramp is None:
                 continue
-            # Lit from above-left, the way a lantern would catch a barrel.
-            shade = 0.78 - (y / max(art_h - 1, 1)) * 0.32 + (x / max(art_w - 1, 1)) * 0.08
-            px[ox + x, oy + y] = pick(ramp, shade, ox + x, oy + y)
+            step = min(plane + 1, len(ramp) - 1) if ch.isupper() else plane
+            px[ox + x, oy + y] = ramp[step]
     outline(img, OUTLINE)
     return img
 
 
-def _centroid(art: Art, ch: str, ox: int, oy: int) -> tuple[int, int]:
-    """Mean of every `ch` pixel — the grip pivot, not a corner of the band."""
+def _centroid(art: Art, chars: frozenset[str], ox: int, oy: int) -> tuple[int, int]:
+    """Mean of every grip pixel — the pivot, not a corner of the band."""
     xs: list[int] = []
     ys: list[int] = []
     for y, row in enumerate(art):
         for x, cell in enumerate(row):
-            if cell == ch:
+            if cell.lower() in chars:
                 xs.append(ox + x)
                 ys.append(oy + y)
     if not xs:
@@ -134,230 +284,324 @@ def _centroid(art: Art, ch: str, ox: int, oy: int) -> tuple[int, int]:
     return (round(sum(xs) / len(xs)), round(sum(ys) / len(ys)))
 
 
-def _rightmost(art: Art, ch: str, ox: int, oy: int) -> tuple[int, int]:
+def _rightmost(art: Art, chars: frozenset[str], ox: int, oy: int) -> tuple[int, int]:
     """Muzzle face: furthest right, then lowest."""
     found = (ox, oy + len(art) // 2)
     for y, row in enumerate(art):
         for x, cell in enumerate(row):
-            if cell == ch:
+            if cell.lower() in chars:
                 found = (ox + x, oy + y)
     return found
 
 
 # Catalog order matches server/app/weapons.py and the loot keys.
-# Five authored rows, barrel on row 1, so every gun sits on the same line.
-# Marker letters used only for grip/muzzle lookup are still painted:
-#   g = grip pivot band, m = muzzle face
+#
+# ONE LETTER PER PART, and that is what makes these maps readable as
+# engineering drawings instead of as shading:
+#
+#     t  stock / butt        b  barrel            g  grip (the pivot)
+#     r  receiver / body     h  handguard         n  magazine
+#     c  suppressor can      k  mechanical bits — sight, carry handle,
+#     e  optic housing          charging handle, barrel rib, crossguard
+#     l  lens                m  muzzle face       x  recess / seam
+#
+# The palette dict beside each map assigns a MATERIAL to each letter, so the
+# same drawing is steel on one weapon and wood on another, and so a part that
+# has to separate from its neighbour separates by material where the row grid
+# has already spent the value step. That is why the grip is the one warm
+# neutral here: grip and magazine hang on the same three rows, at the same two
+# planes, and nothing but hue was left to tell them apart.
+#
+# Read every map against the row table in the module docstring: row 1 is the
+# bore on all twelve, row 3 is the seam under the body, and what hangs below it
+# is grip and magazine. Length is the class, and the top contour is the
+# identity (S15) — an AK is told from an M4 by its wood and its curved mag,
+# never by a label.
+#
 # Pistol grips are a SOLID block — no magwell hole, no selector dial, no
-# trigger-guard loop. At this size a 1px hole is filled by the outline and
-# reads as a circle on the heel. The guard is a squared step under the slide.
-GUNS: list[tuple[str, Palette, Art, str, str]] = [
+# trigger-guard loop. At this size a 1px hole is filled by the outline pass and
+# reads as a circle on the heel. The guard is an `x` notch bitten out of the
+# under-shelf, which is the same statement one pixel cheaper.
+GUNS: list[tuple[str, Palette, Art]] = [
     # --- pistols --------------------------------------------------------------
+    # The short end of the sheet, and the reference for how a pistol is built
+    # here: slide across rows 1-2 (the top plane, then the side it turns away
+    # on), a barrel one row THINNER poking out of it, the polymer frame on row
+    # 3, and the grip hanging off rows 4-6 with its rake going BACK — the butt
+    # a column behind the web of the hand. A vertical grip reads as a drill.
+    #
+    # The floorplate on row 6 is the magazine, and it is one pixel pair: a
+    # pistol's magazine lives inside the grip, so the only honest way to say
+    # there is one is the plate it stands on.
     (
         "glock18",
-        {"s": SLIDE, "f": TAN, "g": TAN, "m": SLIDE},
+        {"r": STEEL, "b": STEEL, "f": POLY, "g": GRIP, "n": MAG, "m": STEEL},
         [
-            "....sssss",
-            "....ssssm",
-            "...ffsss.",
-            "...gf....",
-            "...gg....",
+            "...........",
+            "..rrRRrrbbm",
+            "..rxrrrrbb.",
+            ".ffffxff...",
+            ".ggg.......",
+            "ggg........",
+            "gnn........",
         ],
-        "g",
-        "m",
     ),
     # THE CAN IS THE WHOLE SILHOUETTE. A suppressed pistol at this size is a
-    # pistol with a fat cylinder where the barrel should be, three rows tall
-    # against the slide's two — and it has to be legible from across a dark
-    # clearing, because the reason to own this instead of the Glock is that
-    # it is quiet and the player has to be able to see which one is in hand.
+    # pistol with a fat cylinder where the barrel should be — three rows deep
+    # against the slide's two, crown included — and it has to be legible from
+    # across a dark clearing, because the reason to own this instead of the
+    # Glock is that it is quiet and the player has to see which one is in hand.
+    # The streak sits on the can and not on the slide for the same reason: the
+    # eye is being sent to the cylinder.
     (
         "usp_s",
-        {"s": SLIDE, "f": POLY, "g": GRIP, "c": CAN, "m": CAN},
+        {"r": STEEL, "f": POLY, "g": GRIP, "n": MAG, "c": CAN, "m": CAN},
         [
-            "....sssss.ccc.",
-            "....sssssccccm",
-            "...ffsss..ccc.",
-            "...gf.........",
-            "...gg........."
+            "........cccccc.",
+            "..rrrrrrCCCCCcm",
+            "..rxrrrrcccccc.",
+            ".ffffxff.......",
+            ".ggg...........",
+            "ggg............",
+            "gnn............",
         ],
-        "g",
-        "m",
     ),
-    # TWO GUNS, DRAWN AS TWO SILHOUETTES. There is no room at 16 px to draw a
-    # second pistol properly, and a single pistol with a wider slide would
-    # just read as a bigger pistol. What does read is a whole second outline
-    # slung BELOW AND BEHIND the first, in the darker material so the two do
-    # not merge into one body — the eye counts guns, not detail, and this
-    # frame has two of them.
+    # TWO GUNS, DRAWN AS TWO SILHOUETTES, AND THE ROW GRID DOES THE DEPTH.
+    # There is no room at this size to draw a second pistol properly, and one
+    # pistol with a wider slide would read as a bigger pistol. What reads is a
+    # whole second gun slung BELOW the first out of the same fist — and because
+    # the lower rows are the darker planes, that second gun comes out
+    # value-compressed without being drawn in a second material (S13: masses
+    # further back lose the ends of the ramp). The eye counts guns, not detail,
+    # and this frame has two. Only the upper one carries `m`: there is one
+    # tracer origin however many barrels are in the drawing.
     (
         "dual_berettas",
-        {"t": SLIDE, "s": CHROME, "f": GRIP, "g": GRIP, "m": CHROME},
+        {"r": CHROME, "b": CHROME, "f": POLY, "g": GRIP, "m": CHROME},
         [
-            "....sssss.",
-            "....ssssm.",
-            "...gfsss..",
-            "..ttttt...",
-            "..tttt....",
+            "............",
+            "..rrRRrrbbm.",
+            "..rxrrrrbb..",
+            ".ffffxf.....",
+            "gggrrrrrrbb.",
+            ".ggrxrrrrbb.",
+            "..fffxf.....",
         ],
-        "g",
-        "m",
     ),
+    # The heaviest thing anybody carries in one hand, and the only pistol that
+    # spends a crown row: the rib down the top of the barrel is what separates
+    # a big pistol from a big-looking one. Nickel, so it is also the brightest
+    # frame on the sheet, and the rubber grip is the one dark mass on it.
     (
         "deagle",
-        {"s": CHROME, "p": GRIP, "g": GRIP, "m": CHROME},
+        {
+            "r": CHROME, "b": CHROME, "k": CHROME, "f": CHROME,
+            "g": GRIP, "n": MAG, "m": CHROME,
+        },
         [
-            ".....ssssss",
-            ".....sssssm",
-            "....ppsss..",
-            "....gp.....",
-            "....gg.....",
+            "....kkkkk....",
+            "..rrRRrrbbbbm",
+            "..rxrrrrbbbb.",
+            ".fffffxf.....",
+            ".ggg.........",
+            "ggg..........",
+            "gnn..........",
         ],
-        "g",
-        "m",
     ),
     # --- submachine guns ------------------------------------------------------
-    # Short, boxy, and the only two frames on this sheet with a magazine
-    # hanging BELOW the grip rather than in front of it. Length is how this
-    # sheet says range, and an SMG has to sit visibly between the pistols and
-    # the rifles or the belt stops teaching anything.
+    # Short, boxy, and the two frames whose magazine lives INSIDE the grip
+    # rather than in front of it — so the hang is one narrow column of grip
+    # with a floorplate under it instead of a grip beside a mag. Length is how
+    # this sheet says range, and an SMG has to sit visibly between the pistols
+    # and the rifles or the belt stops teaching anything.
+    #
+    # The stock is a folded stub behind an `x` seam. It is four pixels, and it
+    # is the whole difference between an SMG and a very long pistol.
     (
         "mp7",
-        {"r": STEEL, "b": POLY, "g": GRIP, "n": STEEL, "z": SLIDE, "m": STEEL},
+        {
+            "t": POLY, "r": POLY, "h": POLY, "b": STEEL, "f": POLY,
+            "g": GRIP, "n": MAG, "k": STEEL, "m": STEEL,
+        },
         [
-            "..rrrrr.....",
-            "bbbbbbbbnnnm",
-            "bb.gg..nn...",
-            "...gg.......",
-            "...zz.......",
+            "......kk.......",
+            "tttxrrRRrrhbbbm",
+            "ttxxrrrrrrhbbb.",
+            "..ffffxff......",
+            "....gg.........",
+            "....gg.........",
+            "....nn.........",
         ],
-        "g",
-        "m",
     ),
     # The P90 is the one real silhouette in the SMG class: a humped shell with
-    # the magazine lying flat ALONG THE TOP and almost no barrel past it. Drawn
-    # as a solid slab with a rail hump, because every detail smaller than that
-    # is filled in by the outline pass anyway.
+    # the magazine lying FLAT ALONG THE TOP and almost no barrel past it. That
+    # mag is the whole reason row 0 is the brightest plane on the grid — it is
+    # the highest surface on the weapon and the first thing the eye should
+    # find — and it is drawn in TAN because the real one is translucent and
+    # because a warm mass on the crown of a cool gun cannot be missed.
     (
         "p90",
-        {"h": SLIDE, "b": POLY, "g": GRIP, "n": STEEL, "m": STEEL},
+        {
+            "r": POLY, "h": POLY, "b": STEEL, "f": POLY,
+            "g": GRIP, "n": TAN, "m": STEEL,
+        },
         [
-            "...hhhhhh...",
-            "bbbbbbbbbbnm",
-            "bb.gg.bbbb..",
-            "bb.gg.bbbb..",
-            "..bbbbbb....",
+            "..nnnnnnnn.....",
+            "rrrrRRrrrrhbbm.",
+            "rrxrrrrrrrhbb..",
+            ".ffffffxff.....",
+            "....gg.........",
+            "....gg.........",
+            "...ff..........",
         ],
-        "g",
-        "m",
     ),
     # --- shotgun --------------------------------------------------------------
-    # Long, and the tube magazine under the barrel is the tell. It is the only
-    # frame here with two parallel bars running most of its length, which is
-    # exactly what a pump gun looks like from the side and nothing else on the
-    # belt does.
+    # The tube magazine under the barrel is the tell, and on this camera it is
+    # a THIRD BAND rather than a second outline: barrel top on row 1, barrel
+    # side on row 2, tube on row 3. It stops short of the muzzle, which is what
+    # says two tubes instead of one thick one — a tube running the full length
+    # is just a fatter barrel. Longest stock on the sheet, because the thing
+    # that kicks hardest is the thing you brace.
     (
         "xm1014",
-        {"p": POLY, "b": SLIDE, "n": STEEL, "t": STEEL, "r": STEEL, "g": POLY, "m": STEEL},
+        {
+            "t": POLY, "r": STEEL, "h": POLY, "b": STEEL, "f": POLY,
+            "g": GRIP, "n": MAG, "m": STEEL,
+        },
         [
-            "......rr.......",
-            "ppppppbbbnnnnnm",
-            "pg..pbbbtttttt.",
-            ".pppp..........",
-            "...pp..........",
+            "................",
+            "ttttxrrRRhhbbbbm",
+            "tttxxrrrrhhbbbb.",
+            "..fffxffnnnnnn..",
+            "....gg..........",
+            "...gg...........",
+            "..gg............",
         ],
-        "g",
-        "m",
     ),
     # --- rifles ---------------------------------------------------------------
+    # Bullpup, and it is drawn as one: the carry handle across the crown, and
+    # the magazine BEHIND the grip instead of in front of it. Those two facts
+    # are the entire difference between this frame and the M4A1-S at a glance,
+    # so both are silhouette rather than detail. Bullpup also means there is no
+    # stock to draw — the receiver runs all the way to the butt, which is why
+    # this is the one rifle here with no seam near its left end.
     (
         "famas",
-        {"b": POLY, "h": STEEL, "n": SLIDE, "g": GRIP, "m": STEEL},
+        {
+            "r": POLY, "h": POLY, "b": STEEL, "f": POLY,
+            "g": GRIP, "n": POLY, "k": STEEL, "m": STEEL,
+        },
         [
-            "...hhhhhh...",
-            "bbbbbbbbbnnm",
-            "bg..b...nn..",
-            ".bbbbb..nn..",
-            "......nn....",
+            "....kkkkkk.......",
+            "rrrrrrRRrrhhbbbm.",
+            "rrxrrrrrrrhhbbb..",
+            ".ffffxfff........",
+            "..nn.gg..........",
+            "..nn.gg..........",
+            "..nn.............",
         ],
-        "g",
-        "m",
     ),
+    # Wood furniture and a CURVED magazine, walking one column forward as it
+    # drops. Nothing else on the sheet is warm across its whole body and
+    # nothing else leans, which is why the AK is identifiable in a fist across
+    # a clearing. The bakelite mag is warmer still than the furniture, so the
+    # two warm masses do not merge into one. The `x` at the left is the seam
+    # where the wooden butt meets the receiver, the one on row 2 is the
+    # dust-cover seam, and the one on row 3 is the trigger: three recesses,
+    # each a single pixel, all load-bearing.
     (
         "ak47",
-        {"w": WOOD, "k": SLIDE, "n": STEEL, "g": WOOD, "m": STEEL},
+        {
+            "w": WOOD, "r": STEEL, "b": STEEL, "f": STEEL,
+            "g": GRIP, "n": TAN, "k": STEEL, "m": STEEL,
+        },
         [
-            "...........n",
-            "wwwwwkkkkkkm",
-            "wg..wnnkkkk.",
-            ".wwww.nn....",
-            "......nn....",
+            "..........k........",
+            "wwwwwxrrRRrkwwwbbbm",
+            "wwwwwxrrrrrkwwbbbb.",
+            ".ffffxfffnn........",
+            "....gg...nn........",
+            "...gg....nnn.......",
+            "...g......nn.......",
         ],
-        "g",
-        "m",
     ),
-    # The AK's twin with a carry handle and a CAN, and the can is the reason
-    # it costs more. Same three-row cylinder the USP-S wears, so the two
-    # suppressed weapons in the catalog say it the same way.
+    # The AK's twin, told apart by four things and no label: a carry handle on
+    # the crown, a STRAIGHT magazine, a polymer stock behind its own seam, and
+    # a CAN — the same three-row cylinder the USP-S wears, so the two
+    # suppressed weapons in the catalog say it the same way. The can is also
+    # why it costs more.
     (
         "m4a1s",
-        {"p": POLY, "h": STEEL, "b": SLIDE, "n": SLIDE, "c": CAN, "g": GRIP, "m": CAN},
+        {
+            "t": POLY, "r": POLY, "h": POLY, "c": CAN, "f": POLY,
+            "g": GRIP, "n": MAG, "k": STEEL, "m": CAN,
+        },
         [
-            "....hhhh...ccc.",
-            "ppppbbbbbbccccm",
-            "pg..pbbnnb.ccc.",
-            ".pppp.nn.......",
-            "......nn.......",
+            ".....kkkkkk...ccccc..",
+            "ttttxrrRRrrrhhhhCCCCm",
+            "tttxxrrrrrrrhhhhccccc",
+            ".fffxfffff...........",
+            ".....gg..nn..........",
+            "....gg...nn..........",
+            "....g....nn..........",
         ],
-        "g",
-        "m",
     ),
     # --- sniper ---------------------------------------------------------------
+    # The longest frame on the sheet, and the only one that spends its crown on
+    # an OPTIC. The objective is two pixels of `LENS` at the front of the tube:
+    # the sheet's single accent hue, small enough to obey S12 and cool enough
+    # that it cannot be mistaken for a muzzle flash. The `x` past the receiver
+    # on rows 1-2 is the bolt handle. The barrel runs TWO rows for nine
+    # columns, which is the whole point of the weapon expressed as taper.
     (
         "awp",
-        {"o": OLIVE, "s": SLIDE, "k": STEEL, "c": SCOPE, "g": OLIVE, "m": STEEL},
+        {
+            "o": OLIVE, "r": STEEL, "b": STEEL, "e": OPTIC, "l": LENS,
+            "f": STEEL, "g": GRIP, "n": MAG, "m": STEEL,
+        },
         [
-            ".............cc",
-            "oooooooossssssm",
-            "og....oskkkkkks",
-            ".oooooo.s......",
-            "........s......",
+            "......eeeell..........",
+            "ooooxrrRRrrxbbbbbbbbbm",
+            "oooxxrrrrrrxbbbbbbbb..",
+            ".oooxffffff...........",
+            "......gg..nn..........",
+            ".....gg...nn..........",
+            ".....g....nn..........",
         ],
-        "g",
-        "m",
     ),
     # --- the blade ------------------------------------------------------------
     # The knife, and it is the one frame on this sheet that is not a gun.
     # It is drawn STRAIGHT — handle, crossguard and blade on one line — and
-    # that is the whole silhouette decision. Every gun here hangs a grip
-    # below its barrel, so a blade with any drop at the back reads as one
-    # more pistol at 16px no matter what the blade is doing. The guard is
-    # the only thing that leaves the line, one pixel above and one below,
-    # which is what says "this end is held" without a grip.
+    # that is the whole silhouette decision. Every gun here hangs a grip below
+    # its barrel, so a blade with any drop at the back reads as one more pistol
+    # no matter what the blade is doing. The crossguard is the only thing that
+    # leaves the line, one row above and one below, and those two rows are also
+    # what give it thickness: row 0 is its lit crown and row 3 is its shadow
+    # side, out of one pixel each.
     #
-    # Same edge on row 1, so swapping to it does not jump the hand, and
-    # deliberately the SHORTEST thing on the sheet: length is what this
-    # sheet uses to say range, and the weapon you have to walk up to
+    # Same bore row as everything else, so swapping to it does not jump the
+    # hand, and deliberately the SHORTEST thing on the sheet: length is what
+    # this sheet uses to say range, and the weapon you have to walk up to
     # somebody with has to read as short.
     (
         "knife",
-        {"b": CHROME, "c": STEEL, "g": GRIP, "m": CHROME},
+        {"b": CHROME, "k": STEEL, "g": GRIP, "m": CHROME},
         [
-            "...c......",
-            ".ggcbbbbb.",
-            ".ggcbbbbbm",
-            "...c......",
+            "...k......",
+            "ggkkbBBbbm",
+            "ggkkbbbbb.",
+            "...k......",
+            "..........",
+            "..........",
             "..........",
         ],
-        "g",
-        "m",
     ),
 ]
 
 #: How far in front of the body each weapon is carried, and how big it is
 #: drawn. Written as the exceptions rather than as extra columns on every
-#: row: five of the six entries are guns held the one way guns are held at
-#: the one scale this sheet is authored at, and repeating that five times
+#: row: eleven of the twelve entries are guns held the one way guns are held
+#: at the one scale this sheet is authored at, and repeating that eleven times
 #: would bury the one row where either is a decision.
 HOLD: dict[str, float] = {"knife": HOLD_IN}
 #: Draw scale against the authored frame. The sheet's rule is that every
@@ -367,6 +611,31 @@ HOLD: dict[str, float] = {"knife": HOLD_IN}
 SCALE: dict[str, float] = {"knife": 0.8}
 
 
+def _check(key: str, art: Art) -> None:
+    """The invariants the row grid rests on.
+
+    A map that breaks one of the first two is a weapon whose bore has left the
+    line, and in game that shows up only as a tracer leaving somebody's hip.
+    The third catches a second `m`, which would silently move the tracer
+    origin to whichever barrel happened to be drawn lowest.
+    """
+    if len(art) != ROWS:
+        raise ValueError(f"{key}: {len(art)} rows, every weapon is authored at {ROWS}")
+    span = max(len(row) for row in art)
+    if span > FRAME_W - 2:
+        raise ValueError(f"{key}: {span} columns leaves no room for the outline")
+    muzzles = [
+        (x, y)
+        for y, row in enumerate(art)
+        for x, cell in enumerate(row)
+        if cell.lower() in MUZZLE_CHARS
+    ]
+    if len(muzzles) != 1:
+        raise ValueError(f"{key}: {len(muzzles)} muzzle pixels, the tracer needs one")
+    if muzzles[0][1] != 1:
+        raise ValueError(f"{key}: muzzle on row {muzzles[0][1]}, the bore is row 1")
+
+
 def build(args) -> Path:
     width, height = FRAME_W, FRAME_H
     out_dir = PROCESSED_DIR / "guns"
@@ -374,15 +643,13 @@ def build(args) -> Path:
 
     frames: list[Image.Image] = []
     items: dict[str, dict] = {}
-    for index, (key, pal, art, grip_ch, muzzle_ch) in enumerate(GUNS):
-        frame = _blit(art, pal, width, height)
-        frames.append(frame)
+    for index, (key, pal, art) in enumerate(GUNS):
+        _check(key, art)
+        frames.append(_blit(art, pal, width, height))
         art = _pad(art)
-        art_h = len(art)
-        ox = 1
-        oy = (height - art_h) // 2
-        grip = _centroid(art, grip_ch, ox, oy)
-        muzzle = _rightmost(art, muzzle_ch, ox, oy)
+        ox, oy = _origin(art, width, height)
+        grip = _centroid(art, GRIP_CHARS, ox, oy)
+        muzzle = _rightmost(art, MUZZLE_CHARS, ox, oy)
         items[key] = {
             "frame": index,
             "gripX": grip[0],
@@ -402,7 +669,7 @@ def build(args) -> Path:
         "items": items,
     }
     (out_dir / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
-    print(f"wrote {out_dir}: {len(GUNS)} guns @ {width}x{height}")
+    print(f"wrote {out_dir}: {len(GUNS)} weapons @ {width}x{height}")
     return out_dir
 
 

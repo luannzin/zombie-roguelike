@@ -175,6 +175,79 @@ TYPES: tuple[ObjectType, ...] = (
         noise_tiles=7.5, tags=("supplies", "travel", "scrap"),
         drops={DROP_EMPTY: 68, DROP_COIN: 14, DROP_ITEM: 18},
     ),
+    # THE CRATE SHEET IS EIGHT ROWS OF ONE OBJECT, AND THE CONDITION IS THE
+    # TABLE. A barrel tells you nothing about itself from across a clearing —
+    # that is the point of it, and why all three roll off much the same odds.
+    # A crate is the opposite: `make_objects.CRATE_RECIPES` spends its whole
+    # silhouette budget on saying what has HAPPENED to this one, so the art is
+    # already making a promise before the player has walked over, and the
+    # table's only job is to keep it. Read down the list and the rule is one
+    # sentence: what somebody bothered to reinforce is worth more, and what
+    # the forest has already had a year with is worth less.
+    #
+    # They are BREAK rather than OPEN for the same reason the barrels are:
+    # wood in this game is the thing you can deal with from range, and a
+    # sheet whose eight frames are all smashes cannot also hold eight lid
+    # animations. The noise is the price, and it scales with the build —
+    # bursting an ironbound crate is the loudest thing in the forest short of
+    # a fuel drum.
+    ObjectType(
+        key="crate", sheet="crate", variant=0, verb=VERB_BREAK, label=BREAK_LABEL,
+        noise_tiles=5.0, tags=("supplies", "tools", "abandoned"),
+    ),
+    # Already open to the sky, and it has been for a while. The worst table on
+    # the sheet, and the silhouette says so before the player commits to it.
+    ObjectType(
+        key="crate_broken", sheet="crate", variant=1, verb=VERB_BREAK, label=BREAK_LABEL,
+        noise_tiles=4.0, tags=("scrap", "abandoned"),
+        drops={DROP_EMPTY: 86, DROP_COIN: 4, DROP_ITEM: 10},
+    ),
+    # Battens, a rope lashing and the height of something packed to travel.
+    # The best wooden table in the forest, and the second loudest.
+    ObjectType(
+        key="crate_braced", sheet="crate", variant=2, verb=VERB_BREAK, label=BREAK_LABEL,
+        noise_tiles=6.5, tags=("military", "supplies", "travel"),
+        drops={DROP_EMPTY: 44, DROP_COIN: 14, DROP_ITEM: 42},
+        rarity=GOOD_ODDS,
+    ),
+    # Two boxes, so two chances at the same table — the only object in the
+    # game whose art says "this is more than one of the thing" and then is.
+    ObjectType(
+        key="crate_stacked", sheet="crate", variant=3, verb=VERB_BREAK, label=BREAK_LABEL,
+        hit_h_tiles=2.5, noise_tiles=6.0, tags=("supplies", "tools", "camp"),
+        drops={DROP_EMPTY: 50, DROP_COIN: 12, DROP_ITEM: 38},
+    ),
+    # Something already went through this one. Middling, and the hole in the
+    # near wall is the tell.
+    ObjectType(
+        key="crate_battered", sheet="crate", variant=4, verb=VERB_BREAK, label=BREAK_LABEL,
+        noise_tiles=4.5, tags=("scrap", "abandoned", "camp"),
+        drops={DROP_EMPTY: 74, DROP_COIN: 8, DROP_ITEM: 18},
+    ),
+    # A year of wet. Rotted wood barely holds a table at all, but the moss is
+    # the only saturated thing on the sheet and the forest owes the player
+    # something for reading it.
+    ObjectType(
+        key="crate_rotted", sheet="crate", variant=5, verb=VERB_BREAK, label=BREAK_LABEL,
+        noise_tiles=3.5, tags=("living", "abandoned"),
+        drops={DROP_EMPTY: 80, DROP_COIN: 6, DROP_ITEM: 14},
+        rarity=JUNK_ODDS,
+    ),
+    # Steel corners, bands and bolts. Whatever is in here was worth the iron,
+    # and bursting it is heard across the clearing.
+    ObjectType(
+        key="crate_ironbound", sheet="crate", variant=6, verb=VERB_BREAK, label=BREAK_LABEL,
+        noise_tiles=7.5, tags=("military", "combat", "supplies"),
+        drops={DROP_EMPTY: 38, DROP_COIN: 16, DROP_ITEM: 46},
+        coins=(2, 5), rarity=GOOD_ODDS,
+    ),
+    # The lid has fallen in. Whatever it held has been under the weather ever
+    # since, and the table is the second worst here.
+    ObjectType(
+        key="crate_collapsed", sheet="crate", variant=7, verb=VERB_BREAK, label=BREAK_LABEL,
+        noise_tiles=4.0, tags=("scrap", "abandoned"),
+        drops={DROP_EMPTY: 84, DROP_COIN: 5, DROP_ITEM: 11},
+    ),
     # --- OPEN: containers ----------------------------------------------
     ObjectType(
         key="box", sheet="box", variant=0, verb=VERB_OPEN, label=OPEN_LABEL,

@@ -258,13 +258,25 @@ catalog, or the wire protocol pair.
 
 - **THE OBJECTS ARE A VOCABULARY, AND `crates.py` IS THE DICTIONARY.** The
   module and the wire still say `crates` — history, like `rifts` — but the
-  list holds barrels, supply boxes, ammo cases, chests, mailboxes, suitcases,
-  freezers, bins, toolboxes, six kinds of abandoned vehicle, and the shrine's
-  altar. Everything that separates one from another is a row in
+  list holds barrels, eight wooden crates, supply boxes, ammo cases, chests,
+  mailboxes, suitcases, freezers, bins, toolboxes, six kinds of abandoned
+  vehicle, and the shrine's altar. Everything that separates one from another is a row in
   `crates.TYPES`: its sheet and sheet row, its VERB, its prompt, its footprint
   and hit box, its drop table, the catalog TAGS its item roll leans on, its
   rarity curve, and its AMBUSH chance. The whole table ships in
   `welcome.config.objects`; the client has no list of its own.
+- **THE CRATE SHEET IS THE ONE PLACE THE ART CARRIES THE TABLE.** Everything
+  else in the vocabulary says what it IS and nothing about what is in it — a
+  barrel is deliberately anonymous, and all three roll off much the same odds.
+  The eight crates say what has HAPPENED to them, in silhouette, from as far
+  as the lantern reaches: reinforced and ironbound stand tall with battens and
+  straps and hold the best wooden tables in the forest; broken, rotted and
+  collapsed are notched, low and mossy and hold almost nothing. That is a
+  table the player can read before committing to the walk, which is the only
+  reason to draw eight of a thing instead of one. `scenery.CRATE_POOL` keeps
+  the three clean builds to a third of the pool on purpose — the wrecks are
+  what teach the shapes, because they are the ones you keep seeing, and a
+  forest where the good silhouette was common would make the reading pointless.
 - **TWO VERBS, ONE KEY, AND ONLY ONE OF THEM ANSWERS A BULLET.**
   `{type:"break","id"}` is "use the thing in front of me" — from the input's
   point of view that is one intent, and the prompt already said which it

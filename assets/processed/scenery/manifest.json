@@ -55,6 +55,16 @@
       "animFrames": 8,
       "fps": 13
     },
+    "crate": {
+      "file": "crate.png",
+      "frameWidth": 34,
+      "frameHeight": 34,
+      "frames": 64,
+      "sway": 0,
+      "kinds": 8,
+      "animFrames": 8,
+      "fps": 13
+    },
     "box": {
       "file": "box.png",
       "frameWidth": 16,

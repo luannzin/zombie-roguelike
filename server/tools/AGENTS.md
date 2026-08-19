@@ -14,14 +14,14 @@ imported by `app/` and never run at request time.
 | `make_coin.py` | generates final pixels | `assets/processed/coin/` (8-frame turn of the ANOMALY SHARD — dark gold, the player's currency and the only one with a world sprite. Also paints `hud/darkcoin.png` for `make_hud_icons`) |
 | `make_textures.py` | generates final pixels | `assets/processed/terrain/` (4 grounds, blend, patch, rock, tree, deadtree, stump, grass, bush, branch, leaves, fern, campfire) |
 | `make_scenery.py` | generates final pixels | `assets/processed/scenery/` (tent, fence, sign, logs, firepit, blood, tracks, clothes, debris) — and PACKS what `make_objects.py` drew into the same folder and the one manifest |
-| `make_objects.py` | draws only; `make_scenery.build()` packs it | the INTERACTIVE objects and the tribal ground: barrel, box, chest, stash, vehicle, altar, statue, bones, oil |
+| `make_objects.py` | draws only; `make_scenery.build()` packs it | the INTERACTIVE objects and the tribal ground: barrel, crate, box, chest, stash, vehicle, altar, statue, bones, oil |
 | `make_vfx.py` | generates final pixels | `assets/processed/vfx/` (summon, kindle, aura, wind, death) — GREYSCALE, tinted at draw time |
 | `make_weapon_vfx.py` | generates final pixels | `assets/processed/weapon-vfx/` (muzzle, blast, impact) — oriented, ramp BAKED IN: fire is not anybody's colour |
 | `make_rift.py` | generates final pixels | `assets/processed/rift/` (the CONSOLE and the threshold kit: torch, torchfire, egress paving, the paid console's aura — plus the retired anomaly sheets, still generated and no longer drawn: scar, pillar, charge, crown, emerge, rift ×4 tiers, collapse ×4 tiers, residue, corrupt) |
 | `make_platform.py` | generates final pixels | `assets/processed/platform/` (the extraction platform: the cargo skid ×3 states cold/standby/alarm, a lift drone ×2 postures hover/cruise, rotor and strobe loops, standby and siren lamp glare, the imprint it leaves, rotor downwash, the ground-break burst) |
 | `make_gore.py` | generates final pixels | `assets/processed/gore/` (6 wound decals worn by a hit body) |
 | `make_loot.py` | generates final pixels | `assets/processed/loot/` (one 16x16 frame per item, including gun icons) |
-| `make_guns.py` | generates final pixels | `assets/processed/guns/` (held side-view, one 18x8 frame per weapon, plus its carry pose) |
+| `make_guns.py` | generates final pixels | `assets/processed/guns/` (held high-3/4, one 24x9 frame per weapon, plus its carry pose) |
 | `make_merchant.py` | generates final pixels | `assets/processed/merchant/` (the shopkeeper — green coat, brimmed HAT, a face with two eyes in it: `idle` loop plus three one-shot flourishes — `coat`, `beckon`, `coin` — and the manifest's `randomClips` / `randomGap` that drive them) |
 | `make_store.py` | generates final pixels | `assets/processed/store/` (the merchant's own kit, all in the shop's own warm `WOOD`/`LINEN` and flat-filled: his WAGON ×1 and counter ×1, small round table ×4 with `topY`, `kit` ×5 — crates, a barrel of rods, a rack, a shelf, a padlocked strongbox, all drawn SHUT because nothing in this zone opens — torch ×2 with `flameY`, rug, torchfire, buy glow) |
 | `make_machine.py` | generates final pixels | `assets/processed/machine/` (the upgrade cabinet, two tiles wide and cartoon-flat: body ×2 idle/settled with the reel windows, pay line, lever pivot and tray mouth in its manifest; `strip.png` — the reel BAND, one tall image of ten cells the client scrolls; lever ×6 sweeping on a real angle; marquee, reel backlight and payout burst, all greyscale so the client can tint them by rarity) |
@@ -65,7 +65,7 @@ surface. Output rules live in [`assets/AGENTS.md`](../../assets/AGENTS.md).
   in `make_textures.py`; the shard is `make_coin.make_spin_frame`, and the
   HUD badge is its frame 0 rather than a second drawing of the same object.
   Guns are the same: `make_guns.py` writes the
-  held side-view; `make_loot.py` writes the 16x16 ground/HUD icons under the
+  held frame; `make_loot.py` writes the 16x16 ground/HUD icons under the
   same keys. Do not fold them — a 16px isometric pistol rotated around a
   grip is mush. Pistol grips are a solid block — no heel hole, no selector.
   At this size a 1px loop is eaten by the outline and reads as a circle.
@@ -75,12 +75,46 @@ surface. Output rules live in [`assets/AGENTS.md`](../../assets/AGENTS.md).
   with any drop at the back is a sixth pistol at 16px whatever the blade
   is doing. It is also the shortest silhouette in both files: length is
   how these sheets say range.
+- **`make_guns.py`'s camera is a ROW GRID, and that is the only shading rule
+  on the sheet.** The twelve weapons are drawn from above at the world's high
+  3/4, seven authored rows deep, and a pixel's ramp step is a function of its
+  ROW alone (`ROW_STEP`): crown, bore, near side, under-shelf, then the grip
+  and magazine hanging off rows 4-6. The reason it cannot be a light azimuth
+  is that the client SPINS this frame around the grip — a sprite lit from
+  135deg is lit from 315deg as soon as the player turns around, so the sheet
+  keys off PITCH, which survives the rotation, and every top plane is bright
+  at every heading. Row 3 is deliberately darker than row 4: it is the seam
+  (S10) that stops a magazine welding itself to a receiver. The alphabet is
+  one letter per PART — stock, receiver, handguard, barrel, grip, magazine,
+  can, optic, lens, mechanical, muzzle — and the palette beside each map says
+  what material that part is made of. Two modifiers: UPPERCASE lifts one step
+  (the specular streak, S14), `x` is a recess in the shared `VOID` ramp. Do
+  not reintroduce a gradient or a dither here; the flat side elevations these
+  replaced were twelve stickers on a world built out of stacked volumes.
+- **The row grid gives a mass its plane; ROW COUNT gives it its thickness, and
+  the sheet needs both.** The first cut of the 3/4 rebuild had the grid and
+  not the taper — barrel, receiver and butt all ran three rows deep for the
+  whole length of every rifle — and five of the twelve came out as the same
+  dark slab with a bright line on it. A weapon tapers, and on this camera the
+  taper is vertical: butt four rows, receiver three, handguard three
+  narrowing, barrel TWO, muzzle one. Draw the taper before drawing the parts.
+- **`make_guns.py`'s ramps are derived, not picked.** `_ramp(hue, sat, lo, hi)`
+  builds all five steps from S11's table, so a material is authored as where
+  its ends sit and the hue-shift-and-desaturate law is written once. The `lo`
+  end is the number that matters: these ramps used to bottom out a hair off
+  the outline, which meant every plane the grid puts on step 0 or 1 — the
+  whole underside, and the entire grip and magazine — sank into it. S7 says
+  step 2 is the ambient reference and is "not black". Keep the ceilings under
+  the world's own (`ROCK_RAMP` tops out at #5d5860); the lantern multiplies
+  over all of it. `GRIP` is the one warm neutral on the sheet on purpose:
+  grip and magazine hang on the same rows at the same two planes, so hue is
+  the only thing left to tell them apart with.
 - `make_guns.py`'s manifest carries POSE as well as pixels: `hold` (world px
   along aim from the body centre to the grip — how far in front of the
   character the thing is carried) and `scale`. Both are written as exception
-  maps rather than as columns on every row, because five of six entries are
-  guns held the one way guns are held. The knife is the exception on both:
-  held in against the body, drawn at 0.8. A single carry distance for
+  maps rather than as columns on every row, because eleven of the twelve
+  entries are guns held the one way guns are held. The knife is the exception
+  on both: held in against the body, drawn at 0.8. A single carry distance for
   everything is what made the blade read as a sword floating beside the
   sprite.
 - Generation is deterministic: the same command must produce byte-identical

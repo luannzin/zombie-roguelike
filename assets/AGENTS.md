@@ -26,7 +26,7 @@ output the game actually loads.
   (his WAGON, his counter, the six round tables, his gear, his torches and
   mat), `machine/` (the upgrade cabinet, its reel BAND `strip.png`, and its
   lights), `skills/` (skill icons and the canisters they come out in),
-  `loot/`, `guns/` (held side-view), `hud/`, and `audio/` (16-bit mono wavs +
+  `loot/`, `guns/` (held high-3/4), `hud/`, and `audio/` (16-bit mono wavs +
   `manifest.json`) — the folder is art too,
   generated the same way, and `/audio/shot-0.wav` is served like any sprite.
   Vite's `publicDir` points here, so these files are fetched as
@@ -100,10 +100,16 @@ folder and carries the regeneration commands. Nothing here is edited directly.
   are drawn untinted. Each of those folders has a matching `*-death/`
   sheet: a collapse timeline, last frame the corpse that stays. The
   client never rotates a walk frame to fake one.
-- `guns/` is the held side-view: one 18×8 frame per weapon, pointing right,
-  with grip, muzzle, `hold` (how far in front of the body it is carried) and
-  `scale` in the manifest. Same pixel scale and silhouette height for every
-  one; length is the class. The knife is on this sheet too, drawn STRAIGHT —
+- `guns/` is the held frame: one 24×9 cell per weapon, pointing right, drawn
+  from above at the world's high 3/4, with grip, muzzle, `hold` (how far in
+  front of the body it is carried) and `scale` in the manifest. Seven authored
+  rows, the bore always on row 1, and a pixel's value comes from its ROW — the
+  client spins this frame around the grip, so a baked light direction spins
+  with it and only PITCH survives. How many rows a mass occupies is its
+  THICKNESS, and that is what separates a barrel from the receiver it screws
+  into: barrels run two rows against a receiver's three and a butt's four.
+  Same pixel scale and silhouette height for
+  every one; length is the class. The knife is on this sheet too, drawn STRAIGHT —
   handle, crossguard and blade on one line — because every gun here hangs a
   grip below its barrel and a blade that did the same would read as one more
   pistol at 16px. It is also the one row with a negative `hold` and a `scale`

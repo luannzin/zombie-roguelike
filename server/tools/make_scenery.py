@@ -31,7 +31,7 @@ Output (assets/processed/scenery/):
     logs.png       4 frames, 32x14   a felled trunk lying across the ground
     firepit.png    3 frames, 20x12   cold stones and burnt wood. SMOKES.
     statue.png     6 frames, 16x36   carved stone. See make_objects.py.
-    barrel/box/chest/stash/vehicle/altar
+    barrel/crate/box/chest/stash/vehicle/altar
                                      animated, kind-major. make_objects.py.
 
   decals — flat, no outline, baked into the client's ground canvas
@@ -788,6 +788,9 @@ def build(args) -> Path:
     barrels, barrel_w, barrel_h = objects.barrel_strip(tile, args.seed + 201)
     pack(barrels, barrel_w, barrel_h).save(out_dir / "barrel.png")
 
+    crates, crate_w, crate_h = objects.crate_strip(tile, args.seed + 210)
+    pack(crates, crate_w, crate_h).save(out_dir / "crate.png")
+
     boxes, box_w, box_h = objects.box_strip(tile, args.seed + 202)
     pack(boxes, box_w, box_h).save(out_dir / "box.png")
 
@@ -854,6 +857,12 @@ def build(args) -> Path:
                 animFrames=objects.BARREL_FRAMES,
                 fps=objects.BARREL_FPS,
             ),
+            "crate": sheet(
+                "crate.png", crate_w, crate_h, crates, sway=0,
+                kinds=objects.CRATE_KINDS,
+                animFrames=objects.CRATE_FRAMES,
+                fps=objects.CRATE_FPS,
+            ),
             "box": sheet(
                 "box.png", box_w, box_h, boxes, sway=0,
                 kinds=objects.BOX_KINDS,
@@ -902,6 +911,7 @@ def build(args) -> Path:
         f"tent {len(tents)}, fence {len(fences)}, sign {len(signs)}, "
         f"logs {len(logs)}, firepit {len(pits)}, statue {len(statues)}, "
         f"barrel {objects.BARREL_KINDS}x{objects.BARREL_FRAMES}, "
+        f"crate {objects.CRATE_KINDS}x{objects.CRATE_FRAMES}, "
         f"box {objects.BOX_KINDS}x{objects.BOX_FRAMES}, "
         f"chest {objects.CHEST_KINDS}x{objects.CHEST_FRAMES}, "
         f"stash {objects.STASH_KINDS}x{objects.STASH_FRAMES}, "

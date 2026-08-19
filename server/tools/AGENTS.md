@@ -66,8 +66,17 @@ surface. Output rules live in [`assets/AGENTS.md`](../../assets/AGENTS.md).
   HUD badge is its frame 0 rather than a second drawing of the same object.
   Guns are the same: `make_guns.py` writes the
   held frame; `make_loot.py` writes the 16x16 ground/HUD icons under the
-  same keys. Do not fold them — a 16px isometric pistol rotated around a
-  grip is mush. Pistol grips are a solid block — no heel hole, no selector.
+  same keys. Do not fold the two SHEETS — a 16px isometric pistol rotated
+  around a grip is mush, and the frames differ in length and in where they
+  sit in their cell. **They do share the PAINTER**: `make_loot.WEAPONS` is
+  drawn by `make_guns.paint_rows` out of `make_guns`' own ramps, passing its
+  own origin so the icon plants on the tile instead of centring. That import
+  is the contract. "The icon matches the thing in your hands" is not a
+  promise prose can keep — the two sheets ran on different shaders for as
+  long as the shading was private to `make_guns`, and the floor copies were
+  still lit by `_blit`'s diagonal falloff long after the held sheet had
+  stopped being. Do not reintroduce a second set of gun ramps here.
+  Pistol grips are a solid block — no heel hole, no selector.
   At this size a 1px loop is eaten by the outline and reads as a circle.
   **The knife is on both sheets and is drawn STRAIGHT on both** — handle,
   crossguard and blade on one line, with the guard the only thing leaving

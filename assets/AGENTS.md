@@ -115,7 +115,14 @@ folder and carries the regeneration commands. Nothing here is edited directly.
   pistol at 16px. It is also the one row with a negative `hold` and a `scale`
   under 1: held IN against the body and drawn smaller, which is what makes it
   a sidearm rather than a sword. The same keys have 16×16 icons on `loot/`
-  for the ground and the hotbar. Do not rotate a loot icon in the hand.
+  for the ground and the hotbar, drawn on the SAME row grid out of the SAME
+  ramps — `make_loot` imports the painter rather than owning a second one, so
+  the weapon on the floor and the weapon in the hand cannot drift apart. Two
+  differences, both forced by the cell: the icon is shortened to fit 16px
+  (S16 — a smaller variant deletes length, it does not scale), and it is
+  planted on the bottom of its cell rather than centred, because it is lying
+  on a tile rather than turning around a grip. Do not rotate a loot icon in
+  the hand.
 - The client reads `processed/` only. Nothing may import from `raw/`; the font
   is bundled from `client/src/assets/fonts/` instead.
 

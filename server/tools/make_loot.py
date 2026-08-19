@@ -42,6 +42,12 @@ from make_textures import (
     rgb,
 )
 
+#: The held-weapon generator, imported for its PAINTER and its material ramps.
+#: The twelve gun icons on this sheet are the same twelve objects that sheet
+#: draws, so they are shaded by its code and coloured out of its ramps rather
+#: than out of a matching set kept here — see the comment over `WEAPONS`.
+import make_guns as guns  # noqa: E402
+
 # Worked materials against the forest. Gold and gem steps go brighter than
 # the scenery ramps — these have to read as *things* on a dark floor, not as
 # more litter.
@@ -642,144 +648,6 @@ ITEMS: list[tuple[str, Palette, Art]] = [
             "ooooooooo",
         ],
     ),
-    (
-        "glock18",
-        {"f": METAL, "s": METAL},
-        [
-            "....ssssss.",
-            "...fssssss.",
-            "...f.......",
-            "...ff......",
-        ],
-    ),
-    (
-        "deagle",
-        {"s": GOLD, "g": CLOTH},
-        [
-            ".....sssssss",
-            "....ssssssss",
-            "...gg.......",
-            "...ggg......",
-        ],
-    ),
-    (
-        "famas",
-        {"m": METAL, "g": CLOTH},
-        [
-            "...mmmmmm...",
-            "...m....m.mm",
-            "ggggggggggmm",
-            "g....g......",
-            "gggggg......",
-        ],
-    ),
-    (
-        "ak47",
-        {"w": WOOD, "m": METAL},
-        [
-            ".........m..",
-            "wwwwwmmmmmmm",
-            "w...w.mmmmmm",
-            "wwwww.mm....",
-            "......mm....",
-        ],
-    ),
-    (
-        "awp",
-        {"o": OLIVE, "m": METAL, "s": STONE},
-        [
-            ".......ss.....",
-            "ooooooommmmmmm",
-            "o....o.mmmmmmm",
-            "oooooo.m......",
-        ],
-    ),
-    # THE SIX NEW ROWS, and the rule they follow is the sheet's original one:
-    # LENGTH IS THE CLASS. A pistol is short, an SMG a little longer, a rifle
-    # longer again, the shotgun and the sniper longest. What separates two
-    # weapons of the same length is one distinguishing lump — a can, a second
-    # outline, a magazine lying flat on top, a tube under the barrel — and
-    # nothing finer than that survives a 16 px cell in a dark bag.
-    (
-        "usp_s",
-        {"m": METAL, "g": CLOTH, "c": STONE},
-        [
-            "....mmmm.ccc",
-            "...mmmmmcccc",
-            "...g....dccc",
-            "...gg.......",
-        ],
-    ),
-    (
-        "dual_berettas",
-        {"m": METAL, "s": STONE, "g": CLOTH},
-        [
-            "....ssssss..",
-            "...ssssss...",
-            "..mmmmmmm...",
-            "..gmmmmmm...",
-            "..gg........",
-        ],
-    ),
-    (
-        "mp7",
-        {"m": METAL, "s": STONE, "g": CLOTH},
-        [
-            "..ssssss....",
-            "mmmmmmmmmmm.",
-            "mm.gg...mm..",
-            "...gg.......",
-            "...mm.......",
-        ],
-    ),
-    (
-        "p90",
-        {"m": METAL, "s": STONE, "g": CLOTH},
-        [
-            "...ssssss...",
-            "mmmmmmmmmmmm",
-            "mm.gg.mmmmm.",
-            "mm.gg.mmmmm.",
-            "..mmmmmm....",
-        ],
-    ),
-    (
-        "xm1014",
-        {"m": METAL, "g": CLOTH, "t": STONE},
-        [
-            "......ss......",
-            "gggggmmmmmmmmm",
-            "gg..gmmttttttt",
-            ".gggg.........",
-            "..gg..........",
-        ],
-    ),
-    (
-        "m4a1s",
-        {"m": METAL, "s": STONE, "g": CLOTH, "c": STONE},
-        [
-            "...ssss....cc.",
-            "ggggmmmmmmcccc",
-            "gg..gmmmmm.cc.",
-            ".gggg.mm......",
-            "......mm......",
-        ],
-    ),
-    # The knife. Never on the ground and never in a crate — this frame exists
-    # so the fixed hotbar cell has something to draw and the tooltip has
-    # something to name. Drawn STRAIGHT, like its held frame: every gun icon
-    # above drops a grip below the barrel, so a blade that did the same would
-    # be a sixth pistol in a row of cells. Handle, crossguard, point.
-    (
-        "knife",
-        {"b": METAL, "g": LEATHER, "c": STONE},
-        [
-            "..c........",
-            "ggcbbbbbbb.",
-            "ggcbbbbbbbb",
-            "..c........",
-        ],
-    ),
     # The condensed core. Never scattered and never in a crate: the only thing
     # that makes one is overfeeding a rift and shutting it, and what it is
     # WORTH comes off that rift rather than off the catalog — so this frame is
@@ -803,23 +671,255 @@ ITEMS: list[tuple[str, Palette, Art]] = [
 ]
 
 
+# ---------------------------------------------------------------------------
+# THE WEAPONS, AND THEY ARE NOT PAINTED BY `_blit`.
+#
+# Everything above is lit by the diagonal falloff in `_blit`: brighter at the
+# top-left, darker at the bottom-right, one key light on a small standing
+# prop. That is right for a bottle and it is what the guns used to get too —
+# and it is exactly the shading `make_guns.py` threw out, because a weapon in
+# this game is drawn from ABOVE on a row grid where a pixel's plane is a
+# function of its ROW. The two sheets are the same twelve objects, so a player
+# who picks up the thing on the floor has to get the thing they were looking
+# at, and for as long as the floor copy was lit from the upper left and the
+# held copy was lit from the sky, they did not.
+#
+# So these rows are painted by `make_guns.paint_rows` — the generator's own
+# painter, imported, not reimplemented — with `make_guns`' own material ramps.
+# Not a matching palette: THE SAME ONE. A copied constant is a constant that
+# drifts, and the whole reason this comment exists is that it already had.
+#
+# What changes between the two sheets is exactly two things, and both are
+# forced by the cell rather than chosen:
+#
+#   * LENGTH. A held frame is 24px wide and a loot cell is 16, so every map
+#     here is the held map with its barrel and stock SHORTENED — S16's rule
+#     that a smaller variant deletes rather than shrinks. Class order still
+#     holds (knife shortest, AWP longest), it is just compressed;
+#   * ORIGIN. A held weapon is centred in its frame because it turns around
+#     its grip. One on the ground is planted on the bottom of the cell like
+#     every other icon here, so it sits on the tile instead of hovering.
+#
+# The muzzle marker `m` is gone: it exists on the held sheet so the tracer
+# knows where the barrel ends, and nothing on the floor fires. Everything else
+# is the same alphabet — t stock, r receiver, h handguard, b barrel, g grip,
+# n magazine, c can, e optic, l lens, k mechanical, x recess.
+# ---------------------------------------------------------------------------
+
+WEAPONS: list[tuple[str, Palette, Art]] = [
+    (
+        "glock18",
+        {"r": guns.STEEL, "b": guns.STEEL, "f": guns.POLY,
+         "g": guns.GRIP, "n": guns.MAG},
+        [
+            "..........",
+            "..rrRRrbbb",
+            "..rxrrrbb.",
+            ".ffffxf...",
+            ".ggg......",
+            "ggg.......",
+            "gnn.......",
+        ],
+    ),
+    (
+        "usp_s",
+        {"r": guns.STEEL, "f": guns.POLY, "g": guns.GRIP,
+         "n": guns.MAG, "c": guns.CAN},
+        [
+            ".......ccccc.",
+            "..rrrrrCCCCc.",
+            "..rxrrrccccc.",
+            ".ffffxf......",
+            ".ggg.........",
+            "ggg..........",
+            "gnn..........",
+        ],
+    ),
+    (
+        "dual_berettas",
+        {"r": guns.CHROME, "b": guns.CHROME, "f": guns.POLY, "g": guns.GRIP},
+        [
+            "............",
+            "..rrRRrrbbb.",
+            "..rxrrrrbb..",
+            ".ffffxf.....",
+            "gggrrrrrrbb.",
+            ".ggrxrrrrbb.",
+            "..fffxf.....",
+        ],
+    ),
+    (
+        "deagle",
+        {"r": guns.CHROME, "b": guns.CHROME, "k": guns.CHROME,
+         "f": guns.CHROME, "g": guns.GRIP, "n": guns.MAG},
+        [
+            "....kkkkk....",
+            "..rrRRrrbbbbb",
+            "..rxrrrrbbbb.",
+            ".fffffxf.....",
+            ".ggg.........",
+            "ggg..........",
+            "gnn..........",
+        ],
+    ),
+    (
+        "mp7",
+        {"t": guns.POLY, "r": guns.POLY, "h": guns.POLY, "b": guns.STEEL,
+         "f": guns.POLY, "g": guns.GRIP, "n": guns.MAG, "k": guns.STEEL},
+        [
+            "......kk......",
+            "tttxrrRRrrhbbb",
+            "ttxrrrrrrrhbb.",
+            "..ffffxff.....",
+            "....gg........",
+            "....gg........",
+            "....nn........",
+        ],
+    ),
+    (
+        "p90",
+        {"r": guns.POLY, "h": guns.POLY, "b": guns.STEEL, "f": guns.POLY,
+         "g": guns.GRIP, "n": guns.TAN},
+        [
+            "..nnnnnnn.....",
+            "rrrrRRrrrhbbb.",
+            "rrxrrrrrrhbb..",
+            ".fffffxff.....",
+            "....gg........",
+            "....gg........",
+            "...ff.........",
+        ],
+    ),
+    (
+        "xm1014",
+        {"t": guns.POLY, "r": guns.STEEL, "h": guns.POLY, "b": guns.STEEL,
+         "f": guns.POLY, "g": guns.GRIP, "n": guns.MAG},
+        [
+            "..............",
+            "tttxrrRRhhbbbb",
+            "ttxrrrrrhhbbb.",
+            "..fffxfnnnnn..",
+            "....gg........",
+            "...gg.........",
+            "..gg..........",
+        ],
+    ),
+    (
+        "famas",
+        {"r": guns.POLY, "h": guns.POLY, "b": guns.STEEL, "f": guns.POLY,
+         "g": guns.GRIP, "n": guns.POLY, "k": guns.STEEL},
+        [
+            "...kkkkk......",
+            "rrrrrRRrhhbbb.",
+            "rrxrrrrrhhbb..",
+            ".ffffxff......",
+            "..nn.gg.......",
+            "..nn.gg.......",
+            "..nn..........",
+        ],
+    ),
+    (
+        "ak47",
+        {"w": guns.WOOD, "r": guns.STEEL, "b": guns.STEEL, "f": guns.STEEL,
+         "g": guns.GRIP, "n": guns.TAN, "k": guns.STEEL},
+        [
+            "........k.....",
+            "wwwxrrRRkwwbbb",
+            "wwwxrrrrkwbbb.",
+            ".fffxff.......",
+            "...gg...nn....",
+            "..gg....nnn...",
+            "..g......nn...",
+        ],
+    ),
+    (
+        "m4a1s",
+        {"t": guns.POLY, "r": guns.POLY, "h": guns.POLY, "c": guns.CAN,
+         "f": guns.POLY, "g": guns.GRIP, "n": guns.MAG, "k": guns.STEEL},
+        [
+            "...kkkk...ccc.",
+            "ttxrrRRrhhcccc",
+            "ttxrrrrrhhccc.",
+            ".ffxfff.......",
+            "...gg..nn.....",
+            "..gg...nn.....",
+            "..g....nn.....",
+        ],
+    ),
+    (
+        "awp",
+        {"o": guns.OLIVE, "r": guns.STEEL, "b": guns.STEEL, "e": guns.OPTIC,
+         "l": guns.LENS, "f": guns.STEEL, "g": guns.GRIP, "n": guns.MAG},
+        [
+            "...eeell......",
+            "ooxrrRRrbbbbbb",
+            "ooxrrrrxbbbbb.",
+            ".ooxffff......",
+            "....gg..nn....",
+            "...gg...nn....",
+            "...g....nn....",
+        ],
+    ),
+    # The knife. Never on the ground and never in a crate — this frame exists
+    # so the fixed hotbar cell has something to draw and the tooltip has
+    # something to name. Drawn STRAIGHT, like its held frame: every gun above
+    # hangs a grip below its barrel, so a blade that did the same would be a
+    # sixth pistol in a row of cells.
+    #
+    # FOUR ROWS, NOT SEVEN, and that is not a shortcut. `paint_rows` takes a
+    # pixel's plane from its row INDEX, so a map that stops at row 3 is a map
+    # of an object with nothing hanging under it — which is what a knife is.
+    # Padding it out to seven with blank rows would draw the same pixels and
+    # then plant them three rows too high in the cell.
+    (
+        "knife",
+        {"b": guns.CHROME, "k": guns.STEEL, "g": guns.GRIP},
+        [
+            "...k......",
+            "ggkkbBBbbb",
+            "ggkkbbbbb.",
+            "...k......",
+        ],
+    ),
+]
+
+
+def _weapon_blit(art: Art, ramps: Palette, cell: int) -> Image.Image:
+    """One weapon icon, on `make_guns`' row grid and planted on the tile.
+
+    The origin is the only thing this adds: a held frame centres, and a thing
+    lying on the floor sits on the bottom of its cell the way every other icon
+    on this sheet does. Outlined in the LOOT sheet's own colour rather than the
+    gun sheet's — the two differ by four values out of 255, and one sheet with
+    one outline beats a hairline seam nobody can see but a diff can.
+    """
+    width, height = guns.art_size(art)
+    img = guns.paint_rows(art, ramps, (cell, cell),
+                          ((cell - width) // 2, cell - height - 1))
+    outline(img, OUTLINE)
+    return img
+
+
 def build(args) -> Path:
     tile = args.tile
     out_dir = PROCESSED_DIR / "loot"
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    frames = [_blit(art, pal, tile) for _, pal, art in ITEMS]
-    pack(frames, tile, tile).save(out_dir / "sheet.png")
+    painted = (
+        [(key, _blit(art, pal, tile)) for key, pal, art in ITEMS]
+        + [(key, _weapon_blit(art, pal, tile)) for key, pal, art in WEAPONS]
+    )
+    pack([frame for _, frame in painted], tile, tile).save(out_dir / "sheet.png")
 
     manifest = {
         "tile": tile,
         "frameWidth": tile,
         "frameHeight": tile,
-        "frames": len(ITEMS),
-        "items": {key: {"frame": index} for index, (key, _, _) in enumerate(ITEMS)},
+        "frames": len(painted),
+        "items": {key: {"frame": index} for index, (key, _) in enumerate(painted)},
     }
     (out_dir / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
-    print(f"wrote {out_dir}: {len(ITEMS)} items @ {tile}x{tile}")
+    print(f"wrote {out_dir}: {len(ITEMS)} items + {len(WEAPONS)} weapons @ {tile}x{tile}")
     return out_dir
 
 

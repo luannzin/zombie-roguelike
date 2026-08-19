@@ -139,43 +139,43 @@
     "ammo_shell": {
       "frame": 44
     },
-    "glock18": {
+    "rift_shard": {
       "frame": 45
     },
-    "deagle": {
+    "glock18": {
       "frame": 46
     },
-    "famas": {
+    "usp_s": {
       "frame": 47
     },
-    "ak47": {
+    "dual_berettas": {
       "frame": 48
     },
-    "awp": {
+    "deagle": {
       "frame": 49
     },
-    "usp_s": {
+    "mp7": {
       "frame": 50
     },
-    "dual_berettas": {
+    "p90": {
       "frame": 51
     },
-    "mp7": {
+    "xm1014": {
       "frame": 52
     },
-    "p90": {
+    "famas": {
       "frame": 53
     },
-    "xm1014": {
+    "ak47": {
       "frame": 54
     },
     "m4a1s": {
       "frame": 55
     },
-    "knife": {
+    "awp": {
       "frame": 56
     },
-    "rift_shard": {
+    "knife": {
       "frame": 57
     }
   }

@@ -241,31 +241,60 @@ def _origin(art: Art, width: int, height: int) -> tuple[int, int]:
     return ((width - len(art[0])) // 2, (height - len(art)) // 2)
 
 
-def _blit(art: Art, ramps: Palette, width: int, height: int) -> Image.Image:
-    """One weapon, painted flat.
+def art_size(art: Art) -> tuple[int, int]:
+    """(columns, rows) of a map, before it is padded. For placing an origin."""
+    return (max(len(row) for row in art), len(art))
+
+
+def paint_rows(art: Art, ramps: Palette, size: tuple[int, int],
+               origin: tuple[int, int]) -> Image.Image:
+    """The row grid, painted. NO OUTLINE — the caller owns that.
 
     No gradient and no dither: a pixel's value is its ROW's plane (`ROW_STEP`)
     and its letter's material, and that pair is the only rule this whole sheet
     is shaded by. The old diagonal falloff is what made twelve guns look like
     twelve stickers — it lit them from a direction the client then spun.
+
+    THIS IS PUBLIC BECAUSE THE GROUND ICONS ARE PAINTED BY IT TOO.
+    `make_loot.py` draws the same twelve weapons at 16px for the floor and the
+    hotbar, and "the icon matches the thing in your hands" is a promise no
+    amount of matching prose keeps — the two sheets ran on different shaders
+    for exactly as long as the shading lived in a private function here, and
+    the loot copies were still lit by a diagonal falloff after this sheet had
+    stopped being. Sharing the painter is what makes the match structural.
+    Only the ORIGIN differs, which is why it is an argument: a held frame is
+    centred in its cell, and a thing lying on the ground is planted on the
+    bottom of one.
     """
     art = _pad(art)
-    img = Image.new("RGBA", (width, height), TRANSPARENT)
+    img = Image.new("RGBA", size, TRANSPARENT)
     px = img.load()
-    ox, oy = _origin(art, width, height)
+    width, height = size
+    ox, oy = origin
     for y, row in enumerate(art):
         plane = ROW_STEP[y]
         for x, ch in enumerate(row):
             if ch == ".":
                 continue
+            px_x, px_y = ox + x, oy + y
+            if not (0 <= px_x < width and 0 <= px_y < height):
+                continue
             if ch == "x":
-                px[ox + x, oy + y] = VOID[plane]
+                px[px_x, px_y] = VOID[plane]
                 continue
             ramp = ramps.get(ch.lower())
             if ramp is None:
                 continue
             step = min(plane + 1, len(ramp) - 1) if ch.isupper() else plane
-            px[ox + x, oy + y] = ramp[step]
+            px[px_x, px_y] = ramp[step]
+    return img
+
+
+def _blit(art: Art, ramps: Palette, width: int, height: int) -> Image.Image:
+    """One weapon in its held frame, centred."""
+    padded = _pad(art)
+    img = paint_rows(art, ramps, (width, height),
+                     _origin(padded, width, height))
     outline(img, OUTLINE)
     return img
 

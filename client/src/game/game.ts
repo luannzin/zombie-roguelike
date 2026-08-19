@@ -1224,9 +1224,10 @@ export class Game {
         step.sweep,
         step.kind === 'cut',
         true,
+        step.swingTime,
       );
       this.visuals.kickRecoil(swing.by, -swing.dx, -swing.dy, step.lunge);
-      this.visuals.kickGun(swing.by, step.swing, 0);
+      this.visuals.startSwing(swing.by, step.swing, step.sweep, step.swingTime, step.swingThrust);
       playSfxAt('knife-swing', swing.x, swing.y, {
         gain: 0.85,
         variant: Math.min(swing.step, 2),
@@ -1942,25 +1943,57 @@ export class Game {
     // Holstering the blade mid-chain abandons it, same as the server.
     this.comboStep = 0;
     this.comboLeft = 0;
-    if (packet.shoot && local.alive && weapon) {
-      this.adsHold += dt;
-      if (this.localFireCooldown === 0 && this.adsHold >= weapon.aimDelay) {
-        const key = this.weaponKeyOf(this.localId, this.heldSlot);
-        // A DRY TRIGGER STILL EATS THE COOLDOWN, exactly as it does on the
-        // server. Both halves matter: without the spend the tracer would
-        // outlive the reserve, and without the cooldown an empty gun would
-        // click thirty times a second for as long as the button was down.
-        this.localFireCooldown = weapon.fireCooldown;
-        if (this.hasRound(key)) {
-          this.spendRound(key);
-          this.predictShot(weapon);
-        } else {
-          playSfx('ui-error');
-        }
-      }
-    } else {
+    if (!weapon || !local.alive) {
       this.adsHold = 0;
+      return;
     }
+
+    if (weapon.fireOnRelease) {
+      // THE AWP, and the mirror of `Room.handle_attack`. Holding is aiming
+      // and never firing; the shot is the frame the button comes up, and
+      // only if the hold reached `aimDelay`. Predicting on the press here
+      // would draw a tracer the server never cast and then have to live
+      // with it — an un-drawable mistake, since a tracer is gone before a
+      // correction could arrive.
+      if (packet.shoot) {
+        this.adsHold += dt;
+        return;
+      }
+      const held = this.adsHold;
+      this.adsHold = 0;
+      if (held < weapon.aimDelay || this.localFireCooldown > 0) return;
+      this.pullTrigger(weapon);
+      return;
+    }
+
+    if (!packet.shoot) {
+      this.adsHold = 0;
+      return;
+    }
+    this.adsHold += dt;
+    if (this.localFireCooldown === 0 && this.adsHold >= weapon.aimDelay) {
+      this.pullTrigger(weapon);
+    }
+  }
+
+  /**
+   * Spend a round and draw the shot, or click on an empty reserve.
+   *
+   * A DRY TRIGGER STILL EATS THE COOLDOWN, exactly as it does on the server.
+   * Both halves matter: without the spend the tracer would outlive the
+   * reserve, and without the cooldown an empty gun would click thirty times
+   * a second for as long as the button was down.
+   */
+  private pullTrigger(weapon: WeaponConfig): void {
+    const key = this.weaponKeyOf(this.localId, this.heldSlot);
+    this.localFireCooldown = weapon.fireCooldown;
+    if (!this.hasRound(key)) {
+      playSfx('ui-error');
+      return;
+    }
+    // ONE ROUND PER PULL, not per pellet: a shell buys six rays.
+    this.spendRound(key);
+    this.predictShot(weapon);
   }
 
   /**
@@ -2167,12 +2200,15 @@ export class Game {
       // the landed version arrives with the blood, a fifth of a second later,
       // and thickening a stroke after the fact is a flicker.
       false,
+      step.swingTime,
     );
     this.camera.addTrauma(step.trauma);
     // Forward, not back: a swing carries you into it. `kickRecoil` takes the
     // direction it should push AGAINST, so the aim is negated to lunge along it.
     this.visuals.kickRecoil(this.localId, -this.aimX, -this.aimY, step.lunge);
-    this.visuals.kickGun(this.localId, step.swing, 0);
+    // The BLADE, on the same clock and the same arc as the path above — not
+    // a recoil spring wearing a knife. See `EntityVisuals.startSwing`.
+    this.visuals.startSwing(this.localId, step.swing, step.sweep, step.swingTime, step.swingThrust);
     playSfx('knife-swing', { variant: Math.min(index, 2) });
   }
 
@@ -2784,6 +2820,7 @@ export class Game {
       halfHeight: config.playerHalfHeight,
       weapon: weaponKey,
       gunKick: gun.kick,
+      gunSwing: gun.swing,
       gunPump: gun.pump,
       hitSpin: 0,
       pour,
@@ -2914,6 +2951,7 @@ export class Game {
       halfHeight: type.halfHeight,
       weapon: null,
       gunKick: 0,
+      gunSwing: 0,
       gunPump: 0,
       hitSpin: this.visuals.hitSpinOf(id),
       // Only a player carries a bag, and only a player ever pours one out.

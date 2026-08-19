@@ -363,6 +363,7 @@ function corpseAsTarget(body: DrawableCorpse): DrawableEntity {
     halfHeight: body.halfHeight,
     weapon: null,
     gunKick: 0,
+    gunSwing: 0,
     gunPump: 0,
   };
 }
@@ -590,17 +591,25 @@ function drawHeldGun(
     weapon: target.weapon,
     guns,
     pump: target.gunPump,
+    swing: target.gunSwing,
   });
   const sx = view.rawX(hand.x);
   const sy = view.rawY(hand.y);
   // Per-weapon draw scale, folded into the zoom so the sprite grows and
   // shrinks around the GRIP and the hand does not drift as it scales.
   const zoom = view.zoom * (spec.scale ?? 1);
+  // A GUN'S KICK IS MIRRORED AND A BLADE'S SWING IS NOT, and the asymmetry
+  // is the whole reason they are two fields. `gunKick` means "the muzzle
+  // rises", which is a different screen rotation depending on which way the
+  // body faces, so it is negated with the flip. `gunSwing` means "the blade
+  // is HERE", already resolved into screen space against the same handedness
+  // the white arc is drawn with — mirroring it would uncross the two slashes
+  // of the chain every time the player aimed left.
   const kick = flip ? -target.gunKick : target.gunKick;
 
   ctx.save();
   ctx.translate(sx, sy);
-  ctx.rotate(angle + kick);
+  ctx.rotate(angle + kick + target.gunSwing);
   if (flip) ctx.scale(1, -1);
   ctx.globalAlpha = target.visibility;
   ctx.drawImage(

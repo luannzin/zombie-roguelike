@@ -42,42 +42,32 @@ from dataclasses import dataclass, field
 
 from .config import TILE_SIZE
 from .loot import BY_KEY as ITEMS, Drop, free_tile_near
-from .weapons import AMMO_AWP, AMMO_NONE, AMMO_PISTOL, AMMO_RIFLE, BY_KEY as WEAPONS
+from .weapons import (
+    AMMO_AWP,
+    AMMO_NONE,
+    AMMO_TYPES,
+    BY_KEY as WEAPONS,
+    RESERVE_MAX,
+    STARTING_ROUNDS,
+)
 
 #: Every calibre the game knows, in HUD order.
-TYPES: tuple[str, ...] = (AMMO_PISTOL, AMMO_RIFLE, AMMO_AWP)
+#:
+#: Derived from the weapons catalog rather than listed, so a new gun with a
+#: new calibre arrives with its reserve, its counter and its scatter pass
+#: already wired. Adding a shotgun used to mean editing four lists in three
+#: files; now it means one catalog row.
+TYPES: tuple[str, ...] = AMMO_TYPES
 
 #: Which catalog row is a box of each. One box, one calibre, one key.
-BOX_KEYS: dict[str, str] = {
-    AMMO_PISTOL: "ammo_pistol",
-    AMMO_RIFLE: "ammo_rifle",
-    AMMO_AWP: "ammo_awp",
-}
+BOX_KEYS: dict[str, str] = {calibre: f"ammo_{calibre}" for calibre in TYPES}
 
-#: How much a player may hold, per calibre.
-#:
-#: Sized in SECONDS OF TRIGGER, not in a round count that looks tidy. A full
-#: pistol reserve is about thirty seconds of continuous fire, a rifle a little
-#: under thirty, an AWP about forty-five — so no calibre feels stingier than
-#: another when you are actually in trouble, and the difference between them
-#: stays what it always was: cadence, damage and how much forest hears it.
-RESERVE_MAX: dict[str, int] = {
-    AMMO_PISTOL: 180,
-    AMMO_RIFLE: 270,
-    AMMO_AWP: 30,
-}
-
-#: What a gun arrives with when the merchant hands it over.
-#:
-#: A third of a full reserve. Enough that a purchase is immediately usable —
-#: buying a rifle and then walking into a night unable to fire it would make
-#: the shop feel broken — and not so much that the first night with a new gun
-#: never has to find a box.
-STARTING_ROUNDS: dict[str, int] = {
-    AMMO_PISTOL: 60,
-    AMMO_RIFLE: 90,
-    AMMO_AWP: 10,
-}
+# `RESERVE_MAX` (how much a player may hold) and `STARTING_ROUNDS` (what a
+# bought gun arrives with) are imported above rather than written here. They
+# are functions of what a round is worth against a zombie, which is a
+# question only the weapons catalog can answer — see the sizing block at the
+# bottom of `weapons.py`. Re-exported so every caller in the room still
+# reads them off this module, which is where the reserve lives.
 
 #: Boxes per calibre scattered on a forest map, before the day is counted.
 SCATTER_BASE = 2

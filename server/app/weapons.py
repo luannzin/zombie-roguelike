@@ -3,6 +3,44 @@
 Loot on the ground is still `loot.py`. This is what a bought weapon *is* —
 damage, cadence, reach, weight, the AWP's hold-to-aim.
 
+THE ZOMBIE IS THE UNIT, AND EVERY NUMBER BELOW IS DERIVED FROM IT
+================================================================
+Nothing in this catalog is a hand-picked damage figure any more. The whole
+ladder is generated from CS2's published stat block by four functions —
+`dmg`, `cadence`, `reach`, `loudness` — and one scale factor:
+
+    DAMAGE_SCALE = ZOMBIE_HP / CS_PLAYER_HP  ==  30 / 100
+
+which is chosen so that **a zombie takes exactly what an unarmoured CS2
+player takes**. Four Glock rounds, three AK rounds, two Deagle rounds, one
+AWP round: the shots-to-kill column of the source table survives the port
+unchanged. That is the point of anchoring on the weakest creature in the
+game rather than on a tuned number — the weakest creature is the only thing
+a player ever measures a new gun against, so it is the only honest unit, and
+a rebalance is now a change to ONE constant instead of to twelve rows.
+
+The knife is anchored the same way (`KNIFE_CHAIN_SHARE`): a full chain is
+most of a zombie and never all of one, so the blade always leaves you
+holding a swing you have to survive to throw.
+
+WHAT THE SOURCE TABLE DOES *NOT* CARRY, AND WHAT REPLACED IT
+CS2 balances its cheap fast guns with recoil and spread, and this game has
+neither: a top-down hitscan has no wrist. Three axes carry that weight here
+instead, and they are why a Glock does not simply obsolete an AK:
+
+  * ROUNDS PER KILL. Every shot spends a round (`ammo.py`), so the ladder
+    that actually matters is damage per round: 4 rounds a zombie on a Glock,
+    3 on an AK, 2 on a Deagle, 1 on an AWP. The reserve caps are sized in
+    KILLS, not in seconds of trigger, so an upgrade buys you a longer night
+    rather than a bigger number.
+  * NOISE. `loudness` scales with the round, and the two SUPPRESSED weapons
+    (`usp_s`, `m4a1s` — the S is the whole product) cut it by nearly half.
+    That is the CS2 identity ported to a game where sound is the enemy AI's
+    only long-range sense, and it is what makes a $200 pistol a real answer
+    on a night somebody wants to stay unnoticed.
+  * WEIGHT. Derived from CS2's own running-speed column (`carry_weight`),
+    so the gun that slows you there slows you here.
+
 `ammo` names the CALIBRE each one eats, and it is load-bearing rather than
 decorative: every shot spends a round out of the firing player's reserve
 (`ammo.py`), and what the party is carrying decides which boxes the next
@@ -20,18 +58,34 @@ bought and swapped; the knife is neither, which is the point of it —
 a run STARTS with no gun at all and the hand is still not empty.
 1/2/3 selects a slot; selecting the held slot again holsters it.
 
-A gun FIRES: one hitscan ray, one target, at whatever range the barrel
-carries. The knife SWINGS: a short arc, no ray, and a three-step chain
-(`slash`, `slash`, `cut`) that resets when the player stops. Cadence and
-reach are the trade — a knife is quiet enough to kill without waking the
-forest and short enough that using it is a decision.
+THREE WAYS A TRIGGER RESOLVES, and the catalog says which:
+
+  * ONE RAY. The default. `pellets == 1`, fires the instant the cooldown is
+    up, one hitscan, one target.
+  * A CONE. `pellets > 1` — the shotgun. One trigger pull spends one SHELL
+    and casts `pellets` rays inside `spread_degrees`, each carrying
+    `damage`. Reach is short and the cone is fixed in ANGLE, so distance
+    thins the pattern on its own and a shell is a decision about how close
+    you are willing to be.
+  * ON RELEASE. `fire_on_release` — the AWP. Holding the trigger scopes
+    (`scope_zoom`) and NEVER fires; letting go is the shot, and only if the
+    hold lasted `aim_delay`. A sniper you have to commit to and then let go
+    of is the only weapon in the game whose input is a sentence rather than
+    a word, and it is what stops the AWP being a Deagle that reaches.
+
+The knife SWINGS: a short arc, no ray, and a three-step chain (`slash`,
+`slash`, `cut`) that resets when the player stops. Cadence and reach are the
+trade — a knife is quiet enough to kill without waking the forest and short
+enough that using it is a decision.
 """
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 
 from .config import TILE_SIZE
+from .enemies import ZOMBIE
 
 #: Gun slots, then the knife after them. The knife's cell is `KNIFE_SLOT`
 #: and nothing else may ever land in it. The belt is three cells total —
@@ -46,10 +100,156 @@ HOTBAR_SLOTS = GUN_SLOTS + 1
 #: one an event and what makes the first shop mean something.
 STARTING_MELEE = "knife"
 
+# --- the scale ---------------------------------------------------------------
+
+#: The weakest creature in the game, and therefore the unit of damage. Read
+#: off the stat block rather than typed, so raising a zombie's health
+#: rebalances every gun in the catalog in the same motion.
+ZOMBIE_HP = ZOMBIE.max_hp
+#: What the source table's damage column is measured against.
+CS_PLAYER_HP = 100
+#: The one number this whole file turns on. See the module docstring.
+DAMAGE_SCALE = ZOMBIE_HP / CS_PLAYER_HP
+
+#: The heaviest round in the game, used to normalise recoil and muzzle feel.
+#: The AWP's chest number, before scaling.
+AWP_CHEST = 115
+
+#: Metres of CS2 "accurate range" -> tiles of hitscan reach.
+#:
+#: A base plus a slope rather than a straight multiply, because the source
+#: numbers span 3.4 m to 69 m and a linear port would give the shotgun a
+#: single tile and the AWP half the map. The base is what every weapon can
+#: reach regardless; the slope is what the accuracy column buys on top.
+#: The cap is the lantern's reach doubled — past that nothing is lit and the
+#: ray is arriving somewhere nobody can see.
+RANGE_BASE_TILES = 4.0
+RANGE_PER_METRE = 0.30
+RANGE_MAX_TILES = 22.0
+
+#: How far a bang carries, in tiles: a floor plus the round's weight. The
+#: floor is what a gun going off in a forest costs you no matter how small
+#: it is, which is most of why the knife exists.
+NOISE_BASE_TILES = 9.5
+NOISE_PER_DAMAGE = 0.42
+#: What a can on the end of the barrel is worth. Not silence — a suppressed
+#: rifle still wakes more forest than a blade — but close to halving the
+#: circle is enough to change which route a party takes.
+SUPPRESSED_NOISE = 0.55
+
+#: CS2 dollars -> this game's catalog VALUE, the number `store.price_of`
+#: marks up and the number a night's extraction is measured against.
+#:
+#: A CURVE, not a division, and the two anchors are what the curve is for.
+#: `GUN_PRICE_BASE` dollars has to land on `GUN_VALUE_BASE`, because day one
+#: asks for forty points and that whole take is meant to buy the cheapest
+#: sidearm in the shop (`rift.night_need`, and the note in AGENTS.md). The
+#: AWP has to land near four hundred, because that is the wall the economy
+#: is built to make a party stare at for four nights. An exponent under one
+#: is what connects those two without making everything in between either
+#: free or unreachable — the source table's dollar spread is 24x and this
+#: game's night-to-night income spread is nothing like that wide.
+GUN_PRICE_BASE = 200
+GUN_VALUE_BASE = 40
+GUN_VALUE_CURVE = 0.73
+
+#: CS2's running-speed column -> kilos in the hand.
+#:
+#: The source table already ranks these weapons by how much they slow you
+#: down, and this game already has a system that does exactly that
+#: (`config.CARRY_*`, and `Hotbar.held_weight`). Porting the column instead
+#: of inventing a second opinion means the gun that is heavy over there is
+#: heavy here, and it costs one linear map. The base is what the LIGHTEST
+#: firearm weighs — deliberately above the knife's, so switching to the
+#: blade is still a real way to move faster.
+GUN_SPEED_BASE = 250
+GUN_WEIGHT_BASE = 0.9
+GUN_WEIGHT_PER_SPEED = 0.106
+
+
+def dmg(chest: int) -> int:
+    """CS2 unarmoured CHEST damage, scaled onto the zombie.
+
+    Chest and not head, because this game has no hitboxes: a capsule is a
+    capsule, and the torso number is the one a CS2 player would recognise as
+    "what it does". Rounded half-up, which is what keeps the shots-to-kill
+    column identical to the source (an AK's 35 must land on 11, not 10, or a
+    zombie takes four rounds where a player takes three).
+    """
+    return max(1, int(chest * DAMAGE_SCALE + 0.5))
+
+
+def cadence(rpm: float) -> float:
+    """Rounds per minute -> seconds between shots. Straight from the table."""
+    return round(60.0 / rpm, 3)
+
+
+def reach(metres: float) -> float:
+    """CS2 accurate range in metres -> hitscan reach in tiles."""
+    return round(min(RANGE_MAX_TILES, RANGE_BASE_TILES + metres * RANGE_PER_METRE), 2)
+
+
+def loudness(damage: int, suppressed: bool = False) -> float:
+    """How far the report carries, in tiles."""
+    tiles = NOISE_BASE_TILES + damage * NOISE_PER_DAMAGE
+    return round(tiles * (SUPPRESSED_NOISE if suppressed else 1.0), 1)
+
+
+def feel(damage: int, punch: float = 1.0) -> dict:
+    """Recoil, tracer and muzzle numbers off the weight of the round.
+
+    ONE CURVE FOR ELEVEN GUNS. Every field here used to be authored per
+    weapon, which meant rows of arbitrary numbers nobody could check against
+    each other — and which drifted the moment a damage figure moved. They are
+    all functions of how hard the round hits relative to the heaviest one in
+    the game, so a new catalog row arrives already feeling like it belongs on
+    the same belt.
+
+    `punch` is the ONE piece of character left, and it is deliberately not
+    derivable: a Desert Eagle kicks harder than its damage says and an SMG
+    kicks less than its cadence says, because that is what those weapons are
+    famous for. Keep it inside 0.7..1.3 — past that the curve stops being the
+    thing setting the feel and the multiplier starts being it.
+    """
+    p = damage / dmg(AWP_CHEST)
+    return {
+        "kick": round((0.55 + p * 4.2) * punch, 2),
+        "trauma": round(min(0.55, (0.055 + p * 0.36) * punch), 3),
+        "gun_kick": round((0.09 + p * 0.46) * punch, 3),
+        "gun_pump": round((0.9 + p * 4.3) * punch, 2),
+        "tracer_life": round(0.055 + p * 0.12, 3),
+        "tracer_width": round(0.72 + p * 1.10, 2),
+        "flash": round((0.60 + p * 1.00) * punch, 2),
+        "light_radius": round(44 + p * 66),
+        "light_life": round(0.06 + p * 0.10, 3),
+    }
+
+
+def catalog_value(cs_price: int) -> int:
+    """CS2 dollars -> what one of these is worth on the loot catalog."""
+    if cs_price <= 0:
+        return 0
+    ratio = cs_price / GUN_PRICE_BASE
+    return max(1, round(GUN_VALUE_BASE * ratio**GUN_VALUE_CURVE))
+
+
+def carry_weight(cs_speed: int) -> float:
+    """CS2 running speed -> kilos the body pays for holding it."""
+    slowdown = max(0, GUN_SPEED_BASE - cs_speed)
+    return round(GUN_WEIGHT_BASE + slowdown * GUN_WEIGHT_PER_SPEED, 1)
+
+
 #: The calibres. `ammo.py` owns the reserves, the caps and the boxes; these
-#: three strings are the join between a weapon and the pile of rounds it eats.
+#: strings are the join between a weapon and the pile of rounds it eats.
+#:
+#: Five of them, and the split is by what the weapon IS rather than by what
+#: the round measures: an SMG that ate pistol rounds would drain a sidearm's
+#: reserve at 850 rpm, and a shell that stacked with anything would make the
+#: one weapon in the game with a per-shot economy share somebody else's.
 AMMO_PISTOL = "pistol"
+AMMO_SMG = "smg"
 AMMO_RIFLE = "rifle"
+AMMO_SHELL = "shell"
 AMMO_AWP = "awp"
 #: A blade eats nothing, and saying so is cheaper than a null check.
 AMMO_NONE = "none"
@@ -93,8 +293,22 @@ class ComboStep:
     trauma: float
     #: Which way the arc travels: +1 or -1. The two slashes cross.
     sweep: int
-    #: Radians the held sprite sweeps through the swing.
+    #: HALF-WIDTH of the blade's travel, in radians.
+    #:
+    #: It is half of `arc_degrees` and that is not a coincidence: the held
+    #: sprite TRACKS the drawn white path edge for edge (`entity-visuals.ts`
+    #: runs the same easing `drawSwings` does), so a value disagreeing with
+    #: the arc would put the steel somewhere the path is not. This used to be
+    #: a free number and the blade used to just tilt up and fall back, which
+    #: is what a recoiling pistol does, not what a swung knife does.
     swing: float
+    #: Seconds the blade takes to travel the arc, wind-up included. Shorter
+    #: than `cooldown`, so the follow-through has somewhere to land before
+    #: the next beat is legal.
+    swing_time: float
+    #: World px the grip is thrust out along the blade at mid-swing. The cut
+    #: is a lunge and reads as one; a slash barely leaves the body.
+    swing_thrust: float
     #: How far the swing carries as sound, in tiles. Silent on a whiff.
     noise_tiles: float
 
@@ -119,6 +333,8 @@ class ComboStep:
             "trauma": self.trauma,
             "sweep": self.sweep,
             "swing": self.swing,
+            "swingTime": self.swing_time,
+            "swingThrust": self.swing_thrust,
         }
 
 
@@ -147,11 +363,29 @@ class WeaponDef:
 
     key: str
     name: str
-    #: pistol / rifle / sniper / melee — presentation only.
+    #: pistol / smg / shotgun / rifle / sniper / melee — presentation only.
     kind: str
-    #: The calibre this eats, one per shot. `AMMO_NONE` never runs dry.
+    #: The calibre this eats, one per TRIGGER PULL (not per pellet).
+    #: `AMMO_NONE` never runs dry.
     ammo: str
+    #: THE TWO SOURCE COLUMNS THIS FILE DOES NOT SPEND ITSELF. Price and
+    #: running speed are combat-adjacent rather than combat: the economy
+    #: (`loot.ItemDef.value` -> `store.price_of`) and the carry system
+    #: (`Hotbar.held_weight`) read them through `catalog_value` and
+    #: `carry_weight`. They live on the weapon anyway, because keeping the
+    #: whole ported stat block in one row is the only way a reader can check
+    #: it against the source — and because a gun whose price lived in one
+    #: file and whose damage lived in another is a gun that gets rebalanced
+    #: in half.
+    cs_price: int = 0
+    cs_speed: int = GUN_SPEED_BASE
+    #: Damage of ONE ray. On a shotgun that is one pellet — `shot_damage`
+    #: below is what a whole shell is worth against a single body.
     damage: int = 0
+    #: Rays cast per trigger pull. 1 everywhere but the shotgun.
+    pellets: int = 1
+    #: Full width of the pellet cone, in degrees. Meaningless at 1 pellet.
+    spread_degrees: float = 0.0
     #: Seconds between shots once the trigger is live.
     fire_cooldown: float = 0.0
     range_tiles: float = 0.0
@@ -159,10 +393,19 @@ class WeaponDef:
     muzzle_tiles: float = 0.0
     #: How far the bang carries, in tiles. A pistol is not an AWP.
     noise_tiles: float = 0.0
-    #: Seconds the trigger must be held before the first shot. 0 = instant.
+    #: Seconds the trigger must be held before the shot is legal. 0 = instant.
     aim_delay: float = 0.0
+    #: RELEASE IS THE SHOT. With this set the weapon never fires while the
+    #: button is down, however long it is held — it fires on the frame the
+    #: button comes UP, and only if the hold reached `aim_delay`. See
+    #: `Room.handle_attack`.
+    fire_on_release: bool = False
     #: Absolute camera zoom while holding to shoot. 0 = do not change zoom.
     scope_zoom: float = 0.0
+    #: Playback rate for the shot sample. Below 1 is a bigger gun; the
+    #: catalog has one gunshot and eleven weapons, and pitch is what makes
+    #: a Deagle and a P90 stop being the same event.
+    shot_pitch: float = 1.0
     #: Body kick, world px, opposite aim.
     kick: float = 0.0
     #: Camera trauma on fire.
@@ -193,18 +436,52 @@ class WeaponDef:
     def noise(self) -> float:
         return TILE_SIZE * self.noise_tiles
 
+    @property
+    def shot_damage(self) -> int:
+        """What ONE trigger pull is worth against one body, all pellets in.
+
+        The number a player would quote for the weapon. `damage` is a ray.
+        """
+        return self.damage * self.pellets
+
+    @property
+    def rounds_per_kill(self) -> int:
+        """Trigger pulls this weapon needs to put one zombie down.
+
+        The ladder the ammunition economy is actually built on — see
+        `RESERVE_MAX`. A blade returns 0: it never spends anything.
+        """
+        if self.ammo == AMMO_NONE or self.shot_damage <= 0:
+            return 0
+        return max(1, math.ceil(ZOMBIE_HP / self.shot_damage))
+
+    @property
+    def value(self) -> int:
+        """What the loot catalog says one is worth. See `catalog_value`."""
+        return catalog_value(self.cs_price)
+
+    @property
+    def weight(self) -> float:
+        """Kilos in the hand. See `carry_weight`."""
+        return carry_weight(self.cs_speed)
+
     def client_payload(self) -> dict:
         payload = {
             "name": self.name,
             "kind": self.kind,
             "ammo": self.ammo,
             "damage": self.damage,
+            "pellets": self.pellets,
+            "spreadDegrees": self.spread_degrees,
+            "shotDamage": self.shot_damage,
             "fireCooldown": self.fire_cooldown,
             "range": self.range,
             "muzzle": self.muzzle,
             "noise": self.noise,
             "aimDelay": self.aim_delay,
+            "fireOnRelease": self.fire_on_release,
             "scopeZoom": self.scope_zoom,
+            "shotPitch": self.shot_pitch,
             "kick": self.kick,
             "trauma": self.trauma,
             "gunKick": self.gun_kick,
@@ -223,135 +500,280 @@ class WeaponDef:
         return payload
 
 
-# Cadence and punch are the identity. DPS is close on purpose so a pickup
-# is a *feel* change, not a strict upgrade — except the AWP, which is a
-# different weapon entirely.
+# --- the knife ---------------------------------------------------------------
+
+#: What a WHOLE chain — slash, slash, cut — takes off a zombie.
+#:
+#: Under one, and that is the entire design of the weapon. A chain that
+#: killed would make the blade a rotation you execute; a chain that lands on
+#: nine tenths leaves you standing in front of something still alive with
+#: your cooldown spent, which is the moment the knife is actually about.
+KNIFE_CHAIN_SHARE = 0.9
+KNIFE_CHAIN = round(ZOMBIE_HP * KNIFE_CHAIN_SHARE)
+#: How the chain is split. The finisher is worth more than both slashes
+#: together or it is something you get interrupted out of rather than
+#: something you land.
+KNIFE_SPLIT = (0.22, 0.26, 0.52)
+
+
+def _knife_damage(index: int) -> int:
+    return max(1, int(KNIFE_CHAIN * KNIFE_SPLIT[index] + 0.5))
+
+
+# Cadence and punch are the identity. Everything below is generated from the
+# CS2 stat block by the four functions at the top of this file — the only
+# hand-written numbers left on a gun row are `muzzle_tiles` (where the barrel
+# tip is, which is art), `casings`, `shot_pitch`, `punch` (character) and the
+# shotgun's cone.
+#
+# ORDERED BY CLASS, cheapest inside each class — pistols, SMGs, the shotgun,
+# rifles, the sniper — and the held-gun atlas, the loot atlas and the audio
+# pitch ladder all keep this order, so a catalog row and a sprite are never
+# out of step. The SHOP does not: `store.STOCK_ORDER` sorts by price, because
+# a shelf is a ladder of what you can afford and a sheet is a ladder of what
+# things are.
 WEAPONS: tuple[WeaponDef, ...] = (
+    # --- pistols --------------------------------------------------------------
+    # $200. Four rounds a zombie, the fastest sidearm on the belt, and the
+    # cheapest thing in the shop: this is what a party's first night buys.
     WeaponDef(
         key="glock18",
         name="Glock 18",
         kind="pistol",
         ammo=AMMO_PISTOL,
-        damage=7,
-        fire_cooldown=0.16,
-        range_tiles=7.5,
+        cs_price=200,
+        cs_speed=250,
+        damage=dmg(29),
+        fire_cooldown=cadence(400),
+        range_tiles=reach(20.05),
         muzzle_tiles=0.62,
-        noise_tiles=12.0,
-        aim_delay=0.0,
-        scope_zoom=0.0,
-        kick=1.1,
-        trauma=0.10,
-        gun_kick=0.18,
-        gun_pump=1.6,
-        tracer_life=0.07,
-        tracer_width=0.85,
-        flash=0.7,
+        noise_tiles=loudness(dmg(29)),
+        shot_pitch=1.12,
         casings=1,
-        light_radius=52,
-        light_life=0.07,
+        **feel(dmg(29), punch=0.9),
     ),
+    # $200, and the same price is the whole question. Three rounds a zombie
+    # instead of four, slower, and SUPPRESSED — it wakes barely more forest
+    # than a blade does. The Glock is what you buy to fight; this is what you
+    # buy to not have to.
+    WeaponDef(
+        key="usp_s",
+        name="USP-S",
+        kind="pistol",
+        ammo=AMMO_PISTOL,
+        cs_price=200,
+        cs_speed=240,
+        damage=dmg(34),
+        fire_cooldown=cadence(352),
+        range_tiles=reach(23.81),
+        muzzle_tiles=0.80,
+        noise_tiles=loudness(dmg(34), suppressed=True),
+        shot_pitch=1.24,
+        casings=1,
+        **feel(dmg(34), punch=0.78),
+    ),
+    # $300. Two barrels, one trigger: the highest sidearm dps in the game and
+    # the shortest sidearm reach, which is exactly the trade the pair makes.
+    WeaponDef(
+        key="dual_berettas",
+        name="Berettas Duplas",
+        kind="pistol",
+        ammo=AMMO_PISTOL,
+        cs_price=300,
+        cs_speed=240,
+        damage=dmg(37),
+        fire_cooldown=cadence(500),
+        range_tiles=reach(16.93),
+        muzzle_tiles=0.68,
+        noise_tiles=loudness(dmg(37)),
+        shot_pitch=1.06,
+        # Two slides, two cases in the air.
+        casings=2,
+        **feel(dmg(37), punch=0.92),
+    ),
+    # $700. TWO ROUNDS A ZOMBIE, and that is what the price buys — not dps,
+    # ammunition. A full pistol reserve is a hundred and twenty kills on this
+    # and sixty on the Glock.
     WeaponDef(
         key="deagle",
         name="Desert Eagle",
         kind="pistol",
         ammo=AMMO_PISTOL,
-        damage=24,
-        fire_cooldown=0.72,
-        range_tiles=9.5,
+        cs_price=700,
+        cs_speed=230,
+        damage=dmg(52),
+        fire_cooldown=cadence(267),
+        range_tiles=reach(24.58),
         muzzle_tiles=0.75,
-        noise_tiles=18.0,
-        aim_delay=0.0,
-        scope_zoom=0.0,
-        kick=3.2,
-        trauma=0.28,
-        gun_kick=0.42,
-        gun_pump=3.8,
-        tracer_life=0.12,
-        tracer_width=1.55,
-        flash=1.35,
+        noise_tiles=loudness(dmg(52)),
+        shot_pitch=0.86,
         casings=1,
-        light_radius=92,
-        light_life=0.12,
+        **feel(dmg(52), punch=1.25),
     ),
+    # --- submachine guns ------------------------------------------------------
+    # $1400. The first thing on the shelf that empties a magazine's worth of
+    # noise into a clearing. Huge cadence, poor reach, and it eats its own
+    # calibre — an SMG that shared the pistol reserve would drain a sidearm.
+    WeaponDef(
+        key="mp7",
+        name="MP7",
+        kind="smg",
+        ammo=AMMO_SMG,
+        cs_price=1400,
+        cs_speed=220,
+        damage=dmg(28),
+        fire_cooldown=cadence(750),
+        range_tiles=reach(14.38),
+        muzzle_tiles=0.82,
+        noise_tiles=loudness(dmg(28)),
+        shot_pitch=1.18,
+        casings=1,
+        **feel(dmg(28), punch=0.8),
+    ),
+    # $2350. The fastest trigger in the game and the second-shortest reach.
+    # A P90 answers a pack standing on top of you and nothing else.
+    WeaponDef(
+        key="p90",
+        name="P90",
+        kind="smg",
+        ammo=AMMO_SMG,
+        cs_price=2350,
+        cs_speed=230,
+        damage=dmg(25),
+        fire_cooldown=cadence(857),
+        range_tiles=reach(10.40),
+        muzzle_tiles=0.86,
+        noise_tiles=loudness(dmg(25)),
+        shot_pitch=1.3,
+        casings=1,
+        **feel(dmg(25), punch=0.72),
+    ),
+    # --- shotgun --------------------------------------------------------------
+    # $2000, and the only weapon in the catalog that resolves as a CONE.
+    #
+    # Six pellets of six inside a twenty-degree spread. Every pellet on one
+    # body is thirty-six damage — a zombie, exactly, in one shell — and the
+    # cone is fixed in ANGLE, so it thins itself with distance: at the edge
+    # of its reach the pattern is wider than a body and a shell buys you a
+    # wound instead of a kill. Nothing about that is a falloff curve; it is
+    # geometry, which is why it reads without a tooltip.
+    #
+    # The reserve is counted in SHELLS and it is the smallest in the game.
+    # That is what makes the weapon a decision: sixty answers to "something
+    # is already touching me", and no answer at all to anything further off.
+    WeaponDef(
+        key="xm1014",
+        name="XM1014",
+        kind="shotgun",
+        ammo=AMMO_SHELL,
+        cs_price=2000,
+        cs_speed=215,
+        damage=dmg(20),
+        pellets=6,
+        spread_degrees=20.0,
+        fire_cooldown=cadence(171),
+        range_tiles=reach(3.39),
+        muzzle_tiles=0.92,
+        # The whole shell is what the forest hears, not one pellet.
+        noise_tiles=loudness(dmg(20) * 6),
+        shot_pitch=0.72,
+        casings=1,
+        **feel(dmg(20) * 6, punch=1.05),
+    ),
+    # --- rifles ---------------------------------------------------------------
+    # $1950. The cheap rifle: four rounds a zombie like the Glock, at six
+    # hundred and sixty a minute. What the price buys is the CADENCE.
     WeaponDef(
         key="famas",
         name="FAMAS",
         kind="rifle",
         ammo=AMMO_RIFLE,
-        damage=9,
-        fire_cooldown=0.11,
-        range_tiles=11.0,
+        cs_price=1950,
+        cs_speed=220,
+        damage=dmg(30),
+        fire_cooldown=cadence(666),
+        range_tiles=reach(18.61),
         muzzle_tiles=0.88,
-        noise_tiles=16.0,
-        aim_delay=0.0,
-        scope_zoom=0.0,
-        kick=1.6,
-        trauma=0.13,
-        gun_kick=0.14,
-        gun_pump=2.1,
-        tracer_life=0.08,
-        tracer_width=1.0,
-        flash=0.85,
+        noise_tiles=loudness(dmg(30)),
+        shot_pitch=1.08,
         casings=1,
-        light_radius=64,
-        light_life=0.08,
+        **feel(dmg(30), punch=0.86),
     ),
+    # $2700. Three rounds a zombie and the loudest thing short of a sniper.
+    # The AK is the line where a party stops rationing and starts fighting.
     WeaponDef(
         key="ak47",
         name="AK-47",
         kind="rifle",
         ammo=AMMO_RIFLE,
-        damage=12,
-        fire_cooldown=0.13,
-        range_tiles=12.0,
+        cs_price=2700,
+        cs_speed=215,
+        damage=dmg(35),
+        fire_cooldown=cadence(600),
+        range_tiles=reach(21.74),
         muzzle_tiles=0.88,
-        noise_tiles=17.0,
-        aim_delay=0.0,
-        scope_zoom=0.0,
-        kick=2.2,
-        trauma=0.17,
-        gun_kick=0.22,
-        gun_pump=2.6,
-        tracer_life=0.09,
-        tracer_width=1.15,
-        flash=1.0,
+        noise_tiles=loudness(dmg(35)),
+        shot_pitch=0.94,
         casings=1,
-        light_radius=70,
-        light_life=0.09,
+        **feel(dmg(35), punch=1.08),
     ),
+    # $2900. The AK's cadence, a little more damage, more reach — and a CAN
+    # on the end of it. It costs more than the AK for one reason and the
+    # reason is that a night spent shooting it is a night the forest half
+    # slept through.
+    WeaponDef(
+        key="m4a1s",
+        name="M4A1-S",
+        kind="rifle",
+        ammo=AMMO_RIFLE,
+        cs_price=2900,
+        cs_speed=225,
+        damage=dmg(37),
+        fire_cooldown=cadence(600),
+        range_tiles=reach(28.22),
+        muzzle_tiles=1.0,
+        noise_tiles=loudness(dmg(37), suppressed=True),
+        shot_pitch=1.02,
+        casings=1,
+        **feel(dmg(37), punch=0.82),
+    ),
+    # --- sniper ---------------------------------------------------------------
+    # $4750, one round a zombie, twice the reach of anything else — and the
+    # only trigger in the game you have to LET GO of. Holding scopes the
+    # camera out and never fires; release does, and only after the hold has
+    # lasted `aim_delay`. That turns the weapon into a commitment with a
+    # visible wind-up instead of a Deagle that reaches across the map.
     WeaponDef(
         key="awp",
         name="AWP",
         kind="sniper",
         ammo=AMMO_AWP,
-        damage=55,
-        fire_cooldown=1.55,
-        range_tiles=22.0,
+        cs_price=4750,
+        cs_speed=200,
+        damage=dmg(AWP_CHEST),
+        fire_cooldown=cadence(41),
+        range_tiles=reach(69.27),
         muzzle_tiles=1.06,
-        noise_tiles=24.0,
-        aim_delay=0.38,
+        noise_tiles=loudness(dmg(AWP_CHEST)),
+        aim_delay=0.34,
+        fire_on_release=True,
         # Integer step below arena zoom — see client/src/render/framing.ts.
         scope_zoom=3.0,
-        kick=4.8,
-        trauma=0.42,
-        gun_kick=0.55,
-        gun_pump=5.2,
-        tracer_life=0.18,
-        tracer_width=1.85,
-        flash=1.6,
+        shot_pitch=0.68,
         casings=1,
-        light_radius=110,
-        light_life=0.16,
+        **feel(dmg(AWP_CHEST), punch=1.12),
     ),
+    # --- the blade ------------------------------------------------------------
     # The knife is last in the catalog and last on the belt, and it is the
     # only row here with no ammo, no tracer and no light. Two quick slashes
     # that cross, then a cut that is slower, wider, hits everything in front
-    # of it and is worth waiting for. Nothing in the chain is loud: a gun
-    # wakes sixteen tiles of forest, the whole combo wakes five.
+    # of it and is worth waiting for. Nothing in the chain is loud: an AK
+    # wakes fourteen tiles of forest, the whole combo wakes five.
     #
     # It is also the weapon every run STARTS with, so its damage is a floor
-    # rather than a benchmark: the whole chain lands under half a Glock's
-    # dps, which is what keeps the first gun on the ground worth walking to.
+    # rather than a benchmark: a full chain is `KNIFE_CHAIN_SHARE` of one
+    # zombie and the whole thing lands at about a third of a Glock's dps,
+    # which is what keeps the first gun in the shop worth saving for.
     WeaponDef(
         key="knife",
         name="Faca",
@@ -359,7 +781,7 @@ WEAPONS: tuple[WeaponDef, ...] = (
         ammo=AMMO_NONE,
         # What an un-comboed hit is worth, for anything that reads `damage`
         # off the catalog without knowing about steps.
-        damage=5,
+        damage=_knife_damage(0),
         range_tiles=1.05,
         muzzle_tiles=0.5,
         noise_tiles=4.0,
@@ -369,7 +791,7 @@ WEAPONS: tuple[WeaponDef, ...] = (
             steps=(
                 ComboStep(
                     kind=STEP_SLASH,
-                    damage=5,
+                    damage=_knife_damage(0),
                     cooldown=0.30,
                     reach_tiles=1.05,
                     arc_degrees=95.0,
@@ -378,12 +800,16 @@ WEAPONS: tuple[WeaponDef, ...] = (
                     lunge=2.2,
                     trauma=0.07,
                     sweep=1,
-                    swing=1.5,
+                    # Half of `arc_degrees` in radians: the steel travels the
+                    # same path the white arc does, edge for edge.
+                    swing=0.829,
+                    swing_time=0.17,
+                    swing_thrust=2.0,
                     noise_tiles=3.5,
                 ),
                 ComboStep(
                     kind=STEP_SLASH,
-                    damage=6,
+                    damage=_knife_damage(1),
                     cooldown=0.28,
                     reach_tiles=1.1,
                     arc_degrees=105.0,
@@ -394,15 +820,14 @@ WEAPONS: tuple[WeaponDef, ...] = (
                     # Back the other way, so the pair reads as one X and not
                     # as the same swing played twice.
                     sweep=-1,
-                    swing=1.65,
+                    swing=0.916,
+                    swing_time=0.16,
+                    swing_thrust=2.4,
                     noise_tiles=3.5,
                 ),
                 ComboStep(
                     kind=STEP_CUT,
-                    # Still worth more than both slashes together — the
-                    # finisher has to pay for the wind-up or the chain is
-                    # something you interrupt rather than something you land.
-                    damage=13,
+                    damage=_knife_damage(2),
                     # The price of the finisher. Long enough that whiffing it
                     # is a real mistake.
                     cooldown=0.62,
@@ -414,7 +839,11 @@ WEAPONS: tuple[WeaponDef, ...] = (
                     lunge=4.4,
                     trauma=0.2,
                     sweep=1,
-                    swing=2.5,
+                    swing=1.134,
+                    # Slower through the arc than either slash. The finisher
+                    # is the one beat you can watch travel.
+                    swing_time=0.26,
+                    swing_thrust=4.2,
                     noise_tiles=5.0,
                 ),
             )
@@ -423,6 +852,84 @@ WEAPONS: tuple[WeaponDef, ...] = (
 )
 
 BY_KEY: dict[str, WeaponDef] = {weapon.key: weapon for weapon in WEAPONS}
+
+#: Every gun, in catalog order. `store.STOCK_ORDER` re-sorts this by price
+#: and `store.STOCK_UNLOCK` gates it by day, so adding a weapon to the
+#: catalog above is the only place a new gun has to be named.
+GUN_KEYS: tuple[str, ...] = tuple(w.key for w in WEAPONS if w.melee is None)
+
+#: Every calibre anything in the catalog actually eats, in catalog order.
+#: Derived, so a weapon whose calibre nothing else uses brings its reserve,
+#: its box and its HUD counter with it and no list anywhere needs editing.
+AMMO_TYPES: tuple[str, ...] = tuple(
+    dict.fromkeys(w.ammo for w in WEAPONS if w.ammo != AMMO_NONE)
+)
+
+
+# --- how much ammunition a reserve holds -------------------------------------
+#
+# THE SIZING LIVES HERE AND THE MECHANICS LIVE IN `ammo.py`, and the split is
+# not arbitrary: how many rounds a calibre holds is a QUESTION ABOUT THE
+# WEAPONS THAT EAT IT — you cannot answer it without knowing what a round is
+# worth against a zombie — while the reserve itself, the boxes on the floor
+# and who is allowed to pick one up are about the room. `ammo.py` imports
+# these three tables and owns everything else.
+#
+# A RESERVE IS COUNTED IN KILLS, NOT IN SECONDS OF TRIGGER. The old caps were
+# sized so every calibre gave about thirty seconds of continuous fire, which
+# sounds fair and is not: thirty seconds of P90 is twenty-one zombies and
+# thirty seconds of Deagle is sixty-six, so the cheap fast gun quietly had a
+# third of the ammunition economy of the expensive slow one. Sizing on kills
+# says the thing the design actually wants to say — a full reserve is a
+# night's worth of answers, whatever you are holding — and it lets the
+# per-weapon difference stay where it belongs, in rounds per kill, where an
+# upgrade buys you a LONGER night rather than a bigger number.
+
+#: Zombies a full reserve is worth to the weakest weapon that eats it.
+KILLS_PER_RESERVE = 60
+#: The sniper's, and it is half on purpose. An AWP round is a kill wherever
+#: it lands, so a full reserve at the standard number would be sixty
+#: guaranteed corpses in a bag that also has to fit everything else.
+SNIPER_KILLS_PER_RESERVE = 30
+#: What a bought gun arrives with, as a share of the cap. Enough that a
+#: purchase is immediately usable — walking into a night unable to fire the
+#: thing you just saved four days for would make the shop feel broken — and
+#: little enough that the first night with a new gun still has to find a box.
+STARTING_SHARE = 1 / 3
+#: What one box on the floor is worth, as a share of the cap. Six boxes fill
+#: an empty reserve, which is about what one forest scatters.
+BOX_SHARE = 1 / 6
+
+
+def _reserve_cap(calibre: str) -> int:
+    """Rounds of `calibre` a player may hold.
+
+    Sized against the HUNGRIEST weapon that eats it, so the entry-level gun
+    of a calibre is the one that gets `KILLS_PER_RESERVE` and everything
+    above it in the same family gets more. That is the shape an upgrade
+    should have: the AK does not carry more rounds than the FAMAS, it gets
+    more nights out of the same box.
+    """
+    hunger = max(
+        (w.rounds_per_kill for w in WEAPONS if w.ammo == calibre),
+        default=1,
+    )
+    kills = SNIPER_KILLS_PER_RESERVE if calibre == AMMO_AWP else KILLS_PER_RESERVE
+    return hunger * kills
+
+
+#: How much a player may hold, per calibre.
+RESERVE_MAX: dict[str, int] = {c: _reserve_cap(c) for c in AMMO_TYPES}
+#: What a gun arrives with when the merchant hands it over.
+STARTING_ROUNDS: dict[str, int] = {
+    c: max(1, round(cap * STARTING_SHARE)) for c, cap in RESERVE_MAX.items()
+}
+#: What one box on the ground is worth. `loot.py` reads this onto the
+#: catalog row, so the box the player picks up and the cap it fills are the
+#: same decision written once.
+BOX_ROUNDS: dict[str, int] = {
+    c: max(1, round(cap * BOX_SHARE)) for c, cap in RESERVE_MAX.items()
+}
 
 
 def catalog_payload() -> dict:

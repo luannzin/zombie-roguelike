@@ -55,6 +55,18 @@ export interface GunMuzzleArgs {
   guns?: GunAtlas | null;
   pump?: number;
   kick?: number;
+  /**
+   * Screen-space radians the weapon is swung off the aim — a melee arc in
+   * flight (`EntityVisuals.gunFeelOf().swing`), 0 for anything holding a gun.
+   *
+   * It rotates the HAND as well as the sprite, and that is the point of it
+   * being here rather than only in the draw call. `hold` and `pump` push the
+   * grip out along the AIM, which is correct for a barrel and wrong for a
+   * blade a third of the way through a sweep: the arm would stay pointed at
+   * the cursor while the knife swung off the end of it. Rotating the offset
+   * with the blade is what makes the hand travel with the swing.
+   */
+  swing?: number;
 }
 
 interface GunManifest {
@@ -106,9 +118,22 @@ function specOf(args: GunMuzzleArgs): GunFrame | undefined {
 export function gunHand(args: GunMuzzleArgs): { x: number; y: number } {
   const pump = args.pump ?? 0;
   const along = (specOf(args)?.hold ?? GUN_HAND_ALONG) + pump;
+  const swing = args.swing ?? 0;
+  // The common case — a gun, no swing — skips two trig calls and the
+  // rounding they would put on a value that has not changed.
+  if (swing === 0) {
+    return {
+      x: args.x + args.ax * along,
+      y: args.y - GUN_HAND_LIFT + args.ay * along,
+    };
+  }
+  const cos = Math.cos(swing);
+  const sin = Math.sin(swing);
+  const dx = args.ax * cos - args.ay * sin;
+  const dy = args.ay * cos + args.ax * sin;
   return {
-    x: args.x + args.ax * along,
-    y: args.y - GUN_HAND_LIFT + args.ay * along,
+    x: args.x + dx * along,
+    y: args.y - GUN_HAND_LIFT + dy * along,
   };
 }
 
@@ -122,7 +147,11 @@ export function gunMuzzle(args: GunMuzzleArgs): { x: number; y: number } {
   const angle = Math.atan2(args.ay, args.ax);
   const flip = args.ax < 0 ? -1 : 1;
   const kick = flip < 0 ? -(args.kick ?? 0) : (args.kick ?? 0);
-  const theta = angle + kick;
+  // Same composition `drawHeldGun` uses, and it has to stay the same one:
+  // the tracer starts at the barrel the player is looking at, so a muzzle
+  // computed off a different pose than the one drawn is a shot leaving the
+  // hip. `swing` is not negated for the flip — see `GunMuzzleArgs`.
+  const theta = angle + kick + (args.swing ?? 0);
   // Scaled with the sprite, or the tracer leaves a barrel the player is not
   // looking at.
   const scale = spec.scale ?? 1;

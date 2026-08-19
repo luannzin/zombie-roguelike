@@ -95,6 +95,17 @@ NEST_PACK = (5, 8)
 NEST_INNER = 2.0
 NEST_SPREAD = 5.0
 
+#: How far a shotgun pellet may wander off its slot in the pattern, as a
+#: fraction of the gap between slots.
+#:
+#: Small, and that is the design of the weapon rather than a tuning value.
+#: At 0 two shells are the same photograph; at 1 the pattern stops being a
+#: pattern and the shotgun becomes a dice roll you cannot plan around. A
+#: quarter of a slot is enough that no two shells look alike and never
+#: enough to change what a shell does at a given range — which is the only
+#: thing the player is allowed to be reading when they decide to step in.
+PELLET_WOBBLE = 0.25
+
 
 class Room:
     def __init__(self, code: str = "LOCAL", seed: int | None = None):
@@ -2246,15 +2257,35 @@ class Room:
         # has stopped thinking about.
         player.combo_step = 0
         player.combo_left = 0.0
-        if cmd.shoot:
-            player.aim_hold += dt
-        else:
+
+        if weapon.fire_on_release:
+            # THE AWP. Holding is aiming and never firing, however long it is
+            # held; the shot is the frame the button comes UP. Everything
+            # else in the game answers a press, so the one weapon that
+            # answers a RELEASE is the one weapon whose input the player has
+            # to think about — which is the same thing its price is saying.
+            #
+            # A tap under `aim_delay` is not a misfire and not an error: it
+            # is somebody changing their mind, and it costs them nothing but
+            # the time they spent scoped.
+            if cmd.shoot:
+                player.aim_hold += dt
+                return
+            held = player.aim_hold
             player.aim_hold = 0.0
-            return
-        if player.fire_cooldown > 0.0:
-            return
-        if player.aim_hold < weapon.aim_delay:
-            return
+            if held < weapon.aim_delay or player.fire_cooldown > 0.0:
+                return
+        else:
+            if cmd.shoot:
+                player.aim_hold += dt
+            else:
+                player.aim_hold = 0.0
+                return
+            if player.fire_cooldown > 0.0:
+                return
+            if player.aim_hold < weapon.aim_delay:
+                return
+
         # THE ROUND IS SPENT BEFORE THE RAY IS CAST, and a dry trigger still
         # eats the cooldown. Both halves matter: a shot that resolved and then
         # discovered there was nothing to fire would credit a kill nobody
@@ -2262,6 +2293,9 @@ class Room:
         # spray `ui-error` thirty times a second the moment somebody ran out.
         # The client predicts the same thing off its own mirror of the
         # reserve, so an empty gun clicks on the frame it was pressed.
+        #
+        # ONE ROUND PER TRIGGER PULL, not per ray: a shotgun spends a SHELL
+        # and gets six pellets out of it. See `fire`.
         if not player.ammo.spend(ammo.calibre_of(weapon.key)):
             player.fire_cooldown = weapon.fire_cooldown
             return
@@ -2376,7 +2410,51 @@ class Room:
             else:
                 self.damage_player(victim, damage, attacker)
 
+    def _pellet_aim(
+        self, dx: float, dy: float, weapon: weapons.WeaponDef
+    ) -> list[tuple[float, float]]:
+        """The directions one trigger pull actually casts.
+
+        A single ray for everything but the shotgun, and for the shotgun a
+        ROSETTE: `pellets` angles laid out evenly across `spread_degrees`,
+        each nudged by a fraction of the gap between them.
+
+        The layout is regular and the wobble is small ON PURPOSE. A cone of
+        purely random angles is a slot machine — the same shot at the same
+        range kills or tickles depending on a roll nobody can see — and the
+        whole appeal of a shotgun is that walking one step closer is a plan.
+        A fixed pattern with a little life in it keeps the geometry legible
+        (six pellets, twenty degrees, so at four tiles they are wider apart
+        than a body) while stopping two shells looking like a photocopy.
+        """
+        if weapon.pellets <= 1 or weapon.spread_degrees <= 0.0:
+            return [(dx, dy)]
+        spread = math.radians(weapon.spread_degrees)
+        step = spread / max(1, weapon.pellets - 1)
+        centre = (weapon.pellets - 1) / 2.0
+        rays: list[tuple[float, float]] = []
+        for index in range(weapon.pellets):
+            angle = (index - centre) * step
+            angle += random.uniform(-1.0, 1.0) * step * PELLET_WOBBLE
+            cos = math.cos(angle)
+            sin = math.sin(angle)
+            rays.append((dx * cos - dy * sin, dy * cos + dx * sin))
+        return rays
+
     def fire(self, shooter: Player, dx: float, dy: float, weapon: weapons.WeaponDef) -> None:
+        """One trigger pull: one to `pellets` rays, one round, one event.
+
+        The pellet loop is the shotgun's whole implementation and it is
+        deliberately the SAME loop a pistol runs, once. Everything that made
+        a shot a shot — the noise, the round, the event id, the crate test —
+        happens per PULL; only the ray and what it hits happen per pellet.
+        Anything that drifted out of that split would make a shell six
+        gunshots: six bangs, six brass, six of everything the forest hears.
+
+        Damage is tallied PER BODY across the pellets, so a zombie standing
+        in the middle of the cone takes one number and the client floats one
+        number, rather than six sixes stacking up over its head.
+        """
         ox = shooter.x + dx * weapon.muzzle
         oy = shooter.y + dy * weapon.muzzle
         # A gun is loud. Everything in earshot that has not already noticed
@@ -2393,43 +2471,87 @@ class Room:
         # the body actually loses are the same number. Rolling it a second time
         # at the damage call is how a hit marker starts lying.
         damage = max(1, round(weapon.damage * shooter.skills.mods.gun))
-        hit = combat.raycast(
-            self.world,
-            ox,
-            oy,
-            dx,
-            dy,
-            weapon.range,
-            targets,
-            ignore_id=shooter.id,
-        )
-        # The foot tile is only the contact. Aiming at the barrel has to
-        # count, so the sprite box is tested against the same ray — closer
-        # than the wall or the body the DDA already found.
-        crate, crate_dist = crates.along_ray(self.crates, ox, oy, dx, dy, hit.distance)
+
+        # Insertion order is the pattern's order, which is what lets the
+        # client draw the cone in the shape it was actually cast.
+        rays = self._pellet_aim(dx, dy, weapon)
+        pellets: list[list[float]] = []
+        # Bodies opened this pull, in the order they were first struck, with
+        # the running total each one owes and the direction of the pellet
+        # that reached it first (the knockback wants a direction, and the
+        # last pellet's is as good a lie as the first's — the first is the
+        # one that arrived).
+        tally: dict[str, list] = {}
+        struck: list = []
+        longest = 0.0
+
+        for px, py in rays:
+            hit = combat.raycast(
+                self.world, ox, oy, px, py, weapon.range, targets, ignore_id=shooter.id
+            )
+            # The foot tile is only the contact. Aiming at the barrel has to
+            # count, so the sprite box is tested against the same ray — closer
+            # than the wall or the body the DDA already found.
+            crate, crate_dist = crates.along_ray(self.crates, ox, oy, px, py, hit.distance)
+            victim = None if crate is not None else hit.target
+            dist = crate_dist if crate is not None else hit.distance
+            longest = max(longest, dist)
+            if weapon.pellets > 1:
+                pellets.append(
+                    [round(px, 3), round(py, 3), round(dist, 2), 1 if victim is not None else 0]
+                )
+            if crate is not None:
+                # A shell that put three pellets through the same barrel
+                # broke one barrel.
+                if crate not in struck:
+                    struck.append(crate)
+                continue
+            if victim is None:
+                continue
+            row = tally.get(victim.id)
+            if row is None:
+                tally[victim.id] = [victim, damage, px, py]
+            else:
+                row[1] += damage
+
         self._shot_id += 1
-        victim = None if crate is not None else hit.target
-        dist = crate_dist if crate is not None else hit.distance
-        self.shot_events.append(
-            {
-                "id": self._shot_id,
-                "by": shooter.id,
-                "k": weapon.key,
-                "x": round(ox, 2),
-                "y": round(oy, 2),
-                "dx": round(dx, 3),
-                "dy": round(dy, 3),
-                "dist": round(dist, 2),
-                "hit": victim.id if victim is not None else None,
-                "dmg": damage if victim is not None else 0,
-            }
-        )
-        if crate is not None:
+        # The PRIMARY victim: whoever the pull hurt most. It is what the
+        # existing single-ray path already meant by `hit`, so a pistol's
+        # event is byte-for-byte what it always was and a shell's names the
+        # body a player would say they shot.
+        rows = sorted(tally.values(), key=lambda row: -row[1])
+        primary = rows[0] if rows else None
+        event = {
+            "id": self._shot_id,
+            "by": shooter.id,
+            "k": weapon.key,
+            "x": round(ox, 2),
+            "y": round(oy, 2),
+            "dx": round(dx, 3),
+            "dy": round(dy, 3),
+            # The DEEPEST ray, so a client with no pellet list still draws a
+            # tracer that covers the pattern instead of stopping at whatever
+            # the centre happened to meet.
+            "dist": round(longest, 2),
+            "hit": primary[0].id if primary is not None else None,
+            "dmg": primary[1] if primary is not None else 0,
+        }
+        # Both extras are omitted on a one-ray weapon rather than sent empty:
+        # every pistol shot in a 30 Hz snapshot would otherwise carry two
+        # fields that only the shotgun has ever filled.
+        if pellets:
+            event["p"] = pellets
+        if len(rows) > 1:
+            event["hits"] = [{"id": row[0].id, "dmg": row[1]} for row in rows]
+        self.shot_events.append(event)
+
+        for crate in struck:
             self.smash_crate(crate, shooter)
-        elif isinstance(victim, Enemy):
-            self.damage_enemy(victim, damage, shooter, dx, dy)
-        elif victim is not None:
-            self.damage_player(victim, damage, shooter)
+        for victim, total, vx, vy in rows:
+            if isinstance(victim, Enemy):
+                self.damage_enemy(victim, total, shooter, vx, vy)
+            else:
+                self.damage_player(victim, total, shooter)
 
     def damage_player(self, target: Player, amount: int, source: Player | None) -> None:
         if not target.alive:

@@ -22,6 +22,7 @@ import math
 import random
 from dataclasses import dataclass
 
+from . import weapons
 from .config import TILE_SIZE
 from .world import FLOOR
 
@@ -119,44 +120,14 @@ ITEMS: tuple[ItemDef, ...] = (
     ItemDef("royal_ring", "Anel da família real", "legendary", ("valuables", "living"), 0.15, 420),
     ItemDef("obsidian_totem", "Totem de obsidiana", "legendary", ("relics", "nature"), 2.4, 360),
     ItemDef("ancestor_skull", "Crânio do ancestral", "legendary", ("relics",), 1.2, 340),
-    # AMMUNITION. `pocket="ammo"` means a collect never touches a bag slot —
-    # it tops up the reserve for that calibre (`ammo.py`) and is gone. Their
-    # `value` is deliberately ZERO: an extraction platform carries CARGO, and
-    # a box of rounds is what you spent getting the cargo, not the cargo.
-    # Never rolled off a rarity table either — `droppable` is False and
-    # `ammo.scatter` is the only thing in the game that places one, because a
-    # box of .308 on a map where nobody owns a rifle is litter.
-    ItemDef("ammo_pistol", "Munição de pistola", "common", ("military", "combat"), 0.4, 0,
-            "ammo", ammo="pistol", rounds=24, droppable=False),
-    ItemDef("ammo_rifle", "Munição de rifle", "uncommon", ("military", "combat"), 0.8, 0,
-            "ammo", ammo="rifle", rounds=45, droppable=False),
-    ItemDef("ammo_awp", "Munição de precisão", "rare", ("military", "combat"), 0.6, 0,
-            "ammo", ammo="awp", rounds=6, droppable=False),
-    # Guns. Combat stats live in weapons.py; these rows are the name, the
-    # rarity, the loot-atlas frame and the weight — and the PRICE the shop
-    # derives its own from (`store.price_of`).
-    #
-    # NOT DROPPABLE, AND THAT IS THE WHOLE FIREARM ECONOMY. No barrel, no
-    # boot, no shrine and no scene ever produces one: the merchant is the
-    # only source, so a gun is something the party DECIDED to buy with a
-    # night's extraction rather than something the forest handed them. It also
-    # makes ammunition mean something — a calibre nobody paid for is a calibre
-    # nobody finds boxes of.
-    ItemDef("glock18", "Glock 18", "common", ("military", "combat"), 1.1, 40, "hotbar",
-            droppable=False),
-    ItemDef("deagle", "Desert Eagle", "uncommon", ("military", "combat"), 2.2, 90, "hotbar",
-            droppable=False),
-    ItemDef("famas", "FAMAS", "rare", ("military", "combat"), 3.4, 160, "hotbar",
-            droppable=False),
-    ItemDef("ak47", "AK-47", "epic", ("military", "combat"), 4.0, 240, "hotbar",
-            droppable=False),
-    ItemDef("awp", "AWP", "legendary", ("military", "combat"), 6.2, 400, "hotbar",
-            droppable=False),
     # The knife is a catalog row for its NAME, its ICON and its WEIGHT, and
     # for nothing else: it is never scattered, never rolled and never
     # collected — everybody already has one. It stays out of `BY_RARITY`'s
     # useful half by being the cheapest common in the game, and `scatter`
-    # only ever reaches it through a tag overlap it does not have.
+    # only ever reaches it through a tag overlap it does not have. Its weight
+    # is the one carry number NOT taken from the CS2 speed column: it is not
+    # a purchase and it is not a firearm, and it has to stay under the
+    # lightest gun or "switch to the blade to move faster" stops being true.
     ItemDef("knife", "Faca", "common", ("combat",), 0.5, 12, "hotbar", droppable=False),
     # WHAT THE ANOMALY GAVE BACK. Never scattered, never rolled, never in a
     # crate: the only thing that makes one is overfeeding a pad and then
@@ -166,6 +137,130 @@ ITEMS: tuple[ItemDef, ...] = (
     ItemDef("rift_shard", "Núcleo condensado", "legendary", ("relics",), 1.0, 100,
             droppable=False),
 )
+
+# --- the rows nobody types ---------------------------------------------------
+#
+# GUNS AND AMMUNITION ARE GENERATED FROM `weapons.py`, and that is a rule
+# about where a number is allowed to live rather than a convenience. A gun's
+# price, its weight and how many rounds a box of its calibre holds are all
+# functions of the same ported CS2 stat block its damage comes from — so a
+# hand-written row here would be a second opinion about a weapon that already
+# has one, and the two would disagree the first time anything was rebalanced.
+# That is exactly what happened to the price ladder before this existed.
+#
+# What is NOT derivable stays written down below: the Portuguese name, the
+# tags, and the fact that none of it is droppable.
+
+#: Everything a gun belongs to, for the tag-overlap roll it never takes part
+#: in — the tags still decide which OBJECTS pay out its ammunition, which is
+#: the only reason a `droppable=False` row carries any.
+_ARMS_TAGS = ("military", "combat")
+
+#: Catalog value -> rarity, which is the colour a weapon's name is drawn in
+#: on a shop table and in the hotbar tooltip. Bands rather than a per-weapon
+#: label, so the price ladder and the colour ladder cannot come apart: a gun
+#: that got more expensive gets more expensive-looking in the same commit.
+_GUN_RARITY_BANDS: tuple[tuple[int, str], ...] = (
+    (60, "common"),
+    (130, "uncommon"),
+    (220, "rare"),
+    (330, "epic"),
+)
+
+
+def _gun_rarity(value: int) -> str:
+    for ceiling, rarity in _GUN_RARITY_BANDS:
+        if value < ceiling:
+            return rarity
+    return "legendary"
+
+
+#: Portuguese names for the boxes, per calibre. The only thing about a box
+#: that is not arithmetic.
+_AMMO_NAMES: dict[str, str] = {
+    weapons.AMMO_PISTOL: "Munição de pistola",
+    weapons.AMMO_SMG: "Munição de submetralhadora",
+    weapons.AMMO_SHELL: "Cartuchos de calibre 12",
+    weapons.AMMO_RIFLE: "Munição de rifle",
+    weapons.AMMO_AWP: "Munição de precisão",
+}
+
+#: How heavy one box is. Sized off the round rather than the count, which is
+#: why a box of shells outweighs a box of pistol rounds carrying four times
+#: as many of them. It is charged to nothing — ammunition takes no pocket
+#: slot — and exists only so the tooltip is not lying.
+_AMMO_WEIGHTS: dict[str, float] = {
+    weapons.AMMO_PISTOL: 0.4,
+    weapons.AMMO_SMG: 0.5,
+    weapons.AMMO_SHELL: 0.9,
+    weapons.AMMO_RIFLE: 0.8,
+    weapons.AMMO_AWP: 0.6,
+}
+
+#: Which rarity tier a box draws its name in. Not a drop table — these are
+#: `droppable=False` and `ammo.scatter` is the only thing that places one —
+#: just the colour that says "this is the good calibre" at a glance.
+_AMMO_RARITY: dict[str, str] = {
+    weapons.AMMO_PISTOL: "common",
+    weapons.AMMO_SMG: "common",
+    weapons.AMMO_SHELL: "uncommon",
+    weapons.AMMO_RIFLE: "uncommon",
+    weapons.AMMO_AWP: "rare",
+}
+
+
+def _arms_rows() -> tuple[ItemDef, ...]:
+    """Every gun row and every ammunition-box row, in catalog order.
+
+    AMMUNITION FIRST, then the guns, which is the order `tools/make_loot.py`
+    draws them in — the atlas frame index is this tuple's index and the two
+    have to walk together or every weapon on the ground is the wrong picture.
+    """
+    rows: list[ItemDef] = []
+    for calibre in weapons.AMMO_TYPES:
+        rows.append(
+            ItemDef(
+                key=f"ammo_{calibre}",
+                name=_AMMO_NAMES[calibre],
+                rarity=_AMMO_RARITY[calibre],
+                tags=_ARMS_TAGS,
+                weight=_AMMO_WEIGHTS[calibre],
+                # ZERO, and deliberately: an extraction platform carries
+                # CARGO, and a box of rounds is what you spent getting the
+                # cargo, not the cargo. See `ammo.py`.
+                value=0,
+                pocket="ammo",
+                ammo=calibre,
+                rounds=weapons.BOX_ROUNDS[calibre],
+                droppable=False,
+            )
+        )
+    for gun in weapons.WEAPONS:
+        if gun.melee is not None:
+            continue
+        rows.append(
+            ItemDef(
+                key=gun.key,
+                name=gun.name,
+                rarity=_gun_rarity(gun.value),
+                tags=_ARMS_TAGS,
+                weight=gun.weight,
+                value=gun.value,
+                pocket="hotbar",
+                # NOT DROPPABLE, AND THAT IS THE WHOLE FIREARM ECONOMY. No
+                # barrel, no boot, no shrine and no scene ever produces one:
+                # the merchant is the only source, so a gun is something the
+                # party DECIDED to buy with a night's extraction rather than
+                # something the forest handed them. It also makes ammunition
+                # mean something — a calibre nobody paid for is a calibre
+                # nobody finds boxes of.
+                droppable=False,
+            )
+        )
+    return tuple(rows)
+
+
+ITEMS = ITEMS + _arms_rows()
 
 BY_KEY: dict[str, ItemDef] = {item.key: item for item in ITEMS}
 #: The roll pools, and they are built from what the world may PRODUCE rather

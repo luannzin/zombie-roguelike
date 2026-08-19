@@ -642,8 +642,17 @@ export class Effects {
     sweep: number,
     cut: boolean,
     landed: boolean,
+    /**
+     * Seconds the path takes to play — the step's own `swingTime`.
+     *
+     * PASSED IN RATHER THAN PICKED HERE, because the held sprite runs on
+     * exactly this clock (`EntityVisuals.startSwing`) and two hard-coded
+     * durations that happened to be close is how the steel and its own slash
+     * came apart in the first place. The fallback is the old pair, for a
+     * server too old to send the field.
+     */
+    life = cut ? 0.26 : 0.18,
   ): void {
-    const life = cut ? 0.26 : 0.18;
     const arc = (arcDegrees * Math.PI) / 180;
     this.swings.push({
       x,

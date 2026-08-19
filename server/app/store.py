@@ -62,7 +62,7 @@ from __future__ import annotations
 import math
 import random
 
-from . import scenery
+from . import scenery, weapons
 from .config import (
     PLAYER_HALF_HEIGHT,
     STORE_CIRCLE_TILES,
@@ -264,17 +264,48 @@ GATE_TORCHES: tuple[tuple[float, float, int], ...] = (
 #: reads as a shop that has run out rather than as one that is starting small.
 STALL_COUNT = 6
 
-#: What he might be selling, cheapest first. The day gates how far down this
-#: list the roll may reach — see `_stock_pool`.
-STOCK_ORDER = ("glock18", "deagle", "famas", "ak47", "awp")
+#: What he might be selling, CHEAPEST FIRST. Derived from the weapons
+#: catalog and sorted by what it costs, because a shelf is a ladder of what
+#: the party can afford — the catalog's own order groups by weapon class,
+#: which is the right order for a sprite sheet and the wrong one for a shop.
+#: The day gates how far down this list the roll may reach — see
+#: `_stock_pool`.
+#: Sorted on the CATALOG value rather than on `price_of` below, which is
+#: only defined further down the file — and which is a fixed multiple of
+#: it anyway, so the two orders cannot disagree.
+STOCK_ORDER: tuple[str, ...] = tuple(
+    sorted(weapons.GUN_KEYS, key=lambda key: (weapons.BY_KEY[key].value, key))
+)
+
+#: How many nights of shelf there are. The pool is split into this many
+#: bands and one band unlocks per day, so a catalog of eleven guns opens at
+#: the same pace a catalog of five did and adding a twelfth does not need a
+#: new line in a hand-written table.
+STOCK_DAYS = 5
 #: The first day each weapon may appear on a table. An AWP on night one would
 #: end the game's difficulty curve at the first shop.
 #:
-#: THE FLOOR IS THREE. The roll is with replacement, so the pool no longer has
-#: to be as long as the grid — but a first shop drawing six stalls out of one
-#: weapon is a wall of the same pistol, and three is where the grid starts
-#: looking like a choice.
-STOCK_UNLOCK = {"glock18": 1, "deagle": 1, "famas": 1, "ak47": 2, "awp": 4}
+#: THE FIRST BAND IS WIDER THAN THE REST. The roll is with replacement, so
+#: the pool no longer has to be as long as the grid — but a first shop
+#: drawing six stalls out of one weapon is a wall of the same pistol, and a
+#: opening band of four sidearms is where the grid starts looking like a
+#: choice. Everything after it is a fifth of the shelf a night, so the last
+#: thing on the ladder lands on `STOCK_DAYS` however long the ladder gets.
+STOCK_FIRST_BAND = 4
+
+
+def _unlock_day(index: int) -> int:
+    """The night `STOCK_ORDER[index]` first appears on a table."""
+    if index < STOCK_FIRST_BAND:
+        return 1
+    remaining = max(1, len(STOCK_ORDER) - STOCK_FIRST_BAND)
+    step = (index - STOCK_FIRST_BAND) / remaining
+    return min(STOCK_DAYS, 2 + int(step * (STOCK_DAYS - 1)))
+
+
+STOCK_UNLOCK: dict[str, int] = {
+    key: _unlock_day(index) for index, key in enumerate(STOCK_ORDER)
+}
 
 
 def price_of(key: str) -> int:

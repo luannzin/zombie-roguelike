@@ -275,7 +275,14 @@ export interface AmmoConfig {
   max: Record<string, number>;
 }
 
-export type WeaponKind = 'pistol' | 'rifle' | 'sniper' | 'melee' | string;
+export type WeaponKind =
+  | 'pistol'
+  | 'smg'
+  | 'shotgun'
+  | 'rifle'
+  | 'sniper'
+  | 'melee'
+  | string;
 
 /** What a combo step reads as. `cut` is the finisher. */
 export type ComboKind = 'slash' | 'cut' | string;
@@ -304,8 +311,18 @@ export interface ComboStepConfig {
   trauma: number;
   /** +1 / -1 — which way the arc travels. The two slashes cross. */
   sweep: number;
-  /** Radians the held sprite sweeps through the swing. */
+  /**
+   * HALF-WIDTH of the blade's travel, in radians — half of `arcDegrees`.
+   *
+   * The held sprite tracks the drawn white path edge for edge (see
+   * `EntityVisuals.startSwing`), so this and `arcDegrees` are two readings
+   * of one number and a disagreement puts the steel outside its own arc.
+   */
   swing: number;
+  /** Seconds the blade takes to travel the arc, wind-up included. */
+  swingTime: number;
+  /** World px the grip is thrust out along the blade at mid-swing. */
+  swingThrust: number;
 }
 
 /** The swinging half of a weapon. Absent on everything that shoots. */
@@ -318,13 +335,33 @@ export interface WeaponConfig {
   name: string;
   kind: WeaponKind;
   ammo: string;
+  /**
+   * Damage of ONE ray. On the shotgun that is one PELLET — `shotDamage` is
+   * what a whole trigger pull is worth against a single body.
+   */
   damage: number;
+  /** Rays cast per trigger pull. 1 on everything but the shotgun. */
+  pellets: number;
+  /** Full width of the pellet cone, in degrees. Meaningless at 1 pellet. */
+  spreadDegrees: number;
+  /** `damage * pellets` — the number a player would quote for the weapon. */
+  shotDamage: number;
   fireCooldown: number;
   range: number;
   muzzle: number;
   noise: number;
   aimDelay: number;
+  /**
+   * RELEASE IS THE SHOT. With this set the weapon never fires while the
+   * button is down — holding it aims (`scopeZoom`) and letting go fires,
+   * and only if the hold lasted `aimDelay`. Mirrors `Room.handle_attack`;
+   * a client that fired on the press would predict a shot the server never
+   * took and then have to un-draw it.
+   */
+  fireOnRelease: boolean;
   scopeZoom: number;
+  /** Playback rate for the shot sample. Under 1 is a bigger gun. */
+  shotPitch: number;
   kick: number;
   trauma: number;
   gunKick: number;
@@ -1084,6 +1121,19 @@ export interface CoinState {
   vy?: number;
 }
 
+/** One body a shot opened, and what it owes for it. */
+export interface ShotHit {
+  id: string;
+  dmg: number;
+}
+
+/**
+ * One pellet's ray: `[dx, dy, dist, hit]`, where `hit` is 1 when it stopped
+ * on a body. A tuple rather than an object because a shell carries six of
+ * them thirty times a second and the field names would be most of the row.
+ */
+export type PelletRay = [number, number, number, number];
+
 export interface ShotEvent {
   id: number;
   by: string;
@@ -1091,12 +1141,26 @@ export interface ShotEvent {
   k?: string;
   x: number;
   y: number;
+  /** The AIM the pull was centred on. Pellets fan out around it. */
   dx: number;
   dy: number;
+  /** How far the DEEPEST ray of the pull travelled. */
   dist: number;
+  /** The body the pull hurt most, or null. */
   hit: string | null;
-  /** Damage dealt. 0 on a miss / crate. */
+  /** Damage the primary victim took, all pellets in. 0 on a miss / crate. */
   dmg?: number;
+  /**
+   * Every ray of a multi-pellet pull, in the order the pattern was cast.
+   * Absent on a one-ray weapon, which is every gun but the shotgun.
+   */
+  p?: PelletRay[];
+  /**
+   * Present only when a single pull opened MORE than one body — a shell
+   * through two zombies. `hit` / `dmg` are still the worst-hurt of these,
+   * so nothing that only understands one victim has to change.
+   */
+  hits?: ShotHit[];
 }
 
 /** One body a player's blade opened. */

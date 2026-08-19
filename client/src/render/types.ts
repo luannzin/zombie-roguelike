@@ -116,7 +116,14 @@ export interface DrawableEntity {
   weapon: string | null;
   /** Radians of muzzle climb, sprite-local (up is negative before the left-flip). */
   gunKick: number;
-  /** Pixels of slide back along aim. */
+  /**
+   * Radians the weapon is swung off the aim, SCREEN space — a melee arc in
+   * flight. Unlike `gunKick` it is never mirrored for a left-facing body:
+   * a recoil means "up", which changes sign with the facing, and a swing
+   * means "the blade is at this angle", which does not.
+   */
+  gunSwing: number;
+  /** Pixels of slide back along aim — or out along the BLADE, mid-swing. */
   gunPump: number;
   /**
    * The POUR, or null for every body that is not emptying a bag into a

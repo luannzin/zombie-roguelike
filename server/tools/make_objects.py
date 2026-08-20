@@ -699,6 +699,24 @@ def _tone(ramp: Ramp, step: int, x: int, y: int,
     return pick(ramp, clamp01(value), x, y)
 
 
+#: PUBLIC NAMES FOR THE CAMERA AND THE PAINTER. `make_scenery.py` draws the
+#: props that were never carried in — tents, fences, signs, felled trunks, a
+#: cold fire — and they stand in the same clearing as the crates and barrels
+#: here. A prop shaded on its own slope and its own steps is a prop from a
+#: different game standing next to one from this one, so the two modules share
+#: the camera (`SLOPE`) and the flat-step painter (`tone`) rather than each
+#: keeping a copy. Same argument as `make_guns.paint_rows`.
+SLOPE = CRATE_SLOPE
+#: Plane -> ramp step, on a six-step ramp. Two steps apart, never one: see the
+#: note over `CRATE_TOP`. Every volume in the scenery folder is banded on these.
+PLANE_TOP = CRATE_TOP
+PLANE_FRONT = CRATE_FRONT
+PLANE_SIDE = CRATE_SIDE
+
+#: The flat-step painter under a public name — see `SLOPE` above.
+tone = _tone
+
+
 def _crate_box(width: int, height: int, spec: tuple) -> tuple[float, ...]:
     """A recipe's box in pixels: (fx, fy, lw, rw, h)."""
     fx, base, lw, rw, tall = spec

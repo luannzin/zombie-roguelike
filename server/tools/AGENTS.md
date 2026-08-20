@@ -84,6 +84,25 @@ surface. Output rules live in [`assets/AGENTS.md`](../../assets/AGENTS.md).
   with any drop at the back is a sixth pistol at 16px whatever the blade
   is doing. It is also the shortest silhouette in both files: length is
   how these sheets say range.
+- **ONE CAMERA FOR THE WHOLE SCENERY FOLDER, AND IT LIVES IN `make_objects.py`.**
+  `SLOPE` (the 2:1 dimetric the crates are built on), the plane table
+  `PLANE_TOP` / `PLANE_FRONT` / `PLANE_SIDE`, and the flat-step painter `tone`
+  are public there, and `make_scenery.py` imports all four rather than keeping
+  its own. Its three volume primitives — `_box`, `_billet`, `_stone` — are
+  built on them, so a fence post, a felled trunk, a firepit stone and a crate
+  are lit by one rule and stand on one ground plane. The reason it is a shared
+  import and not a shared convention: the two modules pack into the SAME
+  manifest and get placed in the same clearing by `server/app/scenery.py`, so
+  any drift between them is visible in one screenshot.
+- **A PLANE IS A BAND, AND `pick` IS NOT HOW YOU MAKE ONE.** Every prop in
+  `make_scenery.py` used to be shaded `pick(ramp, <continuous value>)`, which
+  dithers between the two nearest steps — so a "subtle" grain of 0.10 does not
+  roughen a face, it scatters single pixels of the neighbouring step across
+  it, which is the per-pixel noise S5 rules out and the reason a tent read as
+  a hill and a fence as a row of pencil strokes. Use `objects.tone`, which
+  lands on the step exactly. Texture is a clustered BAND (the bark strip on a
+  log), never a jitter. `pick` still belongs to the DECALS, which are flat by
+  contract and genuinely want a continuous value.
 - **`make_guns.py`'s camera is a ROW GRID, and that is the only shading rule
   on the sheet.** The twelve weapons are drawn from above at the world's high
   3/4, seven authored rows deep, and a pixel's ramp step is a function of its

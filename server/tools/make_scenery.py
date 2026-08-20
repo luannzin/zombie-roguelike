@@ -54,6 +54,14 @@ blood trail leading away from them are one sentence and shuffling them breaks
 it. Two folders, two manifests, two placement rules — one for texture, one for
 narrative.
 
+HOW A STANDING PROP IS BUILT. Three primitives and one camera, all shared with
+`make_objects.py` so a fence post and a crate are the same solid in the same
+light: `_box` (a dimetric box with a top face and two walls — posts, boards,
+sign planks), `_billet` (a cylinder with a lit crest, a wide flank, a thin
+underside and a sawn end — trunks, rails, ridge poles) and `_stone` (a faceted
+boulder). Every one of them bands on `TOP` / `FRONT` / `SIDE` and never on a
+falloff. `_shadow` puts the contact patch under the result.
+
 STANDING VS DECAL is the other split, and it is a drawing rule as much as a
 sorting one. A standing prop has an OUTLINE and shading that implies a face
 turned toward the camera; it is depth-sorted with the bodies, so the player
@@ -106,7 +114,11 @@ from make_textures import (
 
 PLANK: Ramp = [rgb(c) for c in ("#1b1710", "#272118", "#342c20", "#413628", "#4f4232")]
 PLANK_DARK: Ramp = [rgb(c) for c in ("#100d09", "#181410", "#211b15", "#2b2419")]
-CANVAS: Ramp = [rgb(c) for c in ("#241f18", "#312b21", "#3f382b", "#4d4536", "#5b5242")]
+#: Six steps, not five, so canvas indexes on the same plane table (`TOP` /
+#: `FRONT` / `SIDE`) as every other volume here. The added step is at the top:
+#: a tent is the one thing in the clearing with a large surface angled at the
+#: sky, and it needs somewhere to put it.
+CANVAS: Ramp = [rgb(c) for c in ("#171410", "#241f18", "#332c22", "#4e4433", "#655945", "#847457")]
 METAL: Ramp = [rgb(c) for c in ("#16181b", "#212429", "#2e3238", "#3d4249", "#4d535b")]
 GLASS: Ramp = [rgb(c) for c in ("#1c242b", "#2a3742", "#3d4f5d", "#56707f", "#7794a4")]
 STONE: Ramp = [rgb(c) for c in ("#1e1d21", "#2a292e", "#37353b", "#454249", "#545059")]
@@ -146,6 +158,145 @@ SWAY_TENT = 0.5
 
 
 
+# THE CAMERA, AND IT IS NOT THIS MODULE'S. `objects.SLOPE` is the 2:1 dimetric
+# every crate and barrel in the folder is built on, and these props stand in
+# the same clearing. `objects.tone` is its flat-step painter. Both are imported
+# rather than restated for the reason spelled out beside them there.
+#
+# WHAT THESE PRIMITIVES REPLACED. Every prop below used to be a front elevation
+# shaded by `pick(ramp, <continuous value>)` — a gradient with a dither on it,
+# which S7 rules out and which the crates and the guns had both already stopped
+# doing. The result was a folder where a crate was a solid object and the fence
+# beside it was a sticker of a fence. A volume here is now BANDS: a top plane,
+# a near plane two steps under it, a far plane two under that, and a contact
+# row darker than all three. No value between the bands, ever.
+SLOPE = objects.SLOPE
+TOP, FRONT, SIDE = objects.PLANE_TOP, objects.PLANE_FRONT, objects.PLANE_SIDE
+#: Wood and stone come from `make_objects` too, so a fence rail and a crate
+#: slat are cut from the same tree. The five-step ramps at the top of this file
+#: stay for the DECALS, which are flat by contract and want a continuous value.
+BEAM: Ramp = objects.PLANK
+ROCK: Ramp = objects.STONE
+
+
+def _shadow(img: Image.Image, cx: float, cy: float, rx: float, ry: float) -> None:
+    """The contact patch under a standing thing, painted only where it is not.
+
+    Not a drop shadow and not a gradient: two flat alphas of the outline
+    colour, laid down only on transparent pixels, so it reads as the ground
+    going dark beside the object rather than as a smudge on it. It is the
+    cheapest thing on this sheet and most of why a prop stops looking stuck to
+    the camera.
+    """
+    px = img.load()
+    for y in range(max(0, int(cy - ry)), min(img.height, int(cy + ry) + 1)):
+        for x in range(max(0, int(cx - rx)), min(img.width, int(cx + rx) + 1)):
+            if px[x, y][3]:
+                continue
+            dx, dy = (x - cx) / max(rx, 0.5), (y - cy) / max(ry, 0.5)
+            d = dx * dx + dy * dy
+            if d > 1.0:
+                continue
+            px[x, y] = (*OUTLINE_WOOD[:3], 150 if d < 0.55 else 96)
+
+
+def _box(px, size: tuple[int, int], fx: float, base: float, lw: float, rw: float,
+         tall: float, ramp: Ramp, *, grain: float = 0.0, salt: int = 0,
+         top: int = TOP, front: int = FRONT, side: int = SIDE) -> None:
+    """A dimetric box standing on the ground: top face, near face, far face.
+
+    Same projection as a crate — the footprint is a rhombus with its near
+    corner at `fx`, the contact line falls away from that corner at the camera
+    slope in both directions, and the lid is the contact lifted by `tall`.
+    Posts, boards, sign planks and a tent's gable are all this.
+    """
+    width, height = size
+    far_x = fx - lw + rw
+    for x in range(max(0, int(round(fx - lw))), min(width, int(round(fx + rw)) + 1)):
+        contact = base - abs(x - fx) * SLOPE
+        lid = contact - tall
+        back = contact - tall - (lw + rw) * SLOPE + abs(x - far_x) * SLOPE
+        gy, ly = int(round(contact)), int(round(lid))
+        by = min(int(round(back)), ly)
+        for y in range(max(0, by), min(height, gy + 1)):
+            plane = top if y <= ly else (front if x <= fx else side)
+            px[x, y] = objects.tone(ramp, plane, x, y, grain, salt)
+
+
+def _billet(px, size: tuple[int, int], x0: float, x1: float, axis: float,
+            r: float, ramp: Ramp, *, grain: float = 0.0, salt: int = 0,
+            cap: bool = True) -> None:
+    """A cylinder lying along the screen X axis. A trunk, a rail, a ridge pole.
+
+    THREE BANDS, NOT A FALLOFF, and they are UNEQUAL. A round thing under one
+    light has a lit crest, a wide flank and a thin underside; the boundaries
+    between those three are the only thing at this size that says round, and a
+    smooth ramp across the diameter reads as a blurred bar. Sizes follow S7 —
+    the flank is the base step and owns the most pixels, the crest the fewest —
+    which is also what keeps a 32px trunk from out-glaring the crate beside it.
+
+    NO GRAIN ON THE BANDS. `grain` feeds `_tone`, which feeds `pick`, which
+    DITHERS between the two nearest steps whenever the value is not exactly on
+    one — so a "subtle" 0.10 of grain does not roughen a plane, it scatters
+    single pixels of the neighbouring step across it, which is the per-pixel
+    noise S5 rules out. Texture on these props is a clustered BAND (the bark
+    strip in `make_logs`), never a jitter. The parameter stays for the
+    charcoal, which genuinely wants to break up.
+
+    The ends TAPER, so the silhouette is not a rectangle — a cylinder drawn
+    with square ends is a plank however it is shaded. `cap` then draws the
+    sawn face at `x0` as a squashed disc: sapwood rim, heartwood, dark pith.
+    It is the one part of a felled trunk with any shape at all.
+    """
+    width, height = size
+    for x in range(max(0, int(round(x0))), min(width, int(round(x1)) + 1)):
+        # Round both ends over one radius of run. Clean slopes, no jitter (S5).
+        t = min((x - x0) / max(r, 1.0), (x1 - x) / max(r, 1.0), 1.0)
+        rr = r if t >= 1.0 else r * (0.55 + 0.45 * max(t, 0.0))
+        for y in range(max(0, int(round(axis - rr))), min(height, int(round(axis + rr)) + 1)):
+            up = (axis - y) / max(rr, 0.5)
+            plane = TOP if up > 0.50 else (FRONT if up > -0.45 else SIDE)
+            px[x, y] = objects.tone(ramp, plane, x, y, grain, salt)
+    if not cap:
+        return
+    cap_rx = max(2.0, r * 0.70)
+    cx = x0 + cap_rx - 0.5
+    for y in range(max(0, int(round(axis - r))), min(height, int(round(axis + r)) + 1)):
+        for x in range(max(0, int(round(cx - cap_rx))), min(width, int(round(cx + cap_rx)) + 1)):
+            dx, dy = (x - cx) / cap_rx, (y - axis) / max(r, 0.5)
+            d = dx * dx + dy * dy
+            if d > 1.0:
+                continue
+            # Rim, heartwood, pith — three steps in from the edge, so the face
+            # reads as concentric rather than as one lighter blob.
+            ring = TOP if d > 0.66 else (FRONT if d > 0.22 else SIDE)
+            px[x, y] = objects.tone(ramp, ring, x, y)
+
+
+def _stone(px, size: tuple[int, int], cx: float, cy: float, rx: float, ry: float,
+           ramp: Ramp, salt: int) -> None:
+    """One boulder: a lit cap, a flank, and the contact band it sits in.
+
+    Stone is heavy (S14), so the bands are wide and the breaks are straight —
+    an angular facet, never a soft bulb. The bottom band is `SIDE` rather than
+    the flank's `FRONT`: that is the occlusion where the stone meets whatever
+    it is standing on.
+    """
+    width, height = size
+    for y in range(max(0, int(cy - ry)), min(height, int(cy + ry) + 1)):
+        for x in range(max(0, int(cx - rx)), min(width, int(cx + rx) + 1)):
+            dx, dy = (x - cx) / max(rx, 0.5), (y - cy) / max(ry, 0.5)
+            if dx * dx + dy * dy > 1.0:
+                continue
+            # Facet by height on the stone, nudged by a coarse 2x2 hash so two
+            # stones in a ring are not the same drawing twice (S5: clustered
+            # shape, never per-pixel noise).
+            lift = -dy + hash01(int(x) // 2, int(y) // 2, salt) * 0.22
+            plane = TOP if lift > 0.34 else (FRONT if lift > -0.30 else SIDE)
+            px[x, y] = objects.tone(ramp, plane, x, y)
+
+
+
 def _stroke(px, x: float, y: float, angle: float, length: float, thick: float,
             ramp: Ramp, shade: float, salt: int, width: int, height: int) -> None:
     """A tapering line of pixels. The workhorse for planks, rails and bones."""
@@ -166,80 +317,128 @@ def _stroke(px, x: float, y: float, angle: float, length: float, thick: float,
 
 
 def make_tent(width: int, height: int, state: int, rng: random.Random) -> Image.Image:
-    """Canvas over two poles. `state` 0 sagging, 1 collapsed, 2 torn open."""
+    """Canvas over two poles. `state` 0 sagging, 1 collapsed, 2 torn open.
+
+    A TENT IS EXTRUDED, AND THAT IS THE ONLY WAY IT STOPS BEING A HILL. The
+    old one drew the gable triangle flat and shaded it with a falloff to both
+    sides; S15's own test — the silhouette in solid black — returns a cone,
+    and no amount of shading inside a cone makes a shelter. Splitting the
+    triangle down the middle into two "slopes" does not help either, because
+    seen end-on a gable IS one plane, and drawing a value break across a flat
+    wall is a drawing of a fold rather than a fold.
+
+    So the triangle is swept BACK along the camera slope, far copy first and
+    near copy last. What the nearest copy covers is the near gable, at the
+    base plane. What the far copies leave sticking out along the top right is
+    the ROOF, at the lit plane — a real surface, generated by the sweep rather
+    than drawn, and automatically in perspective because the sweep runs on the
+    same 2:1 the crates and the fence posts do. The ridge is where the two
+    meet, and it needs no line: it is a two-step value break between planes
+    that genuinely face different ways.
+
+    The door is cut into the near gable, which is the only face the player can
+    walk into, and it is the darkest thing on the sprite. The lit lip down one
+    side is the flap pulled back — a black wedge with no rim reads as a hole
+    punched in the sprite rather than as a way in.
+    """
     img = Image.new("RGBA", (width, height), TRANSPARENT)
     px = img.load()
+    size = (width, height)
 
     cx = (width - 1) / 2.0
     ground = height - 1
-    ridge_y = height * (0.62 if state == 1 else 0.22)
-    half = width * (0.46 if state == 1 else 0.40)
+    collapsed = state == 1
+    # WIDER THAN TALL. A ridge tent is a low thing you crawl into; pitched
+    # steep it reads as a cone, which is the shape this prop keeps trying to
+    # become. Base to height runs about 1.3:1 here, against S17's note that
+    # the readable feature gets the room.
+    ridge_y = height * (0.62 if collapsed else 0.32)
+    gw = width * (0.46 if collapsed else 0.37)
+    depth = int(width * (0.16 if collapsed else 0.26))
 
-    # The canvas: a triangle whose ridge SAGS. A straight ridge reads as a
-    # tent someone is maintaining, which is the one thing this is not.
-    for y in range(int(ridge_y), ground + 1):
-        t = (y - ridge_y) / max(ground - ridge_y, 1)
-        span = half * (0.10 + t * 0.90)
-        for x in range(int(cx - span), int(cx + span) + 1):
-            side = (x - cx) / max(span, 0.5)
-            shade = 0.66 - abs(side) * 0.34 - t * 0.12
-            # Vertical creases where the fabric is pulled to the pegs.
-            if int(abs(side) * 7) % 2 == 0:
-                shade += 0.10
-            shade += (hash01(x, y, 53) - 0.5) * 0.24
-            if 0 <= x < width:
-                px[x, y] = pick(CANVAS, shade, x, y)
+    def gable(ax: float, ay: float, by: float, plane: int) -> None:
+        """One filled triangle: apex at (ax, ay), base `gw` either side at by."""
+        for y in range(max(0, int(round(ay))), min(height, int(round(by)) + 1)):
+            t = (y - ay) / max(by - ay, 1)
+            span = gw * (0.08 + t * 0.92)
+            for x in range(int(round(ax - span)), int(round(ax + span)) + 1):
+                if 0 <= x < width:
+                    px[x, y] = objects.tone(CANVAS, plane, x, y)
 
-    if state != 1:
-        # The entrance: a black wedge under the ridge. Without it the canvas is
-        # a triangle, and a triangle at this size is a hill. The dark opening is
-        # the same read the cabin's doorway gets — the one place light does not
-        # come back out of — and it is what makes the shape a shelter.
-        mouth_h = (ground - ridge_y) * 0.62
+    # THE SWEEP. Far copy first, near copy last, each stepped back up-screen at
+    # the camera slope. Everything but the last is roof.
+    near_x = cx - depth * 0.5
+    for offset in range(depth, -1, -1):
+        gable(near_x + offset, ridge_y - offset * SLOPE,
+              ground - offset * SLOPE, FRONT if offset == 0 else TOP)
+
+    # The eave: the row where the roof meets the ground on the far side takes
+    # the contact step, so the tent sits in the clearing instead of on it.
+    for offset in range(1, depth + 1):
+        y = int(round(ground - offset * SLOPE))
+        for x in range(int(near_x + offset - gw), int(near_x + offset + gw) + 1):
+            if 0 <= x < width and 0 <= y < height and px[x, y][3]:
+                px[x, y] = objects.tone(CANVAS, SIDE, x, y)
+
+    # Seams down the fall of the near gable, splaying with it the way real
+    # panels do. One step under the plane they land on, so the ridge break
+    # stays the loudest edge on the sprite.
+    for column in (-0.58, 0.16, 0.62):
+        for y in range(int(ridge_y) + 3, ground + 1):
+            t = (y - ridge_y) / max(ground - ridge_y, 1)
+            x = int(round(near_x + column * gw * (0.08 + t * 0.92)))
+            if 0 <= x < width and 0 <= y < height and px[x, y][3]:
+                px[x, y] = objects.tone(CANVAS, FRONT - 1, x, y)
+
+    if not collapsed:
+        mouth_h = (ground - ridge_y) * 0.52
         for step in range(int(mouth_h)):
             y = int(ground - step)
-            spread = int(1 + (mouth_h - step) * 0.30)
-            for x in range(int(cx - spread), int(cx + spread) + 1):
+            spread = int(1 + (mouth_h - step) * 0.20)
+            for x in range(int(near_x - spread), int(near_x + spread) + 1):
                 if 0 <= x < width and 0 <= y < height and px[x, y][3]:
-                    px[x, y] = (0, 0, 0, 255)
-            # Lit lip where the flap is pulled back — a black shape with no rim
-            # reads as a hole punched in the sprite rather than as a way in.
-            for edge in (int(cx - spread) - 1, int(cx + spread) + 1):
+                    px[x, y] = objects.tone(PLANK_DARK, 0, x, y)
+            for edge, plane in ((int(near_x - spread) - 1, TOP),
+                                (int(near_x + spread) + 1, SIDE)):
                 if 0 <= edge < width and 0 <= y < height and px[edge, y][3]:
-                    px[edge, y] = pick(CANVAS, 0.92, edge, y)
+                    px[edge, y] = objects.tone(CANVAS, plane, edge, y)
 
     if state == 2:
-        # A tear: a jagged wedge of black cut out of the near face, edges lit
-        # so the canvas reads as split rather than as a painted hole.
-        tear_x = cx + rng.uniform(-4, 4)
-        for step in range(int(height * 0.42)):
-            y = int(ridge_y + 3 + step)
-            spread = int(1 + step * 0.42)
-            wobble = int(math.sin(step * 0.9) * 1.6)
-            for x in range(int(tear_x) - spread + wobble, int(tear_x) + spread + wobble):
+        # A tear in the ROOF, where a branch would come through — edges lit so
+        # the canvas reads as split rather than as a painted hole.
+        tear_x = near_x + depth * 0.7
+        for step in range(int(height * 0.22)):
+            y = int(ridge_y + 2 + step)
+            spread = int(1 + step * 0.26)
+            wobble = int(math.sin(step * 1.3) * 1.2)
+            lo = int(tear_x) - spread + wobble
+            for x in range(lo, int(tear_x) + spread + wobble):
                 if 0 <= x < width and 0 <= y < height and px[x, y][3]:
-                    px[x, y] = (0, 0, 0, 255)
-            for edge in (int(tear_x) - spread + wobble - 1, int(tear_x) + spread + wobble):
-                if 0 <= edge < width and 0 <= y < height and px[edge, y][3]:
-                    px[edge, y] = pick(CANVAS, 0.95, edge, y)
+                    px[x, y] = objects.tone(PLANK_DARK, 0, x, y)
+            if 0 <= lo - 1 < width and 0 <= y < height and px[lo - 1, y][3]:
+                px[lo - 1, y] = objects.tone(CANVAS, TOP, lo - 1, y)
 
-    # Poles: one still up, one down. The one on the ground is why it sagged.
-    _stroke(px, cx - half * 0.9, ground, -math.pi / 2 + (0.9 if state == 1 else 0.12),
-            height * (0.4 if state == 1 else 0.85), 0.5, PLANK, 0.7, 59, width, height)
-    if state != 1:
-        _stroke(px, cx + half * 0.9, ground, -math.pi / 2 - 0.10,
-                height * 0.8, 0.5, PLANK, 0.55, 61, width, height)
+    # Poles: one still up at the near gable, one down. The one on the ground
+    # is why it sagged.
+    _box(px, size, near_x - gw - 1.0, ground - 0.5, 0.8, 0.8,
+         (ground - ridge_y) * (0.4 if collapsed else 0.9), BEAM)
+    if collapsed:
+        _billet(px, size, near_x + gw - 2, near_x + gw + 5, ground - 1.5, 1.0,
+                BEAM, cap=False)
+    else:
+        _box(px, size, near_x + gw + 1.0, ground - 0.5, 0.8, 0.8,
+             (ground - ridge_y) * 0.8, BEAM)
 
     # Guy lines pegged out to the sides — the detail that says "pitched", and
     # the only thing in the frame that is one pixel wide on purpose.
     for side in (-1, 1):
-        rope_x = cx + side * half
-        for step in range(int(width * 0.16)):
-            ix = int(rope_x + side * step)
-            iy = int(ridge_y + step * 1.5)
+        rope_x = near_x + side * (gw + 1.0)
+        for step in range(int(width * 0.13)):
+            ix, iy = int(rope_x + side * step), int(ridge_y + 4 + step * 1.7)
             if 0 <= ix < width and 0 <= iy < height and px[ix, iy][3] == 0:
-                px[ix, iy] = pick(ROPE, 0.6, ix, iy)
+                px[ix, iy] = objects.tone(ROPE, 3, ix, iy)
 
+    _shadow(img, near_x + depth * 0.4, ground - 0.5, gw * 1.3, 2.2)
     outline(img, OUTLINE_WOOD)
     return img
 
@@ -247,56 +446,68 @@ def make_tent(width: int, height: int, state: int, rng: random.Random) -> Image.
 def make_firepit(width: int, height: int, variant: int, rng: random.Random) -> Image.Image:
     """A cold fire. The stone ring is intact; what burned in it is not.
 
-    This is the campfire from make_textures.py with the light taken out, and
-    that is exactly how it should read: the same ring of stones, the same
-    crossed logs, but charcoal instead of flame. A player who has stood at the
-    camp fire recognises the shape and knows what is missing from it.
+    Same shape as the camp fire in make_textures.py with the light taken out —
+    a player who has stood at the live one recognises it and knows what is
+    missing. What is new is that the stones are STONES: a lit cap over a flank
+    over the contact band it sits in (`_stone`), set on a RHOMBUS rather than a
+    circle so the ring lies on the ground plane instead of standing up like a
+    dial. Back stones are drawn first and front stones last, so the ring
+    overlaps itself and the pit reads as something you look INTO.
+
+    FIVE STONES, NOT SIX, and that is a legibility decision rather than a
+    design one. Six around a 20px frame leaves each one four pixels across,
+    and four pixels cannot hold three value bands — S16 caps a 16px mass at
+    two or three sub-masses for exactly this reason. Five stones are six
+    pixels each, they overlap their neighbours, and a ring of overlapping
+    solids is worth more than a ring of separate dots.
+
+    The ash bed is the one flat thing here and it should be: it is a decal
+    lying inside a bowl, and giving it a plane would fight the stones for the
+    silhouette. It is also kept DARK — the whole read of this prop is a pale
+    ring around a black middle, and ash bright enough to have texture of its
+    own closes the ring up into a disc.
     """
     img = Image.new("RGBA", (width, height), TRANSPARENT)
     px = img.load()
+    size = (width, height)
 
     cx = (width - 1) / 2.0
-    ring_y = height - 1.0 - height * 0.14
-    ring_rx = width * 0.38
-    ring_ry = max(1.8, height * 0.20)
+    ring_y = height - 1.0 - height * 0.18
+    ring_rx = width * 0.34
+    ring_ry = max(1.8, ring_rx * SLOPE)
 
-    # Ash bed first, so the stones sit on top of it.
     for y in range(int(ring_y - ring_ry), int(ring_y + ring_ry) + 1):
         for x in range(int(cx - ring_rx), int(cx + ring_rx) + 1):
             if not (0 <= x < width and 0 <= y < height):
                 continue
-            dx = (x - cx) / ring_rx
-            dy = (y - ring_y) / ring_ry
-            if dx * dx + dy * dy > 0.85:
+            dx, dy = (x - cx) / ring_rx, (y - ring_y) / ring_ry
+            if dx * dx + dy * dy > 0.95:
                 continue
-            px[x, y] = pick(CHAR, 0.25 + hash01(x, y, 67) * 0.55, x, y)
+            px[x, y] = pick(CHAR, 0.10 + hash01(x, y, 67) * 0.34, x, y)
 
-    # Burnt wood: two logs, ends broken off rather than tapered.
-    for angle, ox in ((0.16, -0.30), (math.pi - 0.20, 0.26)):
-        _stroke(px, cx + ox * width, ring_y - 1, angle, width * 0.42, 1.0,
-                CHAR, 0.75, 71, width, height)
+    # Two burnt billets across the bed, crossed. Charcoal keeps the cylinder —
+    # a spent log is still a log — and it is the one place `grain` is wanted,
+    # because char genuinely breaks up where clean wood does not.
+    for ox, oy, ln in ((-0.20, -0.06, 0.34), (0.00, 0.10, 0.30)):
+        x0 = cx + ox * width
+        _billet(px, size, x0, x0 + ln * width, ring_y + oy * height,
+                1.4, CHAR, grain=0.30, salt=71 + variant, cap=False)
 
-    # Stones. Front ones last so they overlap the ash, same as the live fire.
-    for index in range(6):
-        angle = math.tau * index / 6 + 0.4 + variant * 0.3
+    # Stones, BACK OF THE RING FIRST so the front row overlaps it.
+    count = 5
+    order = sorted(range(count),
+                   key=lambda i: math.sin(math.tau * i / count + 0.5 + variant * 0.4))
+    for index in order:
+        if variant == 2 and index == 2:
+            continue  # one kicked out of the ring
+        angle = math.tau * index / count + 0.5 + variant * 0.4
         sx = cx + math.cos(angle) * ring_rx
         sy = ring_y + math.sin(angle) * ring_ry
-        radius = 1.3 + 0.5 * abs(math.cos(angle * 2.1))
-        if variant == 2 and index == 3:
-            continue  # one stone kicked out of the ring
-        for y in range(int(sy - radius) - 1, int(sy + radius) + 2):
-            for x in range(int(sx - radius) - 1, int(sx + radius) + 2):
-                if not (0 <= x < width and 0 <= y < height):
-                    continue
-                dx, dy = x - sx, y - sy
-                if dx * dx + dy * dy > radius * radius:
-                    continue
-                # Bright: the ring is the whole silhouette. A pit whose stones
-                # sit in the same value band as its ash is one grey smudge, and
-                # the point of this prop is that a player recognises the SHAPE
-                # of the camp fire in it from across a clearing.
-                px[x, y] = pick(STONE, clamp01(0.78 - dy / radius * 0.34 - dx / radius * 0.2), x, y)
+        # Sized on a 1 : 0.7 : 0.5 rhythm (S17) rather than five of one stone.
+        scale = (1.0, 0.74, 0.88, 0.66, 0.94)[index % 5]
+        _stone(px, size, sx, sy, 3.0 * scale, 2.3 * scale, ROCK, 83 + index * 7)
 
+    _shadow(img, cx, ring_y + ring_ry * 0.7, ring_rx * 1.15, ring_ry * 0.9)
     outline(img, OUTLINE_COLD)
     return img
 
@@ -311,52 +522,65 @@ def make_fence(width: int, height: int, state: int, rng: random.Random) -> Image
     frame, so a run of them laid side by side joins up with no corner pieces
     and no orientation logic. The break in a fence is the story — the server
     picks which segments are ruined and where the gap someone came through is.
+
+    THE POST IS A BOX AND THE RAILS ARE ROUND, and drawing that difference is
+    most of what this prop is. A sawn post has a TOP FACE — the one surface on
+    a fence the camera looks straight down at — and the old flat version had
+    none, so a run of fence read as a row of pencil strokes. Split rails are
+    cylinders and get `_billet`'s crest and underside.
+
+    RAILS ARE DRAWN FIRST AND THE POST LAST, so the post overlaps them. That
+    order is the only thing here that says the rails pass BEHIND rather than
+    being glued to the front, and it costs nothing.
     """
     img = Image.new("RGBA", (width, height), TRANSPARENT)
     px = img.load()
+    size = (width, height)
 
     cx = (width - 1) / 2.0
     ground = height - 1
-    post_top = int(height * (0.20 if state < 3 else 0.52))
-    lean = 0.0 if state < 2 else rng.uniform(-0.22, 0.22)
+    tall = height * (0.74 if state < 3 else 0.40)
+    lean = 0.0 if state < 2 else rng.uniform(-0.16, 0.16)
+
+    rails = {0: (0.40, 0.72), 1: (0.72,), 2: (0.40, 0.72), 3: (0.74,), 4: (), 5: ()}[state]
+    for ratio in rails:
+        axis = ground - tall * (1.0 - ratio) - 1.0
+        drop = 0.0 if state < 2 else rng.uniform(0.0, 1.6)
+        # Sagging rails are drawn as two short billets meeting at the post, so
+        # the sag is a real break in the run rather than a bent line.
+        for x0, x1, sag in ((0.0, cx + 1, drop), (cx - 1, width - 1.0, drop)):
+            _billet(px, size, x0, x1, axis + sag, 1.3, BEAM, cap=False)
 
     if state != 5:
-        for y in range(post_top, ground + 1):
-            centre = cx + (ground - y) * lean
-            for x in range(int(centre - 1.5), int(centre + 2)):
-                if 0 <= x < width:
-                    px[x, y] = pick(
-                        PLANK, 0.62 - (x - centre) * 0.18 + (hash01(x, y, 101) - 0.5) * 0.3, x, y
-                    )
+        base = ground - 1.0
+        fx = cx + lean * tall
+        _box(px, size, fx, base, 2.2, 2.2, tall, BEAM)
         if state >= 3:
-            # A snapped post: splinters, not a clean cut.
-            for x in range(int(cx - 2), int(cx + 3)):
-                for y in range(post_top - rng.randint(0, 3), post_top):
-                    if 0 <= y < height and 0 <= x < width:
-                        px[x, y] = pick(PLANK, 0.9, x, y)
-
-    # Rails. State decides which survive; they run edge to edge so the run
-    # reads continuous.
-    rails = {0: (0.34, 0.62), 1: (0.62,), 2: (0.34, 0.62), 3: (0.70,), 4: (), 5: ()}[state]
-    for ratio in rails:
-        y = int(height * ratio)
-        drop = 0.0 if state < 2 else rng.uniform(0.0, 2.0)
-        for x in range(width):
-            iy = int(y + drop * abs(x - cx) / max(cx, 1))
-            for offset in range(2):
-                jy = iy + offset
-                if 0 <= jy < height:
-                    px[x, jy] = pick(
-                        PLANK, 0.58 - offset * 0.2 + (hash01(x, jy, 103) - 0.5) * 0.26, x, jy
-                    )
+            # A SNAPPED post has no lid. Everything the box drew above the
+            # break comes off, and what is left is splinters standing out of
+            # the shaft — one column of wood each, at the shaded step, because
+            # a torn end catches nothing. Leaving the box's clean top face on
+            # and roughing its edge is what made this read as a mushroom.
+            top_y = int(round(base - tall - 2.2 * SLOPE))
+            for x in range(max(0, int(fx - 4)), min(width, int(fx + 5))):
+                for y in range(max(0, top_y - 1), min(height, top_y + 3)):
+                    if px[x, y][3]:
+                        px[x, y] = TRANSPARENT
+            for x in range(max(0, int(fx - 2)), min(width, int(fx + 3))):
+                spike = int(hash01(x, 0, 101) * 3.0)
+                for y in range(top_y + 2 - spike, top_y + 3):
+                    if 0 <= y < height:
+                        px[x, y] = objects.tone(BEAM, SIDE, x, y)
 
     if state >= 4:
-        # Collapsed: the rails are on the ground now.
-        for _ in range(rng.randint(2, 3)):
-            _stroke(px, rng.uniform(0, width * 0.4), ground - rng.uniform(0, 3),
-                    rng.uniform(-0.22, 0.22), rng.uniform(width * 0.5, width * 0.95),
-                    1.0, PLANK, 0.55, 107, width, height)
+        # Collapsed: what is left is lying down, so it is billets on the floor
+        # rather than a standing thing at all.
+        for index in range(2 if state == 4 else 1):
+            y = ground - 1.5 - index * 2.2
+            _billet(px, size, 0.0, width - 1.0 - index * 3, y, 1.2, BEAM, cap=False)
 
+    if state != 5:
+        _shadow(img, cx, ground - 0.5, 4.0, 1.8)
     outline(img, OUTLINE_WOOD)
     return img
 
@@ -368,62 +592,88 @@ def make_sign(width: int, height: int, variant: int, rng: random.Random) -> Imag
     TALLY marks (someone was counting something), and a board hanging off one
     nail (whatever it said stopped mattering). Lettering at 16px is a smudge —
     a shape the player can name from across the clearing is not.
+
+    THE BOARD HAS A THICKNESS AND THAT IS THE WHOLE UPGRADE. A sign is two
+    boxes: a square post with a top face, and a plank nailed across it that is
+    wide, shallow and THIN — so the camera sees its face, the sliver of its
+    top edge, and the shadow it throws down the post behind it. The old one
+    was two rectangles of flat colour and read as a lollipop. The mark carved
+    into it is cut with the VOID-dark `CHAR` at the board's own face step, so
+    it reads as gouged rather than as painted on.
     """
     img = Image.new("RGBA", (width, height), TRANSPARENT)
     px = img.load()
+    size = (width, height)
 
     cx = (width - 1) / 2.0
     ground = height - 1
-    board_h = int(height * 0.34)
-    board_y = int(height * 0.10)
-    half = width * 0.44
+    board_h = max(5, int(height * 0.26))
+    board_top = int(height * 0.12)
+    half = width * 0.42
 
-    for y in range(board_y + board_h, ground + 1):
-        for x in range(int(cx - 1.5), int(cx + 2)):
-            if 0 <= x < width:
-                px[x, y] = pick(PLANK, 0.6 - (x - cx) * 0.16, x, y)
+    # The post, full height. Drawn first: the board hangs in front of it.
+    _box(px, size, cx, ground - 1.0, 1.6, 1.6, height * 0.80, BEAM)
 
-    tilt = 0.0 if variant != 2 else 0.28
-    for y in range(board_y, board_y + board_h):
-        t = (y - board_y) / max(board_h - 1, 1)
-        shift = (t - 0.5) * board_h * tilt
-        band = (y - board_y) % 3
-        for x in range(int(cx - half + shift), int(cx + half + shift) + 1):
-            if not (0 <= x < width):
+    # The board. `tilt` hangs it off one nail on variant 2.
+    tilt = 0.0 if variant != 2 else 0.42
+    base = board_top + board_h
+    # A RIGID SLAB. The tilt slides the whole plank down at a constant slope
+    # and its height never changes, so a hanging board is a parallelogram —
+    # the shape a real board off one nail makes. Dropping each column by its
+    # own curve, which is what this did first, wedges the plank thinner at one
+    # end and reads as a torn flag.
+    left = int(cx - half)
+    for column in range(left, int(cx + half) + 1):
+        if not (0 <= column < width):
+            continue
+        top = board_top + tilt * (column - left)
+        top_y, base_y = int(round(top)), int(round(top)) + board_h
+        for y in range(top_y, base_y + 1):
+            if not (0 <= y < height):
                 continue
-            shade = 0.70 - band * 0.10 + (hash01(x, y, 109) - 0.5) * 0.26
-            px[x, y] = pick(PLANK, shade, x, y)
+            # Top edge is the plank's THICKNESS — the only surface the camera
+            # looks down on, and the only thing separating a board from a
+            # painted rectangle. The bottom row is its own contact shadow.
+            plane = TOP if y == top_y else (SIDE if y == base_y else FRONT)
+            px[column, y] = objects.tone(BEAM, plane, column, y)
 
-    mid = board_y + board_h // 2
+    # Occlusion where the board crosses the post: the post is BEHIND it, so
+    # the two rows directly under the plank take the contact step (S10).
+    under = int(round(board_top + tilt * (cx - left))) + board_h
+    for y in (under + 1, under + 2):
+        for x in range(int(cx - 2), int(cx + 3)):
+            if 0 <= x < width and 0 <= y < height and px[x, y][3]:
+                px[x, y] = objects.tone(BEAM, 0, x, y)
+
+    mid = int(round(board_top + tilt * (cx - int(cx - half)))) + board_h // 2
     if variant == 0:
-        # Arrow, gouged darker than the board.
-        for step in range(int(half * 1.2)):
-            x = int(cx - half * 0.6 + step)
-            if 0 <= x < width:
-                px[x, mid] = pick(CHAR, 0.35, x, mid)
+        for step in range(int(half * 1.3)):
+            x = int(cx - half * 0.65 + step)
+            if 0 <= x < width and 0 <= mid < height and px[x, mid][3]:
+                px[x, mid] = objects.tone(CHAR, 2, x, mid)
         for step in range(3):
             for side in (-1, 1):
-                x = int(cx + half * 0.55 - step)
-                y = mid + side * step
-                if 0 <= x < width and 0 <= y < height:
-                    px[x, y] = pick(CHAR, 0.35, x, y)
+                x, y = int(cx + half * 0.6 - step), mid + side * step
+                if 0 <= x < width and 0 <= y < height and px[x, y][3]:
+                    px[x, y] = objects.tone(CHAR, 2, x, y)
     elif variant == 1:
-        # Tally marks. Four upright and one struck through — a count someone
+        # Tally marks. Four upright and one struck through — a count somebody
         # kept, which is a smaller and worse thought than any word would be.
         for index in range(4):
             x = int(cx - half * 0.6 + index * 2.4)
-            for y in range(mid - 3, mid + 3):
-                if 0 <= x < width and 0 <= y < height:
-                    px[x, y] = pick(CHAR, 0.35, x, y)
+            for y in range(mid - 2, mid + 2):
+                if 0 <= x < width and 0 <= y < height and px[x, y][3]:
+                    px[x, y] = objects.tone(CHAR, 2, x, y)
         for step in range(9):
-            x = int(cx - half * 0.75 + step)
-            y = mid + 2 - step // 2
-            if 0 <= x < width and 0 <= y < height:
-                px[x, y] = pick(CHAR, 0.35, x, y)
+            x, y = int(cx - half * 0.75 + step), mid + 1 - step // 3
+            if 0 <= x < width and 0 <= y < height and px[x, y][3]:
+                px[x, y] = objects.tone(CHAR, 2, x, y)
     else:
-        # Hanging off one nail: a bright pixel where it is still attached.
-        px[int(cx - half * 0.6), board_y] = pick(METAL, 1.0, int(cx - half * 0.6), board_y)
+        nail = (int(cx - half * 0.55), board_top)
+        if 0 <= nail[0] < width:
+            px[nail] = objects.tone(METAL, 4, *nail)
 
+    _shadow(img, cx, ground - 0.5, 3.4, 1.6)
     outline(img, OUTLINE_WOOD)
     return img
 
@@ -431,56 +681,56 @@ def make_sign(width: int, height: int, variant: int, rng: random.Random) -> Imag
 def make_logs(width: int, height: int, variant: int, rng: random.Random) -> Image.Image:
     """A felled trunk lying across the ground. Cover you can see over.
 
-    Drawn as a cylinder with the cut end facing the camera, because that end
-    is the only part of a horizontal log that has any shape at this size — the
-    length of it is just a bar, and the ring face is what says wood.
+    A log is the simplest volume in the folder and the old one got no benefit
+    from it: a horizontal bar with a value ramp across its diameter and a
+    three-pixel smear of rings at one end. What makes a trunk read is that it
+    is a CYLINDER WITH A SAWN FACE — the crown catches the sky, the flank
+    turns away, the underside is in its own shadow, and the cut end is a disc
+    standing at an angle to all three. `_billet` draws those four things and
+    nothing else.
+
+    The bark is a value break along the GRAIN AXIS (S14: bark is long banded
+    strips), so it runs the length of the trunk and never across it. One band
+    per trunk, because two is a texture and this is a 14px tall sprite.
     """
     img = Image.new("RGBA", (width, height), TRANSPARENT)
     px = img.load()
+    size = (width, height)
 
     ground = height - 1
-    radius = height * 0.32
-    axis_y = ground - radius - rng.uniform(0.0, 1.5)
-    sag = rng.uniform(-0.06, 0.06)
+    r = height * 0.30
+    axis = ground - r - 1.0
+    # Where the trunk stops. A broken one leaves the stub and the ground.
+    end = width - 1 if variant < 2 else int(width * (0.58 + (variant - 2) * 0.10))
 
-    for x in range(width):
-        t = x / max(width - 1, 1)
-        centre = axis_y + math.sin(t * math.pi) * height * sag
-        # Taper toward the far end, so it is a trunk and not a pipe.
-        r = radius * (1.0 - t * 0.18)
-        for y in range(int(centre - r), int(centre + r) + 1):
-            if not (0 <= y < height):
-                continue
-            up = (centre - y) / max(r, 0.5)
-            shade = 0.34 + up * 0.42 + (hash01(x, y, 113) - 0.5) * 0.26
-            # Bark strips running the length: horizontal grain at this size is
-            # the whole difference between a log and a dowel.
-            if hash01(0, y, 127) > 0.62:
-                shade -= 0.16
-            px[x, y] = pick(PLANK, shade, x, y)
+    _billet(px, size, 1, end, axis, r, BEAM)
 
-    # Cut face on the near end.
-    face_x = 1
-    for y in range(int(axis_y - radius), int(axis_y + radius) + 1):
-        if not (0 <= y < height):
+    # Bark, as ONE clustered band along the grain axis (S14: bark is long
+    # banded strips) rather than as speckle. It sits on the flank, two rows
+    # deep, in runs of three columns — S5 puts the minimum meaningful cluster
+    # at 2x2, and a one-pixel scatter reads as dirt rather than as bark.
+    strip = int(round(axis - r * 0.06))
+    for x in range(2, min(width, int(end))):
+        if hash01(x // 3, 0, 127) <= 0.70:
             continue
-        d = abs(y - axis_y) / max(radius, 0.5)
-        for x in range(face_x, face_x + 3):
-            ring = 1.0 if math.sin(d * 9.0) > 0 else 0.0
-            px[x, y] = pick(PLANK_DARK, 0.35 + ring * 0.55, x, y)
+        for dy in (0, 1):
+            y = strip + dy
+            if 0 <= y < height and px[x, y][3]:
+                px[x, y] = objects.tone(BEAM, SIDE, x, y)
 
     if variant >= 2:
-        # Broken in half: a splintered stub with a gap of ground after it.
-        cut = int(width * (0.58 + variant * 0.06))
-        for x in range(cut, min(width, cut + 4)):
+        # Broken rather than sawn: the far end splinters instead of capping.
+        for x in range(max(0, end - 3), min(width, end + 2)):
             for y in range(height):
-                if px[x, y][3] and hash01(x, y, 131) > 0.4:
+                if px[x, y][3] and hash01(x, y, 131) > 0.45:
                     px[x, y] = TRANSPARENT
     if variant == 3:
-        # A branch stub sticking up, so the silhouette is not a perfect bar.
-        _stroke(px, width * 0.35, axis_y, -math.pi / 2 - 0.4, height * 0.5, 0.5,
-                PLANK, 0.7, 137, width, height)
+        # A branch stub, drawn as its own small billet standing off the trunk
+        # so the silhouette is not a perfect bar (S15: bite the outline).
+        _billet(px, size, width * 0.34, width * 0.34 + 4, axis - r - 1.5,
+                max(1.2, r * 0.42), BEAM, grain=0.08, salt=137, cap=False)
 
+    _shadow(img, width * 0.5, ground - 0.5, (end - 1) * 0.5, r * 0.9)
     outline(img, OUTLINE_WOOD)
     return img
 

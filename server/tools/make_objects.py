@@ -1832,12 +1832,57 @@ def make_stash(width: int, height: int, kind: int, frame: int, frames: int) -> I
         axis = base - post_h - 2.2
         billet(px, size, cx - width * 0.30, cx + width * 0.30, axis, 2.6, STEEL,
                cap=False)
-        # The door on the near end, dropping toward the camera as it opens.
-        door_w = 2.4 + open_t * 0.6
-        for y in range(int(axis - 2.4), int(axis + 2.6 + open_t * 3)):
-            for x in range(int(cx - width * 0.30), int(cx - width * 0.30 + door_w)):
-                if 0 <= x < width and 0 <= y < height and px[x, y][3]:
-                    px[x, y] = tone(STEEL, 0 if open_t > 0.3 else FRONT, x, y)
+        # THE DOOR, HINGED AT THE BOTTOM, FALLING TOWARD THE CAMERA. Every
+        # other container on this sheet lifts a lid off a rim; a mailbox is
+        # the one that opens on its END, and it is the only reason the drum is
+        # drawn lying along the axis in the first place. The first cut of this
+        # only swapped the door's colour at a threshold, which is not an
+        # animation — the frames all had the same silhouette and the object
+        # read as closed at every step of its own opening.
+        #
+        # The swing is one angle. What is still STANDING above the hinge is
+        # `cos`, what has FALLEN toward the camera below it is `sin`, and the
+        # fallen part is multiplied by the camera slope because a flap
+        # pointing at the viewer is the one thing on this sheet seen almost
+        # end-on. That is what makes the door foreshorten as it drops instead
+        # of sliding down the frame at full height.
+        end_x = cx - width * 0.30
+        r = 2.6
+        hinge = axis + r
+        theta = open_t * math.pi * 0.55
+        above = 2 * r * max(0.0, math.cos(theta))
+        below = 2 * r * math.sin(theta) * SLOPE
+
+        # The mouth behind it: dark at the back, one step over at the lip, so
+        # an open mailbox is a tube you are looking into rather than a notch
+        # bitten out of the drum.
+        if open_t > 0.06:
+            for y in range(int(round(axis - r)), int(round(axis + r)) + 1):
+                for x in range(int(round(end_x)), int(round(end_x + 2.2)) + 1):
+                    if not (0 <= x < width and 0 <= y < height) or not px[x, y][3]:
+                        continue
+                    # Step 3 at the lip, 1 at the back. Step 0 on this ramp is
+                    # a hair off the outline, so a mouth drawn on it is the
+                    # same colour as the line round the sprite and the drum
+                    # reads as having a bite taken out of it rather than an
+                    # inside — the same mistake the collapsed crate made.
+                    edge = abs(y - axis) > r - 1.0
+                    px[x, y] = tone(PLANK_DARK, 3 if edge else 1, x, y)
+
+        # The door itself: two columns at the end of the drum, spanning from
+        # whatever is left standing down to whatever has fallen.
+        for x in range(int(round(end_x)), int(round(end_x + 1.6)) + 1):
+            for y in range(int(round(hinge - above)), int(round(hinge + below)) + 1):
+                if not (0 <= x < width and 0 <= y < height):
+                    continue
+                # The face of the door catches the key while it is upright and
+                # turns away as it goes over — one step down once it is past
+                # the hinge, which is the whole of the lighting on it.
+                px[x, y] = tone(STEEL, TOP if y < hinge else FRONT, x, y)
+        # The catch, on the lip the door swings off.
+        catch_y = int(round(hinge - above)) - 1
+        if open_t < 0.5 and 0 <= int(end_x) < width and 0 <= catch_y < height:
+            px[int(end_x), catch_y] = tone(CHROME, TOP, int(end_x), catch_y)
         # The flag: the one warm pixel pair, and the only thing that says a
         # mailbox rather than a canister.
         fx_ = int(cx + width * 0.26)

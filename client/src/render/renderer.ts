@@ -101,7 +101,18 @@ import type { SpriteBook } from './sprites';
 import type { DrawableEntity, RenderState } from './types';
 import { HIT_FLASH_LIFE } from '../game/entity-visuals';
 import { clamp01, fadeOf } from '../lib/math';
+import { fireFlicker } from './fov';
+import { addShadowLight, beginShadows } from './shadows';
 import type { SceneryPiece, TileMap } from '../game/world';
+
+/**
+ * How far the lantern can still move a shadow, in tiles.
+ *
+ * Shorter than the beam reaches. Past this the mark it throws is longer than
+ * the light that made it, and a barrel at the far end of the cone ends up with
+ * a harder shadow than the crate the player is standing over.
+ */
+const LAMP_SHADOW_TILES = 7;
 
 export type { DrawableEntity, RenderState } from './types';
 
@@ -300,6 +311,9 @@ export class Renderer {
     // Rebuilt before anything is drawn, because the very first pass reads it:
     // the undergrowth bends around whatever is standing in it this frame.
     this.disturbance.update(state.entities, state.dt);
+    // Same reason, one pass later: everything standing on the floor asks this
+    // field which way its shadow goes, and the first of them is drawn below.
+    this.collectShadowLights(state);
 
     // The merchant's camp, or null everywhere else. There is no floor pass for
     // it: the clearing is forest, painted by the terrain layer like any other.
@@ -531,6 +545,7 @@ export class Renderer {
       state.world.tileSize,
       state.time,
     );
+    this.darkness.drawLamp(ctx, state.lamp, state.world.tileSize, state.time);
     drawCombatEffects(ctx, state.effects, state.config.tileSize, this.weaponVfx);
     this.darkness.drawLights(ctx, state.effects.lights);
     drawLootAuras(ctx, state.loot, state.time);
@@ -616,6 +631,37 @@ export class Renderer {
   }
 
   /**
+   * Everything on the map that can move a shadow, handed to `shadows.ts`.
+   *
+   * The same four sources the shaft pass ranks, and deliberately so: a light
+   * that is bright enough to cut a beam through the trees is bright enough to
+   * put a mark on the ground under a barrel, and two different answers to
+   * "what is lighting this place" is how a frame stops agreeing with itself.
+   * The reach is the light's OWN reach — a shadow that kept pointing at a lamp
+   * forty tiles away is a compass, not a shadow.
+   */
+  private collectShadowLights(state: RenderState): void {
+    const tile = state.world.tileSize;
+    beginShadows();
+    const fireReach = tile * state.config.campfireLightTiles;
+    for (let i = 0; i < state.world.fires.length; i++) {
+      const fire = state.world.fires[i];
+      // Flicker rides the shadow, not just the pool: a body standing at the
+      // hearth with a shadow that does not move is a body in front of a poster.
+      addShadowLight(fire.x, fire.y, fireFlicker(state.time, i), fireReach);
+    }
+    for (const light of state.world.scenery.lights) {
+      addShadowLight(light.x, light.y, 0.7, tile * light.radiusTiles);
+    }
+    if (state.lamp) {
+      addShadowLight(state.lamp.x, state.lamp.y, state.lamp.power, tile * LAMP_SHADOW_TILES);
+    }
+    for (const light of state.effects.lights) {
+      addShadowLight(light.x, light.y, light.strength * fadeOf(light) * 0.8, light.radius);
+    }
+  }
+
+  /**
    * The lights worth throwing shafts out of, in canvas pixels.
    *
    * A shaft pass smears the BRIGHT buffer toward a point, so what it needs
@@ -671,6 +717,12 @@ export class Renderer {
       if (rift.state === 'dormant' || rift.state === 'spent') continue;
       consider(rift.x, rift.y, 1);
     }
+    // THE LANTERN. The one light that is always on screen, always moving, and
+    // always has trees between it and everything else — which is exactly the
+    // condition the shaft pass was written for. It ranks below a pad and a
+    // bonfire on purpose: it is a hand lamp, and it lights the wood in front
+    // of the player rather than the frame.
+    if (state.lamp) consider(state.lamp.x, state.lamp.y, state.lamp.power * 0.7);
     // Muzzle flashes and event lights. Weak and brief on purpose: a gun going
     // off should throw one frame of light through the trees, not hold a beam.
     for (const light of state.effects.lights) {

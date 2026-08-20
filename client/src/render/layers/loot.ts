@@ -14,6 +14,7 @@ import { palette, type Channels } from '../../theme/palette';
 import { effectFrame, effectImage, type VfxSheet } from '../vfx';
 import type { LootAtlas } from '../loot';
 import type { Projection } from '../projection';
+import { groundShadow } from '../shadows';
 import type { DrawableLoot } from '../types';
 
 const GLOW_RADIUS: Record<LootRarity, number> = {
@@ -63,15 +64,10 @@ export function drawLootShadows(
   view: Projection,
   drops: DrawableLoot[],
 ): void {
-  ctx.fillStyle = palette().entity.shadow;
   for (const drop of drops) {
     if (drop.visibility <= 0.01) continue;
-    ctx.globalAlpha = drop.visibility;
-    ctx.beginPath();
-    ctx.ellipse(view.x(drop.x), view.y(drop.y + 0.6), view.size(0.9), view.size(0.4), 0, 0, Math.PI * 2);
-    ctx.fill();
+    groundShadow(ctx, view, drop.x, drop.y + 0.6, 0.9, 0.4, 2.4, drop.visibility);
   }
-  ctx.globalAlpha = 1;
 }
 
 export function drawLootSprites(

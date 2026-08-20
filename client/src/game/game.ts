@@ -379,6 +379,9 @@ const FOOTPRINT_MIN_VISIBILITY = 0.25;
  * the other.
  */
 const GROWL_INTERVAL = 3.4;
+/** How far out in front of the body the lamp is carried, in tiles. */
+const LAMP_HELD_TILES = 0.45;
+
 /** How far a growl can still reach the ear, in tiles. Past the lantern's throw. */
 const GROWL_TILES = 17;
 /** Minimum seconds between two growls anywhere. Stops a pack stacking. */
@@ -2922,6 +2925,7 @@ export class Game {
       // being a pool of warmth in a dark glade is the whole picture — an
       // evenly lit clearing would read as somewhere with no night in it.
       fov: this.fov,
+      lamp: this.lampSource(),
       danger: this.dangerLevel(),
       grade: this.grade.resolve(),
       time: this.time,
@@ -3341,6 +3345,27 @@ export class Game {
     const dark = type.viewRange ?? 0;
     const lit = type.viewRangeLit ?? dark;
     return dark + (lit - dark) * clamp01(this.lantern.output);
+  }
+
+  /**
+   * Where the lamp IS, as opposed to how far it lets this player see.
+   *
+   * Held out ahead of the body down the aim, because a light emitted from the
+   * middle of a sprite throws that sprite's own shadow nowhere and puts the
+   * shaft pass's source behind the thing it is meant to be lighting.
+   */
+  private lampSource(): { x: number; y: number; power: number } | null {
+    const local = this.local;
+    const world = this.world;
+    if (!local || !local.alive || !world) return null;
+    const power = clamp01(this.lantern.output);
+    if (power <= 0.02) return null;
+    const reach = world.tileSize * LAMP_HELD_TILES;
+    return {
+      x: this.smoothX + this.aimX * reach,
+      y: this.smoothY + this.aimY * reach,
+      power,
+    };
   }
 
   /** 0..1 screen danger from local HP. Dead = no vignette (respawn clean). */

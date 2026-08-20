@@ -21,11 +21,11 @@
  * the player can point at is a filter; a grade they cannot is a look.
  */
 
-import { palette } from '../../theme/palette';
-import { NEUTRAL, type Grade, type GradeLayer } from './grade';
+import { palette } from "../../theme/palette";
+import { type Grade, type GradeLayer, NEUTRAL } from "./grade";
 
 function base(over: GradeLayer): Grade {
-  return { ...NEUTRAL, ...over };
+	return { ...NEUTRAL, ...over };
 }
 
 // --- places -----------------------------------------------------------------
@@ -37,31 +37,40 @@ function base(over: GradeLayer): Grade {
  * only saturated things on screen are the things that are burning. That split
  * is the whole look: the night is teal and every light in it is orange, which
  * is what makes a distant campfire read as somewhere to go.
+ *
+ * IT CAME DOWN. Exposure was over 1 and the shadows were barely lifted off
+ * black, which meant the unlit half of the forest sat in a narrow grey band
+ * just above the floor — dark enough to hide a creature, not dark enough to
+ * look like night. Pulling the exposure under 1 and taking the red and green
+ * out of the lift drops the ground away from the lights instead of dimming
+ * the whole picture toward them, so the lantern is once again the brightest
+ * thing on screen by a distance. Everything else in this function is
+ * unchanged; this is the one number to move if the woods read too dark.
  */
 export function forestLook(): Grade {
-  return base({
-    exposure: 1.02,
-    shoulder: 0.55,
-    contrast: 1.1,
-    saturation: 0.92,
-    temperature: -0.16,
-    tint: 0.02,
-    lift: [-0.012, -0.004, 0.014],
-    gamma: [1.0, 1.0, 0.98],
-    gain: [1.03, 1.0, 0.96],
-    bloom: 0.55,
-    bloomThreshold: 0.72,
-    shafts: 0.35,
-    fog: 0.05,
-    fogTint: palette().grade.fogForest,
-    aberration: 0.4,
-    blur: 0,
-    focus: 0.75,
-    vignette: 0.3,
-    vignetteSoft: 0.62,
-    vignetteTint: palette().grade.vignette,
-    grain: 0.028,
-  });
+	return base({
+		exposure: 1.02,
+		shoulder: 0.55,
+		contrast: 1.1,
+		saturation: 0.92,
+		temperature: -0.16,
+		tint: 0.02,
+		lift: [-0.026, -0.018, 0.006],
+		gamma: [1.0, 1.0, 0.98],
+		gain: [1.03, 1.0, 0.96],
+		bloom: 0.55,
+		bloomThreshold: 0.72,
+		shafts: 0.35,
+		fog: 0.05,
+		fogTint: palette().grade.fogForest,
+		aberration: 0.4,
+		blur: 0,
+		focus: 0.75,
+		vignette: 0.3,
+		vignetteSoft: 0.62,
+		vignetteTint: palette().grade.vignette,
+		grain: 0.028,
+	});
 }
 
 /**
@@ -69,26 +78,26 @@ export function forestLook(): Grade {
  * warmer, a touch brighter, and the frame opened up.
  */
 export function campLook(): Grade {
-  return base({
-    exposure: 1.04,
-    shoulder: 0.5,
-    contrast: 1.06,
-    saturation: 0.96,
-    temperature: -0.06,
-    lift: [0.006, 0.002, 0.01],
-    gain: [1.02, 1.0, 0.99],
-    bloom: 0.5,
-    bloomThreshold: 0.74,
-    shafts: 0.3,
-    fog: 0.04,
-    fogTint: palette().grade.fogCamp,
-    aberration: 0.25,
-    focus: 0.85,
-    vignette: 0.2,
-    vignetteSoft: 0.7,
-    vignetteTint: palette().grade.vignette,
-    grain: 0.024,
-  });
+	return base({
+		exposure: 1.04,
+		shoulder: 0.5,
+		contrast: 1.06,
+		saturation: 0.96,
+		temperature: -0.06,
+		lift: [0.006, 0.002, 0.01],
+		gain: [1.02, 1.0, 0.99],
+		bloom: 0.5,
+		bloomThreshold: 0.74,
+		shafts: 0.3,
+		fog: 0.04,
+		fogTint: palette().grade.fogCamp,
+		aberration: 0.25,
+		focus: 0.85,
+		vignette: 0.2,
+		vignetteSoft: 0.7,
+		vignetteTint: palette().grade.vignette,
+		grain: 0.024,
+	});
 }
 
 /**
@@ -96,35 +105,35 @@ export function campLook(): Grade {
  * that goes past neutral on saturation — money should feel good.
  */
 export function shopLook(): Grade {
-  return base({
-    exposure: 1.06,
-    shoulder: 0.6,
-    contrast: 1.04,
-    saturation: 1.06,
-    temperature: 0.2,
-    tint: 0.03,
-    lift: [0.014, 0.006, -0.004],
-    gamma: [1.0, 0.99, 0.97],
-    gain: [1.05, 1.0, 0.93],
-    bloom: 0.6,
-    bloomThreshold: 0.68,
-    shafts: 0.42,
-    fog: 0.06,
-    fogTint: palette().grade.fogShop,
-    aberration: 0.2,
-    focus: 0.8,
-    vignette: 0.22,
-    vignetteSoft: 0.72,
-    vignetteTint: palette().grade.vignette,
-    grain: 0.022,
-  });
+	return base({
+		exposure: 1.06,
+		shoulder: 0.6,
+		contrast: 1.04,
+		saturation: 1.06,
+		temperature: 0.2,
+		tint: 0.03,
+		lift: [0.014, 0.006, -0.004],
+		gamma: [1.0, 0.99, 0.97],
+		gain: [1.05, 1.0, 0.93],
+		bloom: 0.6,
+		bloomThreshold: 0.68,
+		shafts: 0.42,
+		fog: 0.06,
+		fogTint: palette().grade.fogShop,
+		aberration: 0.2,
+		focus: 0.8,
+		vignette: 0.22,
+		vignetteSoft: 0.72,
+		vignetteTint: palette().grade.vignette,
+		grain: 0.022,
+	});
 }
 
 /** Which place a zone kind is. Anything unrecognised is the forest. */
 export function lookFor(zone: string | undefined): Grade {
-  if (zone === 'camp') return campLook();
-  if (zone === 'store') return shopLook();
-  return forestLook();
+	if (zone === "camp") return campLook();
+	if (zone === "store") return shopLook();
+	return forestLook();
 }
 
 // --- events -----------------------------------------------------------------
@@ -138,32 +147,32 @@ export function lookFor(zone: string | undefined): Grade {
  * with an extraction instead of being painted over the top of one.
  */
 export function dangerLook(level: number, pulse: number): GradeLayer {
-  const heat = level * (0.72 + 0.28 * pulse);
-  return {
-    exposure: 1 - 0.06 * heat,
-    contrast: 1.1 + 0.16 * heat,
-    saturation: 0.92 - 0.34 * heat,
-    temperature: -0.16 + 0.3 * heat,
-    lift: [0.02 * heat, -0.01 * heat, -0.012 * heat],
-    vignette: 0.3 + 0.42 * heat,
-    vignetteSoft: 0.62 - 0.26 * heat,
-    vignetteTint: palette().grade.washBlood,
-    aberration: 0.4 + 2.0 * heat,
-    grain: 0.028 + 0.03 * heat,
-    fog: 0.05 + 0.05 * heat,
-  };
+	const heat = level * (0.72 + 0.28 * pulse);
+	return {
+		exposure: 1 - 0.06 * heat,
+		contrast: 1.1 + 0.16 * heat,
+		saturation: 0.92 - 0.34 * heat,
+		temperature: -0.16 + 0.3 * heat,
+		lift: [0.02 * heat, -0.01 * heat, -0.012 * heat],
+		vignette: 0.3 + 0.42 * heat,
+		vignetteSoft: 0.62 - 0.26 * heat,
+		vignetteTint: palette().grade.washBlood,
+		aberration: 0.4 + 2.0 * heat,
+		grain: 0.028 + 0.03 * heat,
+		fog: 0.05 + 0.05 * heat,
+	};
 }
 
 /** A round landing on the player. Short, hard, and gone. */
 export function hitLook(severity: number): GradeLayer {
-  return {
-    wash: 0.1 + 0.16 * severity,
-    washTint: palette().grade.washBlood,
-    exposure: 1 - 0.1 * severity,
-    aberration: 1.6 + 3.4 * severity,
-    saturation: 0.75,
-    vignette: 0.42 + 0.2 * severity,
-  };
+	return {
+		wash: 0.1 + 0.16 * severity,
+		washTint: palette().grade.washBlood,
+		exposure: 1 - 0.1 * severity,
+		aberration: 1.6 + 3.4 * severity,
+		saturation: 0.75,
+		vignette: 0.42 + 0.2 * severity,
+	};
 }
 
 /**
@@ -175,48 +184,48 @@ export function hitLook(severity: number): GradeLayer {
  * arriving is a machine and everything else on the map is a forest.
  */
 export function extractionLook(intensity: number): GradeLayer {
-  const t = Math.max(0, Math.min(1, intensity));
-  return {
-    exposure: 1.02 + 0.2 * t,
-    shoulder: 0.55 + 0.25 * t,
-    contrast: 1.1 + 0.06 * t,
-    saturation: 0.92 + 0.14 * t,
-    temperature: -0.16 - 0.14 * t,
-    gain: [1.03 - 0.02 * t, 1.0 + 0.01 * t, 0.96 + 0.1 * t],
-    bloom: 0.55 + 0.85 * t,
-    bloomThreshold: 0.72 - 0.22 * t,
-    shafts: 0.35 + 1.05 * t,
-    fog: 0.05 + 0.1 * t,
-    fogTint: palette().scene.beacon,
-    aberration: 0.4 + 1.1 * t,
-    vignette: 0.3 - 0.08 * t,
-  };
+	const t = Math.max(0, Math.min(1, intensity));
+	return {
+		exposure: 1.02 + 0.2 * t,
+		shoulder: 0.55 + 0.25 * t,
+		contrast: 1.1 + 0.06 * t,
+		saturation: 0.92 + 0.14 * t,
+		temperature: -0.16 - 0.14 * t,
+		gain: [1.03 - 0.02 * t, 1.0 + 0.01 * t, 0.96 + 0.1 * t],
+		bloom: 0.55 + 0.85 * t,
+		bloomThreshold: 0.72 - 0.22 * t,
+		shafts: 0.35 + 1.05 * t,
+		fog: 0.05 + 0.1 * t,
+		fogTint: palette().scene.beacon,
+		aberration: 0.4 + 1.1 * t,
+		vignette: 0.3 - 0.08 * t,
+	};
 }
 
 /** The payout: the night turning into money. Gold, warm, brief. */
 export function payoutLook(intensity: number): GradeLayer {
-  const t = Math.max(0, Math.min(1, intensity));
-  return {
-    exposure: 1.06 + 0.14 * t,
-    saturation: 1.06 + 0.18 * t,
-    temperature: 0.2 + 0.22 * t,
-    bloom: 0.6 + 0.6 * t,
-    bloomThreshold: 0.68 - 0.16 * t,
-    shafts: 0.42 + 0.5 * t,
-    vignette: 0.22 - 0.06 * t,
-  };
+	const t = Math.max(0, Math.min(1, intensity));
+	return {
+		exposure: 1.06 + 0.14 * t,
+		saturation: 1.06 + 0.18 * t,
+		temperature: 0.2 + 0.22 * t,
+		bloom: 0.6 + 0.6 * t,
+		bloomThreshold: 0.68 - 0.16 * t,
+		shafts: 0.42 + 0.5 * t,
+		vignette: 0.22 - 0.06 * t,
+	};
 }
 
 /** Levelling, and anything else that is a good thing happening at a point. */
 export function surgeLook(): GradeLayer {
-  return {
-    exposure: 1.16,
-    bloom: 1.25,
-    bloomThreshold: 0.55,
-    saturation: 1.14,
-    wash: 0.07,
-    washTint: palette().grade.washFlash,
-  };
+	return {
+		exposure: 1.16,
+		bloom: 1.25,
+		bloomThreshold: 0.55,
+		saturation: 1.14,
+		wash: 0.07,
+		washTint: palette().grade.washFlash,
+	};
 }
 
 /**
@@ -225,29 +234,29 @@ export function surgeLook(): GradeLayer {
  * soft. Held while the trigger is down, released the moment it is not.
  */
 export function scopeLook(intensity: number): GradeLayer {
-  const t = Math.max(0, Math.min(1, intensity));
-  return {
-    blur: 0.75 * t,
-    focus: 0.75 - 0.5 * t,
-    aberration: 0.4 + 0.8 * t,
-    vignette: 0.3 + 0.26 * t,
-    vignetteSoft: 0.62 - 0.2 * t,
-    saturation: 0.92 - 0.08 * t,
-  };
+	const t = Math.max(0, Math.min(1, intensity));
+	return {
+		blur: 0.75 * t,
+		focus: 0.75 - 0.5 * t,
+		aberration: 0.4 + 0.8 * t,
+		vignette: 0.3 + 0.26 * t,
+		vignetteSoft: 0.62 - 0.2 * t,
+		saturation: 0.92 - 0.08 * t,
+	};
 }
 
 /** Dead. The picture stops being a place and becomes a photograph of one. */
 export function deathLook(): GradeLayer {
-  return {
-    exposure: 0.78,
-    contrast: 1.24,
-    saturation: 0.12,
-    blur: 0.5,
-    focus: 0.3,
-    vignette: 0.68,
-    vignetteSoft: 0.4,
-    vignetteTint: palette().grade.vignette,
-    grain: 0.06,
-    bloom: 0.3,
-  };
+	return {
+		exposure: 0.78,
+		contrast: 1.24,
+		saturation: 0.12,
+		blur: 0.5,
+		focus: 0.3,
+		vignette: 0.68,
+		vignetteSoft: 0.4,
+		vignetteTint: palette().grade.vignette,
+		grain: 0.06,
+		bloom: 0.3,
+	};
 }

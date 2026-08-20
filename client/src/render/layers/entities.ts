@@ -21,6 +21,7 @@ import type { GoreAtlas } from '../gore';
 import type { GunAtlas } from '../guns';
 import { gunHand } from '../guns';
 import type { Projection } from '../projection';
+import { groundShadow } from '../shadows';
 import { facingFromAim, frameIndex, timelineFrame, type SpriteBook } from '../sprites';
 import type { DrawableCoin, DrawableCorpse, DrawableEntity } from '../types';
 
@@ -88,38 +89,26 @@ export function drawShadow(entity: EntityContext, target: DrawableEntity): void 
   if (!target.alive || target.visibility <= 0.01) return;
   const { ctx, view } = entity;
 
-  ctx.globalAlpha = target.visibility;
-  ctx.fillStyle = palette().entity.shadow;
-  ctx.beginPath();
-  ctx.ellipse(
-    view.x(target.x + target.recoilX),
-    view.y(target.y + target.recoilY + target.halfHeight),
-    view.size(target.halfWidth * 1.15),
-    view.size(target.halfHeight * 0.75),
-    0,
-    0,
-    Math.PI * 2,
+  // A BODY IS THE ONE CASTER THAT MOVES. Everything else on the floor is
+  // furniture; a player walking past a bonfire swinging a shadow around
+  // themselves is the cheapest proof in the game that the light is real.
+  groundShadow(
+    ctx,
+    view,
+    target.x + target.recoilX,
+    target.y + target.recoilY + target.halfHeight,
+    target.halfWidth * 1.15,
+    target.halfHeight * 0.75,
+    target.halfHeight * 2.6,
+    target.visibility,
   );
-  ctx.fill();
-  ctx.globalAlpha = 1;
 }
 
 /** Soft ground puddle under each coin — drawn before the sprite. */
 export function drawCoinShadows(entity: EntityContext, coins: DrawableCoin[]): void {
   const { ctx, view } = entity;
-  ctx.fillStyle = palette().entity.shadow;
   for (const coin of coins) {
-    ctx.beginPath();
-    ctx.ellipse(
-      view.x(coin.x),
-      view.y(coin.y + 0.75),
-      view.size(0.6),
-      view.size(0.3),
-      0,
-      0,
-      Math.PI * 2,
-    );
-    ctx.fill();
+    groundShadow(ctx, view, coin.x, coin.y + 0.75, 0.6, 0.3, 1.2);
   }
 }
 

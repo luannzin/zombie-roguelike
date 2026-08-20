@@ -33,6 +33,7 @@ mutation, no React.
 | `gore.ts` | gore atlas: small wound decals stamped on a body that has been hit |
 | `fov.ts` | shared field of view — `light` and `heat` fields. Its two sight reaches are NOT constants here: they arrive on `VisionConfig` as `eyeScale` / `sightScale`, off `config.enemyViewDarkScale` / `enemyViewLitScale`, which is what makes an enemy see a shape exactly as far as the shape sees it |
 | `wind.ts` | the shared gust field every bending thing reads |
+| `shadows.ts` | the shared LIGHT field and the one routine that grounds a standing thing: an ambient contact pool plus a cast thrown away from whatever is lighting it |
 | `disturbance.ts` | what bodies do to the plants they walk through |
 | `layers/vision.ts` | the ENEMY's hunt diamond — fill meter and bang over the head |
 | `layers/scenery.ts` | placed scenes: flat decals into the ground bake, standing props into the depth sort; live boot prints (including a blood tint) |
@@ -336,6 +337,34 @@ mutation, no React.
   ferns AND the scenery that sways (tent canvas) all read `wind.lean`. Canvas
   bending on its own clock while the weeds at its pegs bend on another is the
   clearest tell that a scene was assembled out of parts.
+- **`shadows.ts` is a light field, not a decoration, and it is shared for the
+  same reason `wind.ts` is.** Every prop, body, coin and drop used to paint its
+  own hard ellipse at a fixed alpha in six different files, which says "not
+  floating" and nothing else — a crate two tiles from a bonfire wore the same
+  mark as a crate alone in the black wood. Two terms replace it and they answer
+  different questions: CONTACT is ambient occlusion, always there, the crease
+  where a silhouette stops the sky reaching the floor; CAST is the shadow, and
+  it points away from the lights the renderer collected this frame, lengthens
+  with distance from them, and disappears where nothing is burning. Fire
+  flicker rides the cast, so a body at the hearth has a shadow that breathes.
+  It is stamped as a soft blob with smoothing ON, never a hard ellipse: a
+  shadow is LIGHT, and light is on the smooth side of the house split.
+- **The trees and the rocks are deliberately not in it.** Their contact is
+  baked into the static ground canvas (and the rocks' into the sprite, by
+  `make_textures.py`), and that cache is rebuilt when the map changes, not when
+  a lantern walks past. A trunk that swung its shadow around the player would
+  cost a full ground rebake every frame.
+- **The LAMP is an object now, not just a reach.** `RenderState.lamp` is where
+  the local player's lantern IS — held out ahead of the body down the aim —
+  as opposed to `fov`'s `lantern`, which is how far that player can SEE. Two
+  passes need the point and neither can get it from the fov field: the shaft
+  pass needs somewhere to smear the bright buffer toward, and the shadow field
+  needs somewhere for a shadow to point away from. `DarknessLayer.drawLamp`
+  draws the source itself — small and HOT, hot enough to clear the bloom
+  threshold, because the lantern threw no shafts for exactly one reason: there
+  was no pixel on screen bright enough to be the thing lighting the wood. The
+  fix is the source being present, never a lower threshold — that blooms the
+  lit grass too.
 - **`disturbance.ts` is the world noticing the player, and its visibility gate
   is a RULE.** A body contributes two pushes — one at its feet, one at a lagged
   wake that chases it — because without the wake the grass snaps back the
@@ -632,12 +661,19 @@ mutation, no React.
 ## Verification
 
 - `bun run typecheck` from `client/`.
+- `bun tests/shadows.ts` from `client/` after touching `shadows.ts` — plain
+  script, prints `ok`. It covers `lightAt`'s arithmetic only (which way the
+  mark points, what cancels, what is out of reach); the stamping is judged by
+  looking, like the rest of the finish.
 - `bun tests/grade.ts` from `client/` after touching `post/grade.ts` — plain
   script, prints `ok`. It is the only check on the envelopes and on the
   property the whole design rests on: a partial layer must leave every field it
   does not name alone.
 - Check in the browser at two zoom-relevant window sizes that props still
   overlap characters correctly and the lantern cone has a soft spill.
+- Walk a lit crate around the camp's bonfire: its shadow should swing to stay
+  opposite the fire, shorten as you close on it, and fade out entirely once you
+  are back in the dark with the lamp off.
 - The chain has no automated check and cannot have one — look at it. A bonfire
   should bloom and the grass beside it should not; walking to low HP should
   close the frame and drain it; going down the scope should soften the forest

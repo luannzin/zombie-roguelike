@@ -59,6 +59,7 @@ import type { RiftTimingConfig } from '../../net/protocol';
 import { palette } from '../../theme/palette';
 import type { Camera } from '../camera';
 import type { Projection } from '../projection';
+import { groundShadow } from '../shadows';
 import {
   platformFrame,
   platformPropFrame,
@@ -890,18 +891,16 @@ function drawSprite(
     // The same contact shadow every other standing prop gets. Without it the
     // skid hovers: at this camera angle the dark ellipse where it meets the
     // floor is the only thing saying it is standing ON the ground.
-    ctx.globalAlpha = RIFT_SHADOW_ALPHA;
-    ctx.fillStyle = shadow;
-    ctx.beginPath();
-    ctx.ellipse(
-      px,
-      py - (RIFT_SHADOW_HEIGHT * view.zoom) / 2,
-      (width * shadowWidth) / 2,
-      (RIFT_SHADOW_HEIGHT * view.zoom) / 2,
-      0, 0, Math.PI * 2,
+    groundShadow(
+      ctx,
+      view,
+      worldX,
+      worldY - RIFT_SHADOW_HEIGHT / 2,
+      (frameWidth * scale * shadowWidth) / 2,
+      RIFT_SHADOW_HEIGHT / 2,
+      frameHeight * scale,
+      RIFT_SHADOW_ALPHA * alpha,
     );
-    ctx.fill();
-    ctx.globalAlpha = 1;
   }
 
   if (tilt === 0 && alpha >= 0.999) {

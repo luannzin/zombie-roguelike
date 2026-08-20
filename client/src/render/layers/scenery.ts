@@ -38,6 +38,7 @@ import { palette } from '../../theme/palette';
 import type { Camera } from '../camera';
 import type { Projection } from '../projection';
 import type { SceneryAtlas, SceneryDecal } from '../scenery';
+import { groundShadow } from '../shadows';
 import * as wind from '../wind';
 
 /** Radians/second of the sway oscillation, before per-prop variation. */
@@ -222,18 +223,16 @@ export function drawSceneryProp(
   // it a crate hovers: at this camera angle the only thing telling you a
   // silhouette is standing ON the floor rather than floating above it is the
   // dark ellipse where it meets the ground.
-  ctx.globalAlpha = SHADOW_ALPHA;
-  ctx.fillStyle = palette().entity.shadow;
-  ctx.beginPath();
-  ctx.ellipse(
-    view.x(piece.x),
-    view.y(piece.y) - (SHADOW_HEIGHT * view.zoom) / 2,
-    (width * SHADOW_WIDTH) / 2,
-    (SHADOW_HEIGHT * view.zoom) / 2,
-    0, 0, Math.PI * 2,
+  groundShadow(
+    ctx,
+    view,
+    piece.x,
+    piece.y - SHADOW_HEIGHT / 2,
+    (sheet.frameWidth * SHADOW_WIDTH) / 2,
+    SHADOW_HEIGHT / 2,
+    sheet.frameHeight,
+    SHADOW_ALPHA,
   );
-  ctx.fill();
-  ctx.globalAlpha = 1;
 
   blitProp(ctx, sheet, frame, x, y, width, height, lean, piece.flip);
   // Same additive white blink a body gets when a shot lands. A smash without

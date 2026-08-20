@@ -240,6 +240,17 @@ export interface RenderState {
   /** Team light + explored memory. Null disables the darkness pass entirely. */
   fov: FovField | null;
   /**
+   * The local player's LAMP as an object in the world, or null with the switch
+   * off. Not the same statement as the fov's `lantern`: that one is how far
+   * this player can SEE, this one is where the burning thing IS.
+   *
+   * It exists because the two loudest parts of the finish need a source and
+   * the fov field has none — the shaft pass needs a point to smear the bright
+   * buffer toward, and the shadow field needs somewhere for a shadow to point
+   * away from. A held lamp sits slightly ahead of the body, down the aim.
+   */
+  lamp: { x: number; y: number; power: number } | null;
+  /**
    * 0..1 local low-HP danger. Only the FALLBACK vignette reads it now — on the
    * normal path danger is one layer in the grade stack like everything else,
    * so it composes with an extraction instead of being painted over one.

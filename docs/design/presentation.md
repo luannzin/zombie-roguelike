@@ -38,6 +38,8 @@ Nearest contracts: [`client/AGENTS.md`](../../client/AGENTS.md),
 | muzzle / impact art | `server/tools/make_weapon_vfx.py`, `client/src/render/weapon-vfx.ts` |
 | wounds | `server/tools/make_gore.py`, `client/src/render/gore.ts` |
 | darkness / vision | `client/src/render/fov.ts`, `layers/darkness.ts` — `fov.ts` draws vision at the reaches `ai.py` tests against, both read off `config.enemyViewDarkScale` / `enemyViewLitScale` |
+| how a thing sits on the ground | `client/src/render/shadows.ts` — the contact pool and the cast, for every caller. Never a new ellipse at a call site |
+| which lights move a shadow | `Renderer.collectShadowLights` — the same four sources the shaft pass ranks |
 | colours, type | `client/src/styles/index.css` only |
 | how a place looks | one of the three PLACE functions in `client/src/render/post/looks.ts` |
 | how an event changes the picture | an EVENT partial in `post/looks.ts` + one `hold`/`release` in `Game.stepGrade`, or one `pulse` at the event |
@@ -126,6 +128,43 @@ so rather than reaching across it.
   by brightness AND by nearness to the middle of the frame: a light at the very
   edge rakes the screen at a glancing angle and reads as a smudge on the lens
   rather than as light coming through trees.
+
+- **A SHADOW IS LIGHT, SO IT ANSWERS TO THE LIGHTS.** Every standing thing in
+  the game used to draw its own hard ellipse at a fixed alpha — six call sites,
+  one shape, pointing nowhere. That is enough to say a silhouette is not
+  floating and it is the end of what it can say: a crate two tiles from a
+  bonfire and a crate alone in the black wood wore the identical mark, so
+  nothing on the floor ever reacted to a light moving past it, and the whole
+  world read as sprites laid on a picture of ground. `render/shadows.ts` splits
+  it into the two things that were being conflated. The CONTACT pool is ambient
+  occlusion: always there, unlit or not, the crease where an object stops the
+  sky reaching the floor, and it is what actually does the grounding. The CAST
+  is the shadow proper — thrown away from whatever is lighting the object,
+  lengthening the further it stands from that light, gone where nothing is
+  burning. The lights are the SAME four the shaft pass ranks, and that is the
+  rule rather than a convenience: two different answers to "what is lighting
+  this place" is how a frame stops agreeing with itself. Fire flicker rides the
+  cast, because a body standing at the hearth with a still shadow is a body in
+  front of a poster. The mark is a soft stamped blob and never a hard ellipse:
+  the same split that keeps bloom and fog smooth applies to it, since a shadow
+  is light and not world. Trees and rocks stay OUT of it — their contact is
+  baked into a ground cache that is rebuilt when the map changes, and a trunk
+  that swung its shadow around the player would cost that rebake every frame
+  for a thing nobody looks at to find the fire.
+
+- **THE LANTERN HAD NO LAMP IN IT.** It threw no shafts, and the reason was
+  not the shaft pass: it was that nowhere on the screen was there a pixel
+  bright enough to be the thing doing the lighting. The bright pass keeps only
+  what beats the bloom threshold, a bonfire clears it on the flame sprite's own
+  near-white pixels, and a warm wash at 0.3 alpha over black ground never gets
+  close — so the smear had nothing to smear. Lowering the threshold was the
+  wrong fix twice over: it blooms the lit grass, which is the one thing bloom
+  is not allowed to do. The right one is the source being PRESENT, the way
+  every other light in this game already is — one small hot core where the lamp
+  is, held out ahead of the body down the aim, and the lantern now cuts real
+  beams past the trunks in front of it and moves the shadows of everything it
+  passes. `RenderState.lamp` is that object; it is not the same statement as
+  the fov's `lantern`, which is how far the player can see.
 
 - **THE DANGER VIGNETTE IS NOW A LAYER LIKE EVERYTHING ELSE.** It used to be a
   2D pass painted over the finished frame, which meant it was the one reaction

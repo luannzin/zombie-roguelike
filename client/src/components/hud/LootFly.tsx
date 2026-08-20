@@ -65,9 +65,17 @@ function LootFlySprite({ fly }: { fly: LootFlySpec }) {
       {/* A skill arrives in a TIN and an item arrives as itself. Same flight,
           same hold over the head, different object in the hand — which is the
           whole reason the machine's payout reuses this and does not grow a
-          second animation beside it. */}
+          second animation beside it.
+
+          ONE ZOOM FOR BOTH. The tin used to fly at 3x against a drop's 2x, so
+          the same gesture delivered a 48px object for a skill and a 32px one
+          for a rifle — and the tin, being the smaller sprite of the two, was
+          the one that looked like the bigger prize. What the player is being
+          shown is a PICKUP either way; a payout that arrives larger than
+          everything else they collect all night reads as a different system
+          announcing itself. Same size, same flight, different object. */}
       {fly.dest === 'skill' ? (
-        <SkillCanIcon rarity={fly.rarity} frame={fly.frame} zoom={3} />
+        <SkillCanIcon rarity={fly.rarity} frame={fly.frame} zoom={2} />
       ) : (
         <LootIcon frame={fly.frame} zoom={2} />
       )}

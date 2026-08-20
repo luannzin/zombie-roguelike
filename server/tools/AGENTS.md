@@ -276,7 +276,7 @@ surface. Output rules live in [`assets/AGENTS.md`](../../assets/AGENTS.md).
   extent as numbers while `_rock_shadow` reads it off the silhouette.
 - **Organic props do not carry a closed outline.** `outline()` draws one, then
   `_break_crest` removes it where the key lands (§6 of
-  [`PIXEL-ART-DIRECTION.md`](../../PIXEL-ART-DIRECTION.md)). This is not
+  [`PIXEL-ART-DIRECTION-V2.md`](../../PIXEL-ART-DIRECTION-V2.md)). This is not
   cosmetic: on a bare `deadtree` armature the border was 41% of every opaque
   pixel and six silhouettes resolved as six scribbles.
 - **The three low greens are ordered by DRAW DEPTH, not by taste.** `bush` is

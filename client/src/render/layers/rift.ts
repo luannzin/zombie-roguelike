@@ -774,7 +774,7 @@ function drawCargoTosses(
  * strokes at 1.6 and 0.7 screen pixels wide. Canvas anti-aliases a stroke, and
  * a fractional-width one at that: the rope came out as a soft grey smear with
  * partial alpha down both sides, hanging between a pixel-art aircraft and a
- * pixel-art deck. PIXEL-ART-DIRECTION.md S4 is explicit — strict 1:1 pixel grid,
+ * pixel-art deck. PIXEL-ART-DIRECTION-V2.md S4 is explicit — strict 1:1 pixel grid,
  * zero anti-aliasing, zero sub-pixel work — and the one part of the extraction
  * that the player watches for a full four seconds was the one part of it drawn
  * with a pen.

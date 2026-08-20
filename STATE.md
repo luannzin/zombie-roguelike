@@ -21,7 +21,7 @@ ceremony.
 
 ## Currently working on
 
-- **The visual refactor toward depth / 3D-ish volume** (`PIXEL-ART-DIRECTION.md`).
+- **The visual refactor toward depth / 3D-ish volume** (`PIXEL-ART-DIRECTION-V2.md`).
   The art half is moving asset by asset; the RENDER half landed as a whole (see
   below), so new art is authored against a frame that has bloom, shafts, fog and
   a grade on it.

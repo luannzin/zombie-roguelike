@@ -58,7 +58,7 @@ be a FRONT ELEVATION: a flat face with a value ramp across it, dithered
 through `pick`, with no top surface anywhere. That reads as a drawing of a
 table rather than as a table, it has no ground plane to plant it on, and it is
 the exact failure the crates, the guns and the loot atlas each had before their
-own pass. See PIXEL-ART-DIRECTION.md §2, §3, §7.
+own pass. See PIXEL-ART-DIRECTION-V2.md §2, §3, §7.
 
 THE TORCH IS WARM, and it is not the extraction pad's. `make_rift.py` also
 draws a torch and its fire, but that one burns the anomaly's prism — cyan and

@@ -103,7 +103,7 @@ def rgb(hex_code: str) -> RGBA:
 
 
 # --- material ramps, DERIVED --------------------------------------------------
-# PIXEL-ART-DIRECTION.md S11 is a table, not a taste: a material's five steps
+# PIXEL-ART-DIRECTION-V2.md S11 is a table, not a taste: a material's five steps
 # are its hue, its saturation and where its two ends sit, and everything between
 # is a law — value climbs on a fixed curve, saturation peaks in the mid-to-shadow
 # range and DROPS at the highlight, hue swings cool into the shadows and warm
@@ -732,7 +732,7 @@ def paint_coin(
 # gravel however carefully it is lit. A prism has a top face and two side
 # faces, each a flat band of one colour, and the eye reconstructs the volume
 # from the plane break alone — the same trick the reference sheets use. See
-# PIXEL-ART-DIRECTION.md: stacked convex masses (§2), top plane 35-45% of the
+# PIXEL-ART-DIRECTION-V2.md: stacked convex masses (§2), top plane 35-45% of the
 # silhouette (§3), hard cel bands with no dithering (§7), key light from the
 # upper left (§8).
 #

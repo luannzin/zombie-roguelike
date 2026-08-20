@@ -2,7 +2,7 @@
 """Asset pipeline: held weapon sprites.
 
 Twelve weapons, one frame each, drawn from ABOVE at the same high 3/4 the rest
-of the world is drawn at (PIXEL-ART-DIRECTION.md S1). The knife is on the sheet
+of the world is drawn at (PIXEL-ART-DIRECTION-V2.md S1). The knife is on the sheet
 too, since a blade in the hand is drawn by exactly the same code as a barrel in
 the hand. The client rotates the frame around the grip and mirrors it when the
 aim is left, so a single row is every facing.
@@ -158,7 +158,7 @@ HOLD_OUT = 3.0
 HOLD_IN = 0.0
 
 # Materials against the night, DERIVED rather than picked. Every ramp is five
-# steps built by `_ramp` out of PIXEL-ART-DIRECTION.md S11's table, so a
+# steps built by `_ramp` out of PIXEL-ART-DIRECTION-V2.md S11's table, so a
 # material is authored as the three things that actually differ — its hue, how
 # saturated it is, and how far its darkest and lightest steps sit apart — and
 # the hue-shift and saturation law is written once instead of twelve times in

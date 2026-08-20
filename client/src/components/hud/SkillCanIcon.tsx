@@ -23,12 +23,12 @@ export interface SkillCanIconProps {
   rarity: string;
   /** Index into the icon sheet — `config.skills[key].frame`. */
   frame: number;
-  /** Screen pixels per source pixel. */
+  /** Screen pixels per source pixel. 2 — a drop's zoom, see `LootFly`. */
   zoom?: number;
   className?: string;
 }
 
-export function SkillCanIcon({ rarity, frame, zoom = 3, className }: SkillCanIconProps) {
+export function SkillCanIcon({ rarity, frame, zoom = 2, className }: SkillCanIconProps) {
   const atlas = useSkillAtlas();
   if (!atlas) return null;
 

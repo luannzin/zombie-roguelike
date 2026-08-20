@@ -97,8 +97,15 @@ export function SkillTray({ skills, reward, frames }: SkillTrayProps) {
             className={cn(
               /* STACKED WITH NO GAP so the rows read as one shelf that grew,
                  rather than as separate cards that happen to be near each
-                 other. The border is the only separator they need. */
-              'pointer-events-auto flex w-40 items-center gap-1.5 border bg-panel-inset/85 px-1 py-px',
+                 other. The border is the only separator they need.
+
+                 SIZED UP ONE NOTCH. At 10px in a 160px row the shelf was the
+                 smallest type on the screen, under a bag whose own labels are
+                 bigger — and this is the half of that column the player KEEPS.
+                 The icon stays 16px because it is pixel art and the only step
+                 up available is double, which would make the tile the subject
+                 of a row that exists to be read as words. */
+              'pointer-events-auto flex w-48 items-center gap-2 border bg-panel-inset/85 px-1.5 py-0.5',
               RARITY_BORDER[skill.rarity],
               landed === skill.key && 'animate-skill-land',
             )}
@@ -115,7 +122,7 @@ export function SkillTray({ skills, reward, frames }: SkillTrayProps) {
             <SkillIcon frame={skill.frame} frames={frames} zoom={1} />
             <span
               className={cn(
-                'flex-1 truncate text-[10px] leading-[16px]',
+                'flex-1 truncate text-[11px] leading-[18px]',
                 RARITY_TEXT[skill.rarity],
               )}
             >
@@ -126,7 +133,7 @@ export function SkillTray({ skills, reward, frames }: SkillTrayProps) {
                 shape from every other row on the shelf. */}
             <span
               className={cn(
-                'text-[10px] leading-[16px] tabular-nums',
+                'text-[11px] leading-[18px] tabular-nums',
                 skill.qty >= skill.cap ? 'text-ink-muted' : 'text-ink',
               )}
             >

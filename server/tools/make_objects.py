@@ -592,7 +592,7 @@ def make_barrel(width: int, height: int, kind: int, rng: random.Random) -> Image
 # --- crates: eight boxes somebody left in the forest -------------------------
 # The one family in this file with no curve anywhere in it, and drawn that way
 # on purpose: a crate is three flat planes meeting at three hard edges, so it
-# is where the box construction of PIXEL-ART-DIRECTION.md can be built
+# is where the box construction of PIXEL-ART-DIRECTION-V2.md can be built
 # STRAIGHT rather than implied. Every plane is one exact band of the ramp and
 # the volume is read off the breaks between them (§2, §3) — top face
 # brightest, the plane turned into the key next, the plane turned away from it
@@ -2593,7 +2593,7 @@ def _chip(px, x: int, y: int, width: int, height: int) -> None:
 # arm moved two pixels re-lights itself and re-shadows what stands behind it
 # without being told to.
 #
-# See PIXEL-ART-DIRECTION.md: stacked convex masses (§2), the top plane's
+# See PIXEL-ART-DIRECTION-V2.md: stacked convex masses (§2), the top plane's
 # share of the silhouette (§3), hard cel bands and no gradient (§7), one key
 # at 135deg/60deg (§8), contact AO (§10), overlap as the strongest depth cue
 # (§18).

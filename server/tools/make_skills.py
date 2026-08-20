@@ -178,19 +178,23 @@ ICONS: list[tuple[str, Palette, Art]] = [
         ],
     ),
     (
-        # Forro Reforçado — a canvas patch, read by the HOLE in it. A filled
-        # square of cloth at this size is a grey block; a stitched border round
-        # empty middle is unmistakably something sewn on.
+        # Forro Reforçado — a canvas patch, stitched on. It WAS read by the
+        # hole in it: a stitched border round an empty middle, on the argument
+        # that a filled square is a grey block. On a dark panel that argument
+        # inverts — an outline with nothing inside it has no mass at all, so
+        # the tile read as an empty frame and the row looked like a skill whose
+        # icon had failed to load. Mass first (a filled patch), identity
+        # second (the stitch dashes and a seam across it).
         "forro_reforcado",
-        {"c": CLOTH, "s": STEEL},
+        {"c": CLOTH, "s": STEEL, "d": DARK},
         [
-            "scscscsc",
-            "c......c",
-            "s......s",
-            "c......c",
-            "s......s",
-            "c......c",
-            "scscscsc",
+            "scsscscs",
+            "cccccccc",
+            "sccdcccs",
+            "ccccdccc",
+            "sccccdcs",
+            "cccccccc",
+            "scsscscs",
         ],
     ),
     (
@@ -240,15 +244,23 @@ ICONS: list[tuple[str, Palette, Art]] = [
     ),
     (
         # Lâmina Afiada — a blade with the edge catching.
+        #
+        # WIDENED. The old grid was three pixels of steel walked down a
+        # diagonal, which is a LINE, and a line at sixteen pixels next to
+        # seventeen tiles that are all solid masses reads as a scratch on the
+        # panel rather than as a knife. Same drawing, given a back: the spine
+        # carries the mass, the lit edge stays one pixel wide, and the grip is
+        # what stops the whole thing being one stroke.
         "lamina_afiada",
         {"s": STEEL, "h": HIDE, "w": SPARK},
         [
             "......ws",
-            ".....sss",
-            "....sss.",
-            "...sss..",
-            "..sss...",
-            ".hss....",
+            ".....wss",
+            "....wsss",
+            "...wsss.",
+            "..wsss..",
+            ".hsss...",
+            "hhss....",
             "hh......",
         ],
     ),

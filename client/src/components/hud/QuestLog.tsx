@@ -13,9 +13,9 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
-import type { HudQuest } from '../../game/hud-store';
+import type { HudAnnounce, HudQuest } from '../../game/hud-store';
 import { Panel } from './Panel';
-import { QuestAnnounce } from './QuestAnnounce';
+import { AnnounceDock } from './Announce';
 import { QuestRow, type QuestRowMode } from './QuestRow';
 
 export interface QuestLogProps {
@@ -103,15 +103,32 @@ export function QuestLog({ quests, dimmed }: QuestLogProps) {
         </Panel>
       </div>
       {flying && !dimmed ? (
-        <QuestAnnounce
+        <AnnounceDock
           key={announce.id}
-          quest={announce}
+          announce={announceCard(announce)}
           dock={dock}
           onLanded={onLanded}
         />
       ) : null}
     </>
   );
+}
+
+/**
+ * A new objective as the mid-run card. The TITLE is the kind of news, the
+ * label is the line under it — same shape as the level-up, and the same
+ * reason: at 24px a whole sentence is a cutscene, and the player needs to
+ * know what KIND of thing just interrupted them before they read it.
+ * A gold quota rides the card's coin slot, so the number the row will carry
+ * all night is already denominated when it is announced.
+ */
+function announceCard(quest: HudQuest): HudAnnounce {
+  return {
+    key: quest.id,
+    title: 'Novo Objetivo',
+    subtitle: quest.label,
+    ...(quest.gold ? { amount: quest.need } : {}),
+  };
 }
 
 function mergeRows(

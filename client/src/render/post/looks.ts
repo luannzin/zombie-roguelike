@@ -40,9 +40,9 @@ function base(over: GradeLayer): Grade {
  */
 export function forestLook(): Grade {
 	return base({
-		exposure: 1.02,
+		exposure: 0.98,
 		shoulder: 0.55,
-		contrast: 1.1,
+		contrast: 1.12,
 		saturation: 0.92,
 		temperature: -0.16,
 		tint: 0.02,

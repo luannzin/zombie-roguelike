@@ -37,15 +37,6 @@ function base(over: GradeLayer): Grade {
  * only saturated things on screen are the things that are burning. That split
  * is the whole look: the night is teal and every light in it is orange, which
  * is what makes a distant campfire read as somewhere to go.
- *
- * IT CAME DOWN. Exposure was over 1 and the shadows were barely lifted off
- * black, which meant the unlit half of the forest sat in a narrow grey band
- * just above the floor — dark enough to hide a creature, not dark enough to
- * look like night. Pulling the exposure under 1 and taking the red and green
- * out of the lift drops the ground away from the lights instead of dimming
- * the whole picture toward them, so the lantern is once again the brightest
- * thing on screen by a distance. Everything else in this function is
- * unchanged; this is the one number to move if the woods read too dark.
  */
 export function forestLook(): Grade {
 	return base({
@@ -55,7 +46,7 @@ export function forestLook(): Grade {
 		saturation: 0.92,
 		temperature: -0.16,
 		tint: 0.02,
-		lift: [-0.026, -0.018, 0.006],
+		lift: [-0.012, -0.004, 0.014],
 		gamma: [1.0, 1.0, 0.98],
 		gain: [1.03, 1.0, 0.96],
 		bloom: 0.55,

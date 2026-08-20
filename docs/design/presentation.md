@@ -37,6 +37,7 @@ Nearest contracts: [`client/AGENTS.md`](../../client/AGENTS.md),
 | how an effect plays | `client/src/game/effects.ts`, `client/src/render/layers/effects.ts` |
 | muzzle / impact art | `server/tools/make_weapon_vfx.py`, `client/src/render/weapon-vfx.ts` |
 | wounds | `server/tools/make_gore.py`, `client/src/render/gore.ts` |
+| how dark the unlit world is | `UNSEEN_ALPHA` / `FOG_ALPHA` in `layers/darkness.ts`. NOT whether creatures are drawn — that is `Game.applyVisibility` |
 | darkness / vision | `client/src/render/fov.ts`, `layers/darkness.ts` — `fov.ts` draws vision at the reaches `ai.py` tests against, both read off `config.enemyViewDarkScale` / `enemyViewLitScale` |
 | how a thing sits on the ground | `client/src/render/shadows.ts` — the contact pool and the cast, for every caller. Never a new ellipse at a call site |
 | which lights move a shadow | `Renderer.collectShadowLights` — the same four sources the shaft pass ranks |
@@ -152,19 +153,43 @@ so rather than reaching across it.
   that swung its shadow around the player would cost that rebake every frame
   for a thing nobody looks at to find the fire.
 
-- **THE LANTERN HAD NO LAMP IN IT.** It threw no shafts, and the reason was
-  not the shaft pass: it was that nowhere on the screen was there a pixel
-  bright enough to be the thing doing the lighting. The bright pass keeps only
-  what beats the bloom threshold, a bonfire clears it on the flame sprite's own
-  near-white pixels, and a warm wash at 0.3 alpha over black ground never gets
-  close — so the smear had nothing to smear. Lowering the threshold was the
-  wrong fix twice over: it blooms the lit grass, which is the one thing bloom
-  is not allowed to do. The right one is the source being PRESENT, the way
-  every other light in this game already is — one small hot core where the lamp
-  is, held out ahead of the body down the aim, and the lantern now cuts real
-  beams past the trunks in front of it and moves the shadows of everything it
-  passes. `RenderState.lamp` is that object; it is not the same statement as
-  the fov's `lantern`, which is how far the player can see.
+- **THE LANTERN CANNOT HAVE SHAFTS, AND THE TWO ATTEMPTS SAY WHY.** A shaft is
+  a radial blur of the BRIGHT buffer, so a source has to have bright pixels of
+  its own — a bonfire clears the threshold on its flame sprite and the pass
+  gets a beam for free. The lantern has nothing: it is a wash on the ground and
+  the thing making it is not drawn. First attempt was to draw it — a hot core
+  at the player's hand — and bloom immediately turned that into a lamp-sized
+  DISC stuck to the player, which is a HUD element with a light's excuse.
+  Second attempt moved the core into the shaft march alone, where bloom could
+  not see it. That hid the disc and kept the beam, and it was still wrong: the
+  smear radiated EVENLY, because a synthetic emitter is added near the source
+  whether or not a trunk stands in the way. The occlusion in this pass is not
+  a trick — it is the trunk genuinely being dark IN the buffer, and nothing
+  synthetic can inherit that. So the lantern stays out of the shaft ranking.
+  Its beam is already occluded correctly, by the shadowcast, and its VOLUME
+  belongs to the motes drifting in it (`layers/atmosphere.ts`) — dust in the
+  beam is dimmed by the darkness pass and therefore respects the same shadows.
+  That is the lever for a volumetric lantern; the shaft pass is not.
+  `RenderState.lamp` survives because the SHADOW field needs it: a shadow has
+  to know where the light is, and that has nothing to do with bloom.
+
+- **THE DARK IS A SILHOUETTE LEVEL, NOT A BLACKOUT.** The night wash is
+  `source-over`, so what survives in the unlit half is `(1 - alpha)` of the art
+  plus the tone. At 0.9 that is a tenth of the picture: every value out there
+  landed within a few levels of every other, and the forest stopped being a
+  place and became a black rectangle with a torch hole cut in it — which is
+  not the same thing as darkness, and reads as missing rather than as night.
+  A fifth of the art gets through now, which is the level where a trunk, a rock
+  and a crate are three readable SHAPES and none of them is a readable OBJECT:
+  you can see that something is there and roughly what it is, and nothing
+  about its colour, its detail or its condition. That is the cinematic version
+  of a dark wood, and the loud version — everything crushed to one value — was
+  costing the game its own set dressing.
+  **It does not reveal creatures**, and the separation is deliberate: the
+  creature gate is `Game.applyVisibility` reading the fov's LIGHT, not this
+  alpha, so a zombie in the dark is still genuinely not on screen. The world
+  being legible and the threat being hidden are two different statements and
+  they are made by two different systems.
 
 - **THE DANGER VIGNETTE IS NOW A LAYER LIKE EVERYTHING ELSE.** It used to be a
   2D pass painted over the finished frame, which meant it was the one reaction

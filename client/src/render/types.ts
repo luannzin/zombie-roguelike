@@ -244,10 +244,10 @@ export interface RenderState {
    * off. Not the same statement as the fov's `lantern`: that one is how far
    * this player can SEE, this one is where the burning thing IS.
    *
-   * It exists because the two loudest parts of the finish need a source and
-   * the fov field has none — the shaft pass needs a point to smear the bright
-   * buffer toward, and the shadow field needs somewhere for a shadow to point
-   * away from. A held lamp sits slightly ahead of the body, down the aim.
+   * It exists because the SHADOW field needs a source and the fov field has
+   * none: a shadow has to know where the light is, not how far it reaches. A
+   * held lamp sits slightly ahead of the body, down the aim — a light emitted
+   * from the middle of a sprite throws that sprite's own shadow nowhere.
    */
   lamp: { x: number; y: number; power: number } | null;
   /**

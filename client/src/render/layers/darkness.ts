@@ -51,21 +51,28 @@ const LIGHT_LAMP = 0;
 const LIGHT_NEON = 3;
 
 /**
- * The lamp's visible core, in tiles. Barely wider than the sprite's own hand:
- * this is the glass, not the beam, and a big one reads as a flare.
+ * Darkness over ground nobody has ever seen.
+ *
+ * IT IS A SILHOUETTE LEVEL, NOT A BLACKOUT, and the difference is the whole
+ * feel of the night. The wash is `source-over`, so what survives at the far
+ * end is `(1 - alpha)` of the art plus the tone: at 0.9 that is a tenth of the
+ * picture, every value in the unlit half lands within about five levels of
+ * every other, and the woods stop being a place and become a black rectangle
+ * with a torch hole in it. At this value a fifth of the art comes through —
+ * enough that a trunk, a rock and a crate are three readable SHAPES and not
+ * one of them is a readable OBJECT. You can see that something is there and
+ * roughly what shape it is; you cannot see its colour, its detail, or what is
+ * standing next to it.
+ *
+ * IT DOES NOT REVEAL CREATURES. That gate is `Game.applyVisibility`, off the
+ * fov's light rather than off this alpha, and it is untouched: a zombie in the
+ * dark is still genuinely not drawn. This number is about the WORLD being
+ * legible, which is what makes the dark cinematic rather than merely empty —
+ * and it is exactly why the two are separate systems.
  */
-const LAMP_CORE_TILES = 0.34;
-/**
- * How hot that core burns. It is meant to CLEAR the bloom threshold (0.72 at
- * rest) so the lamp glows and throws shafts — under that it is one more wash
- * and the whole point of the pass is gone.
- */
-const LAMP_CORE_ALPHA = 0.95;
-
-/** Darkness over ground nobody has ever seen. */
-const UNSEEN_ALPHA = 0.9;
+const UNSEEN_ALPHA = 0.78;
 /** Darkness over ground the team has seen before but cannot see now. */
-const FOG_ALPHA = 0.66;
+const FOG_ALPHA = 0.62;
 /**
  * How dark the path itself goes. Even a little leaked firelight is crushed
  * so the gap between the trees reads as deep woods, not as a lit hallway.
@@ -150,46 +157,6 @@ export class DarknessLayer {
       ctx.arc(light.x, light.y, light.radius, 0, Math.PI * 2);
       ctx.fill();
     }
-    ctx.globalCompositeOperation = 'source-over';
-  }
-
-  /**
-   * THE LAMP ITSELF. A hot little core where the local player's lantern is.
-   *
-   * The lantern used to be a pool of light with no lamp in it: the fov widened
-   * a cone and the warm pass tinted the ground inside it, and nowhere on the
-   * screen was there a pixel bright enough to be the thing doing it. That is
-   * why the lantern threw no shafts — the shaft pass smears the BRIGHT buffer,
-   * a bonfire clears its threshold on the flame sprite's own near-white pixels,
-   * and a wash at 0.3 alpha over black ground never gets near it. The fix is
-   * not a lower threshold (then the lit grass blooms too); it is the source
-   * being present in the frame, the same way every other light in this game is.
-   *
-   * Small and HOT rather than wide and bright: the pool is already drawn by
-   * `draw`'s warm pass, and this is only the glass. Additive over the darkness
-   * with everything else — mind the budget, it is deliberately one small disc.
-   *
-   * Caller must have applied the world-space transform.
-   */
-  drawLamp(
-    ctx: CanvasRenderingContext2D,
-    lamp: { x: number; y: number; power: number } | null,
-    tileSize: number,
-    time: number,
-  ): void {
-    if (!lamp || lamp.power <= 0.02) return;
-    const tone = palette().night.lantern.join(' ');
-    // The filament's own unrest — a fifth of what a flame does, because a lamp
-    // is a lamp. `fireFlicker` so the whole game's light breathes on one clock.
-    const flicker = 0.9 + (fireFlicker(time, 7) - 1) * 0.2;
-    const radius = tileSize * LAMP_CORE_TILES * (0.85 + lamp.power * 0.15);
-    const gradient = ctx.createRadialGradient(lamp.x, lamp.y, 0, lamp.x, lamp.y, radius);
-    gradient.addColorStop(0, `rgb(${tone} / ${(LAMP_CORE_ALPHA * lamp.power * flicker).toFixed(3)})`);
-    gradient.addColorStop(0.45, `rgb(${tone} / ${(0.3 * lamp.power * flicker).toFixed(3)})`);
-    gradient.addColorStop(1, `rgb(${tone} / 0)`);
-    ctx.globalCompositeOperation = 'lighter';
-    ctx.fillStyle = gradient;
-    ctx.fillRect(lamp.x - radius, lamp.y - radius, radius * 2, radius * 2);
     ctx.globalCompositeOperation = 'source-over';
   }
 

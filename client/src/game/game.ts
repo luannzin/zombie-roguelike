@@ -3351,8 +3351,7 @@ export class Game {
    * Where the lamp IS, as opposed to how far it lets this player see.
    *
    * Held out ahead of the body down the aim, because a light emitted from the
-   * middle of a sprite throws that sprite's own shadow nowhere and puts the
-   * shaft pass's source behind the thing it is meant to be lighting.
+   * middle of a sprite throws that sprite's own shadow nowhere.
    */
   private lampSource(): { x: number; y: number; power: number } | null {
     const local = this.local;

@@ -545,7 +545,6 @@ export class Renderer {
       state.world.tileSize,
       state.time,
     );
-    this.darkness.drawLamp(ctx, state.lamp, state.world.tileSize, state.time);
     drawCombatEffects(ctx, state.effects, state.config.tileSize, this.weaponVfx);
     this.darkness.drawLights(ctx, state.effects.lights);
     drawLootAuras(ctx, state.loot, state.time);
@@ -717,12 +716,17 @@ export class Renderer {
       if (rift.state === 'dormant' || rift.state === 'spent') continue;
       consider(rift.x, rift.y, 1);
     }
-    // THE LANTERN. The one light that is always on screen, always moving, and
-    // always has trees between it and everything else — which is exactly the
-    // condition the shaft pass was written for. It ranks below a pad and a
-    // bonfire on purpose: it is a hand lamp, and it lights the wood in front
-    // of the player rather than the frame.
-    if (state.lamp) consider(state.lamp.x, state.lamp.y, state.lamp.power * 0.7);
+    // THE LANTERN IS NOT IN HERE, and two attempts to put it in are the reason.
+    // A shaft is a smear of the BRIGHT buffer, so a source needs bright pixels
+    // of its own: drawing a hot core at the lamp gave it those and bloom
+    // immediately turned them into a disc stuck to the player, and moving that
+    // core into the shaft march alone only hid the disc from bloom — the smear
+    // still radiated evenly, because a synthetic emitter lands near the source
+    // whether or not a trunk is standing in the way. Occlusion in this pass is
+    // a property of a real dark trunk being IN the buffer, and there is no
+    // faking it. The lantern's beam is already occluded correctly by the
+    // shadowcast (`fov.ts`) and its volume belongs to the motes drifting in it
+    // (`layers/atmosphere.ts`) — that is the lever, not this pass.
     // Muzzle flashes and event lights. Weak and brief on purpose: a gun going
     // off should throw one frame of light through the trees, not hold a beam.
     for (const light of state.effects.lights) {

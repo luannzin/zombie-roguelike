@@ -359,12 +359,21 @@ mutation, no React.
   as opposed to `fov`'s `lantern`, which is how far that player can SEE. Two
   passes need the point and neither can get it from the fov field: the shaft
   pass needs somewhere to smear the bright buffer toward, and the shadow field
-  needs somewhere for a shadow to point away from. `DarknessLayer.drawLamp`
-  draws the source itself — small and HOT, hot enough to clear the bloom
-  threshold, because the lantern threw no shafts for exactly one reason: there
-  was no pixel on screen bright enough to be the thing lighting the wood. The
-  fix is the source being present, never a lower threshold — that blooms the
-  lit grass too.
+  needs somewhere for a shadow to point away from. That is now its ONLY
+  consumer. **Do not try to give the lantern shafts again.** Three routes have
+  been walked: lowering the bloom threshold blooms the lit grass; drawing a hot
+  core into the scene comes back through bloom as a circle stuck to the player;
+  and a synthetic emitter inside the shaft march hides the circle from bloom
+  but smears evenly, because it lands near the source whether or not a trunk is
+  in the way. Occlusion in that pass is the trunk really being dark in the
+  buffer. Volumetric lantern belongs to the motes in `layers/atmosphere.ts`,
+  which the darkness pass dims and which therefore respect the shadowcast.
+- **`UNSEEN_ALPHA` is a silhouette level and `applyVisibility` is a gate, and
+  they are not the same knob.** The first says how much of the WORLD survives
+  in the dark — 0.78 leaves a fifth of the art, which is a readable shape and
+  not a readable object. The second says whether a CREATURE is drawn at all,
+  off the fov's light. Making the woods legible must never be done by moving
+  the second one.
 - **`disturbance.ts` is the world noticing the player, and its visibility gate
   is a RULE.** A body contributes two pushes — one at its feet, one at a lagged
   wake that chases it — because without the wake the grass snaps back the

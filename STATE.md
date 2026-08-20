@@ -45,8 +45,8 @@ ceremony.
 | | |
 | --- | --- |
 | **ground contact** | six hard ellipses in six files became one `render/shadows.ts`: an ambient CONTACT pool plus a CAST thrown away from the frame's lights, lengthening with distance from them and breathing on the fire's own flicker. Bodies, scenery props, loot, coins and the pads are on it; trees and rocks stay baked into the ground cache on purpose. `bun tests/shadows.ts` covers the field's arithmetic |
-| **the lantern throws shafts** | it never had a lamp IN it — the beam was a wash and nothing on screen cleared the bloom threshold, so the shaft pass had nothing to smear. `DarknessLayer.drawLamp` draws the source, `RenderState.lamp` carries where it is (ahead of the body, down the aim), and it now feeds the shaft ranking and the shadow field both |
-| **the forest came down** | `forestLook` was exposed over 1 with the shadows barely off black, so the unlit half sat in a grey band that was dark enough to hide a creature and not dark enough to be night. Exposure 1.02 -> 0.95, contrast 1.10 -> 1.15, red/green out of the lift. It is one function if it reads too dark |
+| **the lamp is a shadow source** | `RenderState.lamp` says where the lantern IS (ahead of the body, down the aim), so the shadow field has something to point away from. It is deliberately NOT in the shaft ranking — see the known problem below |
+| **the dark is a silhouette level** | `UNSEEN_ALPHA` 0.9 -> 0.78, `FOG_ALPHA` 0.66 -> 0.62. A tenth of the art surviving made the unlit half one flat value; a fifth makes a trunk, a rock and a crate three readable shapes and none of them a readable object. Creatures are untouched — that gate is `applyVisibility`, off the fov's light |
 | loot, the tin, the pad | the loot atlas is banded volume out of `make_loot.paint_form` — sub-blobs, edge-test planes, a material-tinted keyline that breaks on the lit crest, and an offset ground shadow on every frame; the payout tin is a five-band cylinder; and the extraction skid is a HEIGHT FIELD rasterised on `make_objects`' own dimetric with the drones rebuilt out of its volume toolkit. The ropes are plotted pixel by pixel instead of stroked. `material_ramp` in `make_textures.py` is now where S11's ramp law lives for the whole pipeline |
 | **the finish** | the renderer no longer draws on the visible canvas. Every layer draws into an offscreen 2D surface; `client/src/render/post/` finishes it in WebGL2 — bright pass, three-level bloom, radial light shafts, defocus, chromatic aberration, fog, a full grade (exposure / shoulder / contrast / saturation / temperature / tint / lift / gamma / gain), wash, vignette and grain. Driven by a `GradeStack`: a base LOOK per place plus named event layers on their own envelopes. The old 2D danger vignette is now one of those layers, and survives as the no-WebGL2 fallback |
 | camera feel | breath and sway on two slow sines, a directional spring IMPULSE (recoil goes back down the barrel), and the shake moved off `Math.random()` onto summed detuned sines |
@@ -72,10 +72,19 @@ ceremony.
 
 ## Known problems
 
-- **The darker forest is a GUESS at a request.** The ask was for "a color grade
-  that is more dark" seen at random during a phase; nothing in the game picks a
-  grade at random, so `forestLook` was pulled down toward what was described
-  and needs a look before it is treated as settled.
+- **The "darker grade" request is still unanswered.** A darker `forestLook` was
+  tried and reverted by hand; the dark now comes from `UNSEEN_ALPHA` instead,
+  which is a different lever (how much of the unlit world survives, not what
+  the whole frame is graded to). Nothing in the game picks a grade at random,
+  so whatever was seen has not been identified.
+- **The lantern has no god rays and three routes are closed.** Lowering the
+  bloom threshold blooms the lit grass; a hot core drawn into the scene comes
+  back through bloom as a circle on the player (shipped for one round, removed);
+  a synthetic emitter inside the shaft march hides that circle but smears
+  evenly, because occlusion in that pass is the trunk really being dark in the
+  bright buffer and nothing fake inherits it. The open route is dust: the motes
+  in `layers/atmosphere.ts` are dimmed by the darkness pass, so a beam made of
+  them respects the shadowcast for free. Nobody has tried it yet.
 - **The post chain has no automated check and cannot have one.** `bun tests/grade.ts` covers the stack's envelopes and composition — the arithmetic — and nothing covers the shader. Judge it by looking: a bonfire should bloom and the grass beside it should not.
 - **The lobby is not graded.** `LobbyScene` / `CampfireCanvas` own their own 2D canvases and do not go through the post chain, so the title screen and the arena are finished differently. Nobody sees them side by side today, but the seam is real and it is where a "the camp looks flatter than the game" report will come from.
 - **`texImage2D` from the scene canvas every frame** is the one unavoidable cost of the hybrid, and it scales with window size rather than with what is on screen. Marked `ponytail:` in `post/chain.ts`; the upgrade is drawing the world into a GL target directly, which is a renderer rewrite.

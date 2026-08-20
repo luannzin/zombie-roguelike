@@ -84,16 +84,26 @@ PLOT = 7
 #: `dy` is the BOTTOM EDGE of the row it stands on — its contact point —
 #: exactly as in `scenery.Piece`.
 #:
-#: The skid is 5 tiles wide and its contact is two rows up from the plot's own
-#: edge, which is what leaves standing room in front of it for the console and
-#: the torch. A structure that filled its plot would be a wall with a button.
-_PLATFORM = (PLOT / 2.0, 5.0)
+#: The skid is 5 tiles wide and its contact is THREE rows up from the plot's
+#: own edge, which is what leaves standing room in front of it.
+#:
+#: IT USED TO BE TWO, AND THAT ROW IS THE WHOLE FIX. The console stood on the
+#: row directly against the deck, so the tile a player walks to in order to
+#: press the button was also the tile the platform occupied the far side of —
+#: there was nowhere to STAND at the pad. The thing this structure is for is
+#: emptying a bag into it, which means a player parked in front of it for
+#: several seconds with drops landing around them; a doorway with no landing
+#: is a place you get pushed out of. One empty row between the console and the
+#: skid is that landing, and it costs nothing else: the plot is unchanged, the
+#: console and the torch have not moved, and reach is measured to the console
+#: (`Room._rift_in_reach`), not to the deck.
+_PLATFORM = (PLOT / 2.0, 4.0)
 
 #: The tiles the box actually SITS ON, as (x, y, w, h) from the plot corner.
 #: These go solid — see `_stamp`. THE PLAYER MAY NOT GET ON THE PLATFORM: it is
 #: cargo space, and a party standing on the deck when it lifts would be a whole
 #: second physics problem for no gameplay.
-_DECK = (1, 3, 5, 2)
+_DECK = (1, 2, 5, 2)
 
 #: How many corners the lift takes, and therefore how many aircraft answer the
 #: call. THE DRONES ARE NOT PART OF THIS STRUCTURE and the server ships no
@@ -117,8 +127,9 @@ _CONSOLE = (PLOT / 2.0, PLOT - 1.0)
 _TORCH = (1.0, PLOT - 1.0)
 #: The middle of the deck's footprint: where the imprint is centred, where the
 #: pad's light comes from, and where the condensed core lands once the skid has
-#: flown and the ground under it is walkable again.
-_CENTRE = (PLOT / 2.0, 4.0)
+#: flown and the ground under it is walkable again. Moves with `_DECK` — it is
+#: the deck's own middle, not a number about the plot.
+_CENTRE = (PLOT / 2.0, 3.0)
 
 #: Radius of the pad's own light once it is powered, in tiles.
 #:

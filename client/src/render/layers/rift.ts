@@ -1004,29 +1004,20 @@ export function drawRiftGlow(
   // own phases, and the beams the shaft pass pulls out of them. Halving it
   // twice only made a useless layer cheaper; it is gone.
 
-  // THE FOUR CORNER LAMPS, each turning on its own phase. This is the pad's
-  // whole vocabulary: a slow green breath while it is taking cargo, and four
-  // red beams sweeping out of step once the pickup is called. Out of step is
-  // load-bearing — four beams in lockstep read as one flashing rectangle,
-  // four running at their own offsets read as four machines on a structure.
-  const lamp = phase.alarm ? atlas.siren : atlas.standby;
-  if (lamp && !phase.airborne && phase.powered) {
-    const period = lamp.frames / Math.max(lamp.fps, 1e-6);
-    // FOUR OF THESE OVERLAP. Each lamp sheet bakes its own glare, and drawn at
-    // full strength onto `lighter` the four corners summed into one white
-    // rectangle the size of the deck — the pad reading as a lightbox rather
-    // than as four lamps on a structure. They are one budget with the halo
-    // above and the flames in the shop; judged apart, the sum creeps back.
-    // Four of these sum, and they sum on top of the halo above and whatever the
-    // party is carrying. A lamp reads as a lamp well below full: what says
-    // "beacon" is the BEAT and the four phases, not the peak value.
-    ctx.globalAlpha = phase.alarm ? 0.68 : 0.55;
-    atlas.layout.lamps.forEach((point, i) => {
-      const offset = (i / Math.max(atlas.layout.lamps.length, 1)) * period;
-      blit(ctx, lamp, phase.deckX + point.dx, phase.deckY + point.dy, time + offset);
-    });
-    ctx.globalAlpha = 1;
-  }
+  // THE PAD NO LONGER GLARES, AND THAT IS THE SECOND LAYER TO GO.
+  //
+  // Four corner lamps each blitted their own additive GLARE sheet on top of
+  // the halo that used to sit under them. Every one of those sheets is white
+  // at its core and they overlap across the deck, so `lighter` summed them
+  // into a single blown rectangle — then bloom found that rectangle, spread
+  // it, and the clearing came out as a white hole with a forest around it.
+  // Dropping the alpha only made the hole dimmer; the sum is the problem.
+  //
+  // WHAT SAYS THE PAD IS POWERED IS THE SKID ITSELF. `make_platform` bakes
+  // three states into the sheet — cold, standby, alarm — so the lamps, their
+  // colour and their beat are already IN the art the depth sort draws, lit
+  // exactly where the lamp housings are rather than as a wash over everything
+  // near them. That is the read; this pass was the glow around it.
 
   // Rotor wash. Only once something is actually holding station over the pad,
   // and it goes to maximum through the strain, which is what says the machines

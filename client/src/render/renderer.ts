@@ -710,16 +710,13 @@ export class Renderer {
     for (const light of state.world.scenery.lights) {
       consider(light.x, light.y, clamp01(light.radiusTiles / 9) * 0.8);
     }
-    // A pad under power outshines everything else in the forest, and the
-    // extraction look leans on exactly that — but not at 1.0. Full power made
-    // the pad the only source the ranking would ever pick AND drove the shaft
-    // pass to its own ceiling, so the clearing came with a fan of hard beams
-    // laid over it. Below the campfire's 0.9: a pad is brighter than a fire,
-    // the BEAMS out of it should not be.
-    for (const rift of state.world.rifts) {
-      if (rift.state === 'dormant' || rift.state === 'spent') continue;
-      consider(rift.x, rift.y, 0.72);
-    }
+    // NO SHAFTS OUT OF A PAD. It used to be the strongest source on the map
+    // (1.0, then 0.72), which both pinned the shaft pass at its ceiling and
+    // won the ranking every frame, so a powered clearing wore a fan of hard
+    // beams over the top of the glare it was already blowing out. The pad's
+    // lamps are baked into its own sheet now and they are small: a source
+    // that does not dominate the BRIGHT buffer has no business dominating the
+    // smear taken out of it.
     // THE LANTERN IS NOT IN HERE, and two attempts to put it in are the reason.
     // A shaft is a smear of the BRIGHT buffer, so a source needs bright pixels
     // of its own: drawing a hot core at the lamp gave it those and bloom

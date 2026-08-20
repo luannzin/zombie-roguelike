@@ -169,23 +169,30 @@ export function hitLook(severity: number): GradeLayer {
 /**
  * The extraction ceremony, driven 0..1 by the pad's own phase.
  *
- * This is the one look allowed to be loud. The exposure climbs, the bloom
- * opens, the shafts come up out of the rig's lights and cut through the trees,
- * and the whole frame goes a shade colder and cleaner — because the thing
- * arriving is a machine and everything else on the map is a forest.
+ * It used to be the one look allowed to be loud, and loud meant bloom at 1.4
+ * with the threshold dragged down to 0.5 — a grade that took anything already
+ * bright and made it white. Over a pad that was ALSO drawing four additive
+ * glare sheets and a halo, the three multiplied and the clearing came out as
+ * one flat hole. The other two are gone (see `layers/rift.ts`); this one
+ * keeps its job and loses its ceiling.
+ *
+ * WHAT IT STILL DOES is the part that was never the problem: the frame goes
+ * colder and cleaner as the machines come in, because the thing arriving is a
+ * machine and everything else on the map is a forest. Colour and contrast say
+ * that. Exposure and bloom only ever said it LOUDER.
  */
 export function extractionLook(intensity: number): GradeLayer {
 	const t = Math.max(0, Math.min(1, intensity));
 	return {
-		exposure: 1.02 + 0.2 * t,
+		exposure: 1.02 + 0.05 * t,
 		shoulder: 0.55 + 0.25 * t,
 		contrast: 1.1 + 0.06 * t,
 		saturation: 0.92 + 0.14 * t,
 		temperature: -0.16 - 0.14 * t,
 		gain: [1.03 - 0.02 * t, 1.0 + 0.01 * t, 0.96 + 0.1 * t],
-		bloom: 0.55 + 0.85 * t,
-		bloomThreshold: 0.72 - 0.22 * t,
-		shafts: 0.35 + 1.05 * t,
+		bloom: 0.55 + 0.2 * t,
+		bloomThreshold: 0.72 - 0.06 * t,
+		shafts: 0.35 + 0.2 * t,
 		fog: 0.05 + 0.1 * t,
 		fogTint: palette().scene.beacon,
 		aberration: 0.4 + 1.1 * t,

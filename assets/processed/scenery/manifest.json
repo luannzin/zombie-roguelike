@@ -97,8 +97,8 @@
     },
     "vehicle": {
       "file": "vehicle.png",
-      "frameWidth": 64,
-      "frameHeight": 40,
+      "frameWidth": 96,
+      "frameHeight": 48,
       "frames": 30,
       "sway": 0,
       "kinds": 6,

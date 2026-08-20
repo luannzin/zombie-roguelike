@@ -2085,24 +2085,57 @@ def _lid(px, x0: int, x1: int, y: int, lift: float, hinge_right: bool,
 
 
 # --- vehicles ---------------------------------------------------------------
+# A VEHICLE IS A SOLID, NOT AN ELEVATION, and that is what this rewrite is
+# about. What stood here before was the near flank of a car with a 5px strip of
+# roof shaved off the top of it: side-on, no volume, no front, and the largest
+# object in the game read as a decal leaning against the grass. §2a says a
+# solid is FRONT + TOP + SHADE SIDE and none of the three is optional, so all
+# three are built here — the flank square to the screen, the whole roof swept
+# back along the depth axis (up and to the RIGHT at `SLOPE`), and the tail cap
+# in the sliver that sweep opens on the right, with the far rear wheel under it.
+#
+# HOW DEEP THE SWEEP RUNS IS THE ONE JUDGEMENT ON THIS SHEET. A car really is
+# most as wide as it is tall, and a strictly measured sweep — 1.8 m of body at
+# this scale — puts fourteen rows of rise on a body only twenty rows high. The
+# nose end of an axonometric solid cannot be capped (the camera is past it), so
+# all that rise has nothing to close it and the silhouette comes out as a SAIL:
+# one long diagonal from the front wing to the back of the roof, which reads as
+# a car leaning over rather than as one seen from above. A fifth of the length
+# is the number that holds: deep enough to carry a windscreen, a roof panel, a
+# backlight and a boot deck as four separate surfaces, shallow enough that the
+# rise stays under a third of the body's height and the mass still sits down.
+#
+# THE FRAME IS BIGGER THAN THE VEHICLE, in both axes, and neither margin is
+# waste. The flank is exactly the four tiles the object occupies and it stays
+# CENTRED in the frame — the client draws a prop centred on its contact point,
+# so a flank drawn anywhere else would stand beside its own collision box. The
+# columns to the right of it are where the sweep goes and the rows above it are
+# the headroom that sweep needs.
 
 VEHICLE_PAINT = (PAINT_SEDAN, PAINT_VAN, PAINT_AMBU, PAINT_POLICE, PAINT_TRUCK, PAINT_BUS)
 
+#: The vehicle's own share of the frame: four tiles of flank in six, and the
+#: bottom five sixths of the height. `vehicle_strip` and the geometry below are
+#: the only two places that may read these.
+VEHICLE_SPAN = 4 / 6
+VEHICLE_BODY = 0.83
+
 #: THE PROFILE IS THE VEHICLE. Each row is the upper silhouette of one kind as
-#: control points in fractions of the frame â€” left to right, y down from the
-#: top â€” interpolated per column into the line the body is filled down from.
+#: control points in fractions of the FLANK across and of the BODY down —
+#: interpolated per column into the line the flank is filled down from and the
+#: roof is swept back off.
 #:
 #: This replaced six stacked rectangles, and the difference is the whole read.
 #: A car and a van drawn as boxes are the same object in two palettes: you
 #: cannot tell them apart at the edge of a lantern, so the map stops being a
 #: place with an ambulance in it and becomes a map with dark blocks on it. A
 #: bonnet that slopes, a windscreen that rakes back and a roof that stops
-#: before the boot is a SEDAN from as far away as the pixels survive â€” and the
+#: before the boot is a SEDAN from as far away as the pixels survive — and the
 #: ambulance's box roof standing proud of its cab is legible at the same range,
 #: which is what makes detouring for the medical drop table a decision.
 VEHICLE_PROFILE: tuple[tuple[tuple[float, float], ...], ...] = (
     # 0 sedan: long bonnet, raked screen, roof over the middle third, and a
-    #   BOOT â€” a flat deck behind the cabin rather than a slope to the tail.
+    #   BOOT — a flat deck behind the cabin rather than a slope to the tail.
     ((0.03, 0.74), (0.09, 0.70), (0.22, 0.65), (0.30, 0.45), (0.38, 0.35),
      (0.60, 0.34), (0.68, 0.50), (0.74, 0.60), (0.93, 0.61), (0.98, 0.73)),
     # 1 van: stub nose, then a wall. Everything behind the cab is cargo.
@@ -2115,7 +2148,7 @@ VEHICLE_PROFILE: tuple[tuple[tuple[float, float], ...], ...] = (
      (0.33, 0.15), (0.96, 0.15), (0.98, 0.24)),
     # 3 cruiser: a sedan stretched and dropped, with a bar across the roof.
     #   The boot has to run FLAT to the tail. Sloping it straight off the roof
-    #   gave a wedge, and a wedge is not a car â€” the notch behind the cabin is
+    #   gave a wedge, and a wedge is not a car — the notch behind the cabin is
     #   the whole reason a saloon reads as one from the side.
     ((0.02, 0.72), (0.10, 0.67), (0.24, 0.62), (0.31, 0.43), (0.38, 0.33),
      (0.64, 0.32), (0.71, 0.50), (0.78, 0.58), (0.94, 0.59), (0.99, 0.70)),
@@ -2127,17 +2160,27 @@ VEHICLE_PROFILE: tuple[tuple[tuple[float, float], ...], ...] = (
      (0.99, 0.26)),
 )
 
-#: Wheel centres, in fractions of the frame width. Three entries is a lorry or
-#: a bus â€” the extra axle is most of what says WEIGHT at this size.
+#: How far each kind runs back from the camera, as a fraction of its own flank.
+#: AUTHORED rather than derived (§3a's exception): every sheet here is the same
+#: four tiles long whatever the vehicle is, so a bus is drawn at a scale a
+#: sedan is not and one ratio would give a twelve-metre coach the girth of a
+#: car. What the numbers keep is the ORDER — a van is beamier than a saloon, a
+#: bus is narrow for its length — because that ratio is what the eye reads as
+#: the class of vehicle. See the note above on why none of them is the true
+#: measured width.
+VEHICLE_DEPTH: tuple[float, ...] = (0.20, 0.21, 0.22, 0.20, 0.19, 0.15)
+
+#: Wheel centres, in fractions of the flank. Three entries is a lorry or a bus
+#: — the extra axle is most of what says WEIGHT at this size.
 VEHICLE_WHEELS: tuple[tuple[float, ...], ...] = (
     (0.20, 0.79), (0.19, 0.81), (0.18, 0.82), (0.19, 0.80),
     (0.13, 0.72, 0.85), (0.14, 0.74, 0.87),
 )
 
-#: Glazing, per kind: (x0, x1, y0, y1) in frame fractions. Punched into the
-#: body after it is filled, so a window is a HOLE in the paint rather than a
-#: rectangle sitting on top of it â€” which is the difference between a car with
-#: windows and a car with stickers.
+#: Glazing on the FLANK, per kind: (x0, x1, y0, y1), x in flank fractions and
+#: y in body fractions. Punched into the body after it is filled, so a window
+#: is a HOLE in the paint rather than a rectangle sitting on top of it — which
+#: is the difference between a car with windows and a car with stickers.
 VEHICLE_GLASS: tuple[tuple[tuple[float, float, float, float], ...], ...] = (
     ((0.33, 0.46, 0.40, 0.59), (0.49, 0.62, 0.39, 0.57)),
     ((0.10, 0.21, 0.31, 0.47), (0.79, 0.86, 0.27, 0.42), (0.87, 0.93, 0.27, 0.42)),
@@ -2148,17 +2191,35 @@ VEHICLE_GLASS: tuple[tuple[tuple[float, float, float, float], ...], ...] = (
      (0.47, 0.57, 0.13, 0.32), (0.61, 0.71, 0.13, 0.32), (0.75, 0.88, 0.13, 0.32)),
 )
 
-#: THE COMPARTMENT: (x0, x1) in frame fractions, and which edge the lid is
-#: hinged on. It is always the part of that vehicle somebody would still be
-#: packed into or trapped behind â€” a bonnet on the car that died on the road,
-#: the tailgate on the vans, the bed on the lorry, the luggage bay on a bus.
-VEHICLE_PANEL: tuple[tuple[float, float, bool], ...] = (
-    (0.05, 0.26, True),     # sedan bonnet, hinged at the screen
-    (0.76, 0.96, True),     # van tailgate, hinged at the roof
-    (0.78, 0.96, True),     # ambulance rear doors
-    (0.04, 0.25, True),     # cruiser bonnet
-    (0.40, 0.68, False),    # lorry bed hatch
-    (0.30, 0.52, False),    # bus luggage bay
+#: Glazing on the ROOF: spans of the profile, in flank fractions, that are
+#: glass rather than paint when the sweep lays the top plane down. This is the
+#: half of a windscreen a side elevation cannot have, and it is the single
+#: strongest thing saying the camera is above the car: the rake between the
+#: bonnet and the roof is a SURFACE at this pitch, and it is dark.
+VEHICLE_ROOF_GLASS: tuple[tuple[tuple[float, float], ...], ...] = (
+    ((0.235, 0.375), (0.610, 0.720)),   # screen and backlight, either side of the roof
+    ((0.095, 0.165),),                  # van: a screen, and cargo behind it
+    ((0.070, 0.170),),                  # ambulance: the cab's, the box has none
+    ((0.245, 0.380), (0.645, 0.775)),
+    ((0.040, 0.095),),                  # lorry: the cab's, the bed is open
+    ((0.025, 0.100),),
+)
+
+#: THE COMPARTMENT, as a span of the roof. It is a TOP-PLANE panel on every
+#: kind, which is the whole point of having swept one: a boot lid rotating up
+#: out of the deck is a hinge you can watch turn, where the old flank plate
+#: could only slide. On the two cars it is the BOOT — not the bonnet. What a
+#: player expects to find a body, a bag or a spare in is the boot, and it is
+#: the panel their hands would go to; a bonnet promises an engine, and there is
+#: no loot in an engine. Hinged at the FRONT edge on all of them, so the free
+#: edge rises at the tail and the opening faces the way you walked up.
+VEHICLE_PANEL: tuple[tuple[float, float], ...] = (
+    (0.755, 0.925),     # sedan boot
+    (0.720, 0.930),     # van: the cargo roof over the back doors
+    (0.760, 0.945),     # ambulance: the roof of the rear compartment
+    (0.795, 0.935),     # cruiser boot
+    (0.740, 0.940),     # lorry: the hatch at the tail of the bed
+    (0.800, 0.950),     # bus: the engine deck at the tail
 )
 
 
@@ -2180,7 +2241,7 @@ def _bar(px, x0: int, y: int, x1: int, width: int, height: int,
 
 
 def _profile_y(profile, fx: float) -> float:
-    """The silhouette's top edge at one column, in frame fractions."""
+    """The silhouette's top edge at one column, in BODY fractions."""
     if fx <= profile[0][0]:
         return profile[0][1]
     if fx >= profile[-1][0]:
@@ -2192,28 +2253,86 @@ def _profile_y(profile, fx: float) -> float:
     return profile[-1][1]
 
 
-def _lid(px, x0: int, x1: int, y: int, lift: float, hinge_right: bool,
-         ramp: Ramp, salt: int, width: int, height: int, thickness: int = 3) -> None:
-    """A panel lifted off its seal, TILTED around the edge it is hinged on.
+#: THE VEHICLE'S FRAME OF REFERENCE, and everything on this sheet is placed in
+#: it: `(left, flank, base, body)` — the column the flank starts at, how wide it
+#: runs, the row the body starts at and how tall it stands. Authoring against
+#: the frame instead put every number at the mercy of how much headroom the
+#: sweep happened to need.
+def _col(fx: float, geo: tuple[float, float, float, float]) -> float:
+    """A flank fraction as a screen column."""
+    return geo[0] + fx * geo[1]
 
-    The old one slid a flat plate straight up, which reads as a piece of the
-    car floating. A lid that rises at its free edge and stays put at its
-    hinge is the only thing in the frame that has to say "this is attached and
-    it swung", and the taper â€” thinner at the top of the swing â€” is what keeps
-    it from reading as a second, smaller vehicle.
+
+def _row(fy: float, geo: tuple[float, float, float, float]) -> float:
+    """A body fraction as a screen row."""
+    return geo[2] + fy * geo[3]
+
+
+def _roof_row(profile, fx: float, geo) -> float:
+    """The roofline's screen row at one flank fraction."""
+    return _row(_profile_y(profile, fx), geo)
+
+
+def _plane(ramp: Ramp, step: int):
+    """A `_sweep` painter: one flat band of a ramp, no grain (§5)."""
+    def paint(px, x: int, y: int) -> None:
+        px[x, y] = tone(ramp, step, x, y)
+    return paint
+
+
+def _sweep(px, size: tuple[int, int], profile, geo, span: tuple[float, float],
+           depth: float, paint, lift=None) -> tuple[int, int, int, int]:
+    """Push a stretch of the roofline back along the depth axis and fill it.
+
+    THE ONE CONSTRUCTION THIS SHEET'S VOLUME COMES FROM. The profile describes
+    the edge where the roof meets the near flank; sweeping it up and to the
+    right at `SLOPE` generates the whole top surface — bonnet, screen, roof,
+    backlight and boot deck — in one pass, following whatever the profile says
+    this kind's roofline does.
+
+    Rasterised as a REGION, not as a swept point set. Stepping the profile back
+    one offset at a time and plotting a pixel each time leaves holes wherever
+    two consecutive offsets round to the same row, which came out as a
+    checkerboard across the back of the car. For each screen column take the
+    highest and lowest row the sweep reaches and fill between them; the band is
+    then solid by construction, and where the roofline falls steeply the fill
+    IS the rake — which is exactly the surface a windscreen is.
+
+    `lift` is what makes the same code draw an OPEN panel: it displaces each
+    source column vertically before the sweep, so a lid hinged along one edge
+    and raised at the other is this function with a ramp for `lift`, and the
+    parallelogram it projects to is the plate's real silhouette rather than a
+    guess at one. Returns the bounding box it touched.
     """
-    span = max(x1 - x0, 1)
-    for x in range(x0, x1 + 1):
-        t = (x1 - x) / span if hinge_right else (x - x0) / span
-        top = int(round(y - lift * t))
-        for offset in range(thickness):
-            yy = top + offset
-            if 0 <= x < width and 0 <= yy < height:
-                shade = 0.90 if offset == 0 else 0.52 - offset * 0.14
-                px[x, yy] = pick(ramp, shade + (hash01(x, yy, salt) - 0.5) * 0.10, x, yy)
+    width, height = size
+    src0 = int(round(_col(span[0], geo)))
+    src1 = int(round(_col(span[1], geo)))
+    x0, y0, x1, y1 = width, height, -1, -1
+    steps = int(depth * 2)
+    for sx in range(max(0, src0), min(width, src1 + int(depth) + 1)):
+        hi = lo = None
+        for index in range(steps + 1):
+            back = index * 0.5
+            src = sx - back
+            if src < src0 or src > src1:
+                continue
+            fx = (src - geo[0]) / max(geo[1], 1e-6)
+            row = _roof_row(profile, fx, geo) - back * SLOPE
+            if lift is not None:
+                row -= lift(fx)
+            hi = row if hi is None else min(hi, row)
+            lo = row if lo is None else max(lo, row)
+        if hi is None:
+            continue
+        for y in range(max(0, int(round(hi))), min(height, int(round(lo)) + 1)):
+            paint(px, sx, y)
+            x0, y0 = min(x0, sx), min(y0, y)
+            x1, y1 = max(x1, sx), max(y1, y)
+    return x0, y0, x1, y1
+
 
 def make_vehicle(width: int, height: int, kind: int, frame: int, frames: int) -> Image.Image:
-    """A dead vehicle, seen from the side and slightly above. `frame` opens it.
+    """A dead vehicle as a SOLID, seen from the camera's own 3/4. `frame` opens it.
 
     THE SILHOUETTE IS THE WHOLE ASSET, and it is drawn from `VEHICLE_PROFILE`
     rather than assembled out of two rectangles. At this size nobody reads a
@@ -2223,52 +2342,64 @@ def make_vehicle(width: int, height: int, kind: int, frame: int, frames: int) ->
     nose is a van, a box standing proud of its cab is an ambulance, a cab with
     a bed behind it is a lorry, one long box with six windows is a bus.
 
+    THE THREE PLANES ARE ALL HERE. The flank is square to the screen and owns
+    the silhouette; the roof is that flank's top edge swept back at `SLOPE`,
+    deep enough to carry a windscreen, a roof panel and a boot deck at three
+    values; the tail is the shade sliver the sweep opens on the right, and the
+    far rear wheel stands under it. Take any one of the three away and the car
+    lies back down on its side against the grass.
+
     THE SECOND READ IS THAT IT DIED HERE. Every one of these carries rust up
     from the sill, moss on the shadowed bottom rows, one flat tyre and a
     smashed window, because a clean car is a car somebody parked, and a map
     full of parked cars is a map that has not been abandoned. None of that
     costs a frame: it is four passes over pixels the body already put down.
 
-    What opens is the compartment that vehicle would actually have somebody
-    still in it or still packed. It lifts from its hinge and the black
-    underneath is the reward — or the warning.
+    What opens is the BOOT — the compartment on the top plane a player would
+    actually reach for. It rotates up out of the deck around a hinge you can
+    see, and the black underneath is the reward, or the warning.
     """
     img = Image.new("RGBA", (width, height), TRANSPARENT)
     px = img.load()
+    size = (width, height)
     ground = height - 1
     open_t = _ease(frame / max(frames - 1, 1))
     paint = VEHICLE_PAINT[kind % len(VEHICLE_PAINT)]
     profile = VEHICLE_PROFILE[kind % len(VEHICLE_PROFILE)]
 
-    sill = int(height * 0.87)
-    axle = height * 0.885
-    radius = max(2.4, height * 0.105)
-    body_x0 = int(width * profile[0][0])
-    body_x1 = int(width * profile[-1][0])
+    # The flank is centred in the frame — the client draws a prop centred on
+    # its contact point, and this is the plane that stands on it. The sweep
+    # spends the columns to its right and the rows above it.
+    flank = width * VEHICLE_SPAN
+    body_h = height * VEHICLE_BODY
+    geo = ((width - flank) / 2.0, flank, height - body_h, body_h)
+    depth = max(3.0, round(flank * VEHICLE_DEPTH[kind % len(VEHICLE_DEPTH)]))
 
-    # 1. THE BODY, EXTRUDED. This is the change that made a vehicle a vehicle.
-    #    It used to be one column of paint per x, ramped from the profile down
-    #    to the sill and dithered — a SIDE ELEVATION, with no roof, no bonnet
-    #    and no windscreen, on the largest object in the game and the one the
-    #    camera looks down at hardest. What a profile actually describes is
-    #    the edge where the roof meets the flank, so sweeping it back along
-    #    the camera slope generates both surfaces at once: everything the
-    #    sweep leaves standing proud along the top is roof and bonnet at the
-    #    lit plane, and the last pass down is the near flank.
-    #
-    #    The sweep costs nothing in authoring — the six profiles are unchanged
-    #    and still carry the identity — and it is the same construction the
-    #    tent uses in make_scenery.py, for the same reason.
-    # How far the roof runs back. A vehicle is drawn nearly side-on here, so
-    # what the camera catches of the top is a STRIP — deep enough to read as
-    # a surface, shallow enough that a car does not turn into a wedge. A
-    # third of the frame height, which this was first, is most of the body.
-    body_d = max(3, int(height * 0.14))
+    sill = int(_row(0.87, geo))
+    axle = _row(0.885, geo)
+    radius = max(2.4, body_h * 0.105)
+    body_x0 = int(round(_col(profile[0][0], geo)))
+    body_x1 = int(round(_col(profile[-1][0], geo)))
+    tail = _roof_row(profile, profile[-1][0], geo)
 
-    #    The NEAR FLANK first, unshifted: this is the side of the vehicle the
-    #    player walks past, and it stays exactly where the profile puts it.
+    # 1. THE ROOF, swept off the whole profile.
+    _sweep(px, size, profile, geo, (profile[0][0], profile[-1][0]), depth,
+           _plane(paint, TOP))
+
+    # 2. THE GLAZED PART OF IT. Same sweep, narrower spans, dark: the rake
+    #    between a bonnet and a roof IS the windscreen at this pitch, and
+    #    painting it with the roof is what makes a car look like one with its
+    #    windows filled in.
+    for gx0, gx1 in VEHICLE_ROOF_GLASS[kind % len(VEHICLE_ROOF_GLASS)]:
+        pane = _sweep(px, size, profile, geo, (gx0, gx1), depth, _plane(GLASS, 2))
+        if pane[2] > pane[0]:
+            _specular(px, pane[0] + 1, pane[1] + 2, min(5, pane[2] - pane[0]),
+                      CHROME, width, height, shade=0.70)
+
+    # 3. THE NEAR FLANK, unshifted: this is the side of the vehicle the player
+    #    walks past, and it stays exactly where the profile puts it.
     for x in range(body_x0, body_x1 + 1):
-        top = int(round(_profile_y(profile, x / max(width - 1, 1)) * height))
+        top = int(round(_roof_row(profile, (x - geo[0]) / flank, geo)))
         for y in range(top, sill + 1):
             if not (0 <= x < width and 0 <= y < height):
                 continue
@@ -2276,63 +2407,48 @@ def make_vehicle(width: int, height: int, kind: int, frame: int, frames: int) ->
             # away from the light. Two steps apart, never one — a single step
             # is a smudge at this size and the flank goes back to a rectangle.
             t = (y - top) / max(sill - top, 1)
-            px[x, y] = tone(paint, FRONT if t < 0.66 else SIDE, x, y)
+            px[x, y] = tone(paint, FRONT if t < 0.72 else SIDE, x, y)
 
-    #    THE ROOF, swept back off the profile. Only the TOP extrudes: a
-    #    vehicle's far flank is hidden behind its near one, so sweeping the
-    #    whole silhouette shears the entire body into a parallelogram — which
-    #    is what the first cut of this did. What the sweep should produce is a
-    #    BAND above the profile line, and that band is the roof, the bonnet
-    #    and the boot lid, in one pass, following whatever the profile says
-    #    this kind's roofline does.
-    #    Rasterised as a REGION, not as a swept point set. Stepping the
-    #    profile back one offset at a time and plotting a pixel each time
-    #    leaves holes wherever two consecutive offsets round to the same row
-    #    — which came out as a checkerboard across the back of the car. For
-    #    each screen column, take the highest and lowest row the sweep reaches
-    #    and fill between them; the band is then solid by construction.
-    for sx in range(body_x0, min(width, body_x1 + body_d + 1)):
-        reach_hi, reach_lo = None, None
-        for offset in range(0, body_d + 1):
-            src = sx - offset
-            if not body_x0 <= src <= body_x1:
-                continue
-            row = int(round(_profile_y(profile, src / max(width - 1, 1)) * height
-                            - offset * SLOPE))
-            reach_hi = row if reach_hi is None else min(reach_hi, row)
-            reach_lo = row if reach_lo is None else max(reach_lo, row)
-        if reach_hi is None:
-            continue
-        # CAPPED to the sweep's own depth. Where the profile falls steeply —
-        # the back of a car, the step down from a lorry cab — the highest and
-        # lowest rows the sweep touches are most of the body apart, and
-        # filling between them paints the whole rear quarter as roof. The roof
-        # is a surface of one thickness; the profile only says where it sits.
-        reach_hi = max(reach_hi, reach_lo - body_d)
-        for y in range(max(0, reach_hi), min(height, reach_lo + 1)):
-            if px[sx, y][3]:
-                continue
-            px[sx, y] = tone(paint, TOP, sx, y)
+    # 4. THE TAIL, in the sliver the sweep opened on the right. The shade plane
+    #    §2a asks for, and the only end of the vehicle this camera can see:
+    #    without it the roof runs back over nothing and the whole solid reads
+    #    as a flank with a lid balanced on it.
+    for index in range(int(depth * 2) + 1):
+        back = index * 0.5
+        cx = int(round(body_x1 + back))
+        shift = back * SLOPE
+        for y in range(int(round(tail - shift)), int(round(sill - shift)) + 1):
+            if 0 <= cx < width and 0 <= y < height and not px[cx, y][3]:
+                px[cx, y] = tone(paint, SIDE, cx, y)
 
-    # 2. THE SHOULDER. One row of contact-dark where the roof turns into the
-    #    flank — the fold the sweep produced needs the occlusion S10 asks for,
+    # 5. THE CORNER, down the flank's back edge. The rocker and the tail cap
+    #    are both shade steps, so without a break between them the flank runs
+    #    round the corner as one surface and the solid loses the edge the whole
+    #    construction is for.
+    for y in range(int(round(tail)), sill + 1):
+        if 0 <= body_x1 < width and 0 <= y < height and px[body_x1, y][3]:
+            px[body_x1, y] = tone(paint, 0, body_x1, y)
+
+    # 6. THE TERMINATOR. One row of contact-dark where the roof turns into the
+    #    flank — the fold the sweep produced needs the occlusion §10 asks for,
     #    or the two planes read as one panel with a stripe painted on it.
     for x in range(body_x0, body_x1 + 1):
-        top = int(round(_profile_y(profile, x / max(width - 1, 1)) * height))
+        top = int(round(_roof_row(profile, (x - geo[0]) / flank, geo)))
         if 0 <= x < width and 0 <= top < height and px[x, top][3]:
             px[x, top] = tone(paint, 0, x, top)
 
-    # 3. The lit edge along the crown, one pixel per column.
+    # 7. The lit edge along the crown, one pixel per column.
     _top_light(img, paint, 0.97)
 
-    # 4. GLASS. Punched into the paint, dark, with one specular streak each.
-    #    Windows are DARK on purpose: there is nothing behind them, and a lit
-    #    window on an abandoned car is a promise the map cannot keep.
+    # 8. GLASS ON THE FLANK. Punched into the paint, dark, with one specular
+    #    streak each. Windows are DARK on purpose: there is nothing behind
+    #    them, and a lit window on an abandoned car is a promise the map
+    #    cannot keep.
     glass = VEHICLE_GLASS[kind % len(VEHICLE_GLASS)]
     belt = 0
     for index, (gx0, gx1, gy0, gy1) in enumerate(glass):
-        wx0, wx1 = int(width * gx0), int(width * gx1)
-        wy0, wy1 = int(height * gy0), int(height * gy1)
+        wx0, wx1 = int(_col(gx0, geo)), int(_col(gx1, geo))
+        wy0, wy1 = int(_row(gy0, geo)), int(_row(gy1, geo))
         belt = max(belt, wy1)
         # One window per vehicle is GONE. A hole where glass should be is the
         # single cheapest mark of violence available, and it costs no frame.
@@ -2349,8 +2465,7 @@ def make_vehicle(width: int, height: int, kind: int, frame: int, frames: int) ->
                 if smashed and hash01(x, y, 301 + kind) < 0.72:
                     px[x, y] = pick(PLANK_DARK, 0.04, x, y)
                 else:
-                    px[x, y] = pick(GLASS, 0.30 - (y - wy0) / max(wy1 - wy0, 1) * 0.18,
-                                    x, y)
+                    px[x, y] = tone(GLASS, 1 if y - wy0 > (wy1 - wy0) * 0.5 else 2, x, y)
         if smashed:
             # Two shards left in the frame, so the hole reads as broken rather
             # than as a window somebody left open.
@@ -2363,51 +2478,71 @@ def make_vehicle(width: int, height: int, kind: int, frame: int, frames: int) ->
         # The seal round the glass, so it sits IN the door.
         _seam(px, wx0 - 1, wy1 + 1, wx1 + 1, wy1 + 1, width, height, paint, 0.10)
 
-    # 5. Panel gaps. Two vertical seams turn one long flank into doors, and
+    # 9. Panel gaps. Two vertical seams turn one long flank into doors, and
     #    doors are most of what says the mass has a scale a person fits in.
     for cut in (0.42, 0.60) if kind in (0, 3) else (0.36, 0.62, 0.80):
-        cx = int(width * cut)
+        cx = int(_col(cut, geo))
         if body_x0 < cx < body_x1:
-            top = int(round(_profile_y(profile, cut) * height))
+            top = int(round(_roof_row(profile, cut, geo)))
             _seam(px, cx, max(top + 1, belt + 1), cx, sill - 1, width, height, paint, 0.06)
+            # The handle, one lit pixel beside the seam. Two pixels of chrome
+            # at the waist is the only thing on the flank at a HUMAN scale, and
+            # the eye sizes the whole object off it.
+            hy = max(top + 2, belt + 2)
+            if 0 <= cx + 2 < width and 0 <= hy < height and px[cx + 2, hy][3]:
+                px[cx + 2, hy] = pick(CHROME, 0.58, cx + 2, hy)
 
-    # 6. Wheels, and the arch shadow above each. The arch is what sinks a
+    # 10. Wheels, and the arch shadow above each. The arch is what sinks a
     #    wheel into the body instead of parking it in front.
     for index, wx in enumerate(VEHICLE_WHEELS[kind % len(VEHICLE_WHEELS)]):
-        cx = width * wx
+        cx = _col(wx, geo)
         for ax in range(int(cx - radius - 1), int(cx + radius + 2)):
             ay = int(axle - math.sqrt(max(radius * radius + 2 -
                                           (ax - cx) ** 2, 0.0)))
             if 0 <= ax < width and 0 <= ay < height and px[ax, ay][3]:
                 px[ax, ay] = pick(paint, 0.06, ax, ay)
         _wheel(px, cx, axle, radius, width, height, flat=(index == kind % 2))
+    # The FAR rear wheel, under the tail cap. A few visible pixels of a wheel
+    # standing further back than the flank is the cheapest possible proof the
+    # vehicle has another side, and the tail is the one place the far track is
+    # not hidden behind the near one.
+    _wheel(px, body_x1 + depth * 0.55 - radius * 0.5, axle - depth * 0.55 * SLOPE,
+           radius * 0.84, width, height)
 
-    # 7. Bumpers and lamps. Four pixels of amber and red, and they are the only
+    # 11. Bumpers and lamps. Four pixels of amber and red, and they are the only
     #    saturated thing below the roofline — which is why they land as FRONT
     #    and BACK the instant the eye gets there.
     _fill(px, body_x0, sill - 2, body_x0 + 1, sill, CHROME, 0.34, 305, width, height)
-    _fill(px, body_x1 - 1, sill - 2, body_x1, sill, CHROME, 0.34, 307, width, height)
-    lamp_y = int(round(_profile_y(profile, profile[0][0] + 0.03) * height)) + 2
+    lamp_y = int(round(_roof_row(profile, profile[0][0] + 0.03, geo))) + 2
     for offset in range(2):
         if 0 <= body_x0 + offset < width and 0 <= lamp_y < height:
             px[body_x0 + offset, lamp_y] = pick(EMBER, 0.42, body_x0 + offset, lamp_y)
-    # The tail lamp sits at the WAIST, not on the roofline. Pinned to the
-    # profile it climbed to the top corner of the box bodies and read as a
-    # warning light on a roof rather than as the back of a vehicle.
-    tail_y = max(int(round(_profile_y(profile, profile[-1][0] - 0.03) * height)) + 2,
-                 sill - 6)
-    for offset in range(2):
-        if 0 <= body_x1 - offset < width and 0 <= tail_y < height:
-            px[body_x1 - offset, tail_y] = pick(RED, 0.55, body_x1 - offset, tail_y)
+    # The tail lamps sit ON the tail cap, one at each end of it, with the
+    # bumper running back under them: pinned to the flank they read as a stripe
+    # down the side of the car and the one face that says BACK goes blank.
+    for lamp in (0.20, 0.74):
+        lx = int(round(body_x1 + depth * lamp))
+        ly = int(round(max(tail + 2, sill - body_h * 0.15) - depth * lamp * SLOPE))
+        for dx in range(2):
+            for dy in range(2):
+                if 0 <= lx + dx < width and 0 <= ly + dy < height and px[lx + dx, ly + dy][3]:
+                    px[lx + dx, ly + dy] = pick(RED, 0.55, lx + dx, ly + dy)
+    for index in range(int(depth * 2) + 1):
+        back = index * 0.5
+        bx = int(round(body_x1 + back))
+        by = int(round(sill - back * SLOPE))
+        for dy in (-1, 0):
+            if 0 <= bx < width and 0 <= by + dy < height and px[bx, by + dy][3]:
+                px[bx, by + dy] = tone(CHROME, 1 if dy else 0, bx, by + dy)
 
-    # 8. Per-kind markings. All of them one or two pixels wide.
-    cab_end = int(width * (0.30 if kind == 2 else 0.28))
+    # 12. Per-kind markings. All of them one or two pixels wide.
+    cab_end = int(_col(0.30 if kind == 2 else 0.28, geo))
     if kind == 2:
         # Red cross and a light bar. The cross is the most legible symbol
         # available at 16px and it is worth its eight pixels: it is what makes
         # a player detour for the medical drop table.
-        mx = int(width * 0.66)
-        my = int(height * 0.44)
+        mx = int(_col(0.66, geo))
+        my = int(_row(0.44, geo))
         for offset in range(-2, 3):
             if 0 <= mx + offset < width and 0 <= my < height and px[mx + offset, my][3]:
                 px[mx + offset, my] = pick(RED, 0.92, mx + offset, my)
@@ -2415,25 +2550,30 @@ def make_vehicle(width: int, height: int, kind: int, frame: int, frames: int) ->
                 px[mx, my + offset] = pick(RED, 0.92, mx, my + offset)
         # The stripe down the flank, one step up from the body: an ambulance
         # is the one vehicle out here that was PAINTED to be found.
-        band = int(height * 0.58)
+        band = int(_row(0.58, geo))
         _fill(px, cab_end, band, body_x1 - 2, band + 1, RED, 0.30, 309, width, height)
-        _bar(px, int(width * 0.14), int(height * 0.26) - 2, int(width * 0.26),
-             width, height, (RED, BLUE))
+        _bar(px, int(_col(0.19, geo) + depth * 0.5),
+             int(round(_roof_row(profile, 0.22, geo) - depth * 0.5 * SLOPE)) - 2,
+             int(_col(0.28, geo) + depth * 0.5), width, height, (RED, BLUE))
     elif kind == 3:
-        _bar(px, int(width * 0.40), int(height * 0.32) - 2, int(width * 0.60),
-             width, height, (BLUE, RED))
+        # The bar sits ON the roof plane, half a depth back, because there IS a
+        # roof plane now: laid on the flank's top edge it was a fitting glued to
+        # the side of the car.
+        _bar(px, int(_col(0.44, geo) + depth * 0.5),
+             int(round(_roof_row(profile, 0.50, geo) - depth * 0.5 * SLOPE)) - 2,
+             int(_col(0.58, geo) + depth * 0.5), width, height, (BLUE, RED))
         # The pale door a cruiser has and a sedan does not, and it stops at the
         # DOOR SEAMS. Floating free of them it read as a sticker on the flank;
         # bounded by them it reads as the panel that was painted white.
-        _fill(px, int(width * 0.42) + 1, belt + 2, int(width * 0.60) - 1, sill - 3,
+        _fill(px, int(_col(0.42, geo)) + 1, belt + 2, int(_col(0.60, geo)) - 1, sill - 3,
               CHROME, 0.32, 191, width, height, grain=0.10)
     elif kind == 4:
         # CRATES still strapped to the bed. Drawn as separate boxes at
         # different heights rather than as one plank band, because a band with
         # verticals across it reads as a railing — and a railing is furniture,
         # while three boxes somebody roped down is cargo that never arrived.
-        bed_top = int(height * 0.44)
-        bed0, bed1 = int(width * 0.34), body_x1 - 3
+        bed_top = int(_row(0.44, geo))
+        bed0, bed1 = int(_col(0.34, geo)), body_x1 - 3
         cursor = bed0 + 1
         for index in range(3):
             box_w = int((bed1 - bed0) * (0.22 + 0.06 * (index % 2)))
@@ -2453,10 +2593,10 @@ def make_vehicle(width: int, height: int, kind: int, frame: int, frames: int) ->
         _seam(px, bed0, bed_top, bed1, bed_top, width, height, PLANK_DARK, 0.10)
     elif kind == 5:
         # A destination board over the windscreen, blank. Nobody is going there.
-        _fill(px, int(width * 0.06), int(height * 0.11), int(width * 0.30),
-              int(height * 0.12), PLANK_DARK, 0.30, 311, width, height)
+        _fill(px, int(_col(0.06, geo)), int(_row(0.11, geo)), int(_col(0.30, geo)),
+              int(_row(0.12, geo)), PLANK_DARK, 0.30, 311, width, height)
 
-    # 8. IT DIED HERE. Rust creeping up from the sill, moss on the rows that
+    # 13. IT DIED HERE. Rust creeping up from the sill, moss on the rows that
     #    face the ground. Sparse: at any more than this the pass stops reading
     #    as age and starts reading as a stripe somebody painted on.
     # Less of it on the two PALE bodies: rust on white reads at twice the
@@ -2466,33 +2606,47 @@ def make_vehicle(width: int, height: int, kind: int, frame: int, frames: int) ->
           0.06 if kind in (2, 5) else 0.11)
     _wear(px, body_x0, sill - 1, body_x1, ground, MOSS, 337 + kind, width, height, 0.16)
 
-    # 9. THE COMPARTMENT. Cut a dark mouth into the body and swing its panel.
-    pan0, pan1, hinge_right = VEHICLE_PANEL[kind % len(VEHICLE_PANEL)]
-    px0, px1 = int(width * pan0), int(width * pan1)
-    panel_top = int(round(_profile_y(profile, (pan0 + pan1) / 2) * height))
-    if kind in (4, 5):
-        panel_top = max(panel_top, belt + 2)
-    elif kind in (1, 2):
-        # A tailgate hinged at the ROOF of a box body would swing straight off
-        # the top of the frame and get clipped. It opens from the waist, which
-        # is also where a person would reach it from.
-        panel_top = max(panel_top + 4, belt + 1)
+    # 14. THE BOOT. A span of the deck, hinged along its front edge and rotated
+    #    up out of the top plane — the same sweep as the roof with a ramp for
+    #    `lift`, so the lid keeps the vehicle's own camera instead of being a
+    #    plate pasted over it. Its seams are drawn whether it is open or shut: a
+    #    panel a player is meant to press E on has to read as a panel from the
+    #    first frame.
+    pan0, pan1 = VEHICLE_PANEL[kind % len(VEHICLE_PANEL)]
+    for edge in (pan0, pan1):
+        _sweep(px, size, profile, geo, (edge, edge), depth, _plane(paint, 0))
 
     if open_t > 0.04:
-        mouth_bot = min(sill - 1, panel_top + max(3, int((sill - panel_top) * 0.72)))
-        _hollow(px, px0 + 1, panel_top, px1 - 1, mouth_bot, width, height)
-        _spark(px, px0 + 1, panel_top, px1 - 1, mouth_bot, EMBER, open_t * 0.75,
-               197 + kind, width, height)
+        # The mouth, cut into the deck and dropped two rows: a lid that lifts
+        # off unbroken paint is a lid that opened onto the roof.
+        mouth = _sweep(px, size, profile, geo, (pan0, pan1), depth,
+                       _plane(PLANK_DARK, 0), lift=lambda fx: -2.0)
+        _hollow(px, mouth[0] + 1, mouth[1] + 1, mouth[2] - 1, mouth[3], width, height)
+        _spark(px, mouth[0] + 1, mouth[1] + 1, mouth[2] - 1, mouth[3], EMBER,
+               open_t * 0.45, 197 + kind, width, height)
 
-    # Clamped so no lid ever leaves the frame: a panel cut off at the top edge
-    # of the sheet reads as a rendering bug, not as a car with its boot up.
-    lift = min(open_t * (height * 0.22 + 1), max(panel_top - 2.0, 0.0))
-    _lid(px, px0, px1, panel_top, lift, hinge_right, paint, 199 + kind, width, height,
-         thickness=3)
+    # THE LID ROTATES, IT DOES NOT SHEAR. Lifting the free edge while leaving
+    # the panel's length on the deck alone is a shear, and a sheared plate
+    # keeps its whole horizontal run while gaining the rise: at anything past a
+    # few degrees it projects to a long thin BLADE growing out of the roofline,
+    # which is what the first cut of this looked like. A lid turning about its
+    # hinge keeps its LENGTH instead, so the run along the deck shortens by the
+    # cosine exactly as the rise grows by the sine, and the plate stands up
+    # into the frame the way a boot does.
+    swing = open_t * 1.2
+    length = (pan1 - pan0) * flank
+    rise = length * math.sin(swing)
+    free = pan0 + (length * math.cos(swing)) / flank
+    # It is painted as the FRONT plane once it is properly up: a lid near the
+    # vertical shows the camera its UNDERSIDE, and leaving it on the roof's own
+    # lit step floated a bright slab over a dark car.
+    _sweep(px, size, profile, geo, (pan0, free), depth,
+           _plane(paint, TOP if open_t < 0.35 else FRONT),
+           lift=lambda fx: rise * clamp01((fx - pan0) / max(free - pan0, 1e-6)))
     if open_t > 0.05:
         # The hinge itself, still holding, so the panel is attached to a car.
-        hx = px1 if hinge_right else px0
-        _line(px, hx, panel_top - 1, hx, panel_top + 1, CHROME, 0.5, width, height)
+        _sweep(px, size, profile, geo, (pan0, pan0), depth, _plane(CHROME, 2))
+    _top_light(img, paint, 0.97)
 
     _ground_dark(img, rows=2, drop=0.62)
     outline(img, OUTLINE_COLD)
@@ -3614,7 +3768,14 @@ def stash_strip(tile: int, seed: int) -> tuple[list[Image.Image], int, int]:
 
 
 def vehicle_strip(tile: int, seed: int) -> tuple[list[Image.Image], int, int]:
-    w, h = tile * 4, round(tile * 2.5)
+    # BIGGER THAN THE VEHICLE IN BOTH AXES, and that is what pays for the
+    # roof. The car itself is still four tiles long and two and a half high,
+    # standing in the middle of the frame's width (`VEHICLE_SPAN`) and on the
+    # bottom of its height (`VEHICLE_BODY`) exactly where it was; the spare
+    # columns are where the sweep back goes and the spare rows are the headroom
+    # it needs. A frame is drawn centred on the contact point and bottom
+    # anchored to it, so growing it costs alignment nothing.
+    w, h = tile * 6, round(tile * 3.0)
     frames = [
         make_vehicle(w, h, kind, frame, VEHICLE_FRAMES)
         for kind in range(VEHICLE_KINDS)

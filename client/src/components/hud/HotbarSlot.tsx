@@ -14,7 +14,6 @@ import { LootIcon } from './LootIcon';
 export interface HotbarSlotProps {
   index: number;
   item: HudHotbarSlot | null;
-  lootFrames: number;
   selected: boolean;
 }
 
@@ -26,7 +25,7 @@ const RARITY_BORDER: Record<LootRarity, string> = {
   legendary: 'border-rarity-legendary',
 };
 
-export function HotbarSlot({ index, item, lootFrames, selected }: HotbarSlotProps) {
+export function HotbarSlot({ index, item, selected }: HotbarSlotProps) {
   const ref = useRef<HTMLDivElement>(null);
   const incoming = useSyncExternalStore(
     subscribeLootFlies,
@@ -71,7 +70,7 @@ export function HotbarSlot({ index, item, lootFrames, selected }: HotbarSlotProp
       {shown ? (
         <LootIcon
           frame={shown.frame}
-          frames={lootFrames}
+
           className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2"
         />
       ) : null}

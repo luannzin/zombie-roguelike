@@ -11,10 +11,9 @@ export interface InventoryGhostProps {
   item: HudInventorySlot;
   x: number;
   y: number;
-  lootFrames: number;
 }
 
-export function InventoryGhost({ item, x, y, lootFrames }: InventoryGhostProps) {
+export function InventoryGhost({ item, x, y }: InventoryGhostProps) {
   return createPortal(
     <div
       className="pointer-events-none fixed top-0 left-0 z-50"
@@ -23,7 +22,7 @@ export function InventoryGhost({ item, x, y, lootFrames }: InventoryGhostProps) 
       }}
       aria-hidden="true"
     >
-      <LootIcon frame={item.frame} frames={lootFrames} zoom={2} />
+      <LootIcon frame={item.frame} zoom={2} />
     </div>,
     document.body,
   );

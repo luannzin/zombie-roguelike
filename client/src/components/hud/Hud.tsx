@@ -186,7 +186,7 @@ export function Hud({ snapshot, minimapRef, error }: HudProps) {
       <BuyPrompt prompt={snapshot.buyPrompt} />
       <MachinePrompt prompt={snapshot.machinePrompt} />
       <ExitGuide strength={snapshot.exitGuide} />
-      <LootFly lootFrames={snapshot.inventory?.lootFrames ?? 1} />
+      <LootFly />
     </>
   );
 }

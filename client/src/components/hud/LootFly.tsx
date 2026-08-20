@@ -18,23 +18,22 @@ import { LootIcon } from './LootIcon';
 import { SkillCanIcon } from './SkillCanIcon';
 
 export interface LootFlyProps {
-  lootFrames: number;
 }
 
-export function LootFly({ lootFrames }: LootFlyProps) {
+export function LootFly() {
   const flies = useSyncExternalStore(subscribeLootFlies, listLootFlies, listLootFlies);
   if (flies.length === 0) return null;
 
   return (
     <>
       {flies.map((fly) => (
-        <LootFlySprite key={fly.id} fly={fly} lootFrames={lootFrames} />
+        <LootFlySprite key={fly.id} fly={fly} />
       ))}
     </>
   );
 }
 
-function LootFlySprite({ fly, lootFrames }: { fly: LootFlySpec; lootFrames: number }) {
+function LootFlySprite({ fly }: { fly: LootFlySpec }) {
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -70,7 +69,7 @@ function LootFlySprite({ fly, lootFrames }: { fly: LootFlySpec; lootFrames: numb
       {fly.dest === 'skill' ? (
         <SkillCanIcon rarity={fly.rarity} frame={fly.frame} zoom={3} />
       ) : (
-        <LootIcon frame={fly.frame} frames={lootFrames} zoom={2} />
+        <LootIcon frame={fly.frame} zoom={2} />
       )}
     </div>
   );

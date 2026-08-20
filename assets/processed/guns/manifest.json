@@ -1,14 +1,14 @@
 {
   "tile": 16,
-  "frameWidth": 24,
+  "frameWidth": 20,
   "frameHeight": 9,
   "frames": 12,
   "items": {
     "glock18": {
       "frame": 0,
-      "gripX": 7,
-      "gripY": 6,
-      "muzzleX": 16,
+      "gripX": 6,
+      "gripY": 5,
+      "muzzleX": 13,
       "muzzleY": 2,
       "hold": 3.0,
       "scale": 1.0
@@ -16,17 +16,17 @@
     "usp_s": {
       "frame": 1,
       "gripX": 5,
-      "gripY": 6,
-      "muzzleX": 18,
+      "gripY": 5,
+      "muzzleX": 15,
       "muzzleY": 2,
       "hold": 3.0,
       "scale": 1.0
     },
     "dual_berettas": {
       "frame": 2,
-      "gripX": 7,
+      "gripX": 6,
       "gripY": 5,
-      "muzzleX": 16,
+      "muzzleX": 13,
       "muzzleY": 2,
       "hold": 3.0,
       "scale": 1.0
@@ -34,8 +34,8 @@
     "deagle": {
       "frame": 3,
       "gripX": 6,
-      "gripY": 6,
-      "muzzleX": 17,
+      "gripY": 5,
+      "muzzleX": 14,
       "muzzleY": 2,
       "hold": 3.0,
       "scale": 1.0
@@ -44,25 +44,25 @@
       "frame": 4,
       "gripX": 8,
       "gripY": 6,
-      "muzzleX": 18,
+      "muzzleX": 15,
       "muzzleY": 2,
       "hold": 3.0,
       "scale": 1.0
     },
     "p90": {
       "frame": 5,
-      "gripX": 8,
+      "gripX": 6,
       "gripY": 6,
-      "muzzleX": 17,
+      "muzzleX": 14,
       "muzzleY": 2,
       "hold": 3.0,
       "scale": 1.0
     },
     "xm1014": {
       "frame": 6,
-      "gripX": 8,
+      "gripX": 6,
       "gripY": 6,
-      "muzzleX": 19,
+      "muzzleX": 17,
       "muzzleY": 2,
       "hold": 3.0,
       "scale": 1.0
@@ -71,43 +71,43 @@
       "frame": 7,
       "gripX": 8,
       "gripY": 6,
-      "muzzleX": 18,
+      "muzzleX": 16,
       "muzzleY": 2,
       "hold": 3.0,
       "scale": 1.0
     },
     "ak47": {
       "frame": 8,
-      "gripX": 6,
+      "gripX": 5,
       "gripY": 6,
-      "muzzleX": 20,
+      "muzzleX": 16,
       "muzzleY": 2,
       "hold": 3.0,
       "scale": 1.0
     },
     "m4a1s": {
       "frame": 9,
-      "gripX": 6,
+      "gripX": 5,
       "gripY": 6,
-      "muzzleX": 21,
+      "muzzleX": 16,
       "muzzleY": 2,
       "hold": 3.0,
       "scale": 1.0
     },
     "awp": {
       "frame": 10,
-      "gripX": 7,
+      "gripX": 5,
       "gripY": 6,
-      "muzzleX": 22,
+      "muzzleX": 18,
       "muzzleY": 2,
       "hold": 3.0,
       "scale": 1.0
     },
     "knife": {
       "frame": 11,
-      "gripX": 8,
+      "gripX": 6,
       "gripY": 2,
-      "muzzleX": 16,
+      "muzzleX": 13,
       "muzzleY": 2,
       "hold": 0.0,
       "scale": 0.8

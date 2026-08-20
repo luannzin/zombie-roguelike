@@ -44,7 +44,6 @@ export type HudQuest = QuestState;
 export interface HudHotbar {
   slots: Array<HudHotbarSlot | null>;
   held: number;
-  lootFrames: number;
   /** Bumps when the selection changes. Count, not a boolean — 5 Hz plus a patch. */
   picks: number;
 }
@@ -57,7 +56,6 @@ export interface HudInventory {
   maxWeight: number;
   /** Sum of item values in the bag. In-flight collects are not counted yet. */
   gold: number;
-  lootFrames: number;
   /** Bumps the pack when a fly lands. Count, not a boolean — 5 Hz. */
   catches: number;
   /** Full-bag refusals. Same counter contract as the lantern. */

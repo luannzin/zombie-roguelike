@@ -100,7 +100,7 @@ folder and carries the regeneration commands. Nothing here is edited directly.
   are drawn untinted. Each of those folders has a matching `*-death/`
   sheet: a collapse timeline, last frame the corpse that stays. The
   client never rotates a walk frame to fake one.
-- `guns/` is the held frame: one 24×9 cell per weapon, pointing right, drawn
+- `guns/` is the held frame: one 20×9 cell per weapon, pointing right, drawn
   from above at the world's high 3/4, with grip, muzzle, `hold` (how far in
   front of the body it is carried) and `scale` in the manifest. Seven authored
   rows, the bore always on row 1, and a pixel's value comes from its ROW — the

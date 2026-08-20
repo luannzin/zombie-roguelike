@@ -176,7 +176,6 @@ export function Inventory({ inventory }: InventoryProps) {
                     key={index}
                     index={index}
                     item={item}
-                    lootFrames={inventory.lootFrames}
                     active={inventory.open}
                     dragging={drag?.index === index}
                     onHover={(next, box) => {
@@ -208,7 +207,6 @@ export function Inventory({ inventory }: InventoryProps) {
           item={drag.item}
           x={drag.x}
           y={drag.y}
-          lootFrames={inventory.lootFrames}
         />
       ) : null}
     </div>

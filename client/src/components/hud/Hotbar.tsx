@@ -42,7 +42,6 @@ export function Hotbar({ hotbar }: HotbarProps) {
               key={hotbar.held === index ? hotbar.picks : 'off'}
               index={index}
               item={item}
-              lootFrames={hotbar.lootFrames}
               selected={hotbar.held === index}
             />
           </Fragment>

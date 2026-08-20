@@ -3544,10 +3544,6 @@ export class Game {
         weight: row.w ?? def.weight,
       };
     });
-    let frames = 0;
-    for (const def of Object.values(catalog)) {
-      if (def.frame + 1 > frames) frames = def.frame + 1;
-    }
     // The BAG's own weight, not the walk's. This bar answers "how much loot
     // can I still carry out", so a rifle on the belt must not eat into it —
     // guns are not what extraction is for. What actually slows the body is
@@ -3578,7 +3574,6 @@ export class Game {
       // is only where a run opens, exactly as `maxHp` is.
       maxWeight: this.localMeta?.mods?.carry ?? config.carryMaxWeight,
       gold,
-      lootFrames: Math.max(1, frames),
       catches: this.bagCatches,
       refusals: this.bagRefusals,
     };
@@ -3604,14 +3599,9 @@ export class Game {
         ammo: this.roundsFor(key),
       };
     });
-    let frames = 0;
-    for (const def of Object.values(catalog)) {
-      if (def.frame + 1 > frames) frames = def.frame + 1;
-    }
     return {
       slots,
       held: this.heldSlot,
-      lootFrames: Math.max(1, frames),
       picks: this.hotbarPicks,
     };
   }

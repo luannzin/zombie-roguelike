@@ -706,181 +706,60 @@ ITEMS: list[tuple[str, Palette, Art]] = [
 # n magazine, c can, e optic, l lens, k mechanical, x recess.
 # ---------------------------------------------------------------------------
 
+#: Weapons whose HELD map is longer than a 16px cell can take, and the shorter
+#: map they use here instead. Four of twelve; the other eight use their held
+#: map unchanged, which is the point — a list that mostly is not there cannot
+#: drift from the sheet it mirrors.
+#:
+#: The trims are all off the ENDS: barrel, stock, suppressor. Nothing that
+#: carries identity moves, so an AK icon still has its wood, its curved
+#: bakelite mag and its gas block, and an AWP still has its optic and the one
+#: lens accent — they are just standing on a shorter barrel (S16: a smaller
+#: variant deletes, it does not scale).
+ICON_TRIMS: dict[str, Art] = {
+    "ak47": [
+        ".......k......",
+        "wwwxrrRRkwbbbm",
+        "wwwxrrrrkwbbb.",
+        ".ffxff.nn.....",
+        "...gg...nn....",
+        "..gg....nnn...",
+        "..g......nn...",
+    ],
+    "m4a1s": [
+        "...kkkk..cccc.",
+        "ttxrrRRhhccccm",
+        "txrrrrrhhcccc.",
+        ".ffxfff.......",
+        "...gg..nn.....",
+        "..gg...nn.....",
+        "..g....nn.....",
+    ],
+    "xm1014": [
+        "..............",
+        "ttxrrRRhhbbbbm",
+        "ttxrrrrhhbbbb.",
+        "..fffxnnnnn...",
+        "....gg........",
+        "...gg.........",
+        "..gg..........",
+    ],
+    "awp": [
+        "...eeell......",
+        "ooxrrRRxbbbbbm",
+        "ooxrrrrxbbbbb.",
+        ".ooxffff......",
+        "....gg..nn....",
+        "...gg...nn....",
+        "...g....nn....",
+    ],
+}
+
+#: The twelve icons: each weapon's HELD map and HELD palette, trimmed only
+#: where the cell cannot take it. There is no second set of drawings here and
+#: no second set of ramps — see the comment above.
 WEAPONS: list[tuple[str, Palette, Art]] = [
-    (
-        "glock18",
-        {"r": guns.STEEL, "b": guns.STEEL, "f": guns.POLY,
-         "g": guns.GRIP, "n": guns.MAG},
-        [
-            "..........",
-            "..rrRRrbbb",
-            "..rxrrrbb.",
-            ".ffffxf...",
-            ".ggg......",
-            "ggg.......",
-            "gnn.......",
-        ],
-    ),
-    (
-        "usp_s",
-        {"r": guns.STEEL, "f": guns.POLY, "g": guns.GRIP,
-         "n": guns.MAG, "c": guns.CAN},
-        [
-            ".......ccccc.",
-            "..rrrrrCCCCc.",
-            "..rxrrrccccc.",
-            ".ffffxf......",
-            ".ggg.........",
-            "ggg..........",
-            "gnn..........",
-        ],
-    ),
-    (
-        "dual_berettas",
-        {"r": guns.CHROME, "b": guns.CHROME, "f": guns.POLY, "g": guns.GRIP},
-        [
-            "............",
-            "..rrRRrrbbb.",
-            "..rxrrrrbb..",
-            ".ffffxf.....",
-            "gggrrrrrrbb.",
-            ".ggrxrrrrbb.",
-            "..fffxf.....",
-        ],
-    ),
-    (
-        "deagle",
-        {"r": guns.CHROME, "b": guns.CHROME, "k": guns.CHROME,
-         "f": guns.CHROME, "g": guns.GRIP, "n": guns.MAG},
-        [
-            "....kkkkk....",
-            "..rrRRrrbbbbb",
-            "..rxrrrrbbbb.",
-            ".fffffxf.....",
-            ".ggg.........",
-            "ggg..........",
-            "gnn..........",
-        ],
-    ),
-    (
-        "mp7",
-        {"t": guns.POLY, "r": guns.POLY, "h": guns.POLY, "b": guns.STEEL,
-         "f": guns.POLY, "g": guns.GRIP, "n": guns.MAG, "k": guns.STEEL},
-        [
-            "......kk......",
-            "tttxrrRRrrhbbb",
-            "ttxrrrrrrrhbb.",
-            "..ffffxff.....",
-            "....gg........",
-            "....gg........",
-            "....nn........",
-        ],
-    ),
-    (
-        "p90",
-        {"r": guns.POLY, "h": guns.POLY, "b": guns.STEEL, "f": guns.POLY,
-         "g": guns.GRIP, "n": guns.TAN},
-        [
-            "..nnnnnnn.....",
-            "rrrrRRrrrhbbb.",
-            "rrxrrrrrrhbb..",
-            ".fffffxff.....",
-            "....gg........",
-            "....gg........",
-            "...ff.........",
-        ],
-    ),
-    (
-        "xm1014",
-        {"t": guns.POLY, "r": guns.STEEL, "h": guns.POLY, "b": guns.STEEL,
-         "f": guns.POLY, "g": guns.GRIP, "n": guns.MAG},
-        [
-            "..............",
-            "tttxrrRRhhbbbb",
-            "ttxrrrrrhhbbb.",
-            "..fffxfnnnnn..",
-            "....gg........",
-            "...gg.........",
-            "..gg..........",
-        ],
-    ),
-    (
-        "famas",
-        {"r": guns.POLY, "h": guns.POLY, "b": guns.STEEL, "f": guns.POLY,
-         "g": guns.GRIP, "n": guns.POLY, "k": guns.STEEL},
-        [
-            "...kkkkk......",
-            "rrrrrRRrhhbbb.",
-            "rrxrrrrrhhbb..",
-            ".ffffxff......",
-            "..nn.gg.......",
-            "..nn.gg.......",
-            "..nn..........",
-        ],
-    ),
-    (
-        "ak47",
-        {"w": guns.WOOD, "r": guns.STEEL, "b": guns.STEEL, "f": guns.STEEL,
-         "g": guns.GRIP, "n": guns.TAN, "k": guns.STEEL},
-        [
-            "........k.....",
-            "wwwxrrRRkwwbbb",
-            "wwwxrrrrkwbbb.",
-            ".fffxff.......",
-            "...gg...nn....",
-            "..gg....nnn...",
-            "..g......nn...",
-        ],
-    ),
-    (
-        "m4a1s",
-        {"t": guns.POLY, "r": guns.POLY, "h": guns.POLY, "c": guns.CAN,
-         "f": guns.POLY, "g": guns.GRIP, "n": guns.MAG, "k": guns.STEEL},
-        [
-            "...kkkk...ccc.",
-            "ttxrrRRrhhcccc",
-            "ttxrrrrrhhccc.",
-            ".ffxfff.......",
-            "...gg..nn.....",
-            "..gg...nn.....",
-            "..g....nn.....",
-        ],
-    ),
-    (
-        "awp",
-        {"o": guns.OLIVE, "r": guns.STEEL, "b": guns.STEEL, "e": guns.OPTIC,
-         "l": guns.LENS, "f": guns.STEEL, "g": guns.GRIP, "n": guns.MAG},
-        [
-            "...eeell......",
-            "ooxrrRRrbbbbbb",
-            "ooxrrrrxbbbbb.",
-            ".ooxffff......",
-            "....gg..nn....",
-            "...gg...nn....",
-            "...g....nn....",
-        ],
-    ),
-    # The knife. Never on the ground and never in a crate — this frame exists
-    # so the fixed hotbar cell has something to draw and the tooltip has
-    # something to name. Drawn STRAIGHT, like its held frame: every gun above
-    # hangs a grip below its barrel, so a blade that did the same would be a
-    # sixth pistol in a row of cells.
-    #
-    # FOUR ROWS, NOT SEVEN, and that is not a shortcut. `paint_rows` takes a
-    # pixel's plane from its row INDEX, so a map that stops at row 3 is a map
-    # of an object with nothing hanging under it — which is what a knife is.
-    # Padding it out to seven with blank rows would draw the same pixels and
-    # then plant them three rows too high in the cell.
-    (
-        "knife",
-        {"b": guns.CHROME, "k": guns.STEEL, "g": guns.GRIP},
-        [
-            "...k......",
-            "ggkkbBBbbb",
-            "ggkkbbbbb.",
-            "...k......",
-        ],
-    ),
+    (key, palette, ICON_TRIMS.get(key, art)) for key, palette, art in guns.GUNS
 ]
 
 

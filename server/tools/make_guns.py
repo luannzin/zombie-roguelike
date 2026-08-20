@@ -17,6 +17,34 @@ the bore always on row 1). Length is the class: knife shortest, pistols short,
 rifles longer, AWP longest. A mixed scale next to a 16px body reads as twelve
 different toys.
 
+LENGTH IS DERIVED, AND THE LADDER IS THE WHOLE OF IT — 9 / 9 / 10 / 12 for the
+pistols, 12-13 for the SMGs, 14-16 for the rifles and the shotgun, 18 for the
+AWP, 8 for the blade. Two rules produce those numbers and neither is a taste
+call:
+
+  * A PISTOL is drawn at its real proportion. Six rows is genuinely the whole
+    height of a handgun here — grip heel to slide top — so its length is
+    `real length / real height * 6`: a Glock is 20.4 by 13.8 cm, so 1.48, so
+    nine pixels. The Deagle's 1.72 makes it ten, and it is the only pistol
+    with a crown row, which is what makes it read as the big one.
+  * EVERYTHING LONGER is compressed, because six rows stops being a real
+    height the moment a weapon has a stock: an AK at true scale is 22 columns
+    against a 16px body, and an AWP is 28. Those run on `1.278 * cm ** 0.55`,
+    anchored so the AK — the reference rifle — lands at 15.
+
+The first cut of this sheet had the pistols at 11-15 and they overhung the
+body they were held against; the correction overshot to 7 and turned them into
+hammers — a three-pixel receiver under a three-row grip. Both failures are the
+same mistake, which is picking a length instead of deriving one.
+
+GRIPS ARE FORESHORTENED, AND THAT IS WHY A PISTOL IS NOT A SIDE VIEW WITH THE
+TOP SHADED. A real handgun is about 60% grip by height, and drawing it that
+way here is what made the stubby version read as a hammer: this camera looks
+DOWN, so a grip pointing at the floor is the one part of the weapon the angle
+takes away, while the body shows its full length. Pistols get two rows of grip
+under three rows of body. The Berettas are the exception and earn it — their
+lower rows are a second gun, not a longer grip.
+
 THE CAMERA IS A ROW GRID, AND THAT IS THE WHOLE CONSTRUCTION.
 
 These used to be flat side elevations shaded by a diagonal gradient, which is a
@@ -70,7 +98,7 @@ tables blit this sheet centred on the boards (render/layers/store.ts), and a
 left-aligned knife sat off the edge of its own pedestal.
 
 Output (assets/processed/guns/):
-    sheet.png      one row, 24x9 frames, catalog order
+    sheet.png      one row, 20x9 frames, catalog order
     manifest.json  frame, grip, muzzle, hold, scale per key
 
 The grip is the pivot (hand). The muzzle is where the tracer starts. Both are
@@ -112,9 +140,9 @@ from make_textures import (
 #: Authored rows per weapon. Every art map is exactly this tall — a shorter one
 #: would centre differently and its bore would leave the line.
 ROWS = 7
-#: Two wider than the longest map (the AWP, at 22), which is the outline's
+#: Two wider than the longest map (the AWP, at 18), which is the outline's
 #: margin. Nothing downstream reads a frame size that is not in the manifest.
-FRAME_W = 24
+FRAME_W = 20
 FRAME_H = 9
 
 #: Ramp step per authored row: the camera, written down. See the module
@@ -366,13 +394,13 @@ GUNS: list[tuple[str, Palette, Art]] = [
         "glock18",
         {"r": STEEL, "b": STEEL, "f": POLY, "g": GRIP, "n": MAG, "m": STEEL},
         [
-            "...........",
-            "..rrRRrrbbm",
-            "..rxrrrrbb.",
-            ".ffffxff...",
-            ".ggg.......",
-            "ggg........",
-            "gnn........",
+            ".........",
+            "..rrRRrbm",
+            "..rxrrrb.",
+            ".fffffx..",
+            ".ggg.....",
+            "ggn......",
+            ".........",
         ],
     ),
     # THE CAN IS THE WHOLE SILHOUETTE. A suppressed pistol at this size is a
@@ -386,13 +414,13 @@ GUNS: list[tuple[str, Palette, Art]] = [
         "usp_s",
         {"r": STEEL, "f": POLY, "g": GRIP, "n": MAG, "c": CAN, "m": CAN},
         [
-            "........cccccc.",
-            "..rrrrrrCCCCCcm",
-            "..rxrrrrcccccc.",
-            ".ffffxff.......",
-            ".ggg...........",
-            "ggg............",
-            "gnn............",
+            ".......cccc.",
+            "..rrRRrccccm",
+            "..rxrrrcccc.",
+            ".fffffx.....",
+            ".ggg........",
+            "ggn.........",
+            "............",
         ],
     ),
     # TWO GUNS, DRAWN AS TWO SILHOUETTES, AND THE ROW GRID DOES THE DEPTH.
@@ -408,13 +436,13 @@ GUNS: list[tuple[str, Palette, Art]] = [
         "dual_berettas",
         {"r": CHROME, "b": CHROME, "f": POLY, "g": GRIP, "m": CHROME},
         [
-            "............",
-            "..rrRRrrbbm.",
-            "..rxrrrrbb..",
-            ".ffffxf.....",
-            "gggrrrrrrbb.",
-            ".ggrxrrrrbb.",
-            "..fffxf.....",
+            ".........",
+            "..rrRRrbm",
+            "..rxrrrb.",
+            ".fffffx..",
+            "ggrrrrbb.",
+            ".grxrrbb.",
+            "..fffx...",
         ],
     ),
     # The heaviest thing anybody carries in one hand, and the only pistol that
@@ -428,13 +456,13 @@ GUNS: list[tuple[str, Palette, Art]] = [
             "g": GRIP, "n": MAG, "m": CHROME,
         },
         [
-            "....kkkkk....",
-            "..rrRRrrbbbbm",
-            "..rxrrrrbbbb.",
-            ".fffffxf.....",
-            ".ggg.........",
-            "ggg..........",
-            "gnn..........",
+            "...kkkk...",
+            "..rrRRrbbm",
+            "..rxrrrbb.",
+            ".fffffx...",
+            ".ggg......",
+            "ggn.......",
+            "..........",
         ],
     ),
     # --- submachine guns ------------------------------------------------------
@@ -453,13 +481,13 @@ GUNS: list[tuple[str, Palette, Art]] = [
             "g": GRIP, "n": MAG, "k": STEEL, "m": STEEL,
         },
         [
-            "......kk.......",
-            "tttxrrRRrrhbbbm",
-            "ttxxrrrrrrhbbb.",
-            "..ffffxff......",
-            "....gg.........",
-            "....gg.........",
-            "....nn.........",
+            "....kk......",
+            "ttxrrRRrbbbm",
+            "txrrrrrrbbb.",
+            "..fffxff....",
+            "...gg.......",
+            "...gg.......",
+            "...nn.......",
         ],
     ),
     # The P90 is the one real silhouette in the SMG class: a humped shell with
@@ -475,13 +503,13 @@ GUNS: list[tuple[str, Palette, Art]] = [
             "g": GRIP, "n": TAN, "m": STEEL,
         },
         [
-            "..nnnnnnnn.....",
-            "rrrrRRrrrrhbbm.",
-            "rrxrrrrrrrhbb..",
-            ".ffffffxff.....",
-            "....gg.........",
-            "....gg.........",
-            "...ff..........",
+            "..nnnnnn.....",
+            "rrrRRrrrhbbm.",
+            "rrxrrrrrhbb..",
+            ".fffffxff....",
+            "...gg........",
+            "...gg........",
+            "..ff.........",
         ],
     ),
     # --- shotgun --------------------------------------------------------------
@@ -499,9 +527,9 @@ GUNS: list[tuple[str, Palette, Art]] = [
         },
         [
             "................",
-            "ttttxrrRRhhbbbbm",
-            "tttxxrrrrhhbbbb.",
-            "..fffxffnnnnnn..",
+            "tttxrrRRhhbbbbbm",
+            "ttxrrrrrhhbbbbb.",
+            "..fffxfnnnnnn...",
             "....gg..........",
             "...gg...........",
             "..gg............",
@@ -521,13 +549,13 @@ GUNS: list[tuple[str, Palette, Art]] = [
             "g": GRIP, "n": POLY, "k": STEEL, "m": STEEL,
         },
         [
-            "....kkkkkk.......",
-            "rrrrrrRRrrhhbbbm.",
-            "rrxrrrrrrrhhbbb..",
-            ".ffffxfff........",
-            "..nn.gg..........",
-            "..nn.gg..........",
-            "..nn.............",
+            "...kkkkk......",
+            "rrrrrRRhhbbbbm",
+            "rrxrrrrhhbbbb.",
+            ".ffffxff......",
+            "..nn.gg.......",
+            "..nn.gg.......",
+            "..nn..........",
         ],
     ),
     # Wood furniture and a CURVED magazine, walking one column forward as it
@@ -545,13 +573,13 @@ GUNS: list[tuple[str, Palette, Art]] = [
             "g": GRIP, "n": TAN, "k": STEEL, "m": STEEL,
         },
         [
-            "..........k........",
-            "wwwwwxrrRRrkwwwbbbm",
-            "wwwwwxrrrrrkwwbbbb.",
-            ".ffffxfffnn........",
-            "....gg...nn........",
-            "...gg....nnn.......",
-            "...g......nn.......",
+            ".......k.......",
+            "wwwxrrRRkwwbbbm",
+            "wwwxrrrrkwbbbb.",
+            ".ffxff.nn......",
+            "...gg...nn.....",
+            "..gg....nnn....",
+            "..g......nn....",
         ],
     ),
     # The AK's twin, told apart by four things and no label: a carry handle on
@@ -566,13 +594,13 @@ GUNS: list[tuple[str, Palette, Art]] = [
             "g": GRIP, "n": MAG, "k": STEEL, "m": CAN,
         },
         [
-            ".....kkkkkk...ccccc..",
-            "ttttxrrRRrrrhhhhCCCCm",
-            "tttxxrrrrrrrhhhhccccc",
-            ".fffxfffff...........",
-            ".....gg..nn..........",
-            "....gg...nn..........",
-            "....g....nn..........",
+            "...kkkk...cccc.",
+            "ttxrrRRhhhccccm",
+            "txrrrrrhhhcccc.",
+            ".ffxfff........",
+            "...gg..nn......",
+            "..gg...nn......",
+            "..g....nn......",
         ],
     ),
     # --- sniper ---------------------------------------------------------------
@@ -589,13 +617,13 @@ GUNS: list[tuple[str, Palette, Art]] = [
             "f": STEEL, "g": GRIP, "n": MAG, "m": STEEL,
         },
         [
-            "......eeeell..........",
-            "ooooxrrRRrrxbbbbbbbbbm",
-            "oooxxrrrrrrxbbbbbbbb..",
-            ".oooxffffff...........",
-            "......gg..nn..........",
-            ".....gg...nn..........",
-            ".....g....nn..........",
+            "....eeell.........",
+            "ooxrrRRxbbbbbbbbbm",
+            "ooxrrrrxbbbbbbbb..",
+            ".ooxffff..........",
+            "....gg..nn........",
+            "...gg...nn........",
+            "...g....nn........",
         ],
     ),
     # --- the blade ------------------------------------------------------------
@@ -616,13 +644,13 @@ GUNS: list[tuple[str, Palette, Art]] = [
         "knife",
         {"b": CHROME, "k": STEEL, "g": GRIP, "m": CHROME},
         [
-            "...k......",
-            "ggkkbBBbbm",
-            "ggkkbbbbb.",
-            "...k......",
-            "..........",
-            "..........",
-            "..........",
+            "..k.....",
+            "ggkbBbbm",
+            "ggkbbbb.",
+            "..k.....",
+            "........",
+            "........",
+            "........",
         ],
     ),
 ]

@@ -18,7 +18,6 @@ import { SlotValue } from './SlotValue';
 export interface InventorySlotProps {
   index: number;
   item: HudInventorySlot | null;
-  lootFrames: number;
   /** Drawer is open. Anchors are only written then, so a fly cannot aim at a collapsed cell. */
   active?: boolean;
   dragging?: boolean;
@@ -40,7 +39,6 @@ const RARITY_BORDER: Record<LootRarity, string> = {
 export function InventorySlot({
   index,
   item,
-  lootFrames,
   active = false,
   dragging = false,
   onHover,
@@ -113,7 +111,7 @@ export function InventorySlot({
         <>
           <LootIcon
             frame={shown.frame}
-            frames={lootFrames}
+
             className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2"
           />
           <SlotValue value={shown.value} />

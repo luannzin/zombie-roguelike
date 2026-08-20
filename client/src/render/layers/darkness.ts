@@ -226,8 +226,14 @@ export class DarknessLayer {
           : 0.62 + beat * 0.38;
       const radius = tileSize * light.radiusTiles * (0.62 + pulse * 0.14);
       const gradient = ctx.createRadialGradient(light.x, light.y, 1, light.x, light.y, radius);
-      gradient.addColorStop(0, `rgb(${tone} / ${(0.26 * pulse).toFixed(3)})`);
-      gradient.addColorStop(0.4, `rgb(${tone} / ${(0.09 * pulse).toFixed(3)})`);
+      // POOLS ADD. A cabin lamp is alone in a wood and can afford to be the
+      // brightest thing in the frame; the shop's rim is eleven of these
+      // overlapping, and at 0.26 each the sum saturated the floor between them
+      // into a flat sheet with no pool visible anywhere. Tuned against the
+      // WORST case rather than the single one, because the single one still
+      // reads at this strength and the ring did not read at all at the old.
+      gradient.addColorStop(0, `rgb(${tone} / ${(0.19 * pulse).toFixed(3)})`);
+      gradient.addColorStop(0.4, `rgb(${tone} / ${(0.065 * pulse).toFixed(3)})`);
       gradient.addColorStop(1, `rgb(${tone} / 0)`);
       ctx.fillStyle = gradient;
       ctx.fillRect(light.x - radius, light.y - radius, radius * 2, radius * 2);

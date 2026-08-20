@@ -765,9 +765,16 @@ def make_torchfire(w: int, h: int, frames: int, anchor: int) -> list[Image.Image
         ellipse(field, cx + lean * 0.3, anchor - 1.0, 2.6, 1.7, 0.95)
         ellipse(field, cx + lean, anchor - tall * 0.55, 2.0, tall * 0.6, 1.05)
         ellipse(field, cx + lean * 1.6, anchor - tall, 1.1, 1.6, 0.85)
-        # The air around it: a wide, weak bloom, so the torch is a source and
-        # not a sticker.
-        ellipse(field, cx, anchor - 2.5, 8.5, 6.5, 0.30)
+        # The air around it. WEAK AND TIGHT, and it used to be neither: at
+        # 8.5x6.5 and 0.30 this was a soft halo the width of the whole frame,
+        # which S14 rules out for emissive material ("flat step-4 core + one
+        # step-3 halo ring, no glow blur") and which eleven torches ringing one
+        # clearing then ADD together — the shop came out as a lit room with
+        # fires drawn on it rather than as a dark clearing eleven fires are
+        # holding open. The pool of light this throws on the ground is the
+        # scene light's job (`drawSceneLights`); this is only the air right at
+        # the flame.
+        ellipse(field, cx, anchor - 2.5, 6.2, 4.8, 0.19)
 
         for step in range(4):  # sparks, on the same phase so they loop too
             sway = math.sin(phase + step * 1.7)
@@ -776,7 +783,11 @@ def make_torchfire(w: int, h: int, frames: int, anchor: int) -> list[Image.Image
                 0.5 * (1.0 - rise))
 
         img = Image.new("RGBA", (w, h), TRANSPARENT)
-        resolve(field, img, FLAME, floor=0.09, tone=0.88, gain=1.15)
+        # `gain` was 1.15 — over 1, so the field clipped to the top of FLAME
+        # across the whole body and the fire resolved as a white pear with a
+        # warm rim. At 1.0 the ramp's own steps survive all the way up, which is
+        # what makes a flame read as fire rather than as a bulb.
+        resolve(field, img, FLAME, floor=0.09, tone=0.88, gain=1.0)
         out.append(img)
     return out
 

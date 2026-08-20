@@ -147,10 +147,17 @@ DISPLACED: Ramp = [rgb(c) for c in ("#4a4033", "#574c3c", "#645845")]
 OUTLINE_WOOD = rgb("#0c0a07")
 OUTLINE_COLD = rgb("#0a0b0d")
 
-# Peak horizontal lean, in world px, for a prop the client animates. A sign on
-# a post is the only thing out here with enough leverage to move visibly; the
-# tent's canvas breathes about a third as far.
-SWAY_SIGN = 1.6
+# Peak horizontal lean, in world px, for a prop the client animates.
+#
+# A SIGN DOES NOT MOVE. It is a plank nailed to a post driven into the ground,
+# and the client's sway is a horizontal SHEAR of the whole sprite — post,
+# ground contact and all — so a swinging sign slides its own footprint across
+# the floor every frame. That reads as a decal being dragged, not as timber in
+# wind, and it breaks the one convention S19 makes the whole set stand on:
+# nothing floats, everything sits on its shadow. Canvas is the exception and
+# earns it: a tent wall is fabric with nothing under it, and its lean is small
+# enough that the pegged hem never leaves its own contact band.
+SWAY_SIGN = 0.0
 SWAY_TENT = 0.5
 
 

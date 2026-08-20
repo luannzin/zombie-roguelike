@@ -9,7 +9,7 @@ recently changed system, when something looks like a regression, before
 modifying anything under *Do not touch*, or when the task asks what to work on
 next. Skip it for a self-contained change to a stable system.
 
-_Last verified: 2026-08-19 against `main` @ `54e94d6`._
+_Last verified: 2026-08-20 against `main` @ `41f5fb6`._
 
 ## Current phase
 
@@ -22,9 +22,16 @@ ceremony.
 ## Currently working on
 
 - **The visual refactor toward depth / 3D-ish volume** (`PIXEL-ART-DIRECTION.md`).
-  The art half is moving asset by asset; the RENDER half just landed as a whole
-  (see below), so new art is now being authored against a frame that has bloom,
-  shafts, fog and a grade on it.
+  The art half is moving asset by asset; the RENDER half landed as a whole (see
+  below), so new art is authored against a frame that has bloom, shafts, fog and
+  a grade on it.
+  **Done so far:** terrain and scenery, the object sheets, the held weapons, the
+  LOOT atlas (all 46 items plus the 12 gun icons), the skill payout TIN, and the
+  extraction PLATFORM and its drones. **Still on the old shading:** the console
+  and threshold kit (`make_rift.py`), the merchant's own kit (`make_store.py`),
+  the upgrade cabinet (`make_machine.py`), the skill ICONS (flat HUD marks by
+  contract — read `make_skills.py`'s header before "fixing" them), and the
+  creature sheets in `assets/raw/`.
 - Shop map iteration (`78da442` is the newest layout; `store.py` offsets are still moving).
 - Weapon feel: shotgun cone and melee swing landed; the catalog's derivation from CS2 stats is stable.
 
@@ -32,6 +39,7 @@ ceremony.
 
 | | |
 | --- | --- |
+| loot, the tin, the pad | the loot atlas is banded volume out of `make_loot.paint_form` — sub-blobs, edge-test planes, a material-tinted keyline that breaks on the lit crest, and an offset ground shadow on every frame; the payout tin is a five-band cylinder; and the extraction skid is a HEIGHT FIELD rasterised on `make_objects`' own dimetric with the drones rebuilt out of its volume toolkit. The ropes are plotted pixel by pixel instead of stroked. `material_ramp` in `make_textures.py` is now where S11's ramp law lives for the whole pipeline |
 | **the finish** | the renderer no longer draws on the visible canvas. Every layer draws into an offscreen 2D surface; `client/src/render/post/` finishes it in WebGL2 — bright pass, three-level bloom, radial light shafts, defocus, chromatic aberration, fog, a full grade (exposure / shoulder / contrast / saturation / temperature / tint / lift / gamma / gain), wash, vignette and grain. Driven by a `GradeStack`: a base LOOK per place plus named event layers on their own envelopes. The old 2D danger vignette is now one of those layers, and survives as the no-WebGL2 fallback |
 | camera feel | breath and sway on two slow sines, a directional spring IMPULSE (recoil goes back down the barrel), and the shake moved off `Math.random()` onto summed detuned sines |
 | ground fog | a fourth atmosphere field: low banks drifting on the wind, drawn smooth (one baked blob, stamped), under the darkness so it only exists where there is light |
@@ -52,7 +60,7 @@ ceremony.
 - **The post chain has no automated check and cannot have one.** `bun tests/grade.ts` covers the stack's envelopes and composition — the arithmetic — and nothing covers the shader. Judge it by looking: a bonfire should bloom and the grass beside it should not.
 - **The lobby is not graded.** `LobbyScene` / `CampfireCanvas` own their own 2D canvases and do not go through the post chain, so the title screen and the arena are finished differently. Nobody sees them side by side today, but the seam is real and it is where a "the camp looks flatter than the game" report will come from.
 - **`texImage2D` from the scene canvas every frame** is the one unavoidable cost of the hybrid, and it scales with window size rather than with what is on screen. Marked `ponytail:` in `post/chain.ts`; the upgrade is drawing the world into a GL target directly, which is a renderer rewrite.
-- **Additive light does not clamp.** The store's flat-white bug was fixed by spending one budget across four places (`STORE_AMBIENT`, `RING_TORCHES`, `TORCH_LIGHT_TILES`, `layers/payout` alphas). The underlying renderer still has no clamp, so the next zone with many lights will hit it again.
+- **Additive light does not clamp.** The store's flat-white bug was fixed by spending one budget across four places (`STORE_AMBIENT`, `RING_TORCHES`, `TORCH_LIGHT_TILES`, `layers/payout` alphas), and it came back: the torch FLAME sheet and the scene-light pools were each tuned against one lamp alone in a black wood, and the shop has eleven of them overlapping. Held now by `TORCH_FIRE_ALPHA` and the `drawSceneLights` gradient stops on the client, the bloom ellipse and `gain` in `make_store.make_torchfire`, and lowered ceilings on the pad's `GREEN_GLARE` / `RED_GLARE`. The underlying renderer still has no clamp, so the next zone with many lights will hit it a third time.
 - **Naming drift is permanent and deliberate.** `rift.py` / wire `rifts` mean the extraction platform; `crates.py` / wire `crates` mean all interactive objects. Do not rename either — the cost is twenty client files for nothing.
 - **Two giant files** (`server/app/room.py` 2.8k lines, `client/src/game/game.ts` 4.4k lines) — see below. Their section banners were rewritten to be honest (5 → 16 and 5 → 21); the files themselves are unchanged and still unsplit.
 - Dark gold currently buys nothing. Intentional, but it means its drop taps are untested against real demand — and they were just cut hard for the shard art, so the first thing it can buy has to be priced against the NEW rate, not the old one.

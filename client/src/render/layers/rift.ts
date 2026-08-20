@@ -758,21 +758,32 @@ function drawCargoTosses(
 }
 
 /**
- * One line, winch to whatever its free end has reached.
+ * One line, winch to whatever its free end has reached. PLOTTED AS PIXEL ART.
  *
  * TWO DIFFERENT PICTURES OUT OF ONE ROUTINE, and the difference is where the
- * far end is. While the line is falling the end is hanging in the air below
- * the drone, swinging, and only as much rope as has been paid out is drawn —
- * so what the player watches is a cable coming down, not a cable that exists.
- * Once it is tied the end IS the eye, and from that frame on the curve is
- * governed by SLACK: how much more rope there is than there is distance to
- * cover. That single number does the rest of the job — a fresh tie still has
- * plenty of line in it and pools, and by the time the rig is straining there
- * is none left and it is dead straight, which is what says the machine is
- * pulling.
+ * far end is. While the line is falling the end is hanging in the air below the
+ * drone, swinging, and only as much rope as has been paid out is drawn — so what
+ * the player watches is a cable coming down, not a cable that exists. Once it is
+ * tied the end IS the eye, and from that frame on the curve is governed by
+ * SLACK: how much more rope there is than there is distance to cover. That
+ * single number does the rest of the job — a fresh tie still has plenty of line
+ * in it and pools, and by the time the rig is straining there is none left and
+ * it is dead straight, which is what says the machine is pulling.
  *
- * Two passes, dark then light, so the line has a lit edge. One flat colour at
- * this width vanishes against a night forest.
+ * WHY IT IS NOT A STROKE ANY MORE. This used to be two `quadraticCurveTo`
+ * strokes at 1.6 and 0.7 screen pixels wide. Canvas anti-aliases a stroke, and
+ * a fractional-width one at that: the rope came out as a soft grey smear with
+ * partial alpha down both sides, hanging between a pixel-art aircraft and a
+ * pixel-art deck. PIXEL-ART-DIRECTION.md S4 is explicit — strict 1:1 pixel grid,
+ * zero anti-aliasing, zero sub-pixel work — and the one part of the extraction
+ * that the player watches for a full four seconds was the one part of it drawn
+ * with a pen.
+ *
+ * So the curve is SAMPLED into WORLD pixels, deduplicated, and each surviving
+ * pixel is filled as a `zoom`-sized block. Two passes, because a rope needs a
+ * lit edge to exist at all against a night forest and S8 says where that edge
+ * is: the crest goes one world pixel UP from the core, which is the 135deg key,
+ * and the core is drawn over it so the highlight never eats the line's body.
  */
 function drawRope(
   ctx: CanvasRenderingContext2D,
@@ -781,50 +792,69 @@ function drawRope(
   alpha: number,
 ): void {
   if (alpha <= 0.02 || drone.rope <= 0.5) return;
-  const ax = view.rawX(drone.endX);
-  const ay = view.rawY(drone.endY);
-  const bx = view.rawX(drone.x);
-  const by = view.rawY(drone.y);
   const span = Math.hypot(drone.x - drone.endX, drone.y - drone.endY);
   const slack = Math.max(0, drone.rope - span);
-  const sag = Math.min(slack * 0.55, drone.rope * 0.42) * view.zoom;
+  // All of this stays in WORLD pixels — the sag used to be scaled by zoom on
+  // the way in, which made a rope hang further at higher magnification.
+  const sag = Math.min(slack * 0.55, drone.rope * 0.42);
+  const midX = (drone.endX + drone.x) / 2;
+  const midY = (drone.endY + drone.y) / 2 + sag;
 
+  // One sample per half world pixel of arc: enough that the curve never gaps,
+  // few enough that a four-rope rig is a few hundred cheap rounds a frame.
+  const steps = Math.max(4, Math.ceil((span + sag) * 2));
+  const core = new Map<number, [number, number]>();
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    const u = 1 - t;
+    const wx = Math.round(u * u * drone.endX + 2 * u * t * midX + t * t * drone.x);
+    const wy = Math.round(u * u * drone.endY + 2 * u * t * midY + t * t * drone.y);
+    core.set(ropeKey(wx, wy), [wx, wy]);
+  }
+
+  const block = Math.max(1, Math.ceil(view.zoom));
   ctx.save();
   ctx.globalAlpha = alpha;
-  ctx.lineCap = 'round';
-  for (const [width, colour] of ROPE_STROKES) {
-    ctx.lineWidth = Math.max(1, width * view.zoom);
-    ctx.strokeStyle = colour;
-    ctx.beginPath();
-    ctx.moveTo(ax, ay);
-    ctx.quadraticCurveTo((ax + bx) / 2, (ay + by) / 2 + sag, bx, by);
-    ctx.stroke();
+  // The crest first and the core over it: a 2px band with its lit edge on top,
+  // which is the same section every cylinder in `make_objects` is banded into.
+  ctx.fillStyle = ROPE_CREST;
+  for (const [wx, wy] of core.values()) {
+    if (core.has(ropeKey(wx, wy - 1))) continue;
+    ctx.fillRect(view.x(wx), view.y(wy - 1), block, block);
   }
-  // The hook on the end while it is still falling. Two pixels, and they are
-  // what the eye tracks down the screen — a line with nothing on its end reads
-  // as a crack in the image rather than as something being lowered.
+  ctx.fillStyle = ROPE_CORE;
+  for (const [wx, wy] of core.values()) {
+    ctx.fillRect(view.x(wx), view.y(wy), block, block);
+  }
+  // The hook on the end while it is still falling. Three world pixels, and they
+  // are what the eye tracks down the screen — a line with nothing on its end
+  // reads as a crack in the image rather than as something being lowered.
   if (!drone.tied) {
-    ctx.fillStyle = ROPE_STROKES[1][1];
-    const r = Math.max(1, 1.4 * view.zoom);
-    ctx.beginPath();
-    ctx.arc(ax, ay, r, 0, Math.PI * 2);
-    ctx.fill();
+    const hx = Math.round(drone.endX);
+    const hy = Math.round(drone.endY);
+    ctx.fillStyle = ROPE_HOOK;
+    ctx.fillRect(view.x(hx - 1), view.y(hy), block * 3, block);
+    ctx.fillRect(view.x(hx), view.y(hy + 1), block, block);
   }
   ctx.restore();
 }
 
+/** One world pixel as a number, for the dedupe map. Offset so negatives pack. */
+function ropeKey(x: number, y: number): number {
+  return (x + 4096) * 16384 + (y + 4096);
+}
+
 /**
- * The rope's two strokes: the body, then a thinner catch on top of it.
+ * The rope's three tones, and they are `make_platform.py`'s `ROPE` ramp.
  *
  * Hardcoded rather than read off the palette because rope is a MATERIAL, the
- * same way `make_platform.py`'s `ROPE` ramp is — the theme decides what light
- * looks like in this game, not what hemp is made of. These are that ramp's
- * middle and top steps.
+ * same way that ramp is — the theme decides what light looks like in this game,
+ * not what hemp is made of. These are steps 1, 3 and 5 of it: the underside, the
+ * body and the crest the key catches. Move the ramp and move these with it.
  */
-const ROPE_STROKES: readonly (readonly [number, string])[] = [
-  [1.6, '#33280f'],
-  [0.7, '#6b5527'],
-];
+const ROPE_CORE = '#624425';
+const ROPE_CREST = '#9e8544';
+const ROPE_HOOK = '#836534';
 
 /**
  * One sprite, bottom-anchored, optionally scaled, tilted and faded.
@@ -982,7 +1012,14 @@ export function drawRiftGlow(
       : 0.92 + 0.08 * Math.sin(time * 1.6);
     const radius = rift.lightTiles * tileSize * (phase.alarm ? 1.35 : 1.0);
     const [r, g, b] = phase.alarm ? ALARM_TONE : palette().scene.beacon;
-    const peak = phase.alarm ? 0.30 : 0.20;
+    // THE HALO IS THE AIR, NOT THE LAMP. The corner lamps are baked into the
+    // sheet and their glare is its own additive sheet on top; this gradient
+    // sits UNDER both and only has to say the clearing has a source in it. At
+    // 0.30/0.20 it was doing all three jobs at once — a wash the width of the
+    // pad's whole light radius that flattened the skid's own banding into a
+    // silhouette and blew the deck out to one value. Halved: the lamps stay
+    // the brightest thing on the structure, which is what they are for.
+    const peak = phase.alarm ? 0.17 : 0.11;
     const glow = ctx.createRadialGradient(rift.x, rift.y, 0, rift.x, rift.y, radius);
     glow.addColorStop(0, `rgb(${r} ${g} ${b} / ${(peak * beat).toFixed(3)})`);
     glow.addColorStop(0.24, `rgb(${r} ${g} ${b} / ${(peak * 0.45 * beat).toFixed(3)})`);
@@ -1015,7 +1052,11 @@ export function drawRiftGlow(
   if (wash && !phase.airborne && phase.drones.length > 0) {
     const holding = phase.drones.reduce((sum, d) => sum + (d.cruising ? 0 : 1), 0);
     const idle = (holding / Math.max(timing_drones(atlas), 1)) * 0.30;
-    ctx.globalAlpha = Math.min(0.95, idle + phase.strain * 0.70);
+    // Dust in a rotor wash is DUST — lit air over a dark floor, never a white
+    // sheet. At 0.95 the strain wash covered the imprint, the hazard paint and
+    // the front third of the deck with one flat glare on the frame the player
+    // is meant to be watching the skid come free.
+    ctx.globalAlpha = Math.min(0.62, idle + phase.strain * 0.46);
     blit(ctx, wash, rift.x, rift.y, time);
     ctx.globalAlpha = 1;
   }

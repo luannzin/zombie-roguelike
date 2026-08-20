@@ -6,11 +6,12 @@
  *
  *   ground()      floor + litter + rocks + trunks. Static, so it bakes into
  *                 two offscreen canvases and costs two blits a frame.
- *   undergrowth() grass tufts and bushes. Drawn live because they SWAY, which
+ *   undergrowth() grass tufts. Drawn live because they SWAY, which
  *                 is the cheapest thing that stops a forest looking like a
  *                 photograph.
- *   overgrowth()  tree canopies and ferns, drawn AFTER characters, so you walk
- *                 under foliage and behind bushes instead of over a flat plane.
+ *   overgrowth()  tree canopies, bushes and ferns, drawn AFTER characters, so
+ *                 you walk under foliage and INTO a thicket instead of over a
+ *                 flat plane.
  *
  * The bake is two canvases, not one, precisely so the swaying plants can sit
  * between them: ground underneath, plants on top of it, props on top of that.
@@ -54,10 +55,9 @@ const MAX_CACHED_MAP_PIXELS = 4096 * 4096;
 const GRASS_CHANCE = 0.34;
 /** Second tuft on a tile that already has one. */
 const GRASS_DOUBLE_CHANCE = 0.4;
-/** Share of floor tiles that get a bush. Behind bodies, so it can afford more
- *  than the fern, which is in front of them. */
+/** Share of floor tiles that get a bush. Drawn OVER bodies, with the fern. */
 const BUSH_CHANCE = 0.055;
-/** Share of floor tiles that get a foreground bush. Deliberately rare. */
+/** Share of floor tiles that get a fern. Deliberately rare. */
 const FERN_CHANCE = 0.045;
 
 /** Share of floor tiles that get flat litter baked into the ground. */
@@ -78,8 +78,9 @@ const SWAY_RATE = 1.5;
 /**
  * How hard a passing body pushes each plant, as a multiple of the shared
  * disturbance field. A tuft underfoot is trodden; a bush is shouldered aside;
- * a fern is drawn in FRONT of the character, so it is the one the player
- * actually watches part, and it gets the most.
+ * a fern is the thinnest of the three and whips furthest. Bush and fern are
+ * both drawn in FRONT of the character now, so their bend is the reaction the
+ * player actually watches and both are worth the reach.
  */
 const GRASS_PUSH = 1;
 const BUSH_PUSH = 0.8;
@@ -292,6 +293,18 @@ export class TerrainLayer {
 
         if (tile !== FLOOR) continue;
         if (this.decorationMask && !this.decorationMask(tx, ty)) continue;
+
+        // BUSHES CLOSE OVER A BODY. They used to be drawn with the grass, one
+        // pass before the characters, which meant the tallest undergrowth on
+        // the map was the only foliage a player could never be hidden by —
+        // you walked in front of a thicket the way you walk in front of a
+        // painting of one. Same claim as the fern's, one line above it in the
+        // depth stack because a bush is the bigger mass: standing in it, you
+        // are in cover and it looks like it.
+        if (tileHash(tx, ty, seed, 13) < BUSH_CHANCE) {
+          drawPlant(ctx, atlas.bush, world, tx, ty, time, SWAY_BUSH, 14, bodies);
+        }
+
         if (tileHash(tx, ty, seed, 51) >= FERN_CHANCE) continue;
         const frame = variant(fern, tx, ty, seed, 52);
         // Ferns are the ones the player pushes through face-first: they are
@@ -360,7 +373,7 @@ export class TerrainLayer {
     paintProps(ctx, world, this.atlas, window);
   }
 
-  /** Swaying grass and bushes. Live, so they cannot live in the bake. */
+  /** Swaying grass. Live, so it cannot live in the bake. */
   private undergrowth(
     ctx: CanvasRenderingContext2D,
     world: TileMap,
@@ -377,11 +390,12 @@ export class TerrainLayer {
         if (world.tiles[ty][tx] !== FLOOR) continue;
         if (this.decorationMask && !this.decorationMask(tx, ty)) continue;
 
-        if (tileHash(tx, ty, seed, 13) < BUSH_CHANCE) {
-          drawPlant(ctx, atlas.bush, world, tx, ty, time, SWAY_BUSH, 14, bodies);
-          // A bush and a tuft on the same tile is a pile, not undergrowth.
-          continue;
-        }
+        // A BUSH IS CLAIMED HERE AND DRAWN IN `overgrowth`. The tile still
+        // gives up its grass — a bush and a tuft on the same tile is a pile,
+        // not undergrowth — but the shrub itself belongs to the pass that runs
+        // AFTER the bodies, because a waist-high thicket that a character
+        // stands in front of is not a thicket. See `overgrowth`.
+        if (tileHash(tx, ty, seed, 13) < BUSH_CHANCE) continue;
         if (tileHash(tx, ty, seed, 11) >= GRASS_CHANCE) continue;
         drawTuft(ctx, atlas.grass, world, tx, ty, 0, time, bodies);
         if (tileHash(tx, ty, seed, 12) < GRASS_DOUBLE_CHANCE) {

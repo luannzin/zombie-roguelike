@@ -4,13 +4,24 @@
 Everything else in `scenery/` is something people left behind. This is the one
 object on the map that answers back, and what it is is a CARGO SKID somebody
 abandoned in the woods: a welded iron box open at the front, still half full of
-crates nobody came back for, with four corner posts and lamps. The aircraft
-are not on it — they come when the pad calls them.
+crates nobody came back for, with four masts and lamps. The aircraft are not on
+it — they come when the pad calls them.
+
+IT IS A SOLID ON THE WORLD'S OWN CAMERA
+The skid and the drone are both rasterised in the 2:1 dimetric every crate,
+barrel and fence post in this game stands on — `objects.SLOPE`, `objects.tone`
+and the `PLANE_TOP/FRONT/SIDE` table, imported from `make_objects.py` rather
+than restated. The skid is a HEIGHT FIELD painted back to front; the drone is
+four `objects.box` pods on `objects.billet` arms under one hull. What that
+replaced was a front elevation with a continuous value ramp poured down it: a
+gradient (S7) through a ditherer (S5) with no top plane anywhere (S3), on the
+one object in the game the camera looks down at hardest. See the section
+comment over `_skid` for the full argument and for the footprint's axes.
 
 Output (assets/processed/platform/):
     platform.png  3 frames,  80x64  PROP  — the skid: cold, green standby, red
-                                            alarm. The corner lamps are the
-                                            only thing that changes.
+                                            alarm. The mast lamps are the only
+                                            thing that changes.
     drone.png     2 frames,  24x16  PROP  — a lift drone, hovering then cruising
     rotor.png     8 frames,  28x12  VFX   — loop: four discs turning
     strobe.png    8 frames,  24x16  VFX   — loop: a drone's nav lights
@@ -46,7 +57,9 @@ that climbs, strains and then flies off cannot be a sprite. So the four lift
 eyes ship as pixel offsets from the platform's contact point (`layout.eyes`),
 in the same order the server places the drones, and both sides read that one
 list. Baking a rope into the platform sheet would freeze the one part of this
-structure whose whole job is to move.
+structure whose whole job is to move. The `ROPE` ramp below is that line's
+material and the client plots it PIXEL BY PIXEL out of three of its steps —
+see `drawRope` in `client/src/render/layers/rift.ts`.
 
 WHY IT IS IRON AND NOT STONE
 This replaced a ring of quarried stones around a tear in the world. The tear
@@ -64,6 +77,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import colorsys
 import json
 import math
 import random
@@ -86,6 +100,7 @@ from make_textures import (
     ease_out,
     ellipse,
     hash01,
+    material_ramp,
     pack,
     pick,
     resolve,
@@ -93,59 +108,98 @@ from make_textures import (
 )
 from make_rift import IRON, SOCKET
 
-# --- materials ---------------------------------------------------------------
+#: THE CAMERA, AND IT IS NOT THIS MODULE'S. `objects.SLOPE` is the 2:1 dimetric
+#: every crate, barrel and fence post in the world is built on; `objects.tone` is
+#: its flat-step painter and `PLANE_TOP/FRONT/SIDE` its plane table. The pad
+#: stands in the same clearing as those props, so it is rasterised on the same
+#: camera by the same rule — imported, never restated, for the reason spelled out
+#: beside them in `make_objects.py`. A structure lit on its own slope is a
+#: structure from a different game standing next to one from this one.
+import make_objects as objects  # noqa: E402
+from make_objects import SLOPE  # noqa: E402
 
-#: The outline every piece of this structure is keyed with. Darker than `IRON`'s
-#: own bottom step, because a silhouette sharing a value with the body it
-#: surrounds stops being a silhouette the moment the night multiply lands.
+# --- materials ---------------------------------------------------------------
+#
+# SIX-STEP RAMPS, DERIVED. Everything on this prop is banded on
+# `objects.PLANE_TOP` / `PLANE_FRONT` / `PLANE_SIDE`, which are steps 5, 3 and 1
+# — so a five-step ramp collapses the top plane into the specular and the deck
+# stops being brighter than the wall behind it. Each is `material_ramp` out of
+# S11's law (hue, saturation, and where the two ends sit) rather than six typed
+# hex triples, so the hue-shift-and-desaturate rule is written once for the whole
+# game instead of once per material here.
+
+#: The outline every piece of this structure is keyed with, and the one flat
+#: colour left on the sheet. It is only used where the keyline has no material to
+#: tint off — inside a lift eye, and under a lamp hood, both of which are HOLES
+#: rather than surfaces.
 EDGE = rgb("#0a0b0d")
 
-#: Corrosion. Warm, and the only warm thing in the metal — which is what makes
-#: it read as AGE rather than as paint: the skid has stood in a wet forest for
-#: years and the water ran down from every seam and rivet.
-RUST: Ramp = [rgb(c) for c in ("#2b1a10", "#40281a", "#573624", "#6f4630", "#8a5c3e")]
+#: Corrosion. Warm, and the only warm thing in the metal — which is what makes it
+#: read as AGE rather than as paint: the skid has stood in a wet forest for years
+#: and the water ran down from every seam and rivet.
+RUST: Ramp = material_ramp(20, 0.44, 0.11, 0.52, steps=6)
 
 #: Hazard paint on the front threshold, half worn off. The one saturated colour
 #: on the whole prop and it earns its place: black-and-yellow chevrons are the
 #: single most legible way a 16px world can say "machinery, stand clear", and
-#: they are what a player picks the pad out by from across a clearing before
-#: any of the detail resolves.
-HAZARD: Ramp = [rgb(c) for c in ("#4a3a10", "#7d6117", "#b89122", "#e5bb3a")]
+#: they are what a player picks the pad out by from across a clearing before any
+#: of the detail resolves.
+HAZARD: Ramp = material_ramp(46, 0.66, 0.13, 0.66, steps=6)
+
+#: The threshold's own steel, a hair warmer than the deck's so the painted lip
+#: reads as a separate piece bolted on rather than as a stripe drawn on the box.
+LIP: Ramp = material_ramp(30, 0.10, 0.09, 0.36, steps=6)
+
+#: The load. Timber, and darker than the crates out in the clearing on purpose —
+#: this lot has been sitting in an open box in the rain for years.
+CRATE: Ramp = material_ramp(30, 0.34, 0.08, 0.42, steps=6)
+#: A rusted drum on the deck. Shares RUST's hue so the load and the corrosion are
+#: one story, and sits a step under it so a drum never out-reads the streaks.
+DRUM: Ramp = material_ramp(18, 0.40, 0.08, 0.38, steps=6)
 
 #: A powered fitting. GREEN, because every other light in this game is fire or
-#: the beacon's mint, and a machine reporting that it is running must be
-#: neither — the console goes gold when the quota lands and the deck must not
-#: compete with it.
-STATUS: Ramp = [rgb(c) for c in ("#0c2415", "#155c30", "#27a557", "#63e894", "#c8ffdd")]
+#: the beacon's mint, and a machine reporting that it is running must be neither
+#: — the console goes gold when the quota lands and the deck must not compete
+#: with it.
+STATUS: Ramp = material_ramp(146, 0.62, 0.11, 0.86, steps=6)
 
-#: A drone's tail light, and the pad's ALARM lamp. Red, and dim at the bottom:
-#: a marker, not a floodlight.
-STROBE: Ramp = [rgb(c) for c in ("#2a0808", "#6e1414", "#c02424", "#ff6a5a")]
+#: A drone's tail light, and the pad's ALARM lamp. Red, and dim at the bottom: a
+#: marker, not a floodlight.
+STROBE: Ramp = material_ramp(3, 0.72, 0.10, 0.78, steps=6)
 
-#: What the corner lamps throw into the air, one ramp each. These top out much
+#: What the corner lamps throw into the air, one ramp each. These top out
 #: brighter than the baked lamps do, for the same reason `FLAME` does: they are
-#: drawn ADDITIVELY after the night multiply, so their job is to be light
-#: rather than to be a lit surface, and a glare in the forest's own value range
-#: would have nothing left to read as glare.
+#: drawn ADDITIVELY after the night multiply, so their job is to be light rather
+#: than to be a lit surface, and a glare in the forest's own value range would
+#: have nothing left to read as glare.
+#:
+#: THEY USED TO TOP OUT AT NEAR-WHITE and they no longer do. Four of these ring
+#: one small clearing and their sheets OVERLAP; at #e8fff2 and #ffdcd0 the sum
+#: went flat white over the pad and took the skid's own banding with it, which is
+#: the same failure the shop's eleven torches had. A glare that erases the object
+#: it belongs to is not glare, it is fog.
 GREEN_GLARE: Ramp = [
-    rgb(c) for c in ("#0a2414", "#12522c", "#1f9450", "#4fd489", "#a8ffcc", "#e8fff2")
+    rgb(c) for c in ("#0a2414", "#12522c", "#1c8148", "#43b877", "#7fdcab", "#b4efcd")
 ]
 RED_GLARE: Ramp = [
-    rgb(c) for c in ("#250606", "#5e0f0f", "#a81c1c", "#e83c30", "#ff8a70", "#ffdcd0")
+    rgb(c) for c in ("#250606", "#5e0f0f", "#961919", "#cc3328", "#e8705c", "#f2a795")
 ]
 
-#: Rope. Three usable steps is all a two-pixel line can spend, and the client
-#: draws the rigging from these rather than from a sprite — see `layout.rope`.
-ROPE: Ramp = [rgb(c) for c in ("#1a1409", "#33280f", "#4d3c19", "#6b5527")]
+#: Rope. The client draws the rigging from these rather than from a sprite — see
+#: `layout.rope` — so this ramp is the SOURCE for `ROPE_STROKES` in
+#: `client/src/render/layers/rift.ts`. Six steps, because the client now plots
+#: the line as pixel art with a lit crest, a body and a contact underside rather
+#: than as two anti-aliased strokes.
+ROPE: Ramp = material_ramp(34, 0.44, 0.09, 0.52, steps=6)
 
 #: What the skid crushed: soil that has been under a tonne of iron for years —
 #: pressed flat, dead, and darker than the ground beside it.
 #:
 #: NOT BLACK. These are multiplied over live terrain, so the ramp only has to
-#: take light OUT of the soil — pushed to the bottom of the scale the mark
-#: stops reading as pressed ground and starts reading as a hole in the floor,
-#: which is the one thing it must not be now that the platform is gone and the
-#: party can walk over it.
+#: take light OUT of the soil — pushed to the bottom of the scale the mark stops
+#: reading as pressed ground and starts reading as a hole in the floor, which is
+#: the one thing it must not be now that the platform is gone and the party can
+#: walk over it.
 PRESSED: Ramp = [rgb(c) for c in ("#1b1d16", "#22251b", "#2b2e22", "#353829", "#404432")]
 #: Oil, and the grit that came out from under the skid feet.
 OIL = rgb("#08080b")
@@ -155,9 +209,48 @@ GRIT: Ramp = [rgb(c) for c in ("#3a3428", "#4a4234", "#5b5142")]
 # --- the skid ----------------------------------------------------------------
 #
 # THE PLOT IS 7x7 AND THE SKID IS 5x4 OF IT. The rest is the approach: the tile
-# the console stands on, the tile the torch stands on, and a lane down each
-# side wide enough for a body to get round the back. A structure that filled
-# its own plot would be a wall with a button on it.
+# the console stands on, the tile the torch stands on, and a lane down each side
+# wide enough for a body to get round the back. A structure that filled its own
+# plot would be a wall with a button on it.
+#
+# IT IS BUILT AS A SOLID NOW, ON THE WORLD'S OWN CAMERA.
+# What this replaced was a FRONT ELEVATION with a value ramp poured down it: a
+# table of row landmarks, a silhouette half-width per row, and `pick(IRON,
+# <continuous shade>)` over the lot. Three things followed and every one of them
+# is something PIXEL-ART-DIRECTION.md rules out —
+#
+#   * a continuous shade is a gradient (S7), and a gradient through `pick` is a
+#     dither (S5), so no surface on the prop had a value of its own and no fold
+#     between two surfaces had an edge;
+#   * an elevation has no TOP PLANE, and the top plane is 35-45% of a prop's
+#     silhouette on this camera (S3) and the strongest depth cue it has (S18).
+#     The deck of a cargo platform is the one surface the whole object is ABOUT
+#     and it was drawn as a lighter part of the wall behind it;
+#   * `abs(u)` shading is symmetric about the object's centre line, which is a
+#     light source sitting behind the camera. The key is at 135deg (S8) and
+#     everything else in this game is lit by it.
+#
+# So the skid is now a HEIGHT FIELD rasterised in the same 2:1 dimetric the
+# crates, barrels and fence posts stand on — `objects.SLOPE`, `objects.tone` and
+# the `PLANE_TOP/FRONT/SIDE` table, imported rather than restated, for exactly
+# the reason those are public. The pad is a man-made box standing in the same
+# clearing as the crates; if it is not on their camera it is a matte painting
+# they are standing in front of.
+#
+# THE FOOTPRINT AXES. `a` runs up-LEFT and `b` runs up-RIGHT, both in screen
+# pixels, so a cell (a, b) lands at
+#
+#     x = cx - a + b          y = base - (a + b) * SLOPE - z
+#
+# and the four corners of the box are NEAR (0,0), LEFT (A,0), RIGHT (0,B) and
+# FAR (A,B). The camera looks into the near corner, which is why the two FAR
+# walls are the ones the player sees the inside of and the two NEAR edges are
+# low lips you can see over. That is a cargo skid with its front dropped, and it
+# is the same read the old elevation was reaching for with a taper.
+#
+# A face pointing -b faces down-LEFT on screen and is therefore the KEY face; a
+# face pointing -a faces down-RIGHT and is the SHADE face. Those two lines are
+# the entire lighting model and they are the same two `objects.box` uses.
 
 PLATFORM_TILES_W = 5
 PLATFORM_TILES_H = 4
@@ -182,10 +275,10 @@ PLATFORM_COLD, PLATFORM_STANDBY, PLATFORM_ALARM = range(PLATFORM_STATES)
 DRONE_STATES = 2
 DRONE_HOVER, DRONE_CRUISE = range(DRONE_STATES)
 
-#: Four corners, and THE ORDER IS THE CONTRACT — `layout.eyes` here and
-#: `server/app/rift.py`'s corner order are one list. It runs on the DIAGONAL
-#: (front-left, back-right, front-right, back-left) rather than around the rim,
-#: so a rig part-way through tying on is holding opposite corners and the load
+#: Four lift points, and THE ORDER IS THE CONTRACT — `layout.eyes` here and
+#: `server/app/rift.py`'s corner order are one list. It runs on the DIAGONAL:
+#: entry 0 is opposite entry 1 and entry 2 is opposite entry 3, so a rig
+#: part-way through tying on is holding opposite sides of the deck and the load
 #: hangs level instead of hinging.
 DRONES = 4
 
@@ -205,561 +298,633 @@ DOWNWASH_FPS = 12
 BURST_FRAMES = 12
 BURST_FPS = 18
 
+#: The box, as fractions of the sprite. UNEQUAL ON PURPOSE: `objects` documents
+#: that a footprint with equal left and right runs is a diamond, and a diamond
+#: is a gem rather than a rectangle seen in perspective. Everything else on this
+#: prop is derived from these two numbers so the structure re-proportions with
+#: `--tile` instead of drifting apart.
+FOOT_LEFT = 0.375
+FOOT_RIGHT = 0.425
+#: Deck, wall and post, in fractions of the frame height. The deck is a SLAB the
+#: box sits on rather than a floor drawn inside it — a platform whose deck is
+#: level with the ground is a rug.
+DECK_RISE = 0.094
+WALL_RISE = 0.203
+POST_RISE = 0.266
+#: Thickness of a wall and of the front lip, in footprint pixels.
+WALL_THICK = 5
+#: How far along its edge each post stands, from the NEAR corner.
+#:
+#: NOT THE MIDPOINT, and not the corner either, and both of those were tried. At
+#: 45 degrees of yaw a box's four corners project to leftmost, rightmost, top and
+#: bottom — so corner posts put two of the four ropes on the same screen column,
+#: one above the other, and the client stations both of their drones out to the
+#: same side. Edge midpoints fix the stacking and leave the four x offsets in two
+#: tight pairs. Two thirds back along each edge is the arrangement that spreads
+#: all four across the frame while keeping the diagonal pairing the load needs.
+POST_ALONG = 0.65
+LIP_RISE = 0.047
 
-def _rows(height: int) -> dict[str, float]:
-    """The skid's horizontal landmarks, as fractions of its own height.
 
-    Authored against 64px and expressed as fractions so `--tile` still produces
-    a coherent box. Every one of these is a FOLD in the object — the eye reads
-    this shape entirely off where one surface stops and the next begins — so
-    they are named after the surfaces rather than left as loose numbers.
+def _skid(width: int, height: int) -> dict:
+    """Every number the skid is built from, derived once.
+
+    `base` is the NEAR corner's contact row and everything else hangs off it.
+    Kept as one dict rather than as constants so the sprite re-proportions with
+    `--tile`: a structure authored in absolute pixels at one tile size is a
+    structure that comes apart at another.
     """
-    h = height
+    left = round(width * FOOT_LEFT)
+    right = round(width * FOOT_RIGHT)
     return {
-        "post_top": 0.047 * h,    # the back posts' eyes, above everything
-        "back_top": 0.141 * h,    # top rail of the back wall
-        "back_face": 0.219 * h,   # where the rail ends and the inside face starts
-        "post_front": 0.391 * h,  # the front posts start here
-        "deck_far": 0.453 * h,    # far edge of the floor
-        "lip_top": 0.734 * h,     # the front threshold
-        "deck_near": 0.797 * h,   # near edge of the floor / top of the skid beams
-        "base_bot": 0.953 * h,    # the feet
+        # INTEGER, and that is not a rounding detail. With a half-pixel centre
+        # every screen column of the raster lands on x.5 and `round` breaks the
+        # tie to EVEN — so alternate columns of the dimetric grid collapsed onto
+        # each other and the skid came out combed into vertical stripes. A 2:1
+        # grid has to be laid on whole pixels at both ends (S4: strict 1:1 pixel
+        # grid, zero sub-pixel work).
+        "cx": width // 2,
+        # Room under the near corner for the contact band and the cast shadow
+        # (S9, S19) — without it the box stands on the bottom edge of its own
+        # frame and the shadow has nowhere to land.
+        "base": height - 1 - round(height * 0.078),
+        "A": left,
+        "B": right,
+        "deck": max(3, round(height * DECK_RISE)),
+        "wall": max(6, round(height * WALL_RISE)),
+        "post": max(8, round(height * POST_RISE)),
+        "lip": max(2, round(height * LIP_RISE)),
     }
-
-
-def _half(width: int, height: int, y: float) -> float:
-    """Half the silhouette's width at row `y`.
-
-    THE TAPER IS THE PERSPECTIVE. Narrow at the back, wide at the front, and
-    that one gradient is the only thing telling the eye it is looking into an
-    open box rather than at a flat panel. Drawn with parallel sides it reads as
-    a doorway.
-    """
-    r = _rows(height)
-    far = width * 0.375
-    near = width * 0.463
-    if y <= r["back_top"]:
-        return far
-    if y >= r["deck_near"]:
-        # The box overhangs its own beams, which is what stops the bottom edge
-        # reading as the floor line.
-        t = (y - r["deck_near"]) / max(height - r["deck_near"], 1.0)
-        return near - t * width * 0.030
-    t = (y - r["back_top"]) / max(r["deck_near"] - r["back_top"], 1.0)
-    return far + (near - far) * t
 
 
 def _eyes(width: int, height: int) -> tuple[tuple[float, float], ...]:
     """The four lift eyes, in pixels from the sprite's top-left.
 
-    Ordered front-left, back-right, front-right, back-left — the diagonal order
-    `DRONES` documents. `_layout` converts these to offsets from the CONTACT
-    point, which is the frame the client and the server both work in.
+    ON THE EDGE MIDPOINTS, NOT ON THE CORNERS. At 45 degrees of yaw one of a
+    box's four corners is the NEAR one, and a post standing on it is a bar down
+    the middle of the opening — it hides the load, which is the one thing on
+    this prop that tells a party the machine carries things. Mid-edge posts ring
+    the rim instead, and the diagonal pairing survives: 0 is opposite 1 across
+    the b axis, 2 is opposite 3 across the a axis.
     """
-    r = _rows(height)
-    cx = (width - 1) / 2.0
-    back_x = _half(width, height, r["back_top"]) - width * 0.035
-    # Held IN off the near corner by more than the back pair. An eye sitting on
-    # the widest row of the silhouette has half its ring outside the frame, and
-    # a lift point that is clipped is a lift point the ropes appear to miss.
-    front_x = _half(width, height, r["deck_near"]) - width * 0.078
-    back_y = r["post_top"] + height * 0.031
-    front_y = r["post_front"] + height * 0.031
+    s = _skid(width, height)
+    cx, base = s["cx"], s["base"]
+    A, B = s["A"], s["B"]
+    top = s["deck"] + s["post"]
+
+    def at(a: float, b: float) -> tuple[float, float]:
+        return (cx - a + b, _row(base - (a + b) * SLOPE - top))
+
     return (
-        (cx - front_x, front_y),
-        (cx + back_x, back_y),
-        (cx + front_x, front_y),
-        (cx - back_x, back_y),
+        at(A * POST_ALONG, 0.0),   # the near-left lip
+        at(A * POST_ALONG, B),     # the far-right wall — opposite it
+        at(0.0, B * POST_ALONG),   # the near-right lip
+        at(A, B * POST_ALONG),     # the far-left wall — opposite that
     )
+
+
+#: What a cell of the height field is made of. The region decides the RAMP and
+#: nothing else — the plane comes from the geometry, which is the whole point of
+#: rasterising a solid instead of painting a picture of one.
+REGIONS: dict[str, Ramp] = {
+    "deck": IRON,
+    "wall": IRON,
+    "post": IRON,
+    "lip": LIP,
+    "crate": CRATE,
+    "drum": DRUM,
+}
+
+
+def _column(field: dict, a: int, b: int, z: int, region: str) -> None:
+    """Raise the field at (a, b) to `z`, keeping the taller claim."""
+    if a < 0 or b < 0:
+        return
+    have = field.get((a, b))
+    if have is None or z >= have[0]:
+        field[(a, b)] = (z, region)
+
+
+def _slab(field: dict, a0: int, a1: int, b0: int, b1: int, z: int,
+          region: str) -> None:
+    """A rectangular block of the footprint raised to one height."""
+    for a in range(a0, a1 + 1):
+        for b in range(b0, b1 + 1):
+            _column(field, a, b, z, region)
+
+
+def _build_field(s: dict) -> dict:
+    """The skid as a height field: deck, two back walls, two front lips, posts.
+
+    Back to front in construction order, which is also the order somebody would
+    weld it: a slab, the walls that stand on the slab, the lips that close the
+    open side, then the posts the ropes get tied to.
+    """
+    A, B = s["A"], s["B"]
+    deck, wall, post, lip = s["deck"], s["wall"], s["post"], s["lip"]
+    field: dict[tuple[int, int], tuple[int, str]] = {}
+
+    # The slab. Its top face IS the deck — there is no separate floor drawn
+    # inside a box, because on this camera the inside of a box IS its top face.
+    _slab(field, 0, A, 0, B, deck, "deck")
+
+    # The two far walls, standing on the slab and meeting at the FAR corner.
+    _slab(field, A - WALL_THICK + 1, A, 0, B, deck + wall, "wall")
+    _slab(field, 0, A, B - WALL_THICK + 1, B, deck + wall, "wall")
+
+    # The two near lips: low enough to see the load over, high enough that the
+    # deck reads as a container rather than as a tray.
+    _slab(field, 0, WALL_THICK - 2, 0, B, deck + lip, "lip")
+    _slab(field, 0, A, 0, WALL_THICK - 2, deck + lip, "lip")
+
+    _cargo(field, s)
+
+    # The posts, last, so they stand proud of whatever they are bolted to. Three
+    # cells square: at one cell a post renders in a single screen column and has
+    # to fake both of its faces into the same pixel, which is what makes a thin
+    # upright read as a scratch rather than as a mast.
+    along_a, along_b = int(A * POST_ALONG), int(B * POST_ALONG)
+    for a, b in ((along_a, 0), (along_a, B), (0, along_b), (A, along_b)):
+        for da in range(-1, 2):
+            for db in range(-1, 2):
+                _column(field, a + da, b + db, deck + post, "post")
+    return field
 
 
 def make_platform(width: int, height: int, state: int, rng: random.Random) -> Image.Image:
     """One skid. PROP: baked colour, bottom-anchored, lit by the night.
 
-    Built surface by surface rather than shape by shape, because that is what
-    the eye is actually reading: a top rail catching the sky, the inside of a
-    back wall in its own shadow, a floor with things standing on it, a
-    threshold, and the beams underneath. Drawing an outline first and filling
-    it produces a box with no inside.
+    Rasterised as a solid (see the section comment), then dressed: corrosion
+    running DOWN from the seams because water does, rivets along the folds, a
+    stencil on the biggest flat area, hazard chevrons on the threshold, the
+    corner lamps that carry the state, and the contact band and cast shadow that
+    put it on the floor.
     """
     img = Image.new("RGBA", (width, height), TRANSPARENT)
     px = img.load()
-    r = _rows(height)
-    cx = (width - 1) / 2.0
-    live = state != PLATFORM_COLD
-    wall = max(3.0, width * 0.062)
+    s = _skid(width, height)
+    field = _build_field(s)
+    plan = _raster(px, (width, height), field, s)
 
-    # --- the body ------------------------------------------------------------
-    body: dict[tuple[int, int], str] = {}
-    for y in range(int(r["back_top"]), int(r["base_bot"]) + 1):
-        half = _half(width, height, y + 0.5)
-        inner = half - wall
-        for x in range(width):
-            u = x - cx
-            if abs(u) > half:
-                continue
-            if y >= r["deck_near"]:
-                body[(x, y)] = "base"
-            elif y >= r["lip_top"]:
-                body[(x, y)] = "lip"
-            elif y < r["back_face"]:
-                # The back wall's own top rail spans the full width: it is the
-                # far edge of the box, not a frame around a hole.
-                body[(x, y)] = "rail"
-            elif abs(u) > inner:
-                body[(x, y)] = "side"
-            elif y < r["deck_far"]:
-                body[(x, y)] = "back"
-            else:
-                body[(x, y)] = "floor"
-
-    for (x, y), part in body.items():
-        u = (x - cx) / max(_half(width, height, y + 0.5), 1.0)
-        grain = (hash01(x, y, 907) - 0.5) * 0.13
-        if part == "rail":
-            # The one surface pointed at the sky, and the reason the box has a
-            # readable top edge at all. The topmost row of it is the CATCH —
-            # a rail shaded evenly is a grey band, and a grey band across the
-            # top of a sprite reads as a wall behind the object.
-            catch = 1.0 if y <= r["back_top"] + 1 else 0.0
-            shade = 0.58 + catch * 0.30 - abs(u) * 0.16 - (y - r["back_top"]) * 0.030
-        elif part == "back":
-            # Inside a wall, facing the camera and shaded by its own overhang:
-            # darkest right under the rail, opening up as it falls to the floor.
-            t = (y - r["back_face"]) / max(r["deck_far"] - r["back_face"], 1.0)
-            shade = 0.11 + ease_out(t) * 0.17 - abs(u) * 0.07
-        elif part == "side":
-            # Inner faces of the side walls: shadow on the left, a catch on the
-            # right, so the box is lit from the upper left like everything else.
-            shade = 0.26 + (u * 0.30) - (y / height) * 0.06
-        elif part == "floor":
-            # THE DECK HAS TO BE THE LIGHT SURFACE. It is the only thing in
-            # here pointed up at the sky, and drawn as dark as the walls the
-            # whole interior collapses into one textured rectangle with crates
-            # floating in it. It still falls off toward the back, where the
-            # walls close over it.
-            t = (y - r["deck_far"]) / max(r["lip_top"] - r["deck_far"], 1.0)
-            shade = 0.30 + ease_in(t) * 0.30 - abs(u) * 0.06
-            # Plate seams: this is a floor made of welded sheet, and two dark
-            # lines are the cheapest way to say a surface has a scale.
-            if int(abs(x - cx)) % 13 == 6:
-                shade -= 0.16
-        elif part == "lip":
-            shade = 0.62 - abs(u) * 0.12
-        else:
-            t = (y - r["deck_near"]) / max(r["base_bot"] - r["deck_near"], 1.0)
-            shade = 0.34 - t * 0.20 - abs(u) * 0.10
-        px[x, y] = pick(IRON, clamp01(shade + grain), x, y)
-
-    # The fold where the back wall meets the deck. One dark row, and it is what
-    # makes the floor read as going UNDER the wall rather than butting into it.
-    for x in range(width):
-        for row in (int(r["deck_far"]) - 1, int(r["deck_far"])):
-            if body.get((x, row)) in ("back", "floor"):
-                px[x, row] = IRON[0]
-
-    # --- corrosion -----------------------------------------------------------
-    # Rust RUNS DOWNWARD from seams, because water does. Streaks starting
-    # anywhere else read as brown paint, which is the failure mode of every
-    # weathered-metal sprite.
-    for _ in range(int(width * 0.9)):
-        sx = rng.randrange(width)
-        sy = rng.randrange(int(r["back_top"]), int(r["deck_near"]))
-        run = rng.randint(2, max(3, height // 9))
-        heat = rng.uniform(0.35, 0.95)
-        for step in range(run):
-            y = sy + step
-            if (sx, y) not in body:
-                break
-            if body[(sx, y)] == "floor" and step > 1:
-                break
-            fade = heat * (1.0 - step / (run + 1.0))
-            if fade < 0.18:
-                break
-            px[sx, y] = pick(RUST, clamp01(fade), sx, y)
-
-    # --- rivets --------------------------------------------------------------
-    # Two pixels each: a light one and the shadow under it. One pixel is a
-    # speck; three is a bolt head the size of a fist at this scale.
-    seam_rows = (int(r["back_face"]) + 1, int(r["deck_far"]) - 1, int(r["lip_top"]) + 1)
-    for row in seam_rows:
-        step = max(4, width // 12)
-        for x in range(int(cx) % step, width, step):
-            if (x, row) not in body:
-                continue
-            px[x, row] = pick(IRON, 0.92, x, row)
-            if (x, row + 1) in body:
-                px[x, row + 1] = IRON[0]
-
-    # --- stencils ------------------------------------------------------------
-    # A painted block on the back wall, half gone. It carries no information
-    # and is not meant to: it is there so the biggest flat area on the prop has
-    # something on it, and so the box reads as a numbered unit out of a fleet
-    # rather than as a one-off somebody welded in a shed.
-    stencil_y = int(r["back_face"] + (r["deck_far"] - r["back_face"]) * 0.34)
-    for block in range(4):
-        left = int(cx - width * 0.30 + block * width * 0.075)
-        for oy in range(max(2, height // 16)):
-            for ox in range(max(2, width // 32)):
-                x, y = left + ox, stencil_y + oy
-                if body.get((x, y)) != "back":
-                    continue
-                if hash01(x, y, 3301) < 0.34:
-                    continue
-                px[x, y] = pick(IRON, 0.66, x, y)
-
-    _cargo(px, body, width, height)
-
-    # --- the threshold -------------------------------------------------------
-    # Hazard chevrons, worn. The wear is what keeps them from reading as a
-    # decal: a clean stripe on a rusted box is a sticker applied yesterday.
-    for y in range(int(r["lip_top"]), int(r["deck_near"])):
-        for x in range(width):
-            if body.get((x, y)) != "lip":
-                continue
-            band = int(x + (y - r["lip_top"]) * 2) % 10
-            if band >= 5:
-                continue
-            wear = hash01(x, y, 2711)
-            if wear < 0.34:
-                continue
-            px[x, y] = pick(HAZARD, clamp01(0.30 + wear * 0.72), x, y)
-
-    _posts(px, body, width, height, state)
-
-    # --- feet ----------------------------------------------------------------
-    # Four blocks under the beams. The imprint is a picture of these, so they
-    # have to be visible enough that a player recognises the dents in the
-    # ground as belonging to this object.
-    foot_y = int(r["base_bot"])
-    for side in (-1, 1):
-        for lane in (0.86, 0.34):
-            fx = int(round(cx + side * _half(width, height, foot_y) * lane))
-            for oy in range(0, max(2, height // 24) + 1):
-                for ox in range(-1, 2):
-                    if 0 <= fx + ox < width and 0 <= foot_y + oy < height:
-                        px[fx + ox, foot_y + oy] = pick(
-                            IRON, 0.22, fx + ox, foot_y + oy
-                        )
-                        body[(fx + ox, foot_y + oy)] = "base"
-
-    # --- the light in it -----------------------------------------------------
-    # A strip along the inside of the threshold. Dead sockets when it is cold:
-    # an unlit fitting has to read as switched OFF rather than as a hole
-    # punched in the sprite, which is the whole reason `SOCKET` exists.
-    strip_y = int(r["lip_top"]) - 1
-    strip = STATUS if state == PLATFORM_STANDBY else STROBE
-    for x in range(width):
-        if body.get((x, strip_y)) not in ("floor", "lip"):
-            continue
-        if (x + strip_y) % 3 == 0:
-            px[x, strip_y] = pick(strip, 0.86, x, strip_y) if live else SOCKET
-
-    _outline(px, body, width, height)
+    _weather(px, plan, width, height, rng)
+    _rivets(px, plan, s, width)
+    _stencil(px, plan, s, width, height)
+    _chevrons(px, plan, s, width, height)
+    _lamps(px, plan, s, width, height, state)
+    _contact(px, plan, width, height)
+    _key(px, plan, width, height)
+    objects.shadow(img, s["cx"] + width * 0.05, s["base"] + height * 0.035,
+                   width * 0.44, height * 0.075)
     return img
 
 
-def _cargo(px, body: dict, width: int, height: int) -> None:
+def _row(value: float) -> int:
+    """A dimetric row, rounded HALF UP.
+
+    `round` in Python breaks a .5 tie toward the even integer, and half of this
+    grid lands on exactly .5 — a cell with `a + b` odd sits half a pixel between
+    two rows. Banker's rounding sends two neighbouring cells to the same row and
+    leaves the next one empty, which reads as a comb of vertical stripes down the
+    whole prop rather than as a surface.
+    """
+    return int(math.floor(value + 0.5))
+
+
+#: Plane -> ramp step, straight off `make_objects`. Named again here only
+#: because the rasteriser reads them on every pixel and `objects.PLANE_TOP` at
+#: that rate buries the geometry under attribute lookups.
+TOP, FRONT, SIDE = objects.PLANE_TOP, objects.PLANE_FRONT, objects.PLANE_SIDE
+
+
+def _raster(px, size: tuple[int, int], field: dict, s: dict) -> dict:
+    """Paint the height field back to front. Returns the per-pixel plan.
+
+    PAINTER'S ALGORITHM ON THE DIAGONAL. Cells are drawn in descending `a + b`,
+    so a near mass overwrites the far one it stands in front of and the 1px
+    occlusion seam S18 asks for falls out of the draw order rather than being
+    painted on afterwards. Each cell contributes ONE top-face pixel and a run of
+    side-face pixels down to whatever the cell in front of it reaches — which is
+    what makes a wall standing on a slab draw its own face and stop, instead of
+    running to the floor through the slab.
+    """
+    width, height = size
+    cx, base = s["cx"], s["base"]
+    plan: dict[tuple[int, int], tuple[Ramp, int]] = {}
+
+    def put(x: int, y: int, ramp: Ramp, step: int) -> None:
+        if 0 <= x < width and 0 <= y < height:
+            px[x, y] = objects.tone(ramp, step, x, y)
+            plan[(x, y)] = (ramp, step)
+
+    for (a, b) in sorted(field, key=lambda cell: -(cell[0] + cell[1])):
+        z, region = field[(a, b)]
+        ramp = REGIONS[region]
+        x = cx - a + b
+        y_top = _row(base - (a + b) * SLOPE - z)
+        put(x, y_top, ramp, TOP)
+
+        near = field.get((a - 1, b - 1))
+        near_z = near[0] if near else 0
+        y_bot = _row(base - (a + b - 2) * SLOPE - near_z) - 1
+        if y_bot < y_top:
+            continue
+        # Which of the two near faces this run is showing. -b points down-left
+        # into the key (S8), -a points down-right away from it. When a mass has
+        # both open — a free-standing post — the pixel is the corner between
+        # them, and the side of the sprite it is on decides which one wins.
+        lit = (a, b - 1) not in field or field[(a, b - 1)][0] < z
+        shade = (a - 1, b) not in field or field[(a - 1, b)][0] < z
+        if lit and shade:
+            plane = FRONT if x <= cx else SIDE
+        else:
+            plane = FRONT if lit else SIDE
+        for y in range(y_top + 1, y_bot + 1):
+            put(x, y, ramp, plane)
+    return plan
+
+
+def _cargo(field: dict, s: dict) -> None:
     """What is still in it. SCENERY, and it never changes.
 
-    The box is not a container the game tracks — nothing fed into the pad goes
-    in here and nothing comes out. It is there to say the skid was loaded once
-    and abandoned loaded, which is what makes a party believe the thing can
-    carry their bag. Drawn back to front so the near crates overlap the far
-    ones: that overlap is the only depth cue an interior this small gets.
+    The box is not a container the game tracks — nothing fed into the pad goes in
+    here and nothing comes out. It is there to say the skid was loaded once and
+    abandoned loaded, which is what makes a party believe the thing can carry
+    their bag. Raised into the same height field as the structure, so a crate is
+    a SOLID standing on the deck and gets its own top face and its own occlusion
+    seam rather than being a rectangle painted on the floor.
+
+    DELIBERATELY NOT FULL. The gap in the middle of the deck is where the eye
+    goes; a load packed wall to wall reads as a texture.
     """
-    r = _rows(height)
-    cx = (width - 1) / 2.0
-    floor_top = r["deck_far"]
-    floor_bot = r["lip_top"]
-    span = max(floor_bot - floor_top, 1.0)
-    s = width / 80.0
+    A, B = s["A"], s["B"]
+    deck = s["deck"]
+    unit = max(4, A // 7)
 
-    def depth(base_y: float) -> float:
-        """0 at the back of the box, 1 at the threshold. Dims what is far."""
-        return clamp01((base_y - floor_top) / span)
+    def crate(a: int, b: int, da: int, db: int, tall: int, region: str) -> None:
+        _slab(field, a, a + da, b, b + db, deck + tall, region)
 
-    def box(bx: float, base: float, w: float, h: float) -> None:
-        lightness = 0.34 + depth(base) * 0.34
-        left, right = int(bx - w / 2), int(bx + w / 2)
-        top, bottom = int(base - h), int(base)
-        for y in range(top, bottom + 1):
-            for x in range(left, right + 1):
-                if body.get((x, y)) not in ("floor", "back"):
+    crate(A - unit * 4, B - unit * 4, unit * 2, unit * 2, unit * 3, "crate")
+    crate(A - unit * 5, B - unit * 6, unit, unit + 1, unit * 2, "crate")
+    crate(unit, B - unit * 3, unit + 1, unit + 1, unit * 2, "drum")
+    crate(A - unit * 3, unit, unit + 1, unit, unit + 1, "crate")
+    crate(unit * 2, unit * 2, unit, unit, unit, "drum")
+
+
+def _weather(px, plan: dict, width: int, height: int, rng: random.Random) -> None:
+    """Corrosion, and it RUNS DOWNWARD because water does.
+
+    A streak that starts anywhere but a seam or an edge reads as brown paint,
+    which is the failure mode of every weathered-metal sprite. Each run is a
+    CLUSTER of two or three pixels wide at one exact ramp step (S5: texture is
+    clustered shape, never scattered noise) — the per-pixel `hash01` grain this
+    replaced put a single stray pixel of the neighbouring step on every face of
+    the prop, which is the dither S5 exists to forbid.
+    """
+    starts = [
+        (x, y) for (x, y), (ramp, step) in plan.items()
+        if ramp is IRON and step == TOP and (x + y) % 7 == 0
+    ]
+    rng.shuffle(starts)
+    for sx, sy in starts[: max(8, width // 4)]:
+        run = rng.randint(2, max(3, height // 10))
+        wide = rng.randint(1, 2)
+        step = rng.choice((2, 3))
+        for down in range(1, run + 1):
+            for across in range(wide):
+                x, y = sx + across, sy + down
+                cell = plan.get((x, y))
+                if cell is None or cell[0] is not IRON:
+                    break
+                if cell[1] == TOP:
                     continue
-                t = (y - top) / max(h, 1.0)
-                edge = x in (left, right) or y in (top, bottom)
-                shade = lightness - t * 0.16 - (x - bx) / max(w, 1.0) * 0.10
-                px[x, y] = TIMBER_OUTLINE if edge else pick(TIMBER, clamp01(shade), x, y)
-        # One slat across the face. A blank rectangle is a block; a rectangle
-        # with a board on it is a crate.
-        mid = int(base - h * 0.55)
-        for x in range(left + 1, right):
-            if body.get((x, mid)) in ("floor", "back"):
-                px[x, mid] = TIMBER_OUTLINE
+                px[x, y] = objects.tone(RUST, step if down < run - 1 else 1, x, y)
+                plan[(x, y)] = (RUST, step)
 
-    def drum(bx: float, base: float, w: float, h: float) -> None:
-        """A rusted barrel. CYLINDRICAL, and the shading has to say so.
 
-        The lid ellipse at the top and two hoop bands round the belly are what
-        separate a barrel from an orange rectangle — the curve alone is not
-        enough at eleven pixels wide, because the whole ramp fits in four steps
-        and a smooth gradient across four steps is a flat fill.
-        """
-        lightness = 0.22 + depth(base) * 0.26
-        half = max(w / 2.0, 1.0)
-        top = base - h
-        lid = h * 0.16
-        for y in range(int(top - lid), int(base) + 1):
-            for x in range(int(bx - half) - 1, int(bx + half) + 2):
-                if body.get((x, y)) not in ("floor", "back"):
+def _rivets(px, plan: dict, s: dict, width: int) -> None:
+    """Two pixels each: a light one and the shadow under it.
+
+    One pixel is a speck; three is a bolt head the size of a fist at this scale.
+    They go on the TOP faces only — a rivet is a thing standing proud of a
+    surface, and the only surface this camera can see a proud thing on is the
+    one pointing at the sky.
+    """
+    step = max(5, width // 11)
+    for (x, y), (ramp, plane) in list(plan.items()):
+        if ramp is not IRON or plane != TOP:
+            continue
+        if x % step or y % 3:
+            continue
+        px[x, y] = objects.tone(IRON, min(TOP, len(IRON) - 1), x, y)
+        under = plan.get((x, y + 1))
+        if under is not None and under[0] is IRON:
+            px[x, y + 1] = objects.tone(IRON, 0, x, y + 1)
+            plan[(x, y + 1)] = (IRON, 0)
+
+
+def _stencil(px, plan: dict, s: dict, width: int, height: int) -> None:
+    """A painted block on the inside of a wall, half gone.
+
+    It carries no information and is not meant to: it is there so the biggest
+    flat area on the prop has something on it, and so the box reads as a
+    numbered unit out of a fleet rather than as a one-off somebody welded in a
+    shed. Drawn as a value step on the wall's own ramp (S6: interior form breaks
+    are value steps, never lines).
+    """
+    A, B = s["A"], s["B"]
+    cx, base = s["cx"], s["base"]
+    deck, wall = s["deck"], s["wall"]
+    for block in range(4):
+        a = A - WALL_THICK
+        b = int(B * 0.30 + block * B * 0.12)
+        x = cx - a + b
+        y = _row(base - (a + b) * SLOPE - deck - wall * 0.45)
+        for oy in range(max(2, height // 20)):
+            for ox in range(max(2, width // 34)):
+                cell = plan.get((x + ox, y + oy))
+                if cell is None or cell[0] is not IRON or cell[1] == TOP:
                     continue
-                u = (x - bx) / half
-                if abs(u) > 1.0:
+                if hash01(x + ox, y + oy, 3301) < 0.30:
                     continue
-                curve = math.sqrt(max(0.0, 1.0 - u * u))
-                if y < top:
-                    # The lid, seen at the same slant the deck is.
-                    if abs((y - top) / max(lid, 1.0)) > curve:
-                        continue
-                    px[x, y] = pick(RUST, clamp01(lightness + 0.34), x, y)
-                    continue
-                if curve < 0.20:
-                    continue
-                v = (y - top) / max(h, 1.0)
-                hoop = 0.20 if 0.26 < v < 0.34 or 0.66 < v < 0.74 else 0.0
-                rim = curve < 0.42 or y >= base - 0.5
-                shade = lightness + curve * 0.42 - abs(u + 0.40) * 0.22 - hoop
-                px[x, y] = TIMBER_OUTLINE if rim else pick(RUST, clamp01(shade), x, y)
-
-    def sack(bx: float, base: float, w: float, h: float) -> None:
-        for y in range(int(base - h), int(base) + 1):
-            for x in range(int(bx - w / 2), int(bx + w / 2) + 1):
-                if body.get((x, y)) not in ("floor", "back"):
-                    continue
-                u = (x - bx) / max(w / 2.0, 1.0)
-                v = (y - (base - h)) / max(h, 1.0)
-                if u * u + (1.0 - v) * (1.0 - v) * 0.7 > 1.0:
-                    continue
-                px[x, y] = pick(TIMBER, clamp01(0.18 + v * 0.22 - u * 0.10), x, y)
-
-    # Back row first, then the near row over it. It is deliberately NOT full:
-    # the gap in the middle of the deck is where the eye goes, and a box packed
-    # wall to wall reads as a texture rather than as somebody's abandoned load.
-    box(cx - 22 * s, floor_top + span * 0.36, 14 * s, 10 * s)
-    drum(cx + 19 * s, floor_top + span * 0.34, 10 * s, 11 * s)
-    sack(cx - 4 * s, floor_top + span * 0.44, 12 * s, 6 * s)
-    box(cx - 13 * s, floor_bot - 2 * s, 12 * s, 9 * s)
-    drum(cx + 26 * s, floor_bot - 1 * s, 9 * s, 10 * s)
-    # A coil of the same rope the drones are rigged with. Spare, never used.
-    coil_x, coil_y = cx + 9 * s, floor_bot - 3 * s
-    for ring in range(3):
-        rr = (4.0 - ring) * s
-        for degrees in range(0, 360, 12):
-            a = math.radians(degrees)
-            x = int(round(coil_x + math.cos(a) * rr))
-            y = int(round(coil_y + math.sin(a) * rr * 0.45))
-            if body.get((x, y)) == "floor":
-                px[x, y] = pick(ROPE, 0.4 + ring * 0.2, x, y)
+                px[x + ox, y + oy] = objects.tone(IRON, TOP - 1, x + ox, y + oy)
 
 
-def _posts(px, body: dict, width: int, height: int, state: int) -> None:
-    """Four corner posts: the eye a rope is tied through, and the lamp under it.
+def _chevrons(px, plan: dict, s: dict, width: int, height: int) -> None:
+    """Hazard paint on the threshold, worn.
 
-    They stand PROUD of the walls on purpose. The eyes are the only part of the
-    prop the ropes touch, so they have to survive in silhouette — a lift point
-    flush with the rim leaves four ropes apparently tied to nothing.
+    The one saturated colour on the whole prop and it earns its place: black and
+    yellow chevrons are the single most legible way a 16px world can say
+    "machinery, stand clear", and they are what a player picks the pad out by
+    from across a clearing before any of the detail resolves. On the LIP's top
+    face, because that is the surface somebody would actually have painted and
+    the only one the camera sees square on.
+
+    The wear is what keeps them from reading as a decal: a clean stripe on a
+    rusted box is a sticker applied yesterday. It is a clustered mask on a 2x2
+    lattice, not per-pixel noise (S5).
+    """
+    for (x, y), (ramp, plane) in list(plan.items()):
+        if ramp is not LIP or plane != TOP:
+            continue
+        if (x + y * 2) % 8 >= 4:
+            continue
+        if hash01(x // 2, y // 2, 2711) < 0.22:
+            continue
+        px[x, y] = objects.tone(HAZARD, TOP - 1, x, y)
+        plan[(x, y)] = (HAZARD, TOP - 1)
+
+
+def _lamps(px, plan: dict, s: dict, width: int, height: int, state: int) -> None:
+    """The eye a rope goes through, and the lamp in a hood under it.
 
     THE LAMPS ARE THE PAD'S WHOLE VOCABULARY. Dead, green, red, and each one is
     the entire state of the night in two pixels seen from across a clearing:
-    nobody has been here, this one is open for business, and this one has
-    called for a pickup and is screaming about it. They are baked because a
-    prop's colour is its material; the GLARE around them is additive and lives
-    in `standby.png` / `siren.png`, because light is not a thing being lit.
+    nobody has been here; this one is open for business; this one has called for
+    a pickup and is screaming about it. They are baked because a prop's colour is
+    its material — the GLARE around them is additive and lives in `standby.png` /
+    `siren.png`, because light is not a thing being lit.
+
+    The eye is a RING WITH A HOLE PUNCHED THROUGH IT so it reads as something a
+    rope goes THROUGH; a filled knob is a bolt, and a rope tied to a bolt looks
+    glued on. The hole is keyed rather than left transparent — a gap in the
+    sprite would let the forest through a piece of solid iron.
     """
-    r = _rows(height)
-    cx = (width - 1) / 2.0
-    thickness = max(1, int(round(width / 46.0)))
-    for index, (ex, ey) in enumerate(_eyes(width, height)):
-        back = index in (1, 3)
-        top = r["post_top"] if back else r["post_front"]
-        bottom = r["deck_far"] if back else r["deck_near"]
-        col = int(round(ex))
-        for y in range(int(top), int(bottom) + 1):
-            for ox in range(-thickness, thickness + 1):
-                x = col + ox
-                if not (0 <= x < width and 0 <= y < height):
-                    continue
-                lean = (x - cx) / max(width / 2.0, 1.0)
-                shade = 0.50 - abs(ox) * 0.14 - lean * 0.10 - (y - top) / max(height, 1) * 0.12
-                px[x, y] = pick(IRON, clamp01(shade), x, y)
-                body[(x, y)] = "post"
-        # The eye: a RING WITH A HOLE PUNCHED THROUGH IT, so it reads as
-        # something a rope goes THROUGH. A filled knob is a bolt, and a rope
-        # tied to a bolt looks glued on. The hole is keyed with `EDGE` rather
-        # than left transparent — a gap in the sprite would let the forest
-        # through a piece of solid iron.
-        ring = max(2.2, width / 24.0)
-        row = int(round(ey))
-        for oy in range(int(-ring) - 1, int(ring) + 2):
-            for ox in range(int(-ring) - 1, int(ring) + 2):
+    ring = max(2.0, width / 26.0)
+    hood = max(1, int(round(width / 40.0)))
+    for ex, ey in _eyes(width, height):
+        col, row = int(round(ex)), int(round(ey)) - int(ring) - 1
+        for oy in range(-int(ring) - 1, int(ring) + 2):
+            for ox in range(-int(ring) - 1, int(ring) + 2):
                 x, y = col + ox, row + oy
                 if not (0 <= x < width and 0 <= y < height):
                     continue
-                d = math.hypot(ox, oy * 1.10)
+                d = math.hypot(ox, oy * 1.15)
                 if d > ring:
                     continue
-                body[(x, y)] = "post"
-                if d < ring - 1.7:
+                if d < ring - 1.6:
                     px[x, y] = EDGE
+                    plan[(x, y)] = (IRON, 0)
                 else:
-                    px[x, y] = pick(IRON, clamp01(1.0 - oy * 0.10 - ox * 0.05), x, y)
-        # The lamp, in a shallow hood just under the eye. The hood matters: a
-        # bare lit pixel is a pixel, a lit pixel with a dark lip over it is a
-        # FITTING, and only the second one reads as something that was
-        # installed here to be looked at.
-        lamp_y = row + int(ring) + 2
-        if not (0 <= lamp_y < height):
-            continue
-        for ox in range(-thickness - 1, thickness + 2):
+                    step = TOP if oy <= 0 and ox <= 0 else (FRONT if ox <= 0 else SIDE)
+                    px[x, y] = objects.tone(IRON, step, x, y)
+                    plan[(x, y)] = (IRON, step)
+        lamp_y = int(round(ey)) + 1
+        for ox in range(-hood - 1, hood + 2):
             x = col + ox
-            if not (0 <= x < width):
+            if not (0 <= x < width and 0 <= lamp_y < height):
                 continue
             if 0 <= lamp_y - 1 < height:
                 px[x, lamp_y - 1] = EDGE
-                body[(x, lamp_y - 1)] = "post"
-            if abs(ox) > thickness:
+                plan[(x, lamp_y - 1)] = (IRON, 0)
+            if abs(ox) > hood:
                 continue
             if state == PLATFORM_COLD:
                 px[x, lamp_y] = SOCKET
-            else:
-                ramp = STATUS if state == PLATFORM_STANDBY else STROBE
-                px[x, lamp_y] = pick(ramp, 0.92 - abs(ox) * 0.14, x, lamp_y)
-            body[(x, lamp_y)] = "post"
+                plan[(x, lamp_y)] = (IRON, 1)
+                continue
+            ramp = STATUS if state == PLATFORM_STANDBY else STROBE
+            px[x, lamp_y] = ramp[len(ramp) - 1 - abs(ox)]
+            plan[(x, lamp_y)] = (ramp, len(ramp) - 1 - abs(ox))
 
 
-def _outline(px, body: dict, width: int, height: int) -> None:
-    """Key the silhouette, and nothing inside it.
+def _contact(px, plan: dict, width: int, height: int) -> None:
+    """The 1-2px band where the mass meets the ground, INSIDE the sprite (S10).
 
-    Only the outer boundary: outlining every internal surface draws the object
-    as a wireframe, and the folds are already carried by the value breaks
-    between the surfaces themselves.
+    Above the cast shadow, never part of it, and the darkest thing on the object
+    (S19). It is drawn from the plan rather than from a row number because the
+    skid's contact line is a rhombus and not a row: the near corner touches down
+    thirty rows below the left and right ones.
     """
-    edges = [
-        (x, y)
-        for (x, y) in body
-        if any(
-            (x + ox, y + oy) not in body
-            for ox, oy in ((1, 0), (-1, 0), (0, 1), (0, -1))
-        )
-    ]
-    for x, y in edges:
-        px[x, y] = EDGE
+    for (x, y), (ramp, step) in list(plan.items()):
+        if (x, y + 1) in plan or step == TOP:
+            continue
+        px[x, y] = objects.tone(ramp, 0, x, y)
+        plan[(x, y)] = (ramp, 0)
+        above = plan.get((x, y - 1))
+        if above is not None and above[1] not in (TOP, 0):
+            px[x, y - 1] = objects.tone(above[0], 1, x, y - 1)
+            plan[(x, y - 1)] = (above[0], 1)
+
+
+def _key(px, plan: dict, width: int, height: int) -> None:
+    """S6's keyline: 1px, hue-tinted off the material, gone on the lit crest.
+
+    Only the outer boundary — outlining every internal surface draws the object
+    as a wireframe, and the folds are already carried by the value breaks between
+    the surfaces themselves. The colour comes off whatever it is keying rather
+    than being one flat near-black for the whole prop, so rusted steel, painted
+    hazard yellow and bare timber each carry their own edge; and where the key
+    light lands on a top face the line drops entirely, because a border competing
+    with the brightest step in a ramp is what makes a prop look traced.
+    """
+    edges: dict[tuple[int, int], RGBA] = {}
+    for y in range(height):
+        for x in range(width):
+            if px[x, y][3] != 0:
+                continue
+            below = plan.get((x, y + 1))
+            above = plan.get((x, y - 1))
+            if below is not None and below[1] >= TOP and above is None:
+                continue
+            best = None
+            contact = False
+            for dx, dy in ((0, 1), (1, 0), (-1, 0), (0, -1)):
+                near = plan.get((x + dx, y + dy))
+                if near is None:
+                    continue
+                if best is None or near[1] < best[1]:
+                    best = near
+                if (dx, dy) == (0, -1):
+                    contact = True
+            if best is None:
+                continue
+            edges[(x, y)] = _tint(best[0][0], -0.45 if contact else -0.22)
+    for (x, y), colour in edges.items():
+        px[x, y] = colour
+
+
+def _tint(colour: RGBA, light: float) -> RGBA:
+    """A ramp's darkest step pushed further down and round toward blue (S6)."""
+    red, green, blue, alpha = colour
+    hue, lightness, sat = colorsys.rgb_to_hls(red / 255.0, green / 255.0, blue / 255.0)
+    hue = ((hue * 360.0 - 15.0) % 360.0) / 360.0
+    out = max(0.0, min(1.0, lightness * (1.0 + light)))
+    r2, g2, b2 = colorsys.hls_to_rgb(hue, out, min(1.0, sat * 1.10))
+    return (round(r2 * 255), round(g2 * 255), round(b2 * 255), alpha)
 
 
 # --- the drones --------------------------------------------------------------
+#
+# ONE MACHINE, ON THE SAME CAMERA AS THE SKID IT LIFTS. What this replaced was
+# four soft ellipses and a `pick(IRON, <continuous shade>)` falloff away from
+# the hull's centre — a radial gradient through a ditherer, so an aircraft
+# twenty-four pixels wide had no plane on it anywhere and read as a smudge with
+# two coloured pixels in it. Built out of `objects.box` and `objects.billet`
+# instead, it is a HULL, four PODS and four ARMS, each one a solid with a top
+# face and two flanks, banded on the world's own plane table.
+#
+# THE POSTURE IS THE STATE AND THE ONLY STATE. Cruise is pitched nose-down —
+# the only way a multirotor goes anywhere and the only way this silhouette can
+# say it is travelling — and hover is level and holding station. On this camera
+# a pitch is a SHEAR of the pod ring: the far pair lifts and the near pair
+# drops, which is what a tilted disc does, and it costs two pixels.
+#
+# The blades are never drawn in either pose. That is `rotor`'s job (a smear, not
+# a shape), because a drone whose props are painted on is a drone that never
+# actually spins.
+
+
+#: Where the four motor pods sit, as fractions of the frame. Wider than it is
+#: deep, because on a high 3/4 camera a square plan foreshortens to a rhombus
+#: half as tall as it is wide (S1) — a pod ring drawn square reads as a drone
+#: seen from directly above, which is a camera this game does not have.
+POD_SPREAD_X = 0.34
+POD_SPREAD_Y = 0.15
+#: How far the cruise pose shears the ring. Small on purpose: past about a fifth
+#: of the pod spread the aircraft stops reading as tilted and starts reading as
+#: broken.
+CRUISE_PITCH = 0.42
 
 
 def make_drone(width: int, height: int, state: int) -> Image.Image:
-    """One lift drone. PROP, bottom-anchored on its skids.
+    """One lift drone. PROP, drawn in the AIR pass — it never touches the floor.
 
-    A QUADCOPTER READ FROM ABOVE AND IN FRONT, which is the only angle that
-    fits four motors and a hull into 24 pixels. Two states, and the difference
-    between them is POSTURE rather than detail: CRUISE is pitched nose-down,
-    which is the only way a multirotor can go anywhere and the only way this
-    sprite can say it is travelling; HOVER is level and holding station. The
-    blades are never drawn in either — that is the `rotor` sheet's job, because
-    a drone whose props are painted on is a drone that never actually spins.
+    Solids, back to front: the two far pods and their arms, then the hull over
+    them, then the two near pods, so the near ones cut into the hull and the
+    hull cuts into the far ones. That overlap is the depth cue (S18) and it is
+    the only one an aircraft gets — there is no ground under it to cast onto.
     """
     img = Image.new("RGBA", (width, height), TRANSPARENT)
     px = img.load()
+    size = (width, height)
     cruise = state == DRONE_CRUISE
-    cx = (width - 1) / 2.0
-    # A machine going somewhere has its nose down and its tail up, and it rides
-    # a little higher in its own frame because nothing is under it. The pitch is
-    # a pixel and a half and it is the whole read.
-    tilt = -0.16 if cruise else 0.0
-    cy = height * (0.40 if cruise else 0.44)
-    arm = width * 0.375
-    reach = height * 0.22
+    cx = width // 2
+    # Rides a little higher in its own frame when it is travelling: nothing is
+    # under it and the tail is up.
+    cy = height * (0.46 if cruise else 0.52)
+    sx = width * POD_SPREAD_X
+    sy = height * POD_SPREAD_Y
+    pitch = sy * CRUISE_PITCH if cruise else 0.0
+
+    #: (x, y, far?) — far pair first so the painter's order is the draw order.
     pods = [
-        (cx - arm, cy - reach), (cx + arm, cy - reach),
-        (cx - arm, cy + reach), (cx + arm, cy + reach),
+        (cx - sx, cy - sy - pitch, True),
+        (cx + sx, cy - sy - pitch, True),
+        (cx - sx, cy + sy + pitch, False),
+        (cx + sx, cy + sy + pitch, False),
     ]
-    pods = [(x, y + (x - cx) * tilt) for x, y in pods]
 
-    body: dict[tuple[int, int], str] = {}
+    def arm(pod_x: float, pod_y: float, far: bool) -> None:
+        """A boom from the hull out to a pod. A cylinder, so `billet` draws it."""
+        x0, x1 = (min(pod_x, cx), max(pod_x, cx))
+        axis = (pod_y + cy) / 2.0
+        objects.billet(px, size, x0, x1, axis, max(1.2, height * 0.075),
+                       IRON, cap=False)
 
-    def blob(bx: float, by: float, rx: float, ry: float, part: str) -> None:
-        for y in range(int(by - ry) - 1, int(by + ry) + 2):
-            for x in range(int(bx - rx) - 1, int(bx + rx) + 2):
-                if not (0 <= x < width and 0 <= y < height):
-                    continue
-                if ((x - bx) / rx) ** 2 + ((y - by) / ry) ** 2 <= 1.0:
-                    body[(x, y)] = part
+    def pod(pod_x: float, pod_y: float) -> None:
+        """A motor can: a short box with a lid, wider than it is tall."""
+        objects.box(px, size, pod_x, pod_y + height * 0.09,
+                    width * 0.075, width * 0.075, height * 0.10, IRON)
 
-    # Arms first, so the pods and the hull sit on top of them.
-    for pod_x, pod_y in pods:
-        steps = int(max(abs(pod_x - cx), abs(pod_y - cy)) * 2) + 2
-        for i in range(steps + 1):
-            t = i / steps
-            x = int(round(cx + (pod_x - cx) * t))
-            y = int(round(cy + (pod_y - cy) * t))
-            for oy in range(0, 2):
-                if 0 <= x < width and 0 <= y + oy < height:
-                    body[(x, y + oy)] = "arm"
-    for pod_x, pod_y in pods:
-        blob(pod_x, pod_y, width * 0.10, height * 0.10, "pod")
-    blob(cx, cy, width * 0.20, height * 0.19, "hull")
-    # Skids, and the winch drum between them. The drum is what the rope pays
-    # out of — without something under the hull for a line to come from, a
-    # rope appearing below a drone reads as a bug.
-    skid_y = height - 1
-    for side in (-1, 1):
-        for ox in range(int(width * 0.16)):
-            x = int(round(cx + side * (width * 0.10 + ox)))
-            if 0 <= x < width and 0 <= skid_y < height:
-                body[(x, skid_y)] = "skid"
-    for ox in range(-1, 2):
-        for oy in range(0, 2):
-            x, y = int(round(cx)) + ox, int(round(cy + height * 0.22)) + oy
-            if 0 <= x < width and 0 <= y < height:
-                body[(x, y)] = "winch"
+    for pod_x, pod_y, far in pods:
+        if far:
+            arm(pod_x, pod_y, far)
+            pod(pod_x, pod_y)
+    # The hull. Unequal left and right runs — a footprint with `lw == rw` is a
+    # diamond, and a diamond is a gem (see `make_objects`).
+    objects.box(px, size, cx, cy + height * 0.16,
+                width * 0.155, width * 0.185, height * 0.24, IRON)
+    for pod_x, pod_y, far in pods:
+        if not far:
+            arm(pod_x, pod_y, far)
+            pod(pod_x, pod_y)
 
-    for (x, y), part in body.items():
-        u = (x - cx) / max(width / 2.0, 1.0)
-        v = (y - cy) / max(height / 2.0, 1.0)
-        if part == "hull":
-            shade = 0.66 - u * 0.20 - v * 0.26
-        elif part == "pod":
-            shade = 0.52 - u * 0.14 - v * 0.18
-        elif part == "arm":
-            shade = 0.36 - u * 0.10
-        elif part == "winch":
-            shade = 0.44
-        else:
-            shade = 0.20
-        px[x, y] = pick(IRON, clamp01(shade + (hash01(x, y, 431) - 0.5) * 0.10), x, y)
+    # The winch, under the hull. Without something for a line to come out of, a
+    # rope appearing below a drone reads as a bug rather than as rigging.
+    objects.billet(px, size, cx - width * 0.05, cx + width * 0.05,
+                   cy + height * 0.21, max(1.2, height * 0.065), IRON, cap=False)
 
-    # Nav lights: green forward, red aft. Two pixels each, and the only thing
-    # on a 24px sprite that says which way it is facing — which matters far
-    # more now that these arrive across a clearing instead of sitting still.
-    for pod_x, pod_y in pods[:2]:
-        x, y = int(round(pod_x)), int(round(pod_y))
-        if (x, y) in body:
-            px[x, y] = pick(STATUS, 0.92, x, y)
-    for pod_x, pod_y in pods[2:]:
-        x, y = int(round(pod_x)), int(round(pod_y))
-        if (x, y) in body:
-            px[x, y] = pick(STROBE, 0.86, x, y)
+    plan = _survey(px, width, height)
+    # Nav lights: green forward, red aft. Two pixels each, and the only thing on
+    # a 24px sprite that says which way it is facing — which matters far more now
+    # that these arrive across a clearing instead of sitting still.
+    for index, (pod_x, pod_y, far) in enumerate(pods):
+        ramp = STATUS if not far else STROBE
+        x, y = int(round(pod_x)), int(round(pod_y - height * 0.02))
+        if plan.get((x, y)) is not None:
+            px[x, y] = ramp[len(ramp) - 2]
+            plan[(x, y)] = (ramp, len(ramp) - 2)
     # A lit eye on the hull, so a drone still reads as switched on when its
     # rotors are lost against the treeline.
-    hx, hy = int(round(cx)), int(round(cy))
-    if (hx, hy) in body:
-        px[hx, hy] = pick(STATUS, 0.70, hx, hy)
+    hx, hy = cx, int(round(cy))
+    if plan.get((hx, hy)) is not None:
+        px[hx, hy] = STATUS[len(STATUS) - 3]
+        plan[(hx, hy)] = (STATUS, len(STATUS) - 3)
 
-    _outline(px, body, width, height)
+    _key(px, plan, width, height)
     return img
+
+
+def _survey(px, width: int, height: int) -> dict:
+    """Recover the per-pixel plan from a frame the volume toolkit painted.
+
+    `objects.box` / `objects.billet` write pixels and keep no record of which
+    plane each one landed on, and `_key` needs that to tint a keyline off the
+    material it is keying (S6). Reading the colours back and matching them to
+    `IRON` is exact rather than approximate: `objects.tone` lands on a ramp step
+    and nothing on this sprite is between two of them, which is the whole point
+    of banding instead of dithering.
+    """
+    plan: dict[tuple[int, int], tuple[Ramp, int]] = {}
+    index = {colour[:3]: step for step, colour in enumerate(IRON)}
+    for y in range(height):
+        for x in range(width):
+            pixel = px[x, y]
+            if not pixel[3]:
+                continue
+            step = index.get(pixel[:3])
+            plan[(x, y)] = (IRON, step if step is not None else 2)
+    return plan
 
 
 def make_rotor_frame(width: int, height: int, index: int, total: int) -> Image.Image:

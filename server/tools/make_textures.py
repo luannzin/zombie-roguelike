@@ -18,7 +18,7 @@ Output (assets/processed/terrain/):
     deadtree.png  6 frames, 24x40   solid blocker, bare — a blighted TREE tile
     stump.png     4 frames, 16x14   solid blocker, a felled trunk, 4 states
     grass.png     6 frames, 10x10   decoration, non-solid, sways, LOD floor
-    bush.png      5 frames, 20x16   decoration, non-solid, sways, BEHIND bodies
+    bush.png      5 frames, 20x16   decoration, non-solid, sways, OVER bodies
     branch.png    5 frames, 16x7    flat decal, baked into the ground
     leaves.png    6 frames, 16x12   flat decal, baked into the ground
     fern.png      5 frames, 20x18   FOREGROUND decoration, over characters, NO shadow
@@ -67,6 +67,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import colorsys
 import json
 import math
 import random
@@ -99,6 +100,74 @@ Ramp = list[RGBA]
 def rgb(hex_code: str) -> RGBA:
     value = hex_code.lstrip("#")
     return (int(value[0:2], 16), int(value[2:4], 16), int(value[4:6], 16), 255)
+
+
+# --- material ramps, DERIVED --------------------------------------------------
+# PIXEL-ART-DIRECTION.md S11 is a table, not a taste: a material's five steps
+# are its hue, its saturation and where its two ends sit, and everything between
+# is a law — value climbs on a fixed curve, saturation peaks in the mid-to-shadow
+# range and DROPS at the highlight, hue swings cool into the shadows and warm
+# into the lights. A ramp written as five hex triples is five chances to get one
+# of those wrong, and the failure is invisible per-colour and obvious per-set:
+# one material in a sheet that does not shift hue reads as plastic beside eleven
+# that do.
+#
+# `make_guns.py` derived its ramps this way first and the loot sheet copied the
+# idea; the function lives HERE for the reason every other shared helper does —
+# two generators drawing the same world out of two copies of one law is two
+# laws, and they drift.
+
+#: S11's five lightness steps, normalised off its L column (21/36/54/70/84) so a
+#: material only has to say where its own ends are. Non-linear on purpose: the
+#: gap from base to key light is wider than the gap from core shadow to base.
+STEP_L: tuple[float, ...] = (0.0, 0.238, 0.524, 0.778, 1.0)
+#: S12: saturation peaks in the mid-to-shadow range and DROPS at the highlight,
+#: which is what keeps a specular from reading as a white sticker.
+STEP_S: tuple[float, ...] = (1.10, 1.06, 1.00, 0.95, 0.72)
+#: S11: shadows cool, lights warm, never the reverse.
+STEP_H: tuple[int, ...] = (-18, -10, 0, 8, 14)
+
+
+def _lerp(table: tuple[float, ...], t: float) -> float:
+    """S11's tables read at any position along the ramp, not just at its steps."""
+    span = (len(table) - 1) * max(0.0, min(1.0, t))
+    low = min(int(span), len(table) - 2)
+    return table[low] + (table[low + 1] - table[low]) * (span - low)
+
+
+def material_ramp(hue: float, sat: float, lo: float, hi: float,
+                  steps: int = 5) -> Ramp:
+    """A material ramp from S11's law. Five steps unless asked for more.
+
+    `hue` in degrees, `sat` at the base step, `lo`/`hi` the lightness of the two
+    ends as fractions. Everything between is the tables above — the point being
+    that a new material is four numbers and not fifteen hex triples that may or
+    may not shift hue the way the rest of the world does.
+
+    The `lo` end is the number that matters. A ramp bottoming out a hair off the
+    outline means every plane the shading puts on step 0 or 1 sinks into the
+    keyline, and S7 is explicit that step 2 is the ambient reference and is "not
+    black".
+
+    `steps` exists for the SIX-step ramps the dimetric props are banded on:
+    `make_objects` puts its top plane on step 5, its near face on 3 and its far
+    face on 1, so a five-step ramp collapses the top plane into the specular and
+    a crate loses the difference between "lit" and "the brightest thing on the
+    object". The law is the same either way — the tables are read at fractional
+    positions rather than at their own indices — which is the whole reason it is
+    one function and not two.
+    """
+    ramp: Ramp = []
+    for index in range(steps):
+        t = index / max(steps - 1, 1)
+        light = lo + (hi - lo) * _lerp(STEP_L, t)
+        red, green, blue = colorsys.hls_to_rgb(
+            ((hue + _lerp(STEP_H, t)) % 360) / 360.0,
+            light,
+            min(1.0, sat * _lerp(STEP_S, t)),
+        )
+        ramp.append((round(red * 255), round(green * 255), round(blue * 255), 255))
+    return ramp
 
 
 # --- palette ----------------------------------------------------------------

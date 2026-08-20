@@ -21,7 +21,7 @@
       "frameWidth": 16,
       "frameHeight": 28,
       "frames": 3,
-      "sway": 1.6
+      "sway": 0.0
     },
     "logs": {
       "file": "logs.png",

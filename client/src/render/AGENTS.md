@@ -305,9 +305,18 @@ mutation, no React.
   left last. A blood stain under a drift of leaves is older than the leaves,
   which is not the story any of those scenes is telling.
 - Almost nothing in `layers/scenery.ts` moves, and that is deliberate: these are
-  the things in the forest that have STOPPED. A sign swings, canvas breathes, a
-  dead fire smokes — all three off the sheet's own `sway`/`smokes` fields, so
-  the art decides what the wind can push, not a table in the layer. An object
+  the things in the forest that have STOPPED. Canvas breathes and a dead fire
+  smokes, both off the sheet's own `sway`/`smokes` fields, so the art decides
+  what the wind can push, not a table in the layer.
+- **A SIGN DOES NOT SWAY, AND `sway` IS A SHEAR OF THE WHOLE SPRITE.** It used
+  to, at the largest lean on the sheet. The client's sway offsets the entire
+  frame horizontally — post, contact band and all — so a swinging sign slides
+  its own footprint across the floor every frame, which reads as a decal being
+  dragged rather than as timber in wind and breaks the one convention the whole
+  prop set stands on: nothing floats, everything sits on its shadow. Canvas is
+  the exception and earns it — a tent wall is fabric with nothing under it, and
+  its lean is small enough that the pegged hem never leaves its contact band.
+  Anything with a foot in the ground gets `sway=0`. An object
   being used is a one-shot on its own sheet (`kinds` × `animFrames`, kind-major,
   frame 0 the idle), not sway. `crateAnimFrame` CLAMPS on the last frame, and
   that clamp is what lets one number serve both verbs: a break sheet ends
@@ -324,9 +333,9 @@ mutation, no React.
   plant keeps its own phase — a synchronised field reads as the screen
   wobbling — but the GUST is one travelling front sampled at each thing's own
   position, so a wave of foliage leans together and lets go. Grass, bushes,
-  ferns AND the scenery that sways (a sign on its post, tent canvas) all read
-  `wind.lean`. A sign bending on its own clock while the weeds at its base bend
-  on another is the clearest tell that a scene was assembled out of parts.
+  ferns AND the scenery that sways (tent canvas) all read `wind.lean`. Canvas
+  bending on its own clock while the weeds at its pegs bend on another is the
+  clearest tell that a scene was assembled out of parts.
 - **`disturbance.ts` is the world noticing the player, and its visibility gate
   is a RULE.** A body contributes two pushes — one at its feet, one at a lagged
   wake that chases it — because without the wake the grass snaps back the
@@ -380,6 +389,13 @@ mutation, no React.
 - `terrain.ts` and `layers/terrain.ts` are also used by `game/lobby-scene.ts`
   over a locally generated map. Nothing in them may assume a server sent the
   `TileMap`.
+- **BUSHES ARE DRAWN OVER BODIES, WITH THE FERNS.** `undergrowth()` still
+  CLAIMS a bush tile — the tile gives up its grass, because a bush and a tuft on
+  one tile is a pile — but the shrub itself is painted in `overgrowth()`, after
+  the entity pass. Drawn with the grass it was the tallest undergrowth on the
+  map and the only foliage a player could never be hidden by: you walked in
+  front of a thicket the way you walk in front of a painting of one. Standing in
+  one now puts you in cover and looks like it.
 - `TerrainLayer.setDecorationMask` vetoes grass, bushes and ferns per tile. It exists so
   an area can be kept clear of undergrowth **without** its tiles becoming solid
   — `isSolidTile` treats anything that is not `FLOOR` as a wall, so "bare floor"

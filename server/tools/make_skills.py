@@ -36,6 +36,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import colorsys
 import json
 from pathlib import Path
 
@@ -47,6 +48,7 @@ from make_textures import (
     RGBA,
     Ramp,
     TRANSPARENT,
+    material_ramp,
     outline,
     pack,
     pick,
@@ -79,12 +81,23 @@ OUTLINE: RGBA = rgb("#07080a")
 #: this is an offline script — but they are the same five and must stay so: a
 #: canister that is not the colour the bag paints the same rarity is a second
 #: colour language for one idea.
+#: DERIVED, not typed, for the same reason every other ramp in this pipeline is
+#: (S11): the five steps of a material are a law — value on a fixed curve,
+#: saturation peaking in the mid-to-shadow range, hue swinging cool into shadow
+#: and warm into light — and a hand-typed ramp is five chances to break one of
+#: them silently. The hex ramps this replaced changed value without changing hue
+#: at all on three of the five tiers, which is exactly what makes a colour read
+#: as plastic.
+#:
+#: The IDENTITY is the hue, and it is the CSS variable's own. Each row is that
+#: hue at step 2, so the label of a rare tin is the blue the bag paints a rare
+#: drop; the steps above and below it are the law.
 RARITY: dict[str, Ramp] = {
-    "common": [rgb(c) for c in ("#3a3a42", "#565660", "#7c7c88", "#a8a8b4", "#e8e8f0")],
-    "uncommon": [rgb(c) for c in ("#123020", "#1d4d32", "#2c7a4d", "#42a86a", "#5dce7a")],
-    "rare": [rgb(c) for c in ("#131f3d", "#1d3160", "#2c4b96", "#3e6ac6", "#5b8def")],
-    "epic": [rgb(c) for c in ("#2a1440", "#3f1d63", "#5f2d94", "#8a48c4", "#b46ee8")],
-    "legendary": [rgb(c) for c in ("#3a2a0c", "#5e4413", "#96701f", "#c99a34", "#f2c14b")],
+    "common": material_ramp(240, 0.12, 0.20, 0.88),
+    "uncommon": material_ramp(135, 0.48, 0.10, 0.70),
+    "rare": material_ramp(220, 0.62, 0.11, 0.72),
+    "epic": material_ramp(274, 0.55, 0.12, 0.74),
+    "legendary": material_ramp(42, 0.70, 0.12, 0.76),
 }
 ORDER = ("common", "uncommon", "rare", "epic", "legendary")
 
@@ -413,7 +426,22 @@ ICONS: list[tuple[str, Palette, Art]] = [
 ]
 
 
-# --- the canister -----------------------------------------------------------
+# --- the canister -------------------------------------------------------------
+#
+# A CAN IS A CYLINDER AND A CYLINDER IS FIVE VERTICAL BANDS. What this replaced
+# was a horizontal falloff — `pick(ramp, 0.95 - abs(t - 0.35) * 0.85)` across
+# the body — which is a gradient (S7 bans it) run through a ditherer (S5 bans
+# that), so the label came out as a smear of two neighbouring steps with no edge
+# anywhere in it. At sixteen pixels across, a smear and a flat fill are the same
+# picture, and the tin was the one object in the game the player is handed as a
+# REWARD.
+#
+# The bands below are the same construction `make_objects.billet` gives a felled
+# trunk, stood on end: a lit crest that is NOT at the silhouette's edge (the
+# edge is the part turning away), a wide base flank that owns the most pixels, a
+# shade flank, and a dark turn at the far side. That asymmetry is the whole read
+# — a cylinder shaded symmetrically about its centre is a tube lit from directly
+# behind the viewer, which is the one light this game does not have.
 
 
 #: Half-width of the tin at each row, out of a 16-wide cell. THE SHAPE OF THE
@@ -422,10 +450,10 @@ ICONS: list[tuple[str, Palette, Art]] = [
 #: barrel, and a foot that pulls in at the very bottom so the thing is standing
 #: rather than floating.
 #:
-#: IT IS NOT A CYLINDER ANY MORE, IT IS A TIN. The old profile domed at the top
-#: because it was a pressurised canister; a food tin is flat-topped with a
-#: pull-ring, and that flat top is most of why the silhouette is readable at
-#: this size — a dome and a barrel at this size are the same blob.
+#: IT IS NOT A PRESSURE CANISTER, IT IS A TIN. The old profile domed at the top;
+#: a food tin is flat-topped with a pull-ring, and that flat top is most of why
+#: the silhouette is readable at this size — a dome and a barrel at this size are
+#: the same blob.
 CAN_PROFILE = (
     6, 7, 7,             # lid: disc, ring, rim seam
     7, 7,                # label — top band
@@ -435,21 +463,56 @@ CAN_PROFILE = (
     7,                   # base rim
     6,                   # foot
 )
-#: The steel: the lid at the top, the rim at the bottom. Everything between
-#: them is the LABEL and it is the rarity colour, which is the inversion of
-#: what the tube did — that wore rarity on two thin bands and steel everywhere
-#: else, so at a glance five tiers were five grey tubes. On a tin the label IS
-#: the object's colour, which is the whole reason a legendary reads from across
-#: the clearing.
+#: The steel: the lid at the top, the rim at the bottom. Everything between them
+#: is the LABEL and it is the rarity colour, which is the inversion of what the
+#: tube did — that wore rarity on two thin bands and steel everywhere else, so at
+#: a glance five tiers were five grey tubes. On a tin the label IS the object's
+#: colour, which is the whole reason a legendary reads from across the clearing.
 LID_ROWS = range(0, 3)
 BASE_ROWS = range(16, CAN_H)
-#: Where two pieces of metal meet, and the only rows drawn dark on purpose. A
-#: tin without these is a coloured rectangle with a grey cap on it.
+#: Where two pieces of metal meet, and the only rows drawn dark on purpose. A tin
+#: without these is a coloured rectangle with a grey cap on it.
 SEAM_ROWS = (2, 16)
 #: The pull-ring, the only thing drawn on the lid. At three rows of lid a ring
-#: cannot be a ring, but an interruption in the metal in the right place reads
-#: as one.
+#: cannot be a ring, but an interruption in the metal in the right place reads as
+#: one.
 TAB_X = (6, 7, 8)
+
+#: THE CYLINDER, as a table: where each band ends, in `u` — the position across
+#: the body, -1 at the left edge and +1 at the right. Read it left to right and
+#: it is the section of a tin under a key at 135deg:
+#:
+#:     -1.00 .. -0.74   step 2   the left edge, already turning away
+#:     -0.74 .. -0.24   step 3   the KEY BAND
+#:     -0.24 ..  0.36   step 2   base — the ambient reference, largest area (S7)
+#:      0.36 ..  0.76   step 1   core shadow
+#:      0.76 ..  1.00   step 0   the far turn, and the darkest thing on the tin
+#:
+#: Step 2 appears twice on purpose and that is not an accident of tuning: on a
+#: round form the lit edge and the ambient middle genuinely are the same value,
+#: and the bright band sits BETWEEN them. Collapsing the left edge into the key
+#: band is what turns a cylinder into a wedge.
+CYLINDER: tuple[tuple[float, int], ...] = (
+    (-0.74, 2), (-0.24, 3), (0.36, 2), (0.76, 1), (1.01, 0),
+)
+#: The specular (S14, painted metal: "one long 1-2px streak along the form's
+#: length"). One column, inside the key band, running the full height of the
+#: label — it is what says the tin is metal rather than card, and one column of
+#: eighteen rows is under the 5% of pixels S7 allows step 4.
+STREAK_U = -0.52
+#: The lid is the one plane pointed at the sky (S3, S18) and it is a whole step
+#: over the body it caps. Without it the tin has a top edge and no top FACE, and
+#: everything in this game that reads as solid reads that way because the camera
+#: can see something it is standing under.
+LID_LIFT = 1
+
+
+def _band(u: float) -> int:
+    """Which of the cylinder's five bands `u` falls in."""
+    for edge, step in CYLINDER:
+        if u < edge:
+            return step
+    return 0
 
 
 def make_can(ramp: Ramp, lit: bool) -> Image.Image:
@@ -464,13 +527,15 @@ def make_can(ramp: Ramp, lit: bool) -> Image.Image:
 
     THERE IS NO DRAWN RIM AROUND THE WINDOW. The plate is near-black and the
     label is a saturated mid-tone, so value alone separates them; a lit rim on
-    top of that ate two of the columns the label had left and turned the
-    whole object into a picture frame.
+    top of that ate two of the columns the label had left and turned the whole
+    object into a picture frame.
     """
     img = Image.new("RGBA", (CAN_W, CAN_H), TRANSPARENT)
     px = img.load()
     wx, wy, ww, wh = WINDOW
     centre = CAN_W / 2.0
+    plan: dict[tuple[int, int], tuple[Ramp, int]] = {}
+    foot = len(CAN_PROFILE) - 1
 
     for y in range(CAN_H):
         half = CAN_PROFILE[y] if y < len(CAN_PROFILE) else 0
@@ -482,20 +547,28 @@ def make_can(ramp: Ramp, lit: bool) -> Image.Image:
         source = STEEL if metal else ramp
         seam = y in SEAM_ROWS
         for x in range(left, right + 1):
-            # A tin is a horizontal ramp and nothing else at this size:
-            # brightest a third of the way in from the left, falling off both
-            # ways. SHALLOW, because the body is twelve pixels wide — the tube
-            # used a curve steep enough to reach black by the right edge, which
-            # on something this small just looked like half the object was
-            # missing.
-            t = (x - left) / max(1, right - left)
-            shade = 0.95 - abs(t - 0.35) * 0.85
-            if metal:
-                shade += 0.12
-            if y == 0 or y >= CAN_H - 1:
-                shade -= 0.25
+            u = (x + 0.5 - centre) / max(half, 1.0)
+            step = _band(u)
+            if metal and y in LID_ROWS:
+                step = min(step + LID_LIFT, len(source) - 1)
+            elif not metal and abs(u - STREAK_U) < 0.10:
+                step = min(step + 1, len(source) - 1)
             if seam:
-                shade -= 0.45
+                # THE TWO SEAMS, and they are the only rows drawn at step 0.
+                # S10's occlusion band: where the lid tucks under its own rim and
+                # where the label tucks under the base. The first cut of this
+                # also blacked out row 0 and the foot, which left a three-row lid
+                # showing one row of metal and a base showing none — the tin came
+                # out as a coloured rectangle between two black bars.
+                step = 0
+            elif y == 0:
+                # THE TOP FACE. The one plane on the object pointed at the sky,
+                # and the reason the tin reads as something the camera is looking
+                # down at rather than as a flat label (S3, S18).
+                step = min(step + LID_LIFT + 1, len(source) - 1)
+            elif y >= foot:
+                # The foot, in shadow under its own rim.
+                step = max(step - 1, 0)
             in_window = wx <= x < wx + ww and wy <= y < wy + wh
             if lit:
                 edge = in_window and (
@@ -503,25 +576,79 @@ def make_can(ramp: Ramp, lit: bool) -> Image.Image:
                 )
                 if not (edge or seam):
                     continue
-                colour = pick(ramp, min(1.0, max(0.35, shade) + 0.4), x, y)
+                colour = ramp[min(len(ramp) - 1, 3)]
                 px[x, y] = (colour[0], colour[1], colour[2], quantize_alpha(0.8))
                 continue
             if in_window:
-                # Flat, dark, and slightly cooler than the label: the icon is
-                # what is being read here and a shaded plate behind it would
-                # fight its own shading.
-                px[x, y] = pick(DARK, 0.3 + (y - wy) / (wh * 3.0), x, y)
+                # Flat, dark, and cooler than the label: the icon is what is
+                # being read here and a shaded plate behind it would fight its
+                # own shading. TWO steps, not a ramp — the plate is a recess, and
+                # a recess is one value (the `x` on every other sheet here).
+                px[x, y] = DARK[1] if y > wy else DARK[0]
+                plan[(x, y)] = (DARK, 1)
                 continue
             if y == 1 and x in TAB_X:
                 # The ring. Dark on the left where it lifts off the lid, bright
-                # on the right where the metal turns over.
-                px[x, y] = pick(STEEL, 0.1 if x < TAB_X[-1] else 0.95, x, y)
+                # on the right where the metal turns over. Two steps of the same
+                # steel and no line between them — S6: interior form breaks are
+                # value steps, never keylines.
+                px[x, y] = STEEL[0] if x < TAB_X[-1] else STEEL[len(STEEL) - 1]
+                plan[(x, y)] = (STEEL, 0)
                 continue
-            px[x, y] = pick(source, min(1.0, max(0.06, shade)), x, y)
+            px[x, y] = source[min(step, len(source) - 1)]
+            plan[(x, y)] = (source, step)
 
     if not lit:
-        outline(img, OUTLINE)
+        _key_tin(img, plan)
     return img
+
+
+def _key_tin(img: Image.Image, plan: dict) -> None:
+    """S6's keyline, hue-tinted off whatever it is keying and broken on the lid.
+
+    The same law `make_loot.py` runs on the ground icons, and here for the same
+    reason: one near-black border round a steel lid, a coloured label and a black
+    plate is a BORDER rather than part of any of the three materials, and a
+    border is what makes an object read as a sticker. The tin lands in the same
+    HUD row those icons do, so it cannot be keyed by a different rule.
+    """
+    px = img.load()
+    edges: dict[tuple[int, int], RGBA] = {}
+    for y in range(img.height):
+        for x in range(img.width):
+            if px[x, y][3] != 0:
+                continue
+            below = plan.get((x, y + 1))
+            above = plan.get((x, y - 1))
+            # The lit lid, seen from slightly above: light eats the line (S6).
+            if below is not None and below[1] >= 4 and above is None:
+                continue
+            best = None
+            contact = False
+            for dx, dy in ((0, 1), (1, 0), (-1, 0), (0, -1)):
+                near = plan.get((x + dx, y + dy))
+                if near is None:
+                    continue
+                if best is None or near[1] < best[1]:
+                    best = near
+                if (dx, dy) == (0, -1):
+                    contact = True
+            if best is None:
+                continue
+            edges[(x, y)] = _tint(best[0][0], -0.48 if contact else -0.25)
+    for (x, y), colour in edges.items():
+        px[x, y] = colour
+
+
+def _tint(colour: RGBA, light: float) -> RGBA:
+    """A ramp's darkest step, pushed further down and round toward blue (S6)."""
+    red, green, blue, alpha = colour
+    hue, light_in, sat = colorsys.rgb_to_hls(red / 255.0, green / 255.0, blue / 255.0)
+    hue = ((hue * 360.0 - 15.0) % 360.0) / 360.0
+    light_out = max(0.0, min(1.0, light_in * (1.0 + light)))
+    sat = max(0.0, min(1.0, sat * 1.10))
+    r2, g2, b2 = colorsys.hls_to_rgb(hue, light_out, sat)
+    return (round(r2 * 255), round(g2 * 255), round(b2 * 255), alpha)
 
 
 def build(args) -> Path:

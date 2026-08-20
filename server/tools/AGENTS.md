@@ -20,7 +20,7 @@ imported by `app/` and never run at request time.
 | `make_rift.py` | generates final pixels | `assets/processed/rift/` (the CONSOLE and the threshold kit: torch, torchfire, egress paving, the paid console's aura — plus the retired anomaly sheets, still generated and no longer drawn: scar, pillar, charge, crown, emerge, rift ×4 tiers, collapse ×4 tiers, residue, corrupt) |
 | `make_platform.py` | generates final pixels | `assets/processed/platform/` (the extraction platform: the cargo skid ×3 states cold/standby/alarm, a lift drone ×2 postures hover/cruise, rotor and strobe loops, standby and siren lamp glare, the imprint it leaves, rotor downwash, the ground-break burst) |
 | `make_gore.py` | generates final pixels | `assets/processed/gore/` (6 wound decals worn by a hit body) |
-| `make_loot.py` | generates final pixels | `assets/processed/loot/` (one 16x16 frame per item, including gun icons) |
+| `make_loot.py` | generates final pixels | `assets/processed/loot/` (one 16x16 frame per item, including gun icons) — banded volume out of `paint_form`, keyed and planted on an offset ground shadow |
 | `make_guns.py` | generates final pixels | `assets/processed/guns/` (held high-3/4, one 20x9 frame per weapon, plus its carry pose) |
 | `make_merchant.py` | generates final pixels | `assets/processed/merchant/` (the shopkeeper — green coat, brimmed HAT, a face with two eyes in it: `idle` loop plus three one-shot flourishes — `coat`, `beckon`, `coin` — and the manifest's `randomClips` / `randomGap` that drive them) |
 | `make_store.py` | generates final pixels | `assets/processed/store/` (the merchant's own kit, all in the shop's own warm `WOOD`/`LINEN` and flat-filled: his WAGON ×1 and counter ×1, small round table ×4 with `topY`, `kit` ×5 — crates, a barrel of rods, a rack, a shelf, a padlocked strongbox, all drawn SHUT because nothing in this zone opens — torch ×2 with `flameY`, rug, torchfire, buy glow) |
@@ -170,6 +170,74 @@ surface. Output rules live in [`assets/AGENTS.md`](../../assets/AGENTS.md).
   on both: held in against the body, drawn at 0.8. A single carry distance for
   everything is what made the blade read as a sword floating beside the
   sprite.
+- **THE LOOT SHEET IS VOLUME, NOT STENCIL, AND THE SHADER IS AN EDGE TEST.**
+  `make_loot.paint_form` breaks a character map into SUB-BLOBS — a connected run
+  of one material — and a pixel's step comes from which of that blob's own edges
+  it sits on: upper-left rim step 3 (lifting to 4 on a corner that points into
+  the key), lower-right rim step 1, underside step 0, everything else step 2.
+  It is an edge test and not a coordinate test because S7 says the terminator
+  follows form curvature and never cuts straight; the first cut banded off the
+  bounding box and produced forty-six identical lumps — bright cap, mid-grey
+  left half, dark right half — on a bottle, a wrench and a skull alike. What
+  BOTH replaced was `pick(ramp, <diagonal falloff>)`, which is a gradient (S7)
+  through a ditherer (S5) lit from a direction no object on the sheet has.
+- **ONE ALPHABET FOR THE WHOLE LOOT SHEET (`make_loot.ALPHABET`), and the maps
+  do not carry their own palettes.** `m` is metal in all forty-six of them. The
+  per-item palette dict that used to sit beside each map was forty-six chances
+  for a letter to be missing from its own key, and a missing letter does not
+  raise — `ramps.get` returns `None` and every pixel wearing it is dropped, so
+  the gap only ever shows up on a dark tile in a live game. Two modifiers, the
+  same two `make_guns.py` uses: UPPERCASE lifts one step, `x` is a recess in the
+  shared `VOID`.
+- **A LOOT MAP IS AUTHORED IN FIVE DECISIONS AND IN THIS ORDER**: the TOP
+  CONTOUR (S15 — it carries the identity, and two items in a tier that share a
+  crown are two items nobody can tell apart); the LEAN (S21 — long axis 15-20deg
+  down-right, because a bilaterally symmetric icon reads as a UI glyph); HEIGHT
+  OVER FOOTPRINT (S17, 1.1:1 to 1.6:1 — the old maps ran four rows tall and
+  eight wide, which is why a first-aid kit, a license plate and a ledger were
+  three rectangles); NOTCHES (S15, 2-4px bitten out at irregular intervals); and
+  the ACCENT (S12, one hue, under 8% of pixels, and most items do not get one).
+- **THE KEYLINE IS TINTED OFF THE MATERIAL IT IS KEYING AND IT BREAKS ON THE LIT
+  CREST** (`make_loot._key`, and `make_skills._key_tin` / `make_platform._key`
+  run the same law). One flat near-black border round every object on a sheet
+  stops being part of any material and becomes a BORDER, which is what makes a
+  set of objects read as stickers; and on a 16px sprite an unbroken border is
+  30-40% of every opaque pixel, competing with the two brightest steps in the
+  ramp. Bottom edges go darker still — that is the contact (S19).
+- **EVERY LOOT ICON PLANTS ON AN OFFSET GROUND SHADOW** (S9: flat, echoing the
+  FOOTPRINT rather than the silhouette, down-right, two alpha bands, no detail).
+  The HUD draws this same sheet and gets one too — the alternative is two
+  drawings of one object, which is the failure `make_guns.py` documents at
+  length. The weapons get the same treatment for the same reason: a pistol sits
+  next to a medkit on the belt.
+- **`make_skills.py`'s TIN is a cylinder, and a cylinder is five VERTICAL
+  BANDS** (`CYLINDER`), with the key band NOT at the silhouette's edge — the
+  edge is the part turning away. It replaced a horizontal falloff through
+  `pick`, which at fourteen pixels across is a smear of two neighbouring steps
+  with no edge in it, on the one object the game hands the player as a reward.
+  Its `RARITY` ramps are `material_ramp` off each tier's CSS hue, so the
+  identity is the hue at the base step and the rest is the law. The ICONS are
+  not part of this: they are flat HUD marks, centred, no contact, by contract.
+- **`make_platform.py`'s skid is a HEIGHT FIELD rasterised on `make_objects`'
+  camera**, and the drone is `objects.box` pods on `objects.billet` arms. Cells
+  are drawn in descending `a + b` so occlusion falls out of the draw order; a
+  face pointing -b faces down-left into the key and gets `PLANE_FRONT`, a face
+  pointing -a faces down-right and gets `PLANE_SIDE`, and those two lines are
+  the entire lighting model. Two traps, both of which bit: the sprite centre and
+  every row must round on WHOLE pixels (`_row` rounds half UP — Python's `round`
+  breaks .5 to even, and half a 2:1 grid lands on .5, which combs the whole prop
+  into vertical stripes); and the four lift eyes go two thirds back along each
+  edge rather than on the corners, because at 45deg of yaw two of a box's
+  corners project to the same screen column and the client stations both of
+  their drones out to the same side.
+- **LIGHT THAT OVERLAPS IS TUNED AGAINST THE WORST CASE, NOT THE SINGLE ONE.**
+  Eleven torches ring the shop and four glare sheets ring the pad, and both sets
+  ADD. A flame or a lamp tuned to look right alone in a black wood sums into a
+  flat sheet when there are eleven of it, which erases the object it belongs to
+  — the shop read as a daylit room with fires painted on it. The numbers that
+  hold this are `TORCH_FIRE_ALPHA` and the scene-light gradient stops in the
+  client, the bloom ellipse and `gain` in `make_store.make_torchfire`, and the
+  ceilings on `GREEN_GLARE` / `RED_GLARE` here.
 - Generation is deterministic: the same command must produce byte-identical
   PNGs. Do not introduce unseeded randomness.
 - `--tile` must match `TILE_SIZE` in `app/config.py`.
@@ -379,9 +447,28 @@ surface. Output rules live in [`assets/AGENTS.md`](../../assets/AGENTS.md).
     ties on, strains and then leaves cannot be a sprite — and `rope.length`
     alone is what sets the hover height, since an arriving drone stations
     itself one rope above its eye.
-- Shared helpers (`pick`, `hash01`, `clamp01`, `pack`, `rgb`, the ramps) live in
-  `make_textures.py` and are imported by the other generators, so every sheet
-  keeps one shading vocabulary. Do not copy them.
+- Shared helpers (`pick`, `hash01`, `clamp01`, `pack`, `rgb`, `material_ramp`,
+  the ramps) live in `make_textures.py` and are imported by the other
+  generators, so every sheet keeps one shading vocabulary. Do not copy them.
+- **A MATERIAL IS FOUR NUMBERS, NOT FIFTEEN HEX TRIPLES.** `material_ramp(hue,
+  sat, lo, hi, steps=5)` builds a ramp out of S11's law — value on a fixed
+  non-linear curve, saturation peaking in the mid-to-shadow range and dropping
+  at the highlight, hue swinging cool into shadow and warm into light. It began
+  as `make_guns._ramp` and moved when `make_loot.py` needed the same law for
+  the same objects; it is the only place any of that is written down. A
+  hand-typed ramp is five chances to break one clause silently, and the failure
+  is invisible per colour and obvious per set — one material in a sheet that
+  does not shift hue reads as plastic beside eleven that do. `steps=6` exists
+  for the dimetric props: `make_objects` puts its top plane on step 5, so a
+  five-step ramp collapses the top plane into the specular.
+- **The `lo` end is the number that matters, and the CEILING is a per-sheet
+  decision.** Scenery ramps sit under S11's own base-step band because a trunk
+  recedes; `make_guns`' sit under those again because the lantern multiplies
+  over a weapon held in a dark forest; `make_loot`'s sit ABOVE both, because a
+  drop is a thing on a dark floor the player has to see from far enough away to
+  decide whether the walk is worth it. Tuning a loot ramp like a tree ramp
+  produces forty-six correctly-banded illegible lumps, which is exactly what
+  the first cut of that rewrite produced.
 - **There is a second vocabulary in `make_textures.py` and it is for LIGHT**:
   `BEAM`, `ellipse`, `add`, `ease_in`, `ease_out`, `quantize_alpha`, `resolve`.
   An effect is not painted shape by shape, it is SUMMED into a float field and

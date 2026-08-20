@@ -570,6 +570,19 @@ function rarityInk(rarity: string): string {
  * own light rows (they are `SceneLight`s like any cabin lamp); this is the
  * visible flame on top.
  */
+/**
+ * How hard one torch flame is pushed into the additive pass.
+ *
+ * ELEVEN OF THEM RING THIS CLEARING and they overlap. Every other fire in the
+ * game is drawn alone in a black wood, so full strength is right there and
+ * wrong here: at 1.0 the ring summed into a bright band around the rim and the
+ * shop stopped reading as a dark place somebody lit and started reading as a
+ * daylit room with flames painted on it. The count is the reason the number
+ * exists — one torch at 0.7 still looks like fire, eleven at 1.0 look like a
+ * ceiling light.
+ */
+const TORCH_FIRE_ALPHA = 0.78;
+
 export function drawStoreLight(
   ctx: CanvasRenderingContext2D,
   atlas: StoreAtlas | null,
@@ -583,6 +596,7 @@ export function drawStoreLight(
 
   const fire = atlas.torchfire;
   const torch = atlas.torch;
+  ctx.globalAlpha = TORCH_FIRE_ALPHA;
   scene.fixtures.torches.forEach((row, index) => {
     // Offset per torch: a row of fires playing the same frame at the same
     // instant reads as copies of one sprite, which is what they are and what
@@ -599,6 +613,7 @@ export function drawStoreLight(
       fire.frameHeight,
     );
   });
+  ctx.globalAlpha = 1;
 
   if (scene.nearId !== null) {
     const stand = scene.fixtures.stands.find((row) => row.id === scene.nearId);

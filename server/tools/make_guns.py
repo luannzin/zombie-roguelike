@@ -121,7 +121,6 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import colorsys
 import json
 from pathlib import Path
 
@@ -132,6 +131,7 @@ from make_textures import (
     PROCESSED_DIR,
     Ramp,
     TRANSPARENT,
+    material_ramp,
     outline,
     pack,
     rgb,
@@ -175,35 +175,13 @@ HOLD_IN = 0.0
 # ceilings stay under the world's own (`ROCK_RAMP` tops out at #5d5860) because
 # the lantern multiplies over all of it.
 
-#: S11's five steps, normalised off its L column (21/36/54/70/84) so a material
-#: only has to say where its own ends are. Non-linear on purpose: the gap from
-#: base to key light is wider than the gap from core shadow to base.
-_STEP_L: tuple[float, ...] = (0.0, 0.238, 0.524, 0.778, 1.0)
-#: S12: saturation peaks in the mid-to-shadow range and DROPS at the highlight,
-#: which is what keeps a specular from reading as a white sticker.
-_STEP_S: tuple[float, ...] = (1.10, 1.06, 1.00, 0.95, 0.72)
-#: S11: shadows cool, lights warm, never the reverse.
-_STEP_H: tuple[int, ...] = (-18, -10, 0, 8, 14)
-
-
-def _ramp(hue: float, sat: float, lo: float, hi: float) -> Ramp:
-    """A five-step material ramp from S11's law.
-
-    `hue` in degrees, `sat` at step 2, `lo`/`hi` the lightness of steps 0 and 4
-    as fractions. Everything between is the table above — the point being that
-    a new material here is four numbers and not fifteen hex triples that may or
-    may not shift hue the way the rest of the world does.
-    """
-    steps: Ramp = []
-    for index in range(5):
-        light = lo + (hi - lo) * _STEP_L[index]
-        red, green, blue = colorsys.hls_to_rgb(
-            ((hue + _STEP_H[index]) % 360) / 360.0,
-            light,
-            min(1.0, sat * _STEP_S[index]),
-        )
-        steps.append((round(red * 255), round(green * 255), round(blue * 255), 255))
-    return steps
+#: S11's law, IMPORTED. It used to live here as `_ramp` plus its three step
+#: tables; `make_loot.py` needs the same law for the same reason (its ground
+#: icons are the same objects), so it moved to `make_textures.py` beside every
+#: other shared shading helper. Aliased rather than called through the module,
+#: because the ramps below read as a materials list and `material_ramp(...)`
+#: fifteen times over would bury what each line is actually saying.
+_ramp = material_ramp
 
 
 #: Painted metal (S14): large flat planes, one long streak along the form.

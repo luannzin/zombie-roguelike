@@ -911,6 +911,49 @@ TILE_TABLE_H = 1.25
 TABLE_TOP_Y = (5, 7, 6, 8)
 
 
+def disc_top(px, size: tuple[int, int], cx: float, y: float, r: float,
+             ramp: Ramp, step: int = TOP, *, thick: int = 2,
+             squash: float = 1.0) -> None:
+    """A ROUND surface seen from the front and above: an ellipse with an edge.
+
+    WHY NOT `cap`. The shared lid is a parallelogram — right for a crate,
+    wrong for everything on this bench, because these are pedestals the player
+    walks around and a board has corners the eye keeps trying to square up
+    with the room. Worse, drawn without the second half of this function it is
+    a FLAT SHAPE: a lighter patch sitting where a top ought to be, which is
+    the same failure a corner-on box has, one plane short.
+
+    The second half is the whole point. Under the near arc of the ellipse go
+    `thick` rows of the BOARD ITSELF, following the curve — the edge grain you
+    would see standing in front of a table. That is what gives the top a
+    thickness instead of a colour, and it costs two rows. The right of the arc
+    takes the shade step, because the key is at 135° like everything else
+    here.
+    """
+    width, height = size
+    ry = max(1.0, r * SLOPE * squash)
+    for dy in range(-int(round(ry)), int(round(ry)) + 1):
+        yy = int(round(y + dy))
+        if not 0 <= yy < height:
+            continue
+        span = r * math.sqrt(max(0.0, 1.0 - (dy / ry) ** 2))
+        for x in range(int(round(cx - span)), int(round(cx + span)) + 1):
+            if 0 <= x < width:
+                px[x, yy] = tone(ramp, step, x, yy)
+    if thick <= 0:
+        return
+    for x in range(int(round(cx - r)), int(round(cx + r)) + 1):
+        if not 0 <= x < width:
+            continue
+        across = (x - cx) / max(r, 0.5)
+        edge = y + ry * math.sqrt(max(0.0, 1.0 - across * across))
+        rim = FRONT if across <= 0.45 else SIDE
+        for t in range(thick):
+            yy = int(round(edge)) + t
+            if 0 <= yy < height:
+                px[x, yy] = tone(ramp, rim, x, yy)
+
+
 def make_table(w: int, h: int, variant: int, rng: random.Random) -> Image.Image:
     """One pedestal. Four, and no two are the same piece of furniture."""
     img = Image.new("RGBA", (w, h), TRANSPARENT)
@@ -923,7 +966,8 @@ def make_table(w: int, h: int, variant: int, rng: random.Random) -> Image.Image:
         # A TURNED COLUMN on a splayed foot. Three masses at S2's descending
         # rhythm — foot, shaft, top — and the FOOT is the widest of the three.
         # S17: the base is wider than the crown for anything grounded.
-        cap(px, (w, h), fx, base, w * 0.30, w * 0.30, WOOD_WORN, FRONT, squash=0.55)
+        disc_top(px, (w, h), fx, base - 1, w * 0.30, WOOD_WORN, FRONT,
+                 thick=1, squash=0.55)
         for y in range(surface + 3, base):
             t = (y - surface) / max(base - surface, 1)
             r = w * (0.17 + abs(t - 0.45) * 0.11)
@@ -931,7 +975,8 @@ def make_table(w: int, h: int, variant: int, rng: random.Random) -> Image.Image:
                 if 0 <= x < w:
                     plane = FRONT if x <= fx else SIDE
                     px[x, y] = tone(WOOD, TOP if abs(x - fx) < r * 0.30 else plane, x, y)
-        cap(px, (w, h), fx, surface + 3, w * 0.29, w * 0.29, WOOD, TOP - 1, squash=0.62)
+        disc_top(px, (w, h), fx, surface + 2, w * 0.29, WOOD, TOP - 1,
+                 thick=2, squash=0.62)
 
     elif variant == 1:
         # A BARREL stood on its end. Staves as vertical value runs, two hoops.
@@ -953,21 +998,25 @@ def make_table(w: int, h: int, variant: int, rng: random.Random) -> Image.Image:
             for x in range(w):
                 if 0 <= hoop < h and px[x, hoop][3]:
                     px[x, hoop] = tone(IRON, FRONT, x, hoop)
-        cap(px, (w, h), fx, surface + 2, w * 0.27, w * 0.27, WOOD, TOP - 1, squash=0.60)
+        disc_top(px, (w, h), fx, surface + 1, w * 0.27, WOOD, TOP - 1,
+                 thick=2, squash=0.60)
 
     elif variant == 2:
         # A CABLE SPOOL laid flat: two discs with a narrow drum between them.
         # The widest silhouette of the four and the only one with a WAIST —
         # which is the whole reason it is on the sheet. S15: assets are told
         # apart by their top contour, and this is the only pinched one.
-        cap(px, (w, h), fx, base, w * 0.34, w * 0.34, WOOD_WORN, FRONT - 1, squash=0.55)
+        disc_top(px, (w, h), fx, base - 1, w * 0.34, WOOD_WORN, FRONT - 1,
+                 thick=1, squash=0.55)
         for y in range(surface + 4, base - 1):
             r = w * 0.13
             for x in range(int(fx - r), int(fx + r) + 1):
                 if 0 <= x < w:
                     px[x, y] = tone(WOOD_WORN, FRONT if x <= fx else SIDE, x, y)
-        cap(px, (w, h), fx, surface + 4, w * 0.33, w * 0.33, WOOD, TOP - 2, squash=0.58)
-        cap(px, (w, h), fx, surface + 2, w * 0.31, w * 0.31, WOOD, TOP - 1, squash=0.58)
+        disc_top(px, (w, h), fx, surface + 3, w * 0.33, WOOD, TOP - 2,
+                 thick=1, squash=0.58)
+        disc_top(px, (w, h), fx, surface + 1, w * 0.31, WOOD, TOP - 1,
+                 thick=2, squash=0.58)
         # The plank ends showing round the rim: three notches, irregular.
         for share in (0.18, 0.52, 0.83):
             x = int(round(fx - w * 0.31 + w * 0.62 * share))
@@ -980,8 +1029,8 @@ def make_table(w: int, h: int, variant: int, rng: random.Random) -> Image.Image:
         # stone gets straight breaks and angular chips (S14), which is what
         # keeps it from reading as another wooden thing.
         stone(px, (w, h), fx, base - 3, w * 0.28, 5.0, objects.STONE, 2211)
-        cap(px, (w, h), fx, surface + 2, w * 0.29, w * 0.29, objects.STONE,
-            TOP - 2, squash=0.60)
+        disc_top(px, (w, h), fx, surface + 1, w * 0.29, objects.STONE, TOP - 2,
+                 thick=2, squash=0.60)
         for _ in range(3):
             cx = fx + (rng.random() - 0.5) * w * 0.4
             cy = surface + 5 + rng.random() * 3
@@ -1209,11 +1258,36 @@ def make_wagon(w: int, h: int, rng: random.Random) -> Image.Image:
         for y in range(int(axis - h * 0.25), int(axis + h * 0.25) + 1):
             if 0 <= rx < w and 0 <= y < h and px[rx, y][3]:
                 px[rx, y] = tone(LINEN, SIDE + 1, rx, y)
-    # The hoop at the open end: the one place the inside of the tilt is visible.
-    for y in range(int(axis - h * 0.24), int(axis + h * 0.24)):
-        for x in (int(w * 0.10), int(w * 0.11)):
-            if 0 <= x < w and px[x, y][3]:
-                px[x, y] = tone(WOOD, FRONT, x, y)
+    # THE OPEN END, and it is the only real depth cue on the sprite.
+    #
+    # It used to be two columns of frame timber standing at the mouth, which
+    # says "the cover ends here" and nothing at all about the cart being
+    # hollow. A tilt is a tube: what says so is being able to see INTO it. So
+    # the mouth is an ellipse — the cylinder's own cross-section, cut at the
+    # camera's slope — filled with the darkest step on the sheet and ringed
+    # by the hoop that holds it open. The dark is doing the work: an interior
+    # two steps under the shade side is a hole, and a hole is the one thing on
+    # this drawing that cannot be read as paint on a flat plane.
+    mouth_x = w * 0.17
+    mouth_ry = h * 0.19
+    mouth_rx = w * 0.05
+    for y in range(int(axis - mouth_ry) - 1, int(axis + mouth_ry) + 2):
+        for x in range(int(mouth_x - mouth_rx) - 1, int(mouth_x + mouth_rx) + 2):
+            if not (0 <= x < w and 0 <= y < h) or not px[x, y][3]:
+                continue
+            dx, dy = (x - mouth_x) / mouth_rx, (y - axis) / mouth_ry
+            d = math.hypot(dx, dy)
+            if d > 1.18:
+                continue
+            if d > 0.92:
+                # The hoop: lit on the crown, shaded under, so the ring reads
+                # as a bent rod rather than as an outline drawn round a hole.
+                px[x, y] = tone(WOOD, TOP - 1 if dy < -0.1 else FRONT, x, y)
+            else:
+                # Inside. One band of lit floor at the bottom of the tube, so
+                # the hole has a BOTTOM and does not read as a black disc.
+                px[x, y] = tone(WOOD_WORN, FRONT - 1 if dy > 0.62 else SIDE - 1,
+                                x, y)
 
     # THE GUNS RACKED ALONG THE FLANK. Four short billets under the eave — not
     # readable as models at this size and not meant to be. What they say is
@@ -1278,33 +1352,22 @@ TILE_KIT_H = 32
 def _block(px, size: tuple[int, int], cx: float, base: float, half: float,
            tall: float, depth: float, ramp: Ramp, *, salt: int = 0,
            top: int = TOP, front: int = FRONT, side: int = SIDE) -> None:
-    """A standing box seen from the FRONT and slightly above. Flat on the floor.
+    """A standing box, with the run back from the camera named by the caller.
 
-    WHY THIS EXISTS INSTEAD OF `make_objects.box`. The shared solid is a strict
-    2:1 dimetric with its NEAR CORNER pointed at the camera: its contact line
-    falls away from that corner in both directions at the camera slope, so the
-    bottom of the shape is a V and the lid is a rhombus. That is right for the
-    thing it was written for — a crate seen corner-on, where the two vertical
-    planes really do carry equal weight — and it is wrong for a row of small
-    props at this size. At nine pixels of half-width the V is four and a half
-    pixels deep, which at a 22px frame is a quarter of the object's height
-    spent on a bottom edge that is not touching the floor. Five of them in a
-    row read as five diamonds floating over the ground rather than as five
-    objects standing on it.
+    THE SAME CONSTRUCTION `make_objects.box` NOW USES — flat base, rectangular
+    front, top plane sheared up and to the right, shade sliver between them.
+    This function reached it first: the shared solid was a corner-on dimetric
+    with a rhombus footprint, and a row of small props drawn that way came out
+    as diamonds floating over the floor rather than as objects standing on it.
+    That argument won, so the shared solid was rewritten to match and every
+    crate, chest and altar plinth in the forest came with it.
 
-    So: FLAT BASE, RECTANGULAR FRONT, SHEARED TOP. The front face is a plain
-    rectangle square to the camera and owns the most pixels; the top plane is
-    that rectangle's upper edge pushed up and to the RIGHT by `depth`; the
-    right-hand sliver between them is the shade side. It is the same
-    construction the approved `box` and `chest` sheets in `make_objects` use,
-    and it is what S1 actually describes for this pitch — a top plane visible
-    and NEVER DOMINANT, at 35-45% of the silhouette rather than the 60% a
-    corner-on lid takes.
-
-    The shear goes RIGHT because the key light is at 135° (S8): the lit planes
-    are the top and the left, so the plane that has to be visible and dark is
-    the right-hand one. Shearing the other way would put the shade side where
-    the light is coming from.
+    What survives here is the one thing that did not generalise: `depth` is
+    AUTHORED per prop. The shared solid derives it from the width, which is
+    right when a sheet of unrelated objects has to agree about the camera and
+    wrong for a shelf that has to be shallower than the crate beside it — a
+    shelf is a shallow thing, and deriving its depth from how wide it is makes
+    it a cabinet.
     """
     width, height = size
     dx = depth

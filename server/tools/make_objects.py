@@ -840,46 +840,114 @@ def shadow(img: Image.Image, cx: float, cy: float, rx: float, ry: float) -> None
             px[x, y] = (*OUTLINE_WOOD[:3], 104 if d < 0.5 else 58)
 
 
+def depth_of(lw: float, rw: float) -> float:
+    """How far a solid of this width runs back from the camera, in pixels.
+
+    DERIVED, NOT AUTHORED, and that is the point: every recipe in this file
+    hands its widths to the same expression, so two objects standing beside
+    each other recede by the same proportion and read as being in one room.
+    A third of the width, floored at two — under two pixels the top plane is a
+    line and the object flattens back into an elevation.
+    """
+    return max(2.0, round((lw + rw) * 0.32))
+
+
+def faces(fx: float, base: float, lw: float, rw: float,
+          tall: float) -> tuple[float, float, float, float, float, float]:
+    """The six numbers every solid here is built from.
+
+    `(x0, x1, corner, y0, y1, dx)` — the silhouette runs `x0..x1`, the FRONT
+    plane ends at `corner`, the walls stand between `y0` and `y1`, and the box
+    runs `dx` pixels back from `corner` to `x1`.
+    """
+    x0, x1 = fx - lw, fx + rw
+    dx = depth_of(lw, rw)
+    return x0, x1, x1 - dx, base - tall, base, dx
+
+
+def edges(geo: tuple, x: float) -> tuple[float, float, float]:
+    """`(contact, lid, back)` y for one column of a solid.
+
+    THE PROJECTION, and there is only one in this file. The camera is in front
+    of the object and above it: the front plane is a RECTANGLE square to the
+    screen, the top plane is that rectangle's upper edge pushed back — up and
+    to the RIGHT — and the right-hand sliver between them is the shade side.
+    `contact` is flat under the front plane and only rises over the sliver,
+    where the object is genuinely receding away from the floor.
+    """
+    x0, x1, corner, y0, y1, dx = geo
+    dy = dx * SLOPE
+    # How far back this column is: 0 across the front plane, 1 at the far edge.
+    near = clamp01((x - corner) / dx)
+    far = clamp01((x - x0) / dx)
+    shift = dy * near
+    return y1 - shift, y0 - shift, y0 - dy * far
+
+
 def box(px, size: tuple[int, int], fx: float, base: float, lw: float, rw: float,
          tall: float, ramp: Ramp, *, grain: float = 0.0, salt: int = 0,
          top: int = TOP, front: int = FRONT, side: int = SIDE) -> None:
-    """A dimetric box standing on the ground: top face, near face, far face.
+    """A box standing on the ground: front plane, top plane, shade side.
 
-    Same projection as a crate — the footprint is a rhombus with its near
-    corner at `fx`, the contact line falls away from that corner at the camera
-    slope in both directions, and the lid is the contact lifted by `tall`.
-    Posts, boards, sign planks and a tent's gable are all this.
+    IT USED TO BE CORNER-ON and that is what this rewrite is about. The old
+    solid was a strict 2:1 dimetric with its NEAR CORNER pointed at the
+    camera, so the footprint was a rhombus: the contact line fell away from
+    that corner in both directions and the lid was a diamond. Every crate,
+    box, chest and altar plinth in the forest inherited it, and at 16-34px the
+    two vertical planes came out the same width, the bottom edge came to a
+    point instead of sitting on the floor, and the whole silhouette read as a
+    LOZENGE — a gem lying in the grass, not a crate standing in it.
+
+    Face-on fixes both halves of that. The front is a rectangle and owns most
+    of the pixels, so the object has a flat base on the ground and a shape the
+    eye already knows. The top is a parallelogram at 35-45% of the silhouette
+    instead of the 60% a corner-on lid takes, so it reads as depth rather than
+    as the subject. The shear goes RIGHT because the key light is at 135°: the
+    lit planes are the top and the left, so the plane that must be visible and
+    dark is the right-hand one.
+
+    `make_store._block` reached this construction first, for a row of props
+    that hit exactly this failure. There is one solid now, and it lives here.
     """
     width, height = size
-    far_x = fx - lw + rw
-    for x in range(max(0, int(round(fx - lw))), min(width, int(round(fx + rw)) + 1)):
-        contact = base - abs(x - fx) * SLOPE
-        lid = contact - tall
-        back = contact - tall - (lw + rw) * SLOPE + abs(x - far_x) * SLOPE
+    geo = faces(fx, base, lw, rw, tall)
+    x0, x1, corner, y0, y1, dx = geo
+    for x in range(max(0, int(round(x0))), min(width, int(round(x1)) + 1)):
+        contact, lid, back = edges(geo, x)
         gy, ly = int(round(contact)), int(round(lid))
         by = min(int(round(back)), ly)
         for y in range(max(0, by), min(height, gy + 1)):
-            plane = top if y <= ly else (front if x <= fx else side)
+            plane = top if y <= ly else (front if x <= corner else side)
             px[x, y] = tone(ramp, plane, x, y, grain, salt)
+    # The terminator between the top plane and the wall under it: one step
+    # down, no outline — an interior form break is a value step.
+    for x in range(max(0, int(round(x0))), min(width, int(round(corner)) + 1)):
+        y = int(round(y0))
+        if 0 <= y < height and px[x, y][3]:
+            px[x, y] = tone(ramp, top - 1, x, y, grain, salt)
 
 
 def cap(px, size: tuple[int, int], fx: float, base: float, lw: float, rw: float,
         ramp: Ramp, step: int = TOP, *, squash: float = 1.0) -> None:
-    """Just the LID of a box — the rhombus its top face lands on.
+    """Just the TOP PLANE of a box — the parallelogram the camera looks down at.
 
-    `box` draws a solid; this draws the one face of it the camera looks down
-    at, on its own, at whatever height and whatever foreshortening you hand
-    it. That is what an opening lid needs: a lid swinging back is the same
-    rhombus seen at a steeper angle, so it squashes toward a line rather than
-    sliding up the frame as a slab. A lid drawn as a rectangle that rises is
-    a lid on a sprite with no top, which is what the box sheet used to be.
+    `box` draws a solid; this draws that one plane on its own, at whatever
+    height and whatever foreshortening you hand it. That is what an opening
+    lid needs: a lid swinging back is the same parallelogram seen at a steeper
+    angle, so it squashes toward a line rather than sliding up the frame as a
+    slab.
+
+    `squash` shortens the RUN BACK, never the width. A lid seen from lower
+    down keeps its front edge and loses its depth, which is the whole reason
+    the parameter exists.
     """
     width, height = size
-    far_x = fx - lw + rw
-    reach = (lw + rw) * SLOPE * squash
-    for x in range(max(0, int(round(fx - lw))), min(width, int(round(fx + rw)) + 1)):
-        near = base - abs(x - fx) * SLOPE * squash
-        back = near - reach + abs(x - far_x) * SLOPE * squash
+    dx = depth_of(lw, rw) * squash
+    dy = dx * SLOPE
+    x0, x1 = fx - lw, fx + rw - dx
+    for x in range(max(0, int(round(x0))), min(width, int(round(x1 + dx)) + 1)):
+        near = base - dy * clamp01((x - x1) / max(dx, 0.5))
+        back = base - dy * clamp01((x - x0) / max(dx, 0.5))
         for y in range(max(0, int(round(back))), min(height, int(round(near)) + 1)):
             px[x, y] = tone(ramp, step, x, y)
 
@@ -1009,19 +1077,21 @@ def _crate_box(width: int, height: int, spec: tuple) -> tuple[float, ...]:
 
 
 def _crate_edges(box: tuple, x: float) -> tuple[float, float, float]:
-    """(contact, lid, back) y for one column of a box.
+    """(contact, lid, back) y for one column of a crate.
 
-    Three edges, and they are the whole projection. The footprint is a rhombus
-    with its near corner at `fx`, so the contact line falls away from that
-    corner at the camera slope in BOTH directions — one expression, no branch.
-    The lid is the contact lifted by the wall height; the back edge is the far
-    two sides of the top face, which meet over the rhombus's own far corner.
+    One line, because the projection is not the crate's — it is the shared
+    one every solid on this sheet is built from (`edges`). It used to be a
+    corner-on rhombus here and a face-on box in `make_store`, which is two
+    cameras looking at one clearing; see `box` for why the rhombus lost.
     """
     fx, fy, lw, rw, tall = box
-    contact = fy - abs(x - fx) * CRATE_SLOPE
-    far_x = fx - lw + rw
-    back = fy - tall - (lw + rw) * CRATE_SLOPE + abs(x - far_x) * CRATE_SLOPE
-    return contact, contact - tall, back
+    return edges(faces(fx, fy, lw, rw, tall), x)
+
+
+def _crate_corner(box: tuple) -> float:
+    """Screen x where the front plane ends and the shade side begins."""
+    fx, fy, lw, rw, tall = box
+    return faces(fx, fy, lw, rw, tall)[2]
 
 
 def _crate_columns(box: tuple, width: int) -> range:
@@ -1050,7 +1120,7 @@ def _crate_hull(
     """
     width, height = size
     marks: dict[tuple[int, int], str] = {} if faces is None else faces
-    fx = box[0]
+    corner = _crate_corner(box)
     for x in _crate_columns(box, width):
         contact, lid, back = _crate_edges(box, x)
         gy, ly = int(round(contact)), int(round(lid))
@@ -1058,16 +1128,17 @@ def _crate_hull(
         for y in range(max(0, by), min(height, gy + 1)):
             if y <= ly:
                 face = "top"
-                # ONE pixel of seam. `x - 2y` is the coordinate that runs
-                # across the boards, and it steps by one per screen column, so
-                # testing it directly gives a 1px line; testing it halved gave
-                # a 2px line and the lid came out striped rather than planked.
-                # The spacing doubles to compensate, which puts two seams on a
-                # lid this size — a rhythm, not a texture (§5).
-                face_seam = (x - 2 * y) % (boards * 2) == 0
+                # ONE pixel of seam, running BACK along the shear. The top
+                # plane recedes up and to the right at 2:1, so `x + 2y` is the
+                # coordinate that stays constant along a board and steps by
+                # one per screen column: testing it directly gives a 1px line.
+                # It was `x - 2y` while the lid was a corner-on rhombus, which
+                # on a sheared top puts the seams across the boards instead of
+                # along them.
+                face_seam = (x + 2 * y) % (boards * 2) == 0
                 step = CRATE_TOP - (1 if face_seam else 0)
             else:
-                near = x <= fx
+                near = x <= corner
                 face = "front" if near else "side"
                 base = CRATE_FRONT if near else CRATE_SIDE
                 step = base - (1 if (gy - y) % boards == 0 else 0)
@@ -1087,7 +1158,7 @@ def _crate_lip(px, size: tuple[int, int], box: tuple, ramp: Ramp) -> None:
     touch without a plane break between them (§7).
     """
     width, height = size
-    fx = box[0]
+    corner = _crate_corner(box)
     for x in _crate_columns(box, width):
         contact, lid, back = _crate_edges(box, x)
         gy, ly = int(round(contact)), int(round(lid))
@@ -1099,27 +1170,32 @@ def _crate_lip(px, size: tuple[int, int], box: tuple, ramp: Ramp) -> None:
             # Two steps under its own wall on both sides. A lid that overhangs
             # throws a hard line, and a soft one reads as the top face being
             # bevelled rather than as a separate board sitting on the box.
-            px[x, under] = _tone(ramp, 1 if x <= fx else 0, x, under)
+            px[x, under] = _tone(ramp, 1 if x <= corner else 0, x, under)
         if by < ly and 0 <= by < height:
             px[x, by] = _tone(ramp, CRATE_TOP - 1, x, by)
 
 
 def _crate_posts(px, size: tuple[int, int], box: tuple, ramp: Ramp) -> None:
-    """Corner battens: a lit column on the near corner, a shaded cheek beside it.
+    """Corner battens: a lit column at each corner of the front plane.
 
-    Without this the two walls meet at a value change and the box reads as a
-    folded card. With it they meet at an OBJECT, and the fact that the batten
-    runs the full height of both walls is what says the corner is structural
-    rather than drawn.
+    Without this the front and the shade side meet at a value change and the
+    box reads as a folded card. With it they meet at an OBJECT, and the fact
+    that the batten runs the full height of the wall is what says the corner
+    is structural rather than drawn.
+
+    THE CORNER MOVED when the projection did. Corner-on, the near vertical
+    edge was in the middle of the silhouette and took the key; face-on, the
+    front plane is a rectangle and its two ends are the edges that need
+    calling out — the right-hand one being where the shade side turns away.
     """
     width, height = size
     fx, _, lw, rw, _ = box
-    near = int(round(fx))
+    corner = int(round(_crate_corner(box)))
     for x, step in (
-        (near, CRATE_BATTEN),                 # the post, turned into the key
-        (near + 1, CRATE_BATTEN_SHADE),       # its cheek, on the shaded wall
+        (corner, CRATE_BATTEN),               # the turn, turned into the key
+        (corner + 1, CRATE_BATTEN_SHADE),     # its cheek, on the shade side
         (int(round(fx - lw)) + 1, CRATE_BATTEN),
-        (int(round(fx + rw)) - 1, CRATE_BATTEN_SHADE),
+        (corner - 1, CRATE_BATTEN_SHADE),
     ):
         if not 0 <= x < width:
             continue

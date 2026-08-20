@@ -179,122 +179,12 @@ BEAM: Ramp = objects.PLANK
 ROCK: Ramp = objects.STONE
 
 
-def _shadow(img: Image.Image, cx: float, cy: float, rx: float, ry: float) -> None:
-    """The contact patch under a standing thing, painted only where it is not.
-
-    Not a drop shadow and not a gradient: two flat alphas of the outline
-    colour, laid down only on transparent pixels, so it reads as the ground
-    going dark beside the object rather than as a smudge on it. It is the
-    cheapest thing on this sheet and most of why a prop stops looking stuck to
-    the camera.
-    """
-    px = img.load()
-    for y in range(max(0, int(cy - ry)), min(img.height, int(cy + ry) + 1)):
-        for x in range(max(0, int(cx - rx)), min(img.width, int(cx + rx) + 1)):
-            if px[x, y][3]:
-                continue
-            dx, dy = (x - cx) / max(rx, 0.5), (y - cy) / max(ry, 0.5)
-            d = dx * dx + dy * dy
-            if d > 1.0:
-                continue
-            px[x, y] = (*OUTLINE_WOOD[:3], 150 if d < 0.55 else 96)
-
-
-def _box(px, size: tuple[int, int], fx: float, base: float, lw: float, rw: float,
-         tall: float, ramp: Ramp, *, grain: float = 0.0, salt: int = 0,
-         top: int = TOP, front: int = FRONT, side: int = SIDE) -> None:
-    """A dimetric box standing on the ground: top face, near face, far face.
-
-    Same projection as a crate — the footprint is a rhombus with its near
-    corner at `fx`, the contact line falls away from that corner at the camera
-    slope in both directions, and the lid is the contact lifted by `tall`.
-    Posts, boards, sign planks and a tent's gable are all this.
-    """
-    width, height = size
-    far_x = fx - lw + rw
-    for x in range(max(0, int(round(fx - lw))), min(width, int(round(fx + rw)) + 1)):
-        contact = base - abs(x - fx) * SLOPE
-        lid = contact - tall
-        back = contact - tall - (lw + rw) * SLOPE + abs(x - far_x) * SLOPE
-        gy, ly = int(round(contact)), int(round(lid))
-        by = min(int(round(back)), ly)
-        for y in range(max(0, by), min(height, gy + 1)):
-            plane = top if y <= ly else (front if x <= fx else side)
-            px[x, y] = objects.tone(ramp, plane, x, y, grain, salt)
-
-
-def _billet(px, size: tuple[int, int], x0: float, x1: float, axis: float,
-            r: float, ramp: Ramp, *, grain: float = 0.0, salt: int = 0,
-            cap: bool = True) -> None:
-    """A cylinder lying along the screen X axis. A trunk, a rail, a ridge pole.
-
-    THREE BANDS, NOT A FALLOFF, and they are UNEQUAL. A round thing under one
-    light has a lit crest, a wide flank and a thin underside; the boundaries
-    between those three are the only thing at this size that says round, and a
-    smooth ramp across the diameter reads as a blurred bar. Sizes follow S7 —
-    the flank is the base step and owns the most pixels, the crest the fewest —
-    which is also what keeps a 32px trunk from out-glaring the crate beside it.
-
-    NO GRAIN ON THE BANDS. `grain` feeds `_tone`, which feeds `pick`, which
-    DITHERS between the two nearest steps whenever the value is not exactly on
-    one — so a "subtle" 0.10 of grain does not roughen a plane, it scatters
-    single pixels of the neighbouring step across it, which is the per-pixel
-    noise S5 rules out. Texture on these props is a clustered BAND (the bark
-    strip in `make_logs`), never a jitter. The parameter stays for the
-    charcoal, which genuinely wants to break up.
-
-    The ends TAPER, so the silhouette is not a rectangle — a cylinder drawn
-    with square ends is a plank however it is shaded. `cap` then draws the
-    sawn face at `x0` as a squashed disc: sapwood rim, heartwood, dark pith.
-    It is the one part of a felled trunk with any shape at all.
-    """
-    width, height = size
-    for x in range(max(0, int(round(x0))), min(width, int(round(x1)) + 1)):
-        # Round both ends over one radius of run. Clean slopes, no jitter (S5).
-        t = min((x - x0) / max(r, 1.0), (x1 - x) / max(r, 1.0), 1.0)
-        rr = r if t >= 1.0 else r * (0.55 + 0.45 * max(t, 0.0))
-        for y in range(max(0, int(round(axis - rr))), min(height, int(round(axis + rr)) + 1)):
-            up = (axis - y) / max(rr, 0.5)
-            plane = TOP if up > 0.50 else (FRONT if up > -0.45 else SIDE)
-            px[x, y] = objects.tone(ramp, plane, x, y, grain, salt)
-    if not cap:
-        return
-    cap_rx = max(2.0, r * 0.70)
-    cx = x0 + cap_rx - 0.5
-    for y in range(max(0, int(round(axis - r))), min(height, int(round(axis + r)) + 1)):
-        for x in range(max(0, int(round(cx - cap_rx))), min(width, int(round(cx + cap_rx)) + 1)):
-            dx, dy = (x - cx) / cap_rx, (y - axis) / max(r, 0.5)
-            d = dx * dx + dy * dy
-            if d > 1.0:
-                continue
-            # Rim, heartwood, pith — three steps in from the edge, so the face
-            # reads as concentric rather than as one lighter blob.
-            ring = TOP if d > 0.66 else (FRONT if d > 0.22 else SIDE)
-            px[x, y] = objects.tone(ramp, ring, x, y)
-
-
-def _stone(px, size: tuple[int, int], cx: float, cy: float, rx: float, ry: float,
-           ramp: Ramp, salt: int) -> None:
-    """One boulder: a lit cap, a flank, and the contact band it sits in.
-
-    Stone is heavy (S14), so the bands are wide and the breaks are straight —
-    an angular facet, never a soft bulb. The bottom band is `SIDE` rather than
-    the flank's `FRONT`: that is the occlusion where the stone meets whatever
-    it is standing on.
-    """
-    width, height = size
-    for y in range(max(0, int(cy - ry)), min(height, int(cy + ry) + 1)):
-        for x in range(max(0, int(cx - rx)), min(width, int(cx + rx) + 1)):
-            dx, dy = (x - cx) / max(rx, 0.5), (y - cy) / max(ry, 0.5)
-            if dx * dx + dy * dy > 1.0:
-                continue
-            # Facet by height on the stone, nudged by a coarse 2x2 hash so two
-            # stones in a ring are not the same drawing twice (S5: clustered
-            # shape, never per-pixel noise).
-            lift = -dy + hash01(int(x) // 2, int(y) // 2, salt) * 0.22
-            plane = TOP if lift > 0.34 else (FRONT if lift > -0.30 else SIDE)
-            px[x, y] = objects.tone(ramp, plane, x, y)
-
+#: The volume toolkit lives in `make_objects.py` — see the block above its
+#: crate helpers. Aliased rather than re-exported so the call sites here stay
+#: short and the ownership stays obvious.
+_shadow, _box, _billet, _stone = (
+    objects.shadow, objects.box, objects.billet, objects.stone
+)
 
 
 def _stroke(px, x: float, y: float, angle: float, length: float, thick: float,

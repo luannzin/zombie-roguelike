@@ -94,6 +94,31 @@ surface. Output rules live in [`assets/AGENTS.md`](../../assets/AGENTS.md).
   import and not a shared convention: the two modules pack into the SAME
   manifest and get placed in the same clearing by `server/app/scenery.py`, so
   any drift between them is visible in one screenshot.
+- **THE OBJECT SHEETS ARE SOLIDS NOW, NOT ELEVATIONS.** `make_objects.py`
+  owns four primitives — `box` (a dimetric box, three planes), `cap` (just its
+  lid, at any height and any foreshortening — this is what an opening lid is),
+  `dome` (caps stacked on a circular profile, for the chest) and `billet` (a
+  cylinder lying down) — plus `stone` and `shadow`. Everything in the folder is
+  built from them, so a fence rail, a felled trunk, a barrel hoop and a crate
+  slat are the same solid in the same light. What they replaced: the barrel
+  was a bulged rectangle with a token ellipse on top, the box and chest were
+  courses of board seen dead-on, the five stashes were five coloured
+  rectangles, the altar was a stone staircase, and the six VEHICLES were side
+  elevations under a dither — no top surface anywhere, on the objects the
+  camera looks down at hardest.
+- **A FOOTPRINT WITH `lw == rw` IS A DIAMOND, AND A DIAMOND IS A GEM.** The
+  crate sheet says it and it applies to every `box` call: unequal left and
+  right runs are what make a top face read as a rectangle in perspective
+  rather than as a lozenge sitting on a wall.
+- **THE VEHICLE ROOF IS SWEPT, CAPPED AND RASTERISED AS A REGION**, and all
+  three words are load-bearing. `VEHICLE_PROFILE` describes the line where the
+  roof meets the flank, so sweeping it back along `SLOPE` generates roof,
+  bonnet and boot lid in one pass with the six profiles unchanged. Sweeping
+  the WHOLE silhouette shears the body into a parallelogram; plotting the
+  sweep point by point leaves a checkerboard wherever two offsets round to the
+  same row; and filling between the extremes without a cap paints the entire
+  rear quarter of a car as roof. Sweep the top only, fill each column between
+  its extremes, and clamp the band to the sweep depth.
 - **A PLANE IS A BAND, AND `pick` IS NOT HOW YOU MAKE ONE.** Every prop in
   `make_scenery.py` used to be shaded `pick(ramp, <continuous value>)`, which
   dithers between the two nearest steps — so a "subtle" grain of 0.10 does not

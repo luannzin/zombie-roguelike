@@ -319,16 +319,35 @@ def _seam(px, x0: int, y0: int, x1: int, y1: int, width: int, height: int,
 
 def _wear(px, x0: int, y0: int, x1: int, y1: int, ramp: Ramp, salt: int,
           width: int, height: int, amount: float = 0.14) -> None:
-    """Rust, rot or moss, scattered over a band of an object.
+    """Rust, rot or moss, in PATCHES over a band of an object.
 
     Everything in this forest has been standing in it for a year, and the
     difference between a prop and a prop somebody abandoned is entirely in
     this pass: unbroken paint reads as a car parked five minutes ago.
+
+    THE ROLL IS ON A 2x2 GRID AND THE TONE IS A STEP. It used to roll per
+    pixel and then pick a random shade for each hit, which is two separate
+    ways of producing the scattered noise S5 rules out — on the vehicles it
+    came out as orange confetti along every sill, which is the one part of the
+    sheet a player sees at every range. S5 puts the minimum meaningful cluster
+    at 2x2, so the hash is quantised to that; the tone is one of two adjacent
+    ramp steps chosen by a second coarse roll, so a patch is a patch of a
+    material rather than a spray of unrelated values.
     """
     for y in range(max(0, y0), min(height, y1 + 1)):
         for x in range(max(0, x0), min(width, x1 + 1)):
-            if px[x, y][3] > 20 and hash01(x, y, salt) < amount:
-                px[x, y] = pick(ramp, 0.30 + hash01(x, y, salt + 7) * 0.35, x, y)
+            if px[x, y][3] <= 20:
+                continue
+            if hash01(x // 2, y // 2, salt) >= amount:
+                continue
+            # The TONE is quantised coarser than the placement — a 4x4 block
+            # picks the step, a 2x2 block decides whether there is any wear
+            # there at all. Choosing the step on the same 2x2 grid alternates
+            # neighbouring patches between two adjacent ramp steps, and a
+            # field of alternating 2x2 blocks is a checkerboard, which is
+            # exactly what appeared across the altar slab.
+            step = 2 if hash01(x // 4, y // 4, salt + 7) < 0.62 else 3
+            px[x, y] = tone(ramp, min(step, len(ramp) - 1), x, y)
 
 
 def _ground_dark(img: Image.Image, rows: int = 2, drop: float = 0.55) -> None:
@@ -456,56 +475,116 @@ def make_barrel(width: int, height: int, kind: int, rng: random.Random) -> Image
     All three are the same cylinder with a different skin, because the
     silhouette IS the promise: a barrel-shaped thing in this game is a thing
     you shoot. What the skin changes is the guess about what falls out.
+
+    A BARREL STANDS ON ITS END, so unlike every other cylinder in this file it
+    is not a `billet` — the axis points at the sky and what the camera sees is
+    the LID. That lid is the whole upgrade. The old drawing was a front
+    elevation: a bulged rectangle with a value ramp running out to both edges
+    and a token ellipse dropped on top, which is a drawing of a barrel seen
+    from the side by somebody standing on the floor. From this camera you look
+    DOWN at the rim, so the lid is a wide ellipse at the lit plane, the staves
+    below it are banded — not ramped — and the two are separated by a rim that
+    is one step darker than either, because that is where the wood turns.
+
+    The bulge stays: a straight-sided cylinder reads as a bucket. It is now in
+    the SILHOUETTE only, where it belongs, instead of being implied by shading.
     """
     img = Image.new("RGBA", (width, height), TRANSPARENT)
     px = img.load()
     cx = (width - 1) / 2.0
     ground = height - 1
-    body_h = int(height * 0.82)
+    body_h = int(height * 0.80)
     top = ground - body_h
+    rx = width * 0.30
+    ry = max(1.6, rx * SLOPE)
 
     ramp = PLANK if kind == 0 else (STEEL if kind == 1 else RUST)
     band = STEEL if kind == 0 else CHROME
 
-    for y in range(top, ground + 1):
-        t = (y - top) / max(body_h, 1)
-        # The bulge. A straight-sided cylinder reads as a bucket.
-        half = width * (0.29 + 0.09 * math.sin(t * math.pi))
-        for x in range(int(cx - half), int(cx + half) + 1):
+    # The staves. Three vertical bands, not a falloff: the lit face, the face
+    # turned away, and a narrow contact-dark edge on the far side. Where the
+    # break falls is a function of x alone, so every stave on the sheet turns
+    # at the same place and the barrels read as one family.
+    lid_y = top + ry
+    for y in range(int(lid_y), ground + 1):
+        t = (y - lid_y) / max(ground - lid_y, 1)
+        half = rx + width * 0.055 * math.sin(t * math.pi)
+        for x in range(int(round(cx - half)), int(round(cx + half)) + 1):
             if not 0 <= x < width:
                 continue
-            shade = 0.63 - abs(x - cx) / max(half, 0.5) * 0.36 - t * 0.06
-            px[x, y] = pick(ramp, shade + (hash01(x, y, 89 + kind) - 0.5) * 0.2, x, y)
+            across = (x - cx) / max(half, 0.5)
+            plane = FRONT if across < 0.30 else (SIDE if across < 0.86 else 0)
+            px[x, y] = tone(ramp, plane, x, y)
 
-    # Hoops. Two on wood, three on steel -- and they are the only horizontal
-    # beat on the sprite, which is what stops the cylinder reading as a blob.
-    hoops = (0.16, 0.72) if kind == 0 else (0.10, 0.44, 0.80)
+    # Hoops. Two on wood, three on steel — the only horizontal beat on the
+    # sprite, and what stops the cylinder reading as a slab. Each one follows
+    # the bulge and takes the SAME plane break as the stave under it, one step
+    # over, so a hoop is a band of metal and not a stripe of paint.
+    hoops = (0.14, 0.70) if kind == 0 else (0.08, 0.42, 0.78)
     for hoop in hoops:
-        y = int(top + body_h * hoop)
-        half = width * (0.29 + 0.09 * math.sin(hoop * math.pi))
-        for x in range(int(cx - half), int(cx + half) + 1):
-            if 0 <= x < width and 0 <= y < height:
-                px[x, y] = pick(band, 0.62 - abs(x - cx) / max(half, 0.5) * 0.3, x, y)
+        y = int(lid_y + (ground - lid_y) * hoop)
+        half = rx + width * 0.055 * math.sin(hoop * math.pi)
+        for x in range(int(round(cx - half)), int(round(cx + half)) + 1):
+            if not (0 <= x < width and 0 <= y < height):
+                continue
+            across = (x - cx) / max(half, 0.5)
+            px[x, y] = tone(band, TOP if across < 0.30 else FRONT, x, y)
 
-    # The lid, seen from just above: an ellipse of end grain or pressed steel.
-    _disc(px, cx, top + 1.2, width * 0.29, ramp, 0.78, 91 + kind, width, height, squash=0.42)
+    # THE LID, and it is what makes this a barrel rather than a picture of one.
+    # Rim first at the shade step, then the head inside it at the lit step, so
+    # the edge of the ellipse is a turn in the material rather than an outline.
+    for y in range(int(round(top)), int(round(top + ry * 2)) + 1):
+        for x in range(int(round(cx - rx)), int(round(cx + rx)) + 1):
+            if not (0 <= x < width and 0 <= y < height):
+                continue
+            dx, dy = (x - cx) / rx, (y - (top + ry)) / ry
+            d = dx * dx + dy * dy
+            if d > 1.0:
+                continue
+            px[x, y] = tone(ramp, FRONT if d > 0.66 else TOP, x, y)
+    # AMBIENT OCCLUSION WHERE THE HEAD MEETS THE STAVES (S10). One arc at the
+    # contact step along the lid's lower edge. Without it the rim of the head
+    # and the lit face of the staves land on the same plane step — which they
+    # should, they face the same way — and the lid dissolves into the body.
+    # Two surfaces that meet are separated by the dark where they meet, not by
+    # giving one of them a value it has no business having.
+    for x in range(int(round(cx - rx)), int(round(cx + rx)) + 1):
+        if not 0 <= x < width:
+            continue
+        dx = (x - cx) / rx
+        edge = int(round(top + ry + ry * math.sqrt(max(0.0, 1.0 - dx * dx))))
+        for y in (edge, edge + 1):
+            if 0 <= y < height and px[x, y][3]:
+                px[x, y] = tone(ramp, 0, x, y)
+    # Two staves of end grain across the head. Value steps, never lines.
+    for offset in (-0.34, 0.30):
+        gx = int(round(cx + offset * rx))
+        for y in range(int(round(top)), int(round(top + ry * 2)) + 1):
+            if not (0 <= gx < width and 0 <= y < height) or not px[gx, y][3]:
+                continue
+            dx, dy = (gx - cx) / rx, (y - (top + ry)) / ry
+            if dx * dx + dy * dy <= 0.62:
+                px[gx, y] = tone(ramp, FRONT, gx, y)
 
     if kind == 2:
-        # Hazard band. Two rows, the one warm thing on the object, and it is
-        # the only reason a fuel drum reads differently from a rusty one.
-        for y in (int(top + body_h * 0.30), int(top + body_h * 0.34)):
-            half = width * 0.33
+        # Hazard band. Two rows, the one warm thing on the object, and the only
+        # reason a fuel drum reads differently from a rusty one.
+        for y in (int(lid_y + (ground - lid_y) * 0.28),
+                  int(lid_y + (ground - lid_y) * 0.33)):
+            half = rx + width * 0.05
             for x in range(int(cx - half), int(cx + half) + 1):
-                if 0 <= x < width and 0 <= y < height and (x + y) % 3:
-                    px[x, y] = pick(HAZARD, 0.62, x, y)
+                if 0 <= x < width and 0 <= y < height and px[x, y][3] and (x + y) % 3:
+                    across = (x - cx) / max(half, 0.5)
+                    px[x, y] = tone(HAZARD, TOP if across < 0.30 else FRONT, x, y)
 
     if kind == 0 and rng.random() < 0.6:
         # A stave sprung at the seam. Damage before anybody shot it.
-        sx = int(cx + rng.uniform(-width * 0.2, width * 0.2))
-        for y in range(top + 2, top + body_h // 2):
-            if 0 <= sx < width:
-                px[sx, y] = pick(PLANK_DARK, 0.5, sx, y)
+        sx = int(cx + rng.uniform(-rx * 0.7, rx * 0.7))
+        for y in range(int(lid_y) + 1, int(lid_y + (ground - lid_y) * 0.5)):
+            if 0 <= sx < width and px[sx, y][3]:
+                px[sx, y] = tone(PLANK_DARK, 1, sx, y)
 
+    shadow(img, cx, ground - 0.5, rx * 1.15, ry * 0.9)
     outline(img, OUTLINE_WOOD if kind == 0 else OUTLINE_COLD)
     return img
 
@@ -712,9 +791,208 @@ SLOPE = CRATE_SLOPE
 PLANE_TOP = CRATE_TOP
 PLANE_FRONT = CRATE_FRONT
 PLANE_SIDE = CRATE_SIDE
+#: Short names, for the toolkit below and for anything drawing with it.
+TOP, FRONT, SIDE = PLANE_TOP, PLANE_FRONT, PLANE_SIDE
 
 #: The flat-step painter under a public name — see `SLOPE` above.
 tone = _tone
+
+
+# --- the volume toolkit -----------------------------------------------------
+# THREE SOLIDS AND A CONTACT PATCH, AND EVERY STANDING THING IN THE SCENERY
+# FOLDER IS MADE OF THEM. They live here rather than in `make_scenery.py`
+# because that module imports this one, so this is the only end of the pair
+# both sides can reach — and every sheet in the folder has to be lit by one
+# rule or the clearing comes out as a collection of assets rather than a
+# place.
+#
+# WHAT THEY REPLACED. Every object below used to be a FRONT or SIDE ELEVATION:
+# a flat face with a value ramp across it, dithered by `pick`, with no top
+# surface anywhere. That is a drawing of a barrel rather than a barrel, and it
+# is the same failure the guns sheet and the crates each had before their own
+# pass. A volume here is BANDS — a top plane, a near plane two steps under it,
+# a far plane two under that — and the break between them is the whole read.
+#
+# `SLOPE`, `PLANE_TOP/FRONT/SIDE` and `tone` above are the camera and the
+# painter these are built on. Do not shade a plane through `pick`: it dithers
+# between the two nearest steps, so a "subtle" grain scatters single pixels of
+# the neighbour across a face, which is the per-pixel noise S5 rules out.
+
+
+def shadow(img: Image.Image, cx: float, cy: float, rx: float, ry: float) -> None:
+    """The contact patch under a standing thing, painted only where it is not.
+
+    Not a drop shadow and not a gradient: two flat alphas of the outline
+    colour, laid down only on transparent pixels, so it reads as the ground
+    going dark beside the object rather than as a smudge on it. It is the
+    cheapest thing on this sheet and most of why a prop stops looking stuck to
+    the camera.
+    """
+    px = img.load()
+    for y in range(max(0, int(cy - ry)), min(img.height, int(cy + ry) + 1)):
+        for x in range(max(0, int(cx - rx)), min(img.width, int(cx + rx) + 1)):
+            if px[x, y][3]:
+                continue
+            dx, dy = (x - cx) / max(rx, 0.5), (y - cy) / max(ry, 0.5)
+            d = dx * dx + dy * dy
+            if d > 1.0:
+                continue
+            px[x, y] = (*OUTLINE_WOOD[:3], 104 if d < 0.5 else 58)
+
+
+def box(px, size: tuple[int, int], fx: float, base: float, lw: float, rw: float,
+         tall: float, ramp: Ramp, *, grain: float = 0.0, salt: int = 0,
+         top: int = TOP, front: int = FRONT, side: int = SIDE) -> None:
+    """A dimetric box standing on the ground: top face, near face, far face.
+
+    Same projection as a crate — the footprint is a rhombus with its near
+    corner at `fx`, the contact line falls away from that corner at the camera
+    slope in both directions, and the lid is the contact lifted by `tall`.
+    Posts, boards, sign planks and a tent's gable are all this.
+    """
+    width, height = size
+    far_x = fx - lw + rw
+    for x in range(max(0, int(round(fx - lw))), min(width, int(round(fx + rw)) + 1)):
+        contact = base - abs(x - fx) * SLOPE
+        lid = contact - tall
+        back = contact - tall - (lw + rw) * SLOPE + abs(x - far_x) * SLOPE
+        gy, ly = int(round(contact)), int(round(lid))
+        by = min(int(round(back)), ly)
+        for y in range(max(0, by), min(height, gy + 1)):
+            plane = top if y <= ly else (front if x <= fx else side)
+            px[x, y] = tone(ramp, plane, x, y, grain, salt)
+
+
+def cap(px, size: tuple[int, int], fx: float, base: float, lw: float, rw: float,
+        ramp: Ramp, step: int = TOP, *, squash: float = 1.0) -> None:
+    """Just the LID of a box — the rhombus its top face lands on.
+
+    `box` draws a solid; this draws the one face of it the camera looks down
+    at, on its own, at whatever height and whatever foreshortening you hand
+    it. That is what an opening lid needs: a lid swinging back is the same
+    rhombus seen at a steeper angle, so it squashes toward a line rather than
+    sliding up the frame as a slab. A lid drawn as a rectangle that rises is
+    a lid on a sprite with no top, which is what the box sheet used to be.
+    """
+    width, height = size
+    far_x = fx - lw + rw
+    reach = (lw + rw) * SLOPE * squash
+    for x in range(max(0, int(round(fx - lw))), min(width, int(round(fx + rw)) + 1)):
+        near = base - abs(x - fx) * SLOPE * squash
+        back = near - reach + abs(x - far_x) * SLOPE * squash
+        for y in range(max(0, int(round(back))), min(height, int(round(near)) + 1)):
+            px[x, y] = tone(ramp, step, x, y)
+
+
+def dome(px, size: tuple[int, int], fx: float, base: float, lw: float, rw: float,
+         rise: float, ramp: Ramp) -> None:
+    """A curved lid: rhombi stacked on a circular profile, widest at the rim.
+
+    The chest is the one object in the forest with a curve on top, and it is
+    the only reason it reads as different from across a clearing. Drawn as a
+    bulged rectangle it was a curve on a FLAT object; stacked as caps it is a
+    surface the camera goes over — the rim at the base plane, the crown at the
+    lit one, and the steps between them the facets S2 asks for instead of a
+    gradient.
+    """
+    width, height = size
+    steps = max(2, int(round(rise)))
+    for index in range(steps):
+        t = (index + 0.5) / steps
+        shrink = math.sqrt(max(0.0, 1.0 - t * t))
+        step = TOP if index >= steps - 2 else (FRONT if index else FRONT - 1)
+        cap(px, size, fx, base - t * rise, max(1.0, lw * shrink),
+            max(1.0, rw * shrink), ramp, step)
+
+
+def billet(px, size: tuple[int, int], x0: float, x1: float, axis: float,
+            r: float, ramp: Ramp, *, grain: float = 0.0, salt: int = 0,
+            cap: bool = True) -> None:
+    """A cylinder lying along the screen X axis. A trunk, a rail, a ridge pole.
+
+    THREE BANDS, NOT A FALLOFF, and they are UNEQUAL. A round thing under one
+    light has a lit crest, a wide flank and a thin underside; the boundaries
+    between those three are the only thing at this size that says round, and a
+    smooth ramp across the diameter reads as a blurred bar. Sizes follow S7 —
+    the flank is the base step and owns the most pixels, the crest the fewest —
+    which is also what keeps a 32px trunk from out-glaring the crate beside it.
+
+    NO GRAIN ON THE BANDS. `grain` feeds `_tone`, which feeds `pick`, which
+    DITHERS between the two nearest steps whenever the value is not exactly on
+    one — so a "subtle" 0.10 of grain does not roughen a plane, it scatters
+    single pixels of the neighbouring step across it, which is the per-pixel
+    noise S5 rules out. Texture on these props is a clustered BAND (the bark
+    strip in `make_logs`), never a jitter. The parameter stays for the
+    charcoal, which genuinely wants to break up.
+
+    The ends TAPER, so the silhouette is not a rectangle — a cylinder drawn
+    with square ends is a plank however it is shaded. `cap` then draws the
+    sawn face at `x0` as a squashed disc: sapwood rim, heartwood, dark pith.
+    It is the one part of a felled trunk with any shape at all.
+    """
+    width, height = size
+    for x in range(max(0, int(round(x0))), min(width, int(round(x1)) + 1)):
+        # Round both ends over one radius of run. Clean slopes, no jitter (S5).
+        t = min((x - x0) / max(r, 1.0), (x1 - x) / max(r, 1.0), 1.0)
+        rr = r if t >= 1.0 else r * (0.55 + 0.45 * max(t, 0.0))
+        for y in range(max(0, int(round(axis - rr))), min(height, int(round(axis + rr)) + 1)):
+            up = (axis - y) / max(rr, 0.5)
+            plane = TOP if up > 0.50 else (FRONT if up > -0.45 else SIDE)
+            px[x, y] = tone(ramp, plane, x, y, grain, salt)
+    if not cap:
+        return
+    cap_rx = max(2.0, r * 0.70)
+    cx = x0 + cap_rx - 0.5
+    for y in range(max(0, int(round(axis - r))), min(height, int(round(axis + r)) + 1)):
+        for x in range(max(0, int(round(cx - cap_rx))), min(width, int(round(cx + cap_rx)) + 1)):
+            dx, dy = (x - cx) / cap_rx, (y - axis) / max(r, 0.5)
+            d = dx * dx + dy * dy
+            if d > 1.0:
+                continue
+            # Rim, heartwood, pith — three steps in from the edge, so the face
+            # reads as concentric rather than as one lighter blob.
+            ring = TOP if d > 0.66 else (FRONT if d > 0.22 else SIDE)
+            px[x, y] = tone(ramp, ring, x, y)
+
+
+def stone(px, size: tuple[int, int], cx: float, cy: float, rx: float, ry: float,
+           ramp: Ramp, salt: int) -> None:
+    """One boulder: a lit cap, a flank, and the contact band it sits in.
+
+    Stone is heavy (S14), so the bands are wide and the breaks are straight —
+    an angular facet, never a soft bulb. The bottom band is `SIDE` rather than
+    the flank's `FRONT`: that is the occlusion where the stone meets whatever
+    it is standing on.
+    """
+    width, height = size
+    for y in range(max(0, int(cy - ry)), min(height, int(cy + ry) + 1)):
+        for x in range(max(0, int(cx - rx)), min(width, int(cx + rx) + 1)):
+            dx, dy = (x - cx) / max(rx, 0.5), (y - cy) / max(ry, 0.5)
+            if dx * dx + dy * dy > 1.0:
+                continue
+            # Facet by height on the stone, nudged by a coarse 2x2 hash so two
+            # stones in a ring are not the same drawing twice (S5: clustered
+            # shape, never per-pixel noise).
+            lift = -dy + hash01(int(x) // 2, int(y) // 2, salt) * 0.22
+            plane = TOP if lift > 0.34 else (FRONT if lift > -0.30 else SIDE)
+            px[x, y] = tone(ramp, plane, x, y)
+
+
+
+def _stroke(px, x: float, y: float, angle: float, length: float, thick: float,
+            ramp: Ramp, shade: float, salt: int, width: int, height: int) -> None:
+    """A tapering line of pixels. The workhorse for planks, rails and bones."""
+    for step in range(int(length)):
+        t = step / max(length - 1, 1)
+        ix = int(round(x + math.cos(angle) * step))
+        iy = int(round(y + math.sin(angle) * step))
+        half = max(0.0, thick * (1.0 - t * 0.35))
+        for offset in range(-int(half), int(half) + 1):
+            jy = iy + offset
+            if 0 <= ix < width and 0 <= jy < height:
+                px[ix, jy] = pick(
+                    ramp, shade - offset * 0.16 + (hash01(ix, jy, salt) - 0.5) * 0.22, ix, jy
+                )
 
 
 def _crate_box(width: int, height: int, spec: tuple) -> tuple[float, ...]:
@@ -1323,12 +1601,25 @@ def make_box(width: int, height: int, kind: int, frame: int, frames: int) -> Ima
     """`kind`: 0 supply crate, 1 ammo case, 2 plastic tote. `frame` swings the lid.
 
     The lid hinges at the BACK and falls away from the camera, so an open box
-    is a shallower silhouette with a bright rim where the inside catches what
-    little light there is. Hinging it forward would hide the interior behind
-    the lid, and the interior is the entire reason the animation exists.
+    is a shallower silhouette with the inside catching what little light there
+    is. Hinging it forward would hide the interior behind the lid, and the
+    interior is the entire reason the animation exists.
+
+    THE BOX IS A BOX NOW. It used to be a front elevation — a rectangle of
+    courses with a value ramp across it and a slab that slid up the frame for
+    a lid — which gave the sheet no top surface at all, on an object the
+    camera looks down at from sixty degrees. It is now `box` plus `cap`: three
+    real planes, and a lid that is the same rhombus as the top face, SQUASHED
+    as it swings so it foreshortens toward a line instead of levitating.
+
+    The interior is what the lid uncovers, and it is drawn as its own box —
+    the far inner wall at the shade step, the floor two steps under that —
+    rather than as a black hole. A hole is a hole in the sprite; two dim
+    planes are a container you are looking into.
     """
     img = Image.new("RGBA", (width, height), TRANSPARENT)
     px = img.load()
+    size = (width, height)
     cx = (width - 1) / 2.0
     ground = height - 1
     open_t = _ease(frame / max(frames - 1, 1))
@@ -1336,93 +1627,107 @@ def make_box(width: int, height: int, kind: int, frame: int, frames: int) -> Ima
     body = PLANK if kind == 0 else (OCHRE if kind == 1 else STEEL)
     trim = PLANK_DARK if kind == 0 else (STEEL if kind == 1 else CHROME)
 
-    box_h = int(height * 0.58)
-    half = width * 0.38
-    top = ground - box_h
+    # UNEQUAL, and the crate sheet says why: a box with lw == rw has a diamond
+    # for a footprint, and a diamond reads as a gem rather than as a container.
+    lw, rw = width * 0.38, width * 0.30
+    tall = height * 0.40
+    base = ground - 1.0
 
-    # The body: courses of board with a dark seam, so it is a box and not a
-    # rectangle of noise.
-    for y in range(top, ground + 1):
-        band = (y - top) % 3
-        shade = 0.64 - band * 0.05 - (y - top) / max(box_h, 1) * 0.16
-        if band == 2:
-            shade -= 0.22
-        for x in range(int(cx - half), int(cx + half) + 1):
+    box(px, size, cx, base, lw, rw, tall, body)
+
+    # Course seams down the near wall, one step under it. They run with the
+    # boards and stop at the corner, so the wall reads as planks rather than
+    # as a panel — and they never cross the top face, which has its own grain.
+    for course in (0.34, 0.68):
+        for x in range(int(cx - lw), int(cx) + 1):
             if not 0 <= x < width:
                 continue
-            px[x, y] = pick(
-                body,
-                shade - abs(x - cx) / half * 0.14 + (hash01(x, y, 51 + kind) - 0.5) * 0.2,
-                x, y,
-            )
+            contact = base - abs(x - cx) * SLOPE
+            y = int(round(contact - tall * course))
+            if 0 <= y < height and px[x, y][3]:
+                px[x, y] = tone(body, FRONT - 1, x, y)
 
     if kind == 0:
-        # Diagonal brace. One mark, and it is what says "crate".
-        for step in range(box_h):
-            ix = int(cx - half + step * (2 * half) / max(box_h, 1))
-            iy = ground - step
-            if 0 <= ix < width and 0 <= iy < height:
-                px[ix, iy] = pick(trim, 0.8, ix, iy)
+        # Diagonal brace across the near wall. One mark, and it says "crate".
+        for step in range(int(tall)):
+            ix = int(cx - lw + step * lw / max(tall, 1))
+            iy = int(base - abs(ix - cx) * SLOPE - step)
+            if 0 <= ix < width and 0 <= iy < height and px[ix, iy][3]:
+                px[ix, iy] = tone(trim, FRONT, ix, iy)
     elif kind == 1:
-        # Two latches and a stencil bar: an ammo case is a box with hardware.
-        for lx in (int(cx - half * 0.55), int(cx + half * 0.55)):
-            for y in range(top + 2, top + 5):
-                if 0 <= lx < width and 0 <= y < height:
-                    px[lx, y] = pick(trim, 0.75, lx, y)
-        for x in range(int(cx - half * 0.6), int(cx + half * 0.6) + 1):
-            y = ground - 3
-            if 0 <= x < width and 0 <= y < height and x % 2 == 0:
-                px[x, y] = pick(BONE, 0.55, x, y)
+        # Two latches on the near wall: an ammo case is a box with hardware.
+        for lx in (int(cx - lw * 0.55), int(cx - lw * 0.05)):
+            for step in range(2):
+                y = int(base - abs(lx - cx) * SLOPE - tall * 0.55) + step
+                if 0 <= lx < width and 0 <= y < height and px[lx, y][3]:
+                    px[lx, y] = tone(trim, TOP, lx, y)
     else:
         # Ribbed sides. A tote is stiffened plastic and the ribs are its tell.
-        for x in range(int(cx - half), int(cx + half) + 1, 3):
-            for y in range(top + 1, ground):
-                if 0 <= x < width and 0 <= y < height:
-                    px[x, y] = pick(trim, 0.52, x, y)
+        for x in range(int(cx - lw), int(cx + rw) + 1, 3):
+            if not 0 <= x < width:
+                continue
+            contact = base - abs(x - cx) * SLOPE
+            for y in range(int(contact - tall) + 1, int(contact)):
+                if 0 <= y < height and px[x, y][3]:
+                    px[x, y] = tone(trim, (FRONT if x <= cx else SIDE) - 1, x, y)
 
-    # THE INSIDE. Opens as a widening band under the rim, with sparks in it.
+    # THE INSIDE, uncovered as the lid goes over. Far wall then floor, both on
+    # the rhombus so the opening lies in the same plane the lid came off.
     if open_t > 0.05:
-        inner_h = max(1, int(open_t * box_h * 0.42))
-        _hollow(px, int(cx - half + 1), top, int(cx + half - 1), top + inner_h, width, height)
-        _spark(px, int(cx - half + 1), top, int(cx + half - 1), top + inner_h,
-               EMBER if kind != 2 else COLD, open_t, 57 + kind, width, height)
+        # A RIM SURVIVES. The opening is inset by two pixels all round, so the
+        # top face is still a visible frame of lit wood around it — an opening
+        # cut edge to edge is a hole in the sprite, and a hole has no
+        # thickness. Inside: the far wall one step over the floor, both on the
+        # same rhombus the lid came off, so you are looking INTO the box
+        # rather than at a black shape sitting in it.
+        cap(px, size, cx, base - tall, lw - 2, rw - 2, PLANK_DARK, 3)
+        cap(px, size, cx, base - tall + 1.0 + open_t, (lw - 2) * 0.80,
+            (rw - 2) * 0.80, PLANK_DARK, 1)
+        _spark(px, int(cx - lw + 2), int(base - tall - 1), int(cx + rw - 2),
+               int(base - tall + 2), EMBER if kind != 2 else COLD, open_t,
+               57 + kind, width, height)
 
-    # THE LID. A slab that lifts off the rim and tips back, shrinking in
-    # apparent height as it goes over -- which is the only perspective cue a
+    # THE LID. Same rhombus as the top face, lifted off the rim and tipped
+    # back — and squashed as it goes, which is the only perspective cue a
     # 16-pixel sprite can afford.
-    lift = open_t * (box_h * 0.32 + 1.5)
-    lid_h = max(2, int(3 - open_t * 1.0))
-    lid_half = half * (1.0 - open_t * 0.16)
-    lid_y = int(top - lift)
-    for y in range(lid_y, lid_y + lid_h + 1):
-        for x in range(int(cx - lid_half), int(cx + lid_half) + 1):
-            if 0 <= x < width and 0 <= y < height:
-                px[x, y] = pick(
-                    body,
-                    0.80 - (y - lid_y) * 0.14 + (hash01(x, y, 61 + kind) - 0.5) * 0.16,
-                    x, y,
-                )
-    # The hinge line stays welded to the back edge of the body the whole way.
+    lift = open_t * (tall * 0.45 + 1.5)
+    # The squash floors at a third rather than at a sliver: a lid that
+    # foreshortens all the way to a line stops being a lid and starts being a
+    # scratch above the box.
+    squash = max(0.34, 1.0 - open_t * 0.72)
+    cap(px, size, cx, base - tall - lift, lw, rw, body, TOP, squash=squash)
     if open_t > 0.05:
-        _line(px, int(cx - lid_half), lid_y + lid_h, int(cx - half), top,
-              trim, 0.42, width, height)
-        _line(px, int(cx + lid_half), lid_y + lid_h, int(cx + half), top,
-              trim, 0.42, width, height)
+        # The hinge stays welded to the back edge of the body the whole way.
+        hinge_y = int(round(base - tall - (lw + rw) * SLOPE))
+        for x in (int(cx - lw + 1), int(cx + rw - 1)):
+            _line(px, x, int(round(base - tall - lift)), x, hinge_y,
+                  trim, 0.42, width, height)
 
+    shadow(img, cx, base + 0.5, lw * 1.1, lw * SLOPE * 0.8)
     outline(img, OUTLINE_WOOD if kind != 2 else OUTLINE_COLD)
     return img
+
 
 
 def make_chest(width: int, height: int, kind: int, frame: int, frames: int) -> Image.Image:
     """`kind`: 0 iron-bound chest, 1 strongbox. Slower, taller, always paying.
 
     Deliberately the ONE object in the forest with a curved lid. Everything
-    else here is a flat top -- a box, a bin, a bonnet -- so the dome is doing
+    else here is a flat top — a box, a bin, a bonnet — so the dome is doing
     the same job a rarity colour does in the HUD: it says, from across a dark
     clearing and before you can read anything else, that this one is different.
+
+    Which is exactly what the old drawing threw away. A bulged rectangle drawn
+    front-on has a curve in its OUTLINE and a flat face under it, so the dome
+    was a silhouette trick on an object with no top — and the one prop whose
+    whole job is to look unlike the others looked like a box with a bump. It
+    is now `box` for the chest and `dome` for the lid: the curve is a stack of
+    real rhombi the camera passes over, and the straps run down the near wall
+    and over the crown instead of down a picture of one.
     """
     img = Image.new("RGBA", (width, height), TRANSPARENT)
     px = img.load()
+    size = (width, height)
     cx = (width - 1) / 2.0
     ground = height - 1
     open_t = _ease(frame / max(frames - 1, 1))
@@ -1430,74 +1735,57 @@ def make_chest(width: int, height: int, kind: int, frame: int, frames: int) -> I
     body = PLANK if kind == 0 else STEEL
     bandmetal = BRASS if kind == 0 else CHROME
 
-    box_h = int(height * 0.46)
-    half = width * 0.40
-    top = ground - box_h
+    lw, rw = width * 0.40, width * 0.31
+    tall = height * 0.32
+    base = ground - 1.0
+    rim = base - tall
 
-    for y in range(top, ground + 1):
-        band = (y - top) % 3
-        shade = 0.60 - band * 0.05 - (y - top) / max(box_h, 1) * 0.14
-        if band == 2:
-            shade -= 0.20
-        for x in range(int(cx - half), int(cx + half) + 1):
-            if not 0 <= x < width:
-                continue
-            px[x, y] = pick(
-                body,
-                shade - abs(x - cx) / half * 0.12 + (hash01(x, y, 71 + kind) - 0.5) * 0.18,
-                x, y,
-            )
-    # Iron straps down the front, and the lock plate between them.
-    for bx in (int(cx - half * 0.62), int(cx + half * 0.62)):
-        for y in range(top, ground + 1):
-            if 0 <= bx < width and 0 <= y < height:
-                px[bx, y] = pick(bandmetal, 0.55 + (y - top) * 0.01, bx, y)
-    lock_y = top + max(1, box_h // 3)
-    for y in range(lock_y, lock_y + 2):
-        for x in range(int(cx - 1), int(cx + 2)):
-            if 0 <= x < width and 0 <= y < height:
-                px[x, y] = pick(bandmetal, 0.82, x, y)
+    box(px, size, cx, base, lw, rw, tall, body)
+
+    # Iron straps down the near wall. They follow the contact slope, so they
+    # stay vertical on the object rather than on the frame.
+    for offset in (-0.60, -0.12):
+        bx = int(round(cx + offset * lw))
+        if not 0 <= bx < width:
+            continue
+        contact = base - abs(bx - cx) * SLOPE
+        for y in range(int(contact - tall), int(contact) + 1):
+            if 0 <= y < height and px[bx, y][3]:
+                px[bx, y] = tone(bandmetal, FRONT, bx, y)
+    # The lock plate, on the near wall between them.
+    for y in range(int(rim + tall * 0.45), int(rim + tall * 0.45) + 2):
+        for x in range(int(cx - 2), int(cx + 1)):
+            if 0 <= x < width and 0 <= y < height and px[x, y][3]:
+                px[x, y] = tone(bandmetal, TOP, x, y)
 
     # THE HOLLOW, and it grows warm rather than just dark: a chest is the one
-    # container that is guaranteed to be holding something, and the light
-    # coming up out of it is the promise being made before the lid clears.
+    # container guaranteed to be holding something, and the light coming up
+    # out of it is the promise being made before the lid clears.
     if open_t > 0.04:
-        inner_h = max(1, int(open_t * box_h * 0.7))
-        _hollow(px, int(cx - half + 1), top, int(cx + half - 1), top + inner_h, width, height)
-        _spark(px, int(cx - half + 1), top, int(cx + half - 1), top + inner_h,
+        cap(px, size, cx, rim, lw - 2, rw - 2, PLANK_DARK, 3)
+        cap(px, size, cx, rim + 1.0 + open_t, (lw - 2) * 0.78, (rw - 2) * 0.78,
+            PLANK_DARK, 1)
+        _spark(px, int(cx - lw + 2), int(rim - 1), int(cx + rw - 2), int(rim + 2),
                EMBER, open_t, 73 + kind, width, height)
 
-    # THE DOMED LID, hinged at the back and rolling up and over.
-    lift = open_t * (box_h * 0.52 + 2.0)
-    lid_half = half * (1.0 - open_t * 0.10)
-    dome = max(1.0, (height - box_h) * 0.34 * (1.0 - open_t * 0.45))
-    base_y = top - lift
-    for x in range(int(cx - lid_half), int(cx + lid_half) + 1):
-        if not 0 <= x < width:
-            continue
-        t = (x - (cx - lid_half)) / max(2 * lid_half, 1)
-        arch = math.sin(t * math.pi) * dome
-        for y in range(int(base_y - arch), int(base_y) + 2):
-            if 0 <= y < height:
-                px[x, y] = pick(
-                    body,
-                    0.84 - (base_y - y) / max(dome, 1) * 0.22
-                    + (hash01(x, y, 77 + kind) - 0.5) * 0.16,
-                    x, y,
-                )
-        # One brass rib over the crown, so the dome reads as bound and not
-        # as a loaf of bread.
-        if abs(t - 0.5) < 0.06:
-            for y in range(int(base_y - arch), int(base_y) + 1):
-                if 0 <= y < height:
-                    px[x, y] = pick(bandmetal, 0.7, x, y)
+    # THE DOMED LID, hinged at the back and rolling up and over. It keeps its
+    # curve the whole way — a dome that flattens as it opens reads as a lid
+    # made of something soft.
+    lift = open_t * (tall * 0.75 + 2.5)
+    squash = max(0.30, 1.0 - open_t * 0.74)
+    rise = max(1.5, (height - tall) * 0.20 * (1.0 - open_t * 0.30))
+    lid_lw, lid_rw = lw * squash + lw * (1 - squash) * 0.55, rw
+    dome(px, size, cx, rim - lift, lid_lw, lid_rw, rise, body)
+    # A strap over the crown, so the lid is bound to the same chest the walls
+    # are — the one detail that stops it reading as a separate object in the
+    # frames where it has left the rim.
+    crown = int(round(rim - lift - rise * 0.55))
+    for x in range(int(cx - 1), int(cx + 2)):
+        for y in (crown, crown + 1):
+            if 0 <= x < width and 0 <= y < height and px[x, y][3]:
+                px[x, y] = tone(bandmetal, TOP, x, y)
 
-    if open_t > 0.05:
-        _line(px, int(cx - lid_half), int(base_y) + 1, int(cx - half), top,
-              bandmetal, 0.4, width, height)
-        _line(px, int(cx + lid_half), int(base_y) + 1, int(cx + half), top,
-              bandmetal, 0.4, width, height)
-
+    shadow(img, cx, base + 0.5, lw * 1.1, lw * SLOPE * 0.8)
     outline(img, OUTLINE_WOOD if kind == 0 else OUTLINE_COLD)
     return img
 
@@ -1507,238 +1795,121 @@ def make_stash(width: int, height: int, kind: int, frame: int, frames: int) -> I
 
     These are the objects that make the map read as a place people commuted
     through rather than a place they fought in. A mailbox on a forest road is
-    a question -- there was a house here once -- and it costs one 16-pixel
-    sheet to ask it.
+    a question — there was a house here once — and it costs one 16-pixel sheet
+    to ask it.
+
+    ALL FIVE ARE THE SAME TWO SOLIDS. Four are boxes and one is a cylinder,
+    and what separates them is PROPORTION and where the lid is, not detail —
+    at sixteen pixels a hinge is one dark pixel and a handle is two, so the
+    silhouette has to do all of it. The old sheet drew five flat rectangles in
+    five colours, which made them read as five swatches; drawn as solids the
+    freezer is unmistakably taller than it is deep and the suitcase
+    unmistakably the other way round, and the colour stops carrying the load.
     """
     img = Image.new("RGBA", (width, height), TRANSPARENT)
     px = img.load()
+    size = (width, height)
     cx = (width - 1) / 2.0
     ground = height - 1
+    base = ground - 1.0
     open_t = _ease(frame / max(frames - 1, 1))
 
+    def lid_open(fx, rim, lw, rw, ramp, drop=1.0):
+        """The shared opening: a rim, an inside, and a lid tipped back off it."""
+        cap(px, size, fx, rim, max(1.0, lw - 1.5), max(1.0, rw - 1.5), PLANK_DARK, 3)
+        cap(px, size, fx, rim + drop + open_t, max(1.0, (lw - 1.5) * 0.78),
+            max(1.0, (rw - 1.5) * 0.78), PLANK_DARK, 1)
+        lift = open_t * 3.4
+        squash = max(0.34, 1.0 - open_t * 0.72)
+        cap(px, size, fx, rim - lift, lw, rw, ramp, TOP, squash=squash)
+
     if kind == 0:
-        # Mailbox: a post with a drum on it. The door drops toward the camera.
-        post_h = int(height * 0.55)
-        for y in range(ground - post_h, ground + 1):
-            for x in (int(cx - 1), int(cx)):
-                if 0 <= x < width and 0 <= y < height:
-                    px[x, y] = pick(PLANK, 0.5, x, y)
-        box_top = ground - post_h - int(height * 0.28)
-        box_bot = ground - post_h + 1
-        _fill(px, int(cx - width * 0.32), box_top, int(cx + width * 0.32), box_bot,
-              STEEL, 0.6, 121, width, height)
-        # Rounded shoulder, so it is a mailbox and not a shoebox on a stick.
-        for x in range(int(cx - width * 0.32), int(cx + width * 0.32) + 1):
-            if 0 <= x < width and 0 <= box_top < height:
-                if abs(x - cx) / (width * 0.32) > 0.72:
-                    px[x, box_top] = TRANSPARENT
-        if open_t > 0.05:
-            _hollow(px, int(cx - width * 0.26), box_top + 1,
-                    int(cx + width * 0.26), box_bot - 1, width, height)
-            _spark(px, int(cx - width * 0.26), box_top + 1,
-                   int(cx + width * 0.26), box_bot - 1, BONE, open_t, 123, width, height)
-            # The door, swung down and hanging off the bottom lip.
-            drop = int(open_t * 4)
-            _fill(px, int(cx + width * 0.18), box_bot - 1,
-                  int(cx + width * 0.34), box_bot - 1 + drop,
-                  CHROME, 0.55, 125, width, height)
-        # The flag. Up when it is closed, because somebody was still waiting.
-        flag_x = int(cx + width * 0.36)
-        for y in range(box_top - 3, box_top + 1):
-            if 0 <= flag_x < width and 0 <= y < height:
-                px[flag_x, y] = pick(RED, 0.62, flag_x, y)
-        outline(img, OUTLINE_COLD)
-        return img
+        # MAILBOX: a drum on a post, and the drum is a cylinder lying along
+        # the axis so its door faces the camera. The one prop on this sheet
+        # that is not a box, which is exactly why it reads at a glance.
+        post_h = height * 0.46
+        box(px, size, cx, base, 1.2, 1.2, post_h, PLANK)
+        axis = base - post_h - 2.2
+        billet(px, size, cx - width * 0.30, cx + width * 0.30, axis, 2.6, STEEL,
+               cap=False)
+        # The door on the near end, dropping toward the camera as it opens.
+        door_w = 2.4 + open_t * 0.6
+        for y in range(int(axis - 2.4), int(axis + 2.6 + open_t * 3)):
+            for x in range(int(cx - width * 0.30), int(cx - width * 0.30 + door_w)):
+                if 0 <= x < width and 0 <= y < height and px[x, y][3]:
+                    px[x, y] = tone(STEEL, 0 if open_t > 0.3 else FRONT, x, y)
+        # The flag: the one warm pixel pair, and the only thing that says a
+        # mailbox rather than a canister.
+        fx_ = int(cx + width * 0.26)
+        for y in range(int(axis - 5), int(axis - 2)):
+            if 0 <= fx_ < width and 0 <= y < height:
+                px[fx_, y] = tone(HAZARD, TOP, fx_, y)
+    elif kind == 1:
+        # SUITCASE: wide, shallow, lying down. Half the height of the freezer
+        # and twice its footprint — that inversion is the whole read.
+        lw, rw = width * 0.42, width * 0.33
+        tall = height * 0.22
+        box(px, size, cx, base, lw, rw, tall, LEATHER)
+        for offset in (-0.50, 0.10):
+            bx = int(round(cx + offset * lw))
+            if not 0 <= bx < width:
+                continue
+            contact = base - abs(bx - cx) * SLOPE
+            for y in range(int(contact - tall), int(contact) + 1):
+                if 0 <= y < height and px[bx, y][3]:
+                    px[bx, y] = tone(BRASS, FRONT, bx, y)
+        lid_open(cx, base - tall, lw, rw, LEATHER)
+    elif kind == 2:
+        # FREEZER: the tallest thing on the sheet and a solid white slab.
+        lw, rw = width * 0.35, width * 0.27
+        tall = height * 0.48
+        box(px, size, cx, base, lw, rw, tall, BONE)
+        # A seam across the near wall: the door line, one step under it.
+        for x in range(int(cx - lw), int(cx) + 1):
+            if not 0 <= x < width:
+                continue
+            y = int(round(base - abs(x - cx) * SLOPE - tall * 0.62))
+            if 0 <= y < height and px[x, y][3]:
+                px[x, y] = tone(BONE, FRONT - 1, x, y)
+        lid_open(cx, base - tall, lw, rw, BONE)
+    elif kind == 3:
+        # BIN: a cylinder with a lid. Round where everything beside it is
+        # square, which is the cheapest way to make one of five read first.
+        rx = width * 0.30
+        ry = max(1.5, rx * SLOPE)
+        tall = height * 0.40
+        rim = base - tall
+        for y in range(int(rim), int(base) + 1):
+            for x in range(int(round(cx - rx)), int(round(cx + rx)) + 1):
+                if not (0 <= x < width and 0 <= y < height):
+                    continue
+                across = (x - cx) / max(rx, 0.5)
+                px[x, y] = tone(MOSS, FRONT if across < 0.30 else (SIDE if across < 0.88 else 0), x, y)
+        # Ribs round the drum, following the same break as the wall.
+        for hoop in (0.30, 0.66):
+            y = int(rim + tall * hoop)
+            for x in range(int(round(cx - rx)), int(round(cx + rx)) + 1):
+                if 0 <= x < width and 0 <= y < height and px[x, y][3]:
+                    across = (x - cx) / max(rx, 0.5)
+                    px[x, y] = tone(MOSS, (FRONT if across < 0.30 else SIDE) - 1, x, y)
+        lid_open(cx, rim, rx, rx, MOSS, drop=0.8)
+    else:
+        # TOOLBOX: small, wide, with a handle over it — the only stash whose
+        # silhouette leaves the box, and at this size a handle is a bridge of
+        # three pixels standing clear of the lid.
+        lw, rw = width * 0.36, width * 0.28
+        tall = height * 0.24
+        box(px, size, cx, base, lw, rw, tall, RUST)
+        lid_open(cx, base - tall, lw, rw, RUST)
+        arch = int(round(base - tall - 3.5 - open_t * 3.4))
+        for x in range(int(cx - lw * 0.5), int(cx + rw * 0.5) + 1):
+            y = arch + (1 if abs(x - cx) > lw * 0.32 else 0)
+            if 0 <= x < width and 0 <= y < height:
+                px[x, y] = tone(CHROME, TOP, x, y)
 
-    if kind == 1:
-        # Suitcase, lying on its side in the road. Lid opens away.
-        case_h = int(height * 0.34)
-        half = width * 0.42
-        top = ground - case_h
-        _fill(px, int(cx - half), top, int(cx + half), ground, LEATHER, 0.58, 131,
-              width, height)
-        for x in range(int(cx - half), int(cx + half) + 1, 4):
-            for y in range(top, ground + 1):
-                if 0 <= x < width and 0 <= y < height:
-                    px[x, y] = pick(LEATHER, 0.40, x, y)
-        if open_t > 0.05:
-            inner = max(1, int(open_t * case_h * 0.8))
-            _hollow(px, int(cx - half + 1), top, int(cx + half - 1), top + inner, width, height)
-            _spark(px, int(cx - half + 1), top, int(cx + half - 1), top + inner,
-                   BONE, open_t, 133, width, height)
-        lift = open_t * (case_h * 0.55 + 2)
-        lid_y = int(top - lift)
-        lid_half = half * (1 - open_t * 0.1)
-        _fill(px, int(cx - lid_half), lid_y, int(cx + lid_half), lid_y + 2,
-              LEATHER, 0.74, 135, width, height)
-        if open_t > 0.05:
-            # The hinges. Without them the lid is a leather bar hovering over
-            # a leather box, which is two objects rather than one opening.
-            _line(px, int(cx - lid_half), lid_y + 2, int(cx - half), top,
-                  LEATHER, 0.30, width, height)
-            _line(px, int(cx + lid_half), lid_y + 2, int(cx + half), top,
-                  LEATHER, 0.30, width, height)
-        # Two brass catches, the only bright pixels on it.
-        for lx in (int(cx - half * 0.5), int(cx + half * 0.5)):
-            if 0 <= lx < width and 0 <= lid_y + 2 < height:
-                px[lx, lid_y + 2] = pick(BRASS, 0.8, lx, lid_y + 2)
-        outline(img, OUTLINE_WOOD)
-        return img
-
-    if kind == 2:
-        # Chest freezer. The one container that is COLD inside, and the cold
-        # is what tells you the power was on here recently enough to matter.
-        body_h = int(height * 0.46)
-        half = width * 0.44
-        top = ground - body_h
-        _fill(px, int(cx - half), top, int(cx + half), ground, CHROME, 0.52, 141,
-              width, height)
-        _fill(px, int(cx - half), ground - 1, int(cx + half), ground, STEEL, 0.3, 143,
-              width, height)
-        if open_t > 0.05:
-            inner = max(1, int(open_t * body_h * 0.6))
-            _hollow(px, int(cx - half + 1), top, int(cx + half - 1), top + inner, width, height)
-            _spark(px, int(cx - half + 1), top, int(cx + half - 1), top + inner,
-                   COLD, open_t, 145, width, height)
-        lift = open_t * (body_h * 0.5 + 2)
-        lid_y = int(top - lift)
-        _fill(px, int(cx - half), lid_y, int(cx + half), lid_y + 2, CHROME, 0.76, 147,
-              width, height)
-        if open_t > 0.05:
-            _line(px, int(cx - half), lid_y + 2, int(cx - half), top,
-                  STEEL, 0.35, width, height)
-            _line(px, int(cx + half), lid_y + 2, int(cx + half), top,
-                  STEEL, 0.35, width, height)
-        outline(img, OUTLINE_COLD)
-        return img
-
-    if kind == 3:
-        # Wheelie bin. The lid tips OFF rather than hinging: a bin lid that
-        # stays attached at this size reads as a second bin balanced on top.
-        body_h = int(height * 0.62)
-        top = ground - body_h
-        for y in range(top, ground + 1):
-            t = (y - top) / max(body_h, 1)
-            half = width * (0.30 + 0.08 * t)
-            _fill(px, int(cx - half), y, int(cx + half), y, PAINT_VAN,
-                  0.56 - t * 0.1, 151, width, height)
-        if open_t > 0.05:
-            half = width * 0.30
-            inner = max(1, int(open_t * body_h * 0.45))
-            _hollow(px, int(cx - half + 1), top, int(cx + half - 1), top + inner, width, height)
-            _spark(px, int(cx - half + 1), top, int(cx + half - 1), top + inner,
-                   BONE, open_t * 0.6, 153, width, height)
-        lid_half = width * 0.32
-        lid_x = int(cx + open_t * width * 0.34)
-        lid_y = int(top - 1 - open_t * 2)
-        _fill(px, int(lid_x - lid_half * (1 - open_t * 0.4)), lid_y,
-              int(lid_x + lid_half * (1 - open_t * 0.4)), lid_y + 1 + int(open_t * 1.5),
-              PAINT_VAN, 0.72, 155, width, height)
-        outline(img, OUTLINE_COLD)
-        return img
-
-    # Toolbox. Small, red, hinged at the back -- the cheapest silhouette here
-    # and the one most likely to be holding something worth carrying.
-    body_h = int(height * 0.30)
-    half = width * 0.36
-    top = ground - body_h
-    _fill(px, int(cx - half), top, int(cx + half), ground, RED, 0.48, 161, width, height)
-    _fill(px, int(cx - half), ground - 1, int(cx + half), ground, RUST, 0.4, 163, width, height)
-    if open_t > 0.05:
-        inner = max(1, int(open_t * body_h * 0.8))
-        _hollow(px, int(cx - half + 1), top, int(cx + half - 1), top + inner, width, height)
-        _spark(px, int(cx - half + 1), top, int(cx + half - 1), top + inner,
-               CHROME, open_t, 165, width, height)
-    lift = open_t * (body_h * 0.9 + 2)
-    lid_y = int(top - lift)
-    _fill(px, int(cx - half), lid_y, int(cx + half), lid_y + 1, RED, 0.7, 167, width, height)
-    if open_t > 0.05:
-        _line(px, int(cx - half), lid_y + 1, int(cx - half), top, RUST, 0.4, width, height)
-        _line(px, int(cx + half), lid_y + 1, int(cx + half), top, RUST, 0.4, width, height)
-    # Handle over the lid. Two pixels, and without them it is a red brick.
-    for hx in (int(cx - 2), int(cx + 2)):
-        if 0 <= hx < width and 0 <= lid_y - 1 < height:
-            px[hx, lid_y - 1] = pick(CHROME, 0.7, hx, lid_y - 1)
-    outline(img, OUTLINE_COLD)
+    shadow(img, cx, base + 0.5, width * 0.34, width * 0.34 * SLOPE * 0.9)
+    outline(img, OUTLINE_COLD if kind in (0, 2, 3) else OUTLINE_WOOD)
     return img
-
-
-# --- vehicles ---------------------------------------------------------------
-
-VEHICLE_PAINT = (PAINT_SEDAN, PAINT_VAN, PAINT_AMBU, PAINT_POLICE, PAINT_TRUCK, PAINT_BUS)
-
-#: THE PROFILE IS THE VEHICLE. Each row is the upper silhouette of one kind as
-#: control points in fractions of the frame — left to right, y down from the
-#: top — interpolated per column into the line the body is filled down from.
-#:
-#: This replaced six stacked rectangles, and the difference is the whole read.
-#: A car and a van drawn as boxes are the same object in two palettes: you
-#: cannot tell them apart at the edge of a lantern, so the map stops being a
-#: place with an ambulance in it and becomes a map with dark blocks on it. A
-#: bonnet that slopes, a windscreen that rakes back and a roof that stops
-#: before the boot is a SEDAN from as far away as the pixels survive — and the
-#: ambulance's box roof standing proud of its cab is legible at the same range,
-#: which is what makes detouring for the medical drop table a decision.
-VEHICLE_PROFILE: tuple[tuple[tuple[float, float], ...], ...] = (
-    # 0 sedan: long bonnet, raked screen, roof over the middle third, and a
-    #   BOOT — a flat deck behind the cabin rather than a slope to the tail.
-    ((0.03, 0.74), (0.09, 0.70), (0.22, 0.65), (0.30, 0.45), (0.38, 0.35),
-     (0.60, 0.34), (0.68, 0.50), (0.74, 0.60), (0.93, 0.61), (0.98, 0.73)),
-    # 1 van: stub nose, then a wall. Everything behind the cab is cargo.
-    ((0.03, 0.76), (0.07, 0.60), (0.11, 0.30), (0.16, 0.22), (0.94, 0.22),
-     (0.97, 0.30)),
-    # 2 ambulance: the box body stands PROUD of the cab roof. That step is the
-    #   silhouette tell, and it is worth more than the red cross because it
-    #   survives to a distance where four pixels of paint do not.
-    ((0.03, 0.74), (0.07, 0.58), (0.12, 0.30), (0.17, 0.26), (0.30, 0.26),
-     (0.33, 0.15), (0.96, 0.15), (0.98, 0.24)),
-    # 3 cruiser: a sedan stretched and dropped, with a bar across the roof.
-    #   The boot has to run FLAT to the tail. Sloping it straight off the roof
-    #   gave a wedge, and a wedge is not a car — the notch behind the cabin is
-    #   the whole reason a saloon reads as one from the side.
-    ((0.02, 0.72), (0.10, 0.67), (0.24, 0.62), (0.31, 0.43), (0.38, 0.33),
-     (0.64, 0.32), (0.71, 0.50), (0.78, 0.58), (0.94, 0.59), (0.99, 0.70)),
-    # 4 lorry: a tall cab, a drop, and a flat bed with a rail along it.
-    ((0.02, 0.64), (0.05, 0.32), (0.09, 0.22), (0.27, 0.22), (0.29, 0.50),
-     (0.33, 0.44), (0.97, 0.44), (0.99, 0.52)),
-    # 5 bus: one long box, the tallest thing in the woods that is not a tree.
-    ((0.02, 0.26), (0.04, 0.13), (0.10, 0.09), (0.92, 0.09), (0.97, 0.13),
-     (0.99, 0.26)),
-)
-
-#: Wheel centres, in fractions of the frame width. Three entries is a lorry or
-#: a bus — the extra axle is most of what says WEIGHT at this size.
-VEHICLE_WHEELS: tuple[tuple[float, ...], ...] = (
-    (0.20, 0.79), (0.19, 0.81), (0.18, 0.82), (0.19, 0.80),
-    (0.13, 0.72, 0.85), (0.14, 0.74, 0.87),
-)
-
-#: Glazing, per kind: (x0, x1, y0, y1) in frame fractions. Punched into the
-#: body after it is filled, so a window is a HOLE in the paint rather than a
-#: rectangle sitting on top of it — which is the difference between a car with
-#: windows and a car with stickers.
-VEHICLE_GLASS: tuple[tuple[tuple[float, float, float, float], ...], ...] = (
-    ((0.33, 0.46, 0.40, 0.59), (0.49, 0.62, 0.39, 0.57)),
-    ((0.10, 0.21, 0.31, 0.47), (0.79, 0.86, 0.27, 0.42), (0.87, 0.93, 0.27, 0.42)),
-    ((0.11, 0.22, 0.33, 0.49), (0.42, 0.55, 0.20, 0.34), (0.86, 0.94, 0.20, 0.34)),
-    ((0.34, 0.47, 0.38, 0.57), (0.50, 0.63, 0.37, 0.55)),
-    ((0.06, 0.17, 0.27, 0.42),),
-    ((0.06, 0.15, 0.13, 0.32), (0.19, 0.29, 0.13, 0.32), (0.33, 0.43, 0.13, 0.32),
-     (0.47, 0.57, 0.13, 0.32), (0.61, 0.71, 0.13, 0.32), (0.75, 0.88, 0.13, 0.32)),
-)
-
-#: THE COMPARTMENT: (x0, x1) in frame fractions, and which edge the lid is
-#: hinged on. It is always the part of that vehicle somebody would still be
-#: packed into or trapped behind — a bonnet on the car that died on the road,
-#: the tailgate on the vans, the bed on the lorry, the luggage bay on a bus.
-VEHICLE_PANEL: tuple[tuple[float, float, bool], ...] = (
-    (0.05, 0.26, True),     # sedan bonnet, hinged at the screen
-    (0.76, 0.96, True),     # van tailgate, hinged at the roof
-    (0.78, 0.96, True),     # ambulance rear doors
-    (0.04, 0.25, True),     # cruiser bonnet
-    (0.40, 0.68, False),    # lorry bed hatch
-    (0.30, 0.52, False),    # bus luggage bay
-)
 
 
 def _bar(px, x0: int, y: int, x1: int, width: int, height: int,
@@ -1792,6 +1963,134 @@ def _lid(px, x0: int, x1: int, y: int, lift: float, hinge_right: bool,
                 px[x, yy] = pick(ramp, shade + (hash01(x, yy, salt) - 0.5) * 0.10, x, yy)
 
 
+# --- vehicles ---------------------------------------------------------------
+
+VEHICLE_PAINT = (PAINT_SEDAN, PAINT_VAN, PAINT_AMBU, PAINT_POLICE, PAINT_TRUCK, PAINT_BUS)
+
+#: THE PROFILE IS THE VEHICLE. Each row is the upper silhouette of one kind as
+#: control points in fractions of the frame â€” left to right, y down from the
+#: top â€” interpolated per column into the line the body is filled down from.
+#:
+#: This replaced six stacked rectangles, and the difference is the whole read.
+#: A car and a van drawn as boxes are the same object in two palettes: you
+#: cannot tell them apart at the edge of a lantern, so the map stops being a
+#: place with an ambulance in it and becomes a map with dark blocks on it. A
+#: bonnet that slopes, a windscreen that rakes back and a roof that stops
+#: before the boot is a SEDAN from as far away as the pixels survive â€” and the
+#: ambulance's box roof standing proud of its cab is legible at the same range,
+#: which is what makes detouring for the medical drop table a decision.
+VEHICLE_PROFILE: tuple[tuple[tuple[float, float], ...], ...] = (
+    # 0 sedan: long bonnet, raked screen, roof over the middle third, and a
+    #   BOOT â€” a flat deck behind the cabin rather than a slope to the tail.
+    ((0.03, 0.74), (0.09, 0.70), (0.22, 0.65), (0.30, 0.45), (0.38, 0.35),
+     (0.60, 0.34), (0.68, 0.50), (0.74, 0.60), (0.93, 0.61), (0.98, 0.73)),
+    # 1 van: stub nose, then a wall. Everything behind the cab is cargo.
+    ((0.03, 0.76), (0.07, 0.60), (0.11, 0.30), (0.16, 0.22), (0.94, 0.22),
+     (0.97, 0.30)),
+    # 2 ambulance: the box body stands PROUD of the cab roof. That step is the
+    #   silhouette tell, and it is worth more than the red cross because it
+    #   survives to a distance where four pixels of paint do not.
+    ((0.03, 0.74), (0.07, 0.58), (0.12, 0.30), (0.17, 0.26), (0.30, 0.26),
+     (0.33, 0.15), (0.96, 0.15), (0.98, 0.24)),
+    # 3 cruiser: a sedan stretched and dropped, with a bar across the roof.
+    #   The boot has to run FLAT to the tail. Sloping it straight off the roof
+    #   gave a wedge, and a wedge is not a car â€” the notch behind the cabin is
+    #   the whole reason a saloon reads as one from the side.
+    ((0.02, 0.72), (0.10, 0.67), (0.24, 0.62), (0.31, 0.43), (0.38, 0.33),
+     (0.64, 0.32), (0.71, 0.50), (0.78, 0.58), (0.94, 0.59), (0.99, 0.70)),
+    # 4 lorry: a tall cab, a drop, and a flat bed with a rail along it.
+    ((0.02, 0.64), (0.05, 0.32), (0.09, 0.22), (0.27, 0.22), (0.29, 0.50),
+     (0.33, 0.44), (0.97, 0.44), (0.99, 0.52)),
+    # 5 bus: one long box, the tallest thing in the woods that is not a tree.
+    ((0.02, 0.26), (0.04, 0.13), (0.10, 0.09), (0.92, 0.09), (0.97, 0.13),
+     (0.99, 0.26)),
+)
+
+#: Wheel centres, in fractions of the frame width. Three entries is a lorry or
+#: a bus â€” the extra axle is most of what says WEIGHT at this size.
+VEHICLE_WHEELS: tuple[tuple[float, ...], ...] = (
+    (0.20, 0.79), (0.19, 0.81), (0.18, 0.82), (0.19, 0.80),
+    (0.13, 0.72, 0.85), (0.14, 0.74, 0.87),
+)
+
+#: Glazing, per kind: (x0, x1, y0, y1) in frame fractions. Punched into the
+#: body after it is filled, so a window is a HOLE in the paint rather than a
+#: rectangle sitting on top of it â€” which is the difference between a car with
+#: windows and a car with stickers.
+VEHICLE_GLASS: tuple[tuple[tuple[float, float, float, float], ...], ...] = (
+    ((0.33, 0.46, 0.40, 0.59), (0.49, 0.62, 0.39, 0.57)),
+    ((0.10, 0.21, 0.31, 0.47), (0.79, 0.86, 0.27, 0.42), (0.87, 0.93, 0.27, 0.42)),
+    ((0.11, 0.22, 0.33, 0.49), (0.42, 0.55, 0.20, 0.34), (0.86, 0.94, 0.20, 0.34)),
+    ((0.34, 0.47, 0.38, 0.57), (0.50, 0.63, 0.37, 0.55)),
+    ((0.06, 0.17, 0.27, 0.42),),
+    ((0.06, 0.15, 0.13, 0.32), (0.19, 0.29, 0.13, 0.32), (0.33, 0.43, 0.13, 0.32),
+     (0.47, 0.57, 0.13, 0.32), (0.61, 0.71, 0.13, 0.32), (0.75, 0.88, 0.13, 0.32)),
+)
+
+#: THE COMPARTMENT: (x0, x1) in frame fractions, and which edge the lid is
+#: hinged on. It is always the part of that vehicle somebody would still be
+#: packed into or trapped behind â€” a bonnet on the car that died on the road,
+#: the tailgate on the vans, the bed on the lorry, the luggage bay on a bus.
+VEHICLE_PANEL: tuple[tuple[float, float, bool], ...] = (
+    (0.05, 0.26, True),     # sedan bonnet, hinged at the screen
+    (0.76, 0.96, True),     # van tailgate, hinged at the roof
+    (0.78, 0.96, True),     # ambulance rear doors
+    (0.04, 0.25, True),     # cruiser bonnet
+    (0.40, 0.68, False),    # lorry bed hatch
+    (0.30, 0.52, False),    # bus luggage bay
+)
+
+
+def _bar(px, x0: int, y: int, x1: int, width: int, height: int,
+         ramps: tuple[Ramp, Ramp]) -> None:
+    """A roof light bar: alternating pixels of two signal colours, UNLIT.
+
+    Unlit matters. A flashing bar would be the brightest moving thing on a
+    dark map and would read as an active vehicle, which is the one thing none
+    of these are. What it gets instead is a dark housing under it, so the two
+    dull signal pixels read as lenses in a fitting rather than as a mistake in
+    the roofline.
+    """
+    for index, x in enumerate(range(x0, x1 + 1)):
+        if 0 <= x < width and 0 <= y < height:
+            px[x, y] = pick(ramps[(index // 2) % 2], 0.42, x, y)
+        if 0 <= x < width and 0 <= y + 1 < height:
+            px[x, y + 1] = pick(TYRE, 0.6, x, y + 1)
+
+
+def _profile_y(profile, fx: float) -> float:
+    """The silhouette's top edge at one column, in frame fractions."""
+    if fx <= profile[0][0]:
+        return profile[0][1]
+    if fx >= profile[-1][0]:
+        return profile[-1][1]
+    for (ax, ay), (bx, by) in zip(profile, profile[1:]):
+        if ax <= fx <= bx:
+            t = (fx - ax) / max(bx - ax, 1e-6)
+            return ay + (by - ay) * t
+    return profile[-1][1]
+
+
+def _lid(px, x0: int, x1: int, y: int, lift: float, hinge_right: bool,
+         ramp: Ramp, salt: int, width: int, height: int, thickness: int = 3) -> None:
+    """A panel lifted off its seal, TILTED around the edge it is hinged on.
+
+    The old one slid a flat plate straight up, which reads as a piece of the
+    car floating. A lid that rises at its free edge and stays put at its
+    hinge is the only thing in the frame that has to say "this is attached and
+    it swung", and the taper â€” thinner at the top of the swing â€” is what keeps
+    it from reading as a second, smaller vehicle.
+    """
+    span = max(x1 - x0, 1)
+    for x in range(x0, x1 + 1):
+        t = (x1 - x) / span if hinge_right else (x - x0) / span
+        top = int(round(y - lift * t))
+        for offset in range(thickness):
+            yy = top + offset
+            if 0 <= x < width and 0 <= yy < height:
+                shade = 0.90 if offset == 0 else 0.52 - offset * 0.14
+                px[x, yy] = pick(ramp, shade + (hash01(x, yy, salt) - 0.5) * 0.10, x, yy)
+
 def make_vehicle(width: int, height: int, kind: int, frame: int, frames: int) -> Image.Image:
     """A dead vehicle, seen from the side and slightly above. `frame` opens it.
 
@@ -1826,22 +2125,86 @@ def make_vehicle(width: int, height: int, kind: int, frame: int, frames: int) ->
     body_x0 = int(width * profile[0][0])
     body_x1 = int(width * profile[-1][0])
 
-    # 1. THE BODY, one column at a time down from the profile. The vertical
-    #    ramp is the whole of the form: a panel is bright where it turns
-    #    toward the sky and dark where it tucks under itself, and a flat fill
-    #    with an outline round it is a sticker of a car.
+    # 1. THE BODY, EXTRUDED. This is the change that made a vehicle a vehicle.
+    #    It used to be one column of paint per x, ramped from the profile down
+    #    to the sill and dithered — a SIDE ELEVATION, with no roof, no bonnet
+    #    and no windscreen, on the largest object in the game and the one the
+    #    camera looks down at hardest. What a profile actually describes is
+    #    the edge where the roof meets the flank, so sweeping it back along
+    #    the camera slope generates both surfaces at once: everything the
+    #    sweep leaves standing proud along the top is roof and bonnet at the
+    #    lit plane, and the last pass down is the near flank.
+    #
+    #    The sweep costs nothing in authoring — the six profiles are unchanged
+    #    and still carry the identity — and it is the same construction the
+    #    tent uses in make_scenery.py, for the same reason.
+    # How far the roof runs back. A vehicle is drawn nearly side-on here, so
+    # what the camera catches of the top is a STRIP — deep enough to read as
+    # a surface, shallow enough that a car does not turn into a wedge. A
+    # third of the frame height, which this was first, is most of the body.
+    body_d = max(3, int(height * 0.14))
+
+    #    The NEAR FLANK first, unshifted: this is the side of the vehicle the
+    #    player walks past, and it stays exactly where the profile puts it.
     for x in range(body_x0, body_x1 + 1):
         top = int(round(_profile_y(profile, x / max(width - 1, 1)) * height))
-        depth = max(sill - top, 1)
         for y in range(top, sill + 1):
-            t = (y - top) / depth
-            shade = 0.74 - t * 0.46 + (hash01(x, y, 181 + kind) - 0.5) * 0.10
-            px[x, y] = pick(paint, shade, x, y)
+            if not (0 <= x < width and 0 <= y < height):
+                continue
+            # Two bands: the door above the waist, the rocker under it tucking
+            # away from the light. Two steps apart, never one — a single step
+            # is a smudge at this size and the flank goes back to a rectangle.
+            t = (y - top) / max(sill - top, 1)
+            px[x, y] = tone(paint, FRONT if t < 0.66 else SIDE, x, y)
 
-    # 2. The lit edge, one pixel per column, before anything is cut into it.
+    #    THE ROOF, swept back off the profile. Only the TOP extrudes: a
+    #    vehicle's far flank is hidden behind its near one, so sweeping the
+    #    whole silhouette shears the entire body into a parallelogram — which
+    #    is what the first cut of this did. What the sweep should produce is a
+    #    BAND above the profile line, and that band is the roof, the bonnet
+    #    and the boot lid, in one pass, following whatever the profile says
+    #    this kind's roofline does.
+    #    Rasterised as a REGION, not as a swept point set. Stepping the
+    #    profile back one offset at a time and plotting a pixel each time
+    #    leaves holes wherever two consecutive offsets round to the same row
+    #    — which came out as a checkerboard across the back of the car. For
+    #    each screen column, take the highest and lowest row the sweep reaches
+    #    and fill between them; the band is then solid by construction.
+    for sx in range(body_x0, min(width, body_x1 + body_d + 1)):
+        reach_hi, reach_lo = None, None
+        for offset in range(0, body_d + 1):
+            src = sx - offset
+            if not body_x0 <= src <= body_x1:
+                continue
+            row = int(round(_profile_y(profile, src / max(width - 1, 1)) * height
+                            - offset * SLOPE))
+            reach_hi = row if reach_hi is None else min(reach_hi, row)
+            reach_lo = row if reach_lo is None else max(reach_lo, row)
+        if reach_hi is None:
+            continue
+        # CAPPED to the sweep's own depth. Where the profile falls steeply —
+        # the back of a car, the step down from a lorry cab — the highest and
+        # lowest rows the sweep touches are most of the body apart, and
+        # filling between them paints the whole rear quarter as roof. The roof
+        # is a surface of one thickness; the profile only says where it sits.
+        reach_hi = max(reach_hi, reach_lo - body_d)
+        for y in range(max(0, reach_hi), min(height, reach_lo + 1)):
+            if px[sx, y][3]:
+                continue
+            px[sx, y] = tone(paint, TOP, sx, y)
+
+    # 2. THE SHOULDER. One row of contact-dark where the roof turns into the
+    #    flank — the fold the sweep produced needs the occlusion S10 asks for,
+    #    or the two planes read as one panel with a stripe painted on it.
+    for x in range(body_x0, body_x1 + 1):
+        top = int(round(_profile_y(profile, x / max(width - 1, 1)) * height))
+        if 0 <= x < width and 0 <= top < height and px[x, top][3]:
+            px[x, top] = tone(paint, 0, x, top)
+
+    # 3. The lit edge along the crown, one pixel per column.
     _top_light(img, paint, 0.97)
 
-    # 3. GLASS. Punched into the paint, dark, with one specular streak each.
+    # 4. GLASS. Punched into the paint, dark, with one specular streak each.
     #    Windows are DARK on purpose: there is nothing behind them, and a lit
     #    window on an abandoned car is a promise the map cannot keep.
     glass = VEHICLE_GLASS[kind % len(VEHICLE_GLASS)]
@@ -1879,7 +2242,7 @@ def make_vehicle(width: int, height: int, kind: int, frame: int, frames: int) ->
         # The seal round the glass, so it sits IN the door.
         _seam(px, wx0 - 1, wy1 + 1, wx1 + 1, wy1 + 1, width, height, paint, 0.10)
 
-    # 4. Panel gaps. Two vertical seams turn one long flank into doors, and
+    # 5. Panel gaps. Two vertical seams turn one long flank into doors, and
     #    doors are most of what says the mass has a scale a person fits in.
     for cut in (0.42, 0.60) if kind in (0, 3) else (0.36, 0.62, 0.80):
         cx = int(width * cut)
@@ -1887,7 +2250,7 @@ def make_vehicle(width: int, height: int, kind: int, frame: int, frames: int) ->
             top = int(round(_profile_y(profile, cut) * height))
             _seam(px, cx, max(top + 1, belt + 1), cx, sill - 1, width, height, paint, 0.06)
 
-    # 5. Wheels, and the arch shadow above each. The arch is what sinks a
+    # 6. Wheels, and the arch shadow above each. The arch is what sinks a
     #    wheel into the body instead of parking it in front.
     for index, wx in enumerate(VEHICLE_WHEELS[kind % len(VEHICLE_WHEELS)]):
         cx = width * wx
@@ -1898,7 +2261,7 @@ def make_vehicle(width: int, height: int, kind: int, frame: int, frames: int) ->
                 px[ax, ay] = pick(paint, 0.06, ax, ay)
         _wheel(px, cx, axle, radius, width, height, flat=(index == kind % 2))
 
-    # 6. Bumpers and lamps. Four pixels of amber and red, and they are the only
+    # 7. Bumpers and lamps. Four pixels of amber and red, and they are the only
     #    saturated thing below the roofline — which is why they land as FRONT
     #    and BACK the instant the eye gets there.
     _fill(px, body_x0, sill - 2, body_x0 + 1, sill, CHROME, 0.34, 305, width, height)
@@ -1916,7 +2279,7 @@ def make_vehicle(width: int, height: int, kind: int, frame: int, frames: int) ->
         if 0 <= body_x1 - offset < width and 0 <= tail_y < height:
             px[body_x1 - offset, tail_y] = pick(RED, 0.55, body_x1 - offset, tail_y)
 
-    # 7. Per-kind markings. All of them one or two pixels wide.
+    # 8. Per-kind markings. All of them one or two pixels wide.
     cab_end = int(width * (0.30 if kind == 2 else 0.28))
     if kind == 2:
         # Red cross and a light bar. The cross is the most legible symbol
@@ -2803,6 +3166,11 @@ def make_statue(width: int, height: int, kind: str, salt: int) -> Image.Image:
     recipe["build"](carve, cx, feet)
     _weather(carve, salt, height - 1)
     img = carve.resolve(height - 1)
+    # The one thing the sculpt system does not supply: the ground going dark
+    # where the pedestal meets it. Every other standing prop in the folder
+    # takes this now, and a statue without it is the only thing in the shrine
+    # that does not sit in the clearing (S19).
+    shadow(img, (width - 1) / 2.0, height - 1.5, width * 0.40, width * 0.40 * SLOPE)
     outline(img, OUTLINE_STONE)
     return img
 
@@ -2837,6 +3205,7 @@ def make_altar(width: int, height: int, kind: int, frame: int, frames: int) -> I
     """
     img = Image.new("RGBA", (width, height), TRANSPARENT)
     px = img.load()
+    size = (width, height)
     cx = (width - 1) / 2.0
     ground = height - 1
     open_t = _ease(frame / max(frames - 1, 1))
@@ -2845,13 +3214,17 @@ def make_altar(width: int, height: int, kind: int, frame: int, frames: int) -> I
     base_top = ground - base_h
     half = width * 0.36
 
-    # The plinth: three steps, so it reads as BUILT rather than as dropped.
-    _fill(px, int(cx - half), base_top, int(cx + half), ground - 3, GRANITE, 0.48,
-          241, width, height, grain=0.10)
-    _fill(px, int(cx - half * 1.12), ground - 3, int(cx + half * 1.12), ground - 1,
-          GRANITE, 0.40, 243, width, height, grain=0.08)
-    _fill(px, int(cx - half * 1.24), ground - 1, int(cx + half * 1.24), ground,
-          GRANITE, 0.30, 244, width, height, grain=0.06)
+    # THE PLINTH: three steps, so it reads as BUILT rather than as dropped —
+    # and each step is a `box`, not a rectangle. Stacked as flat fills the
+    # altar was a stone-coloured staircase seen from straight ahead, which is
+    # the one thing a shrine cannot be: the whole scene points at it, so it is
+    # the object in the game most worth the top faces. Widest step on the
+    # ground, narrowest under the slab (S17: the base is wider than the crown
+    # for anything grounded), and each one is a real footprint the next stands
+    # on.
+    for lift, spread in ((0.0, 1.24), (2.0, 1.12), (4.0, 1.00)):
+        box(px, size, cx, ground - lift, half * spread * 1.06, half * spread * 0.84,
+            max(2.0, (base_h - lift) * (0.35 if spread > 1.0 else 1.0)), GRANITE)
 
     if kind == 1:
         # A cairn of bones stacked around the plinth. Same silhouette, and the
@@ -2891,12 +3264,18 @@ def make_altar(width: int, height: int, kind: int, frame: int, frames: int) -> I
     slab_x0 = int(cx - half + slide)
     slab_x1 = int(cx + half + slide)
     slab_top = hollow_top - 2
-    _fill(px, slab_x0, slab_top, slab_x1, base_top - 1, STONE, 0.62, 247,
-          width, height, grain=0.10)
+    # A SLAB HAS A THICKNESS, and it is the whole reason this reads as a lid
+    # rather than as a painted rectangle: the camera sees its top face, the
+    # sliver of its near edge, and the shadow it drops onto the plinth behind.
+    slab_cx = cx + slide
+    box(px, size, slab_cx, base_top - 1, half * 1.06, half * 0.84,
+        max(2.0, base_top - 1 - slab_top), STONE)
     # The seam where the slab sits on the plinth. Without it the two stones are
     # one stone, and the thing that is supposed to MOVE has no edge to move on.
-    _seam(px, slab_x0, base_top - 1, slab_x1, base_top - 1, width, height,
-          GRANITE, 0.06)
+    for x in range(int(slab_cx - half * 1.06), int(slab_cx + half * 0.84) + 1):
+        y = int(round(base_top - 1 - abs(x - slab_cx) * SLOPE)) + 1
+        if 0 <= x < width and 0 <= y < height and px[x, y][3]:
+            px[x, y] = tone(GRANITE, 0, x, y)
 
     # WHAT IS ON THE SLAB. It rides with it — an offering that stayed put while
     # the stone under it slid away would read as a bug, and pinning it to the

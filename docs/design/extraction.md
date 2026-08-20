@@ -18,7 +18,7 @@ Whole-system map: [`ARCHITECTURE.md`](../../ARCHITECTURE.md).
 
 - **One awake pad at a time.** `Room._awake_rift` refuses a second console.
 - **A pour is server-clocked.** One item leaves the pocket per `rift.POUR_BEAT`; the client draws what the server already spent. Never empty a pocket in one call.
-- **A pour is always escapable** — a movement key or damage ends it and keeps what was already tipped.
+- **A pour is a commitment.** Nothing but damage ends it: movement keys are acked and ignored, and there is no ceiling — the press tips the WHOLE bag in, on either side of the quota.
 - **The overpay core only exists while a next console exists** (`Room._pads_left`); both halves of that rule move together.
 - **Nothing client-side settles anything.** The client animates; `Room` owns pad state, the sweep, and the balance.
 - **`rifts` on the wire is history, not a second mechanic.** The module is `rift.py`; the thing is a cargo platform.
@@ -39,7 +39,8 @@ Whole-system map: [`ARCHITECTURE.md`](../../ARCHITECTURE.md).
 | quest rows | `server/app/quests.py`, `server/app/room.py` (`offer_*`/`step_quests`) |
 | corridors, the exit | `server/app/entrance.py` |
 | pad/drone visuals, deck load | `client/src/render/layers/rift.ts`, `client/src/render/platform.ts`, `client/src/game/pad-cargo.ts` |
-| exit UX | `client/src/game/exit-guide.ts`, `client/src/components/hud/ExitGuide.tsx`, `client/src/render/rift.ts` (paving/torches) |
+| the skid's art | `server/tools/make_platform.py` — never the PNG; `pad-cargo.ts`'s floor fractions mirror its deck |
+| exit UX | `client/src/game/exit-guide.ts` (screen pose), `client/src/game/exit-path.ts` (the route it points down), `client/src/components/hud/ExitGuide.tsx`, `client/src/render/rift.ts` (paving/torches) |
 | the prompt | `client/src/components/hud/RiftPrompt.tsx`, `client/src/game/interaction.ts` (`riftPrompt`, `nearRift`) |
 
 **Do not touch from here:** economy settlement (`Room.enter_store`), inventory
@@ -75,6 +76,27 @@ authority (`server/app/inventory.py` slot rules), the wire protocol pair, or
   party may not get on it. **THE DRONES ARE NOT PART OF THIS STRUCTURE.**
   Nothing is parked at the corners; the pad is a loading dock, and four
   aircraft come in from one treeline when somebody calls for a pickup.
+
+  **THE SKID IS SQUARE TO THE SCREEN, AND IT IS THE ONLY THING IN THE FOREST
+  THAT IS.** Every prop out there — crate, barrel, fence post — is yawed 45
+  degrees onto the diagonal `objects.box` camera, and the pad was too. Three
+  things followed from that and they compound: the object OCCUPIES an
+  axis-aligned rectangle of tiles, so the art was a diamond standing on a
+  rectangle and everything derived from the footprint (the solid tiles, the
+  imprint, the dent pattern) disagreed with the silhouette; corner-on there is
+  no square face anywhere, so the tallest thing on the prop was twenty-six
+  pixels of slanted edges with nothing to carry its height; and a cargo skid is
+  ENTERED, but corner-on the opening faced the lower-left of the screen and the
+  player walked into a corner of it.
+
+  So it is built like the shop's masonry — a face and a cap, square to the tile
+  grid — on the same camera slope, the same 135-degree key and the same
+  painter. ARCHITECTURE IS AXIS-ALIGNED IN THIS GAME AND PROPS ARE CORNER-ON.
+  What that buys is the read: a full-width front face that says "raised deck",
+  a deck you can see the load standing on, three walls at three heights that
+  make it a well rather than a table, and an open front with a hazard-striped
+  ramp down the middle of it — facing the console the player is already
+  standing at. The way in is the front, and now it looks like one.
   - The module is still called `rift.py` and the wire still says `rifts`. That
     is history, not a second mechanic: the extraction point used to be a tear
     in the world with stones around it, and renaming twenty client files buys
@@ -97,10 +119,15 @@ authority (`server/app/inventory.py` slot rules), the wire protocol pair, or
     platform when the drones take it. Then the pack goes back on. Every item
     leaves the pocket on the frame it leaves the bag, because the server owns
     that clock (`Room._step_pour`); a bag that emptied instantly under an
-    animation would be visibly still full and already spent. Any movement key
-    walks out of it and keeps what has already gone in, and being hit ends it —
-    standing still for three seconds in a dark forest is a choice, not a
-    cutscene.
+    animation would be visibly still full and already spent. THE PRESS IS THE
+    COMMITMENT: it goes on until the bag is empty, whether that settles the
+    quota or overshoots it, and a movement key does not take it back. It used
+    to — and what that bought was the most expensive verb in the game being
+    undone by the key players hold down most, plus a load that stopped on the
+    bill and left somebody standing at a machine they had already committed to
+    still carrying half the night. Being hit still ends it: something eating
+    you while your pack is open is the one interruption that is not the
+    player's own fumble.
   - **THE NIGHT'S BILL IS A SHARE OF WHAT IS ACTUALLY OUT THERE.** A forest
     holds a MEDIAN of about 910 points of findable value — roughly a third of
     it scattered on the ground, the rest inside the forty-odd objects standing
@@ -120,6 +147,14 @@ authority (`server/app/inventory.py` slot rules), the wire protocol pair, or
     until somebody calls the pickup. Green means loading. Red means the
     aircraft are coming. There are no overfeed tiers and the drones are not a
     meter.
+
+    **FOUR LAMP SHEETS OVERLAP AND THEY ARE ONE BUDGET WITH THE HALO.** Each
+    corner's glare is its own additive sheet; drawn at full strength the four
+    of them summed into one white rectangle the size of the deck and the pad
+    read as a lightbox rather than as four lamps on a structure. `layers/rift`
+    holds them at 0.72 (0.85 on the alarm) and the air halo under them at
+    0.085 — the same rule the shop's eleven torches are under, and the same
+    failure when it is judged one lamp at a time.
   - **E on a paid pad with an empty pocket CALLS THE PICKUP**, and that is the
     most expensive press in the game. The lamps go RED and start sweeping as
     sirens. `Room._siren` throws a map-wide noise every `SIREN_PULSE`, and
@@ -184,6 +219,21 @@ authority (`server/app/inventory.py` slot rules), the wire protocol pair, or
   the glass is there when somebody has lost their bearings. It is a solid
   TRIANGLE rather than the thin dart on `arrow.png`, because what the eye
   catches in a half-second flash is area, not line.
+
+  **AND IT POINTS DOWN THE ROUTE, NOT AT THE EXIT.** It used to be a compass —
+  a bearing straight from the player to the corridor's back point — which is
+  the right answer on open ground and the wrong one in a forest of trunks,
+  boulders and scenery. Players followed it into a thicket, decided it was
+  broken, and stopped reading it during the one sequence in the game where
+  nobody has time for the minimap. `game/exit-path.ts` floods the map outward
+  from the mouth once, giving every reachable tile its distance to the exit,
+  and the chevron walks a few tiles downhill from wherever the player is and
+  aims at where that walk ends up. A FIELD, NOT A PATH: a path is per-player
+  and dies the moment somebody steps off it, a field answers everyone with two
+  array lookups and degrades correctly — a tile the flood never reached gets no
+  answer and the old straight bearing takes over, which is the one case where
+  "that way" beats nothing.
+
   The quest row is an ORDER now and not a task — "A saída abriu — corra". The
   platform left, every lantern on the map died, every drop was swept and the
   whole pack is hunting; "find the exit" is the same grammar as "find the
@@ -247,21 +297,21 @@ authority (`server/app/inventory.py` slot rules), the wire protocol pair, or
   out of the pocket, `Rift.feed` into the pad, one `pours` event out to every
   client. THE PACING IS THE POINT. The client draws the sprites leaving the
   backpack, and a server that emptied the pocket in one call would leave a bag
-  that is visibly still full and already spent. The CEILING is set once, at the
-  start: under the quota a pour stops on the bill, at or past it there is no
-  number to stop at and it takes the whole bag.
+  that is visibly still full and already spent. THERE IS NO CEILING — the pour
+  runs until `Inventory.tip_one` comes back empty, so the quota is a number the
+  load passes through rather than a number it stops on.
   `Rift.cargo` is the pad's running pile index and it rides the geometry
   payload, because two players watching one pour have to watch one pile.
-  **A pour can always be walked out of.** `Room._pour_inputs` acks every
-  packet and obeys none of them except a movement key, which ends the pour
-  where it stands and leaves everything already tipped in the pad; taking
-  damage ends it too (`damage_player`). Standing still for three seconds in a
-  dark forest has to be a choice that can be un-made.
+  **A pour cannot be walked out of.** `Room._pour_inputs` acks every packet
+  and obeys none of them — the client masks movement out of `liveInput` for
+  the same reason, or it would predict a step the next snapshot takes back.
+  Only `damage_player` ends one early. Standing still for those seconds in a
+  dark forest is the price of the haul, and it is paid on the press.
 - **One pad at a time, and the PLAYER calls the pickup.** `Room._awake_rift`
   is the gate: a dormant console refuses while another platform is charging or
   open. `activate_rift` is a four-way switch on the pad's state plus what is
-  in the pocket — wake it, start a pour toward the quota, start one past it,
-  or call the pickup with an empty bag. The bag is what disambiguates the last
+  in the pocket — wake it, start a pour (one verb, on either side of the
+  quota), or call the pickup with an empty bag. The bag is what disambiguates the last
   two on purpose: overfeeding is only a real choice if it is repeatable, and a
   press that called the aircraft the instant the quota landed would make
   keeping the bag going unreachable. `Rift.begin_collapse` banks the

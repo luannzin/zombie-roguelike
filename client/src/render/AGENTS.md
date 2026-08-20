@@ -395,7 +395,12 @@ mutation, no React.
   the entity pass. Drawn with the grass it was the tallest undergrowth on the
   map and the only foliage a player could never be hidden by: you walked in
   front of a thicket the way you walk in front of a painting of one. Standing in
-  one now puts you in cover and looks like it.
+  one now puts you in cover and looks like it — and the cover is REAL: `ai.look`
+  re-derives these same tiles from the map seed and shortens a creature's reach
+  over them. `BUSH_CHANCE` is therefore a gameplay number and arrives in
+  `welcome.config` (`setBushChance`); the hash that places them is bit-for-bit
+  the server's `world.tile_hash`, and moving either one alone puts the cover
+  somewhere other than the bush.
 - `TerrainLayer.setDecorationMask` vetoes grass, bushes and ferns per tile. It exists so
   an area can be kept clear of undergrowth **without** its tiles becoming solid
   — `isSolidTile` treats anything that is not `FLOOR` as a wall, so "bare floor"

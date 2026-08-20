@@ -22,7 +22,7 @@
  * whether to mount it. This class only owns pixels.
  */
 
-import { FLOOR, TREE, VOID, type Rift, type TileMap } from '../game/world';
+import { FLOOR, TILEFLOOR, TREE, VOID, type Rift, type TileMap } from '../game/world';
 import { createSurface, get2d } from '../lib/canvas';
 import { floorColor, palette } from '../theme/palette';
 import type { FovField } from './fov';
@@ -310,11 +310,15 @@ function buildTileCache(world: TileMap): HTMLCanvasElement {
   for (let ty = 0; ty < world.height; ty++) {
     for (let tx = 0; tx < world.width; tx++) {
       const tile = world.tiles[ty][tx];
-      if (tile === FLOOR || tile === VOID) {
+      // The shop's laid floor is ground like any other here: a minimap is a
+      // map of where you can WALK, and a room drawn as a solid block because
+      // its floor is brick would read as the one place you cannot go.
+      if (tile === FLOOR || tile === VOID || tile === TILEFLOOR) {
         ctx.fillStyle = floorColor(tx, ty);
       } else {
         // Cheap top-edge hint so blockers read the same way as the main view.
-        const exposed = ty === 0 || world.tiles[ty - 1][tx] === FLOOR || world.tiles[ty - 1][tx] === VOID;
+        const above = ty === 0 ? FLOOR : world.tiles[ty - 1][tx];
+        const exposed = above === FLOOR || above === VOID || above === TILEFLOOR;
         if (tile === TREE) ctx.fillStyle = exposed ? tiles.treeTop : tiles.tree;
         else ctx.fillStyle = exposed ? tiles.wallTop : tiles.wallBody;
       }

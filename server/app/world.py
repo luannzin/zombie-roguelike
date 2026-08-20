@@ -28,17 +28,38 @@ Python literals or generated procedurally.
               leaving them walkable throws away the best cover the forest has.
               You can see your target over the log and still not shoot through
               it, which is what cover is supposed to mean.
+    7 BRICK    solid MASONRY WALL — the merchant's shop, and the only
+              built structure in the game. Solid and OPAQUE, like PROP: a
+              wall is a wall. It is its own kind rather than ROCK because
+              the client draws it as a course of brick with a face and a
+              cap, autotiled off its neighbours, and a boulder sprite in a
+              doorway would be the whole illusion gone.
+    8 TILEFLOOR
+              WALKABLE BRICK FLOOR — the shop's interior ground. The one
+              tile kind other than FLOOR a body may stand on, and the only
+              reason the solidity rule below is a pair rather than a single
+              comparison. Transparent to light: it is a floor.
 
-Solidity is `!= FLOOR` with one named exception: VOID is walkable while
-`egress` is set. SIGHT is `blocks_sight`, which is the narrower question and
-has its own exceptions: FIRE (knee-high, and it is the thing doing the
-lighting), VOID (a gap between trees — light falls in) and LOW.
+Solidity is "not one of the two GROUNDS" with one named exception: VOID is
+walkable while `egress` is set. SIGHT is `blocks_sight`, which is the narrower
+question and has its own exceptions: FIRE (knee-high, and it is the thing doing
+the lighting), VOID (a gap between trees — light falls in), LOW and TILEFLOOR.
 
-FLOOR is always walkable. VOID becomes walkable only as the extraction
-corridor — camp VOID and the sealed-until-gone arrival stay solid because
-those maps have no `egress`. Adding a new blocker is still `!= FLOOR`, not a
-list. `WALL` remains as an alias for ROCK so hand-drawn ASCII maps keep
-building. VOID is floor art with no prop: a shadowed winding path, not a
+THERE ARE TWO WALKABLE GROUNDS AND THAT IS WHY THE RULE IS `GROUNDS`, NOT
+`!= FLOOR`. It was a single comparison for the whole life of the project and
+that was right while every map was made of soil. The shop's interior is a laid
+brick floor — a different surface the client bakes from a different sheet — and
+the choice was between a second ground kind or painting brick over FLOOR from
+the store layer and hoping the two never disagreed about where the building
+was. A tile kind is the honest answer: the grid says what the ground IS, one
+frozenset says which grounds carry a body, and adding a third surface later is
+one entry rather than a new special case. The cost is that this rule is
+MIRRORED in `client/src/game/world.ts` and a change to one side alone desyncs
+prediction — see AGENTS.md's mirror list.
+
+Adding a new BLOCKER is still nothing at all: anything outside `GROUNDS` is
+solid by default. `WALL` remains as an alias for ROCK so hand-drawn ASCII maps
+keep building. VOID is floor art with no prop: a shadowed winding path, not a
 black rectangle.
 
 FIRE is a tile rather than an entity for exactly that reason. It blocks, it
@@ -54,7 +75,7 @@ smaller than the sprite.
 
 from __future__ import annotations
 
-from .config import TILE_SIZE
+from .config import BUSH_CHANCE, TILE_SIZE
 
 FLOOR = 0
 ROCK = 1
@@ -63,11 +84,55 @@ FIRE = 3
 VOID = 4
 PROP = 5
 LOW = 6
+BRICK = 7
+TILEFLOOR = 8
 
 # Legacy name: '#' in an ASCII map is a rock.
 WALL = ROCK
 
+#: THE TILE KINDS A BODY MAY STAND ON. Everything else is solid.
+#:
+#: Mirrored by `GROUNDS` in client/src/game/world.ts. The two must hold the
+#: same members or prediction and the server disagree about where a wall is,
+#: which shows up as rubber-banding along the shop's doorway rather than as an
+#: error anywhere.
+GROUNDS = frozenset((FLOOR, TILEFLOOR))
+
+#: WHAT LIGHT PASSES THROUGH. Wider than `GROUNDS` and deliberately so: a
+#: bonfire is knee-high and is the source, VOID is a gap between trunks, LOW is
+#: cover you look over. Mirrored by `CLEAR` in client/src/game/world.ts.
+CLEAR = frozenset((FLOOR, TILEFLOOR, FIRE, VOID, LOW))
+
 _EPS = 1e-4
+
+
+def tile_hash(tx: int, ty: int, seed: int, salt: int = 0) -> float:
+    """Deterministic 0..1 from a tile coordinate. Mirrors `render/terrain.ts`.
+
+    Bit-for-bit, not merely "a hash": the client places decoration with this
+    and the server now reads that placement back (`TileMap.bush_at`), so the
+    two must agree on every tile of every map. `Math.imul` is a 32-bit signed
+    multiply and `>>>` an unsigned shift, hence the masking here — a plain
+    Python `*` would agree for the first few thousand tiles and then quietly
+    stop.
+    """
+    h = _i32(_imul(tx, 374761393) + _imul(ty, 668265263) + _imul((seed ^ salt), 2246822519))
+    h = _i32(h ^ (_u32(h) >> 13))
+    h = _imul(h, 1274126177)
+    return (_u32(h ^ (_u32(h) >> 16))) / 4294967295
+
+
+def _u32(v: int) -> int:
+    return v & 0xFFFFFFFF
+
+
+def _i32(v: int) -> int:
+    v &= 0xFFFFFFFF
+    return v - 0x100000000 if v >= 0x80000000 else v
+
+
+def _imul(a: int, b: int) -> int:
+    return _i32(_i32(a) * _i32(b))
 
 
 class TileMap:
@@ -140,7 +205,7 @@ class TileMap:
         tile = self.tiles[ty][tx]
         if tile == VOID:
             return self.egress is None
-        return tile != FLOOR
+        return tile not in GROUNDS
 
     def is_solid_at(self, x: float, y: float) -> bool:
         return self.is_solid_tile(int(x // TILE_SIZE), int(y // TILE_SIZE))
@@ -151,14 +216,38 @@ class TileMap:
         Narrower than solidity, and the difference is not cosmetic: the client
         draws exactly this, so an enemy that could not see over a log the
         player can see over would be enforcing a rule the screen contradicts.
-        Three exceptions — a bonfire is knee-high and is the light source, VOID
-        is a gap between trunks that light falls into, and LOW is cover you
-        look over.
+        The exceptions are `CLEAR` — a bonfire is knee-high and is the light
+        source, VOID is a gap between trunks that light falls into, LOW is
+        cover you look over, and TILEFLOOR is a floor.
         """
         if tx < 0 or ty < 0 or tx >= self.width or ty >= self.height:
             return True
-        tile = self.tiles[ty][tx]
-        return tile != FLOOR and tile != FIRE and tile != VOID and tile != LOW
+        return self.tiles[ty][tx] not in CLEAR
+
+    def bush_at(self, tx: int, ty: int) -> bool:
+        """Whether the client draws a bush on this tile. Mirrors `layers/terrain`.
+
+        There is no bush in `tiles`. Undergrowth is DERIVED — the map ships a
+        seed and both sides hash it with the tile coordinate, which is how a
+        forest's worth of decoration costs four bytes on the wire. That made
+        bushes invisible to the simulation for as long as they were only
+        decoration; they are cover now (`ai.look`), so the server re-derives
+        the same tiles rather than anybody shipping a mask.
+
+        `salt=13` and the FLOOR test are the client's, verbatim. Change one
+        and undergrowth moves under the rule that reads it.
+
+        The camp's hearth mask is NOT mirrored. It only suppresses decoration
+        around the campfire, and nothing hunts in the camp.
+        """
+        if tx < 0 or ty < 0 or tx >= self.width or ty >= self.height:
+            return False
+        if self.tiles[ty][tx] != FLOOR:
+            return False
+        return tile_hash(tx, ty, self.seed, 13) < BUSH_CHANCE
+
+    def bush_at_point(self, x: float, y: float) -> bool:
+        return self.bush_at(int(x // TILE_SIZE), int(y // TILE_SIZE))
 
     def box_blocked(self, cx: float, cy: float, hw: float, hh: float) -> bool:
         """Axis-aligned box centred on (cx, cy) with half-extents (hw, hh)."""

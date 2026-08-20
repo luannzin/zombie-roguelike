@@ -210,5 +210,13 @@ table and the gameplay state machine.
   it is the only check that the constants actually reach the client.
 - `python tests/test_snapshot_shape.py` and `python tests/test_pour.py` from
   `server/`. Both are plain scripts and print `ok`; there is no runner.
+- `python tests/test_bush_cover.py` after touching `world.tile_hash`,
+  `TileMap.bush_at`, `BUSH_CHANCE` or the client's `tileHash`. It pins the hash
+  against values taken out of a browser, because nothing at runtime notices when
+  the two sides place undergrowth in different tiles — the symptom is a player
+  taking cover that is not there.
+- `python tests/test_scenery_containers.py` after adding a container kind or a
+  scene that places one: two openables on a tile is a sprite inside a sprite on
+  ground that can only be claimed once.
 - Beyond that, run the server and confirm at least two clients move, shoot and
   take damage without desync.

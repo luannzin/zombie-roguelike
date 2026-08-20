@@ -9,7 +9,7 @@ recently changed system, when something looks like a regression, before
 modifying anything under *Do not touch*, or when the task asks what to work on
 next. Skip it for a self-contained change to a stable system.
 
-_Last verified: 2026-08-20 against `main` @ `41f5fb6`._
+_Last verified: 2026-08-20 against `main` @ `869e36c` + the fix pass below._
 
 ## Current phase
 
@@ -32,7 +32,12 @@ ceremony.
   the upgrade cabinet (`make_machine.py`), the skill ICONS (flat HUD marks by
   contract — read `make_skills.py`'s header before "fixing" them), and the
   creature sheets in `assets/raw/`.
-- Shop map iteration (`78da442` is the newest layout; `store.py` offsets are still moving).
+- **The SHOP is a building again** (`store.py` offsets are still moving). The
+  zone is now an outdoor APRON — platforms land, the cart is parked, the
+  payout happens — and a brick SHOP at the north end of it, entered through a
+  door, with the exit corridor coming off its back wall. Two new mirrored tile
+  kinds carry it (`BRICK` / `TILEFLOOR`), and `GROUNDS` / `CLEAR` in
+  `world.py` + `world.ts` are the pair to keep in step.
 - Weapon feel: shotgun cone and melee swing landed; the catalog's derivation from CS2 stats is stable.
 
 ## Recently completed
@@ -47,20 +52,40 @@ ceremony.
 | loot frames | a frame now comes from the atlas manifest, not from catalog position — the knife and the condensed core had been drawing ammunition boxes, and every gun was drawing another gun. `test_loot_frames.py` guards it |
 | dark gold | the purple coin is an ANOMALY SHARD, painted from the rift's prism at both sizes, and both drop taps cut hard so it is a rare find |
 | the level-up | it used to be silent: now a summon column on the body plus an `Announce` card, the small mid-run sibling of the arrival title |
-| shop | linear glade -> round clearing, man in the middle, six-stall grid, wagon |
+| shop | clearing -> APRON plus a brick BUILDING: L counter in the corner, shelves behind him, six tables, cabinet on the west wall, oil lamps on stands, cart parked outside |
+| the payout | the landed platforms STAY parked in the yard for the visit (they used to vanish with the ceremony); the day-complete card carries the take and the canvas `+N` that duplicated it is gone |
+| store art | every sheet rebuilt: brick wall + paved floor, tiling L counter, wall shelves, decoration crates, table lamps, tables, torches, mats, the cart and his kit |
 | melee | three-beat combo with the blade following its own arc |
 | shotgun | one shell, six rays, its own muzzle/impact art and audio |
 | stamina | SHIFT sprint on a bar, prediction-replayable, `winded` latch |
 | currency | GROUP gold (`Room.balance`) split from PLAYER dark gold (`Player.gold`) |
 | skills | levels as spins, the slot cabinet, `Mods` read at every consumer site |
 | extraction | cargo platform, the pour, drone pickup, siren + `hunt_all`, carved exit |
+| the skid, square to the screen | the platform was rasterised corner-on like a crate and read as a lozenge with no front to walk into. Same camera slope, same key, same painter, footprint yawed onto the screen axes: full-width front face, a deck you can see the load on, three walls and an open front with a hazard ramp. `pad-cargo.ts`'s floor fractions moved with it |
+| the pour is a commitment | movement no longer cancels it and there is no ceiling — the press tips the WHOLE bag, on either side of the quota. Damage still ends it. The `over` prompt mode is gone with the rule that needed it |
+| undergrowth is cover | bushes were drawn over the player and ignored by `ai.look`. The server re-derives the client's bush tiles from the map seed (`world.tile_hash`, bit-exact with `render/terrain.ts`) and cuts a creature's reach over them |
+| the exit arrow routes | it was a compass pointing through trees; `game/exit-path.ts` floods the map from the corridor mouth and the chevron follows the walkable route |
+| container density | scenes rolled openables in independent loops that summed, and nothing stopped two landing on one tile. `scenery._thin_containers` caps a scene at five and drops collisions |
 
 ## Known problems
 
 - **The post chain has no automated check and cannot have one.** `bun tests/grade.ts` covers the stack's envelopes and composition — the arithmetic — and nothing covers the shader. Judge it by looking: a bonfire should bloom and the grass beside it should not.
 - **The lobby is not graded.** `LobbyScene` / `CampfireCanvas` own their own 2D canvases and do not go through the post chain, so the title screen and the arena are finished differently. Nobody sees them side by side today, but the seam is real and it is where a "the camp looks flatter than the game" report will come from.
 - **`texImage2D` from the scene canvas every frame** is the one unavoidable cost of the hybrid, and it scales with window size rather than with what is on screen. Marked `ponytail:` in `post/chain.ts`; the upgrade is drawing the world into a GL target directly, which is a renderer rewrite.
-- **Additive light does not clamp.** The store's flat-white bug was fixed by spending one budget across four places (`STORE_AMBIENT`, `RING_TORCHES`, `TORCH_LIGHT_TILES`, `layers/payout` alphas), and it came back: the torch FLAME sheet and the scene-light pools were each tuned against one lamp alone in a black wood, and the shop has eleven of them overlapping. Held now by `TORCH_FIRE_ALPHA` and the `drawSceneLights` gradient stops on the client, the bloom ellipse and `gain` in `make_store.make_torchfire`, and lowered ceilings on the pad's `GREEN_GLARE` / `RED_GLARE`. The underlying renderer still has no clamp, so the next zone with many lights will hit it a third time.
+- **`make_objects.box` is corner-on and slopes the CONTACT.** It is right for
+  what it was written for (a crate seen corner-on) and wrong for small standing
+  props: the bottom comes out a V, so the object reads as a losange floating
+  over the floor. `make_store._block` is the front-facing alternative — flat
+  base, rectangular front, top sheared right — and the store's kit and crates
+  are on it. Anything new in that folder should be too. The extraction skid was
+  the last big thing on the corner-on axes and has been turned square to the
+  screen; the rule that came out of it is in `docs/design/extraction.md` —
+  **architecture is axis-aligned, props are corner-on.**
+- **Generated frames can clip their own cells and nothing notices.** A packed
+  sheet with clipped frames is a valid PNG. `make_store._check_margins` guards
+  the three sheets it has bitten (kit, crate, lamp); no other generator has an
+  equivalent.
+- **Additive light does not clamp.** The store's flat-white bug was fixed by spending one budget across four places (`STORE_AMBIENT`, `RING_TORCHES`, `TORCH_LIGHT_TILES`, `layers/payout` alphas), and it came back twice. Second pass: the torch FLAME sheet and the scene-light pools were each tuned against one lamp alone in a black wood, and the shop has eleven overlapping. Third pass (this one): the floor itself was doing part of the torches' job, so the room was bright everywhere and lit nowhere — `STORE_AMBIENT` 0.45 -> 0.36, `TORCH_FIRE_ALPHA` / `LAMP_FIRE_ALPHA` 0.55 / 0.42, `drawSceneLights` stops 0.135 / 0.045, and the pad's four overlapping lamp sheets held at 0.72 with the halo at 0.085. The underlying renderer still has no clamp, so the next zone with many lights will hit it a fourth time.
 - **Naming drift is permanent and deliberate.** `rift.py` / wire `rifts` mean the extraction platform; `crates.py` / wire `crates` mean all interactive objects. Do not rename either — the cost is twenty client files for nothing.
 - **Two giant files** (`server/app/room.py` 2.8k lines, `client/src/game/game.ts` 4.4k lines) — see below. Their section banners were rewritten to be honest (5 → 16 and 5 → 21); the files themselves are unchanged and still unsplit.
 - Dark gold currently buys nothing. Intentional, but it means its drop taps are untested against real demand — and they were just cut hard for the shard art, so the first thing it can buy has to be priced against the NEW rate, not the old one.
@@ -81,14 +106,14 @@ Unless the task is explicitly about them:
 - `assets/processed/**` — generated output. Edit the generator in `server/tools/`.
 - `assets/raw/**` and `assets/inspiration/**` — never served, never read at runtime.
 - `server/.venv/`, `client/node_modules/`, `client/dist/`.
-- The **six** mirror pairs, one side alone. Three are line-for-line (`simulation.py`/`simulation.ts`, `protocol.py`/`protocol.ts`, `machine.py`/`machine.ts`); three are the same rule re-derived on the other side (`world.py`/`world.ts`, `Room.collect_loot`+`Inventory.add`/`game/interaction.ts`, `ai.look`/`render/fov.ts`). The full list with the reason for each is in the root `AGENTS.md`.
+- The **eight** mirror pairs, one side alone. Three are line-for-line (`simulation.py`/`simulation.ts`, `protocol.py`/`protocol.ts`, `machine.py`/`machine.ts`); five are the same rule re-derived on the other side (`world.py`/`world.ts`, `Room.collect_loot`+`Inventory.add`/`game/interaction.ts`, `ai.look`/`render/fov.ts`, `world.tile_hash`/`render/terrain.ts`'s `tileHash`, `make_platform.py`'s deck/`game/pad-cargo.ts`). The full list with the reason for each is in the root `AGENTS.md`.
 - `Room.enter_store`'s balance credit — the single settlement point.
 
 ## Known technical risks
 
 | risk | why it bites |
 | --- | --- |
-| mirror drift | one side edited alone: rubber-banding, or a silently dropped wire field. Six pairs, not three — the three undeclared ones (`world.ts`, `interaction.ts`, `fov.ts`) are the ones a reader will not know to check |
+| mirror drift | one side edited alone: rubber-banding, or a silently dropped wire field. Eight pairs, not three — the five undeclared ones (`world.ts`, `interaction.ts`, `fov.ts`, `tileHash`, `pad-cargo.ts`) are the ones a reader will not know to check. `tileHash` is the worst of them: it has a test now because nothing at runtime notices when the two sides put undergrowth in different tiles |
 | generated-list insertion | inserting into `weapons.WEAPONS` / skills / loot icons shifts every frame index in already-committed sheets |
 | `Mods` bypass | a site reading a raw `config.py` constant makes a skill silently do nothing, with no error |
 | map generation | `mapgen`/`scenery` failures are seed-dependent; a bad edit ships and breaks one night in twenty |

@@ -1,22 +1,30 @@
 /**
- * Store atlas: the merchant's own kit.
+ * Store atlas: the shop, and everything in it.
  *
  * Produced by server/tools/make_store.py and served from /store/.
  *
- * It is a SMALL atlas on purpose. The shop used to be an interior and shipped
- * its own floor, walls and hanging lamps; it is a clearing now, so the ground
- * is `terrain/`'s forest soil and the trees are the same trees as everywhere
- * else. What is left here is only what the trader brought with him: his cart,
- * his counter, his round tables, the mat he stands on, the torches he drove in
- * and his own gear — plus the pool that says which table you are standing at.
+ * IT SHIPS A BUILDING AGAIN. The zone was a clearing for a long time and this
+ * atlas was small because of it — soil from `terrain/`, the same trees as
+ * everywhere else, and only what the trader carried in. The shop is a BRICK
+ * BUILDING now at the north end of an outdoor apron, so two surfaces came
+ * back: `brick`, the masonry, and `tilefloor`, the laid floor inside it. What
+ * did not come back is the old interior's argument — the building is the far
+ * end of a walk across a lit yard, not the whole zone.
  *
- * Three shapes, drawn in three different places in the frame:
+ * Four shapes, drawn in four different places in the frame:
  *
- *   PROPS stand up — the wagon, the counter, the tables, his gear and the
- *   torches. Bottom-anchored on a contact point and depth-sorted with the
- *   party, so a body passes in front of and behind them.
+ *   GROUND is baked flat into the ground canvas with the soil, under
+ *   everything, with no keyline and no shadow. Just `tilefloor`.
  *
- *   DECALS lie flat. Just the mat, drawn on the ground under the merchant.
+ *   PROPS stand up — the masonry, the counter, the shelves, the tables, the
+ *   lamps, his crates, his cart and the torches. Bottom-anchored on a contact
+ *   point and depth-sorted with the party, so a body passes in front of and
+ *   behind them. `brick` is a prop for exactly that reason: a wall tile is two
+ *   tiles of sprite on a one-tile footprint, so it has to sort like a tree's
+ *   canopy does, and each wall tile covers the face of the one behind it — see
+ *   `make_store.make_brick` on why there is no autotile mask.
+ *
+ *   DECALS lie flat. The mats, drawn on the ground under the furniture.
  *
  *   EFFECTS are additive and drawn AFTER the darkness pass, because a fire is
  *   a light source and not a thing being lit. Unlike `vfx.ts`'s greyscale
@@ -24,10 +32,15 @@
  *   from a dull red root to a white core, and a single draw-time multiply
  *   cannot produce a ramp — the same call `make_rift.py` makes.
  *
- * `table.topY` is the one piece of gameplay geometry that lives in the art:
- * the pixel row the goods rest on, per pedestal frame. The four pedestals are
- * deliberately different heights, so a single hardcoded offset would float one
- * gun and sink another.
+ * THREE NUMBERS LIVE IN THE ART RATHER THAN IN THE CLIENT, and all three are
+ * pose data. `table.topY` is the pixel row the goods rest on, per pedestal
+ * frame — the four pedestals are deliberately different heights, so a single
+ * hardcoded offset would float one gun and sink another. `lamp.hangY` is how
+ * far above its floor contact a lamp's body hangs, and `lamp.flameY` is where
+ * `lampfire` burns inside its glass. A lamp is anchored on the FLOOR like
+ * every other prop and is simply transparent for the two tiles between; if
+ * the client picked the hang height instead, the sprite, the flame and the
+ * pool of light the server places would end up at three different heights.
  *
  * Loading is best-effort, like every other atlas here: a missing manifest
  * resolves to `null` and the layer draws nothing rather than taking the zone
@@ -43,8 +56,19 @@ export interface StoreProp {
   frames: number;
   /** Table only: the pixel row the stock lies on, per frame. */
   topY?: number[];
-  /** Torch only: where its flame burns inside the head, per frame. */
-  flameY?: number[];
+  /**
+   * Torch: where its flame burns inside the head, per frame.
+   * Lamp: the single row its flame burns at, shared by both frames.
+   */
+  flameY?: number[] | number;
+  /** Lamp only: how far its body hangs above its floor contact, in pixels. */
+  hangY?: number;
+  /**
+   * Brick only: how many TALL frames come first on the sheet. The rest are the
+   * knee-high ones. Shipped by the generator rather than assumed, so the split
+   * is never a constant on this side — see `make_store.make_brick`.
+   */
+  tall?: number;
 }
 
 export interface StoreDecal {
@@ -66,8 +90,27 @@ export interface StoreEffect {
 }
 
 export interface StoreAtlas {
+  /**
+   * THE MASONRY: two wear variants at each of two HEIGHTS, `tall` of them
+   * first. A back or side wall stands a full tile above its own footprint; the
+   * front wall is knee-high so the camera looks over it into the room. Which
+   * one a tile gets is decided by whether the shop's floor is north of it —
+   * see `make_store.make_brick`.
+   */
+  brick: StoreProp;
+  /** The shop's laid floor, baked into the ground canvas with the soil. */
+  tilefloor: StoreDecal;
   /** Six round pedestals. `topY` is the row the goods rest on, per frame. */
   table: StoreProp;
+  /** Wall shelving behind the counter. Decoration; none of it opens. */
+  shelf: StoreProp;
+  /** Shop-floor decoration. None of it opens either — see the generator. */
+  crate: StoreProp;
+  /**
+   * The lamps that light the room, on chains from the beams. Anchored on the
+   * FLOOR; `hangY` is where the body sits above that contact.
+   */
+  lamp: StoreProp;
   /** His gear: crates, a barrel, a rack, a shelf, a strongbox. Never opened. */
   kit: StoreProp;
   /**
@@ -76,11 +119,17 @@ export interface StoreAtlas {
    * comment above `make_wagon` in server/tools/make_store.py.
    */
   wagon: StoreProp;
-  /** The plank he stands behind. */
+  /**
+   * The L he trades over, as three tiling sections: 0 elbow, 1 running east,
+   * 2 running south. The server ships one row per section with its kind, so
+   * the shape of the L is an offset table rather than a sprite.
+   */
   counter: StoreProp;
   torch: StoreProp;
   rug: StoreDecal;
   torchfire: StoreEffect;
+  /** The same fire as `torchfire`, smaller, burning inside a lamp's glass. */
+  lampfire: StoreEffect;
   glow: StoreEffect;
   /**
    * The HUD coin (`/hud/coin.png`), loaded here rather than with the rest of
@@ -103,17 +152,24 @@ interface SheetManifest {
   frameHeight: number;
   frames: number;
   topY?: number[];
-  flameY?: number[];
+  flameY?: number[] | number;
+  hangY?: number;
+  tall?: number;
   fps?: number;
   anchorY?: number;
   loop?: boolean;
 }
 
+type PropName =
+  | 'brick' | 'table' | 'shelf' | 'crate' | 'lamp'
+  | 'kit' | 'wagon' | 'counter' | 'torch';
+
 interface StoreManifest {
   tile: number;
-  props: Record<'table' | 'kit' | 'wagon' | 'counter' | 'torch', SheetManifest>;
+  ground: Record<'tilefloor', SheetManifest>;
+  props: Record<PropName, SheetManifest>;
   decals: Record<'rug', SheetManifest>;
-  effects: Record<'torchfire' | 'glow', SheetManifest>;
+  effects: Record<'torchfire' | 'lampfire' | 'glow', SheetManifest>;
 }
 
 const ROOT = '/store';
@@ -133,19 +189,31 @@ export function loadStore(): Promise<StoreAtlas | null> {
 async function fetchStore(): Promise<StoreAtlas | null> {
   try {
     const manifest = await loadJson<StoreManifest>(`${ROOT}/manifest.json`);
-    const [table, kit, wagon, counter, torch, rug, torchfire, glow, coin] = await Promise.all([
+    const [
+      brick, tilefloor, table, shelf, crate, lamp,
+      kit, wagon, counter, torch, rug, torchfire, lampfire, glow, coin,
+    ] = await Promise.all([
+      loadProp(manifest.props.brick),
+      loadDecal(manifest.ground.tilefloor),
       loadProp(manifest.props.table),
+      loadProp(manifest.props.shelf),
+      loadProp(manifest.props.crate),
+      loadProp(manifest.props.lamp),
       loadProp(manifest.props.kit),
       loadProp(manifest.props.wagon),
       loadProp(manifest.props.counter),
       loadProp(manifest.props.torch),
       loadDecal(manifest.decals.rug),
       loadEffect(manifest.effects.torchfire),
+      loadEffect(manifest.effects.lampfire),
       loadEffect(manifest.effects.glow),
       // Not fatal: a price with no coin beside it is still a price.
       loadImage('/hud/coin.png').catch(() => null),
     ]);
-    return { table, kit, wagon, counter, torch, rug, torchfire, glow, coin };
+    return {
+      brick, tilefloor, table, shelf, crate, lamp,
+      kit, wagon, counter, torch, rug, torchfire, lampfire, glow, coin,
+    };
   } catch (err) {
     console.warn('[store] no store atlas:', err);
     // Not memoized as a permanent failure: the next day should get another go.
@@ -162,6 +230,8 @@ async function loadProp(sheet: SheetManifest): Promise<StoreProp> {
     frames: sheet.frames,
     topY: sheet.topY,
     flameY: sheet.flameY,
+    hangY: sheet.hangY,
+    tall: sheet.tall,
   };
 }
 
@@ -193,9 +263,25 @@ export function tableTopY(table: StoreProp, variant: number): number {
   return rows[variant % rows.length];
 }
 
-/** Where a torch's flame burns for frame `variant`, in frame pixels. */
-export function torchFlameY(torch: StoreProp, variant: number): number {
-  const rows = torch.flameY;
-  if (!rows || rows.length === 0) return 0;
+/**
+ * Where a prop's flame burns for frame `variant`, in frame pixels.
+ *
+ * Takes a number OR a list, because the two lit props answer the question
+ * differently and both answers are art. A torch's two heads are different
+ * shapes and hold their fire at different heights, so it ships a row per
+ * frame; a lamp's two shades hang the same body off the same chain, so it
+ * ships one row for both. Reading a scalar as a one-element list is cheaper
+ * than making the generator pad it.
+ */
+export function flameRow(prop: StoreProp, variant: number): number {
+  const rows = prop.flameY;
+  if (rows == null) return 0;
+  if (typeof rows === 'number') return rows;
+  if (rows.length === 0) return 0;
   return rows[variant % rows.length];
+}
+
+/** How far a lamp's body hangs above its floor contact, in frame pixels. */
+export function lampHangY(lamp: StoreProp): number {
+  return lamp.hangY ?? 0;
 }

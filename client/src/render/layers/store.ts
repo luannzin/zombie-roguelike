@@ -33,7 +33,7 @@ import type { GunAtlas } from '../guns';
 import type { MerchantAtlas, MerchantPose } from '../merchant';
 import { merchantFrame } from '../merchant';
 import type { StoreAtlas } from '../store';
-import { COIN_PX, tableTopY, torchFlameY } from '../store';
+import { COIN_PX, flameRow, tableTopY } from '../store';
 import type { MachineAtlas } from '../machine';
 import { bandCell } from '../machine';
 import type { MachinePull } from '../../game/machine';
@@ -72,15 +72,22 @@ const FLOAT_DEPTH = 0.28;
 /** How long the pay line stays lit after the third reel lands, in seconds. */
 const PAY_LINE_FLASH = 0.55;
 
-/** One thing on the pitch that stands up and has to be depth-sorted. */
+/** One thing in the zone that stands up and has to be depth-sorted. */
 export interface StoreStanding {
-  kind: 'table' | 'kit' | 'wagon' | 'counter' | 'torch' | 'merchant' | 'machine';
+  kind:
+    | 'table' | 'kit' | 'wagon' | 'counter' | 'torch' | 'merchant' | 'machine'
+    | 'shelf' | 'crate' | 'lamp';
   /** Contact row, world pixels — what it is sorted by. */
   y: number;
   x: number;
   /** Tables only. */
   stand?: Stand;
-  /** Torches only. */
+  /**
+   * Which frame of its own sheet this piece uses. Torches, kit, shelves,
+   * crates and counter sections all key off it; for a counter it is the
+   * SECTION KIND (0 elbow, 1 east, 2 south) rather than a wear roll, because
+   * the shape of the L is a server decision.
+   */
   variant?: number;
 }
 
@@ -137,8 +144,23 @@ export function storeStanding(scene: StoreScene | null): StoreStanding[] {
   if (scene.fixtures.wagonX !== null && scene.fixtures.wagonY !== null) {
     out.push({ kind: 'wagon', x: scene.fixtures.wagonX, y: scene.fixtures.wagonY });
   }
-  if (scene.fixtures.counterX !== null && scene.fixtures.counterY !== null) {
-    out.push({ kind: 'counter', x: scene.fixtures.counterX, y: scene.fixtures.counterY });
+  // THE COUNTER IS A RUN OF SECTIONS AND EVERY ONE OF THEM SORTS ON ITS OWN.
+  // It is one L on the map and it would be tempting to draw it as one thing at
+  // one contact — but the arm running south spans four rows, so a single sort
+  // key would put the whole counter either in front of or behind anybody
+  // standing beside it. Per section, the merchant's own pocket sorts correctly
+  // against the arm that fences it.
+  for (const piece of scene.fixtures.counter) {
+    out.push({ kind: 'counter', x: piece.x, y: piece.y, variant: piece.kind });
+  }
+  for (const piece of scene.fixtures.shelves) {
+    out.push({ kind: 'shelf', x: piece.x, y: piece.y, variant: piece.variant });
+  }
+  for (const piece of scene.fixtures.crates) {
+    out.push({ kind: 'crate', x: piece.x, y: piece.y, variant: piece.variant });
+  }
+  for (const lamp of scene.fixtures.lamps) {
+    out.push({ kind: 'lamp', x: lamp.x, y: lamp.y });
   }
   out.push({
     kind: 'merchant',
@@ -156,7 +178,13 @@ export function storeStanding(scene: StoreScene | null): StoreStanding[] {
   return out;
 }
 
-/** The mat. Flat, world space, drawn with the ground. */
+/**
+ * The mats. Flat, world space, drawn with the ground.
+ *
+ * There are three now rather than one, laid on the three lines the party
+ * actually walks — the door, the stock, the counter. They are CENTRES, not
+ * contacts: a decal lies on the floor and has no feet.
+ */
 export function drawStoreFloor(
   ctx: CanvasRenderingContext2D,
   atlas: StoreAtlas | null,
@@ -164,14 +192,17 @@ export function drawStoreFloor(
 ): void {
   if (!atlas || !scene) return;
   const rug = atlas.rug;
-  ctx.drawImage(
-    rug.image,
-    0, 0, rug.frameWidth, rug.frameHeight,
-    Math.round(scene.fixtures.rugX - rug.frameWidth / 2),
-    Math.round(scene.fixtures.rugY - rug.frameHeight / 2),
-    rug.frameWidth,
-    rug.frameHeight,
-  );
+  for (const mat of scene.fixtures.rugs) {
+    const frame = mat.variant % rug.frames;
+    ctx.drawImage(
+      rug.image,
+      frame * rug.frameWidth, 0, rug.frameWidth, rug.frameHeight,
+      Math.round(mat.x - rug.frameWidth / 2),
+      Math.round(mat.y - rug.frameHeight / 2),
+      rug.frameWidth,
+      rug.frameHeight,
+    );
+  }
 }
 
 /** One table (with its stock), one torch, the merchant, or the machine. */
@@ -208,7 +239,33 @@ export function drawStoreProp(
     return;
   }
   if (piece.kind === 'counter') {
-    drawSheet(ctx, view, atlas.counter, 0, piece.x, piece.y);
+    // The variant IS the section kind — 0 elbow, 1 east, 2 south. It comes off
+    // the server's own offset table, so the shape of the L is never guessed
+    // here.
+    drawSheet(ctx, view, atlas.counter, piece.variant ?? 0, piece.x, piece.y);
+    return;
+  }
+  if (piece.kind === 'shelf') {
+    drawSheet(ctx, view, atlas.shelf, piece.variant ?? 0, piece.x, piece.y);
+    return;
+  }
+  if (piece.kind === 'crate') {
+    // Decoration, and none of it opens — the ART says so (drawn roped, lidded
+    // and stacked) rather than any prompt suppression on this side.
+    drawSheet(ctx, view, atlas.crate, piece.variant ?? 0, piece.x, piece.y);
+    return;
+  }
+  if (piece.kind === 'lamp') {
+    // An oil lamp on a small stand: an ordinary standing prop. Its FLAME is
+    // additive and burns in `drawStoreLight`, for the same reason a torch's
+    // does — paint it into the sprite and the darkness pass would put it out.
+    // Which vessel it is comes off the position rather than the wire: two
+    // frames of the same lamp is a wear roll, not a layout decision.
+    const lamp = atlas.lamp;
+    const variant = lamp.frames > 0
+      ? Math.abs(Math.round(piece.x * 7 + piece.y * 13)) % lamp.frames
+      : 0;
+    drawSheet(ctx, view, lamp, variant, piece.x, piece.y);
     return;
   }
   if (piece.kind === 'torch') {
@@ -580,8 +637,24 @@ function rarityInk(rarity: string): string {
  * daylit room with flames painted on it. The count is the reason the number
  * exists — one torch at 0.7 still looks like fire, eleven at 1.0 look like a
  * ceiling light.
+ *
+ * CUT AGAIN, a third pass at the same budget. 0.78 was still tuned by looking
+ * at ONE torch: the rim's flames were the brightest mass in the frame and the
+ * merchant, the counter and the stock — the things the party walked in to look
+ * at — were reading as darker objects in front of them. A fire is allowed to
+ * be the light source without being the subject.
  */
-const TORCH_FIRE_ALPHA = 0.78;
+const TORCH_FIRE_ALPHA = 0.55;
+/**
+ * How hard a LAMP's wick burns, additively.
+ *
+ * Under a torch's, and deliberately. A torch is one fire in an open yard; the
+ * lamps are five fires in a closed room that already has an ambient floor
+ * under it, and `lighter` sums with nothing clamping the total. The shop has
+ * gone flat white twice — see `zones.STORE_AMBIENT` for the budget these come
+ * out of.
+ */
+const LAMP_FIRE_ALPHA = 0.42;
 
 export function drawStoreLight(
   ctx: CanvasRenderingContext2D,
@@ -603,7 +676,7 @@ export function drawStoreLight(
     // the eye must not notice. Same trick the exit torches use.
     const step = Math.floor(time * fire.fps + index * 3) % fire.frames;
     const variant = row.variant % torch.frames;
-    const flame = torchFlameY(torch, variant);
+    const flame = flameRow(torch, variant);
     ctx.drawImage(
       fire.image,
       step * fire.frameWidth, 0, fire.frameWidth, fire.frameHeight,
@@ -611,6 +684,30 @@ export function drawStoreLight(
       Math.round(row.y - torch.frameHeight + flame - fire.anchorY),
       fire.frameWidth,
       fire.frameHeight,
+    );
+  });
+  // THE LAMPS' WICKS. The same fire as a torch, smaller, burning inside a
+  // chimney — one generator, because a wick in a warm room and a wick on a
+  // post in a yard differ in scale and in what is around them, not in how they
+  // burn. Additive and after the darkness pass for the same reason: paint a
+  // flame into a sprite and the night puts it out.
+  //
+  // LOWER ALPHA THAN A TORCH. There are five of these in a closed room on an
+  // ambient floor, against a torch's one in an open yard, and `lighter` SUMS
+  // with nothing clamping the total — which is the bug this zone has hit
+  // twice. See `zones.STORE_AMBIENT`.
+  const lampFire = atlas.lampfire;
+  const lamp = atlas.lamp;
+  ctx.globalAlpha = LAMP_FIRE_ALPHA;
+  scene.fixtures.lamps.forEach((row, index) => {
+    const step = Math.floor(time * lampFire.fps + index * 4) % lampFire.frames;
+    ctx.drawImage(
+      lampFire.image,
+      step * lampFire.frameWidth, 0, lampFire.frameWidth, lampFire.frameHeight,
+      Math.round(row.x - lampFire.frameWidth / 2),
+      Math.round(row.y - lamp.frameHeight + flameRow(lamp, 0) - lampFire.anchorY),
+      lampFire.frameWidth,
+      lampFire.frameHeight,
     );
   });
   ctx.globalAlpha = 1;

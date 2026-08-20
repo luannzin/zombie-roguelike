@@ -5,7 +5,7 @@ Nearest contracts: [`server/app/AGENTS.md`](../../server/app/AGENTS.md),
 
 | | |
 | --- | --- |
-| **Owns** | the merchant's clearing, the six-stall grid and its stock roll, prices, the purchase, the payout ceremony's data, and the party balance |
+| **Owns** | the outdoor apron, the SHOP BUILDING and everything fitted in it, the six-stall grid and its stock roll, prices, the purchase, the payout ceremony's data, and the party balance |
 | **Inputs** | `{type:"buy","id"}`, the night's per-pad takes from `rift.fed`, the day number |
 | **Outputs** | `map.store` (`StorePayload`), `buy` events, `snapshot.balance`, `payout` rows, the next day's forest on departure |
 | **Depends on** | `loot.py` (catalog `value` — prices are derived), `weapons.py` (what a stall can sell), `rift.py` (the takings), `zones.py` (`STORE_AMBIENT`), `machine.py` |
@@ -21,8 +21,9 @@ Nearest contracts: [`server/app/AGENTS.md`](../../server/app/AGENTS.md),
 - **A stall sells once** and the empty table stays on the wire.
 - **Two currencies, never merged**: `Room.balance` (party GOLD) vs `Player.gold` (personal DARK GOLD).
 - **The floor and every light on top of it are ONE budget** — see the ambient contract below. Adding a light means taking brightness out of another.
-- **The store is an ordinary forest map**, not a building. A new object here should be an existing prop or tile kind before it is a new payload field.
+- **The APRON is an ordinary forest map; the SHOP is the game's one building.** A new object should be an existing prop or tile kind before it is a new payload field — and the building itself IS tile kinds (`BRICK` / `TILEFLOOR`), never a rectangle on the wire.
 - **Its art may be poor, worn and improvised; it may not be grim.**
+- **`BRICK` and `TILEFLOOR` are a MIRRORED pair.** They live in `server/app/world.py` and `client/src/game/world.ts`, and so do `GROUNDS` and `CLEAR`. A kind added to one side alone desyncs collision — it shows up as rubber-banding in the shop's doorway, not as an error.
 
 ## Danger zones
 
@@ -38,6 +39,8 @@ Nearest contracts: [`server/app/AGENTS.md`](../../server/app/AGENTS.md),
 | what is for sale, unlock day | `server/app/store.py` (`STOCK_ORDER`, `_unlock_day`) |
 | prices | `server/app/loot.py` catalog value or `STORE_MARKUP` — never a price list |
 | the shop drawn | `client/src/render/layers/store.ts`, `client/src/render/store.ts`, `render/merchant.ts` |
+| the walls and floor drawn | `client/src/render/layers/terrain.ts` — they are TILE KINDS, so the pass that paints tiles owns them |
+| the shop's art | `server/tools/make_store.py` (+ `make_merchant.py`, `make_machine.py`) |
 | payout ceremony | `client/src/game/payout.ts`, `client/src/render/layers/payout.ts` |
 | buy prompt | `client/src/components/hud/BuyPrompt.tsx`, `client/src/game/interaction.ts` (`buyPrompt`, `nearStand`) |
 
@@ -134,15 +137,84 @@ skills catalog, or the wire protocol pair.
     stock. That split teaches what answers E in one visit. The art carries the other half of it: every frame is drawn
     roped, strapped and padlocked, because the player spent the previous night
     learning that a box in this game is a thing you open.
-  - **It is OUTDOORS, and that is load-bearing.** It was an interior first, a
-    plank corridor with walls and hanging lamps, and the problem outweighed
-    everything it got right: it was the only building in the game, so it read
-    as a menu the game had cut to rather than as somewhere the party walked. A
-    clearing with a cart parked in it reads as a person who is also out here.
-    It is an ordinary forest map — the same soil, trees and darkness as
-    everywhere else — which is also why almost none of it needs special code:
-    his campfire is a `FIRE` tile and every torch is a `SceneLight` like any
-    cabin lamp.
+  - **IT IS TWO PLACES WITH A WALK BETWEEN THEM, AND THE BUILDING CAME BACK.**
+    The zone was a clearing for a long time, and before that it was an
+    interior, and the interior was thrown out for one reason that outweighed
+    everything it got right: it was the WHOLE ZONE. The party walked out of a
+    corridor and were already inside, so the game had cut to a menu rather than
+    taken them anywhere. That objection is exactly right and it is not an
+    argument against a building — it is an argument against a building being
+    the whole map.
+    So the zone is an APRON and a SHOP. The apron is outdoor forest: the same
+    soil, the same trees, the same dark, with the night's platforms coming down
+    on it, his cart parked beside them and his fire next to that. At the far
+    end of the yard is a brick building the party can see from the moment they
+    arrive and have to cross the yard to reach. **A door you walk up to is the
+    opposite of a cut**, and the walk is what the clearing's version never
+    gave: the payout happens outside, in the dark, on ground that still belongs
+    to the night, and the shop is what you go INTO afterwards.
+  - **THE BUILDING BUYS TWO THINGS A CLEARING NEVER COULD.**
+    LIGHT: a closed room is lit from lamps standing in it on a regular grid,
+    which is even, calm and arranged. A clearing can only be lit from its rim,
+    which is a bright edge around a dark middle — the exact opposite of what a
+    shop wants, and the thing the ring of torches was always fighting.
+    A BACK WALL: a counter fitted into a corner has a BEHIND. The trader gets a
+    pocket that is his — visible from the room, not walkable into — with his
+    shelves on the wall over his shoulder. Out in the open his "back" was a
+    parked cart and the rest of his life was scattered round a rim.
+  - **IT HAS NO ROOF AND THAT IS NOT A SHORTCUT.** The camera looks down at
+    about sixty degrees, so the party sees the floor and the far wall at once.
+    The masonry carries it: a wall tile's face fills its own tile, and the
+    TRIM — the lit top surface — is drawn only on the tiles with no masonry
+    north of them. That one question makes the back wall a band with a lit lid,
+    the side walls solid vertical bands, and the front wall something the
+    camera sees over into the room. No roof to fade, no occlusion pass, no
+    special case for any of the three.
+  - **THE VALUE ORDER IS THE ROOM.** The wall is DARKER than the floor. That
+    was backwards for a pass and it inverted the whole picture: at this
+    elevation the plane facing UP catches the key and the planes facing
+    sideways do not, so a room drawn the other way has no floor in it — the eye
+    reads the lightest large field as the ground. Dark wall, warmer floor
+    inside it, a bright trim line where they meet, and the COUNTER as the
+    brightest large surface in the game, because it is what the party walked in
+    to look at (S13 gives the focal mass the full ramp and leaves the
+    background on steps 1-3). Everything else — his crates, his shelves, the
+    brick — is background and is toned like it.
+  - **THE FLOOR IS PAVED AND THE WALL IS BONDED, AND THEY ARE NOT THE SAME
+    PATTERN.** Masonry is laid in running bond — long bricks, every other
+    course offset half a brick — because that is how you make a wall stand up.
+    A floor is square quarries butted on a grid, because nothing is holding
+    anything else up. Running the wall's bond across the ground was the
+    loudest thing wrong with the first cut of the room: it read as a wall the
+    camera had fallen over onto.
+    It is also QUIET. The floor is the largest surface in the game and almost
+    none of it is ever looked at directly, so its joint is one step down rather
+    than three and its wear is a few scuffs per tile. The temptation on a big
+    empty surface is to fill it; filling it is what turns a calm room into a
+    busy one.
+  - **THE LAMPS STAND ON TABLES; THEY DO NOT HANG.** They hung from chains
+    first and the reasoning was sound — a room is lit from above — but it was
+    wrong about the CAMERA. A lamp two tiles over the floor is drawn two tiles
+    up the screen from the tile it lights, so the flame and its own pool never
+    appeared in the same place, and the chain above it ran into a ceiling this
+    roofless cutaway does not have. Five lanterns floating in mid-air. A lamp
+    on a table has its flame where its light is, sorts like any other prop, and
+    is the warmer object besides: a hurricane lamp on a side table is furniture
+    somebody put out, where a chain is fixtures somebody installed.
+  - **THE WAGON IS STILL WHO HE IS, AND IT IS PARKED OUTSIDE.** A covered cart
+    says he DRIVES, he was somewhere else last week, and that is the reason he
+    is worth finding. A building says the opposite. The two only work together
+    if the cart is what he ARRIVED IN and the shop is what he unloaded into —
+    so it stands in the yard, between the party and the door, read on the walk
+    up: cart first, then the building it feeds.
+    **IT IS NOT A HEARSE.** It used to hang bone masks on a line and lay two
+    covered bodies at the front wheel, on the argument that the party should
+    work out where the stock comes from on their own. The argument was fine and
+    the result was not: this is the one beat of the loop that exists as a
+    relief from the night, and the biggest sprite in it was a cart with corpses
+    under a tarp. THE RULE FOR THIS ZONE'S ART, and it applies to the man, his
+    kit, his machine and anything added later: it may be poor, worn and
+    improvised; it may not be grim.
   - **THE STOCK IS THE ONE THING IN THE ROOM THAT WAS ARRANGED.** Six small
     round tables, three across and two deep IN FRONT OF THE MAN, on the grid,
     priced cheapest-first and read south to north — because that is the
@@ -255,13 +327,27 @@ skills catalog, or the wire protocol pair.
   else.) Nothing about either gate may be hardcoded to a compass point:
   `store.formation_slots` builds its files off `gate.dx/dy` for exactly that
   reason, and the zone turning from east-west to south-north is why.
-- **The store is a FOREST map, not a building.** It was an interior once and
-  the lesson is worth keeping: a building was the only room in the game, so it
-  read as a menu rather than as somewhere the party walked to. Its ground,
-  trees and darkness are the ordinary ones, his campfire is a `world.FIRE`
-  tile, and every torch is a `SceneLight` — so almost nothing about the zone
-  needs client code. Keep it that way: a new object here should be an existing
-  prop kind or tile kind before it is a new payload field.
+- **THE APRON IS A FOREST MAP; THE SHOP IS THE ONE BUILDING.** The yard's
+  ground, trees and darkness are the ordinary ones and his campfire is a
+  `world.FIRE` tile, so almost none of it needs client code. The building is
+  two TILE KINDS on the same grid — `world.BRICK` (solid, opaque) and
+  `world.TILEFLOOR` (walkable, clear) — stamped by `store._stamp_shop` after
+  the forest is generated. Kinds rather than a rectangle on the wire, because
+  collision, sight, the terrain bake and `tests/test_store_walk.py` then all
+  read the same source and the building can never disagree with the map it
+  stands in. The cost is that `GROUNDS` and `CLEAR` are now MIRRORED sets in
+  `world.py` / `world.ts`; before this there was one walkable kind and the rule
+  was a single comparison.
+- **THE BUILDING IS THE ONLY THING IN THE ZONE WITH STRAIGHT EDGES, AND ITS
+  YARD IS NOT.** Everything under it — the treeline, the rim's harmonics, the
+  neck's wander — is noise, because a clearing is FOUND. A building has a
+  square corner and a door in the middle of a wall, so it overwrites
+  unconditionally. But clearing a clean rectangle of ground around it just
+  draws a second straight line with no wall under it to justify it, so the
+  yard's margin is jittered per tile off the same hash the rim uses. Nothing
+  is cleared to the NORTH: the exit corridor comes straight off the back wall,
+  and open ground behind a shop is somewhere the party can walk and find
+  nothing.
 - **ITS SHAPE IS A ROOM BETWEEN TWO THROATS, AND THE ROOM IS THE POINT.**
   `_tiles` opens the UNION of a circle (`STORE_CIRCLE_TILES`, breathing on two
   harmonics plus a hash) and a neck that runs the full height of the map. It
@@ -298,6 +384,12 @@ skills catalog, or the wire protocol pair.
   the loop that exists to be a relief from the night, and the biggest sprite in
   it was a cart with corpses under a tarp. Same rule for anything added here —
   the shop may be poor, worn and improvised; it may not be grim.
+- **THE TWO HALVES LIGHT SEPARATELY, AND THAT IS WORTH MORE THAN ANY NUMBER
+  IN THE BUDGET.** The apron has the torch ring, the fire and up to three rotor
+  washes; the shop has five short lamps and the machine's marquee. The wall
+  between them is OPAQUE, so the two sets never sum — which is the difference
+  between this layout and the clearing it replaced, where every light in the
+  zone landed on one floor and the room went flat white twice.
 - **THE TORCHES AND THE AMBIENT FLOOR ARE ONE LIGHT BUDGET.** `RING_TORCHES`
   around the rim, a chain down each neck and a pair at each threshold, all
   `EMBER` `SceneLight`s, all placed clear of anything meant to be LOOKED at
@@ -314,9 +406,19 @@ skills catalog, or the wire protocol pair.
   rotors and eight strobes go on top — on a 0.7 floor with eleven seven-tile
   torches behind them. The fix is one budget spent in four places:
   `PAYOUT_SPOTS` spread so no two washes touch, `RING_TORCHES` /
-  `TORCH_LIGHT_TILES` cut to 7 / 4.5, `zones.STORE_AMBIENT` to 0.45, and
+  `TORCH_LIGHT_TILES` cut to 7 / 4.5, `zones.STORE_AMBIENT` down, and
   `layers/payout`'s alphas down with them. They move TOGETHER or not at all,
   and the check is walking in during a three-platform payout.
+
+  **IT CAME DOWN A SECOND TIME, AND THE MISTAKE WAS JUDGING THE FLOOR ALONE.**
+  The ambient was doing part of the torches' job: raised until the room read,
+  it also raised the rim, and the eleven torch pools on top of it had no dark
+  left to pool INTO — the shop was bright everywhere and lit nowhere, which is
+  the same failure as white, one stop down. The pass that fixed it moved four
+  numbers at once — `zones.STORE_AMBIENT` to 0.36, `layers/store`'s
+  `TORCH_FIRE_ALPHA` / `LAMP_FIRE_ALPHA` to 0.55 / 0.42, and
+  `layers/darkness`'s scene-pool stops to 0.135 / 0.045 — because cutting any
+  one of them on its own only moves which of them is the thing that saturates.
 - **`_tiles` clears a SPINE and that is a guarantee, not dressing.** The rim
   and the necks are noise (harmonics plus a hash) and a pinch plus an unlucky
   boulder could in principle wall the room off from its own door. Unlike

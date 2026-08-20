@@ -83,6 +83,7 @@ from make_textures import (
     TRANSPARENT,
     add,
     ellipse,
+    material_ramp,
     outline,
     pack,
     pick,
@@ -103,18 +104,41 @@ from make_textures import (
 # highlight each, no dents and no grime — the same read a toy has. The shop is
 # the safe beat of the loop and the machine is the toy in it.
 
-#: The shell. Cherry red, because nothing else in a forest at night is, and the
-#: whole job of this sprite is to be picked out from the middle of the room.
-SHELL: Ramp = [rgb(c) for c in ("#4a1220", "#7a1c2c", "#ad2a3c", "#d44352", "#ef6f79")]
+#: THE RAMPS ARE DERIVED NOW, AND THE CEILING CAME DOWN WITH THEM.
+#:
+#: Two changes, one cause. They were hand-typed hex, which means each one
+#: hue-shifted however it felt like rather than the way S11 says every other
+#: material in the game does — `material_ramp` is that law as four numbers.
+#: And they were tuned for a cabinet standing in a DARK CLEARING, where "a
+#: dark shape with light coming out of it" is exactly what a machine at night
+#: should be. It stands against a brick wall in a LIT ROOM now. At the old
+#: top step the cream fascia was #f6e6c8 — brighter than anything else in the
+#: shop, including the counter, which is the one surface that is supposed to
+#: win. The hierarchy is the counter, then the man, then this; so every ramp
+#: here tops out under `make_store.WOOD` and the machine reads as the loudest
+#: OBJECT rather than as the brightest surface.
+#:
+#: The cabinet is still cherry red with a cream fascia and a gold hood, and
+#: that decision is unchanged and is the point of it: it was a dented grey
+#: locker before, which at two tiles across read as a market stall with the
+#: lights off. Three flat colours, one highlight each, no dents and no grime —
+#: the same read a toy has. The shop is the safe beat of the loop and the
+#: machine is the toy in it.
+
+#: The shell. Cherry red, because nothing else in this game is, and the whole
+#: job of this sprite is to be picked out from across the room.
+SHELL: Ramp = material_ramp(352.0, 0.56, 0.13, 0.52, steps=5)
 #: The fascia the windows are set into, and the plinth. Warm cream: it is the
 #: contrast that makes the red read as paint rather than as rust.
-PANEL: Ramp = [rgb(c) for c in ("#5b4632", "#8a6c4c", "#bd9a70", "#e0c69a", "#f6e6c8")]
+PANEL: Ramp = material_ramp(34.0, 0.30, 0.19, 0.68, steps=5)
 #: The hood, the bezel and the tray lip. Gold, flat, and the only metal left.
-TRIM: Ramp = [rgb(c) for c in ("#4a3410", "#7a5518", "#b08028", "#dfae42", "#f7d878")]
-CHROME: Ramp = [rgb(c) for c in ("#1b1f25", "#2b3239", "#434b54", "#5f6872", "#818b96")]
+TRIM: Ramp = material_ramp(43.0, 0.54, 0.14, 0.60, steps=5)
+CHROME: Ramp = material_ramp(220.0, 0.10, 0.11, 0.50, steps=5)
+#: The dead glass behind the reels. Near-black on purpose: it is the hole the
+#: lit faces are seen through, so it has to stay under everything.
 GLASSDARK: Ramp = [rgb(c) for c in ("#080a0e", "#0e1218", "#151b23", "#1d242e")]
-BULB: Ramp = [rgb(c) for c in ("#4a3a1a", "#7a5f22", "#b08a2c", "#e0bb52", "#fbe89a")]
-RED: Ramp = [rgb(c) for c in ("#3a0d0c", "#5e1512", "#8a1f19", "#b52c22", "#d94a34")]
+BULB: Ramp = material_ramp(45.0, 0.58, 0.16, 0.72, steps=5)
+RED: Ramp = material_ramp(6.0, 0.60, 0.10, 0.44, steps=5)
 OUTLINE: RGBA = rgb("#120a10")
 
 #: The five rarity ramps, same five as `make_skills.py` and the same five the

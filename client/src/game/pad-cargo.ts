@@ -66,16 +66,22 @@ export interface PadToss {
 /**
  * THE DECK'S FLOOR, as fractions of the skid's own sprite.
  *
- * Mirrors `_rows` / `_half` in server/tools/make_platform.py: the floor runs
- * from `deck_far` (0.453 of the frame height, half-width 0.416 of its width) to
- * `deck_near` (0.797, half-width 0.4625), and the contact point is the bottom
- * edge. Fractions rather than pixels so a re-rendered atlas at another tile
- * size still stacks inside the box instead of on the grass beside it.
+ * Mirrors `_skid` / `_build_field` in server/tools/make_platform.py: the floor
+ * is the body's top face inside the three walls, and the contact point is the
+ * sprite's bottom edge. Fractions rather than pixels so a re-rendered atlas at
+ * another tile size still stacks inside the box instead of on the grass beside
+ * it.
+ *
+ * IT IS A RECTANGLE NOW, NOT A TRAPEZOID. The skid used to be rasterised
+ * corner-on, so its deck projected to a rhombus and the floor's half-width had
+ * to open up as it came toward the camera. Square to the screen the deck is a
+ * rectangle seen from above: one half-width, and the only thing depth changes
+ * is the row. If a pile ever climbs the walls again, this pair and the
+ * generator's `WALL_THICK` are the two places that can disagree.
  */
-const FLOOR_FAR = 0.453 - 1;
-const FLOOR_NEAR = 0.797 - 1;
-const HALF_FAR = 0.416;
-const HALF_NEAR = 0.4625;
+const FLOOR_FAR = 0.445 - 1;
+const FLOOR_NEAR = 0.672 - 1;
+const HALF_ACROSS = 0.4;
 
 /** Cargo is kept off the walls and off the front lip. Fractions of the floor. */
 const INSET_DEPTH = 0.14;
@@ -145,7 +151,7 @@ function restingSpot(n: number, frameW: number, frameH: number, scale: number): 
   const u = ((col + 0.5) / COLS) * 2 - 1;
 
   const depth = (FLOOR_FAR + (FLOOR_NEAR - FLOOR_FAR) * v) * frameH;
-  const half = (HALF_FAR + (HALF_NEAR - HALF_FAR) * v) * frameW * INSET_ACROSS;
+  const half = HALF_ACROSS * frameW * INSET_ACROSS;
   // A stacked layer is packed tighter — a pile narrows as it rises, and a
   // second row sitting exactly over the first reads as a texture, not a heap.
   const squeeze = 1 - Math.min(0.35, layer * 0.12);

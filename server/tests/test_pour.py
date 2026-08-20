@@ -7,10 +7,11 @@ outside if they regress:
   * the pocket empties ONE ITEM PER BEAT, not all at once — the whole point of
     moving the spend onto the room's clock is that the HUD and the sprites
     falling out of the backpack are the same event
-  * a pour started UNDER the quota stops on the bill; one started at or past it
-    takes the whole bag, which is the overfeed
-  * a movement key ends it where it stands, and everything already tipped stays
-    in the pad
+  * it takes the WHOLE BAG, on either side of the quota. There is no bill to
+    stop on: a load that ended on the number left the player standing at a
+    machine they had committed to still carrying half the night
+  * NOTHING CANCELS IT. A movement key is acked and ignored — the press is the
+    commitment, and the seconds it costs are the price of the haul
 """
 
 from __future__ import annotations
@@ -68,9 +69,9 @@ def to_dump(room: Room, player) -> None:
 
 
 def main() -> None:
-    # --- one item at a time, and it stops on the bill ------------------------
-    # Six bottles at 5 each is 30 in the bag against a bill of 20: four of them
-    # go in and two stay, which is the "does not make change" rule paced out.
+    # --- one item at a time, and the bill is not a ceiling -------------------
+    # Six bottles at 5 each is 30 in the bag against a bill of 20. All six go
+    # in: the four that settle it and the two that overshoot, in one press.
     unit = Slot(key="broken_toy", qty=6, value=5, weight=0.1)
     room, player, pad = make_room(need=20, stock=[unit])
     room.activate_rift(player.id)
@@ -85,11 +86,11 @@ def main() -> None:
     assert pad.cargo == 1, f"one thing on the deck, got {pad.cargo}"
     assert len(room.pour_events) == 1, "one event per item"
 
-    # Four beats settles a bill of 20 at 5 a piece, and the fifth finds the
-    # ceiling and hands over to the stow.
-    run(room, rift.POUR_BEAT * 5)
-    assert pad.fed == 20, f"a pour under the quota stops on it, got {pad.fed}"
-    assert player.inventory.slots[0].qty == 2, "the rest stays in the pocket"
+    # Four beats settles a bill of 20 at 5 a piece and the pour keeps going;
+    # the sixth empties the bag and hands over to the stow.
+    run(room, rift.POUR_BEAT * 7)
+    assert pad.fed == 30, f"a pour takes the whole bag past the quota, got {pad.fed}"
+    assert player.inventory.slots[0] is None, "and leaves nothing in the pocket"
     assert player.pour.phase == POUR_STOW, "a finished pour puts the pack back"
     assert room.pour_events[0]["n"] == 0 and room.pour_events[3]["n"] == 3, (
         "the pile index is the pad's own running count"
@@ -109,7 +110,7 @@ def main() -> None:
     assert pad.fed == 30, f"an overfeed takes the whole bag, got {pad.fed}"
     assert player.inventory.slots[0] is None, "and leaves nothing behind"
 
-    # --- a step cancels it --------------------------------------------------
+    # --- a step does NOT cancel it ------------------------------------------
     room, player, pad = make_room(
         need=100, stock=[Slot(key="broken_toy", qty=8, value=5, weight=0.1)]
     )
@@ -117,14 +118,14 @@ def main() -> None:
     to_dump(room, player)
     run(room, rift.POUR_BEAT * 2)
     banked = pad.fed
-    assert banked > 0, "something has to have gone in before the cancel"
+    assert banked > 0, "something has to have gone in before the step"
     player.inputs.append(InputCmd(sequence=99, up=True))
     room.step_players(DT)
-    assert player.pour is None, "a movement key ends the pour"
+    assert player.pour is not None, "a movement key may not end the pour"
     assert player.last_processed_seq == 99, "and the input still has to be acked"
-    run(room, rift.POUR_BEAT * 4)
-    assert pad.fed == banked, "nothing else may be tipped after a cancel"
-    assert player.inventory.slots[0] is not None, "and the rest stays in the bag"
+    run(room, rift.POUR_BEAT * 8)
+    assert pad.fed == 40, f"the whole bag still goes in, got {pad.fed}"
+    assert player.inventory.slots[0] is None, "the pocket empties through the key"
 
     print("ok")
 

@@ -3,15 +3,17 @@
 Run:  python tests/test_store_walk.py   (from server/)
 
 `store._tiles` clears a SPINE up the centreline so the generator's own noise —
-a pinched neck plus an unlucky boulder — can never wall the room off from its
+a pinched neck plus an unlucky boulder — can never wall the yard off from its
 own door. That guarantee used to be absolute because nothing was authored on
 the spine: the trader stood on the west rim and his stock on the east one.
 
-He stands in the MIDDLE now. His counter, the middle column of stalls and a
-landing skid all sit on the centreline, so the straight line up the middle is
-gone by design and the walk goes AROUND them instead. That is fine right up
-until somebody nudges a fixture and closes the last gap, which is a bug nobody
-sees until a party is standing in a shop they cannot leave.
+It is not absolute any more, in two ways. A landing skid claims tiles on the
+centreline and the party goes AROUND it. And the zone is a BUILDING now: the
+spine stops at the shop's south wall, and from there the only ways through are
+two gaps `store._stamp_shop` punches in the masonry — a door in the south wall
+and the exit corridor's mouth in the north one. A fixture nudged across either
+of them walls a party into a shop they cannot leave, or out of one they cannot
+enter, and nothing else in the codebase would notice.
 
 So the check is the thing that actually matters rather than the rule that used
 to imply it: from the arrival mouth, can you reach the exit mouth, the
@@ -29,11 +31,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app import store  # noqa: E402
 from app.config import STORE_BUY_DIST, STORE_SPIN_DIST, TILE_SIZE  # noqa: E402
-from app.world import FIRE, FLOOR, ROCK  # noqa: E402
+from app.world import FIRE, FLOOR, ROCK, TILEFLOOR  # noqa: E402
 
-#: What a body may stand on. Everything else — trees, the LOW footprint under a
-#: table, a landed skid, the fire, the VOID in the corridors — is not walkable.
-OPEN = {FLOOR}
+#: What a body may stand on. Mirrors `world.GROUNDS`: soil out in the yard and
+#: the shop's laid brick floor indoors. Everything else — trees, the LOW
+#: footprint under a table or a counter section, a landed skid, the fire, the
+#: masonry, the VOID in the corridors — is not walkable.
+OPEN = {FLOOR, TILEFLOOR}
 
 
 def reachable(tiles: list[list[int]], start: tuple[int, int]) -> set[tuple[int, int]]:
@@ -105,9 +109,35 @@ def check(day: int, seed: int) -> None:
     assert exit_ok, f"day {day} seed {seed}: the exit is walled off from the entrance"
 
     mx, my = payload["merchant"]
-    assert near(seen, mx, my, TILE_SIZE * 2.0), (
+    # He is BEHIND a counter now, so the nearest tile a body can occupy is on
+    # the other side of it. Three tiles is the counter's depth plus a body —
+    # any further and "walked up to" stops meaning anything.
+    assert near(seen, mx, my, TILE_SIZE * 3.0), (
         f"day {day} seed {seed}: the merchant cannot be walked up to"
     )
+
+    # THE DOOR AND THE SHELVES. The door is the only way into the building and
+    # the shelves are the only fixture bolted to a wall the party never touches
+    # — if a shelf has drifted off the north wall into the pocket, the merchant
+    # is standing inside it.
+    dx, dy = payload["door"]
+    assert near(seen, dx, dy, TILE_SIZE * 1.5), (
+        f"day {day} seed {seed}: the shop's door is not walkable"
+    )
+
+    # Every counter section, shelf and crate has to be INSIDE the building.
+    # A fixture authored off the interior's centre that landed in the masonry
+    # or out in the yard is an offset somebody typed wrong.
+    left, top, right, bottom = store.shop_bounds(width)
+    for name in ("counter", "shelves", "crates", "rugs", "lamps"):
+        for row in payload[name]:
+            fx, fy = row[0], row[1]
+            tx = int(fx // TILE_SIZE)
+            ty = int((fy - 1e-6) // TILE_SIZE)
+            assert left < tx < right and top < ty < bottom, (
+                f"day {day} seed {seed}: {name} at ({tx},{ty}) is not inside "
+                f"the shop ({left}..{right}, {top}..{bottom})"
+            )
 
     for stand in payload["stands"]:
         assert near(seen, stand["x"], stand["y"], STORE_BUY_DIST), (
@@ -127,7 +157,7 @@ def check(day: int, seed: int) -> None:
     # Sanity on the room itself: a clearing this small is easy to fill up by
     # accident, and a shop with nowhere to stand is the failure this whole file
     # is about.
-    open_tiles = sum(row.count(FLOOR) + row.count(ROCK) for row in tiles)
+    open_tiles = sum(row.count(FLOOR) + row.count(ROCK) + row.count(TILEFLOOR) for row in tiles)
     assert len(seen) > open_tiles * 0.55, (
         f"day {day} seed {seed}: only {len(seen)} of {open_tiles} open tiles "
         "are reachable — something split the room in two"

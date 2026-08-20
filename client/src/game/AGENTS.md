@@ -26,6 +26,7 @@ seam React is allowed to read.
 | `hud-store.ts` | the only seam to React; `HUD_INTERVAL` = 0.2 s |
 | `tooltip-anchors.ts` | screen-space points for world `Tooltip`s, written every frame |
 | `exit-guide.ts` | the way-out chevron: where on screen it belongs, and the smoothing between the raw target and what is drawn. It BLINKS — see the exit contract below |
+| `exit-path.ts` | WHICH WAY to walk to the exit, as opposed to which way it lies: one flood from the corridor mouth, and the waypoint the chevron aims at. A field, not a path — it answers every player with two lookups and returns null where it cannot reach, which is when the straight bearing takes over |
 | `inventory-anchors.ts` | screen-space centres for the HUD bag (pack + slots) |
 | `inventory-actions.ts` | bag → socket: `Game` binds `drop`; React never owns the connection |
 | `loot-flies.ts` | collect flies: hold over the head, then travel; membership is a store, pose is per-frame |

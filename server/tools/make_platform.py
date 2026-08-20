@@ -8,15 +8,20 @@ crates nobody came back for, with four masts and lamps. The aircraft are not on
 it — they come when the pad calls them.
 
 IT IS A SOLID ON THE WORLD'S OWN CAMERA
-The skid and the drone are both rasterised in the 2:1 dimetric every crate,
-barrel and fence post in this game stands on — `objects.SLOPE`, `objects.tone`
-and the `PLANE_TOP/FRONT/SIDE` table, imported from `make_objects.py` rather
-than restated. The skid is a HEIGHT FIELD painted back to front; the drone is
-four `objects.box` pods on `objects.billet` arms under one hull. What that
-replaced was a front elevation with a continuous value ramp poured down it: a
-gradient (S7) through a ditherer (S5) with no top plane anywhere (S3), on the
-one object in the game the camera looks down at hardest. See the section
-comment over `_skid` for the full argument and for the footprint's axes.
+The skid and the drone are both rasterised on the 2:1 slope every crate, barrel
+and fence post in this game stands on — `objects.SLOPE`, `objects.tone` and the
+`PLANE_TOP/FRONT/SIDE` table, imported from `make_objects.py` rather than
+restated. The skid is a HEIGHT FIELD painted back to front; the drone is four
+`objects.box` pods on `objects.billet` arms under one hull.
+
+THE SKID IS SQUARE TO THE SCREEN, THE PROPS ARE CORNER-ON, AND THAT IS THE RULE
+A crate is a prop and is yawed 45 degrees like everything in the scenery folder.
+The pad is ARCHITECTURE — it occupies an axis-aligned rectangle of tiles, it is
+entered, and it is built like the shop's masonry: a face and a cap, square to
+the tile grid. Corner-on it projected to a lozenge with no square face to carry
+its height and no front to walk into. Same camera slope, same key, same painter;
+only the yaw differs. See the section comment over `_skid` for the argument and
+for the footprint's axes.
 
 Output (assets/processed/platform/):
     platform.png  3 frames,  80x64  PROP  — the skid: cold, green standby, red
@@ -213,44 +218,69 @@ GRIT: Ramp = [rgb(c) for c in ("#3a3428", "#4a4234", "#5b5142")]
 # wide enough for a body to get round the back. A structure that filled its own
 # plot would be a wall with a button on it.
 #
-# IT IS BUILT AS A SOLID NOW, ON THE WORLD'S OWN CAMERA.
-# What this replaced was a FRONT ELEVATION with a value ramp poured down it: a
-# table of row landmarks, a silhouette half-width per row, and `pick(IRON,
-# <continuous shade>)` over the lot. Three things followed and every one of them
-# is something PIXEL-ART-DIRECTION.md rules out —
+# IT IS BUILT AS A SOLID, ON THE WORLD'S OWN SLOPE, SQUARE TO THE TILE GRID.
+# Two rewrites are folded into that sentence and the second is the one this
+# comment exists for.
 #
-#   * a continuous shade is a gradient (S7), and a gradient through `pick` is a
-#     dither (S5), so no surface on the prop had a value of its own and no fold
-#     between two surfaces had an edge;
-#   * an elevation has no TOP PLANE, and the top plane is 35-45% of a prop's
-#     silhouette on this camera (S3) and the strongest depth cue it has (S18).
-#     The deck of a cargo platform is the one surface the whole object is ABOUT
-#     and it was drawn as a lighter part of the wall behind it;
-#   * `abs(u)` shading is symmetric about the object's centre line, which is a
-#     light source sitting behind the camera. The key is at 135deg (S8) and
-#     everything else in this game is lit by it.
+# The first replaced a FRONT ELEVATION — a table of row landmarks with a value
+# ramp poured down it — with a height field. That fixed the gradient (S7), the
+# dither (S5) and the missing top plane (S3), and it is not in question.
 #
-# So the skid is now a HEIGHT FIELD rasterised in the same 2:1 dimetric the
-# crates, barrels and fence posts stand on — `objects.SLOPE`, `objects.tone` and
-# the `PLANE_TOP/FRONT/SIDE` table, imported rather than restated, for exactly
-# the reason those are public. The pad is a man-made box standing in the same
-# clearing as the crates; if it is not on their camera it is a matte painting
-# they are standing in front of.
+# The second turned the footprint. The height field was laid out corner-on, on
+# the diagonal axes `objects.box` uses for every crate, barrel and fence post:
+# the camera looked into the NEAR CORNER and the deck projected to a rhombus.
+# On a crate that is correct and it is the whole language of the scenery folder.
+# On THIS object it was wrong for three reasons that compound —
 #
-# THE FOOTPRINT AXES. `a` runs up-LEFT and `b` runs up-RIGHT, both in screen
-# pixels, so a cell (a, b) lands at
+#   * A 5x4 axis-aligned rectangle of tiles is what the pad actually OCCUPIES
+#     (`_layout`'s footprint, `rift._stamp`, the imprint decal). The art was a
+#     diamond standing on a rectangle. Everything derived from the footprint —
+#     the dent pattern, the pressed ground, the tiles you bump into — disagreed
+#     with the silhouette, and the object read as a gem rather than as a machine
+#     bolted to the ground it claims.
+#   * Corner-on, the two faces the camera sees are both HALF FACES receding at
+#     the slope, so the tallest thing on the prop is 26 pixels of nothing but
+#     slanted edges. There is no square face anywhere to carry height, which is
+#     exactly the complaint: a lozenge, not a box.
+#   * A cargo skid is entered. Corner-on there is no front — the opening faces
+#     the lower-left of the screen and the player walks into a corner.
 #
-#     x = cx - a + b          y = base - (a + b) * SLOPE - z
+# So the footprint's axes are now SQUARE TO THE SCREEN, which is the same
+# projection the shop's masonry stands on (`world.BRICK`: a face and a cap) and
+# the same one the tile grid itself is drawn in. ARCHITECTURE IS AXIS-ALIGNED IN
+# THIS GAME AND PROPS ARE CORNER-ON; the pad is architecture. The camera slope,
+# the ramp table and the painter are untouched — `objects.SLOPE`,
+# `objects.tone`, `PLANE_TOP/FRONT/SIDE`, imported and not restated — so the
+# skid is lit by the same key as the crate standing beside it and only its yaw
+# has changed.
 #
-# and the four corners of the box are NEAR (0,0), LEFT (A,0), RIGHT (0,B) and
-# FAR (A,B). The camera looks into the near corner, which is why the two FAR
-# walls are the ones the player sees the inside of and the two NEAR edges are
-# low lips you can see over. That is a cargo skid with its front dropped, and it
-# is the same read the old elevation was reaching for with a taper.
+# THE FOOTPRINT AXES. `v` runs across the screen, one pixel per unit; `u` runs
+# INTO the screen, `SLOPE` pixels up the frame per unit. A cell (u, v) at
+# height `z` lands at
 #
-# A face pointing -b faces down-LEFT on screen and is therefore the KEY face; a
-# face pointing -a faces down-RIGHT and is the SHADE face. Those two lines are
-# the entire lighting model and they are the same two `objects.box` uses.
+#     x = left + v            y = base - u * SLOPE - z
+#
+# so every cell of a column shares one screen column, and the whole solid is a
+# heightmap painted near-last. What the camera sees, and what each surface is
+# for:
+#
+#   * the BODY's front face — full width, square to the camera, the tallest
+#     unbroken surface on the prop. This is the height cue the diamond had
+#     nowhere to put.
+#   * the DECK, its top face, foreshortened by the slope. Still 35-45% of the
+#     silhouette (S3), and now a rectangle you can read the load standing on.
+#   * the BACK WALL's inner face and the two SIDE WALLS' caps and near ends:
+#     three surfaces at three heights, which is what says the deck is a well
+#     rather than a table.
+#   * the FRONT IS OPEN, with a hazard-striped ramp down the middle of it. That
+#     is the entrance, it faces the console the player is standing at, and it is
+#     the reason the walls read as walls.
+#
+# Faces pointing at the camera (-u) are FRONT. A face pointing along v is
+# edge-on and has no pixels of its own, so the right-hand silhouette column of
+# each mass is stepped down to SIDE — the key is at 135 degrees (S8), the left
+# edge is the lit one, and one column of shade is what turns the form without
+# inventing a face the projection does not have.
 
 PLATFORM_TILES_W = 5
 PLATFORM_TILES_H = 4
@@ -298,89 +328,131 @@ DOWNWASH_FPS = 12
 BURST_FRAMES = 12
 BURST_FPS = 18
 
-#: The box, as fractions of the sprite. UNEQUAL ON PURPOSE: `objects` documents
-#: that a footprint with equal left and right runs is a diamond, and a diamond
-#: is a gem rather than a rectangle seen in perspective. Everything else on this
-#: prop is derived from these two numbers so the structure re-proportions with
-#: `--tile` instead of drifting apart.
-FOOT_LEFT = 0.375
-FOOT_RIGHT = 0.425
-#: Deck, wall and post, in fractions of the frame height. The deck is a SLAB the
-#: box sits on rather than a floor drawn inside it — a platform whose deck is
-#: level with the ground is a rug.
-DECK_RISE = 0.094
+#: The box, as fractions of the sprite.
+#:
+#: WIDE AND SHALLOW, which is what a 5x4 tile plot is: the deck spans nearly the
+#: whole frame and its depth is what the slope leaves of four tiles. The old
+#: pair of near-equal diagonal runs is gone with the yaw — two similar runs on
+#: the diagonal axes is the definition of a diamond, and that was the bug.
+FOOT_WIDTH = 0.94
+FOOT_DEPTH = 0.30
+#: Body, wall, post and lip, in fractions of the frame height.
+#:
+#: THE BODY IS THE HEIGHT CUE. It is the one square-to-camera face on the prop
+#: and it is what a player reads "this is a raised deck, not a rug" off, so it
+#: is deliberately taller than the old corner-on slab could afford to be — that
+#: version had no face to spend the pixels on and put them into the slope
+#: instead, where they read as nothing.
+BODY_RISE = 0.150
 WALL_RISE = 0.203
 POST_RISE = 0.266
 #: Thickness of a wall and of the front lip, in footprint pixels.
 WALL_THICK = 5
-#: How far along its edge each post stands, from the NEAR corner.
+#: The opening, as a fraction of the deck's width. Wide enough to be a way in
+#: rather than a slot, narrow enough that both side walls still stand between it
+#: and the frame edge.
+GATE_SPAN = 0.42
+#: How far the ramp reaches out in front of the box, in fractions of the frame.
+RAMP_REACH = 0.075
+#: How far in from each side the posts stand, as a fraction of the deck's width.
 #:
-#: NOT THE MIDPOINT, and not the corner either, and both of those were tried. At
-#: 45 degrees of yaw a box's four corners project to leftmost, rightmost, top and
-#: bottom — so corner posts put two of the four ropes on the same screen column,
-#: one above the other, and the client stations both of their drones out to the
-#: same side. Edge midpoints fix the stacking and leave the four x offsets in two
-#: tight pairs. Two thirds back along each edge is the arrangement that spreads
-#: all four across the frame while keeping the diagonal pairing the load needs.
-POST_ALONG = 0.65
+#: ON THE CORNERS NOW, which corner-on was the one arrangement that could not
+#: have them: at 45 degrees of yaw the near corner post stood in the middle of
+#: the opening and hid the load. Square to the screen the four corners are four
+#: distinct screen positions, the diagonal pairing the load needs survives, and
+#: the ropes leave the frame in four directions instead of two.
+POST_INSET = 0.055
 LIP_RISE = 0.047
 
 
 def _skid(width: int, height: int) -> dict:
     """Every number the skid is built from, derived once.
 
-    `base` is the NEAR corner's contact row and everything else hangs off it.
-    Kept as one dict rather than as constants so the sprite re-proportions with
-    `--tile`: a structure authored in absolute pixels at one tile size is a
-    structure that comes apart at another.
+    `base` is the contact row of the box's NEAR edge — the front of the body,
+    where it meets the ground — and everything else hangs off it. Kept as one
+    dict rather than as constants so the sprite re-proportions with `--tile`: a
+    structure authored in absolute pixels at one tile size is a structure that
+    comes apart at another.
+
+    `U` is in DEPTH CELLS and `V` in pixels. One depth cell is `SLOPE` pixels up
+    the frame, so the deck's screen depth is `U * SLOPE`; laying the field out
+    in cells rather than in rows is what lets a wall one cell deep still get its
+    own top pixel instead of being rounded into the surface behind it.
     """
-    left = round(width * FOOT_LEFT)
-    right = round(width * FOOT_RIGHT)
+    span = round(width * FOOT_WIDTH)
+    # An ODD span is an EVEN number of columns, which is what centres the box on
+    # the sprite's own centre line — `(width - 1) / 2`, not `width // 2`. Half a
+    # pixel out here is not cosmetic: `_layout` measures the lift eyes off that
+    # centre, so the four rope anchors came out at -32.5 / +33.5 and the rig
+    # hung a pixel to one side of the deck it was lifting.
+    span -= (span + 1) % 2
+    depth_px = round(height * FOOT_DEPTH)
     return {
-        # INTEGER, and that is not a rounding detail. With a half-pixel centre
-        # every screen column of the raster lands on x.5 and `round` breaks the
-        # tie to EVEN — so alternate columns of the dimetric grid collapsed onto
-        # each other and the skid came out combed into vertical stripes. A 2:1
-        # grid has to be laid on whole pixels at both ends (S4: strict 1:1 pixel
-        # grid, zero sub-pixel work).
-        "cx": width // 2,
-        # Room under the near corner for the contact band and the cast shadow
-        # (S9, S19) — without it the box stands on the bottom edge of its own
-        # frame and the shadow has nowhere to land.
-        "base": height - 1 - round(height * 0.078),
-        "A": left,
-        "B": right,
-        "deck": max(3, round(height * DECK_RISE)),
+        "cx": (width - 1) / 2.0,
+        "left": (width - (span + 1)) // 2,
+        "V": span,
+        "U": max(4, int(round(depth_px / SLOPE))),
+        # Room under the front edge for the ramp, the contact band and the cast
+        # shadow (S9, S19) — without it the box stands on the bottom edge of its
+        # own frame and the shadow has nowhere to land.
+        "base": height - 1 - round(height * RAMP_REACH) - max(2, round(height * 0.05)),
+        "body": max(4, round(height * BODY_RISE)),
         "wall": max(6, round(height * WALL_RISE)),
         "post": max(8, round(height * POST_RISE)),
         "lip": max(2, round(height * LIP_RISE)),
+        "ramp": max(3, int(round(height * RAMP_REACH / SLOPE))),
     }
+
+
+def _at(s: dict, u: float, v: float, z: float) -> tuple[float, float]:
+    """Screen position of a point in the footprint. The projection, once."""
+    return (s["left"] + v, s["base"] - u * SLOPE - z)
+
+
+def _gate(s: dict) -> tuple[int, int]:
+    """The opening in the front wall, as a `v` range. Centred on the box."""
+    span = int(s["V"] * GATE_SPAN)
+    start = (s["V"] - span) // 2
+    return start, start + span
+
+
+def _posts(s: dict) -> tuple[tuple[int, int], ...]:
+    """The four post centres in footprint cells, in the DIAGONAL rope order.
+
+    THE ORDER IS THE CONTRACT — this list and `server/app/rift.py`'s corner
+    order are one list, and it runs on the diagonal: entry 0 is opposite entry
+    1, entry 2 is opposite entry 3, so a rig part-way through tying on is
+    holding opposite sides of the deck and the load hangs level instead of
+    hinging.
+    """
+    inset = max(2, int(s["V"] * POST_INSET))
+    near = max(2, WALL_THICK // 2)
+    far = s["U"] - near
+    left, right = inset, s["V"] - inset
+    return (
+        (near, left),
+        (far, right),
+        (near, right),
+        (far, left),
+    )
 
 
 def _eyes(width: int, height: int) -> tuple[tuple[float, float], ...]:
     """The four lift eyes, in pixels from the sprite's top-left.
 
-    ON THE EDGE MIDPOINTS, NOT ON THE CORNERS. At 45 degrees of yaw one of a
-    box's four corners is the NEAR one, and a post standing on it is a bar down
-    the middle of the opening — it hides the load, which is the one thing on
-    this prop that tells a party the machine carries things. Mid-edge posts ring
-    the rim instead, and the diagonal pairing survives: 0 is opposite 1 across
-    the b axis, 2 is opposite 3 across the a axis.
+    ON TOP OF THE FOUR CORNER POSTS, in `_posts` order. Square to the screen
+    the four corners land on four distinct screen positions — the arrangement
+    corner-on could not produce, because at 45 degrees of yaw two of a box's
+    corners share a screen column and the client stationed two drones on top of
+    each other.
     """
     s = _skid(width, height)
-    cx, base = s["cx"], s["base"]
-    A, B = s["A"], s["B"]
-    top = s["deck"] + s["post"]
-
-    def at(a: float, b: float) -> tuple[float, float]:
-        return (cx - a + b, _row(base - (a + b) * SLOPE - top))
-
-    return (
-        at(A * POST_ALONG, 0.0),   # the near-left lip
-        at(A * POST_ALONG, B),     # the far-right wall — opposite it
-        at(0.0, B * POST_ALONG),   # the near-right lip
-        at(A, B * POST_ALONG),     # the far-left wall — opposite that
-    )
+    top = s["body"] + s["post"]
+    out = []
+    for u, v in _posts(s):
+        x, y = _at(s, u, v, top)
+        out.append((x, _row(y)))
+    return tuple(out)
 
 
 #: What a cell of the height field is made of. The region decides the RAMP and
@@ -396,58 +468,80 @@ REGIONS: dict[str, Ramp] = {
 }
 
 
-def _column(field: dict, a: int, b: int, z: int, region: str) -> None:
-    """Raise the field at (a, b) to `z`, keeping the taller claim."""
-    if a < 0 or b < 0:
+def _column(field: dict, u: int, v: int, z: int, region: str) -> None:
+    """Raise the field at (u, v) to `z`, keeping the taller claim.
+
+    NEGATIVE `u` IS LEGAL and is the ramp: cells in front of the box, below the
+    contact row. Nothing else in the field goes there, and the painter draws in
+    descending `u` regardless, so the ramp is simply the last thing painted.
+    """
+    if v < 0:
         return
-    have = field.get((a, b))
+    have = field.get((u, v))
     if have is None or z >= have[0]:
-        field[(a, b)] = (z, region)
+        field[(u, v)] = (z, region)
 
 
-def _slab(field: dict, a0: int, a1: int, b0: int, b1: int, z: int,
+def _slab(field: dict, u0: int, u1: int, v0: int, v1: int, z: int,
           region: str) -> None:
     """A rectangular block of the footprint raised to one height."""
-    for a in range(a0, a1 + 1):
-        for b in range(b0, b1 + 1):
-            _column(field, a, b, z, region)
+    for u in range(u0, u1 + 1):
+        for v in range(v0, v1 + 1):
+            _column(field, u, v, z, region)
 
 
 def _build_field(s: dict) -> dict:
-    """The skid as a height field: deck, two back walls, two front lips, posts.
+    """The skid as a height field: body, three walls, the open gate, the ramp.
 
     Back to front in construction order, which is also the order somebody would
-    weld it: a slab, the walls that stand on the slab, the lips that close the
-    open side, then the posts the ropes get tied to.
+    weld it: a slab, the walls that stand on it, the threshold that closes the
+    front on either side of the gate, the ramp out of the gate, then the posts
+    the ropes get tied to.
     """
-    A, B = s["A"], s["B"]
-    deck, wall, post, lip = s["deck"], s["wall"], s["post"], s["lip"]
+    U, V = s["U"], s["V"]
+    body, wall, post, lip = s["body"], s["wall"], s["post"], s["lip"]
     field: dict[tuple[int, int], tuple[int, str]] = {}
+    # ONE DEPTH CELL IS ONE PIXEL OF PHYSICAL DEPTH, the same physical size as
+    # one unit of `v`. That is what keeps the box square: a wall 5 px thick
+    # laterally is 5 cells deep, not 5 / SLOPE, and dividing by the slope here
+    # was what stretched the load into columns the length of the deck.
 
-    # The slab. Its top face IS the deck — there is no separate floor drawn
-    # inside a box, because on this camera the inside of a box IS its top face.
-    _slab(field, 0, A, 0, B, deck, "deck")
+    # The body. Its top face IS the deck, and its front face — full width,
+    # square to the camera — is the whole reason for the yaw.
+    _slab(field, 0, U, 0, V, body, "deck")
 
-    # The two far walls, standing on the slab and meeting at the FAR corner.
-    _slab(field, A - WALL_THICK + 1, A, 0, B, deck + wall, "wall")
-    _slab(field, 0, A, B - WALL_THICK + 1, B, deck + wall, "wall")
+    # Three walls: the back, and one down each side. The front is left open.
+    _slab(field, U - WALL_THICK, U, 0, V, body + wall, "wall")
+    _slab(field, 0, U, 0, WALL_THICK - 1, body + wall, "wall")
+    _slab(field, 0, U, V - WALL_THICK + 1, V, body + wall, "wall")
 
-    # The two near lips: low enough to see the load over, high enough that the
-    # deck reads as a container rather than as a tray.
-    _slab(field, 0, WALL_THICK - 2, 0, B, deck + lip, "lip")
-    _slab(field, 0, A, 0, WALL_THICK - 2, deck + lip, "lip")
+    # The threshold, on both sides of the gate: low enough to see the load over,
+    # high enough that the deck reads as a container rather than as a tray.
+    gate0, gate1 = _gate(s)
+    _slab(field, 0, WALL_THICK - 1, 0, gate0, body + lip, "lip")
+    _slab(field, 0, WALL_THICK - 1, gate1, V, body + lip, "lip")
 
     _cargo(field, s)
 
-    # The posts, last, so they stand proud of whatever they are bolted to. Three
-    # cells square: at one cell a post renders in a single screen column and has
-    # to fake both of its faces into the same pixel, which is what makes a thin
-    # upright read as a scratch rather than as a mast.
-    along_a, along_b = int(A * POST_ALONG), int(B * POST_ALONG)
-    for a, b in ((along_a, 0), (along_a, B), (0, along_b), (A, along_b)):
-        for da in range(-1, 2):
-            for db in range(-1, 2):
-                _column(field, a + da, b + db, deck + post, "post")
+    # THE WAY IN. A wedge from the deck down to the ground, in the gate's own
+    # width, standing proud of the frame's bottom edge. It is `lip` material so
+    # `_chevrons` paints it: the hazard stripes and the entrance are the same
+    # surface, which is how a player reads the front of this thing as a door
+    # from across a clearing rather than as the low side of a box.
+    for step in range(1, s["ramp"] + 1):
+        z = int(round(body * (1.0 - step / (s["ramp"] + 1))))
+        _slab(field, -step, -step, gate0 + 1, gate1 - 1, z, "lip")
+
+    # The posts, last, so they stand proud of whatever they are bolted to.
+    # Three pixels across and the same in screen depth: at one cell a post
+    # renders in a single screen column and has to fake both of its faces into
+    # the same pixel, which is what makes a thin upright read as a scratch
+    # rather than as a mast.
+    thick_u = 1
+    for u, v in _posts(s):
+        for du in range(-thick_u, thick_u + 1):
+            for dv in range(-1, 2):
+                _column(field, u + du, min(max(v + dv, 0), V), body + post, "post")
     return field
 
 
@@ -473,8 +567,10 @@ def make_platform(width: int, height: int, state: int, rng: random.Random) -> Im
     _lamps(px, plan, s, width, height, state)
     _contact(px, plan, width, height)
     _key(px, plan, width, height)
-    objects.shadow(img, s["cx"] + width * 0.05, s["base"] + height * 0.035,
-                   width * 0.44, height * 0.075)
+    # Centred, because the box is: the old offset was compensating for a
+    # rhombus whose visual mass sat right of its contact point.
+    objects.shadow(img, s["cx"], s["base"] + height * 0.03,
+                   width * 0.48, height * 0.075)
     return img
 
 
@@ -499,16 +595,20 @@ TOP, FRONT, SIDE = objects.PLANE_TOP, objects.PLANE_FRONT, objects.PLANE_SIDE
 def _raster(px, size: tuple[int, int], field: dict, s: dict) -> dict:
     """Paint the height field back to front. Returns the per-pixel plan.
 
-    PAINTER'S ALGORITHM ON THE DIAGONAL. Cells are drawn in descending `a + b`,
-    so a near mass overwrites the far one it stands in front of and the 1px
-    occlusion seam S18 asks for falls out of the draw order rather than being
-    painted on afterwards. Each cell contributes ONE top-face pixel and a run of
-    side-face pixels down to whatever the cell in front of it reaches — which is
-    what makes a wall standing on a slab draw its own face and stop, instead of
-    running to the floor through the slab.
+    PAINTER'S ALGORITHM IN DEPTH. Cells are drawn in descending `u`, so a near
+    mass overwrites the far one it stands in front of and the 1px occlusion seam
+    S18 asks for falls out of the draw order rather than being painted on
+    afterwards. Each cell contributes ONE top-face pixel and a run of front-face
+    pixels down to whatever the cell in front of it reaches — which is what makes
+    a wall standing on the body draw its own face and stop, instead of running to
+    the floor through the body.
+
+    Every cell of a column shares one screen column, so this is a heightmap
+    render and not a projection: the only place a `v` coordinate enters the
+    arithmetic is `x`.
     """
     width, height = size
-    cx, base = s["cx"], s["base"]
+    left, base = s["left"], s["base"]
     plan: dict[tuple[int, int], tuple[Ramp, int]] = {}
 
     def put(x: int, y: int, ramp: Ramp, step: int) -> None:
@@ -516,28 +616,26 @@ def _raster(px, size: tuple[int, int], field: dict, s: dict) -> dict:
             px[x, y] = objects.tone(ramp, step, x, y)
             plan[(x, y)] = (ramp, step)
 
-    for (a, b) in sorted(field, key=lambda cell: -(cell[0] + cell[1])):
-        z, region = field[(a, b)]
+    for (u, v) in sorted(field, key=lambda cell: -cell[0]):
+        z, region = field[(u, v)]
         ramp = REGIONS[region]
-        x = cx - a + b
-        y_top = _row(base - (a + b) * SLOPE - z)
+        x = left + v
+        y_top = _row(base - u * SLOPE - z)
         put(x, y_top, ramp, TOP)
 
-        near = field.get((a - 1, b - 1))
+        near = field.get((u - 1, v))
         near_z = near[0] if near else 0
-        y_bot = _row(base - (a + b - 2) * SLOPE - near_z) - 1
+        y_bot = _row(base - (u - 1) * SLOPE - near_z) - 1
         if y_bot < y_top:
             continue
-        # Which of the two near faces this run is showing. -b points down-left
-        # into the key (S8), -a points down-right away from it. When a mass has
-        # both open — a free-standing post — the pixel is the corner between
-        # them, and the side of the sprite it is on decides which one wins.
-        lit = (a, b - 1) not in field or field[(a, b - 1)][0] < z
-        shade = (a - 1, b) not in field or field[(a - 1, b)][0] < z
-        if lit and shade:
-            plane = FRONT if x <= cx else SIDE
-        else:
-            plane = FRONT if lit else SIDE
+        # A face pointing along v is EDGE-ON in this projection and has no
+        # pixels of its own, so the mass would end in a hard silhouette with no
+        # turn in it. The right-hand boundary column steps down to SIDE: the key
+        # is at 135 degrees (S8), the left edge is the lit one, and one column
+        # of shade turns the form without inventing a face the camera cannot
+        # see. Two columns read as a stripe painted on the front.
+        right = field.get((u, v + 1))
+        plane = SIDE if right is None or right[0] < z else FRONT
         for y in range(y_top + 1, y_bot + 1):
             put(x, y, ramp, plane)
     return plan
@@ -553,21 +651,30 @@ def _cargo(field: dict, s: dict) -> None:
     a SOLID standing on the deck and gets its own top face and its own occlusion
     seam rather than being a rectangle painted on the floor.
 
-    DELIBERATELY NOT FULL. The gap in the middle of the deck is where the eye
-    goes; a load packed wall to wall reads as a texture.
+    PUSHED TO THE BACK AND THE SIDES. The load used to be scattered across the
+    deck; square to the screen that puts a crate in the mouth of the gate, and
+    the gate is the one thing on this prop that has to read from a distance. A
+    clear lane in from the ramp is also what a loaded skid looks like — you have
+    to be able to get the next thing on.
     """
-    A, B = s["A"], s["B"]
-    deck = s["deck"]
-    unit = max(4, A // 7)
+    U, V = s["U"], s["V"]
+    body = s["body"]
+    unit = max(3, V // 14)
+    deep = unit
+    gate0, gate1 = _gate(s)
+    back = U - WALL_THICK - 1
 
-    def crate(a: int, b: int, da: int, db: int, tall: int, region: str) -> None:
-        _slab(field, a, a + da, b, b + db, deck + tall, region)
+    def crate(u: int, v: int, du: int, dv: int, tall: int, region: str) -> None:
+        _slab(field, u - du, u, v, v + dv, body + tall, region)
 
-    crate(A - unit * 4, B - unit * 4, unit * 2, unit * 2, unit * 3, "crate")
-    crate(A - unit * 5, B - unit * 6, unit, unit + 1, unit * 2, "crate")
-    crate(unit, B - unit * 3, unit + 1, unit + 1, unit * 2, "drum")
-    crate(A - unit * 3, unit, unit + 1, unit, unit + 1, "crate")
-    crate(unit * 2, unit * 2, unit, unit, unit, "drum")
+    # Two against the back wall, one stack out of the load's own line so the
+    # silhouette has a step in it, and a drum in each front corner where the
+    # threshold already blocks the way.
+    crate(back, WALL_THICK + 1, deep, unit * 2, unit * 2, "crate")
+    crate(back, gate1 + 2, deep, unit, unit, "crate")
+    crate(back - deep - 1, V - WALL_THICK - unit - 1, deep, unit, int(unit * 1.6), "crate")
+    crate(back - 1, gate0 - unit - 1, int(deep * 0.8), unit, unit, "drum")
+    crate(back - deep - 2, WALL_THICK + 2, int(deep * 0.8), unit, unit, "drum")
 
 
 def _weather(px, plan: dict, width: int, height: int, rng: random.Random) -> None:
@@ -608,12 +715,31 @@ def _rivets(px, plan: dict, s: dict, width: int) -> None:
     They go on the TOP faces only — a rivet is a thing standing proud of a
     surface, and the only surface this camera can see a proud thing on is the
     one pointing at the sky.
+
+    AND ONLY NEAR A FOLD. Square to the screen the deck is one large unbroken
+    top face, and a rivet lattice run across the whole of it came out as polka
+    dots on a table — the pattern read as the material rather than as fixings.
+    A rivet line belongs where two plates are joined: the perimeter, the foot of
+    each wall, and around whatever is bolted down. So a candidate has to be
+    within `REACH` pixels of something that is not this surface.
     """
     step = max(5, width // 11)
+    reach = 3
+
+    def near_fold(x: int, y: int) -> bool:
+        for dy in range(-reach, reach + 1):
+            for dx in range(-reach, reach + 1):
+                cell = plan.get((x + dx, y + dy))
+                if cell is None or cell[1] != TOP:
+                    return True
+        return False
+
     for (x, y), (ramp, plane) in list(plan.items()):
         if ramp is not IRON or plane != TOP:
             continue
         if x % step or y % 3:
+            continue
+        if not near_fold(x, y):
             continue
         px[x, y] = objects.tone(IRON, min(TOP, len(IRON) - 1), x, y)
         under = plan.get((x, y + 1))
@@ -623,30 +749,35 @@ def _rivets(px, plan: dict, s: dict, width: int) -> None:
 
 
 def _stencil(px, plan: dict, s: dict, width: int, height: int) -> None:
-    """A painted block on the inside of a wall, half gone.
+    """A painted block on the inside of the back wall, half gone.
 
     It carries no information and is not meant to: it is there so the biggest
     flat area on the prop has something on it, and so the box reads as a
     numbered unit out of a fleet rather than as a one-off somebody welded in a
     shed. Drawn as a value step on the wall's own ramp (S6: interior form breaks
     are value steps, never lines).
+
+    The back wall's inner face is the one surface on this prop that is both
+    square to the camera and large — which it only became with the yaw. Corner
+    on, this had to go on a receding half-face and read as a smear.
     """
-    A, B = s["A"], s["B"]
-    cx, base = s["cx"], s["base"]
-    deck, wall = s["deck"], s["wall"]
-    for block in range(4):
-        a = A - WALL_THICK
-        b = int(B * 0.30 + block * B * 0.12)
-        x = cx - a + b
-        y = _row(base - (a + b) * SLOPE - deck - wall * 0.45)
-        for oy in range(max(2, height // 20)):
-            for ox in range(max(2, width // 34)):
-                cell = plan.get((x + ox, y + oy))
-                if cell is None or cell[0] is not IRON or cell[1] == TOP:
-                    continue
-                if hash01(x + ox, y + oy, 3301) < 0.30:
-                    continue
-                px[x + ox, y + oy] = objects.tone(IRON, TOP - 1, x + ox, y + oy)
+    U, V = s["U"], s["V"]
+    body, wall = s["body"], s["wall"]
+    gate0, _ = _gate(s)
+    x0, y0 = _at(s, U - WALL_THICK, gate0, body + wall * 0.55)
+    x0, y0 = int(round(x0)), _row(y0)
+    tall = max(2, height // 20)
+    wide = max(6, width // 7)
+    for oy in range(tall):
+        for ox in range(wide):
+            x, y = x0 + ox, y0 + oy
+            cell = plan.get((x, y))
+            if cell is None or cell[0] is not IRON or cell[1] == TOP:
+                continue
+            # A clustered mask on a 2x2 lattice, never per-pixel noise (S5).
+            if hash01((x + ox) // 2, (y + oy) // 2, 3301) < 0.30:
+                continue
+            px[x, y] = objects.tone(IRON, TOP - 1, x, y)
 
 
 def _chevrons(px, plan: dict, s: dict, width: int, height: int) -> None:

@@ -218,18 +218,32 @@ surface. Output rules live in [`assets/AGENTS.md`](../../assets/AGENTS.md).
   Its `RARITY` ramps are `material_ramp` off each tier's CSS hue, so the
   identity is the hue at the base step and the rest is the law. The ICONS are
   not part of this: they are flat HUD marks, centred, no contact, by contract.
-- **`make_platform.py`'s skid is a HEIGHT FIELD rasterised on `make_objects`'
-  camera**, and the drone is `objects.box` pods on `objects.billet` arms. Cells
-  are drawn in descending `a + b` so occlusion falls out of the draw order; a
-  face pointing -b faces down-left into the key and gets `PLANE_FRONT`, a face
-  pointing -a faces down-right and gets `PLANE_SIDE`, and those two lines are
-  the entire lighting model. Two traps, both of which bit: the sprite centre and
-  every row must round on WHOLE pixels (`_row` rounds half UP — Python's `round`
-  breaks .5 to even, and half a 2:1 grid lands on .5, which combs the whole prop
-  into vertical stripes); and the four lift eyes go two thirds back along each
-  edge rather than on the corners, because at 45deg of yaw two of a box's
-  corners project to the same screen column and the client stations both of
-  their drones out to the same side.
+- **`make_platform.py`'s skid is a HEIGHT FIELD on `make_objects`' camera slope
+  but SQUARE TO THE SCREEN**, and the drone is `objects.box` pods on
+  `objects.billet` arms. The footprint axes are `v` across (1px per unit) and
+  `u` into the frame (`SLOPE` px per unit), so every cell of a column shares one
+  screen column and the solid is a heightmap render; cells are drawn in
+  descending `u` so occlusion falls out of the draw order. ARCHITECTURE IS
+  AXIS-ALIGNED IN THIS GAME AND PROPS ARE CORNER-ON — the pad occupies a
+  rectangle of tiles and is entered, so it is built like the shop's masonry, and
+  a crate beside it is still yawed 45deg. Corner-on it projected to a lozenge
+  with no square face to carry its height and no front to walk into.
+  What the projection costs: a face pointing along `v` is EDGE-ON and has no
+  pixels, so the right-hand boundary column of each mass steps down to
+  `PLANE_SIDE` — one column, never two, or it reads as a stripe painted on the
+  front. Three traps, all of which bit: every row must round on WHOLE pixels
+  (`_row` rounds half UP — Python's `round` breaks .5 to even and half of a 2:1
+  grid lands on .5, which combs the prop into vertical stripes); one depth cell
+  is one pixel of PHYSICAL depth, the same size as one unit of `v`, so a wall
+  5px thick laterally is 5 cells deep and not `5 / SLOPE`; and rivets go only
+  within a few pixels of a fold, because square to the screen the deck is one
+  large top face and a lattice across the whole of it reads as polka dots on a
+  table rather than as fixings.
+  The four lift eyes sit on the four corner posts, which corner-on was the one
+  arrangement that could not have them — at 45deg two of a box's corners project
+  to the same screen column and the client stationed two drones on top of each
+  other. Their order is the rope contract shared with `server/app/rift.py`:
+  front-left, back-right, front-right, back-left.
 - **LIGHT THAT OVERLAPS IS TUNED AGAINST THE WORST CASE, NOT THE SINGLE ONE.**
   Eleven torches ring the shop and four glare sheets ring the pad, and both sets
   ADD. A flame or a lamp tuned to look right alone in a black wood sums into a

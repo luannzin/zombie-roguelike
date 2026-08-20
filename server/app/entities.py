@@ -102,10 +102,14 @@ class Pour:
     It lives on the player rather than on the pad because it is a body doing
     something; the pad only counts what lands in it.
 
-    A pour ENDS ITSELF (bag empty, or the quota settled when it started under
-    one) and any movement key cancels it. There is no way to be stuck in one:
-    it is a few seconds standing still in a dark forest, and the player has to
-    be able to take that back the instant something walks out of the trees.
+    A pour ENDS ONE WAY: the bag is empty. It cannot be cancelled and it has
+    no ceiling — the press is the decision to give the night away, and once the
+    pack is off the back the whole thing goes in whether that settles the quota
+    or overshoots it. A load that stopped on the bill left the player holding
+    half a bag at a machine they had already committed to, and a movement key
+    that cancelled turned every pour into a thing you could fumble by leaning
+    on W. The risk is still real and still priced — those seconds standing
+    still in a dark forest are the cost — it is just no longer takeable back.
     """
 
     rift_id: str
@@ -115,12 +119,6 @@ class Pour:
     #: The mark in front of the deck this walks to. FEET, in world pixels.
     x: float = 0.0
     y: float = 0.0
-    #: Value still owed to the quota when this press started, or 0 for a pour
-    #: with no ceiling — the pad is already paid and this is an overfeed, which
-    #: takes the whole bag.
-    cap: int = 0
-    #: What has gone in on this press. Only ever read against `cap`.
-    paid: int = 0
 
 
 @dataclass

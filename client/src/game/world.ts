@@ -32,9 +32,39 @@ export const PROP = 5;
  * away the best cover the forest has.
  */
 export const LOW = 6;
+/**
+ * Solid MASONRY WALL — the merchant's shop, and the only built structure in
+ * the game. Solid and opaque, like PROP. It is its own kind rather than ROCK
+ * because `layers/terrain` draws it as a two-tile block of brick with a cap on
+ * top, depth-sorted with the bodies, and a boulder sprite in a doorway would
+ * be the whole illusion gone.
+ */
+export const BRICK = 7;
+/**
+ * WALKABLE BRICK FLOOR — the shop's interior ground, and the only tile other
+ * than FLOOR a body may stand on. Transparent to light: it is a floor.
+ */
+export const TILEFLOOR = 8;
 
 /** Legacy alias: '#' in a hand-drawn ASCII map is a rock. */
 export const WALL = ROCK;
+
+/**
+ * The tile kinds a body may stand on. Everything else is solid.
+ *
+ * Mirrors `GROUNDS` in server/app/world.py. The two must hold the same
+ * members or prediction and the server disagree about where a wall is, which
+ * shows up as rubber-banding along the shop's doorway rather than as an error
+ * anywhere.
+ */
+export const GROUNDS: ReadonlySet<number> = new Set([FLOOR, TILEFLOOR]);
+
+/**
+ * What light passes through. Wider than `GROUNDS`: a bonfire is knee-high and
+ * is the source, VOID is a gap between trunks, LOW is cover you look over,
+ * TILEFLOOR is a floor. Mirrors `CLEAR` in server/app/world.py.
+ */
+export const CLEAR: ReadonlySet<number> = new Set([FLOOR, TILEFLOOR, FIRE, VOID, LOW]);
 
 const EPS = 1e-4;
 
@@ -165,37 +195,49 @@ export interface Stand {
 }
 
 /**
- * The merchant's pitch. Null on every map that is not the store.
+ * The shop's fixtures. Null on every map that is not the store.
  *
- * Only what is HIS. The clearing around it is an ordinary forest map — its
- * soil is hashed from the seed and its lights are ordinary `SceneLight`s — so
- * nothing about the place he is parked in needs to be here.
+ * Only what is FITTED. The masonry is not here — the walls and the floor are
+ * TILE KINDS on the ordinary grid, so collision, lighting and the terrain bake
+ * all pick them up with nothing on this payload and the building can never
+ * disagree with the map it stands in. The apron outside is an ordinary forest
+ * map for the same reason: soil hashed from the seed, lights that are ordinary
+ * `SceneLight`s.
  */
 export interface StoreFixtures {
   merchantX: number;
   merchantY: number;
   /**
-   * Contact point of his CART, on the west rim of the clearing. Null on a
-   * payload without one — the layer draws nothing rather than guessing a
-   * position, the same way it treats a missing atlas.
+   * Contact point of his CART, parked out in the YARD. Null on a payload
+   * without one — the layer draws nothing rather than guessing a position,
+   * the same way it treats a missing atlas. Every list below keeps the same
+   * rule: absent means "this shop has none of those".
    */
   wagonX: number | null;
   wagonY: number | null;
-  /** The plank he trades over, standing in front of him. */
-  counterX: number | null;
-  counterY: number | null;
+  /** The L he trades over: one entry per tiling section, with its kind. */
+  counter: readonly { x: number; y: number; kind: number }[];
+  /** Contact point of the shop's door. Null on a payload without one. */
+  doorX: number | null;
+  doorY: number | null;
   stands: Stand[];
   torches: readonly { x: number; y: number; variant: number }[];
-  rugX: number;
-  rugY: number;
+  /** Wall shelving behind the counter. Decoration; never interactive. */
+  shelves: readonly { x: number; y: number; variant: number }[];
+  /** Shop-floor decoration crates. None of them opens. */
+  crates: readonly { x: number; y: number; variant: number }[];
+  /** The mats. CENTRES, not contacts — they lie flat with the ground. */
+  rugs: readonly { x: number; y: number; variant: number }[];
+  /** The hanging lamps, at their FLOOR contacts. See `StorePayload.lamps`. */
+  lamps: readonly { x: number; y: number }[];
   /**
-   * Contact point of the upgrade machine, on the north-west arc. Null on a
+   * Contact point of the upgrade machine, against the west wall. Null on a
    * payload with no cabinet — the layer draws nothing rather than guessing a
    * position, the same way it treats a missing atlas.
    */
   machineX: number | null;
   machineY: number | null;
-  /** His own gear, standing behind the counter. Never interactive. */
+  /** His own gear, out in the yard around the cart. Never interactive. */
   kit: readonly { x: number; y: number; variant: number }[];
   /**
    * The night's platforms coming home: `[x, y, value]` per skid. Empty on a
@@ -494,7 +536,7 @@ export class TileMap {
   }
 
   /**
-   * Anything that is not floor blocks movement and shots, with one named
+   * Anything outside `GROUNDS` blocks movement and shots, with one named
    * exception: VOID is walkable while `egress` is set (the extraction
    * corridor). Camp VOID and the forest arrival stay solid because those
    * maps have no egress. Sight is `blocksSight` — a fire, the camp exit
@@ -504,20 +546,20 @@ export class TileMap {
     if (tx < 0 || ty < 0 || tx >= this.width || ty >= this.height) return true;
     const tile = this.tiles[ty][tx];
     if (tile === VOID) return this.egress == null;
-    return tile !== FLOOR;
+    return !GROUNDS.has(tile);
   }
 
   /**
    * Whether this tile stops LIGHT. Narrower than solidity, and the difference
    * is not cosmetic: the server enforces exactly this, so a log you can see
-   * over has to be a log an enemy can see over. Three exceptions — a bonfire
-   * is knee-high and is the light source, VOID is a gap between trunks that
-   * light falls into, and LOW is cover you look over.
+   * over has to be a log an enemy can see over. The exceptions are `CLEAR` —
+   * a bonfire is knee-high and is the light source, VOID is a gap between
+   * trunks that light falls into, LOW is cover you look over, and TILEFLOOR
+   * is a floor.
    */
   blocksSight(tx: number, ty: number): boolean {
     if (tx < 0 || ty < 0 || tx >= this.width || ty >= this.height) return true;
-    const tile = this.tiles[ty][tx];
-    return tile !== FLOOR && tile !== FIRE && tile !== VOID && tile !== LOW;
+    return !CLEAR.has(this.tiles[ty][tx]);
   }
 
   /** Axis-aligned box centred on (cx, cy) with half-extents (hw, hh). */
@@ -682,8 +724,9 @@ function unpackStore(payload: MapPayload): StoreFixtures | null {
     merchantY: row.merchant[1],
     wagonX: row.wagon ? row.wagon[0] : null,
     wagonY: row.wagon ? row.wagon[1] : null,
-    counterX: row.counter ? row.counter[0] : null,
-    counterY: row.counter ? row.counter[1] : null,
+    counter: (row.counter ?? []).map(([x, y, kind]) => ({ x, y, kind })),
+    doorX: row.door ? row.door[0] : null,
+    doorY: row.door ? row.door[1] : null,
     stands: (row.stands ?? []).map((stand) => ({
       id: stand.id,
       key: stand.k,
@@ -694,8 +737,10 @@ function unpackStore(payload: MapPayload): StoreFixtures | null {
       sold: stand.sold === true,
     })),
     torches: (row.torches ?? []).map(([x, y, variant]) => ({ x, y, variant })),
-    rugX: row.rug[0],
-    rugY: row.rug[1],
+    shelves: (row.shelves ?? []).map(([x, y, variant]) => ({ x, y, variant })),
+    crates: (row.crates ?? []).map(([x, y, variant]) => ({ x, y, variant })),
+    rugs: (row.rugs ?? []).map(([x, y, variant]) => ({ x, y, variant })),
+    lamps: (row.lamps ?? []).map(([x, y]) => ({ x, y })),
     machineX: row.machine ? row.machine[0] : null,
     machineY: row.machine ? row.machine[1] : null,
     kit: (row.kit ?? []).map(([x, y, variant]) => ({ x, y, variant })),

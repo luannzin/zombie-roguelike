@@ -101,6 +101,7 @@ from typing import Iterable, Sequence
 
 from . import combat
 from .config import (
+    BUSH_CONCEAL_SCALE,
     ENEMY_ALERT_SHARE_DIST,
     ENEMY_ARRIVE_DIST,
     ENEMY_DESPAWN_DELAY,
@@ -411,6 +412,15 @@ def look(enemy: Enemy, living: Sequence[Player], world: TileMap) -> Player | Non
     Range is decided PER PLAYER by that player's own lantern switch. It is one
     dark forest: a shape gets the short reach, a shape holding a lamp gets the
     long one. That is the same trade the player took when they pressed the key.
+
+    AND BY WHAT THEY ARE STANDING IN. Undergrowth cuts the reach against the
+    player inside it (`BUSH_CONCEAL_SCALE`) — the client has always drawn a
+    bush closing over a body, and until this line that picture was a lie every
+    creature on the map saw through. It scales the reach rather than blocking
+    the ray on purpose: cover is where you STAND, not something a single bush
+    somewhere on the line grants a player standing in the open behind it.
+
+    The lamp still overrules it. Light in a bush is a lit bush.
     """
     cos_half = enemy.type.view_cos
     best: Player | None = None
@@ -420,7 +430,9 @@ def look(enemy: Enemy, living: Sequence[Player], world: TileMap) -> Player | Non
         reach = (
             enemy.type.view_lit_range
             if player.last_input.lantern
-            else enemy.type.view_range
+            else enemy.type.view_range * (
+                BUSH_CONCEAL_SCALE if world.bush_at_point(player.x, player.y) else 1.0
+            )
         )
         dx = player.x - enemy.x
         dy = player.y - enemy.y

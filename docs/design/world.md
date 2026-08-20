@@ -48,7 +48,7 @@ means something is a scene.
 | intent | touch |
 | --- | --- |
 | forest shape, size, connectivity | `server/app/mapgen.py`, `server/app/config.py` |
-| a new scene / scene layout | `server/app/scenery.py` (+ art in `server/tools/make_scenery.py`) |
+| a new scene / scene layout | `server/app/scenery.py` (+ art in `server/tools/make_scenery.py`) — containers are thinned by `_thin_containers`, so a scene may author more than survive |
 | a new interactive object | `server/app/crates.py` (`TYPES`) + `server/tools/make_objects.py` |
 | a new zone | `server/app/zones.py` + whatever builds its map — **no client change** |
 | camp layout | `server/app/camp.py` |
@@ -115,6 +115,19 @@ catalog, or the wire protocol pair.
   solid, sight-blocking, with a bonnet or a bay that lifts. Each type owns its
   own drop table, its own loot TAGS (an ambulance leans medical, a mailbox
   leans dropped), its own rarity curve and its own prompt.
+- **A SCENE MAY KEEP FIVE OPENABLES AND NO TWO ON ONE TILE** (`scenery.MAX_CONTAINERS`,
+  `_thin_containers`). Scenes roll their containers in independent loops — the
+  roadblock rolls barrels AND crates, the haulage spill rolls up to seven — and
+  the rolls SUM, so the densest scenes were putting a dozen boxes in a nine-tile
+  clearing with nothing checking what was already standing there. Two faults,
+  one pass, and both were invisible in a screenshot: a pile that size is not a
+  find but furniture (the player stops reading silhouettes and walks the row
+  pressing E, and the eight crate builds the pool exists to teach stop meaning
+  anything), and two openables on one tile is a sprite inside a sprite over
+  ground `_cells` can only claim once — the second one cannot be opened.
+  Thinned centrally rather than in each builder because fifteen scenes roll
+  containers and every one of them had the same bug; the order is shuffled
+  first so the cap is not always paid by whichever loop ran last.
 - **TWO VERBS, ONE KEY, AND ONLY THE BARRELS ANSWER A BULLET.** E is "use the
   thing in front of me" and the tooltip already said which — a barrel says
   destruir, a chest abrir, a car boot vasculhar. A bullet can break a barrel

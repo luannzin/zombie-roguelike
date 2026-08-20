@@ -171,13 +171,15 @@ These bind every subtree. Subsystem-specific rules live in the docs above.
 - **The server is authoritative. Clients send inputs, never positions.**
 - **Nothing is persisted server-side.** The only durable client datum is the player's name, in `localStorage`.
 - **Every gameplay constant lives in `server/app/config.py`** and reaches the client in `welcome.config`. Never hardcode one client-side — and never hedge one either. Fields `client_config()` always sends are **required** on `GameConfig`, so `config.x ?? 100` does not compile past a type error; `test_config_parity.py` keeps the two key sets equal in both directions. The client used to hedge, and two constants had silently drifted (`INVENTORY_SLOTS` 3 vs 5, `CARRY_MAX_WEIGHT` 10 vs 14) with nothing failing.
-- **These pairs are mirrors and change together.** Three are line-for-line; three are rules re-derived on the other side and are just as breakable:
+- **These pairs are mirrors and change together.** Three are line-for-line; five are rules re-derived on the other side and are just as breakable:
   - `server/app/simulation.py` <-> `client/src/game/simulation.ts` — movement, stamina
   - `server/app/protocol.py` <-> `client/src/net/protocol.ts` — every wire shape
   - `server/app/machine.py` <-> `client/src/game/machine.ts` — the pull's clock
-  - `server/app/world.py` <-> `client/src/game/world.ts` — the tile alphabet and `move_axis` / `blocks_sight` / `box_blocked` / `raycast_tiles`. Prediction runs on it; a tile kind added on one side alone desyncs collision
+  - `server/app/world.py` <-> `client/src/game/world.ts` — the tile alphabet, the `GROUNDS` / `CLEAR` sets, and `move_axis` / `blocks_sight` / `box_blocked` / `raycast_tiles`. Prediction runs on it; a tile kind added on one side alone desyncs collision. Solidity is no longer `!= FLOOR`: the shop's `TILEFLOOR` is a second walkable ground, so both sides test membership of `GROUNDS` and a member added to one alone rubber-bands the shop's doorway
   - `Room.collect_loot` + `Inventory.add` + `ammo.Reserve` <-> `client/src/game/interaction.ts` (`canStow`, `swapTargetFor`) — whether a pickup is legal. The client answers locally because the prompt cannot wait for a round trip
   - `ai.look` <-> `client/src/render/fov.ts` — sight symmetry. No longer a copied constant: both read `enemyViewDarkScale` / `enemyViewLitScale` off `welcome.config`
+  - `world.tile_hash` <-> `client/src/render/terrain.ts`'s `tileHash` — where the undergrowth IS. The client draws bushes from it and `ai.look` now shortens a creature's reach over the same tiles, so the two must agree bit for bit (`Math.imul` is a 32-bit multiply; plain Python `*` drifts after a few thousand tiles). `tests/test_bush_cover.py` pins it against browser values
+  - `make_platform.py`'s deck <-> `client/src/game/pad-cargo.ts` — where a poured item comes to rest. Fractions of the sprite, re-derived rather than shipped; a skid re-proportioned without them stacks loot on the grass
 - **Sizes, speeds and distances are authored in tiles/seconds** and multiplied by `TILE_SIZE`. No raw pixel numbers.
 - **All colours and type live in `client/src/styles/index.css`**, read by the canvas through `client/src/theme/`.
 - **The WORLD is pixel art; the LIGHT, the AIR and the LENS are not.** Every `render/layers/` pass draws into an offscreen 2D surface at one pixel per pixel, and `render/post/` finishes that surface on the GPU with nothing nearest-filtered. Do not pixelate an effect to "match", and do not draw on the visible canvas from anywhere but the post chain.
@@ -190,9 +192,10 @@ These bind every subtree. Subsystem-specific rules live in the docs above.
 
 | scope | command |
 | --- | --- |
-| server | `python tests/test_snapshot_shape.py`, `test_pour.py`, `test_store_walk.py`, `test_config_parity.py`, `test_loot_frames.py` from `server/` — plain scripts, each prints `ok` |
+| server | `python tests/test_snapshot_shape.py`, `test_pour.py`, `test_store_walk.py`, `test_config_parity.py`, `test_loot_frames.py`, `test_bush_cover.py`, `test_scenery_containers.py` from `server/` — plain scripts, each prints `ok` |
 | client | `bun run typecheck` from `client/` — required after any change there |
 | client | `bun tests/grade.ts` from `client/` after touching `render/post/grade.ts` — plain script, prints `ok` |
+| client | `bun tests/exit-path.ts` from `client/` after touching `game/exit-path.ts` — plain script, prints `ok` |
 | both | run the server, open two browser tabs, confirm both players move, shoot and light the world without rubber-banding |
 
 Run `test_store_walk.py` after any edit to `store.py`'s layout offsets: it
@@ -203,6 +206,15 @@ Run `test_loot_frames.py` after adding an item to `loot.ITEMS` or a drawing
 to `make_loot.py`: it fails if the catalog names a key the atlas has no art
 for. A frame is taken from the atlas manifest, not from catalog position —
 the two lists deliberately do not share an order.
+
+Run `test_bush_cover.py` after touching `world.tile_hash`, `TileMap.bush_at`,
+`BUSH_CHANCE` or the client's `tileHash`: it pins the hash against values taken
+out of a browser, which is the only way to catch the two sides placing
+undergrowth in different tiles — nothing at runtime notices.
+
+Run `test_scenery_containers.py` after adding a container kind or a scene that
+places one: it fails if two openables claim the same tile, or if a scene keeps
+more than `MAX_CONTAINERS`.
 
 Run `test_config_parity.py` after touching `client_config()` or `GameConfig`:
 it fails if either side declares a key the other does not, in either

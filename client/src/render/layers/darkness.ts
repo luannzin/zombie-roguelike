@@ -232,8 +232,11 @@ export class DarknessLayer {
       // into a flat sheet with no pool visible anywhere. Tuned against the
       // WORST case rather than the single one, because the single one still
       // reads at this strength and the ring did not read at all at the old.
-      gradient.addColorStop(0, `rgb(${tone} / ${(0.19 * pulse).toFixed(3)})`);
-      gradient.addColorStop(0.4, `rgb(${tone} / ${(0.065 * pulse).toFixed(3)})`);
+      // Cut once more with the flames above them (`TORCH_FIRE_ALPHA`): the
+      // pools and the fires are one budget and they were being judged apart,
+      // which is how the sum keeps creeping back up.
+      gradient.addColorStop(0, `rgb(${tone} / ${(0.135 * pulse).toFixed(3)})`);
+      gradient.addColorStop(0.4, `rgb(${tone} / ${(0.045 * pulse).toFixed(3)})`);
       gradient.addColorStop(1, `rgb(${tone} / 0)`);
       ctx.fillStyle = gradient;
       ctx.fillRect(light.x - radius, light.y - radius, radius * 2, radius * 2);

@@ -74,7 +74,14 @@ _NIGHT_SPAN_MINUTES = 7 * 60 + 1
 #: `store.RING_TORCHES`, `store.TORCH_LIGHT_TILES`,
 #: `config.STORE_MACHINE_LIGHT_TILES` or `layers/payout`'s alphas — never on
 #: its own.
-STORE_AMBIENT = 0.45
+#:
+#: IT CAME DOWN AGAIN, WITH THE FLAMES. The floor was doing part of the
+#: torches' job: raised to read the room, it also raised the rim, and the
+#: eleven torch pools on top of it had no dark left to pool INTO. Cut here and
+#: at `layers/store`'s `TORCH_FIRE_ALPHA` / `LAMP_FIRE_ALPHA` and
+#: `layers/darkness`'s pool stops in one pass, because cutting any one of them
+#: alone just moves which of them is the thing that saturates.
+STORE_AMBIENT = 0.36
 
 # Most nights are dry. Rain is common enough that a second expedition often
 # feels like a different place; fog is the rarer coat.

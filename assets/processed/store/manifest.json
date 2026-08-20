@@ -1,7 +1,52 @@
 {
   "tile": 16,
   "seed": 1337,
+  "ground": {
+    "tilefloor": {
+      "file": "tilefloor.png",
+      "frameWidth": 16,
+      "frameHeight": 16,
+      "frames": 4
+    }
+  },
   "props": {
+    "brick": {
+      "file": "brick.png",
+      "frameWidth": 16,
+      "frameHeight": 21,
+      "frames": 4,
+      "sway": 0,
+      "plain": 2
+    },
+    "counter": {
+      "file": "counter.png",
+      "frameWidth": 16,
+      "frameHeight": 22,
+      "frames": 3,
+      "sway": 0
+    },
+    "shelf": {
+      "file": "shelf.png",
+      "frameWidth": 26,
+      "frameHeight": 30,
+      "frames": 3,
+      "sway": 0
+    },
+    "crate": {
+      "file": "crate.png",
+      "frameWidth": 19,
+      "frameHeight": 28,
+      "frames": 3,
+      "sway": 0
+    },
+    "lamp": {
+      "file": "lamp.png",
+      "frameWidth": 16,
+      "frameHeight": 28,
+      "frames": 2,
+      "sway": 0,
+      "flameY": 7
+    },
     "table": {
       "file": "table.png",
       "frameWidth": 24,
@@ -9,16 +54,16 @@
       "frames": 4,
       "sway": 0,
       "topY": [
-        6,
-        7,
         5,
+        7,
+        6,
         8
       ]
     },
     "kit": {
       "file": "kit.png",
       "frameWidth": 22,
-      "frameHeight": 20,
+      "frameHeight": 32,
       "frames": 5,
       "sway": 0
     },
@@ -26,13 +71,6 @@
       "file": "wagon.png",
       "frameWidth": 72,
       "frameHeight": 56,
-      "frames": 1,
-      "sway": 0
-    },
-    "counter": {
-      "file": "counter.png",
-      "frameWidth": 30,
-      "frameHeight": 20,
       "frames": 1,
       "sway": 0
     },
@@ -53,7 +91,7 @@
       "file": "rug.png",
       "frameWidth": 48,
       "frameHeight": 32,
-      "frames": 2
+      "frames": 3
     }
   },
   "effects": {
@@ -64,6 +102,16 @@
       "frames": 12,
       "fps": 12,
       "anchorY": 34,
+      "loop": true,
+      "tinted": false
+    },
+    "lampfire": {
+      "file": "lampfire.png",
+      "frameWidth": 14,
+      "frameHeight": 20,
+      "frames": 12,
+      "fps": 10,
+      "anchorY": 17,
       "loop": true,
       "tinted": false
     },

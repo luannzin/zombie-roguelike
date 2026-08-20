@@ -88,6 +88,35 @@ export function Announce({ announce }: AnnounceProps) {
             {announce.subtitle}
           </p>
         ) : null}
+
+        {/*
+          THE TAKE, when the card is about money. It STATES the number and does
+          not count: the counting is already happening on the `Balance` row,
+          driven by the coins flying to it off the platforms, and a second
+          animated number on the same screen would be the same event told
+          twice at two different speeds.
+
+          It rides the SUBTITLE's own keyframes rather than getting its own, so
+          the amount and the line above it arrive together as one statement.
+          The coin is the HUD's `/hud/coin.png` at its native 8px — the same
+          disc the bag and the balance use, because a price denominated in a
+          coin the player does not already recognise is a second currency.
+        */}
+        {announce.amount != null ? (
+          <p
+            className="animate-zone-subtitle pixel-text flex items-center gap-1.5 text-[17px] leading-[19px] text-[var(--fx-gold-text)] opacity-0"
+            style={{ animationDuration: duration }}
+          >
+            <img
+              src="/hud/coin.png"
+              alt=""
+              width={8}
+              height={8}
+              className="size-[11px] [image-rendering:pixelated]"
+            />
+            +{announce.amount}
+          </p>
+        ) : null}
       </div>
     </div>
   );

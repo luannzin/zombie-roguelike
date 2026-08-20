@@ -203,6 +203,7 @@ import {
   writeTooltipAnchor,
 } from './tooltip-anchors';
 import { dropExitGuide, guidePoint, writeExitGuide } from './exit-guide';
+import { dropExitPath, exitWaypoint } from './exit-path';
 import {
   beginPull,
   pullFinished,
@@ -887,6 +888,7 @@ export class Game {
     this.lantern.reset();
     clearTooltipAnchors();
     dropExitGuide();
+    dropExitPath();
     clearInventoryAnchors();
     clearLootFlies();
     clearPadCargo();
@@ -999,6 +1001,7 @@ export class Game {
     // Nothing grows in the hearth: a fern in front of a player hides the
     // character somebody is looking for. Cleared here rather than left over
     // from a previous zone, since a forest wants undergrowth everywhere.
+    this.renderer?.setBushChance(msg.config.bushChance);
     this.renderer?.setDecorationMask(
       hearthMask(
         this.world,
@@ -1921,6 +1924,22 @@ export class Game {
           // would be arriving somewhere the player is not looking.
           playSfx('coin', { gain: 0.9 });
           playSfx('rarity', { variant: 4, jitter: 0, delay: 0.12 });
+          // THE NIGHT IS OVER, AND THIS IS WHERE THE CARD SAYS SO.
+          //
+          // On the FIRST pad's cash beat, not on arrival. The zone's own title
+          // is still on the glass when the party walks in and the skids are
+          // still coming down behind it; a second card in that window is two
+          // things to read at once. By the time the first deck has touched
+          // down and started throwing coins the title has gone, the player has
+          // their controls back, and the one thing on screen is gold flying to
+          // the balance — which is exactly what the card is about.
+          //
+          // It carries the AMOUNT and the balance counts UP to it, and those
+          // are two different jobs on purpose: the card states what the night
+          // was worth once, and `balanceShown` below animates the number
+          // getting there. A card that also counted would be React in the
+          // frame loop for a number already being animated on the canvas.
+          this.announceDayDone(payout.total);
           break;
         case 'done':
           playSfx('coin', { gain: 0.6, rate: 1.25 });
@@ -1932,10 +1951,39 @@ export class Game {
     // exactly right when it stops, and a counter tied to the draw would land a
     // few gold short on a slow frame.
     this.balanceShown = this.balance - payout.total + payout.paid;
+    // THE CEREMONY ENDS; THE PLATFORMS DO NOT.
+    //
+    // `this.payout` used to be nulled here, and that is what made the skids
+    // vanish: `layers/payout` draws a deck for every pad it is handed, so
+    // dropping the object took the landed decks off the map along with the
+    // animation. The night's platforms are supposed to stay parked in the
+    // yard for the whole visit — the server keeps their tiles solid for
+    // exactly that long — so what ends is the CEREMONY, and everything that
+    // belongs to it (the rotor light, the coins, the grade layer, the trailing
+    // balance) now checks `payoutFinished` instead. The pads themselves stay.
     if (payoutFinished(payout)) {
-      this.payout = null;
       this.balanceShown = this.balance;
     }
+  }
+
+  /**
+   * The end-of-night card: which day just closed, and what it paid.
+   *
+   * One-shot, keyed on the DAY, because `Announce` replays whenever its key
+   * changes and never clears itself — so the key has to name the event and not
+   * the kind of event. A reconnect into a shop the party is already standing
+   * in re-enters the zone but not a new day, so it cannot fire twice.
+   */
+  private announceDayDone(total: number): void {
+    const day = this.zone?.day ?? 0;
+    this.patchHud({
+      announce: {
+        key: `day-${day}`,
+        title: `Dia ${day} Concluído`,
+        subtitle: 'as plataformas voltaram',
+        amount: total,
+      },
+    });
   }
 
   /**
@@ -2267,17 +2315,23 @@ export class Game {
         held: this.heldSlot,
       };
     }
+    // A BODY MID-POUR IS A PUPPET AND THE KEYS ARE DROPPED HERE, all of them.
+    // The server walks it to the mark and pins it there for the whole ceremony
+    // — `Room._pour_inputs` acks the queue and obeys none of it — so a WASD
+    // held down while the pack goes over is a step this client would predict
+    // and the next snapshot would take straight back. Movement used to CANCEL
+    // the pour, which is what made predicting it correct; it no longer does.
+    const puppet = this.localPour !== null;
     return {
       type: 'input',
       sequence,
-      movement: { ...this.input.movement },
+      movement: puppet
+        ? { up: false, down: false, left: false, right: false }
+        : { ...this.input.movement },
       aim: { x: this.aimX, y: this.aimY },
       shoot: this.input.shooting && this.canAttack(),
       lantern: this.lantern.on,
-      // Masked for the same reason the trigger is: a body mid-POUR is a puppet
-      // the server walks, and it drops the key outright. Predicting a sprint
-      // there would drain the bar against a run that never happened.
-      sprint: this.input.sprinting && this.localPour === null,
+      sprint: this.input.sprinting && !puppet,
       held: this.heldSlot,
     };
   }
@@ -3364,7 +3418,9 @@ export class Game {
       reward: this.reward,
       // What the HUD may SAY. It trails the real number only while a payout is
       // running; see `balanceShown`.
-      balance: this.payout ? this.balanceShown : this.balance,
+      balance: this.payout && !payoutFinished(this.payout)
+        ? this.balanceShown
+        : this.balance,
       // ONE BIT, not an envelope. Whether the chevron is on screen at this
       // instant is a BLINK, and the blink is on the render clock inside
       // `ExitGuide` — a fade published five times a second would arrive as
@@ -3892,22 +3948,37 @@ export class Game {
    * Point the local player at the extraction exit while that quest is live.
    *
    * The HUD arrow reads this pose; it is not drawn in the forest.
+   *
+   * IT POINTS DOWN THE ROUTE, not at the exit. `exitWaypoint` floods the map
+   * outward from the corridor's mouth and hands back a point a few tiles along
+   * the walkable way there, so the chevron bends around the thicket instead of
+   * aiming through it — see `game/exit-path`. The straight bearing is the
+   * fallback for a player the flood cannot reach, which is the only case where
+   * "that way" is better than nothing.
    */
   private guidePose(): { fromX: number; fromY: number; toX: number; toY: number } | null {
     const exit = this.quests.find((quest) => quest.id === 'exit');
-    const egress = this.world?.egress;
+    const world = this.world;
+    const egress = world?.egress;
     const local = this.local;
-    if (!exit || exit.done || !egress || !local) return null;
+    if (!exit || exit.done || !world || !egress || !local) return null;
     // Anchored on the UPPER HALF of the body, not its centre and not its feet.
     // The arrow sits halfway out along this ray, and a ray leaving the feet
     // puts it over the ground the player is about to walk onto; leaving the
     // head it rides above the action, which is where a marker belongs.
     const lift = (this.config?.playerHalfHeight ?? 0) * 0.5;
+    const waypoint = exitWaypoint(
+      world,
+      local.state.x,
+      local.state.y,
+      egress.mouthX,
+      egress.mouthY,
+    );
     return {
       fromX: local.state.x,
       fromY: local.state.y - lift,
-      toX: egress.backX,
-      toY: egress.backY,
+      toX: waypoint?.x ?? egress.backX,
+      toY: waypoint?.y ?? egress.backY,
     };
   }
 
@@ -4522,7 +4593,9 @@ export class Game {
       this.grade.release('extraction', 1.6);
     }
 
-    if (this.payout) {
+    // The GRADE belongs to the ceremony, not to the pads. They stay parked in
+    // the yard for the whole visit; the look the arrival wears must not.
+    if (this.payout && !payoutFinished(this.payout)) {
       this.grade.hold('payout', payoutLook(1), { attack: 0.9, release: 1.4 });
     } else {
       this.grade.release('payout', 1.4);

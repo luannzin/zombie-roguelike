@@ -37,7 +37,11 @@
  * moment reads as a screen filter, not as wind.
  */
 
-import { FLOOR, LOW, PROP, ROCK, TREE, VOID, type FirePlace, type TileMap } from '../../game/world';
+import {
+  BRICK, FLOOR, LOW, PROP, ROCK, TILEFLOOR, TREE, VOID,
+  type FirePlace, type TileMap,
+} from '../../game/world';
+import type { StoreAtlas } from '../store';
 import { createSurface } from '../../lib/canvas';
 import { floorColor, hasFloorSpeck, palette } from '../../theme/palette';
 import type { Camera } from '../camera';
@@ -55,8 +59,16 @@ const MAX_CACHED_MAP_PIXELS = 4096 * 4096;
 const GRASS_CHANCE = 0.34;
 /** Second tuft on a tile that already has one. */
 const GRASS_DOUBLE_CHANCE = 0.4;
-/** Share of floor tiles that get a bush. Drawn OVER bodies, with the fern. */
-const BUSH_CHANCE = 0.055;
+/**
+ * Share of floor tiles that get a bush. Drawn OVER bodies, with the fern.
+ *
+ * NOT A DRAWING NUMBER ANY MORE. `ai.look` re-derives these same tiles from
+ * the map seed and shortens a creature's reach over them, so how much bush a
+ * forest has is how much cover it has. It arrives in `welcome.config` as
+ * `bushChance` (`setBushChance`); the default here is only what the layer
+ * paints with before the first welcome lands.
+ */
+let BUSH_CHANCE = 0.055;
 /** Share of floor tiles that get a fern. Deliberately rare. */
 const FERN_CHANCE = 0.045;
 
@@ -148,6 +160,19 @@ export class TerrainLayer {
   private stencil: { canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D } | null = null;
   private cachedFor: TileMap | null = null;
   private decorationMask: DecorationMask | null = null;
+  /**
+   * The SHOP's two surfaces, or null everywhere else.
+   *
+   * WHY THE TERRAIN LAYER HOLDS A STORE ATLAS. The shop's walls and floor are
+   * TILE KINDS on the ordinary grid, not fixtures on a payload — which is what
+   * makes collision, sight and the flood-fill test all agree about where the
+   * building is without anybody shipping a rectangle. The cost of that choice
+   * is exactly this: the thing that paints tiles has to be able to reach the
+   * sheets those two kinds are drawn from. It is one nullable field and a
+   * rebuild when it arrives, against a whole parallel channel for "the shop's
+   * geometry" that could disagree with the map.
+   */
+  private store: StoreAtlas | null = null;
 
   /** Swap in the loaded atlas (or null to keep the flat fallback). */
   setAtlas(atlas: TerrainAtlas | null): void {
@@ -167,6 +192,21 @@ export class TerrainLayer {
   }
 
   /**
+   * Swap in the store atlas: the shop's brick floor and its masonry.
+   *
+   * Both are baked — the floor into the ground canvas with the soil, the walls
+   * into the prop canvas with the trees — so it arriving is a reason to
+   * rebuild both. Null on every map that is not the store, which is also what
+   * a failed atlas load looks like: the tiles fall back to soil and to the
+   * rock sprite, which is ugly and walkable rather than a blank room.
+   */
+  setStoreAtlas(atlas: StoreAtlas | null): void {
+    if (this.store === atlas) return;
+    this.store = atlas;
+    this.reset();
+  }
+
+  /**
    * Restrict where grass, bushes and ferns may grow. `null` (the default)
    * allows them on every floor tile, which is what the arena wants.
    *
@@ -177,6 +217,16 @@ export class TerrainLayer {
    */
   setDecorationMask(mask: DecorationMask | null): void {
     this.decorationMask = mask;
+  }
+
+  /**
+   * Take the undergrowth density from `welcome.config`. Rebuilds the bake,
+   * which claims a bush's tile away from the grass — see `stampProps`.
+   */
+  setBushChance(chance: number): void {
+    if (BUSH_CHANCE === chance) return;
+    BUSH_CHANCE = chance;
+    this.reset();
   }
 
   /**
@@ -204,7 +254,7 @@ export class TerrainLayer {
     if (this.atlas) {
       this.paintGround(ctx, world, this.atlas, window, true);
       this.undergrowth(ctx, world, window, time, bodies);
-      paintProps(ctx, world, this.atlas, window);
+      paintProps(ctx, world, this.atlas, this.store, window);
     } else {
       paintFlat(ctx, world, window);
     }
@@ -370,7 +420,7 @@ export class TerrainLayer {
       return;
     }
     ctx.clearRect(window.x0 * ts, window.y0 * ts, (window.x1 - window.x0 + 1) * ts, (window.y1 - window.y0 + 4) * ts);
-    paintProps(ctx, world, this.atlas, window);
+    paintProps(ctx, world, this.atlas, this.store, window);
   }
 
   /** Swaying grass. Live, so it cannot live in the bake. */
@@ -455,8 +505,25 @@ export class TerrainLayer {
     const { grounds, blend } = atlas;
     if (grounds.length === 0) return;
 
+    const floor = this.store?.tilefloor ?? null;
+
     for (let ty = y0; ty <= y1; ty++) {
       for (let tx = x0; tx <= x1; tx++) {
+        // THE SHOP'S FLOOR IS LAID, NOT GROWN. It takes no material blend and
+        // no soil underneath: a brick floor dissolving into forest dirt at its
+        // own edges is the one place the blend would be visibly wrong, because
+        // the edge it would dissolve at is a WALL. The variant is hashed off
+        // the tile exactly the way a soil material is, so the four frames of
+        // wear scatter rather than tile.
+        if (floor && world.tiles[ty][tx] === TILEFLOOR) {
+          const frame = Math.floor(tileHash(tx, ty, seed, 131) * floor.frames) % floor.frames;
+          ctx.drawImage(
+            floor.image,
+            frame * floor.frameWidth, 0, floor.frameWidth, floor.frameHeight,
+            tx * ts, ty * ts, ts, ts,
+          );
+          continue;
+        }
         const mix = materialAt(tx, ty, seed, grounds.length);
         drawSoil(ctx, grounds[mix.index], tx, ty, ts);
         if (mix.other < 0) continue;
@@ -508,7 +575,7 @@ export class TerrainLayer {
 
     if (this.atlas) {
       const props = createSurface(world.pixelWidth, world.pixelHeight, 'terrain/props');
-      paintProps(props.ctx, world, this.atlas, window);
+      paintProps(props.ctx, world, this.atlas, this.store, window);
       this.propCache = props.canvas;
     } else {
       this.propCache = null;
@@ -816,6 +883,7 @@ function paintProps(
   ctx: CanvasRenderingContext2D,
   world: TileMap,
   atlas: TerrainAtlas,
+  store: StoreAtlas | null,
   { x0, y0, x1, y1 }: TileWindow,
 ): void {
   const ts = world.tileSize;
@@ -826,6 +894,36 @@ function paintProps(
   for (let ty = y0; ty <= y1; ty++) {
     for (let tx = x0; tx <= x1; tx++) {
       const tile = world.tiles[ty][tx];
+
+      // THE SHOP'S MASONRY. Bottom-anchored on its own tile and rising above
+      // it, exactly like a trunk — which is why it is painted here, in the
+      // same row-ordered pass, rather than anywhere else.
+      //
+      // TWO HEIGHTS, ON ONE QUESTION: is the shop's floor NORTH of this wall?
+      // If it is, the room is behind the wall and the camera is looking at its
+      // outside, so it is knee-high and you see over it. Otherwise it is a
+      // back or a side wall and stands its full two tiles. That is a question
+      // about the BUILDING rather than about occlusion — the draw order
+      // already handles occlusion — and it is what stops the front wall
+      // swallowing anybody standing just inside the door. See
+      // `make_store.make_brick`.
+      if (tile === BRICK) {
+        const brick = store?.brick;
+        if (!brick) continue;
+        const tall = Math.max(1, Math.min(brick.tall ?? brick.frames, brick.frames));
+        const low = ty > 0 && world.tiles[ty - 1][tx] === TILEFLOOR;
+        const wear = Math.floor(tileHash(tx, ty, seed, 137) * tall) % tall;
+        const frame = (low ? tall + wear : wear) % brick.frames;
+        ctx.drawImage(
+          brick.image,
+          frame * brick.frameWidth, 0, brick.frameWidth, brick.frameHeight,
+          tx * ts + (ts - brick.frameWidth) / 2,
+          (ty + 1) * ts - brick.frameHeight,
+          brick.frameWidth, brick.frameHeight,
+        );
+        continue;
+      }
+
       if (tile !== ROCK && tile !== TREE) continue;
       const sheet = tile === TREE ? trunkSheet(atlas, tx, ty, seed) : atlas.rock;
       const frame = variant(sheet, tx, ty, seed, tile === TREE ? 2 : 3);
@@ -942,7 +1040,10 @@ function paintFlat(
       const px = tx * ts;
       const py = ty * ts;
       const tile = world.tiles[ty][tx];
-      if (tile !== FLOOR && tile !== VOID && tile !== PROP && tile !== LOW) {
+      if (
+        tile !== FLOOR && tile !== VOID && tile !== PROP
+        && tile !== LOW && tile !== TILEFLOOR
+      ) {
         ctx.fillStyle = tiles.wallBody;
         ctx.fillRect(px, py, ts, ts);
         ctx.fillStyle = tiles.wallTop;

@@ -1,9 +1,12 @@
 /**
  * Interact prompt on an extraction pad. One use of `Tooltip`.
  *
- * FIVE THINGS THE BUTTON CAN BE SAYING, and they are not interchangeable: wake
- * the platform, wait (another pad is already running), load it, keep loading
- * past the quota, or CALL THE PICKUP.
+ * FOUR THINGS THE BUTTON CAN BE SAYING, and they are not interchangeable: wake
+ * the platform, wait (another pad is already running), load it, or CALL THE
+ * PICKUP. Loading past the quota used to be a fifth line of its own
+ * ("sobrecarregar"); it is not a fifth ACT — E tips the whole bag in on either
+ * side of the bill — so the overshoot is reported by the count, not by a
+ * second sentence the player has to notice changed.
  *
  * THAT LAST ONE IS THE MOST EXPENSIVE PRESS IN THE GAME and the line has to
  * say so before it happens, not after. Everything up to it is quiet and
@@ -49,18 +52,6 @@ export function RiftPrompt({ prompt }: RiftPromptProps) {
 		return (
 			<Tooltip anchor="rift" end={count}>
 				Aperte <TooltipKey>E</TooltipKey> para chamar a extração
-			</Tooltip>
-		);
-	}
-
-	// Past the quota with a bag that still has something in it. The press is the
-	// same key doing the same verb — the platform is just no longer counting —
-	// so the line says what it BUYS rather than repeating the instruction. The
-	// overshoot itself is on the count beside it.
-	if (prompt.mode === "over") {
-		return (
-			<Tooltip anchor="rift" end={count}>
-				Aperte <TooltipKey>E</TooltipKey> para sobrecarregar a plataforma
 			</Tooltip>
 		);
 	}

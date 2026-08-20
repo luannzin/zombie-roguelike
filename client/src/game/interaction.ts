@@ -326,11 +326,17 @@ export function riftPrompt(s: InteractionState): HudRiftPrompt | null {
   // offered on a pad whose aircraft are already in the air.
   if (rift.state !== 'open' || rift.closeAt !== null) return null;
   // Same split `Room.activate_rift` makes, off the same facts: whether the
-  // quota is paid and whether the pocket still has anything. Saturating is
-  // offered on EVERY pad, last one included — the payout at the end of the
-  // night is what was fed, so value loaded past the quota is banked whether
-  // or not there is another console left to carry a core to.
-  const mode = !rift.ready ? 'feed' : empty ? 'close' : 'over';
+  // quota is paid and whether the pocket still has anything. LOADING IS ONE
+  // VERB. It used to be two — `feed` under the quota, `over` past it — and the
+  // difference was never a difference in what E did: the press has always
+  // emptied the bag, and since `Room._begin_pour` dropped its ceiling it
+  // empties all of it either way. Two lines for one act only ever asked the
+  // player to work out which of them they were reading. Overshoot is on the
+  // count beside the prompt, which is where a number belongs.
+  // Loading is offered on EVERY pad, last one included — the payout at the end
+  // of the night is what was fed, so value loaded past the quota is banked
+  // whether or not there is another console left to carry a core to.
+  const mode = rift.ready && empty ? 'close' : 'feed';
   return {
     id: rift.id,
     mode,

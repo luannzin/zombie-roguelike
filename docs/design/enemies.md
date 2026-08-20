@@ -16,6 +16,29 @@ Nearest contract: [`server/app/AGENTS.md`](../../server/app/AGENTS.md).
 
 - **An enemy chases nothing it has not noticed.** Awareness fills only inside the sight cone; `aggro_range` is the GIVE-UP distance, not the notice distance.
 - **Sight is symmetric with the lantern.** `ENEMY_VIEW_DARK_SCALE` and `ENEMY_VIEW_LIT_SCALE` are the reaches BOTH sides use — they ship as `enemyViewDarkScale` / `enemyViewLitScale` and `client/src/render/fov.ts` reads them. One source, so there is nothing to keep in step. Never give a creature an absolute view distance.
+- **Undergrowth is cover, and it is cover because the picture already said so.**
+  `layers/terrain` draws bushes AFTER the characters — stand in a thicket and
+  the art closes over you — while `look` tested a clean ray at full reach.
+  A picture that lies about the rules is worse than no picture: the player takes
+  cover, is seen anyway, and concludes the senses are broken. Standing on a bush
+  tile now cuts a creature's reach against you by `BUSH_CONCEAL_SCALE`.
+
+  **IT SCALES THE REACH RATHER THAN BLOCKING THE RAY,** and that was the
+  decision. An occluder is all-or-nothing: one bush anywhere on the line would
+  hide a player standing in the open ten tiles past it, and a thicket would
+  become a wall nothing could see over from any range. Concealment belongs to
+  the tile you are STANDING in — crouch in it and they have to come close,
+  break the line and you are a shape in a clearing again. The lantern still
+  overrules it, because a lit bush is a lit bush.
+
+  **THERE IS NO BUSH TILE.** Undergrowth is DERIVED from the map seed by a hash
+  both sides run (`world.tile_hash` / `render/terrain.ts`'s `tileHash`), which
+  is why a map payload is four bytes of seed and not a decoration layer. The
+  server re-derives the client's bushes rather than anybody shipping a mask, so
+  the hash is now a contract: `tests/test_bush_cover.py` pins it against values
+  taken out of the browser. Density (`BUSH_CHANCE`) ships in `welcome.config`
+  because it decides how much cover a forest HAS; what it cuts the reach to
+  stays server-side, because the client never asks.
 - **Nothing snaps its head.** Every facing change outside a hunt goes through `ai.turn_towards` at a bounded rate.
 - **`ai.glare` never commits.** The beam turns heads and caps awareness below the commit line; being spotted stays the cone's job.
 - **Every non-eye awareness source goes through `ai.commit`** — a neighbour's shout (one hop), an `ai.Noise`, `ai.alarm` on damage. Do not add a damage path that skips `alarm`.
@@ -38,7 +61,8 @@ walk. Awareness is pinned, so the diamond is already lit. See
 | --- | --- |
 | senses, hunt, steering, the director | `server/app/ai.py` |
 | stat blocks, variants, accessories | `server/app/enemies.py` + a processed sprite folder of the same name |
-| tuning (reach, rates, group sizes) | `server/app/config.py` |
+| tuning (reach, rates, group sizes, `BUSH_CONCEAL_SCALE`) | `server/app/config.py` |
+| where undergrowth is, on both sides | `world.tile_hash` / `TileMap.bush_at` + `client/src/render/layers/terrain.ts` |
 | where creatures start standing | `server/app/mapgen.py` (`NEST_SCENES` / `HAUNT_SCENES`), `Room._seed_nests` |
 | the diamond, snarls, wounds | `client/src/render/layers/vision.ts`, `client/src/game/entity-visuals.ts`, `Game.updateGrowls` |
 

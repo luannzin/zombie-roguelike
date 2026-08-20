@@ -85,15 +85,17 @@ export interface HudRiftPrompt {
    *
    *   open   nothing has happened here yet
    *   busy   another pad is already awake — one at a time, so this one refuses
-   *   feed   the platform is powered, lamps green, and under its quota
-   *   over   the quota is settled and the bag still has something. E keeps
-   *          loading: the core waiting at the far end grows.
+   *   feed   the platform is powered, lamps green, and the bag has something
+   *          in it. ONE MODE, over the quota and under it: E tips the whole
+   *          pack in either way, and past the quota what goes in grows the
+   *          core waiting at the far end. The count beside the prompt is what
+   *          says which side of the bill the party is on.
    *   close  the quota is settled and the pocket is empty. E CALLS THE
    *          PICKUP — lamps red, siren, and every creature on the map turns
    *          toward the clearing. Everything past the quota comes back as one
    *          condensed core once the platform is gone.
    */
-  mode: 'open' | 'busy' | 'feed' | 'over' | 'close';
+  mode: 'open' | 'busy' | 'feed' | 'close';
   have: number;
   need: number;
   /** Bag is empty — the press will refuse. */
@@ -221,6 +223,15 @@ export interface HudAnnounce {
   key: string;
   title: string;
   subtitle: string;
+  /**
+   * Group gold this card is about, or absent when it is not about money.
+   *
+   * The card STATES the number once, with a coin beside it; it does not count.
+   * The counting already happens on the `Balance` row, driven by the coins
+   * flying to it off the platforms — so a card that also animated would be
+   * React in the frame loop for a number the canvas is already animating.
+   */
+  amount?: number;
 }
 
 export interface HudSnapshot {

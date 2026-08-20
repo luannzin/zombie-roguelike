@@ -79,7 +79,7 @@ from .config import (
 )
 from .entrance import Entrance
 from .loot import BY_KEY as ITEMS
-from .world import FIRE, FLOOR, LOW, ROCK, TREE, VOID, TileMap
+from .world import BRICK, FIRE, FLOOR, LOW, ROCK, TILEFLOOR, TREE, VOID, TileMap
 
 #: Trunks around the edge, in tiles. Matches `camp.BORDER_TILES` — it is the
 #: same job: stop the camera framing the end of the world.
@@ -94,197 +94,339 @@ BOULDER_CHANCE = 0.972
 #: `_tiles` — it is a guarantee about the GENERATOR, not about the furniture.
 SPINE_TILES = 2.5
 
-# --- the pitch, in tiles from the CLEARING'S CENTRE --------------------------
-# +x is east, +y is south. Every fixture in the zone is authored against this
-# one origin, because the whole composition is a ring read from the middle: an
-# offset measured from a map edge would move when the map got taller.
+# --- the shop, in tiles ------------------------------------------------------
+# THE ZONE IS TWO PLACES AND THEY ARE MEASURED FROM TWO ORIGINS.
+#
+# The APRON is outdoor ground: a round clearing where the night's platforms
+# come down, with his wagon parked on it and his fire beside that. Everything
+# on it is authored against the apron's own centre (`_at`), because it is a
+# composition read from the middle of a circle and an offset measured from a
+# map edge would move the day the map got taller.
+#
+# The SHOP is a rectangle of brick standing at the north end of that clearing —
+# the first and only building in the game. Everything inside it is authored
+# against the INTERIOR's centre (`_in`), which is a different origin on
+# purpose: a counter is fitted to a wall, not to a treeline, and a fixture that
+# drifted when the apron was resized would come away from the wall it is
+# supposed to be bolted to.
 
-#: HIS WAGON, and it is the backdrop everything else is arranged against.
+#: The building's outer footprint, in tiles, walls included.
 #:
-#: A trader in a forest full of the dead did not walk here with six tables on
-#: his back. The wagon is the answer to that: he DRIVES, he was somewhere else
-#: last week, and that is the reason he is worth finding.
-#:
-#: BEHIND HIM AND A LITTLE WEST. It used to be parked out on the west rim with
-#: the man standing beside it, which made the pitch a row of things along one
-#: wall and left the middle of the room empty. He stands in the MIDDLE now, so
-#: the cart is what is behind him — a shopkeeper has a back wall — and it is
-#: stepped off his column rather than stacked on it, because directly behind
-#: him the canopy becomes a hat.
-WAGON_COL = -3.2
-WAGON_ROW = -7.4
+#: TWENTY-FOUR BY EIGHTEEN, and both numbers are the smallest that work. It has
+#: to hold a counter long enough to read as a counter, six tables laid out in a
+#: grid, a cabinet against the far wall and enough floor between them that two
+#: players are never squeezing past each other — and it has to fit on one
+#: screen from the door, which is the whole reason the old sixteen-tile
+#: clearing was thrown out. Anything larger is a hall.
+SHOP_COLS = 24
+SHOP_ROWS = 18
+#: Which row the north wall sits on. Flush against the exit corridor, so the
+#: way out is a door in the back of the shop rather than a walk across a field
+#: to a gap in the trees.
+SHOP_TOP = STORE_CORRIDOR_TILES
+#: How much open ground is cleared around the building before the woods start.
+#: Without it the generator buries the shop in trunks: it is a rectangle
+#: stamped over forest, and a treeline growing out of a brick wall is the tell
+#: that nobody put the building there.
+SHOP_YARD = 2
+#: Half-width of the DOOR in the south wall and of the gap in the north wall,
+#: in tiles. Matches the corridor's own half-width — the way in and the way on
+#: are the same size, so neither reads as the important one.
+SHOP_GATE_HALF = 2.5
 
-#: THE MAN HIMSELF, IN THE MIDDLE OF HIS OWN SHOP, and the counter he trades
-#: over. He stands BEHIND it — north — because everything a party may touch is
-#: on the south side of him, which is the split that teaches which half of the
-#: pitch answers E.
-#:
-#: HE IS THE CENTRE OF THE ROOM. The party walks in from the south and he is
-#: the thing they are looking at, with his stock laid out between them and him.
-#: That is what a shop looks like from the door, and it is the arrangement
-#: every shop the player has ever seen in a game uses — one person, a counter,
-#: the goods in front. The old layout put him on the west rim and the stock on
-#: the east one, twenty tiles apart, which made the visit a walk between two
-#: unrelated places rather than one transaction with one man.
-MERCHANT_COL = 0.0
-MERCHANT_ROW = -4.4
-COUNTER_COL = 0.0
-COUNTER_ROW = -2.8
-#: The mat he stands on. Under him, and the one thing on the pitch that says a
-#: person chose this spot rather than that a clearing happens to contain one.
-RUG_COL = 0.0
-RUG_ROW = -3.6
+# --- inside the shop, in tiles from the INTERIOR'S CENTRE --------------------
+# +x is east, +y is south. The interior runs -10.5..+10.5 across and
+# -7.5..+7.5 down.
 
-#: His campfire. A `world.FIRE` TILE rather than a prop, which means the client
-#: draws the animated flame and burns its light with no code at all — the same
-#: fire the camp has, because it is the same kind of thing: a person keeping
-#: warm. It is what turns a parked wagon into somewhere somebody is living.
-#: EAST of him and well off the stock, because it throws ten tiles of light in
-#: a room with a radius of eleven and everything it stands near is washed out.
-FIRE_COL = 5.6
-FIRE_ROW = -5.8
-
-#: THE CABINET, on the WEST arc.
+#: THE COUNTER, an L in the NORTH-EAST CORNER, and it is the whole composition.
 #:
-#: Not beside him and not among the stalls. Everything else in this clearing is
-#: a decision about money, so the one thing that is not gets its own wall, lit
-#: by nothing but its own marquee. A cabinet in the middle of the stock would
-#: compete with the prices; a cabinet across the room is somewhere you WALK,
-#: which is the whole difference between a machine and a menu item. It is a
-#: short walk now — the room is small — and that is fine: what mattered was
-#: never the distance, it was that it is not on the counter.
-MACHINE_COL = -7.8
-MACHINE_ROW = -1.2
+#: `(col, row, kind)` where kind is 0 corner, 1 run-east, 2 run-south. The
+#: corner is the elbow; the long arm runs east along the north wall to the far
+#: wall, and the short arm turns south into the room.
+#:
+#: WHY A CORNER AND NOT THE MIDDLE. He stood in the MIDDLE of a round clearing
+#: before this, on the argument that a shop is a counter you stand at and the
+#: man should be the first thing you see from the door. That argument survives
+#: — it is why he is still the only person in the zone and why his stock is
+#: still laid out in front of him — but the middle of a ROOM is not the middle
+#: of a clearing. A counter in the centre of a rectangle is an island, with a
+#: walkable gap behind it that a player will walk into looking for the back of
+#: the shop; a counter fitted into a corner has a back the building provides.
+#: It also buys the thing the clearing could never have: a POCKET that is HIS,
+#: which the party can see into and not walk into, with his shelves on the wall
+#: behind him. That split is what the rim of the clearing used to do with
+#: crates, done properly.
+COUNTER_L: tuple[tuple[float, float, int], ...] = (
+    (3.0, -4.0, 0),
+    (4.0, -4.0, 1), (5.0, -4.0, 1), (6.0, -4.0, 1),
+    (7.0, -4.0, 1), (8.0, -4.0, 1), (9.0, -4.0, 1), (10.0, -4.0, 1),
+    (3.0, -3.0, 2), (3.0, -2.0, 2),
+)
+#: How wide one counter section is, in tiles. Mirrors `TILE_COUNTER_W` in
+#: server/tools/make_store.py — the art and the cover it provides are the same
+#: object, so they are the same number.
+COUNTER_TILES_W = 1.0
+
+#: THE MAN, in his own pocket, behind the long arm.
+#:
+#: Nothing under him is made solid — he is drawn, not walked into — but he is
+#: fenced by the counter in front and the walls behind, so the party cannot
+#: stand where he is standing without any code saying so. That is the same call
+#: `rift._stamp` makes about the middle of its sigil: geometry, not a rule.
+MERCHANT_COL = 6.5
+MERCHANT_ROW = -5.6
+
+#: HIS SHELVES, on the north wall behind him. `(col, row, variant)`.
+#:
+#: THEY ARE THE ANSWER TO "WHAT ELSE HAS HE GOT". Six tables hold six guns and
+#: nothing else in the zone has ever suggested there is more to him than that.
+#: A wall of jars, tins and bundles behind the counter says the stock on the
+#: floor is a selection, which is a different and better statement than a man
+#: with exactly six things. None of it opens, and the art carries that: it is
+#: high on a wall, behind a counter, out of reach.
+SHELF_SPOTS: tuple[tuple[float, float, int], ...] = (
+    (4.0, -6.6, 0),
+    (6.0, -6.6, 1),
+    (8.0, -6.6, 2),
+    (10.0, -6.6, 0),
+)
+SHELF_TILES_W = 1.6
+
+#: THE CABINET, against the WEST wall.
+#:
+#: Same argument it had on the west arc of the clearing and it survives the
+#: move: everything else in this room is a decision about money, so the one
+#: thing that is not gets its own wall. It is across the room from the counter,
+#: which is somewhere you WALK — the whole difference between a machine and a
+#: menu item — and it is against masonry now rather than standing in the open,
+#: which is what a cabinet actually is.
+MACHINE_COL = -9.0
+MACHINE_ROW = -1.0
 #: Its footprint in tiles. Solid — you walk up to a machine, not through it.
 #: Mirrors the two-tile cabinet in server/tools/make_machine.py.
 MACHINE_TILES_W = 2.0
 
-#: HIS OWN GEAR, and where each piece goes is the composition.
+#: THE STALLS: three across, two deep, in the middle of the floor.
 #:
-#: `(column, row, variant)` against the clearing's centre. All of it around the
-#: RIM, behind and beside the wagon, because the middle of the room belongs to
-#: the man and the stock. That separation is doing more work than any prompt
-#: could: a player learns in one visit which things in here answer E.
+#: A GRID, and the argument is unchanged from the clearing: a trader who lays
+#: his goods out in rows is a trader who wants them compared, and six prices
+#: scattered around a room is six things to hunt rather than one decision to
+#: make. What the building adds is that the grid now has a room around it
+#: rather than a treeline, so the regularity reads as arrangement instead of as
+#: the generator giving up.
 #:
-#: The ring is DELIBERATELY UNEVEN, and the variants are pinned rather than
-#: rolled. Four pieces at four equal angles is a display case; four pieces
-#: stepped in and out around a parked wagon is a camp somebody has been living
-#: in. The stock rolls nightly; the man's own belongings do not, and a shop
-#: whose furniture rearranged itself would be the one thing in the loop that
-#: felt generated.
-#:
-#: FOUR PIECES, and the rack (`kit` frame 2) is not one of them: at the size
-#: these are now drawn it comes out as a handful of loose rods with no frame
-#: around them. A prop that does not read is a prop that is in the way.
-KIT_SPOTS: tuple[tuple[float, float, int], ...] = (
-    (-7.4, -6.0, 0),    # crates, roped, behind the cart
-    (2.6, -8.4, 1),     # the barrel of rods, off the cart's tail
-    (7.6, -2.2, 3),     # the shelf of tins, east of the fire
-    (7.8, 2.6, 4),      # the strongbox, furthest out on the east arc
-)
-#: How wide one piece of kit is, in tiles. Mirrors `TILE_KIT_W` in
-#: server/tools/make_store.py — the art and the cover it provides are the same
-#: object, so they are the same number.
-KIT_TILES_W = 1.4
-
-#: THE STALLS: three across, two deep, DIRECTLY IN FRONT OF THE MERCHANT.
-#:
-#: A GRID, and that is a reversal. The old lane jittered its tables off an even
-#: rhythm on the argument that four identical stalls at four identical
-#: intervals is the loudest tell that nobody set this up by hand. That argument
-#: is right about a CORRIDOR and wrong about a market: a trader who lays his
-#: goods out in rows is a trader who wants them compared, and six prices
-#: scattered around a clearing is six things to hunt rather than one decision
-#: to make. So the goods are square and everything around them — the wagon, the
-#: fire, the gear, the torches — is not.
-#:
-#: IN FRONT OF HIM, not off on the opposite rim. The stock is what he is
-#: SELLING: it belongs between the party and the man, on his own mat's axis, in
-#: the space the party is walking into anyway. Two columns of three out on the
-#: east arc made the shop two places and the goods somebody else's.
-#:
-#: Read SOUTH TO NORTH, because that is the direction the party walks in, and
-#: the rows are priced cheapest-first for the same reason: the first thing they
-#: pass is the thing they can afford, and the row against the counter is the
-#: one they are saving for.
-STALL_COLS: tuple[float, ...] = (-3.4, 0.0, 3.4)
-STALL_ROWS: tuple[float, ...] = (4.2, 0.6)
+#: Read SOUTH TO NORTH and priced cheapest-first, because that is the direction
+#: the party walks in from the door: the first table they reach is the one they
+#: can afford, and the row nearest the counter is the one they are saving for.
+STALL_COLS: tuple[float, ...] = (-4.5, 0.0, 4.5)
+STALL_ROWS: tuple[float, ...] = (4.5, 0.5)
 #: How wide one round table is, in tiles. Mirrors `TILE_TABLE_W` in
-#: server/tools/make_store.py — the art and the cover it provides are the same
-#: object, so they are the same number.
+#: server/tools/make_store.py.
 TABLE_TILES_W = 1.5
 
-#: WHERE THE NIGHT'S PLATFORMS COME DOWN, across the SOUTH of the clearing.
+#: THE RUGS. `(col, row, variant)` — one inside the door, one under the stock,
+#: one along the front of the counter.
+#:
+#: They are the cheapest thing in the room and they do the most work. A brick
+#: floor with furniture on it is a warehouse; the same floor with three worn
+#: mats laid on the lines people actually walk is somewhere somebody lives.
+#: They are flat, they claim no tiles, and they are drawn with the ground.
+RUG_SPOTS: tuple[tuple[float, float, int], ...] = (
+    (0.0, 6.2, 0),
+    (0.0, 2.6, 1),
+    (6.5, -2.6, 2),
+)
+
+#: DECORATION CRATES, around the edges of the room. `(col, row, variant)`.
+#:
+#: NONE OF THEM OPEN, and that is the point of where they are. The party spent
+#: the previous night learning that a box in this game is a thing you open, so
+#: every one of these is out at a wall, stacked, roped or lidded — the same
+#: statement his gear made around the rim of the clearing, made by a room
+#: instead of by a circle. They are LOW: cover you can see over, so a crate
+#: never puts a shadow across the shop.
+CRATE_SPOTS: tuple[tuple[float, float, int], ...] = (
+    (-9.5, 4.5, 0),
+    (-8.0, 6.5, 1),
+    (9.5, 2.0, 2),
+    (8.0, 5.5, 0),
+    (-9.5, -5.0, 1),
+    (10.0, 6.5, 2),
+)
+CRATE_TILES_W = 1.2
+
+#: THE LAMPS. `(col, row)`, and there is no variant field: the sheet has two
+#: vessels and the renderer picks between them off the position's own hash.
+#:
+#: THIS IS THE ZONE'S JOB AND THE LAMPS ARE HOW IT IS DONE. Everywhere else a
+#: party goes is a black wood with a torch in it; here they can see the room,
+#: the far wall, the way out and each other. Out in the clearing that was a
+#: ring of torches on the rim, which is what you light a clearing with. A room
+#: is lit by lamps STANDING IN IT, on a regular grid — they are the one
+#: arranged thing about the lighting, and regularity is exactly right for them:
+#: somebody put these out.
+#:
+#: THEY USED TO HANG FROM CHAINS AND THAT WAS WRONG ABOUT THE CAMERA. A lamp
+#: two tiles over the floor is DRAWN two tiles up the screen from the tile it
+#: is lighting, so the flame and its own pool never appeared in the same place,
+#: and the chain over it ran up into a ceiling this roofless cutaway does not
+#: have. Five lanterns floating in mid-air. A lamp on a table has its flame
+#: where its light is.
+#:
+#: THEY ARE ALSO THE LIGHT BUDGET. `zones.STORE_AMBIENT` is a floor under the
+#: darkness pass and every one of these is drawn ADDITIVELY on top of it with
+#: nothing clamping the sum — the same bug that blew this zone to flat white
+#: when it was a clearing. Five at `LAMP_LIGHT_TILES` is what the floor can
+#: carry with the apron's three landing skids going at the same time. Adding a
+#: sixth means taking reach out of the other five.
+LAMP_SPOTS: tuple[tuple[float, float], ...] = (
+    (-5.5, -4.5),
+    (6.5, -1.0),
+    (-5.5, 3.0),
+    (5.5, 4.5),
+    (0.0, -1.0),
+)
+#: How far above its own contact the flame burns, in tiles. The light is placed
+#: at the WICK rather than at the floor under it, because a pool centred on the
+#: boards would light the stand and leave the thing that is glowing in the dark.
+#: It is about a foot now rather than the two tiles a chain gave it.
+LAMP_FLAME_TILES = 1.1
+#: Footprint of a lamp's stand, in tiles. Solid: it is furniture with an open
+#: flame on it, and walking through one should not be possible.
+LAMP_TILES_W = 1.0
+
+# --- the apron, in tiles from the CLEARING'S CENTRE --------------------------
+
+#: HIS WAGON, parked on the apron, west of the door.
+#:
+#: IT IS OUTSIDE NOW AND THAT IS THE POINT. A covered cart is the answer to
+#: "who is this man" — he DRIVES, he was somewhere else last week, and that is
+#: the reason he is worth finding. A building is the opposite answer, so the
+#: two only work together if the cart is what he ARRIVED IN and the shop is
+#: what he unloaded into. Parked in the yard, between the party and the door,
+#: it is read on the walk up: cart first, then the building it feeds.
+WAGON_COL = -6.0
+WAGON_ROW = -3.0
+#: The wagon's footprint, in tiles. LOW rather than PROP, because this is the
+#: one zone whose job is that you can see across it and a sight blocker parked
+#: in the yard would put the shop's front in a shadow.
+WAGON_TILES_W = 4.5
+
+#: His campfire, on the apron beside the wagon. A `world.FIRE` TILE rather than
+#: a prop, so the client draws the animated flame and burns its light with no
+#: code at all.
+#:
+#: IT IS OUTDOORS FOR A REASON BEYOND TASTE. It throws ten tiles of light, and
+#: ten tiles of additive light inside an eighteen-tile room on a 0.45 ambient
+#: floor is the flat-white bug again with one tile instead of eleven. Out here
+#: it lights the yard, which is what the yard is for.
+FIRE_COL = 6.5
+FIRE_ROW = -3.5
+
+#: HIS OWN GEAR, out on the apron. `(column, row, variant)`.
+#:
+#: The ring is DELIBERATELY UNEVEN and the variants are pinned rather than
+#: rolled. Four pieces at four equal angles is a display case; four pieces
+#: stepped in and out around a parked wagon is somewhere somebody has been
+#: living. The stock rolls nightly; the man's own belongings do not.
+KIT_SPOTS: tuple[tuple[float, float, int], ...] = (
+    (-8.5, -5.5, 0),    # crates, roped, behind the cart
+    (-2.5, -6.5, 1),    # the barrel of rods, off the cart's tail
+    (8.5, 0.0, 3),      # the shelf of tins, east of the fire
+    (7.0, 4.5, 4),      # the strongbox, furthest out on the east arc
+)
+#: How wide one piece of kit is, in tiles. Mirrors `TILE_KIT_W` in
+#: server/tools/make_store.py.
+KIT_TILES_W = 1.4
+
+#: WHERE THE NIGHT'S PLATFORMS COME DOWN, on the apron.
 #:
 #: THE APRON IS THE FIRST BEAT OF THE ZONE AND IT IS RESERVED GROUND. The party
 #: walks out of the neck and the skids they loaded an hour ago are being
-#: lowered around them — before a single price tag is on screen. Nothing else
-#: is ever placed here: a skid is three tiles wide, it is solid the moment it
-#: lands, and a stall that had drifted into this band would be a stall a
-#: platform came down on top of.
+#: lowered around them — before a door, a price tag or a counter is on screen.
+#: Nothing else is ever placed here: a skid is three tiles wide, it is solid
+#: the moment it lands, and anything that had drifted into this band would be
+#: something a platform came down on top of.
 #:
-#: They stay off the middle of the spine (see `_tiles`), because the walk from
-#: one mouth to the other has to stay unconditional whatever landed.
+#: THEY STAY WHERE THEY LAND. The decks are drawn for the rest of the visit and
+#: their tiles stay solid, so the yard the party walks up through is a yard
+#: with three landed platforms in it — the night, parked. A skid that faded out
+#: once its coins had flown would make the payout a cutscene.
+#:
+#: SPREAD SO NO TWO ROTOR WASHES TOUCH. A wash is seven tiles across at 0.85
+#: alpha and `lighter` SUMS: two overlapping is 1.7 of a full-bright sheet
+#: before eight rotors and eight strobes go on top. The nearest pair here is
+#: 8.5 tiles apart. See `zones.STORE_AMBIENT`.
 PAYOUT_SPOTS: tuple[tuple[float, float], ...] = (
-    (-6.4, 7.2),
-    (6.4, 7.2),
-    (0.0, 9.8),
+    (-6.5, 2.5),
+    (6.5, 2.5),
+    (0.0, 8.0),
 )
 #: Footprint of a landed skid, in tiles. Mirrors the deck in `rift.py`.
 PAYOUT_TILES_W = 3.0
 
-#: The wagon's footprint, in tiles. It is LOW rather than PROP for the zone's
-#: own reason: this is the one place in the game whose job is that you can see
-#: the far side of it, and a sight blocker parked behind the trader would put
-#: him in a shadow.
-WAGON_TILES_W = 4.5
-COUNTER_TILES_W = 1.9
-
 # --- light ------------------------------------------------------------------
 # THE WHOLE ZONE HAS ONE LIGHT BUDGET AND THIS IS MOST OF IT.
 #
-# `zones.STORE_AMBIENT` is a floor under the darkness pass; every torch, the
-# fire, the cabinet's marquee and every landing skid's rotor wash are drawn
-# ADDITIVELY on top of that floor, and additive pools SUM with nothing clamping
-# the total. That is what blew this zone out to flat white: three skids landing
-# within five tiles of each other on the old apron, at 0.85 alpha a wash, on a
-# 0.7 floor, with eleven seven-tile torches ringing the room behind them. The
-# fix is spread over four places and only makes sense as one budget — the
-# `PAYOUT_SPOTS` above are far enough apart that no two washes touch, the
-# torches below are fewer and shorter, `zones.STORE_AMBIENT` came down, and
-# `layers/payout`'s alphas came down with it. Move one, check the others.
+# `zones.STORE_AMBIENT` is a floor under the darkness pass; every torch, every
+# hanging lamp, the fire, the cabinet's marquee and every landing skid's rotor
+# wash are drawn ADDITIVELY on top of that floor, and additive pools SUM with
+# nothing clamping the total. That is what blew this zone out to flat white
+# when it was one clearing: three skids landing within five tiles of each other
+# at 0.85 alpha a wash, on a 0.7 floor, with eleven seven-tile torches ringing
+# the room behind them.
+#
+# THE BUILDING MADE THE BUDGET EASIER AND THE RULE HAS NOT CHANGED. The two
+# halves of the zone light SEPARATELY now — the apron has the ring, the fire
+# and the skids; the shop has five short lamps and a marquee — and the wall
+# between them is opaque, so neither set ever sums with the other. That is
+# worth more than any of the numbers below. Move one and check the rest.
 
 #: How far a torch throws, in tiles. Smaller than a cabin lamp, and much
 #: smaller than the campfire — it lights the rim it stands on and stops.
 TORCH_LIGHT_TILES = 4.5
-#: HOW MANY TORCHES RING THE CLEARING. Enough that the rim is a ring of warm
-#: marks a party can read the shape of the room from, and few enough that their
-#: pools touch rather than pile up. A continuous unbroken band of light is not
-#: the goal and never was: the ambient floor is what makes the room legible,
-#: and the torches are what make it a room somebody lit.
-RING_TORCHES = 7
+#: HOW MANY TORCHES RING THE APRON. Enough that the rim is a ring of warm
+#: marks a party can read the shape of the yard from, and few enough that their
+#: pools touch rather than pile up.
+RING_TORCHES = 6
 #: How far inside the rim they stand, in tiles.
 RING_INSET = 1.6
-#: How far apart the torches lining a neck are, in tiles.
+#: How far apart the torches lining the neck are, in tiles.
 TORCH_SPACING = 5
 #: How far a torch has to stay from anything that is meant to be looked at.
 TORCH_CLEAR = 2.6
 
-#: THE THRESHOLD PAIR at the two mouths: one either side of each, in
-#: `(across, back-from-mouth)` tiles, and the sign of `back` is the direction
-#: into the map.
+#: THE PAIR EITHER SIDE OF A THRESHOLD, in `(across, back-from-mouth)` tiles.
+#:
+#: TWO THRESHOLDS, NOT THREE. The arrival mouth at the south of the map gets a
+#: pair, and so does the SHOP'S DOOR — which is the one that matters, because
+#: it is the only thing in the zone that has to be findable from across a dark
+#: yard. The exit is inside the building and needs nothing: it is a lit doorway
+#: in a lit room.
 #:
 #: THEY ARE THE STORE'S OWN TORCHES AND NOT THE `Entrance`'S. An `Entrance` can
 #: carry torches and a forest's exit uses that — but those are drawn out of the
-#: RIFT atlas, and a rift torch burns the anomaly's prism: cyan and violet,
-#: because what it marks is a hole in the world. Four of them at the top of
-#: this room would be the only cold light in the one zone whose entire job is
-#: being warm. So the threshold is dressed with the same fire everything else
-#: here is, and the way out reads as somewhere you walk to rather than as
-#: somewhere the world tore open.
-GATE_TORCHES: tuple[tuple[float, float, int], ...] = (
-    (-2.4, 1.0, 1), (2.4, 1.0, -1),
+#: RIFT atlas and burn the anomaly's prism, cyan and violet, because what they
+#: mark is a hole in the world. Cold light at the door of the one warm zone in
+#: the game would be the wrong note.
+GATE_TORCHES: tuple[tuple[float, float], ...] = (
+    (-2.4, 1.0), (2.4, 1.0),
 )
+#: The pair flanking the shop's door, in tiles either side of it, standing this
+#: far out into the yard.
+DOOR_TORCHES = (3.6, 1.4)
+
+#: HOW FAR A HANGING LAMP THROWS, in tiles.
+#:
+#: SHORT, and shorter than a torch, but the pools have to TOUCH. A lamp on a
+#: chain two tiles over your head lights the floor under it and the tables
+#: either side; five of them on a grid is what makes the room evenly lit
+#: without any one of them being a bonfire. At four tiles they did not reach
+#: each other across a twenty-two tile room and what came out was five bright
+#: holes in a dark floor — the clearing's own failure, indoors. The ambient
+#: floor is what makes the shop LEGIBLE; these are what make it look like
+#: somebody lit it, and that only works if the lit parts join up.
+LAMP_LIGHT_TILES = 5.2
 
 # --- stock ------------------------------------------------------------------
 
@@ -468,13 +610,40 @@ def _roll_stock(day: int, count: int, rng: random.Random) -> list[str]:
 # --- the ground -------------------------------------------------------------
 
 
-def _centre(width: int, height: int) -> tuple[float, float]:
-    """The clearing's middle, in TILES. Everything is authored against it."""
-    return (width - 1) / 2.0, (height - 1) / 2.0
+def _apron(width: int, height: int) -> tuple[float, float]:
+    """The APRON's middle, in TILES. Everything outdoors is authored against it.
+
+    Not the map's centre any more: the building takes the top eighteen rows, so
+    the clearing sits in what is left below it. Derived rather than written
+    down, because the two have to stay flush — a gap between the shop's south
+    wall and the top of the circle would be a strip of forest nobody can
+    explain between a yard and the door it serves.
+    """
+    top = SHOP_TOP + SHOP_ROWS          # first row south of the building
+    bottom = height - STORE_CORRIDOR_TILES - 1
+    return (width - 1) / 2.0, (top + bottom) / 2.0
+
+
+def shop_bounds(width: int) -> tuple[int, int, int, int]:
+    """The building's OUTER rectangle as `(left, top, right, bottom)` in tiles.
+
+    Inclusive on every side, and those four rows and columns are the WALLS.
+    Public because the flood-fill test and `build_store` both need to know
+    where the masonry is, and a second copy of the arithmetic is a second
+    opinion about where the door is.
+    """
+    left = (width - SHOP_COLS) // 2
+    return left, SHOP_TOP, left + SHOP_COLS - 1, SHOP_TOP + SHOP_ROWS - 1
+
+
+def _shop_centre(width: int) -> tuple[float, float]:
+    """The middle of the INTERIOR, in tiles. The origin for `_in`."""
+    left, top, right, bottom = shop_bounds(width)
+    return (left + 1 + right - 1) / 2.0, (top + 1 + bottom - 1) / 2.0
 
 
 def _circle_half(angle: float, tx: int, ty: int, seed: int) -> float:
-    """The clearing's radius at `angle`, in tiles.
+    """The apron's radius at `angle`, in tiles.
 
     Two slow harmonics plus a hash. The harmonics are what make the rim
     BREATHE — bulging in places, pinched in others — and the hash is what stops
@@ -482,9 +651,8 @@ def _circle_half(angle: float, tx: int, ty: int, seed: int) -> float:
     radius is a circle with a grass texture on it.
 
     The amplitudes are small relative to the radius on purpose. Wander of the
-    same order as the room itself stops being a clearing that breathes and
-    becomes a coastline, and this room's job is to be legible as ONE space from
-    the middle of it.
+    same order as the yard itself stops being a clearing that breathes and
+    becomes a coastline.
     """
     swell = math.sin(angle * 3.0 + 0.7) * 1.1 + math.sin(angle * 5.0 - 1.3) * 0.7
     return STORE_CIRCLE_TILES + swell + (_hash(tx, ty, seed, 5) - 0.5) * EDGE_JITTER
@@ -497,9 +665,71 @@ def _neck_half(ty: int, seed: int) -> float:
     return base + swell + (_hash(0, ty, seed, 7) - 0.5) * (EDGE_JITTER * 0.6)
 
 
+def _stamp_shop(
+    grid: list[list[int]], width: int, height: int, seed: int
+) -> tuple[float, float]:
+    """Lay the building over the finished forest. Returns the door, in pixels.
+
+    IT IS STAMPED LAST AND IT IS THE ONE THING IN THE ZONE WITH STRAIGHT EDGES.
+    Everything under it — the treeline, the rim's harmonics, the neck's
+    wander — is noise, because a clearing is FOUND. A building is not: it has a
+    square corner, courses that line up and a door in the middle of a wall, and
+    that contrast is the entire reason the party reads it as somebody's rather
+    than as more terrain. So it overwrites, unconditionally, whatever the
+    generator had put there.
+
+    THE YARD COMES FIRST AND ITS EDGE IS RAGGED, WHICH IS THE OPPOSITE RULE.
+    The woods have to stop short of the walls — a trunk growing out of brick is
+    the tell that nobody put the building there — but clearing a clean
+    rectangle around it just moves the problem out three tiles and draws a
+    second straight line, this one with no wall under it to justify it. So the
+    margin is jittered per tile off the same hash the rim uses. The BUILDING is
+    surveyed; the ground it was put down on is not.
+
+    NOTHING IS CLEARED TO THE NORTH. There is no yard back there — the exit
+    corridor comes straight off the north wall, and open ground either side of
+    it would be a lawn behind a shop that the party can see, walk into and find
+    nothing in.
+    """
+    left, top, right, bottom = shop_bounds(width)
+
+    y0 = max(BORDER_TILES, top)
+    y1 = min(height - BORDER_TILES, bottom + SHOP_YARD + 3)
+    x0 = max(BORDER_TILES, left - SHOP_YARD - 2)
+    x1 = min(width - BORDER_TILES, right + SHOP_YARD + 3)
+    for ty in range(y0, y1):
+        for tx in range(x0, x1):
+            # Chebyshev distance out of the building's rectangle, with the
+            # north face excluded so the clearing never opens behind it.
+            out = max(left - tx, tx - right, ty - bottom, 0)
+            margin = SHOP_YARD + (_hash(tx, ty, seed, 11) - 0.5) * 2.2
+            if out <= margin:
+                grid[ty][tx] = FLOOR
+
+    for ty in range(top, bottom + 1):
+        for tx in range(left, right + 1):
+            edge = ty in (top, bottom) or tx in (left, right)
+            grid[ty][tx] = BRICK if edge else TILEFLOOR
+
+    # THE TWO OPENINGS, punched through the walls they belong to. The door in
+    # the south wall is how the party gets in; the gap in the north wall is the
+    # mouth of the exit corridor, which `_carve_ends` then runs off the top of
+    # the map. Both are floored with the SHOP'S floor rather than with soil: a
+    # threshold you can see the brick run through is a threshold that belongs
+    # to the building.
+    cx = (width - 1) / 2.0
+    gate_x0 = int(round(cx - SHOP_GATE_HALF))
+    gate_x1 = int(round(cx + SHOP_GATE_HALF))
+    for tx in range(gate_x0, gate_x1 + 1):
+        grid[bottom][tx] = TILEFLOOR
+        grid[top][tx] = TILEFLOOR
+
+    return (cx + 0.5) * TILE_SIZE, (bottom + 1.0) * TILE_SIZE
+
+
 def _tiles(width: int, height: int, seed: int) -> list[list[int]]:
-    """Corridor, clearing, corridor: open ground with woods thickening away."""
-    cx, cy = _centre(width, height)
+    """Corridor, apron, shop, corridor: the zone's ground, south to north."""
+    acx, acy = _apron(width, height)
     grid: list[list[int]] = []
     for ty in range(height):
         row: list[int] = []
@@ -512,14 +742,22 @@ def _tiles(width: int, height: int, seed: int) -> list[list[int]]:
             ):
                 row.append(TREE)
                 continue
-            dx = tx - cx
-            dy = ty - cy
+            dx = tx - acx
+            dy = ty - acy
             dist = math.hypot(dx, dy)
             # How far outside the walkable shape this tile is, in tiles. The
-            # shape is the UNION of the clearing and the throat that runs the
+            # shape is the UNION of the apron and the throat that runs the
             # whole height of the map, so the smaller excess wins.
             out_circle = dist - _circle_half(math.atan2(dy, dx), tx, ty, seed)
-            out_neck = abs(dx) - _neck_half(ty, seed)
+            # The neck only exists SOUTH of the building. North of it the
+            # ground is the shop's, and a throat that ran the full height of
+            # the map would leave two pockets of grass either side of the exit
+            # corridor that nobody can reach and nobody can explain.
+            out_neck = (
+                abs(dx) - _neck_half(ty, seed)
+                if ty > SHOP_TOP + SHOP_ROWS - 1
+                else 1e6
+            )
             off = min(out_circle, out_neck)
             if off < 0:
                 # Open ground. A boulder now and then, out near the rim and
@@ -530,9 +768,7 @@ def _tiles(width: int, height: int, seed: int) -> list[list[int]]:
                     row.append(FLOOR)
                 continue
             # Density ramps with depth so the treeline thickens instead of
-            # starting solid. Over THREE tiles: the camp is a round clearing
-            # with room to spare, and this one has a rim the party is meant to
-            # read as a wall of woods from the middle of the room.
+            # starting solid.
             depth = min(1.0, off / 3.0)
             if _hash(tx, ty, seed, 9) < 0.30 + depth * 0.7:
                 row.append(TREE)
@@ -544,23 +780,26 @@ def _tiles(width: int, height: int, seed: int) -> list[list[int]]:
 
     # THE SPINE, and it is a guarantee rather than dressing. Everything above
     # is noise — a pinched neck plus an unlucky boulder could in principle wall
-    # the room off from its own door, and unlike the forest generator this
+    # the yard off from its own door, and unlike the forest generator this
     # module has no retry loop to fall back on: there is exactly one store map
     # and the party is already walking into it. Clearing a narrow band up the
     # centreline is what makes the GROUND unconditional.
     #
-    # It is not a promise of a straight walk any more. The trader stands in the
-    # middle of his own shop, so his counter, the middle column of stalls and
-    # one landing skid claim tiles on this band afterwards and the party goes
-    # round them — which is what walking into a shop looks like. What replaces
-    # the promise is a check: `tests/test_store_walk.py` flood-fills the
-    # finished map and fails if the exit, the man, a stall or the cabinet
-    # cannot be reached. Run it after moving anything in the pitch block.
+    # It stops at the building's south wall, because from there the guarantee
+    # is the building's own: the door is punched in a known column and the
+    # interior is a rectangle of floor. It is not a promise of a straight walk
+    # either way — a landing skid and the middle column of stalls both claim
+    # tiles on this line and the party goes round them. What replaces that
+    # promise is `tests/test_store_walk.py`, which flood-fills the finished map
+    # and fails if the exit, the man, a stall or the cabinet cannot be reached.
+    _, _, _, shop_bottom = shop_bounds(width)
     for tx in range(width):
-        if abs(tx - cx) > SPINE_TILES:
+        if abs(tx - acx) > SPINE_TILES:
             continue
-        for ty in range(BORDER_TILES, height - BORDER_TILES):
+        for ty in range(shop_bottom, height - BORDER_TILES):
             grid[ty][tx] = FLOOR
+
+    _stamp_shop(grid, width, height, seed)
     return grid
 
 
@@ -576,11 +815,18 @@ def _carve_ends(grid: list[list[int]], width: int, height: int) -> tuple[Entranc
     The SOUTH one seals — the same slam the forest arrival gets, so the party
     knows the night is behind them — and the NORTH one never does, because it
     is not a thing to be found. It is the way on, standing open the entire
-    time, with a rank of torches either side of it so it is legible from the
-    middle of the room.
+    time.
+
+    THEY ALSO OPEN ONTO DIFFERENT GROUND, and that is the change the building
+    made. The south mouth opens onto SOIL and has to guarantee three rows of it
+    in case the treeline closed over the end of the throat. The north mouth
+    opens into the SHOP, through the gap `_stamp_shop` already punched in the
+    north wall — so it must not lay soil at all: three rows of forest floor
+    written over the back of the shop would put a patch of dirt inside the
+    building and cut the wall in half.
     """
     depth = STORE_CORRIDOR_TILES
-    cx, _ = _centre(width, height)
+    cx, _ = _apron(width, height)
     half = max(1.5, STORE_LANE_TILES / 2.0 - 1.5)
     x0 = max(0, int(round(cx - half)))
     x1 = min(width - 1, int(round(cx + half)))
@@ -589,10 +835,9 @@ def _carve_ends(grid: list[list[int]], width: int, height: int) -> tuple[Entranc
         for step in range(depth):
             grid[step][tx] = VOID
             grid[height - 1 - step][tx] = VOID
-        # Whatever the treeline did at the very ends, a mouth has to open onto
-        # walkable ground or the party is puppeted into a wall.
+        # Whatever the treeline did at the very end, the SOUTH mouth has to
+        # open onto walkable ground or the party is puppeted into a wall.
         for step in range(depth, depth + 3):
-            grid[step][tx] = FLOOR
             grid[height - 1 - step][tx] = FLOOR
 
     mid_x = (cx + 0.5) * TILE_SIZE
@@ -628,24 +873,37 @@ def _carve_ends(grid: list[list[int]], width: int, height: int) -> tuple[Entranc
 
 
 def _at(width: int, height: int, col: float, row: float) -> tuple[float, float]:
-    """A `(column, row)` offset from the clearing's centre, in world pixels.
+    """A `(column, row)` offset from the APRON'S centre, in world pixels.
 
     The `+ 1.0` on the row is the same convention every fixture in this game
     uses: an offset names the tile a thing stands ON, and a contact point is
     the BOTTOM of that tile.
     """
-    cx, cy = _centre(width, height)
-    return (cx + col) * TILE_SIZE, (cy + row + 1.0) * TILE_SIZE
+    acx, acy = _apron(width, height)
+    return (acx + col) * TILE_SIZE, (acy + row + 1.0) * TILE_SIZE
+
+
+def _in(width: int, col: float, row: float) -> tuple[float, float]:
+    """A `(column, row)` offset from the SHOP INTERIOR'S centre, in pixels.
+
+    The indoor twin of `_at`, and a separate function rather than a parameter
+    because the two origins answer different questions. `_at` places things
+    against a clearing that breathes; this places things against WALLS, and a
+    counter that came away from its wall when the apron was resized would be
+    the loudest possible bug in the room.
+    """
+    scx, scy = _shop_centre(width)
+    return (scx + col) * TILE_SIZE, (scy + row + 1.0) * TILE_SIZE
 
 
 def _place_stands(width: int, height: int, day: int, rng: random.Random) -> list[Stand]:
-    """The six tables, three across and two deep in front of the merchant.
+    """The six tables, three across and two deep on the shop floor.
 
     ON THE GRID, not knocked off it — see `STALL_COLS`. Cheapest first, filled
     SOUTH TO NORTH and west to east, because that is the order the party walks
-    past them: the first table they reach is the one they can afford, and the
-    last one they reach is the one they are saving for. That ramp is the
-    zone's only tutorial about money.
+    past them coming through the door: the first table they reach is the one
+    they can afford, and the row against the counter is the one they are saving
+    for. That ramp is the zone's only tutorial about money.
     """
     stock = _roll_stock(day, STALL_COUNT, rng)
     if not stock:
@@ -667,7 +925,7 @@ def _place_stands(width: int, height: int, day: int, rng: random.Random) -> list
             if index >= len(priced):
                 break
             key, price = priced[index]
-            x, y = _at(width, height, col, row)
+            x, y = _in(width, col, row)
             stands.append(
                 Stand(
                     stand_id=f"s{index}",
@@ -685,27 +943,54 @@ def _place_stands(width: int, height: int, day: int, rng: random.Random) -> list
 def payout_spots(width: int, height: int, count: int) -> list[tuple[float, float]]:
     """Landing points for `count` platforms, in world pixels.
 
-    Measured from the clearing's CENTRE like everything else, because what has
-    to be guaranteed is the relationship to the trader and to the way in: the
-    party walks out of the neck and the skids are already coming down in front
-    of them and on his side of the room.
+    Measured from the apron's CENTRE like everything else outdoors, because
+    what has to be guaranteed is the relationship to the way in and to the
+    shop's door: the party walks out of the neck and the skids are already
+    coming down between them and the building.
     """
     return [_at(width, height, col, row) for col, row in PAYOUT_SPOTS[: max(0, count)]]
 
 
 def payload_kit(width: int, height: int) -> list[tuple[float, float, int]]:
-    """His gear, in world pixels. One list, read twice.
+    """His gear on the apron, in world pixels. One list, read twice.
 
     Built here rather than inline so the tiles it makes solid and the rows the
     client draws come out of the same call — a footprint derived from a second
     copy of the offsets is a footprint that drifts the first time somebody
     nudges the wagon.
     """
-    out: list[tuple[float, float, int]] = []
-    for col, row, variant in KIT_SPOTS:
-        x, y = _at(width, height, col, row)
-        out.append((x, y, variant))
-    return out
+    return [(*_at(width, height, col, row), variant) for col, row, variant in KIT_SPOTS]
+
+
+def payload_counter(width: int) -> list[tuple[float, float, int]]:
+    """The L, in world pixels. `(x, y, kind)` — 0 elbow, 1 east, 2 south."""
+    return [(*_in(width, col, row), kind) for col, row, kind in COUNTER_L]
+
+
+def payload_shelves(width: int) -> list[tuple[float, float, int]]:
+    """His shelves on the north wall, in world pixels."""
+    return [(*_in(width, col, row), variant) for col, row, variant in SHELF_SPOTS]
+
+
+def payload_crates(width: int) -> list[tuple[float, float, int]]:
+    """The decoration crates around the room, in world pixels."""
+    return [(*_in(width, col, row), variant) for col, row, variant in CRATE_SPOTS]
+
+
+def payload_rugs(width: int) -> list[tuple[float, float, int]]:
+    """The mats, in world pixels. Flat: they claim nothing and block nothing."""
+    return [(*_in(width, col, row), variant) for col, row, variant in RUG_SPOTS]
+
+
+def payload_lamps(width: int) -> list[tuple[float, float]]:
+    """The lamps' floor contacts, in world pixels.
+
+    Ordinary standing props: a lamp is a vessel on a small table and it sits on
+    the ground the way the tables do. `LAMP_FLAME_TILES` is how far above this
+    the wick burns, and it is one number in one place so the sprite, the flame
+    and the pool of light cannot end up at three different heights.
+    """
+    return [_in(width, col, row) for col, row in LAMP_SPOTS]
 
 
 def _torches(
@@ -714,21 +999,22 @@ def _torches(
     seed: int,
     keep_out: list[tuple[float, float]],
 ) -> list[tuple[float, float, int]]:
-    """Torch contact points, in world pixels: the rim ring and the two necks.
+    """Torch contact points on the APRON, in world pixels.
 
-    THEY ARE THE ZONE. Everywhere else in this game is a forest at night with
-    the lantern off; here the ring around the clearing is what a party sees
-    before they see anything standing in it, and it is the difference between
-    walking into a room and walking into more woods. The necks are navigation
-    on top of that — a chain of fires leading away from a mouth answers "which
-    way" before anybody has taken a step.
+    THERE ARE NONE INSIDE. The shop is lit from above by lamps on chains, which
+    is how a room is lit; a burning post in the middle of a brick floor is how
+    a clearing is lit, and putting both in the zone would say the building was
+    a tent. What is out here is the ring around the yard, the chain down the
+    south throat, a pair at the arrival mouth and — the one that matters — a
+    pair either side of the SHOP'S DOOR, because that door is the only thing in
+    the zone that has to be findable from across a dark yard.
 
     A torch is never placed within `TORCH_CLEAR` of something meant to be
-    LOOKED AT. A post standing in the stock is one more thing between the
-    player and the price they are trying to read, and the cabinet and the
-    wagon light their own patch anyway.
+    LOOKED AT. A post standing in front of the wagon is one more thing between
+    the player and the silhouette that explains who the trader is.
     """
-    cx, cy = _centre(width, height)
+    acx, acy = _apron(width, height)
+    _, _, _, shop_bottom = shop_bounds(width)
     clear = TORCH_CLEAR * TILE_SIZE
     placed: list[tuple[float, float, int]] = []
 
@@ -741,41 +1027,52 @@ def _torches(
     for index in range(RING_TORCHES):
         angle = math.pi / 2 + (index / RING_TORCHES) * math.tau
         radius = _circle_half(angle, index, 0, seed) - RING_INSET
-        tx = cx + math.cos(angle) * radius
-        ty = cy + math.sin(angle) * radius
+        tx = acx + math.cos(angle) * radius
+        ty = acy + math.sin(angle) * radius
         x = (tx + 0.5) * TILE_SIZE
         y = (ty + 1.0) * TILE_SIZE
         if free(x, y):
             placed.append((x, y, index % 2))
 
-    # THE THRESHOLDS. Ranked and PAIRED, which is the one place in this zone
-    # that is allowed to look arranged: a doorway is a thing somebody built, and
-    # two ranks of two either side of a mouth is what a threshold looks like in
-    # every culture that has ever had one. They go in before the necks so a
-    # neck torch can never land on top of one.
-    for across, back, _side in GATE_TORCHES:
-        for mouth_y, into in (
-            ((STORE_CORRIDOR_TILES + 0.5), 1.0),
-            ((height - STORE_CORRIDOR_TILES - 1.5), -1.0),
-        ):
-            placed.append(
-                (
-                    (cx + across + 0.5) * TILE_SIZE,
-                    (mouth_y + into * back + 1.0) * TILE_SIZE,
-                    0 if across < 0 else 1,
-                )
+    # THE ARRIVAL MOUTH. Ranked and PAIRED, which is the one place out here
+    # allowed to look arranged: a doorway is a thing somebody built, and two
+    # torches either side of a mouth is what a threshold looks like in every
+    # culture that has ever had one.
+    mouth_y = height - STORE_CORRIDOR_TILES - 1.5
+    for across, back in GATE_TORCHES:
+        placed.append(
+            (
+                (acx + across + 0.5) * TILE_SIZE,
+                (mouth_y - back + 1.0) * TILE_SIZE,
+                0 if across < 0 else 1,
             )
+        )
 
-    # THE NECKS. Staggered either side of the centreline rather than paired, so
-    # a throat reads as a path somebody lit and not as an avenue somebody
+    # THE SHOP'S DOOR. Same pair, at the other end of the walk, standing out in
+    # the yard rather than in the threshold — they are lighting a WALL, and a
+    # torch in a doorway lights the inside of the frame and nothing else.
+    across, out = DOOR_TORCHES
+    for side in (-1, 1):
+        placed.append(
+            (
+                (acx + side * across + 0.5) * TILE_SIZE,
+                (shop_bottom + out + 1.0) * TILE_SIZE,
+                0 if side < 0 else 1,
+            )
+        )
+
+    # THE NECK. Staggered either side of the centreline rather than paired, so
+    # the throat reads as a path somebody lit and not as an avenue somebody
     # surveyed.
     index = 0
     span = range(STORE_CORRIDOR_TILES + 3, height - STORE_CORRIDOR_TILES - 2, TORCH_SPACING)
     for ty in span:
-        if abs(ty - cy) < STORE_CIRCLE_TILES - 1.0:
-            continue  # inside the clearing: that is the ring's job
+        if ty <= shop_bottom + SHOP_YARD:
+            continue  # the yard and the building: not the neck's business
+        if abs(ty - acy) < STORE_CIRCLE_TILES - 1.0:
+            continue  # inside the apron: that is the ring's job
         side = 1 if index % 2 else -1
-        tx = cx + side * (_neck_half(ty, seed) - 1.3)
+        tx = acx + side * (_neck_half(ty, seed) - 1.3)
         x = (tx + 0.5) * TILE_SIZE
         y = (ty + 1.0) * TILE_SIZE
         if free(x, y):
@@ -787,30 +1084,42 @@ def _torches(
 
 def _dress(
     width: int,
-    height: int,
     torches: list[tuple[float, float, int]],
+    lamps: list[tuple[float, float]],
     machine: tuple[float, float],
 ) -> dict:
-    """The lights on the map, shipped as ordinary scenery.
+    """Every light on the map, shipped as ordinary scenery.
 
-    `SceneLight` is how a beacon, a cabin lamp and a torch all reach the
-    lighting, and the lighting has no idea which is which — so the whole ring
-    costs no client code at all.
+    `PlacedLight` is how a beacon, a cabin lamp, a torch and now a shop lamp
+    all reach the lighting, and the lighting has no idea which is which — so
+    the whole zone costs no client code at all beyond the sprites.
 
-    THERE IS NO TENT ANY MORE. He had one when he was a man camped in a glade;
-    he has a WAGON now, and a tent pitched next to a covered wagon is the same
-    statement twice. The wagon carries his shelter, his stock and his history
-    in one silhouette — see `WAGON_COL`.
+    TWO SETS THAT NEVER SUM. The torches are outdoors and the lamps are inside
+    a brick box; the wall between them is opaque, so the shop's five pools and
+    the yard's ring plus three rotor washes are two separate budgets rather
+    than one that has to be shared. That is the difference between this layout
+    and the clearing it replaced, where every light in the zone landed on the
+    same floor — see `zones.STORE_AMBIENT`.
     """
     lights = [
         scenery.PlacedLight(x=x, y=y, radius_tiles=TORCH_LIGHT_TILES, kind=scenery.EMBER)
         for x, y, _ in torches
     ]
-    # The machine's marquee. A `SceneLight` like every other lit thing, so the
+    # The lamps, at the BULB rather than at the floor contact. A pool centred
+    # on the boards would light the rug and leave the thing that is actually
+    # glowing in the dark.
+    lights.extend(
+        scenery.PlacedLight(
+            x=x,
+            y=y - TILE_SIZE * LAMP_FLAME_TILES,
+            radius_tiles=LAMP_LIGHT_TILES,
+            kind=scenery.EMBER,
+        )
+        for x, y in lamps
+    )
+    # The machine's marquee. A `PlacedLight` like every other lit thing, so the
     # lighting has no idea one of its sources is electric — but it is placed
-    # ABOVE the cabinet's contact rather than on it, because the bulbs are on
-    # the crown and a pool centred on the floor would light the tray and leave
-    # the thing that is actually glowing in the dark.
+    # ABOVE the cabinet's contact, because the bulbs are on the crown.
     lights.append(
         scenery.PlacedLight(
             x=machine[0],
@@ -848,7 +1157,7 @@ def _claim(
 
 
 def build_store(day: int, seed: int, takes: list[int] | None = None) -> TileMap:
-    """Generate the merchant's clearing. One shape a night; the details roll.
+    """Generate the yard and the shop. One shape a night; the stock rolls.
 
     `takes` is what each of the night's platforms carried, in the order they
     were loaded. It only decides how many skids come down on the apron and how
@@ -864,22 +1173,31 @@ def build_store(day: int, seed: int, takes: list[int] | None = None) -> TileMap:
     south, north = _carve_ends(grid, width, height)
     stands = _place_stands(width, height, day, rng)
 
+    _, _, _, shop_bottom = shop_bounds(width)
+    door = ((width - 1) / 2.0 + 0.5) * TILE_SIZE, (shop_bottom + 1.0) * TILE_SIZE
+
+    # Outdoors.
     wagon = _at(width, height, WAGON_COL, WAGON_ROW)
-    merchant = _at(width, height, MERCHANT_COL, MERCHANT_ROW)
-    counter = _at(width, height, COUNTER_COL, COUNTER_ROW)
-    rug = _at(width, height, RUG_COL, RUG_ROW)
-    machine = _at(width, height, MACHINE_COL, MACHINE_ROW)
     kit = payload_kit(width, height)
+    # Indoors.
+    merchant = _in(width, MERCHANT_COL, MERCHANT_ROW)
+    machine = _in(width, MACHINE_COL, MACHINE_ROW)
+    counter = payload_counter(width)
+    shelves = payload_shelves(width)
+    crates = payload_crates(width)
+    rugs = payload_rugs(width)
+    lamps = payload_lamps(width)
 
     paid = [value for value in (takes or []) if value > 0][: len(PAYOUT_SPOTS)]
     landings = payout_spots(width, height, len(paid))
 
-    # Everything a torch has to stand clear of: the stock, the cabinet, the
-    # wagon and the man. The apron is NOT on the list — a skid is lowered onto
-    # ground that was already lit, and a torch it landed beside is a torch the
-    # deck is standing in front of, which is exactly right.
-    keep_out: list[tuple[float, float]] = [(stand.x, stand.y) for stand in stands]
-    keep_out.extend((machine, wagon, merchant, counter))
+    # Everything an outdoor torch has to stand clear of: the wagon and his kit.
+    # The APRON is NOT on the list — a skid is lowered onto ground that was
+    # already lit, and a torch it landed beside is a torch the deck is standing
+    # in front of, which is exactly right. Nothing indoors is on the list
+    # either, because no torch is ever placed indoors.
+    keep_out: list[tuple[float, float]] = [wagon]
+    keep_out.extend((kx, ky) for kx, ky, _ in kit)
     torches = _torches(width, height, seed, keep_out)
 
     # Tables are cover. Claiming the tiles under each one is what stops a
@@ -887,45 +1205,61 @@ def build_store(day: int, seed: int, takes: list[int] | None = None) -> TileMap:
     # usual reason: you can see over a table.
     for stand in stands:
         _claim(grid, width, height, stand.x, stand.y, TABLE_TILES_W)
-    # His gear is solid too, and it is what actually makes the pitch a PLACE: a
-    # party cannot walk through the crates to stand inside the wagon, so the
-    # west arc reads as somebody's camp rather than as painted scenery.
+    # The counter is the same kind of thing, one section at a time, and the run
+    # of them is what actually fences the merchant into his pocket.
+    for x, y, _kind in counter:
+        _claim(grid, width, height, x, y, COUNTER_TILES_W)
+    for x, y, _variant in shelves:
+        _claim(grid, width, height, x, y, SHELF_TILES_W)
+    for x, y, _variant in crates:
+        _claim(grid, width, height, x, y, CRATE_TILES_W)
+    # A lamp stands on a small table with an open flame on it. It was walkable
+    # while it hung from a chain two tiles overhead, which was correct then and
+    # is not now.
+    for x, y in lamps:
+        _claim(grid, width, height, x, y, LAMP_TILES_W)
+    # His gear is solid too, and it is what makes the yard a PLACE: a party
+    # cannot walk through the crates to stand inside the wagon.
     for kx, ky, _variant in kit:
         _claim(grid, width, height, kx, ky, KIT_TILES_W)
     _claim(grid, width, height, wagon[0], wagon[1], WAGON_TILES_W)
-    _claim(grid, width, height, counter[0], counter[1], COUNTER_TILES_W)
     # The cabinet is cover the same way a table is, and for the same reason: a
     # body standing inside the one object in the room that is supposed to be
     # looked at is the loudest possible bug.
     _claim(grid, width, height, machine[0], machine[1], MACHINE_TILES_W)
     # A landed skid is solid, exactly as it is out in the woods: it is a
-    # loading deck and the party does not stand on it.
+    # loading deck and the party does not stand on it. It STAYS solid for the
+    # whole visit, because it stays on screen for the whole visit.
     for px, py in landings:
         _claim(grid, width, height, px, py, PAYOUT_TILES_W)
 
-    # Nothing under the MERCHANT is made solid. He is drawn, not walked into,
-    # and a body-sized hole in the one spot the party gathers reads as the
-    # pitch fighting them — the same call `rift._stamp` makes about the middle
-    # of its sigil.
+    # NOTHING claims tiles under the MERCHANT or the RUGS. He is drawn, not
+    # walked into, and he is already fenced by his own counter; a rug is a flat
+    # thing on the floor. A solid tile under either would be a hole in the room
+    # with no visible cause.
 
-    # His campfire. A FIRE tile, so the client's existing campfire sprite and
-    # its glow both land with no code. Solid, like every fire in this game,
-    # which is correct: you walk around a fire.
-    cx, cy = _centre(width, height)
-    fire_tx = int(round(cx + FIRE_COL))
-    fire_ty = int(round(cy + FIRE_ROW))
+    # His campfire, out in the yard. A FIRE tile, so the client's existing
+    # campfire sprite and its glow both land with no code. Solid, like every
+    # fire in this game, which is correct: you walk around a fire.
+    acx, acy = _apron(width, height)
+    fire_tx = int(round(acx + FIRE_COL))
+    fire_ty = int(round(acy + FIRE_ROW))
     if 0 <= fire_ty < height and 0 <= fire_tx < width:
         grid[fire_ty][fire_tx] = FIRE
 
     payload = {
         "merchant": [round(merchant[0], 1), round(merchant[1], 1)],
         "wagon": [round(wagon[0], 1), round(wagon[1], 1)],
-        "counter": [round(counter[0], 1), round(counter[1], 1)],
+        "door": [round(door[0], 1), round(door[1], 1)],
         "stands": [stand.to_payload() for stand in stands],
         "torches": [[round(x, 1), round(y, 1), kind] for x, y, kind in torches],
-        "rug": [round(rug[0], 1), round(rug[1], 1)],
         "machine": [round(machine[0], 1), round(machine[1], 1)],
-        "kit": [[round(kx, 1), round(ky, 1), variant] for kx, ky, variant in kit],
+        "kit": [[round(x, 1), round(y, 1), variant] for x, y, variant in kit],
+        "counter": [[round(x, 1), round(y, 1), kind] for x, y, kind in counter],
+        "shelves": [[round(x, 1), round(y, 1), variant] for x, y, variant in shelves],
+        "crates": [[round(x, 1), round(y, 1), variant] for x, y, variant in crates],
+        "rugs": [[round(x, 1), round(y, 1), variant] for x, y, variant in rugs],
+        "lamps": [[round(x, 1), round(y, 1)] for x, y in lamps],
         # The apron. One row per platform that came home tonight: where it sets
         # down and what it was carrying. Absent (empty) on a night nobody
         # extracted, which is the one case where there is nothing to show.
@@ -938,7 +1272,7 @@ def build_store(day: int, seed: int, takes: list[int] | None = None) -> TileMap:
     return TileMap(
         grid,
         seed=seed,
-        scenery=_dress(width, height, torches, machine),
+        scenery=_dress(width, torches, lamps, machine),
         entrance=south.geometry_payload(),
         egress=north.geometry_payload(),
         store=payload,

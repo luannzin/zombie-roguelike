@@ -69,6 +69,7 @@ from make_textures import (
     TRANSPARENT,
     clamp01,
     hash01,
+    material_ramp,
     pack,
     rgb,
 )
@@ -105,34 +106,65 @@ Art = list[str]
 # the run who does not. So the coat is warm brown, the hood is a HAT, and there
 # is a face under it with two eyes in it. Nothing else about him changed.
 
+#: EVERY RAMP DERIVED, NOT PICKED. The characters below are still authored as
+#: ASCII rows — that is the right way to draw a person at this size and it is
+#: not changing — but the COLOURS they index used to be twenty-eight hand-typed
+#: hex triples, and a hand-typed ramp is a ramp that hue-shifts however the
+#: person typing it felt at the time. S11 says every step moves in hue as well
+#: as in value, shadows cool, highlights warm and desaturate; four numbers
+#: through `material_ramp` gets that for free and gets it the SAME WAY the
+#: props beside him get it.
+#:
+#: HE IS THE FOCAL MASS OF THE ROOM AND HE IS LIT LIKE IT (S13). The counter is
+#: the brightest large surface; he is the brightest SMALL one, and everything
+#: behind him — his shelves, his crates — sits on steps 1 to 3 so it cannot
+#: compete. His face and his scarf are the two places the full ramp is spent.
+_COAT = material_ramp(148.0, 0.20, 0.11, 0.44, steps=6)
+_HAT = material_ramp(28.0, 0.34, 0.13, 0.46, steps=6)
+_SKIN = material_ramp(26.0, 0.42, 0.30, 0.78, steps=6)
+_SCARF = material_ramp(4.0, 0.52, 0.22, 0.62, steps=6)
+_BURLAP = material_ramp(44.0, 0.24, 0.24, 0.60, steps=6)
+_LEATHER = material_ramp(24.0, 0.30, 0.14, 0.44, steps=6)
+_BRASS = material_ramp(43.0, 0.52, 0.20, 0.66, steps=6)
+_STEEL = material_ramp(228.0, 0.09, 0.24, 0.64, steps=6)
+_VEST = material_ramp(232.0, 0.10, 0.15, 0.38, steps=6)
+_CLOTH = material_ramp(96.0, 0.14, 0.14, 0.36, steps=6)
+_GLASS = material_ramp(150.0, 0.30, 0.22, 0.56, steps=6)
+
+#: THE GREEN COAT IS LOAD-BEARING AND IT SURVIVES THE RETUNE. Every large warm
+#: object he is ever seen against — his counter, his shelves, his crates, the
+#: brick behind him — is in the 15-45 degree band. A brown-coated man in front
+#: of a brown counter in a brown room is a silhouette that has to be found; a
+#: green one is a silhouette that is simply there. It is the only cool hue in
+#: the shop and it is on the one thing in it that is alive.
 PALETTE: Palette = {
-    "o": rgb("#1a1410"),  # outline
-    "k": rgb("#20302b"),  # coat, deep shade / the lining seen from inside
-    "c": rgb("#31473e"),  # coat, mid — the mass of him
-    "C": rgb("#456055"),  # coat, lit from the upper left
-    "H": rgb("#5d7a69"),  # coat, rim highlight (sparingly)
-    "h": rgb("#4a3324"),  # the hat's crown
-    "N": rgb("#6b4b32"),  # the hat's brim, catching the light
-    "f": rgb("#c9a07a"),  # his face
-    "F": rgb("#a97f5c"),  # his face, in shade
+    "o": rgb("#1a1410"),  # outline — hue-tinted, never black (S6)
+    "k": _COAT[1],        # coat, deep shade / the lining seen from inside
+    "c": _COAT[2],        # coat, mid — the mass of him
+    "C": _COAT[3],        # coat, lit from the upper left
+    "H": _COAT[4],        # coat, rim highlight (sparingly)
+    "h": _HAT[1],         # the hat's crown
+    "N": _HAT[3],         # the hat's brim, catching the light
+    "f": _SKIN[4],        # his face
+    "F": _SKIN[2],        # his face, in shade
     "e": rgb("#241c18"),  # eyes — two pixels, and they are the whole face
-    "p": rgb("#8c3a3a"),  # scarf
-    "P": rgb("#b45050"),  # scarf, lit
-    "b": rgb("#6f6247"),  # burlap bundle
-    "B": rgb("#8a7b59"),  # burlap, lit
-    "r": rgb("#4c3f28"),  # rope
-    "l": rgb("#4a3524"),  # leather strap / pouch
-    "L": rgb("#8a6a34"),  # brass buckle
-    "s": rgb("#c2926a"),  # bare hand
-    "S": rgb("#6a5236"),  # fingerless glove
-    "m": rgb("#6a6d78"),  # gunmetal
-    "M": rgb("#8d919c"),  # gunmetal, lit
-    "v": rgb("#33343d"),  # the vest under the coat
-    "V": rgb("#43444f"),  # vest, lit
-    "g": rgb("#4a6b53"),  # a bottle of something
-    "w": rgb("#9aa3ab"),  # glass / cork highlight
-    "t": rgb("#3a3e31"),  # trousers, under the open coat
-    "x": rgb("#463c30"),  # boot
+    "p": _SCARF[2],       # scarf
+    "P": _SCARF[4],       # scarf, lit — the accent (S12), under 8% of him
+    "b": _BURLAP[2],      # burlap bundle
+    "B": _BURLAP[4],      # burlap, lit
+    "r": _LEATHER[1],     # rope
+    "l": _LEATHER[2],     # leather strap / pouch
+    "L": _BRASS[4],       # brass buckle
+    "s": _SKIN[3],        # bare hand
+    "S": _LEATHER[3],     # fingerless glove
+    "m": _STEEL[2],       # gunmetal
+    "M": _STEEL[4],       # gunmetal, lit
+    "v": _VEST[2],        # the vest under the coat
+    "V": _VEST[3],        # vest, lit
+    "g": _GLASS[2],       # a bottle of something
+    "w": _GLASS[4],       # glass / cork highlight
+    "t": _CLOTH[2],       # trousers, under the open coat
+    "x": _LEATHER[2],     # boot
 }
 
 #: Coat pixels get a weave: a small deterministic value jitter so the mass of

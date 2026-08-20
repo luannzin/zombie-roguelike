@@ -171,6 +171,13 @@ export interface GameConfig {
    */
   enemyViewDarkScale: number;
   enemyViewLitScale: number;
+  /**
+   * Share of floor tiles `layers/terrain` puts a bush on. A RULE, not a paint
+   * setting: `ai.look` re-derives the same tiles from the map seed and cuts a
+   * creature's reach over them, so this decides how much cover a forest has.
+   * What it cuts the reach TO stays server-side — the client never asks.
+   */
+  bushChance: number;
   /** How far a bonfire throws light, in tiles. The camp's only light source. */
   campfireLightTiles: number;
   /** The fire plus the seat ring, in tiles: nothing grows inside it. */
@@ -730,28 +737,63 @@ export interface MachineTimingConfig {
 }
 
 /**
- * Where the merchant's pitch stands. Placed by `server/app/store.py`.
+ * Where the shop's fixtures stand. Placed by `server/app/store.py`.
  *
- * Only what is HIS is here. The clearing around it — soil, trees, the rim —
- * comes through the ordinary map channels (`seed` for texture, `props` and
- * `lights` for everything placed on it), because it is the same forest as
- * everywhere else and the client already knows how to draw all of it.
+ * Only what is FITTED is here. The masonry itself is not — the walls and the
+ * floor are TILE KINDS on the ordinary grid (`BRICK` / `TILEFLOOR`), so the
+ * client's collision, its lighting and its terrain bake all pick them up with
+ * nothing on this payload, and the building can never disagree with the map it
+ * is standing in. The apron outside is an ordinary forest map for the same
+ * reason: soil hashed from the seed, `props` and `lights` like anywhere else.
+ *
+ * EVERY LIST HERE IS OPTIONAL AND THE CLIENT DRAWS NOTHING FOR A MISSING ONE.
+ * Same rule the wagon and the machine already had: a payload from a server
+ * that predates a fixture is a shop without that fixture, not an error. It is
+ * what lets a fixture be added on the server first and drawn a commit later.
  */
 export interface StorePayload {
   merchant: [number, number];
   /**
-   * Contact point of his CART, parked on the west rim. Absent on a map built
-   * before he had one, which the layer treats as "no wagon here" rather than
-   * as an error — the same way it treats the machine.
+   * Contact point of his CART, parked out in the yard — not in the shop. See
+   * the design doc: a covered cart says he drives and a building says he does
+   * not, so the cart is what he ARRIVED in and the shop is what he unloaded
+   * into.
    */
   wagon?: [number, number];
-  /** Contact point of the plank he trades over, in front of him. */
-  counter?: [number, number];
+  /**
+   * THE COUNTER, as one row per tiling section: `[x, y, kind]`, where kind is
+   * 0 elbow, 1 running east, 2 running south.
+   *
+   * A LIST RATHER THAN A POINT, because the counter is an L now and the shape
+   * of the L is a layout decision. Shipping sections means the server can
+   * lengthen an arm by adding an offset and the client needs to know nothing;
+   * shipping one point and one big sprite would have put the geometry in the
+   * art, where nothing can flood-fill it.
+   */
+  counter?: [number, number, number][];
   stands: StandState[];
-  /** Torch contact points: `[x, y, variant]`. */
+  /** Torch contact points, all OUTDOORS: `[x, y, variant]`. */
   torches: [number, number, number][];
-  /** Centre of the mat the merchant trades over. */
-  rug: [number, number];
+  /** Contact point of the shop's door, in the middle of its south wall. */
+  door?: [number, number];
+  /** Wall shelving behind the counter: `[x, y, variant]`. Decoration. */
+  shelves?: [number, number, number][];
+  /** Shop-floor decoration crates: `[x, y, variant]`. None of them opens. */
+  crates?: [number, number, number][];
+  /**
+   * The mats: `[x, y, variant]` per mat, CENTRES not contacts — they lie flat
+   * and are baked into the ground canvas.
+   */
+  rugs?: [number, number, number][];
+  /**
+   * The hanging lamps, at their FLOOR CONTACTS: `[x, y]`.
+   *
+   * The contact, not the bulb, because that is what the renderer sorts by and
+   * hangs from — how far above it the lamp body sits is `lamp.hangY` off the
+   * store atlas, which is art. Sending the bulb's position would put the same
+   * number on the wire and in the manifest and let the two drift.
+   */
+  lamps?: [number, number][];
   /**
    * Contact point of the upgrade machine, on the north-west arc. Absent on a
    * map built before the cabinet existed, which the layer treats as "no
@@ -759,12 +801,12 @@ export interface StorePayload {
    */
   machine?: [number, number];
   /**
-   * His own gear: `[x, y, variant]` per piece, all of it BEHIND the counter.
+   * His own gear: `[x, y, variant]` per piece, all of it out in the YARD
+   * around his cart.
    *
    * It is on the store payload rather than in `props` because it is his, the
-   * same way the tables and the torches are — and because the WEST arc is the
-   * half that does not answer E. Nothing here is interactive; the art is drawn
-   * roped and padlocked so the silhouette says so.
+   * same way the tables and the torches are. Nothing here is interactive; the
+   * art is drawn roped and padlocked so the silhouette says so.
    */
   kit?: [number, number, number][];
   /**

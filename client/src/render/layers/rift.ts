@@ -1019,7 +1019,7 @@ export function drawRiftGlow(
     // pad's whole light radius that flattened the skid's own banding into a
     // silhouette and blew the deck out to one value. Halved: the lamps stay
     // the brightest thing on the structure, which is what they are for.
-    const peak = phase.alarm ? 0.17 : 0.11;
+    const peak = phase.alarm ? 0.13 : 0.085;
     const glow = ctx.createRadialGradient(rift.x, rift.y, 0, rift.x, rift.y, radius);
     glow.addColorStop(0, `rgb(${r} ${g} ${b} / ${(peak * beat).toFixed(3)})`);
     glow.addColorStop(0.24, `rgb(${r} ${g} ${b} / ${(peak * 0.45 * beat).toFixed(3)})`);
@@ -1037,10 +1037,17 @@ export function drawRiftGlow(
   const lamp = phase.alarm ? atlas.siren : atlas.standby;
   if (lamp && !phase.airborne && phase.powered) {
     const period = lamp.frames / Math.max(lamp.fps, 1e-6);
+    // FOUR OF THESE OVERLAP. Each lamp sheet bakes its own glare, and drawn at
+    // full strength onto `lighter` the four corners summed into one white
+    // rectangle the size of the deck — the pad reading as a lightbox rather
+    // than as four lamps on a structure. They are one budget with the halo
+    // above and the flames in the shop; judged apart, the sum creeps back.
+    ctx.globalAlpha = phase.alarm ? 0.85 : 0.72;
     atlas.layout.lamps.forEach((point, i) => {
       const offset = (i / Math.max(atlas.layout.lamps.length, 1)) * period;
       blit(ctx, lamp, phase.deckX + point.dx, phase.deckY + point.dy, time + offset);
     });
+    ctx.globalAlpha = 1;
   }
 
   // Rotor wash. Only once something is actually holding station over the pad,

@@ -196,17 +196,27 @@ EXIT_DEPTH_TILES = 5
 # front of him, the machine on the west arc — and the map is only as big as it
 # has to be for the treeline to have depth and the two necks to have somewhere
 # to run.
+#
+# IT IS TALLER AGAIN, AND THE EXTRA ROWS ARE THE APRON. The zone is two places
+# now, read south to north: an outdoor APRON where the night's platforms come
+# down, and the SHOP itself — a brick building standing at the north end of it,
+# the first and only structure in the game. Making them one room was the older
+# mistake in the other direction: a party walked into a clearing and got paid,
+# priced and levelled in the same twenty tiles, and every beat landed on top of
+# the last one. Two places, one walk.
 STORE_WIDTH_TILES = 38
-STORE_HEIGHT_TILES = 46
-#: Radius of the clearing, in tiles. `store._circle_half` breathes around it so
-#: the rim reads as woods rather than as a stamped disc.
-STORE_CIRCLE_TILES = 11.0
+STORE_HEIGHT_TILES = 54
+#: Radius of the APRON, in tiles. `store._circle_half` breathes around it so
+#: the rim reads as woods rather than as a stamped disc. It is the outdoor half
+#: of the zone and nothing is sold in it.
+STORE_CIRCLE_TILES = 10.0
 #: Typical width of the two NECKS — the walkable throat between a corridor
-#: mouth and the clearing. Narrow, so arriving and leaving are both a squeeze
-#: that opens out; the clearing does the breathing.
+#: mouth and the apron. Narrow, so arriving and leaving are both a squeeze
+#: that opens out; the apron does the breathing.
 STORE_LANE_TILES = 8.0
 #: VOID at each end: the way in at the bottom (which seals) and the way out at
-#: the top (which does not).
+#: the top (which does not). The NORTH one is inside the building — see
+#: `store.SHOP_ROWS`.
 STORE_CORRIDOR_TILES = 5
 STORE_BUY_TILES = 1.9
 STORE_BUY_DIST = TILE_SIZE * STORE_BUY_TILES
@@ -353,6 +363,36 @@ ENEMY_VIEW_DARK_SCALE = 0.62
 ENEMY_VIEW_LIT_SCALE = 1.0
 ENEMY_VIEW_DARK_TILES = VISION_LANTERN_TILES * ENEMY_VIEW_DARK_SCALE
 ENEMY_VIEW_LIT_TILES = VISION_LANTERN_TILES * ENEMY_VIEW_LIT_SCALE
+
+# UNDERGROWTH IS COVER, and until now it was scenery pretending to be. The
+# client has always drawn bushes over the top of a body — you stand in a
+# thicket and the picture says you are hidden — while `look` tested a clean
+# ray at full reach and every creature on the map saw straight through the
+# thing that was covering you. A picture that lies about the rules is worse
+# than no picture: the player takes cover, is seen anyway, and concludes the
+# senses are broken.
+#
+# There is no bush TILE. Undergrowth is placed by hashing the tile coordinate
+# against the map seed, which is why the map payload is a seed and not a
+# decoration layer, so the server re-derives the same bushes the client draws
+# (`world.bush_at`) instead of anybody shipping a mask.
+#
+# WHY A REACH SCALE AND NOT AN OCCLUDER. Making a bush block the sight ray
+# would be the stronger rule and the wrong one: a ray is all-or-nothing, so a
+# single bush anywhere on the line would hide a player standing in the open
+# ten tiles past it, and a thicket would become a wall creatures cannot see
+# over from any range. Concealment belongs to the tile the target is STANDING
+# in — crouch in the bush and things have to come close, break the line and
+# they see you as before.
+#
+# Tuned against the notice cone, not against a number: at this scale a dark
+# player in undergrowth is invisible past ~4 tiles, which is inside the reach
+# a shambler closes in a second. Cover buys a beat, never safety.
+BUSH_CONCEAL_SCALE = 0.55
+#: Share of floor tiles carrying a bush. Was a client-side constant in
+#: `layers/terrain.ts`; it decides how much cover a forest has, so it is a
+#: gameplay number and lives here. The client reads it off `welcome.config`.
+BUSH_CHANCE = 0.055
 
 # GLARE: the beam falling on something that is not looking at you.
 #
@@ -651,6 +691,11 @@ def client_config() -> dict:
         # runtime symptom when it breaks, only a wrong game.
         "enemyViewDarkScale": ENEMY_VIEW_DARK_SCALE,
         "enemyViewLitScale": ENEMY_VIEW_LIT_SCALE,
+        # Undergrowth density. The client places bushes from this and the map
+        # seed; `ai.look` re-derives the same tiles and shortens its reach over
+        # them, so the cover the player can see is the cover the rules apply.
+        # How much it shortens by (`BUSH_CONCEAL_SCALE`) stays here.
+        "bushChance": BUSH_CHANCE,
         # Camp geometry. The client needs it to keep undergrowth out of the
         # hearth and to light the fire it can already see in the tiles.
         "campfireLightTiles": CAMPFIRE_LIGHT_TILES,

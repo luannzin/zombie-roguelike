@@ -482,6 +482,68 @@ def _from_pool(rng: random.Random, pool, dx: float, dy: float) -> Piece:
     return Piece(kind, STANDING, dx, dy, 0, rng.random() < 0.5)
 
 
+#: Every openable kind — the three pools plus the one-off containers scenes
+#: place by hand. Derived from the pools rather than listed, so a crate added
+#: to `CRATE_POOL` is thinned like the other seven without a second edit.
+CONTAINER_KINDS: frozenset[str] = frozenset(
+    [kind for pool in (CRATE_POOL, BARREL_POOL, STASH_POOL) for kind, _ in pool]
+    + ["chest", "strongbox", "tote", "ammo_case"]
+)
+
+#: The most openables one scene may keep. Scenes roll their containers
+#: independently — the roadblock rolls barrels AND crates, the haulage spill
+#: rolls up to seven — and the rolls sum, so the densest scenes were putting a
+#: dozen boxes in a nine-tile clearing. A pile that size is not a find, it is
+#: furniture: the player stops reading silhouettes and just walks the row
+#: pressing E, and the eight crate builds the pool exists to teach stop meaning
+#: anything. Five is still a haul and still leaves floor to walk on.
+MAX_CONTAINERS = 5
+
+
+def _thin_containers(layout: Layout, rng: random.Random) -> Layout:
+    """Drop openables that stack on each other, and cap what is left.
+
+    TWO FAULTS, ONE PASS. Scenes place their boxes at `rng.uniform` offsets
+    with nothing checking what is already there, so two of them land on the
+    same tile — and because a container's footprint is claimed as LOW by
+    `_cells`, the second one is a sprite standing inside another sprite on a
+    tile that can only be smashed once. Thinning here rather than in each
+    builder is the whole point: fifteen scenes roll containers and every one
+    of them had the same bug.
+
+    Order is shuffled first so the cap is not always paid by whichever loop the
+    builder happens to run last — that would quietly delete the roadblock's
+    crates every time its barrels rolled high.
+    """
+    containers = [p for p in layout.pieces if p.kind in CONTAINER_KINDS and p.layer == STANDING]
+    if len(containers) <= 1:
+        return layout
+
+    rng.shuffle(containers)
+    taken: set[tuple[int, int]] = set()
+    keep: set[int] = set()
+    for piece in containers:
+        if len(keep) >= MAX_CONTAINERS:
+            break
+        # Same anchoring as `_cells`, in local tile space: contact point,
+        # bottom centre, one tile. Containers are all 1 wide, so one cell.
+        cell = (
+            int(math.floor(piece.dx + 0.5)),
+            int(math.floor(piece.dy - 1e-6)),
+        )
+        if cell in taken:
+            continue
+        taken.add(cell)
+        keep.add(id(piece))
+
+    pieces = tuple(
+        p
+        for p in layout.pieces
+        if p.kind not in CONTAINER_KINDS or p.layer != STANDING or id(p) in keep
+    )
+    return Layout(layout.width, layout.height, pieces, layout.lights)
+
+
 def _roadside(rng: random.Random) -> Layout:
     """One vehicle where the road used to be, and whatever fell out of it.
 
@@ -1308,6 +1370,10 @@ def populate(
 
     def attempt(layout: Layout, budget: int, kind: str) -> bool:
         nonlocal reach
+        # Before anything is measured: the plot test, the tile claims and the
+        # props all read the same piece list, so the pile has to be thinned
+        # once, here, and not per consumer.
+        layout = _thin_containers(layout, rng)
         for _ in range(budget):
             # The border stays untouched: it is the treeline that keeps the
             # camera from framing the end of the world, and a scene allowed to

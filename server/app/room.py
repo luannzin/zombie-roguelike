@@ -965,22 +965,22 @@ class Room:
         item at a time in `_tip_item`, so the number on the HUD and the sprites
         on the deck are the same event and cannot disagree.
 
-        The CEILING is decided here and only here. Under the quota this pour
-        stops on the bill (`cap`), so a bag of relics is not swallowed whole to
-        settle 30; past it there is no number to stop at and the pad takes the
-        lot, which is the overfeed and the only way to grow the core waiting at
-        the far end.
+        THERE IS NO CEILING. The press empties the bag, every time, whether
+        that lands under the quota, exactly on it, or a long way past it. A
+        pour that stopped on the bill was the one interaction in the game that
+        did less than the player asked for: you walked a night's haul to the
+        machine, pressed the one button there is, and were left standing at it
+        still carrying half of it. Overshoot is not a mistake to be protected
+        from — it is the only way to grow the core waiting at the far end.
         """
         if player.inventory.bag_value() <= 0:
             return
-        remaining = target.need - target.fed
         player.pour = Pour(
             rift_id=target.id,
             phase=POUR_WALK,
             left=rift.POUR_WALK_MAX,
             x=target.deck_x,
             y=target.deck_y + rift.POUR_STAND * TILE_SIZE,
-            cap=max(0, remaining),
         )
         # One noise for the whole pour, thrown when it starts. A pad being
         # loaded is a crate being emptied into an iron box and it carries; one
@@ -995,22 +995,22 @@ class Room:
         )
 
     def _pour_inputs(self, player: Player) -> None:
-        """Ack everything, obey nothing but the cancel.
+        """Ack everything, obey nothing.
 
         The body is a puppet for the length of a pour, but the queue still has
         to drain and the sequence still has to be acked, or the client's
         prediction never hears back and walks off on its own.
 
-        A MOVEMENT KEY IS THE ONE THING THAT STILL MEANS SOMETHING. It ends the
-        pour where it stands and everything already tipped stays in the pad —
-        standing still for three seconds in a dark forest has to be a choice
-        the player can take back on the frame something comes out of the trees.
+        NOT EVEN A MOVEMENT KEY. It used to cancel, and what that produced was
+        a load that ended half way through because somebody leaned on W while
+        watching the deck — the most expensive verb in the game, undone by the
+        key that is held down more than any other. The press is the commitment
+        now: the pack goes over and the bag empties, and the seconds it takes
+        are the price of the haul rather than a decision left open.
         """
         for cmd in player.inputs:
             player.last_processed_seq = cmd.sequence
             player.last_input = cmd
-            if cmd.up or cmd.down or cmd.left or cmd.right:
-                player.pour = None
         player.inputs.clear()
 
     def _step_pour(self, player: Player, dt: float) -> None:
@@ -1018,9 +1018,9 @@ class Room:
 
         Four beats, and each one hands to the next: WALK up to the mark in
         front of the deck, LIFT the pack off the back and turn it over, DUMP
-        one item every `POUR_BEAT` until the bag or the bill runs out, STOW the
-        pack again. The client draws all four off `Player.pour.phase` and runs
-        its own clock inside whichever it is in.
+        one item every `POUR_BEAT` until the BAG runs out — there is no bill to
+        stop on — then STOW the pack again. The client draws all four off
+        `Player.pour.phase` and runs its own clock inside whichever it is in.
         """
         pour = player.pour
         if pour is None:
@@ -1062,7 +1062,7 @@ class Room:
             # on the frame the bag finishes turning over, not a beat after it.
         if pour.phase == POUR_DUMP:
             while pour.left <= 0.0:
-                if not self._tip_item(player, pour, target):
+                if not self._tip_item(player, target):
                     pour.phase = POUR_STOW
                     pour.left = rift.POUR_STOW
                     return
@@ -1099,8 +1099,8 @@ class Room:
         )
         return False
 
-    def _tip_item(self, player: Player, pour: Pour, target: Rift) -> bool:
-        """One item out of the bag and onto the deck. False when the pour ends.
+    def _tip_item(self, player: Player, target: Rift) -> bool:
+        """One item out of the bag and onto the deck. False when the bag is out.
 
         This is the whole transaction, one unit at a time: the pocket loses it,
         the pad gains its value, the deck's pile grows by one, and the event
@@ -1108,8 +1108,6 @@ class Room:
         place. `n` is the pile index and it is the server's, because two
         players watching one pour have to see one pile.
         """
-        if pour.cap > 0 and pour.paid >= pour.cap:
-            return False
         slot = player.inventory.tip_one()
         if slot is None:
             return False
@@ -1121,7 +1119,6 @@ class Room:
         # rewrote the item's value would have to rewrite it in five places and
         # would make two players carrying the same ring disagree about it.
         value = round(slot.unit_value() * player.skills.mods.haul)
-        pour.paid += value
         target.feed(value)
         row = {
             "by": player.id,

@@ -101,11 +101,15 @@ its subsystem's design law in [`docs/design/`](../../../docs/design/) —
   HUD snapshot as a string ("destruir" / "abrir" / "vasculhar") — there is no
   verb constant in the component, because adding an object is a row in
   `server/app/crates.py`; `RiftPrompt` is
-  a pad, and it has FIVE things to say because the one key has four different
+  a pad, and it has FOUR things to say because the one key has four different
   jobs: "ligar a plataforma" while dormant, "outra plataforma está ligada"
-  while another pad is awake, "carregar a plataforma" under the quota,
-  "sobrecarregar a plataforma" past it, and "chamar a extração · o barulho
-  atrai tudo" once the pocket is empty. THAT LAST ONE IS THE DANGER TONE: it
+  while another pad is awake, "carregar a plataforma" with anything in the
+  pocket, and "chamar a extração · o barulho atrai tudo" once the pocket is
+  empty. IT USED TO HAVE FIVE — a separate "sobrecarregar a plataforma" past
+  the quota — and that line died with the rule under it: a pour takes the whole
+  bag on either side of the bill, so there is no second verb to name. Two
+  prompts for one action is two things for the player to learn about a
+  distinction the machine no longer makes. THAT LAST ONE IS THE DANGER TONE: it
   is the most expensive press in the game and the line has to say so before it
   happens. All but the first two carry the coin badge and the pad's own
   `have/need` — which is allowed to read past `need`, because the overshoot is

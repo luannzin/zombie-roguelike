@@ -85,7 +85,6 @@ import {
   drawPayoutCoins,
   drawPayoutLight,
   drawPayoutRigs,
-  drawPayoutTotal,
 } from './layers/payout';
 import {
   drawStoreFloor,
@@ -203,6 +202,11 @@ export class Renderer {
     });
     void loadStore().then((atlas) => {
       this.storeAtlas = atlas;
+      // The terrain layer needs it too: the shop's WALLS and FLOOR are tile
+      // kinds on the ordinary grid, not fixtures on a payload, so the pass
+      // that paints tiles is the one that has to reach those two sheets. See
+      // `TerrainLayer.setStoreAtlas`.
+      this.terrain.setStoreAtlas(atlas);
     });
     void loadMachine().then((atlas) => {
       this.machineAtlas = atlas;
@@ -219,6 +223,11 @@ export class Renderer {
    */
   setDecorationMask(mask: DecorationMask | null): void {
     this.terrain.setDecorationMask(mask);
+  }
+
+  /** Undergrowth density from `welcome.config`. It is cover, not decoration. */
+  setBushChance(chance: number): void {
+    this.terrain.setBushChance(chance);
   }
 
   /**
@@ -572,7 +581,6 @@ export class Renderer {
       ctx, view, this.storeAtlas?.coin ?? null, state.payout,
       this.canvas.width, this.canvas.height,
     );
-    drawPayoutTotal(ctx, state.payout, this.canvas.width, this.canvas.height);
 
     // The finish. Everything above went into `scene`; this is the only place
     // anything reaches the visible canvas.

@@ -26,7 +26,6 @@ import type { Projection } from '../projection';
 import type { PlatformAtlas } from '../platform';
 import { palette } from '../../theme/palette';
 import { warpHudPoint } from '../../lib/lens';
-import { hudFont } from '../../theme/fonts';
 import {
   DESCENT_HEIGHT,
   cashProgress,
@@ -323,44 +322,21 @@ export function drawPayoutCoins(
  * balance as it leaves, which is what hands the number over to the HUD instead
  * of just deleting it.
  */
-export function drawPayoutTotal(
-  ctx: CanvasRenderingContext2D,
-  payout: Payout | null,
-  width: number,
-  height: number,
-): void {
-  if (!payout || payout.total <= 0) return;
-  const last = payout.pads[payout.pads.length - 1];
-  const end = padTiming(last).done;
-  const show = payout.elapsed > padTiming(payout.pads[0]).cash - 0.2;
-  if (!show) return;
-
-  const leaving = (payout.elapsed - end) / 1.4;
-  if (leaving > 1) return;
-  const tone = palette();
-
-  // Rises out of nothing, holds, then shrinks toward the HUD balance.
-  const away = Math.max(0, leaving);
-  const scale = 1 - away * 0.55;
-  const x = width / 2;
-  const y = height * 0.34 + (34 - height * 0.34) * away;
-  const size = Math.round(34 * scale);
-
-  ctx.save();
-  ctx.globalAlpha = away > 0 ? 1 - away * 0.9 : Math.min(1, payout.elapsed * 2);
-  ctx.font = hudFont(size);
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillStyle = tone.rarity.legendary;
-  ctx.fillText(`+${payout.paid}`, x, y);
-  if (away === 0) {
-    ctx.globalAlpha *= 0.7;
-    ctx.font = hudFont(Math.round(11 * scale));
-    ctx.fillStyle = tone.inkMuted;
-    ctx.fillText('EXTRAÇÃO PAGA', x, y + size * 0.85);
-  }
-  ctx.restore();
-}
+/*
+ * THE `+N` OVER THE MIDDLE USED TO BE DRAWN HERE AND IT IS NOT ANY MORE.
+ *
+ * It was a large number rising out of the deck, holding, then shrinking toward
+ * the balance on the HUD, with `EXTRAÇÃO PAGA` under it — and every part of
+ * that was right except that the end-of-night CARD now says the same thing
+ * eight percent of the screen higher up. Two `+N`s in the same moment at two
+ * sizes, overlapping, is one event told twice.
+ *
+ * The card won because it carries the half the canvas could not: WHICH NIGHT
+ * just closed. `Announce` states the day and the take together, once, and the
+ * animation of the number actually moving is still here — it is the coins,
+ * flying off the decks to the balance row, and the balance counting up under
+ * them. See `Game.announceDayDone`.
+ */
 
 /** Whether this pad is close enough to the ground to shake the camera. */
 export function padLanded(payout: Payout, pad: PayoutPad): boolean {

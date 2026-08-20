@@ -180,31 +180,74 @@ BAND: tuple[str, ...] = (
 # and the four things that carry that read — hood, three windows, lever, tray —
 # are exactly what the pixels are spent on. Everything else went.
 #
-# Everything below is measured inside this frame, bottom-anchored on the
-# contact row.
+# IT IS A SOLID NOW, NOT A FRONT ELEVATION. What stood here was a flat red
+# rectangle with lighter rows painted on top of each part: no top plane, no
+# side, and the one object in the shop a player is supposed to walk up to had
+# less volume than the crates in the forest. §2a says a face-on solid is FRONT
+# + TOP + SHADE SIDE and that none of the three is optional, so the cabinet is
+# built from that stack now — every part of it is a box run back along the
+# depth axis (up and to the RIGHT at `SLOPE`), and the lever is bolted to the
+# flank that run opens up, which is where an arcade cabinet keeps it.
+#
+# EVERYTHING BELOW IS AUTHORED IN THE FRONT'S OWN COORDINATES — the 32x46
+# elevation this machine has always been measured in, bottom-anchored on the
+# contact row. `_put` is the only thing that knows the frame is bigger than
+# that, so a part moves by editing the number it was authored with and nothing
+# else. The frame carries a margin on both sides because the client draws a
+# prop CENTRED on its contact point: the front is the plane standing on that
+# point, so the front is what has to be centred, and the run back spends the
+# columns to its right.
 
-CAB_W, CAB_H = 32, 46
+FRONT_W, FRONT_H = 32, 46
+#: The camera, as one number, and it is the same one every other solid in the
+#: game is built on: 2 px back per 1 px up.
+SLOPE = 0.5
+#: How far the cabinet runs back from the camera. AUTHORED rather than derived
+#: from its width (§3a's exception, and the same call the vehicles make): a
+#: slot machine is deeper than it is wide, and a run back at the true ratio
+#: puts more rise on the crown than the crown is tall. Twelve is the number
+#: where the flank is wide enough to hang a lever off and the top of the hood
+#: still reads as the top of a hood.
+DEPTH = 12
+CAB_W = FRONT_W + 2 * DEPTH
+CAB_H = FRONT_H + int(DEPTH * SLOPE)
+#: Where the front's own origin sits in the frame.
+ORIGIN_X, ORIGIN_Y = DEPTH, CAB_H - FRONT_H
+
+#: Plane -> ramp step on the five-step ramps above, and the gaps are the whole
+#: read: TWO steps between planes, never one (§3). One step apart at this size
+#: is a smudge and the cabinet goes back to being a rectangle with stripes.
+PLANE_TOP, PLANE_FRONT, PLANE_SIDE = 4, 2, 0
+
 BODY_L, BODY_R = 3, 28
 CROWN_TOP, CROWN_BOTTOM = 1, 9
 #: The three reel windows: left edge of the first, cell size, and the gap.
 #: Centred in the body by hand — `BODY_L + (26 - (3 * REEL_W + 2 * REEL_GAP)) // 2`.
-REEL_X, REEL_Y = 5, 15
+REEL_X, REEL_Y = 5, 14
 REEL_W, REEL_H = 6, 10
 REEL_GAP = 2
 #: How many cells the band holds. The client scrolls a `REEL_H` window over
 #: `CELLS * REEL_H` pixels and wraps, so the strip has no ends.
 CELLS = len(BAND)
+#: THE CONTROL DECK: the shelf under the glass, and the part that does most of
+#: the work of saying this thing is three-dimensional. It overhangs the body on
+#: both sides, so its top plane and its underside are the one horizontal break
+#: in a tall vertical object — which is exactly what the references lean on.
+DECK_TOP, DECK_BOTTOM = 26, 30
 #: The tray the canister comes out of. `trayMouth` is the pixel the client
 #: launches a can from, and it rides the manifest so the arc starts at the hole
 #: rather than at a guess about where the hole is.
 TRAY_L, TRAY_R = 9, 22
-TRAY_TOP, TRAY_BOTTOM = 31, 37
-#: Where the lever's pivot sits in the cabinet frame. The arm sheet is drawn
-#: separately and pinned here, because it is the one part that moves.
+TRAY_TOP, TRAY_BOTTOM = 33, 38
+#: Where the lever's pivot sits, and it is ON THE FLANK now: half the run back,
+#: at the height of the deck. A lever on the front edge of a cabinet is a lever
+#: seen edge-on, which is why every arcade machine ever built puts it on the
+#: side — and there was no side to put it on until the cabinet became a solid.
 #: The pivot is in the LEVER frame's own left margin, and `LEVER_ANCHOR` is
 #: where that pivot lands in the cabinet frame — so the client blits the arm at
 #: `anchor - pivot` and the two never have to agree about anything else.
-LEVER_ANCHOR = (29, 24)
+LEVER_ANCHOR = (ORIGIN_X + BODY_R + int(DEPTH * 0.55),
+                ORIGIN_Y + DECK_BOTTOM + 3 - int(DEPTH * 0.55 * SLOPE))
 LEVER_PIVOT = (2, 12)
 LEVER_W, LEVER_H = 11, 24
 
@@ -219,8 +262,8 @@ BULBS = 7
 
 
 def _reel_slot(index: int) -> tuple[int, int]:
-    """Top-left of reel window `index` in the cabinet frame."""
-    return REEL_X + index * (REEL_W + REEL_GAP), REEL_Y
+    """Top-left of reel window `index`, in the FRAME."""
+    return (ORIGIN_X + REEL_X + index * (REEL_W + REEL_GAP), ORIGIN_Y + REEL_Y)
 
 
 # --- the cabinet ------------------------------------------------------------
@@ -232,12 +275,20 @@ def _step(ramp: Ramp, index: int) -> RGBA:
     `pick` dithers between the two nearest steps, which is right for soil and
     wrong for a painted machine: at this size a Bayer checker between two reds
     reads as rust. Flat fills are the whole cartoon style — every surface on
-    this cabinet is ONE colour with a lighter row on top and a darker one under.
+    this cabinet is ONE colour, and what separates two of them is a plane
+    break, not a gradient (§5).
     """
     return ramp[max(0, min(len(ramp) - 1, index))]
 
 
-def _round_box(
+def _put(px, x: int, y: int, colour: RGBA) -> None:
+    """One pixel, in the FRONT's coordinates. The only place the margins live."""
+    fx, fy = x + ORIGIN_X, y + ORIGIN_Y
+    if 0 <= fx < CAB_W and 0 <= fy < CAB_H:
+        px[fx, fy] = colour
+
+
+def _flat(
     px,
     x0: int,
     y0: int,
@@ -247,11 +298,12 @@ def _round_box(
     step: int,
     radius: int = 2,
 ) -> None:
-    """A flat box with its corners knocked off, lit on top and shaded right.
+    """The FRONT plane of a part: one flat rectangle with its corners knocked off.
 
-    `step` indexes the ramp directly — see `_step`. The corner cut is a taxicab
-    step in from each end, so the silhouette rounds off without ever costing an
-    anti-aliased pixel.
+    Flat, and that is the change. It used to carry a lighter row along its top
+    and a darker one down its right, which is a drawing of a light source on a
+    surface that has no other surface to be lit against. A plane is one step
+    (§7); what says which way it faces is the plane NEXT to it.
     """
     for y in range(y0, y1 + 1):
         for x in range(x0, x1 + 1):
@@ -260,12 +312,86 @@ def _round_box(
                 dy = min(y - y0, y1 - y)
                 if dx < radius and dy < radius and (dx + dy) < radius:
                     continue
-            shift = 0
-            if y == y0:
-                shift = 1
-            elif y == y1 or x == x1:
-                shift = -1
-            px[x, y] = _step(ramp, step + shift)
+            _put(px, x, y, _step(ramp, step))
+
+
+def _solid(
+    px,
+    x0: int,
+    y0: int,
+    x1: int,
+    y1: int,
+    ramp: Ramp,
+    step: int = PLANE_FRONT,
+    radius: int = 2,
+    depth: int = DEPTH,
+    top: int | None = None,
+) -> None:
+    """A part of the cabinet as a box: top plane, front plane, shade side.
+
+    THE ORDER IS BACK TO FRONT. The two swept planes are laid down first and
+    the front is painted over whatever they left in its rectangle, so the
+    silhouette is the front's — a swept plane can only ever add to it, never
+    eat into it.
+
+    The terminator (§2a) is the last row of the top plane rather than a line
+    drawn afterwards: one step under the top, where the two planes fold. Same
+    at the contact, where §10 asks for the ground to eat the bottom row.
+    """
+    # TOP, swept up and to the right off the front's top edge. `top` is worth
+    # overriding on the GOLD parts and nowhere else: two steps over the front
+    # is the right distance on red and on cream, and on trim it lands above
+    # `make_store.WOOD` — which would make the crown of this cabinet the
+    # brightest surface in a room whose counter is supposed to win.
+    lit = step + 2 if top is None else top
+    for index in range(int(depth * 2) + 1):
+        back = index * 0.5
+        row = int(round(y0 - back * SLOPE))
+        far = back > depth - 1.01
+        for x in range(int(round(x0 + back + radius)), int(round(x1 + back)) + 1):
+            _put(px, x, row, _step(ramp, lit if not far else lit - 1))
+    # SIDE, swept off the front's right edge. The plane the key does not reach
+    # (§8: key at 135°), and the one the lever hangs on.
+    for index in range(int(depth * 2) + 1):
+        back = index * 0.5
+        col = int(round(x1 + back))
+        shift = back * SLOPE
+        for y in range(int(round(y0 - shift + radius)), int(round(y1 - shift)) + 1):
+            _put(px, col, y, _step(ramp, step - 2))
+    # FRONT.
+    _flat(px, x0, y0, x1, y1, ramp, step, radius=radius)
+    # The fold where the top meets the front, and the contact under it.
+    for x in range(x0 + radius, x1 + 1):
+        _put(px, x, y0, _step(ramp, step - 1))
+    for x in range(x0 + radius, x1 - radius + 1):
+        _put(px, x, y1, _step(ramp, step - 2))
+
+
+def _recess(
+    px,
+    x0: int,
+    y0: int,
+    x1: int,
+    y1: int,
+    lip: Ramp,
+) -> None:
+    """A hole cut into a plane: dark inside, lit on the lip under it (§2b).
+
+    A hole is the strongest depth cue a sprite can carry because it is the one
+    thing that cannot be read as paint. What makes it one is the pair of edges:
+    the plane above it throws a shadow onto the inside of its own top row, and
+    the lip along the bottom catches the key — which is the whole reason a
+    tray reads as somewhere a canister comes OUT of.
+    """
+    for y in range(y0, y1 + 1):
+        for x in range(x0, x1 + 1):
+            _put(px, x, y, _step(GLASSDARK, 1 if y > y0 else 0))
+    for x in range(x0 - 1, x1 + 2):
+        _put(px, x, y1 + 1, _step(lip, 4))
+        _put(px, x, y0 - 1, _step(lip, 1))
+    for y in range(y0, y1 + 1):
+        _put(px, x0 - 1, y, _step(lip, 3))
+        _put(px, x1 + 1, y, _step(lip, 1))
 
 
 def make_cabinet(settled: bool) -> Image.Image:
@@ -274,56 +400,77 @@ def make_cabinet(settled: bool) -> Image.Image:
     from its own lever.
 
     FOUR THINGS AND NOTHING ELSE: a gold hood with bulbs in it, three windows in
-    a cream fascia, a lever post on the right and a tray at the bottom. Every
-    pixel that was spent on dents, worn stripes, maker's plates, dead buttons
-    and a car battery is gone — at two tiles across those details were noise
-    that made the silhouette harder to read, which is the opposite of what
-    detail is for. The story ("somebody dragged this out here") is now told by
-    where it stands, not by grime painted onto it.
+    a cream fascia, a lever on the flank and a tray at the bottom. Every pixel
+    that was spent on dents, worn stripes, maker's plates, dead buttons and a
+    car battery is gone — at two tiles across those details were noise that made
+    the silhouette harder to read, which is the opposite of what detail is for.
+    The story ("somebody dragged this out here") is told by where it stands.
+
+    WHAT THE VOLUME BOUGHT. Five boxes stacked instead of five rectangles: a
+    plinth, the body, the hood, and the control deck that overhangs both sides
+    between them. Each one is a `_solid`, so each one has a lit top the eye can
+    stand on and a dark flank behind it, and the steps down that stack — hood
+    top, deck top, plinth top — are what makes a tall object read as tall
+    rather than as a poster of one.
     """
     img = Image.new("RGBA", (CAB_W, CAB_H), TRANSPARENT)
     px = img.load()
     drop = 1 if settled else 0
-    floor = CAB_H - 2
+    floor = FRONT_H - 2
 
-    # 1. THE PLINTH it stands on, cream, wider than the body. A machine sitting
-    #    straight on soil looks dropped; a machine on a base looks placed.
-    _round_box(px, 1, floor - 5 + drop, CAB_W - 2, floor, PANEL, 1, radius=2)
+    # 1. THE PLINTH it stands on, wider than the body and in the shell's own
+    #    red — the tray is cut into it, so it is the one part of the cabinet a
+    #    player looks at twice, and cream down there put the brightest surface
+    #    on the sprite at its feet. A machine sitting straight on the floor
+    #    looks dropped; a machine on a base looks placed.
+    _solid(px, 1, floor - 5 + drop, FRONT_W - 2, floor, SHELL, PLANE_FRONT - 1, radius=2)
 
-    # 2. THE BODY. One red block with its corners knocked off.
-    _round_box(px, BODY_L, CROWN_BOTTOM + drop, BODY_R, floor - 4 + drop, SHELL, 2,
-               radius=3)
+    # 2. THE BODY. One red block, corners knocked off, running from under the
+    #    hood down to the plinth.
+    _solid(px, BODY_L, CROWN_BOTTOM + drop, BODY_R, floor - 4 + drop, SHELL,
+           PLANE_FRONT, radius=3)
 
     # 3. THE HOOD, wider than the body and gold, with the bulb sockets in it.
     #    It is the part that lights up, so the silhouette has to say so before
     #    a single additive pixel is drawn on it.
-    _round_box(px, 1, CROWN_TOP + drop, CAB_W - 2, CROWN_BOTTOM + drop, TRIM, 2,
-               radius=3)
-    span = (CAB_W - 4) - 3
+    _solid(px, 1, CROWN_TOP + drop, FRONT_W - 2, CROWN_BOTTOM + drop, TRIM,
+           PLANE_FRONT, radius=3, top=PLANE_FRONT + 1)
+    #    The marquee itself: a dark glass bar in the hood's face, so the bulbs
+    #    have something to sit on that is not the same gold they are.
+    _flat(px, 4, CROWN_TOP + 2 + drop, FRONT_W - 5, CROWN_BOTTOM - 2 + drop,
+          GLASSDARK, 1, radius=1)
+    span = (FRONT_W - 5) - 4
     for i in range(BULBS):
-        bx = 3 + round(i * span / (BULBS - 1))
-        by = CROWN_TOP + 3 + drop
-        if 0 <= bx < CAB_W and 0 <= by < CAB_H and px[bx, by][3]:
-            # A dark socket with a lit bead in it. Gold bulbs on a gold hood
-            # are invisible until the marquee sheet fires; the socket is what
-            # says "bulb" on an unpowered machine.
-            px[bx, by] = _step(TRIM, 0)
-            if by + 1 < CAB_H and px[bx, by + 1][3]:
-                px[bx, by + 1] = _step(BULB, 4)
+        bx = 4 + round(i * span / (BULBS - 1))
+        by = CROWN_TOP + 4 + drop
+        # A dark socket with a lit bead in it. Gold bulbs on a gold hood are
+        # invisible until the marquee sheet fires; the socket is what says
+        # "bulb" on an unpowered machine.
+        _put(px, bx, by, _step(BULB, 4))
+        _put(px, bx, by + 1, _step(TRIM, 0))
 
-    # 4. THE FASCIA: one cream panel the three windows are cut into, with a gold
-    #    bezel top and bottom. One panel rather than three portholes, because
-    #    three cells on ONE line is the only rule this machine has.
-    _round_box(px, BODY_L + 1, REEL_Y - 3 + drop, BODY_R - 1, REEL_Y + REEL_H + 2 + drop,
-               PANEL, 3, radius=1)
-    for lip in (REEL_Y - 3 + drop, REEL_Y + REEL_H + 2 + drop):
+    # 4. THE FASCIA: one cream panel the three windows are cut into. One panel
+    #    rather than three portholes, because three cells on ONE line is the
+    #    only rule this machine has. It is INSET into the shell — a step back
+    #    from the red on both sides — so the glass sits inside the machine.
+    _flat(px, BODY_L + 1, REEL_Y - 3 + drop, BODY_R - 1, REEL_Y + REEL_H + 1 + drop,
+          PANEL, PLANE_FRONT + 1, radius=1)
+    for x in range(BODY_L + 1, BODY_R):
+        _put(px, x, REEL_Y - 3 + drop, _step(PANEL, PLANE_FRONT - 1))
+    for lip in (REEL_Y - 2 + drop, REEL_Y + REEL_H + 1 + drop):
         for x in range(BODY_L + 2, BODY_R - 1):
-            px[x, lip] = _step(TRIM, 3)
+            _put(px, x, lip, _step(TRIM, 3))
     for index in range(3):
-        rx, ry = _reel_slot(index)
-        for y in range(ry + drop, ry + REEL_H + drop):
+        rx = REEL_X + index * (REEL_W + REEL_GAP)
+        ry = REEL_Y + drop
+        for y in range(ry, ry + REEL_H):
             for x in range(rx, rx + REEL_W):
-                px[x, y] = _step(GLASSDARK, 1)
+                _put(px, x, y, _step(GLASSDARK, 1))
+        # The bezel each window is sunk into: dark above, gold under. Same pair
+        # of edges as `_recess` and for the same reason — a window flush with
+        # the panel is a rectangle printed on it.
+        for x in range(rx, rx + REEL_W):
+            _put(px, x, ry - 1, _step(GLASSDARK, 0))
 
     # THE PAY LINE: a gold tick in each of the two gaps BETWEEN the windows. It
     # is the one piece of a slot machine that explains the rules without a word,
@@ -335,43 +482,47 @@ def make_cabinet(settled: bool) -> Image.Image:
         tick = REEL_X + REEL_W + gap * (REEL_W + REEL_GAP)
         for y in range(mid - 1, mid + 1):
             for x in range(tick, tick + REEL_GAP):
-                px[x, y] = _step(TRIM, 4)
+                _put(px, x, y, _step(TRIM, 4))
 
-    # 5. THE COIN SLOT under the glass. Two rows of gold with a dark mouth: the
-    #    one detail on the fascia, and it is the one that says a machine like
-    #    this takes something from you.
-    slot_y = REEL_Y + REEL_H + 5 + drop
-    for x in range(CAB_W // 2 - 4, CAB_W // 2 + 4):
-        px[x, slot_y] = _step(TRIM, 3)
-        px[x, slot_y + 1] = _step(GLASSDARK, 1)
+    # 5. THE CONTROL DECK. The shelf between the glass and the tray, and the
+    #    part that does most of the work: it stands PROUD of the body on both
+    #    sides, so the cabinet has one horizontal break in it and the eye gets
+    #    a surface to stand on halfway up. Its top plane is where the buttons
+    #    are and where the coin goes, which is also where a player's hands
+    #    would be — the machine tells you where to stand by its shape.
+    _solid(px, BODY_L - 1, DECK_TOP + drop, BODY_R + 1, DECK_BOTTOM + drop, PANEL,
+           PLANE_FRONT, radius=1, top=PLANE_FRONT + 1)
+    #    Three buttons and a coin slot, ON the deck's top plane rather than on
+    #    its front edge — four pixels back and two up, which is where that
+    #    plane is. Two pixels each: at this size a button is a colour, not a
+    #    shape, and the colours are the two the machine already uses.
+    back = 4
+    deck_face = DECK_TOP - int(back * SLOPE) + drop
+    for index, ramp in enumerate((RED, BULB, RED)):
+        bx = BODY_L + 4 + index * 6 + back
+        _put(px, bx, deck_face, _step(ramp, 3))
+        _put(px, bx + 1, deck_face, _step(ramp, 4))
+    for x in range(BODY_R - 6 + back, BODY_R - 2 + back):
+        _put(px, x, deck_face, _step(GLASSDARK, 1))
+        _put(px, x, deck_face - 1, _step(TRIM, 3))
 
-    # 6. THE TRAY: a recess with a gold lip. Drawn dark and hollow so the eye
-    #    reads a HOLE, which is what makes a canister appearing in it read as a
-    #    delivery rather than as a sprite that faded in.
-    for y in range(TRAY_TOP + drop, TRAY_BOTTOM + drop):
-        for x in range(TRAY_L, TRAY_R + 1):
-            px[x, y] = _step(GLASSDARK, 1 if y == TRAY_TOP + drop else 0)
-    # A gold surround, all the way round the hole. Without it the tray is a
-    # black rectangle painted on a red box; with it, it is a mouth in a machine.
-    for x in range(TRAY_L - 1, TRAY_R + 2):
-        for y in (TRAY_TOP - 1 + drop, TRAY_BOTTOM + drop, TRAY_BOTTOM + 1 + drop):
-            if 0 <= y < CAB_H:
-                px[x, y] = _step(TRIM, 3 if y != TRAY_BOTTOM + 1 + drop else 1)
-    for y in range(TRAY_TOP + drop, TRAY_BOTTOM + drop):
-        for x in (TRAY_L - 1, TRAY_R + 1):
-            px[x, y] = _step(TRIM, 2)
+    # 6. THE TRAY: a hole in the plinth with a gold lip under it. Drawn as a
+    #    recess so the eye reads a HOLE, which is what makes a canister
+    #    appearing in it a delivery rather than a sprite that faded in.
+    _recess(px, TRAY_L, TRAY_TOP + drop, TRAY_R, TRAY_BOTTOM + drop, TRIM)
 
-    # 7. THE LEVER POST: a short gold stub on the right flank for the arm to
-    #    pivot on, so the sheet the client blits over it has something to be
-    #    attached to at every angle.
-    ax, ay = LEVER_ANCHOR
-    for y in range(ay - 1 + drop, ay + 2 + drop):
-        for x in range(BODY_R - 1, min(CAB_W - 1, ax + 1)):
-            px[x, y] = _step(TRIM, 2)
+    # 7. THE LEVER BOSS: a gold mount on the FLANK for the arm to pivot on, so
+    #    the sheet the client blits over it has something to be attached to at
+    #    every angle. On the side plane, half the run back, which is where the
+    #    anchor above puts the arm.
+    ax = BODY_R + int(DEPTH * 0.55)
+    ay = DECK_BOTTOM + 3 - int(DEPTH * 0.55 * SLOPE) + drop
+    for y in range(ay - 1, ay + 2):
+        for x in range(ax - 2, ax + 1):
+            _put(px, x, y, _step(TRIM, 2 if y != ay else 3))
 
     outline(img, OUTLINE)
     return img
-
 
 
 # --- the reel band ----------------------------------------------------------
@@ -598,11 +749,12 @@ def build(args) -> Path:
             "lever": list(LEVER_ANCHOR),
             # Where a canister is launched from, in frame pixels. The client
             # arcs it out of this hole rather than out of the cabinet's centre.
-            "trayMouth": [(TRAY_L + TRAY_R) // 2, TRAY_BOTTOM - 1],
-            "crown": [CAB_W // 2, (CROWN_TOP + CROWN_BOTTOM) // 2],
+            "trayMouth": [ORIGIN_X + (TRAY_L + TRAY_R) // 2, ORIGIN_Y + TRAY_BOTTOM - 1],
+            "crown": [ORIGIN_X + FRONT_W // 2,
+                      ORIGIN_Y + (CROWN_TOP + CROWN_BOTTOM) // 2],
             # The row the three cells have to agree on, in frame pixels. The
             # client flashes it when they do — see the brass ticks above.
-            "payLine": REEL_Y + REEL_H // 2,
+            "payLine": ORIGIN_Y + REEL_Y + REEL_H // 2,
         },
         # THE BAND. One image, `cells` tall, scrolled and wrapped by the client
         # — see `game/machine.ts` `reelScroll`. `frameHeight` is the WINDOW,

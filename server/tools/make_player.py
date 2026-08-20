@@ -124,12 +124,12 @@ LEATHER_H, LEATHER_M, LEATHER_L = "L", "l", "n"
 GLASS = "g"
 
 
-def _rgba(value: str) -> tuple[int, int, int, int]:
+def rgba_of(value: str) -> tuple[int, int, int, int]:
     value = value.lstrip("#")
     return (int(value[0:2], 16), int(value[2:4], 16), int(value[4:6], 16), 255)
 
 
-RGBA = {key: _rgba(colour) for key, colour in PALETTE.items()}
+RGBA = {key: rgba_of(colour) for key, colour in PALETTE.items()}
 
 
 # --- the anatomy -------------------------------------------------------------
@@ -578,14 +578,23 @@ def _pack_frame(facing: str, frame: int) -> list[list[str]]:
     return cell
 
 
-def _sheet(cells: list[list[list[str]]]) -> Image.Image:
-    """Nine cells (3 facings x 3 frames) onto the raw magenta grid.
+def sheet(cells: list[list[list[str]]], rgba: dict | None = None) -> Image.Image:
+    """A grid of lettered cells onto the raw magenta sheet.
 
     MAGENTA, because this is a RAW sheet: `process_sprites.py --exact` keys it
     out, mirrors the side row into the fourth and writes the manifest the
     client reads. One path to `processed/`, not two.
+
+    Rows are facings (down, side, up) and columns are frames — three of them
+    on a walk sheet, five on a death timeline. PUBLIC, and `rgba` is why:
+    `make_zombie.py` draws the creatures on the same grid with the same
+    primitives and its own colour table, and a second copy of this loop is a
+    second opinion about what a raw sheet is.
     """
-    img = Image.new("RGBA", (TILE * 3, TILE * 3), KEY)
+    rgba = RGBA if rgba is None else rgba
+    rows = len(cells)
+    cols = max(len(row) for row in cells)
+    img = Image.new("RGBA", (TILE * cols, TILE * rows), KEY)
     px = img.load()
     for row, facing_cells in enumerate(cells):
         for col, cell in enumerate(facing_cells):
@@ -594,7 +603,7 @@ def _sheet(cells: list[list[list[str]]]) -> Image.Image:
                     key = cell[y][x]
                     if key == ".":
                         continue
-                    px[col * TILE + x, row * TILE + y] = RGBA[key]
+                    px[col * TILE + x, row * TILE + y] = rgba[key]
     return img
 
 
@@ -607,7 +616,7 @@ def _check_dye_contract() -> None:
     be reported as a bug.
     """
     for key, value in PALETTE.items():
-        r, g, b, _ = _rgba(value)
+        r, g, b, _ = rgba_of(value)
         grey = r == g == b
         if key in DYED:
             assert grey, f"{key} ({value}) is dyed but is not pure grey"
@@ -623,12 +632,12 @@ def build(args) -> list[Path]:
         cells = [[_frame(facing, frame, skin) for frame in range(3)]
                  for facing in ("down", "side", "up")]
         path = RAW_DIR / f"{skin}.png"
-        _sheet(cells).save(path)
+        sheet(cells).save(path)
         written.append(path)
     cells = [[_pack_frame(facing, frame) for frame in range(3)]
              for facing in ("down", "side", "up")]
     path = RAW_DIR / "backpack.png"
-    _sheet(cells).save(path)
+    sheet(cells).save(path)
     written.append(path)
     return written
 

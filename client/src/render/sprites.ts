@@ -7,10 +7,12 @@
  * stat block plus a processed folder, with no client change.
  *
  * Player colours are a multiply tint over the base sheet, cached per colour, so
- * adding a colour costs nothing and no per-colour art is ever generated.
- * Equipped gear is the same contract: a greyscale overlay multiplied by the
- * wearer's colour when `tint` is set (the backpack). Enemy overlays (hats,
- * clothes) are drawn untinted — their art carries its own palette.
+ * adding a colour costs nothing and no per-colour art is ever generated. It
+ * lands on the DYEABLE part of the sheet only — the pixels the art left pure
+ * grey — so a player is somebody in a coloured coat rather than somebody made
+ * of one colour; see `TintCache`. Equipped gear is the same contract (the
+ * backpack). Enemy overlays (hats, clothes) are drawn untinted — their art
+ * carries its own palette.
  *
  * Sheet layout (produced by server/tools/process_sprites.py):
  *   rows = down, left, right, up
@@ -175,9 +177,36 @@ export class SpriteBook {
 
 export class TintCache {
   private cache = new Map<string, HTMLCanvasElement>();
+  private base: ImageData | null = null;
 
   constructor(private readonly sheet: SpriteSheet) {}
 
+  /**
+   * The sheet in `color`, and ONLY the parts of it that are supposed to be.
+   *
+   * IT USED TO MULTIPLY THE WHOLE BITMAP, which is the cheapest possible
+   * per-player colour and also the reason every player was a monochrome
+   * silhouette: the multiply hit the skin, the hair, the hat and the boots as
+   * hard as it hit the coat, so "the red player" was a person made of red
+   * rather than a person in a red coat. Fifteen hues of that is fifteen
+   * palette swaps of one blob, and the character underneath — whose face,
+   * whose hat, whose gear — was gone in all fifteen.
+   *
+   * WHAT MARKS THE TINTABLE PART IS THE ART ITSELF: a pixel is dyed if it is
+   * EXACTLY GREY (r == g == b). Nothing else about the sheet changes and no
+   * second file has to be shipped, kept in step, or fetched. That is a real
+   * contract, not a coincidence — `server/tools/make_player.py` authors the
+   * coat and the boots on a pure grey ramp, gives every other material a hue
+   * (the outline is blue-black, the skin is warm, the leather is brown), and
+   * ASSERTS both halves of it before it writes a file. A sheet that never
+   * gets tinted never gets here, so the rule binds exactly the three sheets
+   * that are authored under it.
+   *
+   * Done as one pass over the pixels rather than as canvas composites: a
+   * sheet is a few thousand pixels, it happens once per colour per sheet, and
+   * the alternative is three composite ops plus a mask bitmap to express one
+   * `if`.
+   */
   get(color: string): HTMLCanvasElement {
     const cached = this.cache.get(color);
     if (cached) return cached;
@@ -185,15 +214,26 @@ export class TintCache {
     const { image } = this.sheet;
     const { width, height } = sourceSize(image);
     const { canvas, ctx } = createSurface(width, height, 'sprites/tint');
+    if (!this.base) {
+      ctx.drawImage(image, 0, 0);
+      this.base = ctx.getImageData(0, 0, width, height);
+    }
 
-    ctx.drawImage(image, 0, 0);
-    ctx.globalCompositeOperation = 'multiply';
-    ctx.fillStyle = color;
-    ctx.fillRect(0, 0, width, height);
-    // Restore the original alpha mask (multiply also painted transparent pixels).
-    ctx.globalCompositeOperation = 'destination-in';
-    ctx.drawImage(image, 0, 0);
-    ctx.globalCompositeOperation = 'source-over';
+    const [dr, dg, db] = parseColor(color);
+    const src = this.base.data;
+    const out = ctx.createImageData(width, height);
+    const dst = out.data;
+    for (let i = 0; i < src.length; i += 4) {
+      const r = src[i];
+      const g = src[i + 1];
+      const b = src[i + 2];
+      const dye = r === g && g === b;
+      dst[i] = dye ? (r * dr) / 255 : r;
+      dst[i + 1] = dye ? (g * dg) / 255 : g;
+      dst[i + 2] = dye ? (b * db) / 255 : b;
+      dst[i + 3] = src[i + 3];
+    }
+    ctx.putImageData(out, 0, 0);
 
     this.cache.set(color, canvas);
     return canvas;
@@ -203,6 +243,15 @@ export class TintCache {
   clear(): void {
     this.cache.clear();
   }
+}
+
+/** `#rgb` / `#rrggbb` to three bytes. The palette only ever hands us hex. */
+function parseColor(color: string): [number, number, number] {
+  const hex = color.trim().replace('#', '');
+  const full = hex.length === 3 ? hex.split('').map((c) => c + c).join('') : hex;
+  const value = Number.parseInt(full, 16);
+  if (full.length !== 6 || Number.isNaN(value)) return [255, 255, 255];
+  return [(value >> 16) & 255, (value >> 8) & 255, value & 255];
 }
 
 export function facingFromAim(ax: number, ay: number): Facing {

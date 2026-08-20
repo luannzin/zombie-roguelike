@@ -643,8 +643,16 @@ function rarityInk(rarity: string): string {
  * merchant, the counter and the stock — the things the party walked in to look
  * at — were reading as darker objects in front of them. A fire is allowed to
  * be the light source without being the subject.
+ *
+ * AND AGAIN, for the reason the whole ring keeps hitting: this sprite is not
+ * the only thing a torch puts on the frame. Each one also owns a pool in
+ * `darkness.drawSceneLights`, and bloom then finds whichever of the two is
+ * hottest and spreads it. Judged as a flame it looked fine at 0.55; judged as
+ * one third of a stack that sums eleven times over, it was the part with the
+ * most headroom to give — the pool is what says the yard is lit, the flame
+ * only has to say where the fire is.
  */
-const TORCH_FIRE_ALPHA = 0.55;
+const TORCH_FIRE_ALPHA = 0.36;
 /**
  * How hard a LAMP's wick burns, additively.
  *

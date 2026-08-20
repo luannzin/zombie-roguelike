@@ -711,10 +711,14 @@ export class Renderer {
       consider(light.x, light.y, clamp01(light.radiusTiles / 9) * 0.8);
     }
     // A pad under power outshines everything else in the forest, and the
-    // extraction look leans on exactly that.
+    // extraction look leans on exactly that — but not at 1.0. Full power made
+    // the pad the only source the ranking would ever pick AND drove the shaft
+    // pass to its own ceiling, so the clearing came with a fan of hard beams
+    // laid over it. Below the campfire's 0.9: a pad is brighter than a fire,
+    // the BEAMS out of it should not be.
     for (const rift of state.world.rifts) {
       if (rift.state === 'dormant' || rift.state === 'spent') continue;
-      consider(rift.x, rift.y, 1);
+      consider(rift.x, rift.y, 0.72);
     }
     // THE LANTERN IS NOT IN HERE, and two attempts to put it in are the reason.
     // A shaft is a smear of the BRIGHT buffer, so a source needs bright pixels

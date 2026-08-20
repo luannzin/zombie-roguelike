@@ -1018,7 +1018,11 @@ export function drawRiftGlow(
     // pad's whole light radius that flattened the skid's own banding into a
     // silhouette and blew the deck out to one value. Halved: the lamps stay
     // the brightest thing on the structure, which is what they are for.
-    const peak = phase.alarm ? 0.13 : 0.085;
+    // HALVED ONCE, AND CUT AGAIN: the halo, the four lamps and the wash are one
+    // stack, and every pass that tuned them apart put the sum back. This is the
+    // layer with the least to say — it is the AIR having a source in it — so it
+    // gives first, and the lamps stay the brightest thing on the structure.
+    const peak = phase.alarm ? 0.095 : 0.06;
     const glow = ctx.createRadialGradient(rift.x, rift.y, 0, rift.x, rift.y, radius);
     glow.addColorStop(0, `rgb(${r} ${g} ${b} / ${(peak * beat).toFixed(3)})`);
     glow.addColorStop(0.24, `rgb(${r} ${g} ${b} / ${(peak * 0.45 * beat).toFixed(3)})`);
@@ -1041,7 +1045,10 @@ export function drawRiftGlow(
     // rectangle the size of the deck — the pad reading as a lightbox rather
     // than as four lamps on a structure. They are one budget with the halo
     // above and the flames in the shop; judged apart, the sum creeps back.
-    ctx.globalAlpha = phase.alarm ? 0.85 : 0.72;
+    // Four of these sum, and they sum on top of the halo above and whatever the
+    // party is carrying. A lamp reads as a lamp well below full: what says
+    // "beacon" is the BEAT and the four phases, not the peak value.
+    ctx.globalAlpha = phase.alarm ? 0.68 : 0.55;
     atlas.layout.lamps.forEach((point, i) => {
       const offset = (i / Math.max(atlas.layout.lamps.length, 1)) * period;
       blit(ctx, lamp, phase.deckX + point.dx, phase.deckY + point.dy, time + offset);
@@ -1062,7 +1069,7 @@ export function drawRiftGlow(
     // sheet. At 0.95 the strain wash covered the imprint, the hazard paint and
     // the front third of the deck with one flat glare on the frame the player
     // is meant to be watching the skid come free.
-    ctx.globalAlpha = Math.min(0.62, idle + phase.strain * 0.46);
+    ctx.globalAlpha = Math.min(0.5, idle + phase.strain * 0.38);
     blit(ctx, wash, rift.x, rift.y, time);
     ctx.globalAlpha = 1;
   }

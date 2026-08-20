@@ -81,7 +81,13 @@ _NIGHT_SPAN_MINUTES = 7 * 60 + 1
 #: at `layers/store`'s `TORCH_FIRE_ALPHA` / `LAMP_FIRE_ALPHA` and
 #: `layers/darkness`'s pool stops in one pass, because cutting any one of them
 #: alone just moves which of them is the thing that saturates.
-STORE_AMBIENT = 0.36
+#: DOWN A NOTCH, because the room has SHADOWS in it now. `layers/store` grounds
+#: every fixture with a contact pool and a cast thrown away from the nearest
+#: lamp; at 0.36 the floor was bright enough that those marks were the only
+#: thing on it carrying any value, which reads as furniture floating over a
+#: sheet of light rather than as a lit room. The lamps have not moved and their
+#: pools have not changed — what came down is the flat floor they pool INTO.
+STORE_AMBIENT = 0.32
 
 # Most nights are dry. Rain is common enough that a second expedition often
 # feels like a different place; fog is the rarer coat.

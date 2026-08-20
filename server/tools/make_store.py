@@ -501,7 +501,7 @@ COUNTER_CAP = 4
 
 
 def make_counter(w: int, h: int, kind: int, rng: random.Random) -> Image.Image:
-    """One section of the L. 0 elbow, 1 running east, 2 running south.
+    """One section of the L. 0 elbow, 1 running east, 2 running north-south.
 
     IT IS DRAWN AS ARCHITECTURE, NOT AS A BOX, and that was the second attempt.
     The first cut built each section with `box` — the shared dimetric solid
@@ -567,8 +567,10 @@ def make_counter(w: int, h: int, kind: int, rng: random.Random) -> Image.Image:
 
     # THE BRASS LIP, on the edge the CUSTOMER stands at. One pixel, worn
     # through in places so the light eats the line (S6), and the zone's accent.
-    # On an east arm that edge is the front; on a south arm it is the west
-    # side, because the party is inside the L and the wall is outside it.
+    # On an east arm that edge is the front; on the other arm it is the west
+    # side, because the party is outside the L and the pocket is inside it —
+    # which holds whichever way that arm runs, since the wall it closes onto
+    # is always the one behind the man.
     if kind == 2:
         for y in range(top, base + 1):
             if hash01(y, kind, 1531) > 0.16:
@@ -1888,7 +1890,7 @@ def build(args) -> Path:
             },
             # THE COUNTER, as three tiling sections. Kind order is fixed and
             # mirrored by `store.COUNTER_L`'s third field: 0 elbow, 1 east,
-            # 2 south.
+            # 2 the arm running along the map's other axis.
             "counter": {
                 "file": "counter.png", "frameWidth": counter_w,
                 "frameHeight": counter_h, "frames": len(counters), "sway": 0,

@@ -44,6 +44,7 @@ import {
   pullGain,
   reelScroll,
 } from '../../game/machine';
+import { groundShadow } from '../shadows';
 import { palette } from '../../theme/palette';
 import { hudFont } from '../../theme/fonts';
 import type { StoreFixtures, Stand } from '../../game/world';
@@ -57,6 +58,34 @@ const NAME_ROW_H = 12;
 const PRICE_GAP = 3;
 /** How far above the table's surface the tag floats, in world pixels. */
 const PRICE_LIFT = 20;
+
+/**
+ * CONTACT SHADOWS, and this room is the reason they are worth their cost.
+ *
+ * Nothing in here used to have one. Out in the woods a prop is grounded by the
+ * dark it stands in — there is barely any floor to see — but the shop is the
+ * one LIT place in the game, and a lit floor with unshaded furniture standing
+ * on it is a floor with pictures of furniture pasted onto it. Every table,
+ * crate, lamp, shelf, counter section and the cabinet now takes the same mark
+ * every barrel in the forest already had.
+ *
+ * It is also what makes the room read as CALM. The lamps are a grid of small
+ * pools; `groundShadow` throws each object's mark AWAY from whatever is
+ * lighting it, so five lamps put five sets of soft directional shadows across
+ * the brick and the room stops being evenly bright. Even light with no shadow
+ * in it is an operating theatre; the same light with shadows under things is
+ * somewhere you would sit down.
+ *
+ * The width is a share of the sprite's own frame and the rise is its height,
+ * because both are already the honest numbers — see `layers/scenery`, which
+ * grounds the forest's props off exactly these three.
+ */
+const SHADOW_WIDTH = 0.62;
+const SHADOW_HEIGHT = 4;
+const SHADOW_ALPHA = 0.34;
+/** A counter is a RUN of one-tile sections: twelve full-strength blobs in a
+ *  line stack at every join and come out as a row of beads. */
+const RUN_SHADOW_ALPHA = 0.2;
 
 /**
  * How fast the goods breathe on a table you are standing at, in radians a
@@ -239,10 +268,11 @@ export function drawStoreProp(
     return;
   }
   if (piece.kind === 'counter') {
-    // The variant IS the section kind — 0 elbow, 1 east, 2 south. It comes off
+    // The variant IS the section kind — 0 elbow, 1 east, 2 north. It comes off
     // the server's own offset table, so the shape of the L is never guessed
     // here.
-    drawSheet(ctx, view, atlas.counter, piece.variant ?? 0, piece.x, piece.y);
+    drawSheet(ctx, view, atlas.counter, piece.variant ?? 0, piece.x, piece.y,
+      RUN_SHADOW_ALPHA);
     return;
   }
   if (piece.kind === 'shelf') {
@@ -272,6 +302,7 @@ export function drawStoreProp(
     const torch = atlas.torch;
     const frame = (piece.variant ?? 0) % torch.frames;
     const zoom = view.zoom;
+    propShadow(ctx, view, torch, piece.x, piece.y, RUN_SHADOW_ALPHA);
     ctx.drawImage(
       torch.image,
       frame * torch.frameWidth, 0, torch.frameWidth, torch.frameHeight,
@@ -288,6 +319,7 @@ export function drawStoreProp(
   const table = atlas.table;
   const frame = stand.variant % table.frames;
   const zoom = view.zoom;
+  propShadow(ctx, view, table, piece.x, piece.y);
   const left = view.x(piece.x) - Math.round((table.frameWidth * zoom) / 2);
   const top = view.y(piece.y) - table.frameHeight * zoom;
   ctx.drawImage(
@@ -358,6 +390,7 @@ function drawMachine(
   // up, which is the difference between a machine that was pulled and a
   // picture of a machine.
   const body = pull && pull.elapsed < pull.timing.claim ? 1 : 0;
+  propShadow(ctx, view, cab, piece.x, piece.y);
   const left = view.x(piece.x) - Math.round((cab.frameWidth * zoom) / 2);
   const top = view.y(piece.y) - cab.frameHeight * zoom;
   ctx.drawImage(
@@ -464,6 +497,27 @@ function drawBand(
 }
 
 /** One bottom-anchored frame out of a store sheet, at a contact point. */
+/** Ground one standing thing. See `SHADOW_WIDTH` — every prop in here takes it. */
+function propShadow(
+  ctx: CanvasRenderingContext2D,
+  view: Projection,
+  sheet: { frameWidth: number; frameHeight: number },
+  x: number,
+  y: number,
+  alpha = SHADOW_ALPHA,
+): void {
+  groundShadow(
+    ctx,
+    view,
+    x,
+    y - SHADOW_HEIGHT / 2,
+    (sheet.frameWidth * SHADOW_WIDTH) / 2,
+    SHADOW_HEIGHT / 2,
+    sheet.frameHeight,
+    alpha,
+  );
+}
+
 function drawSheet(
   ctx: CanvasRenderingContext2D,
   view: Projection,
@@ -471,9 +525,11 @@ function drawSheet(
   variant: number,
   x: number,
   y: number,
+  shadow = SHADOW_ALPHA,
 ): void {
   const frame = ((variant % sheet.frames) + sheet.frames) % sheet.frames;
   const zoom = view.zoom;
+  propShadow(ctx, view, sheet, x, y, shadow);
   ctx.drawImage(
     sheet.image,
     frame * sheet.frameWidth, 0, sheet.frameWidth, sheet.frameHeight,
@@ -495,6 +551,11 @@ function drawMerchant(
   const frame = merchantFrame(scene.pose, atlas);
   if (!frame) return;
   const zoom = view.zoom;
+  propShadow(
+    ctx, view,
+    { frameWidth: atlas.frameWidth * 0.5, frameHeight: atlas.frameHeight * atlas.anchorY },
+    piece.x, piece.y,
+  );
   ctx.drawImage(
     frame.image,
     frame.sx, 0, atlas.frameWidth, atlas.frameHeight,

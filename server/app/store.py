@@ -140,9 +140,17 @@ SHOP_GATE_HALF = 2.5
 
 #: THE COUNTER, an L in the NORTH-EAST CORNER, and it is the whole composition.
 #:
-#: `(col, row, kind)` where kind is 0 corner, 1 run-east, 2 run-south. The
-#: corner is the elbow; the long arm runs east along the north wall to the far
-#: wall, and the short arm turns south into the room.
+#: `(col, row, kind)` where kind is 0 corner, 1 run-east, 2 run-north. The
+#: corner is the elbow; the long arm runs east along to the far WALL, and the
+#: short arm turns NORTH and runs to the north wall.
+#:
+#: THE SHORT ARM USED TO TURN THE OTHER WAY and it left the pocket open. It ran
+#: SOUTH out of the elbow, into the room, which fences nothing: a body walked
+#: round the west end of the counter, up the gap between it and the north wall,
+#: and stood inside the merchant. The two arms have to close ONTO MASONRY —
+#: north wall, east wall, and the L — for the pocket to be a room he is in and
+#: the party is not. The east arm reaches the east wall for the same reason it
+#: always should have: one open tile at the end of a counter is a door.
 #:
 #: WHY A CORNER AND NOT THE MIDDLE. He stood in the MIDDLE of a round clearing
 #: before this, on the argument that a shop is a counter you stand at and the
@@ -157,24 +165,31 @@ SHOP_GATE_HALF = 2.5
 #: behind him. That split is what the rim of the clearing used to do with
 #: crates, done properly.
 COUNTER_L: tuple[tuple[float, float, int], ...] = (
-    (3.0, -4.0, 0),
-    (4.0, -4.0, 1), (5.0, -4.0, 1), (6.0, -4.0, 1),
-    (7.0, -4.0, 1), (8.0, -4.0, 1), (9.0, -4.0, 1), (10.0, -4.0, 1),
-    (3.0, -3.0, 2), (3.0, -2.0, 2),
+    (4.0, -4.0, 0),
+    (5.0, -4.0, 1), (6.0, -4.0, 1), (7.0, -4.0, 1),
+    (8.0, -4.0, 1), (9.0, -4.0, 1), (10.0, -4.0, 1), (11.0, -4.0, 1),
+    (4.0, -5.0, 2), (4.0, -6.0, 2), (4.0, -7.0, 2), (4.0, -8.0, 2),
 )
 #: How wide one counter section is, in tiles. Mirrors `TILE_COUNTER_W` in
 #: server/tools/make_store.py — the art and the cover it provides are the same
 #: object, so they are the same number.
 COUNTER_TILES_W = 1.0
 
-#: THE MAN, in his own pocket, behind the long arm.
+#: THE MAN, in his own pocket, standing at the long arm.
+#:
+#: ONE ROW BEHIND THE COUNTER, not two. The pocket is four rows deep and he
+#: used to stand in the middle of it, which put a body's width of empty floor
+#: between him and the thing he trades over — from the customer's side he was a
+#: man standing in a room with a counter in front of him rather than a man
+#: SERVING at one. It is also the reach: `STORE_BUY_DIST` is measured from
+#: where he stands, and a step back is a step out of the conversation.
 #:
 #: Nothing under him is made solid — he is drawn, not walked into — but he is
 #: fenced by the counter in front and the walls behind, so the party cannot
 #: stand where he is standing without any code saying so. That is the same call
 #: `rift._stamp` makes about the middle of its sigil: geometry, not a rule.
-MERCHANT_COL = 6.5
-MERCHANT_ROW = -5.6
+MERCHANT_COL = 7.5
+MERCHANT_ROW = -5.0
 
 #: HIS SHELVES, on the north wall behind him. `(col, row, variant)`.
 #:
@@ -185,10 +200,10 @@ MERCHANT_ROW = -5.6
 #: with exactly six things. None of it opens, and the art carries that: it is
 #: high on a wall, behind a counter, out of reach.
 SHELF_SPOTS: tuple[tuple[float, float, int], ...] = (
-    (4.0, -6.6, 0),
-    (6.0, -6.6, 1),
-    (8.0, -6.6, 2),
-    (10.0, -6.6, 0),
+    (5.5, -6.6, 0),
+    (7.5, -6.6, 1),
+    (9.5, -6.6, 2),
+    (11.0, -6.6, 0),
 )
 SHELF_TILES_W = 1.6
 
@@ -198,10 +213,17 @@ SHELF_TILES_W = 1.6
 #: move: everything else in this room is a decision about money, so the one
 #: thing that is not gets its own wall. It is across the room from the counter,
 #: which is somewhere you WALK — the whole difference between a machine and a
-#: menu item — and it is against masonry now rather than standing in the open,
+#: menu item — and it is against masonry rather than standing in the open,
 #: which is what a cabinet actually is.
+#:
+#: IN THE CORNER, not halfway down the wall. The counter's pocket is the
+#: north-EAST corner and the room reads on one diagonal: the man at the far
+#: right, the machine at the far left, the stock in the middle between them.
+#: Parked at the wall's midpoint the cabinet was beside the stalls rather than
+#: opposite the man, and the two things you can spend at were both on the same
+#: half of the floor.
 MACHINE_COL = -9.0
-MACHINE_ROW = -1.0
+MACHINE_ROW = -7.0
 #: Its footprint in tiles. Solid — you walk up to a machine, not through it.
 #: Mirrors the two-tile cabinet in server/tools/make_machine.py.
 MACHINE_TILES_W = 2.0
@@ -234,7 +256,7 @@ TABLE_TILES_W = 1.5
 RUG_SPOTS: tuple[tuple[float, float, int], ...] = (
     (0.0, 6.2, 0),
     (0.0, 2.6, 1),
-    (6.5, -2.6, 2),
+    (7.5, -2.6, 2),
 )
 
 #: DECORATION CRATES, around the edges of the room. `(col, row, variant)`.
@@ -250,7 +272,7 @@ CRATE_SPOTS: tuple[tuple[float, float, int], ...] = (
     (-8.0, 6.5, 1),
     (9.5, 2.0, 2),
     (8.0, 5.5, 0),
-    (-9.5, -5.0, 1),
+    (-9.5, 1.5, 1),
     (10.0, 6.5, 2),
 )
 CRATE_TILES_W = 1.2

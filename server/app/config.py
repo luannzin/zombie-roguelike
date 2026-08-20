@@ -205,19 +205,30 @@ EXIT_DEPTH_TILES = 5
 # priced and levelled in the same twenty tiles, and every beat landed on top of
 # the last one. Two places, one walk.
 STORE_WIDTH_TILES = 38
-STORE_HEIGHT_TILES = 54
+#: SHORTER, AND THE ROWS THAT WENT WERE WALKING. The zone reads as four beats
+#: south to north — the throat in, the apron the platforms come down on, the
+#: shop, the way out — and the first and last of those are THRESHOLDS, not
+#: journeys. At fifty-four rows the party crossed nine tiles of empty yard
+#: before the first skid and five more of corridor before that, which is time
+#: spent walking through a place that has already said what it is.
+STORE_HEIGHT_TILES = 48
 #: Radius of the APRON, in tiles. `store._circle_half` breathes around it so
 #: the rim reads as woods rather than as a stamped disc. It is the outdoor half
 #: of the zone and nothing is sold in it.
 STORE_CIRCLE_TILES = 10.0
 #: Typical width of the two NECKS — the walkable throat between a corridor
 #: mouth and the apron. Narrow, so arriving and leaving are both a squeeze
-#: that opens out; the apron does the breathing.
-STORE_LANE_TILES = 8.0
+#: that opens out; the apron does the breathing. At eight it was not a squeeze:
+#: eight tiles is most of the apron's own diameter, so the throat and the yard
+#: read as one tapering space and the arrival had no threshold in it. The
+#: corridor's own VOID is derived off this (`store._carve_ends`), so narrowing
+#: the neck narrows the way in with it — four tiles, which is two files of
+#: players with a shoulder either side and nothing to spare.
+STORE_LANE_TILES = 5.5
 #: VOID at each end: the way in at the bottom (which seals) and the way out at
 #: the top (which does not). The NORTH one is inside the building — see
 #: `store.SHOP_ROWS`.
-STORE_CORRIDOR_TILES = 5
+STORE_CORRIDOR_TILES = 4
 STORE_BUY_TILES = 1.9
 STORE_BUY_DIST = TILE_SIZE * STORE_BUY_TILES
 #: How far the goods FLOAT off a table when somebody is in range, in tiles.

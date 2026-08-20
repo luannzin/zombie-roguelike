@@ -193,20 +193,6 @@ export function extractionLook(intensity: number): GradeLayer {
 	};
 }
 
-/** The payout: the night turning into money. Gold, warm, brief. */
-export function payoutLook(intensity: number): GradeLayer {
-	const t = Math.max(0, Math.min(1, intensity));
-	return {
-		exposure: 1.06 + 0.14 * t,
-		saturation: 1.06 + 0.18 * t,
-		temperature: 0.2 + 0.22 * t,
-		bloom: 0.6 + 0.6 * t,
-		bloomThreshold: 0.68 - 0.16 * t,
-		shafts: 0.42 + 0.5 * t,
-		vignette: 0.22 - 0.06 * t,
-	};
-}
-
 /** Levelling, and anything else that is a good thing happening at a point. */
 export function surgeLook(): GradeLayer {
 	return {

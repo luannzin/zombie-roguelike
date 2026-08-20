@@ -72,7 +72,6 @@ import {
   extractionLook,
   hitLook,
   lookFor,
-  payoutLook,
   scopeLook,
   surgeLook,
 } from '../render/post/looks';
@@ -4617,13 +4616,14 @@ export class Game {
       this.grade.release('extraction', 1.6);
     }
 
-    // The GRADE belongs to the ceremony, not to the pads. They stay parked in
-    // the yard for the whole visit; the look the arrival wears must not.
-    if (this.payout && !payoutFinished(this.payout)) {
-      this.grade.hold('payout', payoutLook(1), { attack: 0.9, release: 1.4 });
-    } else {
-      this.grade.release('payout', 1.4);
-    }
+    // THE PAYOUT HAS NO GRADE OF ITS OWN, and that is a decision rather than an
+    // omission. It used to push a gold layer — exposure, bloom and shafts up —
+    // for the length of the ceremony and then let it go, so walking into the
+    // shop meant the room was blown out for a few seconds and then settled
+    // into the look it should have had all along. The settled frame IS the
+    // shop: `shopLook` is already the warmest, most saturated grade in the
+    // game. Lighting an arrival brighter than the place it arrives at only
+    // makes the place look dimmer for the rest of the visit.
 
     this.grade.step(dt);
   }

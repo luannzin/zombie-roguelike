@@ -568,7 +568,7 @@ export class Renderer {
       for (const { rift, phase } of riftPhases) {
         drawRiftGlow(
           ctx, rift, phase, this.riftAtlas, this.platformAtlas,
-          beaconCss, state.world.tileSize, state.time,
+          beaconCss, state.time,
         );
       }
     }

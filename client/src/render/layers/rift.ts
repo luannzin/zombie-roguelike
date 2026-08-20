@@ -56,7 +56,6 @@ import {
 } from '../../game/pad-cargo';
 import type { LootAtlas } from '../loot';
 import type { RiftTimingConfig } from '../../net/protocol';
-import { palette } from '../../theme/palette';
 import type { Camera } from '../camera';
 import type { Projection } from '../projection';
 import { groundShadow } from '../shadows';
@@ -979,9 +978,8 @@ export function drawRiftGround(
  * the darkness pass — a rotor disc catching a torch is light, not a thing
  * being lit.
  *
- * The order inside is the order of loudness: the light the pad puts on its own
- * clearing, the corner lamps, the wash on the ground, the burst over it, the
- * aircraft, and the console's band.
+ * The order inside is the order of loudness: the corner lamps, the wash on the
+ * ground, the burst over it, the aircraft, and the console's band.
  */
 export function drawRiftGlow(
   ctx: CanvasRenderingContext2D,
@@ -990,47 +988,21 @@ export function drawRiftGlow(
   riftAtlas: RiftAtlas | null,
   atlas: PlatformAtlas | null,
   beacon: string,
-  tileSize: number,
   time: number,
 ): void {
   if (!atlas || phase.spent) return;
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
 
-  // THE PAD PUTS LIGHT IN THE AIR, and this halo is what makes it read as the
-  // source rather than as a lit object in somebody else's light. Green while it
-  // is loading; once the pickup is called it goes RED AND BREATHES ON THE
-  // SIREN'S OWN BEAT, so the whole clearing pulses with the corners and the
-  // party is standing inside the alarm rather than beside it. A gradient, never
-  // a filled arc — the alpha is already zero before the radius ends, so the
-  // glow has no boundary anywhere.
-  if (phase.powered && phase.alpha > 0 && !phase.airborne) {
-    const siren = atlas.siren;
-    const beat = phase.alarm
-      ? 0.72 + 0.55 * Math.abs(Math.sin(time * Math.PI * sirenRate(siren)))
-      : 0.92 + 0.08 * Math.sin(time * 1.6);
-    const radius = rift.lightTiles * tileSize * (phase.alarm ? 1.35 : 1.0);
-    const [r, g, b] = phase.alarm ? ALARM_TONE : palette().scene.beacon;
-    // THE HALO IS THE AIR, NOT THE LAMP. The corner lamps are baked into the
-    // sheet and their glare is its own additive sheet on top; this gradient
-    // sits UNDER both and only has to say the clearing has a source in it. At
-    // 0.30/0.20 it was doing all three jobs at once — a wash the width of the
-    // pad's whole light radius that flattened the skid's own banding into a
-    // silhouette and blew the deck out to one value. Halved: the lamps stay
-    // the brightest thing on the structure, which is what they are for.
-    // HALVED ONCE, AND CUT AGAIN: the halo, the four lamps and the wash are one
-    // stack, and every pass that tuned them apart put the sum back. This is the
-    // layer with the least to say — it is the AIR having a source in it — so it
-    // gives first, and the lamps stay the brightest thing on the structure.
-    const peak = phase.alarm ? 0.095 : 0.06;
-    const glow = ctx.createRadialGradient(rift.x, rift.y, 0, rift.x, rift.y, radius);
-    glow.addColorStop(0, `rgb(${r} ${g} ${b} / ${(peak * beat).toFixed(3)})`);
-    glow.addColorStop(0.24, `rgb(${r} ${g} ${b} / ${(peak * 0.45 * beat).toFixed(3)})`);
-    glow.addColorStop(0.58, `rgb(${r} ${g} ${b} / ${(peak * 0.15 * beat).toFixed(3)})`);
-    glow.addColorStop(1, `rgb(${r} ${g} ${b} / 0)`);
-    ctx.fillStyle = glow;
-    ctx.fillRect(rift.x - radius, rift.y - radius, radius * 2, radius * 2);
-  }
+  // THE PAD DOES NOT WASH ITS CLEARING. There used to be a radial halo here,
+  // green while loading and red on the siren's beat, on the argument that a
+  // source has to put light in the air to read as the source. It never did
+  // that job: a gradient with no shape in it cannot say WHERE the light comes
+  // from, so all it ever contributed was a bright disc laid over the skid's
+  // own banding, flattening the deck and the hazard paint it sits on. What
+  // actually says "this thing is powered" is the four lamps below, on their
+  // own phases, and the beams the shaft pass pulls out of them. Halving it
+  // twice only made a useless layer cheaper; it is gone.
 
   // THE FOUR CORNER LAMPS, each turning on its own phase. This is the pad's
   // whole vocabulary: a slow green breath while it is taking cargo, and four
@@ -1113,22 +1085,6 @@ export function drawRiftGlow(
   ctx.restore();
 }
 
-/**
- * The colour the clearing goes once the pickup is called.
- *
- * Hardcoded rather than pulled off the palette, and for once that is right:
- * every other light in this game belongs to the theme, but this one has to be
- * the SAME RED as `RED_GLARE` in `make_platform.py`, because the corner lamps
- * and the wash they throw on the ground are one light source. A themed red
- * would drift away from the baked one the first time the palette moved.
- */
-const ALARM_TONE: readonly [number, number, number] = [232, 60, 48];
-
-/** Turns of the siren per second — the beat the whole clearing pulses on. */
-function sirenRate(siren: PlatformEffectSheet | null): number {
-  if (!siren) return 1.3;
-  return siren.fps / Math.max(siren.frames, 1);
-}
 
 /** How many lamps the rig has, which is how many aircraft it takes. */
 function timing_drones(atlas: PlatformAtlas): number {

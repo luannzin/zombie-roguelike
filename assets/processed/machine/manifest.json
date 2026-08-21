@@ -2,38 +2,38 @@
   "seed": 1337,
   "cabinet": {
     "file": "cabinet.png",
-    "frameWidth": 56,
-    "frameHeight": 52,
+    "frameWidth": 42,
+    "frameHeight": 48,
     "frames": 2,
     "reels": [
       [
-        17,
-        20
+        10,
+        16
       ],
       [
-        25,
-        20
+        18,
+        16
       ],
       [
-        33,
-        20
+        26,
+        16
       ]
     ],
     "reelWidth": 6,
     "reelHeight": 10,
     "lever": [
-      46,
-      36
+      35,
+      34
     ],
     "trayMouth": [
-      27,
-      43
+      20,
+      39
     ],
     "crown": [
-      28,
-      11
+      21,
+      7
     ],
-    "payLine": 25
+    "payLine": 21
   },
   "reel": {
     "file": "strip.png",

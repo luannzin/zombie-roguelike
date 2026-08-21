@@ -33,11 +33,13 @@
  */
 
 import { playSfx } from "../audio";
-import { get2d } from "../lib/canvas";
+import { createSurface, get2d, type OffscreenSurface } from "../lib/canvas";
 import { clamp01, lerp } from "../lib/math";
 import type { GameConfig, MapPayload } from "../net/protocol";
 import { Camera } from "../render/camera";
 import { FovField, type LightSource, type VisionConfig } from "../render/fov";
+import { PostChain } from "../render/post/chain";
+import { forestLook } from "../render/post/looks";
 import { ARENA_ZOOM, CAMP_FIRE_ANCHOR, campZoom } from "../render/framing";
 import { DarknessLayer } from "../render/layers/darkness";
 import { TerrainLayer } from "../render/layers/terrain";
@@ -272,7 +274,24 @@ interface Launch {
 
 export class LobbyScene {
 	private readonly canvas: HTMLCanvasElement;
+	/**
+	 * THE SCENE IS DRAWN OFFSCREEN AND FINISHED ON THE GPU, exactly as the
+	 * arena is (`render/renderer.ts`). It is the same split the whole game's
+	 * finish rests on: pixel art goes into a 2D surface at one pixel per pixel,
+	 * and the LIGHT, the AIR and the LENS are added by `PostChain` on top of it.
+	 *
+	 * The title screen used to paint straight onto the visible canvas, which
+	 * meant the first frame a player ever saw was the only ungraded picture in
+	 * the game — no bloom on the fire, no fog, no vignette, no grain — and the
+	 * moment the run started every one of those arrived at once. The menu is
+	 * the same clearing as the camp, so it wears the same look the camp does.
+	 */
 	private readonly ctx: CanvasRenderingContext2D;
+	private readonly scene: OffscreenSurface;
+	/** Null when WebGL2 is unavailable; the fallback blits `scene` out flat. */
+	private readonly post: PostChain | null;
+	/** Only exists on that fallback path, and only to blit `scene` out. */
+	private readonly blit: CanvasRenderingContext2D | null;
 	private readonly sprites: SpriteBook;
 	private readonly terrain = new TerrainLayer();
 	private readonly darkness = new DarknessLayer();
@@ -343,7 +362,13 @@ export class LobbyScene {
 		sprites: SpriteBook = new SpriteBook(),
 	) {
 		this.canvas = canvas;
-		this.ctx = get2d(canvas, "lobby-scene");
+		// The chain first: a canvas that has handed out a 2D context can never
+		// give a WebGL2 one, so the visible surface is claimed by the GPU and
+		// the scene is painted into a detached one beside it.
+		this.post = PostChain.create(canvas);
+		this.scene = createSurface(1, 1, "lobby-scene");
+		this.ctx = this.scene.ctx;
+		this.blit = this.post ? null : get2d(canvas, "lobby-blit");
 		this.sprites = sprites;
 	}
 
@@ -398,6 +423,7 @@ export class LobbyScene {
 		this.rings.length = 0;
 		this.kindle = null;
 		this.world = null;
+		this.post?.dispose();
 		this.fov = null;
 		this.lights = [];
 		this.atlas = null;
@@ -870,8 +896,11 @@ export class LobbyScene {
 		const height = Math.max(1, Math.round(this.cssHeight * this.dpr));
 		if (canvas.width !== width) canvas.width = width;
 		if (canvas.height !== height) canvas.height = height;
+		if (this.scene.canvas.width !== width) this.scene.canvas.width = width;
+		if (this.scene.canvas.height !== height) this.scene.canvas.height = height;
 		// Resizing the backing store resets context state.
 		this.ctx.imageSmoothingEnabled = false;
+		if (this.blit) this.blit.imageSmoothingEnabled = false;
 		this.frameCamera();
 	}
 
@@ -1084,7 +1113,13 @@ export class LobbyScene {
 		ctx.setTransform(1, 0, 0, 1, 0, 0);
 		ctx.fillStyle = tone.surface;
 		ctx.fillRect(0, 0, canvas.width, canvas.height);
-		if (!world) return;
+		// Even with nothing to draw the frame still has to be handed over: the
+		// visible canvas belongs to the chain now, so a `return` here would
+		// leave the GPU showing whatever was on it last.
+		if (!world) {
+			this.finish();
+			return;
+		}
 
 		ctx.save();
 		ctx.scale(camera.zoom, camera.zoom);
@@ -1121,6 +1156,32 @@ export class LobbyScene {
 
 		ctx.restore();
 		this.drawLabels();
+
+		// The finish. Everything above went into `scene`; this is the only place
+		// anything reaches the visible canvas.
+		this.finish();
+	}
+
+	/**
+	 * Hand the frame to the GPU, or blit it out unfinished.
+	 *
+	 * NO SHAFT LIGHTS. The pass wants sources in canvas pixels and this scene
+	 * has exactly one candidate — the bonfire — which is parked near the middle
+	 * of the frame behind a menu. A beam raking the title card is the one thing
+	 * in this look a player WOULD be able to point at, and the grade is the
+	 * part of the arena's finish that had to arrive here, not the geometry.
+	 *
+	 * The fallback is deliberately not a 2D imitation of the chain, for the same
+	 * reason the arena's is not: a half-done look is worse than the look's
+	 * absence, so a client without WebGL2 gets the flat picture this scene drew
+	 * before the chain existed.
+	 */
+	private finish(): void {
+		if (this.post) {
+			this.post.render(this.scene.canvas, forestLook(), [], this.time);
+			return;
+		}
+		this.blit?.drawImage(this.scene.canvas, 0, 0);
 	}
 
 	/**

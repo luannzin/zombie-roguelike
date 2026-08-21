@@ -98,6 +98,26 @@ so rather than reaching across it.
   it" — it is "can I see it MISSING". A grade the player can point at is a
   filter, and a filter is the one thing this is not.
 
+- **THE CAMP IS THE FOREST, AND THE TITLE SCREEN IS THE CAMP.** `campLook`
+  used to be its own softer grade — warmer, a touch brighter, the frame opened
+  up — on the argument that the clearing is the safe beat of the loop and
+  should not wear the night the run does. What it actually did was make the
+  first thing a player ever sees a different GAME to the one they are about to
+  play: the fire, the trunks and the grass in that clearing are the same art
+  the forest is drawn from, and grading them warm put a visible cut in colour
+  on the exact frame the camera push out of the lobby exists to hide. It
+  returns `forestLook()` now. What says "safe" at the camp is the fire and the
+  absence of anything walking toward it, not two percent of exposure. The SHOP
+  keeps its own look, because that one is indoors and the walk into it is
+  meant to read as a change of place.
+  And the lobby is no longer the one ungraded picture in the game.
+  `game/lobby-scene.ts` paints into an offscreen surface and finishes through
+  its own `PostChain`, exactly as the arena does — so the title card has the
+  bloom on its fire, the fog, the vignette and the grain that used to all
+  arrive at once the moment the run started. No shaft lights: the scene has one
+  candidate source, parked mid-frame behind a menu, and a beam raking the title
+  card is the one thing in this look a player could point at.
+
 - **PIXEL ART IS THE WORLD. IT IS NOT THE LIGHT, THE AIR OR THE LENS.** This
   is the split the whole finish rests on, and it is structural rather than a
   preference: every `layers/` pass draws into an offscreen 2D surface at one

@@ -51,10 +51,17 @@ same offsets and `_LAYOUT` below mirrors it exactly; if one moves the other
 has to.
 
 WHERE IT GOES
-At the far end of the story. `scenery.Population.route` is a walk from the
-spawn clearing outward through the scenes that landed, ordered so the last stop
-is the landmark. Dropping the pad at `route[-1]` gives a run a SHAPE: out along
-the trail, and back through it with your pockets full. A uniformly random tile
+THE FIRST ONE IS NEAR THE DOOR. A night opens with an empty bag, so a first
+console two minutes' walk away is an objective the party cannot act on yet —
+they were finding a machine with nothing to give it. It stands a clearing out
+from the arrival mouth instead (`NEAR_SPAWN_CLEARANCE`), and the run works
+OUTWARD from there.
+
+The story thread is not lost, it moves down the queue. `scenery.Population.route`
+is a walk from the spawn clearing outward through the scenes that landed,
+ordered so the last stop is the landmark, and the SECOND pad takes `route[-1]`:
+out along the trail, and back through it with your pockets full. Anything after
+that goes as far from spawn as the clearances allow. A uniformly random tile
 gives an errand.
 
 THE TIMELINE IS THE RIG
@@ -664,6 +671,24 @@ SCENE_CLEARANCE = 13.0
 SPAWN_CLEARANCE = 20.0
 MARGIN = 3
 
+#: THE FIRST PAD IS NEAR THE DOOR, AND THAT IS A CHANGE OF SHAPE.
+#:
+#: It used to sit at `route[-1]`, the far end of the story thread, so the night
+#: opened with a long walk to a console nobody had seen yet. What that actually
+#: bought was a first objective the party could not act on for two minutes: the
+#: bag is empty on arrival, so the walk out was spent finding a machine that had
+#: nothing to be given. The first platform stands a clearing away from the
+#: arrival mouth instead — found almost immediately, loaded a little, and then
+#: the party works OUTWARD from it. The trail's payoff is not lost, it moves
+#: down the queue: the SECOND pad is the one that takes `route[-1]`.
+#:
+#: The clearance is a floor, not a target. `_candidates` sorts nearest-first
+#: around the mouth, so the pad lands just outside this ring — far enough that
+#: the arrival corridor, its avoid radius (`ENTRANCE_MOUTH_TILES + 6`) and the
+#: pad's own plot do not overlap, near enough that it is the first structure
+#: the party walks into.
+NEAR_SPAWN_CLEARANCE = 12.0
+
 
 def place_many(
     tiles: list[list[int]],
@@ -673,10 +698,11 @@ def place_many(
     rng: random.Random,
     count: int,
 ) -> list[Rift]:
-    """Place up to `count` extraction points. The first follows the story
-    thread; the rest go as far from spawn and from each other as the clearances
-    allow. Fewer than asked is survivable — the quest need is however many
-    actually landed.
+    """Place up to `count` extraction points. The first stands a clearing away
+    from the ARRIVAL MOUTH (`NEAR_SPAWN_CLEARANCE`); the second follows the
+    story thread to its far end; the rest go as far from spawn and from each
+    other as the clearances allow. Fewer than asked is survivable — the quest
+    need is however many actually landed.
     """
     want = max(0, count)
     if want == 0:
@@ -684,11 +710,20 @@ def place_many(
     placed: list[Rift] = []
     keepout = list(scenes)
     for index in range(want):
-        # The first pad is the end of the trail. Later ones have no thread to
-        # honour, so they fall back to "as far from spawn as possible", which
-        # is also as far from the party as the night can make them walk.
-        aim_route = route if index == 0 else []
-        row = place(tiles, aim_route, keepout, origin, rng)
+        # THE QUEUE IS ORDERED BY DISTANCE FROM THE DOOR, and the first stop is
+        # the nearest one. The SECOND pad is the end of the trail — the thread
+        # `scenery.Population.route` was strung for still pays off, one console
+        # later. Anything after that has no thread left to honour and falls back
+        # to "as far from spawn as possible", which is also as far from the
+        # party as the night can make them walk.
+        if index == 0:
+            row = place(
+                tiles, [], keepout, origin, rng,
+                aim=origin,
+                spawn_clearance=NEAR_SPAWN_CLEARANCE,
+            )
+        else:
+            row = place(tiles, route if index == 1 else [], keepout, origin, rng)
         if row is None:
             break
         row.id = f"r{index}"
@@ -703,6 +738,8 @@ def place(
     scenes: list[tuple[float, float]],
     origin: tuple[float, float],
     rng: random.Random,
+    aim: tuple[float, float] | None = None,
+    spawn_clearance: float = SPAWN_CLEARANCE,
 ) -> Rift | None:
     """Clear a plot, stamp its tiles, and return the platform standing in it.
 
@@ -728,7 +765,8 @@ def place(
     if width < PLOT + BORDER * 2 or height < PLOT + BORDER * 2:
         return None
 
-    aim = route[-1] if route else None
+    if aim is None:
+        aim = route[-1] if route else None
     for scene_relax, spawn_relax, edge_relax in (
         (1.00, 1.00, 1.00),
         (0.70, 0.85, 1.00),
@@ -737,7 +775,7 @@ def place(
         (0.00, 0.00, 0.50),
     ):
         scene_clear = SCENE_CLEARANCE * scene_relax
-        spawn_clear = SPAWN_CLEARANCE * spawn_relax
+        spawn_clear = spawn_clearance * spawn_relax
         # Never past the treeline, whatever happens: a pad with its back to the
         # forest is a compromise, a pad hanging off the map is broken.
         margin = max(BORDER, round(EDGE_MARGIN * edge_relax))

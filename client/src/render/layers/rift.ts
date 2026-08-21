@@ -84,6 +84,17 @@ const TILE_PX = 16;
 
 /** Platform states. The index is the contract with `make_platform.py`. */
 const COLD_FRAME = 0;
+/**
+ * How much of a corner lamp's glare sheet goes on, per corner.
+ *
+ * FOUR OF THESE OVERLAP AND THEY ARE ONE BUDGET. The additive chain does not
+ * clamp and bloom sits on top of it, so these are judged as a SUM over the
+ * deck rather than one lamp at a time — see `drawRiftGlow`. The alarm runs
+ * hotter on purpose: it is the beat the whole map is walking toward.
+ */
+const LAMP_GLARE = 0.55;
+const LAMP_ALARM_GLARE = 0.68;
+
 /** Powered and taking cargo: green corner lamps. */
 const STANDBY_FRAME = 1;
 /** The pickup has been called: red corner lamps, sirens sweeping. */
@@ -1004,20 +1015,37 @@ export function drawRiftGlow(
   // own phases, and the beams the shaft pass pulls out of them. Halving it
   // twice only made a useless layer cheaper; it is gone.
 
-  // THE PAD NO LONGER GLARES, AND THAT IS THE SECOND LAYER TO GO.
+  // THE FOUR CORNERS THROW LIGHT, AND THE COLOUR OF IT IS THE PAD'S STATE.
   //
-  // Four corner lamps each blitted their own additive GLARE sheet on top of
-  // the halo that used to sit under them. Every one of those sheets is white
-  // at its core and they overlap across the deck, so `lighter` summed them
-  // into a single blown rectangle — then bloom found that rectangle, spread
-  // it, and the clearing came out as a white hole with a forest around it.
-  // Dropping the alpha only made the hole dimmer; the sum is the problem.
+  // `make_platform` already bakes three states into the skid — cold, green
+  // standby, red alarm — so the HOUSINGS change colour without this pass. That
+  // is not the same statement: a lamp that changes colour and throws nothing
+  // is a painted lamp, and at night, across a clearing, four painted pixels
+  // are not what tells a party the platform they walked to is live. GREEN
+  // MEANS LOADING AND RED MEANS THE AIRCRAFT ARE COMING; both have to read
+  // from further away than the console's own prompt.
   //
-  // WHAT SAYS THE PAD IS POWERED IS THE SKID ITSELF. `make_platform` bakes
-  // three states into the sheet — cold, standby, alarm — so the lamps, their
-  // colour and their beat are already IN the art the depth sort draws, lit
-  // exactly where the lamp housings are rather than as a wash over everything
-  // near them. That is the read; this pass was the glow around it.
+  // THIS LAYER WAS DELETED ONCE AND THE REASON IT CAME BACK DIFFERENT IS THE
+  // BUDGET. The four sheets overlap across the deck and `lighter` does not
+  // clamp, so at the old weight they summed into one blown rectangle, bloom
+  // found that rectangle, and the clearing came out as a white hole with a
+  // forest around it. The fix is not to delete the light, it is to hold the
+  // SUM under the threshold: each corner goes on at roughly half strength, so
+  // four of them at their brightest still land near one lamp's worth of glare
+  // and the skid's own banding survives underneath. The alarm gets a little
+  // more, because that one is supposed to hurt.
+  //
+  // They ride `deckX`/`deckY` rather than the pad's plot, so the lamps go up
+  // with the platform instead of staying behind in the hole it left, and they
+  // fade on `phase.alpha` with everything else on it.
+  const lampSheet = phase.alarm ? atlas.siren : phase.powered ? atlas.standby : null;
+  if (lampSheet && phase.alpha > 0.01) {
+    ctx.globalAlpha = phase.alpha * (phase.alarm ? LAMP_ALARM_GLARE : LAMP_GLARE);
+    for (const lamp of atlas.layout.lamps) {
+      blit(ctx, lampSheet, phase.deckX + lamp.dx, phase.deckY + lamp.dy, time);
+    }
+    ctx.globalAlpha = 1;
+  }
 
   // Rotor wash. Only once something is actually holding station over the pad,
   // and it goes to maximum through the strain, which is what says the machines

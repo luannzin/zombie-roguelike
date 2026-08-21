@@ -65,30 +65,25 @@ export function forestLook(): Grade {
 }
 
 /**
- * The camp before a run. The same forest with the threat taken out of it:
- * warmer, a touch brighter, and the frame opened up.
+ * The camp before a run, and the title screen behind the menu.
+ *
+ * IT IS THE FOREST GRADE, EXACTLY. It used to be its own softer look — warmer,
+ * a touch brighter, the frame opened up — on the argument that the camp is the
+ * safe beat and should not wear the night the run does. What that actually did
+ * was make the FIRST thing a player ever sees a different game to the one they
+ * are about to play: the fire, the trees and the grass in the clearing are the
+ * same art the forest is drawn from, and grading them warm made the handover
+ * out of the lobby a visible cut in colour on the frame the camera push was
+ * built to hide. The camp is a clearing in the same woods at the same hour;
+ * it looks like it. What says "safe" here is the fire and the absence of
+ * anything walking toward it, not a two-percent lift in exposure.
+ *
+ * The shop keeps its own look — that one is INDOORS and warm for a reason
+ * (see `shopLook`), and the walk into it is meant to read as a change of
+ * place.
  */
 export function campLook(): Grade {
-	return base({
-		exposure: 1.04,
-		shoulder: 0.5,
-		contrast: 1.06,
-		saturation: 0.96,
-		temperature: -0.06,
-		lift: [0.006, 0.002, 0.01],
-		gain: [1.02, 1.0, 0.99],
-		bloom: 0.5,
-		bloomThreshold: 0.74,
-		shafts: 0.3,
-		fog: 0.04,
-		fogTint: palette().grade.fogCamp,
-		aberration: 0.25,
-		focus: 0.85,
-		vignette: 0.2,
-		vignetteSoft: 0.7,
-		vignetteTint: palette().grade.vignette,
-		grain: 0.024,
-	});
+	return forestLook();
 }
 
 /**

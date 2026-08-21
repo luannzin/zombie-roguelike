@@ -205,10 +205,27 @@ SLOPE = 0.5
 #: How far the cabinet runs back from the camera. AUTHORED rather than derived
 #: from its width (§3a's exception, and the same call the vehicles make): a
 #: slot machine is deeper than it is wide, and a run back at the true ratio
-#: puts more rise on the crown than the crown is tall. Twelve is the number
-#: where the flank is wide enough to hang a lever off and the top of the hood
-#: still reads as the top of a hood.
-DEPTH = 12
+#: puts more rise on the crown than the crown is tall.
+#:
+#: IT WAS TWELVE, AND TWELVE IS A THREE-QUARTER VIEW OF A CABINET RATHER THAN A
+#: CABINET. Two things went wrong at that depth and they compound. The run back
+#: is as wide as a third of the front, so the swept planes — deck top, hood top,
+#: flank — carried more of the sprite than the fascia did: the biggest surface
+#: on a slot machine became its control shelf seen from above, and the three
+#: windows, the one thing that has to read from the shop door, sat on a face
+#: the eye took second. And the run only ever spends columns to the RIGHT, so a
+#: frame centred on the contact point put the machine visibly off its own tile,
+#: leaning away from the player walking up to it.
+#:
+#: FIVE IS A FRONT VIEW OF A SOLID, which is what everything else in this room
+#: is. §2a still holds — front, top and shade side, none of them optional — but
+#: the top is now a two-pixel cap and the flank a sliver, the same proportions
+#: the stalls and the counter are drawn at. The cabinet reads as a box standing
+#: square to the screen with its face toward the door, the fascia is the biggest
+#: plane on it again, and the art lands within a pixel or two of the centre of
+#: its own frame. It is also still deep enough to hang the lever off, which was
+#: the only thing the twelve was actually buying.
+DEPTH = 5
 CAB_W = FRONT_W + 2 * DEPTH
 CAB_H = FRONT_H + int(DEPTH * SLOPE)
 #: Where the front's own origin sits in the frame.

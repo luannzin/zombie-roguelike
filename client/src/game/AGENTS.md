@@ -106,6 +106,15 @@ The server half of each of these lives in [`docs/design/`](../../../docs/design/
 - `lobby-scene.ts` is decoration only: no input, no prediction, no socket. It
   draws through the arena's own `TerrainLayer`, so the lobby and the game
   cannot drift apart.
+- **The lobby is graded, and it owns its own `PostChain`.** It paints into an
+  offscreen surface and finishes on the GPU exactly as `render/renderer.ts`
+  does, wearing `forestLook()` — the camp is a clearing in the same woods, so
+  the title card must not be the one ungraded picture in the game. Two
+  consequences bind anything editing this file: the VISIBLE canvas belongs to
+  WebGL2, so nothing may take a 2D context off it (`get2d` on it is the
+  no-WebGL2 fallback only), and every path out of `draw()` — including the
+  early return before the world exists — has to reach `finish()` or the GPU
+  keeps showing the last frame it was handed.
 - **The lobby draws the real camp.** `setCamp` takes the map from `hello` and
   `setMembers` takes the server's own coordinates; the scene never decides
   where anybody stands. It used to force the local player into the front seat,

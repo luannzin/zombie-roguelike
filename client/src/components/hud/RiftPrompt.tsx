@@ -2,11 +2,20 @@
  * Interact prompt on an extraction pad. One use of `Tooltip`.
  *
  * FOUR THINGS THE BUTTON CAN BE SAYING, and they are not interchangeable: wake
- * the platform, wait (another pad is already running), load it, or CALL THE
- * PICKUP. Loading past the quota used to be a fifth line of its own
+ * the platform, wait (another pad is already running), TIP THE BAG INTO it, or
+ * CALL THE PICKUP. Loading past the quota used to be a fifth line of its own
  * ("sobrecarregar"); it is not a fifth ACT — E tips the whole bag in on either
  * side of the bill — so the overshoot is reported by the count, not by a
  * second sentence the player has to notice changed.
+ *
+ * THE LOAD LINE NAMES THE VERB THE BODY PERFORMS, not the machine's job.
+ * "Carregar a plataforma" described what the pad ends up with; what E actually
+ * starts is the player taking the pack off their shoulders and turning it
+ * upside down, and the whole reason that pour is a ceremony is that the party
+ * watches THEIR bag being emptied. The coin count beside the line is the same
+ * number the quest row carries — how much of tonight's bill this pad has been
+ * paid — so the sentence says what is being given and the badge says how far
+ * it goes.
  *
  * THAT LAST ONE IS THE MOST EXPENSIVE PRESS IN THE GAME and the line has to
  * say so before it happens, not after. Everything up to it is quiet and
@@ -66,7 +75,7 @@ export function RiftPrompt({ prompt }: RiftPromptProps) {
 
 	return (
 		<Tooltip anchor="rift" end={count}>
-			Aperte <TooltipKey>E</TooltipKey> para carregar a plataforma
+			Aperte <TooltipKey>E</TooltipKey> para despejar itens da mochila
 		</Tooltip>
 	);
 }

@@ -97,6 +97,19 @@ authority (`server/app/inventory.py` slot rules), the wire protocol pair, or
   make it a well rather than a table, and an open front with a hazard-striped
   ramp down the middle of it — facing the console the player is already
   standing at. The way in is the front, and now it looks like one.
+  - **THE QUEUE IS ORDERED BY DISTANCE FROM THE DOOR, AND THE FIRST PAD IS
+    NEAR IT.** It used to sit at `route[-1]`, the far end of the story thread,
+    which read well on paper — out along the trail, back with your pockets
+    full — and cost the night its opening. The party arrives with an EMPTY BAG:
+    a first console two minutes' walk away is an objective nobody can act on
+    yet, so the walk out was spent finding a machine with nothing to give it,
+    and the first thing the run ever asks for landed after the first thing it
+    makes you do. The first platform stands a clearing out from the arrival
+    mouth now (`rift.NEAR_SPAWN_CLEARANCE`, far enough to clear the corridor
+    and its avoid radius): found almost at once, loaded with whatever the walk
+    turned up, and the night works OUTWARD from it. The trail is not lost, it
+    moves down the queue — the SECOND pad takes `route[-1]`, and on a five-pad
+    night the rest go as far from spawn as the clearances allow.
   - The module is still called `rift.py` and the wire still says `rifts`. That
     is history, not a second mechanic: the extraction point used to be a tear
     in the world with stones around it, and renaming twenty client files buys
@@ -148,13 +161,21 @@ authority (`server/app/inventory.py` slot rules), the wire protocol pair, or
     aircraft are coming. There are no overfeed tiers and the drones are not a
     meter.
 
-    **FOUR LAMP SHEETS OVERLAP AND THEY ARE ONE BUDGET WITH THE HALO.** Each
-    corner's glare is its own additive sheet; drawn at full strength the four
-    of them summed into one white rectangle the size of the deck and the pad
-    read as a lightbox rather than as four lamps on a structure. `layers/rift`
-    holds them at 0.72 (0.85 on the alarm) and the air halo under them at
-    0.085 — the same rule the shop's eleven torches are under, and the same
-    failure when it is judged one lamp at a time.
+    **THE CORNERS THROW LIGHT, AND FOUR SHEETS ARE ONE BUDGET.** `make_platform`
+    bakes the three states into the skid, so the housings change colour on
+    their own — and a lamp that changes colour and throws nothing is a PAINTED
+    lamp. Across a dark clearing four coloured pixels are not what says the
+    platform is live, so each corner also blits its own additive glare sheet
+    (`standby.png` green, `siren.png` red) riding the deck, which means they go
+    up with the platform rather than staying behind in its hole.
+    They overlap, `lighter` does not clamp and bloom sits on top, so they are
+    judged as a SUM over the deck and never one lamp at a time: this layer was
+    deleted once because at full strength the four of them made a white
+    rectangle the size of the skid. `layers/rift` holds each at `LAMP_GLARE`
+    0.55 (`LAMP_ALARM_GLARE` 0.68), so four at once land near one lamp's worth
+    and the deck's own banding survives underneath. There is NO air halo — a
+    gradient with no shape in it cannot say where light comes from, and all it
+    ever did was flatten the hazard paint.
   - **E on a paid pad with an empty pocket CALLS THE PICKUP**, and that is the
     most expensive press in the game. The lamps go RED and start sweeping as
     sirens. `Room._siren` throws a map-wide noise every `SIREN_PULSE`, and

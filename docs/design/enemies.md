@@ -61,6 +61,7 @@ walk. Awareness is pinned, so the diamond is already lit. See
 | --- | --- |
 | senses, hunt, steering, the director | `server/app/ai.py` |
 | stat blocks, variants, accessories | `server/app/enemies.py` + a processed sprite folder of the same name |
+| what a creature LOOKS like | `server/tools/make_zombie.py` — three anatomies (`Build.kind`), one derived ramp each, then `process_sprites.py --exact` for the sheet AND its `-death` |
 | tuning (reach, rates, group sizes, `BUSH_CONCEAL_SCALE`) | `server/app/config.py` |
 | where undergrowth is, on both sides | `world.tile_hash` / `TileMap.bush_at` + `client/src/render/layers/terrain.ts` |
 | where creatures start standing | `server/app/mapgen.py` (`NEST_SCENES` / `HAUNT_SCENES`), `Room._seed_nests` |
@@ -76,6 +77,31 @@ the wire protocol pair.
 
 ## Design law
 
+- **THE THREE CREATURES ARE THREE ANATOMIES, NOT THREE PALETTES.** They were
+  three palettes for a long time: one head box, one body box, one stride, and
+  the walker, the husk and the brute differed by which four hex values filled
+  them. Cover the colour and there was one creature on the sheet. Now the
+  walker is a person with its head sunk into its shoulders, the husk is a
+  SKELETON — skull, a gap of neck, ribs with the night showing between them —
+  and the brute is a mass with fungus growing out of its shoulders, wider than
+  its own head is tall. The test is S15's and it is the one to run before any
+  future variant ships: draw all of them in solid black at 1x, and if you
+  cannot say which is which, what has been drawn is a recolour.
+- **A FACE IS A LIGHT, NOT A HOLE.** Every creature carries an EYE: one
+  saturated pixel inside a dark socket, and it is the single accent the sprite
+  is allowed (S12). Sockets used to be ink on rot, which at eight pixels is
+  one dark value pretending to be two, and the result was a creature with no
+  face at exactly the distance where a face is all you have. The eye is what
+  the player tracks at the edge of the lantern, it is the last thing to go as
+  the thing walks out of the light, and it stays lit in the corpse's head
+  through the whole collapse. ONE eye burns on the walker and the husk and
+  BOTH burn on the brute — asymmetry is a head turned slightly away, and the
+  brute is the one that has already seen you.
+- **THE COLLAPSE IS ONE TIMELINE AND EVERYTHING RIDES IT.** `HEAD_POSE` and
+  `BODY_POSE` in `make_zombie.py` are the fall in offsets, and the creature,
+  its hat and its shirt all read the same two tables. That is what keeps a cap
+  ON a head through a fall the cap was authored separately from — and it is
+  why a new accessory is a draw function and no timing at all.
 - **SOME SCENES KEPT THEIR DEAD.** Every wreck on the map is a story about
   people who did not make it, and for a long time none of them had anybody in
   it — the scene said "something happened here" and the forest answered "and

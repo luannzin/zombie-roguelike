@@ -193,7 +193,7 @@ These bind every subtree. Subsystem-specific rules live in the docs above.
 
 | scope | command |
 | --- | --- |
-| server | `python tests/test_snapshot_shape.py`, `test_pour.py`, `test_store_walk.py`, `test_config_parity.py`, `test_loot_frames.py`, `test_bush_cover.py`, `test_scenery_containers.py` from `server/` — plain scripts, each prints `ok` |
+| server | `python tests/test_snapshot_shape.py`, `test_pour.py`, `test_store_walk.py`, `test_config_parity.py`, `test_loot_frames.py`, `test_bush_cover.py`, `test_scenery_containers.py`, `test_creature_sheets.py` from `server/` — plain scripts, each prints `ok` |
 | client | `bun run typecheck` from `client/` — required after any change there |
 | client | `bun tests/grade.ts` from `client/` after touching `render/post/grade.ts` — plain script, prints `ok` |
 | client | `bun tests/exit-path.ts` from `client/` after touching `game/exit-path.ts` — plain script, prints `ok` |
@@ -224,6 +224,13 @@ in `render/guns.ts`, the per-class feel in `game/weapon-feel.ts`, or the atlas
 the muzzle, the ejection port and the off hand are the same pose, mirrored
 together — and that every firearm still has an action frame, APPENDED after
 the closed ones rather than interleaved.
+
+Run `test_creature_sheets.py` after touching `make_zombie.py` or reprocessing
+a creature: it checks that every creature and every accessory still has a
+`-death` timeline, that the grids are what the renderer assumes, and — the one
+worth having — that the three variants are still three SHAPES. S15's silhouette
+test as arithmetic: mask them, count the pixels and the top-contour columns
+that differ, and fail if a variant has become a recolour of another.
 
 Run `test_config_parity.py` after touching `client_config()` or `GameConfig`:
 it fails if either side declares a key the other does not, in either

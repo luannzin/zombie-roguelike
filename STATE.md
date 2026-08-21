@@ -26,12 +26,12 @@ ceremony.
   below), so new art is authored against a frame that has bloom, shafts, fog and
   a grade on it.
   **Done so far:** terrain and scenery, the object sheets, the held weapons, the
-  LOOT atlas (all 46 items plus the 12 gun icons), the skill payout TIN, and the
-  extraction PLATFORM and its drones. **Still on the old shading:** the console
-  and threshold kit (`make_rift.py`), the merchant's own kit (`make_store.py`),
-  the upgrade cabinet (`make_machine.py`), the skill ICONS (flat HUD marks by
-  contract — read `make_skills.py`'s header before "fixing" them), and the
-  creature sheets in `assets/raw/`.
+  LOOT atlas (all 46 items plus the 12 gun icons), the skill payout TIN, the
+  extraction PLATFORM and its drones, the PLAYER (plus a holding pose), and the
+  THREE CREATURES. **Still on the old shading:** the console and threshold kit
+  (`make_rift.py`), the merchant's own kit (`make_store.py`), the upgrade
+  cabinet (`make_machine.py`), and the skill ICONS (flat HUD marks by contract
+  — read `make_skills.py`'s header before "fixing" them).
 - **The SHOP is a building again** (`store.py` offsets are still moving). The
   zone is now an outdoor APRON — platforms land, the cart is parked, the
   payout happens — and a brick SHOP at the north end of it, entered through a
@@ -44,6 +44,7 @@ ceremony.
 
 | | |
 | --- | --- |
+| **the dead were redrawn** | three creatures, three ANATOMIES: the walker keeps the player's build, the husk became a real skeleton (skull, a gap of neck, ribs with gaps you can see through), the brute became a mass with fungus growing out of it. Every ramp is derived through `material_ramp` instead of typed hex, and every creature carries an EYE — one saturated pixel in a dark socket, the sheet's single accent. The S15 test (all three in solid black) is in `make_zombie.py`'s header and passes |
 | **the player has a HOLDING pose** | the sheet grew a second block of rows (`hold-down` / `hold-left` / `hold-right` / `hold-up`, APPENDED — walk rows keep their indices) with the weapon arm raised on the right-handed side and the off hand tucked. `process_sprites.py` now carries a second pose block generically (`POSE_PREFIXES`), mirroring each block on its own. `render/guns.ts`'s `GUN_GRIP_SIDE` and `arms.ts`'s `WRIST_OUT` are the client half of that pose and move with it |
 | **held weapons are drawn at 3/4** | `make_guns.DRAW_SCALE` — the art is authored at one pixel scale so it can say "AK", and drawn smaller so it stops out-measuring the body. In the manifest, so sprite / muzzle / port / support hand all shrink together |
 | **the weapon is HELD** | the gun was a sprite floating at chin height with nobody holding it, and the same sprite for every state of every weapon. Now: the grip is measured off the FEET and off the centreline (`GUN_GRIP_ABOVE_FEET` / `GUN_GRIP_SIDE`), arms are PLOTTED from the shoulder to it (`render/arms.ts`), the atlas carries an OPEN action frame per firearm derived from the closed art (`make_guns._cycled`), brass leaves the ejection port when the action opens, a swap is a DRAW, the weapon breathes and bobs and braces, and a hot barrel smokes. What each class does is derived from its catalog row in `client/src/game/weapon-feel.ts` — no per-weapon table. `bun tests/weapon-pose.ts` covers the pose and the atlas |

@@ -730,6 +730,11 @@ python tools/make_audio.py
 
 ## Verification
 
+- `python tests/test_creature_sheets.py` from `server/` after touching
+  `make_zombie.py`: every creature and accessory still has a `-death` timeline,
+  the grids are what the renderer assumes, and the three variants are still
+  three SHAPES — S15's silhouette test as arithmetic, which is the one thing
+  about this sheet nothing at runtime can notice.
 - Re-run the generator and check `git status`: a script that has not changed
   must leave `assets/processed/` byte-identical. That is also how a refactor of
   the shared helpers is proved safe — move a ramp or a field primitive, re-run

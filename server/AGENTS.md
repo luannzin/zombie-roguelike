@@ -52,7 +52,9 @@ Why the simulation is shaped this way: [`docs/design/`](../docs/design/) — one
   merchant, a stall or the cabinet cannot be walked to — run it after any edit
   to `store.py`'s layout offsets. `test_config_parity.py` compares
   `client_config()` against the client's `GameConfig` both ways — run it after
-  any edit to either.
+  any edit to either. `test_creature_sheets.py` guards the art the AI is
+  wearing: a corpse timeline per creature and per accessory, and three
+  variants that are still three shapes rather than three palettes.
 - Then run the server and join from two browser tabs; check the server stays at
   a steady tick and no client rubber-bands.
 

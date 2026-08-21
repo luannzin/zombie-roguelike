@@ -96,7 +96,12 @@ folder and carries the regeneration commands. Nothing here is edited directly.
 - Zombie bodies (`zombie/`, `zombie-husk/`, `zombie-brute/`) are authored
   on that same 16×16 grid and processed `--exact`, so hats (`zhat-*`) and
   clothes (`zcloth-*`) lock to the head and torso the way the backpack
-  locks to the player. Accessory sheets bake their own colour — enemies
+  locks to the player. They are THREE ANATOMIES sharing one grid, not one
+  body in three colours: a person, a skeleton with gaps through its ribs,
+  and a mass with growths off its shoulders. An accessory is authored
+  against the WALKER's build and worn by all three, which is why a hat may
+  sit a pixel proud of the brute's skull and must never be resized per
+  variant. Accessory sheets bake their own colour — enemies
   are drawn untinted. Each of those folders has a matching `*-death/`
   sheet: a collapse timeline, last frame the corpse that stays. The
   client never rotates a walk frame to fake one.

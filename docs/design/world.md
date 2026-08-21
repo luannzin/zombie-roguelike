@@ -83,14 +83,27 @@ catalog, or the wire protocol pair.
   edge corridor, letterboxed, and the title names the night over the march.
   Then the controls and the chrome return together. Every zone gets a title.
 
-- **The forest is 132 x 92 tiles and its scene count went up with it.** Those
-  are one decision, not two: a map that grows without growing its stories is
-  not a bigger world, it is a longer walk between the same things. What the
-  extra ground buys is that a night with three extraction pads can put them
-  far enough apart to be three separate expeditions rather than three stops on
-  one lap. The pocket grew with it too (five slots), because at three a party
-  filled the bag at the second scene and spent the rest of the night walking
-  past things, which is the game refusing its own content.
+- **The forest is sized to the night it has to hold, and 132 x 92 is the
+  three-pad size.** The map and its scene count are one decision, not two: a
+  map that grows without growing its stories is not a bigger world, it is a
+  longer walk between the same things. 132 x 92 was picked so that a night with
+  THREE extraction pads can put them far enough apart to be three separate
+  expeditions rather than three stops on one lap — which is an argument about
+  three pads, and it does not hold for one. A single-pad night on that same map
+  is one errand with a long empty walk either side of it.
+
+  So GROUND PER PAD IS THE CONSTANT and the map is the variable
+  (`mapgen.size_for_pads`, scaling AREA off `rift.count_for_day`): one pad is
+  76 x 53, two is 108 x 75, three is the full 132 x 92, and the scene count
+  takes the same fraction. The progression a player feels over the first week
+  is the world opening up, not the same world with more errands added to it.
+  Aspect never changes — a forest is not a corridor at any size — and the pad
+  clearances relax on a cramped map rather than failing, so a small forest
+  still gets its extraction point somewhere imperfect.
+
+  The pocket grew with the full size too (five slots), because at three pads a
+  party filled the bag at the second scene and spent the rest of the night
+  walking past things, which is the game refusing its own content.
 
 - The world arrives in two halves and they are placed by two different systems.
   TEXTURE — soil, grass, ferns, litter, prop variants — is scattered by the

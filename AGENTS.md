@@ -193,7 +193,7 @@ These bind every subtree. Subsystem-specific rules live in the docs above.
 
 | scope | command |
 | --- | --- |
-| server | `python tests/test_snapshot_shape.py`, `test_pour.py`, `test_store_walk.py`, `test_config_parity.py`, `test_loot_frames.py`, `test_bush_cover.py`, `test_scenery_containers.py`, `test_creature_sheets.py` from `server/` — plain scripts, each prints `ok` |
+| server | `python tests/test_snapshot_shape.py`, `test_pour.py`, `test_store_walk.py`, `test_config_parity.py`, `test_loot_frames.py`, `test_bush_cover.py`, `test_scenery_containers.py`, `test_creature_sheets.py`, `test_map_scale.py` from `server/` — plain scripts, each prints `ok` |
 | client | `bun run typecheck` from `client/` — required after any change there |
 | client | `bun tests/grade.ts` from `client/` after touching `render/post/grade.ts` — plain script, prints `ok` |
 | client | `bun tests/exit-path.ts` from `client/` after touching `game/exit-path.ts` — plain script, prints `ok` |

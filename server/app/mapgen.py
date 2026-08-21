@@ -45,8 +45,31 @@ from .world import FLOOR, ROCK, TREE, VOID, TileMap
 # between the same things. What the extra ground actually buys is that a night
 # with three extraction pads can put them far enough apart to be three
 # separate expeditions rather than three stops on one lap.
+#
+# THAT IS THE THREE-PAD SIZE, not the size. A night carrying fewer pads is
+# built smaller in the same proportion — see `size_for_pads`.
 DEFAULT_WIDTH = 132
 DEFAULT_HEIGHT = 92
+
+#: Pads a full-size forest is sized for. 132x92 was chosen so THREE extraction
+#: points can sit far enough apart to be three expeditions; a one-pad night on
+#: that same map is one errand with a long walk either side of it, which is the
+#: map refusing to be about anything. So the forest is sized to the night it
+#: has to hold: GROUND PER PAD IS CONSTANT, and how many pads there are is the
+#: day's (`rift.count_for_day`). Scale is on the AREA, so both sides shrink
+#: together and the aspect never changes — a forest is not a corridor at any
+#: size.
+#:
+#:     1 pad    76 x 53    a third of the ground, one place to reach
+#:     2 pads  108 x 75
+#:     3 pads  132 x 92    the full map, unchanged
+FULL_SIZE_PADS = 3
+
+
+def size_for_pads(count: int) -> tuple[int, int]:
+    """Forest dimensions for a night carrying `count` extraction points."""
+    scale = math.sqrt(min(max(count, 1), FULL_SIZE_PADS) / FULL_SIZE_PADS)
+    return round(DEFAULT_WIDTH * scale), round(DEFAULT_HEIGHT * scale)
 
 # Noise thresholds. The band between them is the fringe of a thicket, which is
 # where rocks go — a treeline that fades into scattered boulders reads as a
@@ -426,6 +449,7 @@ def populate_forest(
     tiles: list[list[int]],
     seed: int,
     origin: tuple[float, float],
+    pads: int = FULL_SIZE_PADS,
 ) -> scenery.Population:
     """Lay the story over a finished forest. Mutates `tiles`.
 
@@ -442,9 +466,16 @@ def populate_forest(
     """
     height = len(tiles)
     width = len(tiles[0]) if tiles else 0
+    # Scenes scale with the ground, because they are one decision: a map that
+    # shrinks without shedding stories is a junkyard, one that grows without
+    # gaining them is a walk. `size_for_pads` scales AREA, so the same fraction
+    # applies here.
+    share = min(max(pads, 1), FULL_SIZE_PADS) / FULL_SIZE_PADS
+    low, high = scenery.FOREST_SCENES
     return scenery.populate(
         tiles,
         random.Random(seed ^ 0x5CE7E),
+        count=(max(3, round(low * share)), max(4, round(high * share))),
         landmark=scenery.LANDMARK,
         # One thread linking the scenes into a single route outward from the
         # mouth the party walked out of. The camp does not get one: it is four
@@ -460,8 +491,8 @@ def populate_forest(
 
 
 def build_forest(
-    width: int = DEFAULT_WIDTH,
-    height: int = DEFAULT_HEIGHT,
+    width: int | None = None,
+    height: int | None = None,
     seed: int | None = None,
     day: int = 1,
     calibres: set[str] | None = None,
@@ -474,6 +505,10 @@ def build_forest(
     boxes at all, and a room with one pistol does not spend the night walking
     past rifle rounds nobody can fire.
     """
+    pads = rift.count_for_day(day)
+    sized = size_for_pads(pads)
+    width = sized[0] if width is None else width
+    height = sized[1] if height is None else height
     tiles, used = generate_forest(width, height, seed)
     gate = entrance.carve(tiles, used)
     mouth_tx = int(gate.mouth_x // TILE_SIZE)
@@ -485,7 +520,7 @@ def build_forest(
     _connect(tiles, (mouth_tx, mouth_ty), protect=VOID)
 
     origin = (gate.mouth_x / TILE_SIZE, gate.mouth_y / TILE_SIZE)
-    population = populate_forest(tiles, used, origin)
+    population = populate_forest(tiles, used, origin, pads)
     floor = sum(row.count(FLOOR) for row in tiles)
     reachable = count_reachable(tiles)
     if reachable != floor:
@@ -506,7 +541,7 @@ def build_forest(
         [(scene.x, scene.y) for scene in population.scenes],
         origin,
         random.Random(used ^ 0x21F7),
-        rift.count_for_day(day),
+        pads,
     )
     if placed and count_reachable(tiles) != sum(row.count(FLOOR) for row in tiles):
         raise ValueError(f"forest seed {used} lost reachability placing the extraction point")

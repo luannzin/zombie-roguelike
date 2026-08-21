@@ -52,7 +52,10 @@ Why the simulation is shaped this way: [`docs/design/`](../docs/design/) — one
   merchant, a stall or the cabinet cannot be walked to — run it after any edit
   to `store.py`'s layout offsets. `test_config_parity.py` compares
   `client_config()` against the client's `GameConfig` both ways — run it after
-  any edit to either. `test_creature_sheets.py` guards the art the AI is
+  any edit to either. `test_map_scale.py` pins the forest's size to the night's
+  pad count — run it after touching `mapgen.size_for_pads`,
+  `rift.count_for_day` or `scenery.FOREST_SCENES`.
+  `test_creature_sheets.py` guards the art the AI is
   wearing: a corpse timeline per creature and per accessory, and three
   variants that are still three shapes rather than three palettes.
 - Then run the server and join from two browser tabs; check the server stays at

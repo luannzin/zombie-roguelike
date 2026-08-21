@@ -117,7 +117,10 @@ authority (`server/app/inventory.py` slot rules), the wire protocol pair, or
     art — the pad borrows its CONSOLE and its TORCH and nothing else.
   - After the entrance seals, the HUD quest `Encontre o ponto de extração`
     ticks `0/N` when a console is pressed (`quests.py`). Day 1–2 spawn one pad;
-    day 3–4 two; day 5+ three (`rift.count_for_day`). **Only one platform may
+    day 3–4 two; day 5+ three (`rift.count_for_day`). That count also SIZES
+    THE MAP (`mapgen.size_for_pads`, see [`world.md`](world.md)): ground per pad
+    is constant, so a one-pad night is a third of the forest rather than the
+    full one with two thirds of nothing in it. **Only one platform may
     be awake at a time** — a second console refuses while another is running,
     so three pads is three walks rather than an errand list a party splits up.
     Each pad carries its OWN quota (`rift.pad_need`, the night's bill divided

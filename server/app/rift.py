@@ -565,6 +565,10 @@ def count_for_day(day: int) -> int:
     The first two nights are one pad — find it, feed it, run. After that the
     woods grow more of them, so the walk is longer and the feed quota has more
     mouths. Capped at three: a fourth is another errand, not a harder night.
+
+    THE MAP IS SIZED OFF THIS (`mapgen.size_for_pads`), so the count is the
+    day's difficulty curve AND the day's map size: one pad on a third of the
+    ground, three on the whole forest.
     """
     if day <= 2:
         return 1

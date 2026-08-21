@@ -316,6 +316,75 @@ def _body(cell, facing: str, top: int) -> None:
         _put(cell, ax, top + 3, HAND)
 
 
+#: WHICH SIDE THE WEAPON HAND IS ON, per source row, as a cell column.
+#:
+#: THE CHARACTER IS RIGHT-HANDED and that is the whole table: facing the
+#: camera his right hand is on the LEFT of the screen, facing away it is on
+#: the right, and in profile it is the near one — the arm the camera can see.
+#: The client mirrors these three numbers (`render/guns.ts` `HOLD_HAND`) to
+#: decide which side of the body the weapon hangs off, so a pose authored here
+#: and a grip placed there cannot disagree about which hand is holding it.
+HOLD_ARM_X = {
+    "down": MID - BODY_HALF - 1,
+    "side": MID + BODY_HALF,
+    "up": MID + BODY_HALF,
+}
+#: The row the raised wrist lands on, measured from `BODY_TOP`. One row above
+#: where the arm hangs at rest, which is the whole animation: a hand at the
+#: hem is a hand doing nothing, and a hand at the chest is a hand holding
+#: something. Anything more at this size is a limb with a joint in it, and
+#: sixteen pixels does not have room for a joint.
+HOLD_WRIST_ROW = 2
+
+
+def _hold(cell, facing: str, top: int) -> None:
+    """The HOLDING pose: the weapon arm up at the chest, the other one in.
+
+    THIS IS A SECOND POSE OF THE SAME CHARACTER, not a second character. The
+    walk rows are somebody with their arms down; these are the same body, the
+    same stride, the same head, with two pixels moved — and two pixels is the
+    entire budget a pose change has here. What sells it is not the arm, it is
+    the ASYMMETRY: one hand up and forward, one hand tucked in against the
+    coat. A figure with both arms raised reads as surrender and a figure with
+    both arms down reads as somebody out for a walk, so the pose has to be
+    lopsided or it says nothing at all.
+
+    The raised hand is where the WEAPON is, and the client places the grip off
+    the same side (`HOLD_ARM_X`). The gap between this wrist and that grip is
+    closed at runtime by `client/src/render/arms.ts`, which is why the arm is
+    authored SHORT: a long arm drawn here would point one way while the mouse
+    pointed another.
+    """
+    wx = HOLD_ARM_X[facing]
+    lit = CLOTH_HI if wx < MID else CLOTH_LO
+    out = wx + 1 if wx > MID else wx - 1
+    _put(cell, wx, top, "o")
+    _put(cell, wx, top + 1, lit)
+    # THE ARM COMES OFF THE BODY. A hand raised inside the sleeve's own column
+    # is a pixel that moved; a hand a column PROUD of it is a limb, and the
+    # silhouette is the only thing that survives at this size (S15).
+    _put(cell, wx, top + HOLD_WRIST_ROW, CLOTH_M)
+    _put(cell, out, top + HOLD_WRIST_ROW, HAND)
+    _put(cell, out, top + 1, "o")
+    # The hand that used to hang at the hem is up at the chest now, so the hem
+    # row goes back to being the coat's.
+    _put(cell, wx, top + 3, ".")
+    if facing == "side":
+        # In profile the arm reads along its LENGTH rather than across it, so
+        # it spends its outline pixel under the hand instead of over it: from
+        # the side you are looking down the arm, not at it.
+        _put(cell, out, top + 1, ".")
+        _put(cell, out, top + 3, "o")
+        return
+    # THE OFF HAND COMES ACROSS, one column inside the coat's edge. It is not
+    # a second grip — this pose is worn by a pistol as well as a rifle — it is
+    # the tuck that makes the raised arm read as deliberate.
+    ox = MID + BODY_HALF if wx < MID else MID - BODY_HALF - 1
+    _put(cell, ox, top + 3, ".")
+    _put(cell, ox, top + 2, CLOTH_HI if ox < MID else CLOTH_LO)
+    _put(cell, ox - 1 if ox > MID else ox + 1, top + 3, HAND)
+
+
 #: THE THREE LEG POSES, y13..y15. Column 1 is legs together — the passing
 #: pose, and also the idle, which is why a standing player does not look like
 #: a walk cycle somebody paused. Columns 0 and 2 are the contacts, and what
@@ -444,7 +513,11 @@ def _stamp_explorer(cell, facing: str, frame: int, bob: int) -> None:
     for x in range(MID - BODY_HALF + 1, MID + BODY_HALF - 1):
         if _get(cell, x, collar) in (CLOTH_HI, CLOTH_M, CLOTH_LO, DARKCLOTH):
             _put(cell, x, collar, LEATHER_L if x >= MID else LEATHER_M)
-    for x in range(MID - BODY_HALF - 1, MID + BODY_HALF + 1):
+    # The gloves. The span is two columns wider than the coat on each side
+    # because the HOLDING pose puts a hand out past the sleeve — a bare hand
+    # on a body wearing gloves is the sort of thing nobody can name and
+    # everybody sees.
+    for x in range(MID - BODY_HALF - 2, MID + BODY_HALF + 2):
         for y in range(collar, collar + 4):
             if _get(cell, x, y) == HAND:
                 _put(cell, x, y, LEATHER_M)
@@ -553,7 +626,7 @@ def _blit(cell: list[list[str]], art: tuple[str, ...], dy: int = 0) -> None:
                 _put(cell, x, y + dy, key)
 
 
-def _frame(facing: str, frame: int, skin: str) -> list[list[str]]:
+def _frame(facing: str, frame: int, skin: str, hold: bool = False) -> list[list[str]]:
     """One 16x16 cell as letters: body, head, legs, then whatever the skin adds.
 
     HEAD LAST OF THE THREE, because it overhangs: the cap is wider than the
@@ -564,6 +637,10 @@ def _frame(facing: str, frame: int, skin: str) -> list[list[str]]:
     bob = BOB[frame]
     recipe = SKINS[skin]
     _body(cell, facing, BODY_TOP + bob)
+    # Over the body and UNDER the head, like everything else on this sprite:
+    # the arm belongs to the torso, and the head overhangs both.
+    if hold:
+        _hold(cell, facing, BODY_TOP + bob)
     _head(cell, facing, HEAD_TOP + bob, recipe["hair"])
     legs = LEGS_SIDE if facing == "side" else LEGS_DOWN
     _blit(cell, legs[frame], LEG_TOP)
@@ -629,7 +706,13 @@ def build(args) -> list[Path]:
     RAW_DIR.mkdir(parents=True, exist_ok=True)
     written: list[Path] = []
     for skin in SKINS:
-        cells = [[_frame(facing, frame, skin) for frame in range(3)]
+        # SIX ROWS: the three walk facings, then the same three HOLDING.
+        # Appended rather than interleaved — the walk rows keep the indices
+        # every processed sheet and every manifest already gives them, and a
+        # sheet with no hold block simply has four output rows instead of
+        # eight (`process_sprites.py`).
+        cells = [[_frame(facing, frame, skin, hold) for frame in range(3)]
+                 for hold in (False, True)
                  for facing in ("down", "side", "up")]
         path = RAW_DIR / f"{skin}.png"
         sheet(cells).save(path)

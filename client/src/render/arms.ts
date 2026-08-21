@@ -32,22 +32,38 @@
 
 import { palette } from '../theme/palette';
 import type { Projection } from './projection';
-import { parseColor } from './sprites';
+import { parseColor, type Facing } from './sprites';
 
 /**
- * World px from the centreline out to an arm socket, and down from the top of
- * the 16px cell to the shoulder.
+ * The sheet's own anatomy, in world pixels, and it is a MIRROR of
+ * `server/tools/make_player.py`. Getting one of these wrong does not look
+ * like a bad number — it looks like an arm growing out of somebody's neck.
  *
- * Both are read off `make_player.py`'s anatomy: the coat is `BODY_HALF` 4
- * either side of `MID` 8 with a sleeve column proud of it, so the socket is
- * 4.5 out; the body starts at `BODY_TOP` 8 and the sleeve runs three rows
- * from 9, so the joint is 9.5 down. Getting these wrong does not look like a
- * bad number — it looks like an arm growing out of somebody's neck.
+ * `SHOULDER_OUT` / `SHOULDER_DROP`: the coat is `BODY_HALF` 4 either side of
+ * `MID` 8 with a sleeve column proud of it, and the sleeve runs three rows
+ * from `BODY_TOP` 8 — so a socket is 3.5 out and 9.5 down the 16px cell.
+ *
+ * `WRIST_OUT` / `WRIST_DROP`: where the HOLDING rows put the raised hand
+ * (`HOLD_ARM_X` + one column proud, at `HOLD_WRIST_ROW`). The weapon arm is
+ * drawn on the sheet as far as that wrist and no further; everything past it
+ * is this file's job, which is why a pose change on either side has to be a
+ * pose change on both.
  */
 const SHOULDER_OUT = 3.5;
 const SHOULDER_DROP = 9.5;
+const WRIST_OUT = 5.5;
+const WRIST_DROP = 10.5;
 /** How far down the ramp the far arm sits. One step, the way S13 spends one. */
 const FAR_ARM_SHADE = 0.72;
+/**
+ * Under this many world px the drawn forearm is skipped entirely.
+ *
+ * On a profile row the sheet's own hand is already out past the grip — the
+ * arm is drawn reaching forward and the weapon is carried at the chest — so
+ * there is nothing left to connect, and a run of one or two pixels between
+ * two things that already touch reads as a lump on the wrist.
+ */
+const REACH_MIN = 1.6;
 
 export interface ArmArgs {
   ctx: CanvasRenderingContext2D;
@@ -63,6 +79,8 @@ export interface ArmArgs {
    * moves is an arm that detaches twice a stride.
    */
   bob: number;
+  /** Which row of the sheet is being drawn — the wrist is per facing. */
+  facing: Facing;
   /** The grip, world px — `gunPose`. */
   gripX: number;
   gripY: number;
@@ -74,18 +92,33 @@ export interface ArmArgs {
   alpha: number;
 }
 
+/**
+ * Where the sheet's raised hand is, in world px. The drawn forearm starts
+ * here — not at the shoulder, which the art already covers.
+ */
+export function holdWrist(
+  facing: Facing,
+  bodyX: number,
+  spriteTop: number,
+  bob: number,
+): { x: number; y: number } {
+  // Right-handed: his right hand is on the screen's LEFT when he faces the
+  // camera and on its right when he faces away. In profile it is the near
+  // arm, reaching forward, and the sheet is mirrored for the other side.
+  const out =
+    facing === 'down' ? -WRIST_OUT : facing === 'left' ? -WRIST_OUT : WRIST_OUT;
+  return { x: bodyX + out, y: spriteTop + WRIST_DROP + bob };
+}
+
 export function drawArms(args: ArmArgs): void {
   const { ctx, view, bodyX, spriteTop, bob, gripX, gripY, alpha } = args;
   const cloth = sleeveOf(args.tint);
   const shoulderY = spriteTop + SHOULDER_DROP + bob;
-  // THE NEAR SHOULDER IS THE ONE THE WEAPON IS ON. Which arm holds a gun is
-  // not a fact about the character — the sprite is mirrored for half the
-  // headings — it is a fact about where the grip currently is, and reaching
-  // across the body for a weapon held out to the right is what the alternative
-  // looks like.
-  const side = gripX >= bodyX ? 1 : -1;
-  const mainX = bodyX + SHOULDER_OUT * side;
-  const offX = bodyX - SHOULDER_OUT * side;
+  const wrist = holdWrist(args.facing, bodyX, spriteTop, bob);
+  // THE OFF SHOULDER IS THE ONE THE WEAPON IS NOT ON, whichever that is: the
+  // sheet decides where the weapon hand is, so the free hand is simply the
+  // other side of the body.
+  const offX = bodyX - (wrist.x >= bodyX ? SHOULDER_OUT : -SHOULDER_OUT);
 
   ctx.globalAlpha = alpha;
   const cell = Math.ceil(view.size(1));
@@ -97,7 +130,11 @@ export function drawArms(args: ArmArgs): void {
   if (twoHanded) {
     reach(ctx, view, offX, shoulderY, args.supportX!, args.supportY!, cloth.dark, cell);
   }
-  reach(ctx, view, mainX, shoulderY, gripX, gripY, cloth.sleeve, cell);
+  // And the weapon arm is only what the sheet could not draw: the run from
+  // its own raised wrist out to wherever the mouse has put the grip.
+  if (Math.hypot(gripX - wrist.x, gripY - wrist.y) >= REACH_MIN) {
+    reach(ctx, view, wrist.x, wrist.y, gripX, gripY, cloth.sleeve, cell);
+  }
   ctx.globalAlpha = 1;
 }
 

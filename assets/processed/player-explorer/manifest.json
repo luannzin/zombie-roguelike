@@ -8,7 +8,11 @@
     "down": 0,
     "left": 1,
     "right": 2,
-    "up": 3
+    "up": 3,
+    "hold-down": 4,
+    "hold-left": 5,
+    "hold-right": 6,
+    "hold-up": 7
   },
   "idleFrame": 1,
   "walkFrameOrder": [

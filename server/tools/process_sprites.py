@@ -3,7 +3,8 @@
 
 Input contract (assets/raw/<name>.png):
     Nx3 grid of frames on a solid magenta (#FF00FF) background
-    rows: down, side, up
+    rows: down, side, up — optionally twice, the second block being the
+    same three facings HOLDING something (see POSE_PREFIXES)
     cols: walk sheets are 3 (col 1 = idle); death sheets (`<name>-death`)
     are a one-shot timeline, last column = the prone rest that stays.
 
@@ -13,11 +14,13 @@ Steps:
     3. key out the magenta background -> alpha
     4. crop each frame to its content bounds
     5. normalize onto a canonical NxN canvas, bottom-centred
-    6. mirror the "side" frames to produce the opposite facing row
+    6. mirror the "side" frames to produce the opposite facing row, once per
+       pose block
     7. export a packed sheet + manifest.json
 
 Output (assets/processed/<name>/):
-    sheet.png     rows = down, left, right, up   cols = 3 frames
+    sheet.png     rows = down, left, right, up (then hold-* if the source
+                  carried a second pose block)   cols = 3 frames
     manifest.json
 
 The canonical frame is 1 x 1 tile (16x16 px at the project's TILE_SIZE of 16),
@@ -59,6 +62,12 @@ GRID_COLS = 3
 GRID_ROWS = 3
 SOURCE_ROWS = ("down", "side", "up")
 OUTPUT_ROWS = ("down", "left", "right", "up")
+#: A sheet may carry the same facings TWICE: once walking with the arms down,
+#: once HOLDING something. Three source rows is the first block, six is both,
+#: and the second block's output rows are named `hold-<facing>` and APPENDED —
+#: so every row index a processed sheet already has keeps its meaning and a
+#: sheet without the block (every creature) is unchanged.
+POSE_PREFIXES = ("", "hold-")
 
 # Canonical frame shape, in tiles. Mirrors server/app/config.py:
 # TILE_SIZE is the one number that sets the scale; a character frame is
@@ -185,10 +194,11 @@ def process(args) -> Path:
         # divided by the frame. Walk is 3x3; death is Nx3 (a timeline).
         cols = src_img.width // width
         rows = src_img.height // height
-        if cols < 1 or rows != len(SOURCE_ROWS):
+        if cols < 1 or rows % len(SOURCE_ROWS) != 0 or not 1 <= rows // len(SOURCE_ROWS) <= len(POSE_PREFIXES):
             raise SystemExit(
                 f"exact sheet {src_img.width}x{src_img.height} must be "
                 f"{width} wide by {height * len(SOURCE_ROWS)} tall "
+                f"(one pose block) or twice that (walk + hold) "
                 f"(got {cols}x{rows} cells)"
             )
     else:
@@ -203,8 +213,12 @@ def process(args) -> Path:
     # Shared crop box: foreshortened frames keep the face-on size.
     shared = union_bbox([cell for row in keyed for cell in row]) if args.uniform else None
 
+    blocks = rows // len(SOURCE_ROWS)
+    poses = POSE_PREFIXES[:blocks]
+    source_views = [f"{pose}{view}" for pose in poses for view in SOURCE_ROWS]
+
     frames: dict[str, list[Image.Image]] = {}
-    for row_index, view in enumerate(SOURCE_ROWS):
+    for row_index, view in enumerate(source_views):
         cells = []
         for cell in keyed[row_index]:
             if args.exact:
@@ -223,19 +237,23 @@ def process(args) -> Path:
             cells.append(cell)
         frames[view] = cells
 
-    mirrored = [f.transpose(Image.FLIP_LEFT_RIGHT) for f in frames["side"]]
-    if args.side_facing == "right":
-        frames["right"] = frames["side"]
-        frames["left"] = mirrored
-    else:
-        frames["left"] = frames["side"]
-        frames["right"] = mirrored
+    # One mirror per pose block: a held weapon changes which arm is up, and
+    # mirroring the walk row into the hold row would put it in the wrong hand.
+    for pose in poses:
+        mirrored = [f.transpose(Image.FLIP_LEFT_RIGHT) for f in frames[f"{pose}side"]]
+        if args.side_facing == "right":
+            frames[f"{pose}right"] = frames[f"{pose}side"]
+            frames[f"{pose}left"] = mirrored
+        else:
+            frames[f"{pose}left"] = frames[f"{pose}side"]
+            frames[f"{pose}right"] = mirrored
+    output_views = [f"{pose}{view}" for pose in poses for view in OUTPUT_ROWS]
 
     out_dir = PROCESSED_DIR / args.name
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    sheet = Image.new("RGBA", (width * cols, height * len(OUTPUT_ROWS)), (0, 0, 0, 0))
-    for row_index, view in enumerate(OUTPUT_ROWS):
+    sheet = Image.new("RGBA", (width * cols, height * len(output_views)), (0, 0, 0, 0))
+    for row_index, view in enumerate(output_views):
         for col, frame in enumerate(frames[view]):
             sheet.paste(frame, (col * width, row_index * height))
     sheet_path = out_dir / "sheet.png"
@@ -263,7 +281,7 @@ def process(args) -> Path:
         "frameWidth": width,
         "frameHeight": height,
         "frames": cols,
-        "rows": {view: i for i, view in enumerate(OUTPUT_ROWS)},
+        "rows": {view: i for i, view in enumerate(output_views)},
         "idleFrame": idle,
         "walkFrameOrder": walk_order,
         "fps": fps,

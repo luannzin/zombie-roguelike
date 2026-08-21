@@ -95,6 +95,26 @@ const base = (over: Partial<GunMuzzleArgs> = {}): GunMuzzleArgs => ({
   }
 }
 
+// --- the player sheet's HOLDING rows -----------------------------------------
+{
+  // The second pose block, appended by `process_sprites.py` from the second
+  // three rows `make_player.py` now draws. Two claims, and both are about the
+  // APPEND: a walk row that moved would repoint every other sheet's meaning
+  // of "row 1", and a missing hold row is a player who goes back to strolling
+  // with their arms down while holding a rifle — which is exactly what this
+  // looked like before, so nothing on screen would say it had regressed.
+  const player = JSON.parse(
+    readFileSync('../assets/processed/player/manifest.json', 'utf8'),
+  ) as { rows: Record<string, number> };
+  const walk = ['down', 'left', 'right', 'up'];
+  walk.forEach((view, i) => {
+    assert(player.rows[view] === i, `the walk row "${view}" must stay at ${i}`);
+    const held = player.rows[`hold-${view}`];
+    assert(held !== undefined, `the player sheet has no hold-${view} row`);
+    assert(held! >= walk.length, `hold-${view} must be APPENDED, not interleaved`);
+  });
+}
+
 // --- one pose, three readers -------------------------------------------------
 {
   const args = base();

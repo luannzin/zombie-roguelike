@@ -23,7 +23,7 @@ import type { GunAtlas, GunMuzzleArgs } from '../guns';
 import { gunMuzzle, gunPose, gunSupport } from '../guns';
 import type { Projection } from '../projection';
 import { groundShadow } from '../shadows';
-import { facingFromAim, frameIndex, timelineFrame, type SpriteBook } from '../sprites';
+import { facingFromAim, frameIndex, poseRow, timelineFrame, type SpriteBook } from '../sprites';
 import type { DrawableCoin, DrawableCorpse, DrawableEntity } from '../types';
 
 /** Player name label size, in screen px. One step of the font's pixel grid. */
@@ -169,7 +169,12 @@ export function drawEntity(entity: EntityContext, target: DrawableEntity): void 
   if (!sheet || !image) return;
 
   const facing = facingFromAim(target.ax, target.ay);
-  const row = sheet.rows[facing] ?? 0;
+  // THE BODY CHANGES POSE WHEN IT IS CARRYING SOMETHING. The player sheet has
+  // a second block of rows with the weapon arm up (`make_player.py`), and the
+  // grip is placed off the same side — see `GUN_GRIP_SIDE`. Gear overlays are
+  // deliberately NOT switched with it: a backpack looks the same either way
+  // and its sheet has no hold rows to switch to.
+  const row = poseRow(sheet, facing, target.weapon !== null);
   const col = frameIndex(sheet, target.animTime, target.moving);
 
   const w = sheet.frameWidth;
@@ -626,6 +631,7 @@ function drawWeapon(
     bodyX: px,
     spriteTop,
     bob,
+    facing: facingFromAim(target.ax, target.ay),
     gripX: pose.x,
     gripY: pose.y,
     supportX: support?.x ?? null,

@@ -83,22 +83,38 @@ export const GUN_HAND_ALONG = 3.0;
 export const GUN_GRIP_ABOVE_FEET = 5.5;
 /**
  * World px the grip sits to one SIDE of the body's centreline when the body
- * is facing toward the camera or away from it.
+ * faces the camera or away from it — and it is the OTHER HALF OF A POSE THE
+ * ART AUTHORS.
  *
- * Nobody holds a weapon out of the middle of their chest, and at this size
- * that is not a detail — it is whether the weapon is visible at all. A body
- * walking AWAY has its weapon drawn behind it (see the entity layer), and a
- * rifle behind a sixteen-pixel back, on the centreline, is a rifle nobody can
- * see: the player loses track of what they are holding every time they walk
- * north. Off the midline it clears the silhouette on both vertical facings.
+ * `server/tools/make_player.py` now draws a HOLDING row per facing, with the
+ * weapon arm raised and a column proud of the coat: on the left of the screen
+ * facing the camera, on the right facing away, because the character is
+ * right-handed and that is where his right hand IS from each side. This is
+ * the same number in world pixels, so the weapon lands in the hand that is
+ * drawn holding it. Move one and the other has to move: a grip on the wrong
+ * side of a body is a weapon floating beside somebody whose arm is out the
+ * other way.
  *
- * It fades out with the heading rather than switching, because a weapon that
- * jumped two pixels sideways as the aim crossed the diagonal would be a twitch
- * on every mouse sweep. In profile it is zero — a weapon held out in front of
- * a body already clears it — so this only ever pays for the two facings that
- * need it.
+ * It also decides whether the weapon is visible at all on those two facings.
+ * A rifle on the centreline of a body walking away is a rifle behind sixteen
+ * pixels of back, and the player loses track of what they are holding every
+ * time they walk north.
  */
-const GUN_GRIP_SIDE = 4.2;
+const GUN_GRIP_SIDE = 5.5;
+/**
+ * How much of that offset a heading gets: none in profile, all at the pole.
+ *
+ * The weight is `|ay| - |ax|`, which is zero exactly on the diagonal — the
+ * same place `facingFromAim` swaps the sprite between a profile row and a
+ * vertical one. That is not a coincidence, it is the point: on a profile row
+ * the arm is drawn reaching FORWARD, so a sideways offset there would pull
+ * the weapon off the hand that is holding it. Fading to nothing at the
+ * boundary means the two poses agree at the moment the art changes, and the
+ * weapon slides rather than jumping while the mouse sweeps.
+ */
+function sideWeight(ax: number, ay: number): number {
+  return Math.max(0, Math.min(1, Math.abs(ay) - Math.abs(ax)));
+}
 /**
  * How far along the grip-to-muzzle span the off hand sits. Just past half:
  * far enough forward to be holding the weapon rather than the trigger hand,
@@ -213,16 +229,17 @@ export function gunHand(args: GunMuzzleArgs): { x: number; y: number } {
   const along = (gunSpec(args)?.hold ?? GUN_HAND_ALONG) + pump;
   // Off the FEET, not off the box's centre. See `GUN_GRIP_ABOVE_FEET`.
   const lift = GUN_GRIP_ABOVE_FEET - args.halfHeight + (args.lift ?? 0);
-  // And off the centreline, on the side the sprite is mirrored to. See
-  // `GUN_GRIP_SIDE` — zero in profile, full when facing the camera or away.
-  const side = GUN_GRIP_SIDE * Math.abs(args.ay) * (args.ax < 0 ? -1 : 1);
+  // And off the centreline, on the side the ART puts the raised hand: the
+  // screen's left when the body faces the camera, its right when the body
+  // faces away. See `GUN_GRIP_SIDE` and `sideWeight`.
+  const lateral = -GUN_GRIP_SIDE * Math.sign(args.ay) * sideWeight(args.ax, args.ay);
   const swing = args.swing ?? 0;
   // The common case — a gun, no swing — skips two trig calls and the
   // rounding they would put on a value that has not changed.
   if (swing === 0) {
     return {
-      x: args.x + args.ax * along - args.ay * side,
-      y: args.y - lift + args.ay * along + args.ax * side,
+      x: args.x + args.ax * along + lateral,
+      y: args.y - lift + args.ay * along,
     };
   }
   const cos = Math.cos(swing);
@@ -230,8 +247,8 @@ export function gunHand(args: GunMuzzleArgs): { x: number; y: number } {
   const dx = args.ax * cos - args.ay * sin;
   const dy = args.ay * cos + args.ax * sin;
   return {
-    x: args.x + dx * along - dy * side,
-    y: args.y - lift + dy * along + dx * side,
+    x: args.x + dx * along + lateral,
+    y: args.y - lift + dy * along,
   };
 }
 

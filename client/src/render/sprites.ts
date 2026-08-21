@@ -254,6 +254,23 @@ export function parseColor(color: string): [number, number, number] {
   return [(value >> 16) & 255, (value >> 8) & 255, value & 255];
 }
 
+/**
+ * The row to draw: the HOLDING pose when the sheet has one and the body is
+ * carrying something, the plain walk row otherwise.
+ *
+ * A sheet without the block — every creature, and the player's own gear
+ * overlays — simply has no `hold-*` key and keeps the row it always had,
+ * which is what lets the second pose be appended to one sheet without a flag
+ * anywhere else (`server/tools/process_sprites.py`).
+ */
+export function poseRow(sheet: SpriteSheet, facing: Facing, holding: boolean): number {
+  if (holding) {
+    const held = sheet.rows[`hold-${facing}`];
+    if (held !== undefined) return held;
+  }
+  return sheet.rows[facing] ?? 0;
+}
+
 export function facingFromAim(ax: number, ay: number): Facing {
   if (Math.abs(ax) >= Math.abs(ay)) return ax >= 0 ? 'right' : 'left';
   return ay >= 0 ? 'down' : 'up';

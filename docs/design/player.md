@@ -128,14 +128,38 @@ When the user requests a durable behavior change, record it here or in the relev
   the body faces the camera: nobody holds a rifle out of the middle of their
   chest, and on the two vertical facings the offset is the difference between
   seeing your weapon and not.
-- **THE ARMS ARE PLOTTED, NOT DRAWN.** The player sheet has four facings and
-  the weapon points anywhere, so a held pose per angle is a sheet nobody can
-  regenerate. `render/arms.ts` steps a line of single world pixels from the
-  shoulder socket to the grip — sleeve cloth in the player's own colour,
-  under the same dye contract as the sheet, with a hand pixel over the grip.
-  A shoulder weapon gets a second reach to a point along its own barrel,
-  taken from the atlas rather than picked, and that second arm is most of
+- **THE BODY HAS A HOLDING POSE, AND IT DECIDES WHICH HAND.** The player
+  sheet carries a second block of rows — the same three facings, the same
+  stride, the same head, with the weapon arm raised to the chest and a column
+  proud of the coat, and the other hand tucked in against it (`make_player.py`
+  `_hold`). Two pixels moved, and the asymmetry is the whole read: both arms
+  up is surrender and both arms down is somebody out for a walk. The
+  character is RIGHT-HANDED, so the raised hand is on the screen's left facing
+  the camera and on its right facing away; in profile it is the near arm,
+  which is his right when he faces right and — the one lie the mirror costs —
+  his left when he faces left. The alternative is a rifle hidden behind a
+  torso half the time. The rows are APPENDED (`hold-*` after the four walk
+  rows), so nothing else on any sheet moved, and the client picks the block by
+  one fact: is there anything in the hand.
+- **THE FOREARM IS PLOTTED; THE REST IS DRAWN.** The sheet cannot author a
+  pose per aim angle, so the art stops at the raised WRIST and
+  `render/arms.ts` steps single world pixels from there to wherever the mouse
+  has put the grip — sleeve cloth in the player's own colour, under the same
+  dye contract as the sheet, with a hand pixel over the grip. In profile the
+  authored hand is already out past the weapon and the run is skipped
+  entirely. A shoulder weapon gets a second reach, from the free shoulder to a
+  point along the barrel taken from the atlas, and that second arm is most of
   what separates a rifle from a very long pistol at sixteen pixels.
+- **A WEAPON IS AUTHORED BIG AND HELD SMALL.** The atlas is drawn at one
+  pixel scale because that is what it takes to SAY a weapon — an AK needs its
+  wood, its curved magazine and its dust-cover seam, and none of that survives
+  being authored at eleven columns. In a fist the question is different: how
+  big is this against the person carrying it, and at full size an AK is as
+  long as its owner is tall, which reads as a prop being carried rather than a
+  weapon being held. `make_guns.DRAW_SCALE` is three quarters, applied in the
+  MANIFEST so that one number moves the sprite, the muzzle, the ejection port
+  and the support hand together. Two thirds is the floor — below it the
+  resample eats the one-pixel detail the art spends everything on.
 - **A GUN THAT FIRES ALSO WORKS.** The atlas carries a closed frame and an
   OPEN one per firearm — slide back, port showing — derived from the closed
   art by `make_guns._cycled` rather than drawn twelve more times, because

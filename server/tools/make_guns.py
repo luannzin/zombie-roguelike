@@ -704,11 +704,32 @@ GUNS: list[tuple[str, Palette, Art]] = [
 #: at the one scale this sheet is authored at, and repeating that eleven times
 #: would bury the one row where either is a decision.
 HOLD: dict[str, float] = {"knife": HOLD_IN}
-#: Draw scale against the authored frame. The sheet's rule is that every
-#: weapon shares one pixel scale, and the knife is the deliberate exception:
-#: it is the one thing here that is not a firearm, and reading smaller than
-#: everything on the belt is how a 16px sprite says "sidearm".
-SCALE: dict[str, float] = {"knife": 0.8}
+#: DRAWN SMALLER THAN IT IS AUTHORED, and the two numbers are answering two
+#: different questions.
+#:
+#: The art above is drawn at one pixel scale because that is what it takes to
+#: SAY a weapon: an AK needs its wood, its curved magazine and its dust-cover
+#: seam or it is a grey stick, and none of those survive being authored at
+#: eleven columns. The same frame in a fist is answering a different question
+#: — how big is this thing against the person holding it — and there the full
+#: size is wrong: an AK authored at 15 columns is as long as its owner is
+#: tall, which reads as a prop being carried rather than a weapon being held.
+#:
+#: Three quarters is where the barrel stops out-measuring the body and the
+#: port, the streak and the magazine are all still there. Below about two
+#: thirds the resample starts eating the one-pixel detail the art spends
+#: everything on, which is the floor this number sits above rather than a
+#: taste boundary.
+#:
+#: It is applied HERE rather than in the renderer so that one number moves the
+#: sprite, the muzzle, the ejection port and the support hand together — they
+#: are all the same frame measured from the same grip (`render/guns.ts`).
+DRAW_SCALE = 0.75
+#: Absolute draw scales for the rows that are not simply `DRAW_SCALE`. The
+#: knife is the one entry and it earns it: it is the one thing on this sheet
+#: that is not a firearm, and reading smaller than everything on the belt is
+#: how a 16px sprite says "sidearm".
+SCALE: dict[str, float] = {"knife": 0.65}
 
 
 def _check(key: str, art: Art) -> None:
@@ -763,7 +784,7 @@ def build(args) -> Path:
             "muzzleX": muzzle[0],
             "muzzleY": muzzle[1],
             "hold": HOLD.get(key, HOLD_OUT),
-            "scale": SCALE.get(key, 1.0),
+            "scale": SCALE.get(key, DRAW_SCALE),
         }
         if cycle is None:
             continue

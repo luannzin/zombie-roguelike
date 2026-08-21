@@ -43,7 +43,14 @@ surface. Output rules live in [`assets/AGENTS.md`](../../assets/AGENTS.md).
 - Raw sprite input is a grid of frames on solid magenta (`#FF00FF`); rows
   are down/side/up, col 1 is idle. Walk sheets are 3 columns.
   `process_sprites.py` keys, crops, normalizes, mirrors the side row and
-  writes `sheet.png` + `manifest.json` with rows down/left/right/up. Gear
+  writes `sheet.png` + `manifest.json` with rows down/left/right/up.
+  **A sheet may carry that block TWICE**: three more source rows, the same
+  facings drawn HOLDING something, which come out as `hold-down` /
+  `hold-left` / `hold-right` / `hold-up` APPENDED after the four walk rows
+  (`POSE_PREFIXES`). The player has them; nothing else does, and a sheet
+  without the block is byte-for-byte what it always was. Each block is
+  mirrored on its own — mirroring the walk row into the hold row would put
+  the weapon in the wrong hand. Gear
   overlays (backpack, zhat-*, zcloth-*) and exact creatures (zombie variants)
   skip the crop: they are authored on the processed 16x16 player grid and
   processed with `--exact`. A creature (and each zhat-* / zcloth-*) also

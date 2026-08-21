@@ -11,7 +11,7 @@
       "muzzleX": 13,
       "muzzleY": 2,
       "hold": 3.0,
-      "scale": 1.0,
+      "scale": 0.75,
       "cycleFrame": 12,
       "portX": 11,
       "portY": 2
@@ -23,7 +23,7 @@
       "muzzleX": 15,
       "muzzleY": 2,
       "hold": 3.0,
-      "scale": 1.0,
+      "scale": 0.75,
       "cycleFrame": 13,
       "portX": 10,
       "portY": 2
@@ -35,7 +35,7 @@
       "muzzleX": 13,
       "muzzleY": 2,
       "hold": 3.0,
-      "scale": 1.0,
+      "scale": 0.75,
       "cycleFrame": 14,
       "portX": 11,
       "portY": 2
@@ -47,7 +47,7 @@
       "muzzleX": 14,
       "muzzleY": 2,
       "hold": 3.0,
-      "scale": 1.0,
+      "scale": 0.75,
       "cycleFrame": 15,
       "portX": 11,
       "portY": 2
@@ -59,7 +59,7 @@
       "muzzleX": 15,
       "muzzleY": 2,
       "hold": 3.0,
-      "scale": 1.0,
+      "scale": 0.75,
       "cycleFrame": 16,
       "portX": 11,
       "portY": 2
@@ -71,7 +71,7 @@
       "muzzleX": 14,
       "muzzleY": 2,
       "hold": 3.0,
-      "scale": 1.0,
+      "scale": 0.75,
       "cycleFrame": 17,
       "portX": 10,
       "portY": 2
@@ -83,7 +83,7 @@
       "muzzleX": 17,
       "muzzleY": 2,
       "hold": 3.0,
-      "scale": 1.0,
+      "scale": 0.75,
       "cycleFrame": 18,
       "portX": 9,
       "portY": 2
@@ -95,7 +95,7 @@
       "muzzleX": 16,
       "muzzleY": 2,
       "hold": 3.0,
-      "scale": 1.0,
+      "scale": 0.75,
       "cycleFrame": 19,
       "portX": 9,
       "portY": 2
@@ -107,7 +107,7 @@
       "muzzleX": 16,
       "muzzleY": 2,
       "hold": 3.0,
-      "scale": 1.0,
+      "scale": 0.75,
       "cycleFrame": 20,
       "portX": 9,
       "portY": 2
@@ -119,7 +119,7 @@
       "muzzleX": 16,
       "muzzleY": 2,
       "hold": 3.0,
-      "scale": 1.0,
+      "scale": 0.75,
       "cycleFrame": 21,
       "portX": 8,
       "portY": 2
@@ -131,7 +131,7 @@
       "muzzleX": 18,
       "muzzleY": 2,
       "hold": 3.0,
-      "scale": 1.0,
+      "scale": 0.75,
       "cycleFrame": 22,
       "portX": 7,
       "portY": 2
@@ -143,7 +143,7 @@
       "muzzleX": 13,
       "muzzleY": 2,
       "hold": 0.0,
-      "scale": 0.8
+      "scale": 0.65
     }
   }
 }

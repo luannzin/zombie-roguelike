@@ -125,10 +125,15 @@ const base = (over: Partial<GunMuzzleArgs> = {}): GunMuzzleArgs => ({
   const support = gunSupport(args);
 
   // Aimed due east with no kick, the frame lies along +x and every point is
-  // its own frame offset from the grip.
-  near(muzzle.x - hand.x, spec.muzzleX - spec.gripX, 0.001, 'muzzle sits along the barrel');
-  near(muzzle.y - hand.y, spec.muzzleY - spec.gripY, 0.001, 'muzzle keeps its own row');
-  near(port.x - hand.x, spec.portX! - spec.gripX, 0.001, 'port sits where the atlas says');
+  // its own frame offset from the grip — times the row's DRAW SCALE, which is
+  // how a weapon is made smaller in the hand than it is authored
+  // (`make_guns.DRAW_SCALE`). The scale has to reach all three points, or the
+  // tracer leaves a barrel that is no longer where it is drawn.
+  const draw = spec.scale ?? 1;
+  assert(draw < 1, 'a held weapon is drawn smaller than the atlas authors it');
+  near(muzzle.x - hand.x, (spec.muzzleX - spec.gripX) * draw, 0.001, 'muzzle sits along the barrel');
+  near(muzzle.y - hand.y, (spec.muzzleY - spec.gripY) * draw, 0.001, 'muzzle keeps its own row');
+  near(port.x - hand.x, (spec.portX! - spec.gripX) * draw, 0.001, 'port sits where the atlas says');
   assert(port.x < muzzle.x, 'the port is behind the muzzle in the world too');
   assert(
     support.x > hand.x && support.x < muzzle.x,

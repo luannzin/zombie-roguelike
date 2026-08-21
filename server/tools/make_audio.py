@@ -1263,6 +1263,85 @@ def sfx_shotgun(rng: random.Random, variant: int) -> tuple[Buf, int]:
     return normalize(pad(wet, n), 0.97), rate
 
 
+def _clack(n: int, rate: int, rng: random.Random, centre: float, decay: float) -> Buf:
+    """One piece of steel arriving on another.
+
+    A band of noise for the impact and a highpassed layer over it for the
+    edge, which is the same two-layer construction the lantern switch uses —
+    the difference between a click and a CLACK is entirely in how low the band
+    sits and how long it is allowed to ring.
+    """
+    body = biquad(white(n, rng), rate, "bandpass", centre, 2.2)
+    edge = biquad(white(n, rng), rate, "highpass", 3800)
+    out = mix(gain(body, 1.0), gain(edge, 0.4))
+    return mul(out, env_perc(n, rate, 0.0004, decay, 3.2))
+
+
+def sfx_gun_cycle(rng: random.Random, variant: int) -> tuple[Buf, int]:
+    """The ACTION working — the sound the weapon makes after the bang.
+
+    TWO CLACKS, NOT ONE, and the gap between them is the whole thing. A slide
+    or a bolt travels back onto its stop and is then thrown forward onto the
+    breech, and those are two different impacts: the first is duller and
+    smaller because it is metal running out of travel, the second is brighter
+    and harder because it is metal being slammed shut by a spring. One clack
+    is a switch. Two clacks a tenth of a second apart is a mechanism, and a
+    mechanism is what the player is being told they own.
+
+    The spring between them is a short ring rather than a boing: at this level
+    it is the connective tissue that makes the two impacts one gesture, and
+    anything more turns a weapon into a cartoon.
+
+    Only the SLOW actions ever play this (`weapon-feel.ts` gates it): a
+    pistol's slide is shut again before its own gunshot has finished its
+    transient, so a sound for it would be a sound nobody can hear, mixed under
+    the loudest thing in the game.
+    """
+    rate = SFX_RATE
+    n = dur(0.36, rate)
+    # Variant is the WEIGHT of the mechanism, not decoration: 0 is the
+    # tightest, 2 is the heaviest and slowest, and the caller does not choose
+    # — this is one weapon's action heard twice, never two weapons.
+    weight = 1.0 + variant * 0.16
+    back = _clack(dur(0.09, rate), rate, rng, 1500.0 / weight, 0.03 * weight)
+    shut = _clack(dur(0.12, rate), rate, rng, 3000.0 / weight, 0.042 * weight)
+    ring = mul(
+        tone(dur(0.14, rate), 2400.0 / weight, rate, "sine"),
+        env_perc(dur(0.14, rate), rate, 0.001, 0.05, 4.0),
+    )
+    thunk = mul(
+        biquad(white(dur(0.1, rate), rng), rate, "lowpass", 320.0, 1.0),
+        env_perc(dur(0.1, rate), rate, 0.001, 0.05, 2.8),
+    )
+    out = silence(n)
+    out = at(out, back, 0, 0.9)
+    out = at(out, thunk, 0, 0.5)
+    out = at(out, ring, dur(0.012, rate), 0.10)
+    # The forward stroke. Later on a heavier action, which is the same fact
+    # the animation is drawing.
+    out = at(out, shut, dur(0.10 * weight, rate), 1.0)
+    return normalize(softclip(out, 1.1), 0.55), rate
+
+
+def sfx_gun_draw(rng: random.Random) -> tuple[Buf, int]:
+    """A weapon coming up out of the holster: cloth first, then steel.
+
+    The order is the animation. Something heavy leaves a coat, and only once
+    it is clear does the hand close on it — so the noise swell comes first and
+    the single small clack lands at the end of it, on the frame the barrel
+    finishes rising. Reversed it sounds like the weapon being put AWAY, which
+    is a real thing this could have been and is not: there is no sound for
+    holstering, because holstering is not something anybody chooses to watch.
+    """
+    rate = SFX_RATE
+    n = dur(0.26, rate)
+    cloth = biquad(white(n, rng), rate, "bandpass", 1700.0, 0.9)
+    cloth = mul(cloth, env_from(n, [(0.0, 0.0), (0.35, 0.85), (0.75, 0.35), (1.0, 0.0)]))
+    steel = _clack(dur(0.08, rate), rate, rng, 2600.0, 0.028)
+    out = mix(gain(cloth, 0.55), at(silence(n), steel, dur(0.15, rate), 0.7))
+    return normalize(softclip(out, 1.05), 0.45), rate
+
+
 def sfx_hurt(rng: random.Random, variant: int) -> tuple[Buf, int]:
     """Taking a hit. An impact and the breath it knocks out."""
     rate = SFX_RATE
@@ -2157,6 +2236,11 @@ CATALOG: dict[str, tuple[object, int, float, str, bool]] = {
     # because the caller forces one per combo step: 0 and 1 are the slashes,
     # 2 is the cut. Both rows sit far below the gun — a blade that read as
     # loud as a Glock would take the reason to carry it away.
+    # The mechanism, and it sits well under the round that worked it: what a
+    # cycle is FOR, in the mix, is the moment after the shot when the loudest
+    # thing in the game gets out of the way and the weapon is still moving.
+    "gun-cycle": (sfx_gun_cycle, 3, -13.0, "sfx", False),
+    "gun-draw": (sfx_gun_draw, 1, -17.0, "misc", False),
     "knife-swing": (sfx_knife_swing, 3, -14.0, "sfx", False),
     "knife-hit": (sfx_knife_hit, 3, -9.0, "sfx", False),
     # everything else that happens

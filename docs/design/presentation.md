@@ -36,6 +36,8 @@ Nearest contracts: [`client/AGENTS.md`](../../client/AGENTS.md),
 | add/retune an effect sheet | the matching `server/tools/make_*.py`, then rerun and commit script + output |
 | how an effect plays | `client/src/game/effects.ts`, `client/src/render/layers/effects.ts` |
 | muzzle / impact art | `server/tools/make_weapon_vfx.py`, `client/src/render/weapon-vfx.ts` |
+| gunsmoke, barrel heat, brass | `Effects.spawnMuzzleSmoke` / `spawnCasings` + `drawBarrelHeat` in `layers/entities.ts`; how hot a shot leaves the barrel is `game/weapon-feel.ts` |
+| the sound a mechanism makes | `sfx_gun_cycle` / `sfx_gun_draw` in `make_audio.py`; whether a weapon is slow enough to be heard is `WeaponFeel.audible` |
 | wounds | `server/tools/make_gore.py`, `client/src/render/gore.ts` |
 | how dark the unlit world is | `UNSEEN_ALPHA` / `FOG_ALPHA` in `layers/darkness.ts`. NOT whether creatures are drawn — that is `Game.applyVisibility` |
 | darkness / vision | `client/src/render/fov.ts`, `layers/darkness.ts` — `fov.ts` draws vision at the reaches `ai.py` tests against, both read off `config.enemyViewDarkScale` / `enemyViewLitScale` |
@@ -55,6 +57,18 @@ so rather than reaching across it.
 ---
 
 ## Design law
+
+- **A GUN THAT HAS BEEN WORKING LOOKS LIKE IT.** Heat accumulates per pull
+  (sized off the muzzle flash the catalog already scales per round) and decays
+  over a couple of seconds, so one shot leaves nothing and a magazine leaves a
+  plume: smoke that RISES — the only thing this class throws that does not
+  fall — and a single additive world pixel at the bore. One pixel is not
+  timidity, it is the light budget: the additive chain does not clamp, and a
+  glow big enough to be pretty at the muzzle washes out the ground under two
+  players firing. Brass is thrown from the EJECTION PORT when the action opens,
+  not from the muzzle on the frame of the trigger, and only the two mechanisms
+  slow enough to be heard over their own gunshot — the shotgun's forend, the
+  AWP's bolt — get a sound.
 
 - **A SOUND IS PER EVENT, NEVER PER CATEGORY.** The object vocabulary was
   undone once already by three different containers all playing the inventory

@@ -92,6 +92,10 @@ export interface Palette {
     textShadow: string;
     fallbackShot: string;
     casing: string[];
+    /** Gunsmoke off a hot barrel. Three steps so a wisp is not one flat mote. */
+    smoke: string[];
+    /** The bore of a barrel that has been working. */
+    barrelHeat: string;
   };
 
   entity: {
@@ -100,6 +104,10 @@ export interface Palette {
     aimLocal: string;
     aimRemote: string;
     labelShadow: string;
+    /** Sleeve cloth, multiplied by the player's colour. See render/arms.ts. */
+    sleeve: string;
+    sleeveShade: string;
+    hand: string;
   };
 
   hp: { high: string; mid: string; low: string };
@@ -253,6 +261,8 @@ function resolve(): Palette {
       textShadow: v('--fx-text-shadow'),
       fallbackShot: v('--fx-shot-fallback'),
       casing: [v('--fx-casing-a'), v('--fx-casing-b'), v('--fx-casing-c')],
+      smoke: [v('--fx-smoke-a'), v('--fx-smoke-b'), v('--fx-smoke-c')],
+      barrelHeat: v('--fx-barrel-heat'),
     },
 
     entity: {
@@ -261,6 +271,9 @@ function resolve(): Palette {
       aimLocal: v('--entity-aim-local'),
       aimRemote: v('--entity-aim-remote'),
       labelShadow: v('--entity-label-shadow'),
+      sleeve: v('--entity-sleeve'),
+      sleeveShade: v('--entity-sleeve-shade'),
+      hand: v('--entity-hand'),
     },
 
     hp: { high: v('--hp-high'), mid: v('--hp-mid'), low: v('--hp-low') },

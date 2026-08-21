@@ -45,6 +45,9 @@ Nearest contracts: [`server/app/AGENTS.md`](../../server/app/AGENTS.md),
 | ammunition | `server/app/ammo.py` (mechanics) / `weapons.py` (sizing) |
 | pocket rules | `server/app/inventory.py`, `Room.collect_loot` / `drop_loot` — and the client's mirror of what a collect refuses, `client/src/game/interaction.ts` (`canStow`, `swapTargetFor`) |
 | shot feel | `client/src/game/combat.ts`, `effects.ts`, `entity-visuals.ts` |
+| how a weapon is HELD, cycled, drawn, swung | `client/src/render/guns.ts` (the pose), `render/arms.ts` (the limbs), `render/layers/entities.ts` (the draw), `game/entity-visuals.ts` (the clocks) |
+| what a CLASS of weapon does in the hand | `client/src/game/weapon-feel.ts` — derived from the catalog row's `kind` and `fireCooldown`, never a per-weapon table |
+| a weapon's action frame / ejection port | `server/tools/make_guns.py` (`_cycled`, appended after the closed frames) |
 | bag / belt HUD | `client/src/components/hud/Inventory.tsx`, `Hotbar.tsx`, `Game.inventoryHud()` / `hotbarHud()` |
 | what E offers, and whether it is refused | `client/src/game/interaction.ts` — every reach test and prompt, pure over an `InteractionState` |
 
@@ -106,6 +109,56 @@ When the user requests a durable behavior change, record it here or in the relev
   It is drawn held IN against the body and a little smaller than the guns,
   because a blade at a pistol's extension reads as a sword floating beside
   the sprite.
+- **A WEAPON IS HELD, AND EVERYTHING IT DOES IS ONE POSE.** The grip, the
+  muzzle, the ejection port and the off hand are four points of a single
+  rigid transform (`render/guns.ts` `gunPose`), and every animation in the
+  system is a number summed into it by `EntityVisuals.gunFeelOf`: recoil,
+  the breath, the walk, the draw, the swing. Nothing owns a keyframe. That is
+  why the tracer cannot leave a different barrel than the drawn one, why the
+  arms cannot fall out of step with the weapon, and why a new pose costs one
+  term rather than one animation.
+  **The grip is measured off the FEET, not off the collision box's centre.**
+  The box is 7.2 px tall and the sprite standing on it is 16, so the old
+  `4.5 px above centre` put every weapon in the game across its owner's chin
+  — invisible while the player art was a dark blob with a cap on it, and the
+  first thing anybody noticed once it had a face. It sits five and a half
+  pixels off the floor the boots are on, which is the coat's own hand row in
+  `make_player.py`, and it holds for a body of any size.
+  It is also OFF THE CENTRELINE, by an amount that fades in with how squarely
+  the body faces the camera: nobody holds a rifle out of the middle of their
+  chest, and on the two vertical facings the offset is the difference between
+  seeing your weapon and not.
+- **THE ARMS ARE PLOTTED, NOT DRAWN.** The player sheet has four facings and
+  the weapon points anywhere, so a held pose per angle is a sheet nobody can
+  regenerate. `render/arms.ts` steps a line of single world pixels from the
+  shoulder socket to the grip — sleeve cloth in the player's own colour,
+  under the same dye contract as the sheet, with a hand pixel over the grip.
+  A shoulder weapon gets a second reach to a point along its own barrel,
+  taken from the atlas rather than picked, and that second arm is most of
+  what separates a rifle from a very long pistol at sixteen pixels.
+- **A GUN THAT FIRES ALSO WORKS.** The atlas carries a closed frame and an
+  OPEN one per firearm — slide back, port showing — derived from the closed
+  art by `make_guns._cycled` rather than drawn twelve more times, because
+  what a second map would say is mechanical: the reciprocating group travels
+  back and leaves a hole. How long it stays open is the CLASS
+  (`game/weapon-feel.ts`): a slide is shut inside its own gunshot, a
+  shotgun's forend is a gesture you watch, a bolt is one you are impatient
+  through — and every duration is a fraction of the weapon's own cadence, so
+  the action is always closed before the trigger is live again. The brass
+  leaves the PORT, at full travel, not the muzzle on the frame of the
+  trigger; and the two slow mechanisms are the only ones that make a noise,
+  because a sound mixed under a gunshot is a sound nobody hears.
+- **A SWAP IS A DRAW.** A hotbar key used to be a teleport — the old sprite
+  gone and the new one already aimed on the same frame, which made a rifle
+  and a knife interchangeable in a way their carry weight says they are not.
+  The weapon now comes up out of the holster over a fifth of a second,
+  tilted down and pulled in, easing out; firing plants it instantly, so the
+  cost is legibility rather than tempo and no server cooldown moved. The
+  weapon also BREATHES while it is held and bobs with the walk, both at an
+  amplitude the weapon's own class sets: a shouldered rifle is steadier than
+  a pistol held out at arm's length, which a player feels long before they
+  could name it. Holding to aim (the AWP) halves the drift and pulls the
+  weapon in — the camera answers with zoom, the shooter answers with posture.
 - **THE BLADE FOLLOWS ITS OWN SLASH.** The held sprite runs the same easing,
   off the same `arcDegrees`, that the white path does — it is the leading
   edge of the arc, not a separate animation happening nearby. It starts

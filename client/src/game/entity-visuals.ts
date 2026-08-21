@@ -18,15 +18,106 @@
  */
 
 import type { Effects } from './effects';
+import { EMPTY_FEEL, type WeaponFeel } from './weapon-feel';
 import { clamp01, expDamp, normalize } from '../lib/math';
 
 /** Seconds of white flash after taking a hit. Shared with crate smash. */
 export const HIT_FLASH_LIFE = 0.18;
 /** Sprite kick distance opposite aim (world px). Default; weapons pass their own. */
+const TAU = Math.PI * 2;
+
+/**
+ * The whole pose of a held weapon for one frame.
+ *
+ * SIX NUMBERS, AND THE RENDERER DECIDES NOTHING. Every one of them is
+ * composed here — recoil plus breath plus the draw, all summed into the two
+ * axes the atlas maths already understands (`render/guns.ts`) — because the
+ * tracer's origin and the drawn barrel have to be the same pose or the shot
+ * leaves a gun the player is not looking at, and `game.ts` computes the first
+ * without ever touching a sprite.
+ */
+export interface GunFeel {
+  /**
+   * Sprite-local radians: recoil climb, the breath under it, and the tilt a
+   * weapon still coming out of the holster has. Mirrored by the renderer when
+   * the aim is left — see `gunPose`.
+   */
+  kick: number;
+  /** World px along the aim: the slide's travel, or a blade's thrust. */
+  pump: number;
+  /** Screen-space radians of a melee arc in flight. 0 for anything shooting. */
+  swing: number;
+  /** World px the grip rides up: the walk, the breath, the draw's dip. */
+  lift: number;
+  /** The action is OPEN — draw `cycleFrame` instead of the closed one. */
+  open: boolean;
+  /** Barrel heat, 0..1. Smoke and the glow at the bore read off it. */
+  heat: number;
+}
+
+/** An empty hand, or a body this client has never had visuals for. */
+const IDLE_GUN: GunFeel = { kick: 0, pump: 0, swing: 0, lift: 0, open: false, heat: 0 };
+
 const RECOIL_KICK = 1.2;
 /** How far an enemy lurches into its own attack (world px). */
 const LUNGE_KICK = 3.5;
 /** How fast recoil and lunges spring back (higher = snappier). */
+/**
+ * Seconds a weapon takes to come up out of the holster after a swap.
+ *
+ * A HOTBAR KEY USED TO BE A TELEPORT: the old sprite vanished and the new one
+ * was already aimed, on the same frame, which made a rifle and a knife
+ * interchangeable in a way the carry weight says they are not. Just over a
+ * fifth of a second is long enough to see the barrel come up and short enough
+ * that nobody stops swapping under pressure — the cost is legibility, not
+ * tempo, and the server's cooldowns are untouched.
+ */
+const DRAW_TIME = 0.22;
+/**
+ * THE BRACE: a weapon pulled in and held still while its owner is aiming.
+ *
+ * Only the AWP has a hold-to-aim today (`scopeZoom`), and the camera already
+ * answers it by zooming. The camera moving is a fact about the SHOT; this is
+ * a fact about the shooter — the weapon comes back against the shoulder, the
+ * drift halves, and letting go throws all of it. Without it the one weapon in
+ * the game whose input is a sentence had no posture at all: the barrel
+ * wandered at exactly the rate it does while walking around, which is the
+ * opposite of what holding your breath looks like.
+ */
+const BRACE_RATE = 9;
+/** World px the grip comes back toward the body while braced. */
+const BRACE_PULL = 1.3;
+/** World px it rides up to the eye. */
+const BRACE_LIFT = 0.7;
+/** How much of the drift a brace takes away. Never all of it — hands shake. */
+const BRACE_STEADY = 0.72;
+/** Radians the muzzle is still pointed DOWN at the instant of the swap. */
+const DRAW_TILT = 0.95;
+/** World px the grip is still pulled back toward the body at that instant. */
+const DRAW_PULL = 2.6;
+/** World px it is still dropped below the chest line. */
+const DRAW_DIP = 3.2;
+/**
+ * How fast a barrel gives up its heat, in units of `WeaponFeel.heat` a second.
+ * Sized so a full magazine through a rifle smokes for a couple of seconds
+ * after the trigger stops and a single pistol shot leaves nothing worth
+ * drawing — heat is a record of SUSTAINED fire or it says nothing at all.
+ */
+const HEAT_COOL = 0.55;
+/**
+ * The two breathing rates, in Hz. Two detuned sines rather than one, for the
+ * same reason the camera's own sway is two: a single sine is a metronome, and
+ * the eye finds the loop in about four seconds.
+ */
+const BREATH_FAST = 0.29;
+const BREATH_SLOW = 0.11;
+/**
+ * Seconds of one full stride, and it is the player sheet's own cadence:
+ * `walkFrameOrder` is four columns at `fps` 8. The weapon bobs at the
+ * FOOTFALL, which is twice a stride — a barrel that rose and fell once per
+ * stride reads as a limp.
+ */
+const WALK_STRIDE = 0.5;
 const RECOIL_RECOVER = 16;
 /** How fast a hit-stun tilt springs back after the freeze. */
 const SPIN_RECOVER = 11;
@@ -171,6 +262,26 @@ interface VisualState {
   swingSweep: number;
   /** World px the grip thrusts out along the blade at mid-swing. */
   swingThrust: number;
+  /**
+   * A clock that never stops, unlike `animTime`. Breathing has to run while
+   * the body is standing still — that is the whole point of it — and
+   * `animTime` is deliberately zeroed the moment somebody stops walking.
+   */
+  poseTime: number;
+  /** THE ACTION: seconds since the shot, and how long it stays open. */
+  cycleAge: number;
+  cycleLife: number;
+  /** Barrel heat, 0..1. Rises per shot, decays at `HEAT_COOL`. */
+  heat: number;
+  /** Seconds since this body last changed weapons. Drives the draw. */
+  drawAge: number;
+  /** What is in the hand, so a change can be noticed. */
+  weaponKey: string | null;
+  /** How the thing in the hand behaves. See `weapon-feel.ts`. */
+  feel: WeaponFeel;
+  /** 0..1 how far into the brace this body is, and where it is heading. */
+  brace: number;
+  braceWant: number;
   /** Radians of hit tilt around the feet. Springs back after stun. */
   hitSpin: number;
   /** Seconds the body stays planted before the knockback springs back. */
@@ -198,6 +309,17 @@ function blank(): VisualState {
     swingHalf: 0,
     swingSweep: 1,
     swingThrust: 0,
+    poseTime: 0,
+    cycleAge: 0,
+    cycleLife: 0,
+    heat: 0,
+    // Far enough in the past that a body appearing with a weapon already in
+    // hand is not drawing it: the animation is for a SWAP the player made.
+    drawAge: DRAW_TIME,
+    weaponKey: null,
+    feel: EMPTY_FEEL,
+    brace: 0,
+    braceWant: 0,
     hitSpin: 0,
     stunLeft: 0,
   };
@@ -341,7 +463,7 @@ export class EntityVisuals {
     state.recoilY = -aimY * kick;
   }
 
-  kickGun(id: string, angle: number, pump: number): void {
+  kickGun(id: string, angle: number, pump: number, feel: WeaponFeel = EMPTY_FEEL): void {
     const state = this.state(id);
     // A shot ends any swing still in the air: somebody who swapped from the
     // blade to a gun mid-arc is holding a barrel now, and a barrel does not
@@ -350,6 +472,54 @@ export class EntityVisuals {
     state.swingAge = 0;
     state.gunKick = -Math.abs(angle);
     state.gunPump = pump;
+    // AND IT THROWS THE ACTION OPEN. The spring above is the weapon jumping
+    // in somebody's hands; this is the weapon WORKING, and they are two
+    // different lengths of time on purpose — a recoil decays over whatever
+    // the damping says, a slide is shut again in seventy milliseconds because
+    // that is what a slide does. Firing also plants any draw still in flight:
+    // a player who shoots the frame after a swap is holding the gun up.
+    state.cycleAge = 0;
+    state.cycleLife = feel.cycle;
+    state.heat = Math.min(1, state.heat + feel.heat);
+    state.drawAge = DRAW_TIME;
+  }
+
+  /**
+   * Hold the weapon in, or let it back out. `want` is 1 while the trigger is
+   * being held on a weapon that aims (`scopeZoom`), 0 otherwise; the ease
+   * between them lives in `update` so a tap does not snap the pose.
+   */
+  brace(id: string, want: number): void {
+    this.state(id).braceWant = clamp01(want);
+  }
+
+  /**
+   * What this body is holding, checked every frame it is drawn.
+   *
+   * The weapon KEY is the trigger, not the slot: selecting the slot already
+   * held is a holster and comes back as null, and two rifles in two slots are
+   * two draws. The feel is stored rather than passed to every pose call
+   * because `update` needs it on frames nothing else does — a weapon breathes
+   * while the player is reading their bag.
+   */
+  noteWeapon(id: string, key: string | null, feel: WeaponFeel): boolean {
+    const state = this.state(id);
+    state.feel = feel;
+    if (key === state.weaponKey) return false;
+    state.weaponKey = key;
+    // A fresh weapon is COLD and SHUT. Carrying heat across a swap would let
+    // a player launder a smoking barrel through the knife and back.
+    state.drawAge = key ? 0 : DRAW_TIME;
+    state.cycleAge = 0;
+    state.cycleLife = 0;
+    state.heat = 0;
+    state.gunKick = 0;
+    state.gunPump = 0;
+    // The caller makes the noise. Returning the fact rather than playing it
+    // here keeps this class where it has always been — state and arithmetic,
+    // nothing that touches the world — and it is the same fact the animation
+    // is about to draw.
+    return key !== null;
   }
 
   /**
@@ -412,15 +582,49 @@ export class EntityVisuals {
    *
    * `pump` is along the barrel for a gun and along the BLADE for a swing,
    * which is why `gunHand` takes the swing angle too.
+   *
+   * `lift`, `open` and `heat` are the mechanism rather than the recoil: how
+   * far the weapon has ridden up with the body carrying it, whether its
+   * action is standing open this frame, and how hot the barrel has got. All
+   * three are read by the entity layer and none of them changes where a shot
+   * comes from.
    */
-  gunFeelOf(id: string): { kick: number; pump: number; swing: number } {
+  gunFeelOf(id: string): GunFeel {
     const state = this.states.get(id);
-    if (!state) return { kick: 0, pump: 0, swing: 0 };
-    if (state.swingLife <= 0) {
-      return { kick: state.gunKick, pump: state.gunPump, swing: 0 };
+    if (!state) return IDLE_GUN;
+    if (state.swingLife > 0) {
+      const pose = swingPose(state);
+      // A BLADE IN FLIGHT IS NOT BREATHING. The swing timeline owns the whole
+      // pose for as long as it runs — a sine added to a sweep is a hand that
+      // wobbles through its own follow-through.
+      return { kick: 0, pump: pose.thrust, swing: pose.angle, lift: 0, open: false, heat: 0 };
     }
-    const pose = swingPose(state);
-    return { kick: 0, pump: pose.thrust, swing: pose.angle };
+    const feel = state.feel;
+    // THE DRAW EASES OUT, and it is squared rather than linear because that
+    // is where the weight is: the barrel travels most of the way up in the
+    // first half of the animation and settles through the second, which is a
+    // weapon being lifted and then AIMED rather than a sprite sliding along a
+    // line.
+    const rise = 1 - clamp01(state.drawAge / DRAW_TIME);
+    const back = rise * rise;
+    const t = state.poseTime;
+    const breath =
+      (Math.sin(t * BREATH_FAST * TAU) + 0.5 * Math.sin(t * BREATH_SLOW * TAU + 1.1)) / 1.5;
+    // The walk is a separate clock from the breath and stops with the feet.
+    const stride = state.animTime > 0 ? Math.sin((state.animTime / WALK_STRIDE) * 2 * TAU) : 0;
+    // A braced weapon is a STEADIER weapon, not a still one.
+    const steady = 1 - state.brace * BRACE_STEADY;
+    return {
+      kick: state.gunKick + breath * feel.sway * steady + back * DRAW_TILT,
+      pump: state.gunPump - back * DRAW_PULL - state.brace * BRACE_PULL,
+      swing: 0,
+      lift:
+        (stride * feel.bob + breath * feel.bob * 0.4) * steady +
+        state.brace * BRACE_LIFT -
+        back * DRAW_DIP,
+      open: state.cycleLife > 0 && state.cycleAge < state.cycleLife,
+      heat: state.heat,
+    };
   }
 
   /** Shove an attacker forward along its swing; same spring as recoil. */
@@ -441,6 +645,25 @@ export class EntityVisuals {
     const damp = expDamp(RECOIL_RECOVER, dt);
     const spinDamp = expDamp(SPIN_RECOVER, dt);
     for (const state of this.states.values()) {
+      // The pose clocks. These run for every body every frame whatever else
+      // is happening to it: a weapon breathes while its owner stands still,
+      // cools while they walk, and finishes coming out of the holster while
+      // they are being hit.
+      state.poseTime += dt;
+      if (state.cycleLife > 0) {
+        state.cycleAge += dt;
+        if (state.cycleAge >= state.cycleLife) {
+          state.cycleLife = 0;
+          state.cycleAge = 0;
+        }
+      }
+      if (state.heat > 0) state.heat = Math.max(0, state.heat - HEAT_COOL * dt);
+      if (state.brace !== state.braceWant) {
+        const k = expDamp(BRACE_RATE, dt);
+        state.brace = state.braceWant + (state.brace - state.braceWant) * k;
+        if (Math.abs(state.brace - state.braceWant) < 0.002) state.brace = state.braceWant;
+      }
+      if (state.drawAge < DRAW_TIME) state.drawAge = Math.min(DRAW_TIME, state.drawAge + dt);
       if (state.hitFlash > 0) state.hitFlash = Math.max(0, state.hitFlash - dt);
       if (state.blockedCooldown > 0) {
         state.blockedCooldown = Math.max(0, state.blockedCooldown - dt);

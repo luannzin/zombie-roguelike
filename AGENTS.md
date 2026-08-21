@@ -196,6 +196,7 @@ These bind every subtree. Subsystem-specific rules live in the docs above.
 | client | `bun run typecheck` from `client/` — required after any change there |
 | client | `bun tests/grade.ts` from `client/` after touching `render/post/grade.ts` — plain script, prints `ok` |
 | client | `bun tests/exit-path.ts` from `client/` after touching `game/exit-path.ts` — plain script, prints `ok` |
+| client | `bun tests/weapon-pose.ts` from `client/` after touching `render/guns.ts`, `game/weapon-feel.ts` or `make_guns.py` — plain script, prints `ok`. It reads the REAL atlas manifest, so it fails if the generator stops appending action frames |
 | both | run the server, open two browser tabs, confirm both players move, shoot and light the world without rubber-banding |
 
 Run `test_store_walk.py` after any edit to `store.py`'s layout offsets: it
@@ -215,6 +216,13 @@ undergrowth in different tiles — nothing at runtime notices.
 Run `test_scenery_containers.py` after adding a container kind or a scene that
 places one: it fails if two openables claim the same tile, or if a scene keeps
 more than `MAX_CONTAINERS`.
+
+Run `bun tests/weapon-pose.ts` after touching the held weapon: the pose maths
+in `render/guns.ts`, the per-class feel in `game/weapon-feel.ts`, or the atlas
+`make_guns.py` writes. It pins the one thing nothing at runtime notices — that
+the muzzle, the ejection port and the off hand are the same pose, mirrored
+together — and that every firearm still has an action frame, APPENDED after
+the closed ones rather than interleaved.
 
 Run `test_config_parity.py` after touching `client_config()` or `GameConfig`:
 it fails if either side declares a key the other does not, in either

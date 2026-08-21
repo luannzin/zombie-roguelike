@@ -18,8 +18,9 @@ import { clamp01 } from '../../lib/math';
 import { HUD_GRID, hudFont } from '../../theme/fonts';
 import { hpColor, palette } from '../../theme/palette';
 import type { GoreAtlas } from '../gore';
-import type { GunAtlas } from '../guns';
-import { gunHand } from '../guns';
+import { drawArms, drawHands } from '../arms';
+import type { GunAtlas, GunMuzzleArgs } from '../guns';
+import { gunMuzzle, gunPose, gunSupport } from '../guns';
 import type { Projection } from '../projection';
 import { groundShadow } from '../shadows';
 import { facingFromAim, frameIndex, timelineFrame, type SpriteBook } from '../sprites';
@@ -69,6 +70,8 @@ const LABEL_TICK_W = 6;
 const LABEL_TICK_H = 4;
 /** Gap between the tick and the name it precedes. */
 const LABEL_TICK_GAP = 3;
+/** Barrel heat below this is not drawn at all. One shot never glows. */
+const HEAT_VISIBLE = 0.3;
 /** Coin bob amplitude in world px — tiny so it still reads as grounded. */
 const COIN_BOB = 0.35;
 /** Draw scale vs the processed 16px frame. */
@@ -210,7 +213,17 @@ export function drawEntity(entity: EntityContext, target: DrawableEntity): void 
   if (spun) ctx.restore();
 
   if (target.kind === 'player') {
-    drawHeldGun(entity, target, px, py);
+    // OVER THE BODY ON EVERY FACING, INCLUDING THE ONE WALKING AWAY, and
+    // that is a deliberate lie. Drawing it behind the sprite when the aim is
+    // up is the truthful order and was tried: at sixteen pixels, with the
+    // grip at chest height, a rifle held up-range disappears completely
+    // behind its owner's back and the player loses track of what is in their
+    // hands every time they walk north. Which weapon you are holding is a
+    // decision you make constantly in this game, so it wins over depth on the
+    // one facing where the two disagree. What made the old drawing look
+    // wrong was never the ORDER — it was the height (`GUN_GRIP_ABOVE_FEET`),
+    // which had every weapon in the game held across its owner's face.
+    drawWeapon(entity, target, px, py, spriteTop, col);
     drawHealthBar(entity, target, view.rawX(px), spriteTop);
   } else if (target.hp < target.maxHp) {
     drawHealthBar(entity, target, view.rawX(px), spriteTop);
@@ -354,6 +367,10 @@ function corpseAsTarget(body: DrawableCorpse): DrawableEntity {
     gunKick: 0,
     gunSwing: 0,
     gunPump: 0,
+    gunLift: 0,
+    gunOpen: false,
+    gunHeat: 0,
+    gunHands: 1,
   };
 }
 
@@ -550,12 +567,30 @@ function drawStains(
   ctx.drawImage(scratch.canvas, 0, 0, w, h, dx, dy, dw, dh);
 }
 
-function drawHeldGun(
-  { ctx, view, guns }: EntityContext,
+/**
+ * The thing in the hand, and the arms that are holding it.
+ *
+ * FOUR DRAWINGS IN ONE ORDER, and the order is the depth: the sleeves reach
+ * out from the shoulders, the weapon lies over them, the hands close over the
+ * weapon, and the heat sits on top of all of it. Anything else and the player
+ * is holding a gun that is holding them.
+ *
+ * The POSE is not decided here. `gunPose` composes it out of the numbers
+ * `EntityVisuals.gunFeelOf` has already summed — recoil, breath, walk, draw,
+ * swing — and `gunMuzzle` reads the same composition, which is the only
+ * reason the tracer and the barrel agree. What this function decides is which
+ * FRAME of the atlas that pose is applied to, and the answer is one bit: an
+ * action standing open, or an action shut.
+ */
+function drawWeapon(
+  entity: EntityContext,
   target: DrawableEntity,
   px: number,
   py: number,
+  spriteTop: number,
+  col: number,
 ): void {
+  const { ctx, view, guns } = entity;
   if (!target.weapon) return;
   if (!guns) {
     drawAimFallback(ctx, view, target, px, py);
@@ -567,43 +602,57 @@ function drawHeldGun(
     return;
   }
 
-  const angle = Math.atan2(target.ay, target.ax);
-  const flip = target.ax < 0;
-  // The atlas row decides how far out the hand is — a rifle is pushed off
-  // the chest, the knife is tucked against it — so the weapon has to be
-  // passed in, not just its pose.
-  const hand = gunHand({
+  const args: GunMuzzleArgs = {
     x: px,
     y: py,
     ax: target.ax,
     ay: target.ay,
+    halfHeight: target.halfHeight,
     weapon: target.weapon,
     guns,
     pump: target.gunPump,
+    kick: target.gunKick,
     swing: target.gunSwing,
-  });
-  const sx = view.rawX(hand.x);
-  const sy = view.rawY(hand.y);
+    lift: target.gunLift,
+  };
+  const pose = gunPose(args);
+  const support = target.gunHands >= 2 ? gunSupport(args) : null;
+  // The sheet drops the torso a pixel on both contact poses (`make_player.py`
+  // `BOB`), so the shoulder the arm hangs off moves with the stride.
+  const bob = col === 1 ? 0 : 1;
+  const arms = {
+    ctx,
+    view,
+    bodyX: px,
+    spriteTop,
+    bob,
+    gripX: pose.x,
+    gripY: pose.y,
+    supportX: support?.x ?? null,
+    supportY: support?.y ?? null,
+    tint: target.tint,
+    alpha: target.visibility,
+  };
+  drawArms(arms);
+
+  const sx = view.rawX(pose.x);
+  const sy = view.rawY(pose.y);
   // Per-weapon draw scale, folded into the zoom so the sprite grows and
   // shrinks around the GRIP and the hand does not drift as it scales.
-  const zoom = view.zoom * (spec.scale ?? 1);
-  // A GUN'S KICK IS MIRRORED AND A BLADE'S SWING IS NOT, and the asymmetry
-  // is the whole reason they are two fields. `gunKick` means "the muzzle
-  // rises", which is a different screen rotation depending on which way the
-  // body faces, so it is negated with the flip. `gunSwing` means "the blade
-  // is HERE", already resolved into screen space against the same handedness
-  // the white arc is drawn with — mirroring it would uncross the two slashes
-  // of the chain every time the player aimed left.
-  const kick = flip ? -target.gunKick : target.gunKick;
+  const zoom = view.zoom * pose.scale;
+  // THE ONE BIT: open or shut. A weapon whose atlas has no action frame —
+  // the knife, and any older atlas — simply never opens, which is the same
+  // code path with the same cost.
+  const frame = target.gunOpen && spec.cycleFrame !== undefined ? spec.cycleFrame : spec.frame;
 
   ctx.save();
   ctx.translate(sx, sy);
-  ctx.rotate(angle + kick + target.gunSwing);
-  if (flip) ctx.scale(1, -1);
+  ctx.rotate(pose.theta);
+  if (pose.flip < 0) ctx.scale(1, -1);
   ctx.globalAlpha = target.visibility;
   ctx.drawImage(
     guns.image,
-    spec.frame * guns.frameWidth,
+    frame * guns.frameWidth,
     0,
     guns.frameWidth,
     guns.frameHeight,
@@ -613,6 +662,39 @@ function drawHeldGun(
     guns.frameHeight * zoom,
   );
   ctx.restore();
+
+  drawHands(arms);
+  drawBarrelHeat(entity, target, args);
+}
+
+/**
+ * A barrel that has been working, seen down the bore.
+ *
+ * ONE WORLD PIXEL, ADDITIVE. It is deliberately the smallest light in the
+ * game: the additive chain in this renderer does not clamp (see STATE.md),
+ * and a glow big enough to be pretty at the muzzle is a glow that washes out
+ * the ground the player is standing on when two of them are firing. What it
+ * has to say is only "this is hot", and the smoke coming off it says the rest.
+ *
+ * It starts above a threshold rather than at any heat at all, because a
+ * single shot should leave nothing: heat is the record of SUSTAINED fire, and
+ * a pistol that glowed after one round would be saying something untrue about
+ * how much shooting has happened.
+ */
+function drawBarrelHeat(
+  { ctx, view }: EntityContext,
+  target: DrawableEntity,
+  args: GunMuzzleArgs,
+): void {
+  if (target.gunHeat <= HEAT_VISIBLE) return;
+  const muzzle = gunMuzzle(args);
+  const cell = Math.ceil(view.size(1));
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.globalAlpha = Math.min(0.8, (target.gunHeat - HEAT_VISIBLE) * 1.6) * target.visibility;
+  ctx.fillStyle = palette().effects.barrelHeat;
+  ctx.fillRect(view.x(muzzle.x), view.y(muzzle.y), cell, cell);
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.globalAlpha = target.visibility;
 }
 
 function drawAimFallback(

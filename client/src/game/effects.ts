@@ -153,6 +153,34 @@ export interface ShotFeel {
    * being handed are pellets of one shell rather than separate shots.
    */
   pellets?: number;
+  /**
+   * THE EJECTION PORT in world px, and how long after the shot the brass
+   * clears it. Both come off the weapon's own pose (`render/guns.ts`
+   * `gunPort`) and its action clock (`game/weapon-feel.ts`).
+   *
+   * Casings used to be born at the MUZZLE on the frame the trigger went
+   * down, which is a shell leaving the front of the barrel alongside the
+   * bullet. Brass comes out of the side of the receiver, and it comes out
+   * when the action opens — a few tens of milliseconds later on a pistol and
+   * a quarter of a second later on a shotgun, which is exactly long enough to
+   * see the two events as cause and effect instead of as one flash.
+   *
+   * Absent means the old behaviour: at the muzzle, immediately.
+   */
+  portX?: number;
+  portY?: number;
+  eject?: number;
+}
+
+/** Brass that has not cleared the port yet. See `ShotFeel.eject`. */
+interface PendingCasings {
+  x: number;
+  y: number;
+  dx: number;
+  dy: number;
+  count: number;
+  /** Seconds still to wait. */
+  left: number;
 }
 
 /**
@@ -366,6 +394,11 @@ export interface LevelUp {
 const FLASH_HOLD = 0.34;
 const BURST_HOLD = 0.22;
 
+/** World px/s a wisp leaves the barrel with, upward. */
+const SMOKE_RISE = 11;
+/** And the lift under it, in world px/s² — gravity, pointing the other way. */
+const SMOKE_LIFT = 13;
+
 export class Effects {
   tracers: Tracer[] = [];
   flashes: Flash[] = [];
@@ -387,6 +420,8 @@ export class Effects {
   winds: WindPuff[] = [];
   deaths: DeathBurst[] = [];
   levelUps: LevelUp[] = [];
+  /** Shots whose action has not opened yet. Never drawn — see `update`. */
+  private pendingCasings: PendingCasings[] = [];
 
   /**
    * Leave one print. `dx`/`dy` is the heading it was walking.
@@ -532,7 +567,17 @@ export class Effects {
     }
 
     const casings = feel?.casings ?? 1;
-    if (casings > 0) this.spawnCasings(x, y, dx, dy, casings);
+    if (casings > 0) {
+      const px = feel?.portX ?? x;
+      const py = feel?.portY ?? y;
+      const eject = feel?.eject ?? 0;
+      // The port is where the pose says it is AT THE MOMENT OF THE SHOT, not
+      // where it will be when the brass leaves. Sampling it later would mean
+      // storing the shooter and re-posing them, and a casing that tracked the
+      // muzzle for a quarter of a second would be a casing on a string.
+      if (eject > 0) this.pendingCasings.push({ x: px, y: py, dx, dy, count: casings, left: eject });
+      else this.spawnCasings(px, py, dx, dy, casings);
+    }
   }
 
   /** The single-ray call, for everything that is not counting pellets. */
@@ -549,6 +594,66 @@ export class Effects {
     feel?: ShotFeel,
   ): void {
     this.spawnShot(x, y, dx, dy, [{ dx, dy, dist, hit }], color, damage, flesh, feel);
+  }
+
+  /**
+   * Throw the brass of every shot whose action has now opened.
+   *
+   * Compacted in place like every other list here. It is almost always empty
+   * and never longer than the number of players firing at once, so the guard
+   * in `update` is what keeps it free rather than any cleverness in here.
+   */
+  private openPorts(dt: number): void {
+    let kept = 0;
+    for (const shot of this.pendingCasings) {
+      shot.left -= dt;
+      if (shot.left > 0) {
+        this.pendingCasings[kept++] = shot;
+        continue;
+      }
+      this.spawnCasings(shot.x, shot.y, shot.dx, shot.dy, shot.count);
+    }
+    this.pendingCasings.length = kept;
+  }
+
+  /**
+   * Gunsmoke, and it is a record of how much SHOOTING has happened rather
+   * than of one shot.
+   *
+   * `heat` comes off the barrel (`GunFeel.heat`), which rises per pull and
+   * decays over a couple of seconds, so a single round leaves one thin wisp
+   * and a magazine through a rifle leaves a plume that is still hanging there
+   * when the trigger stops. That asymmetry is the whole point: it is the only
+   * thing in the frame that says a player has been firing for a while, and it
+   * is what makes stopping feel like a decision.
+   *
+   * It rises. Everything else this class throws falls — brass, blood, debris,
+   * dust — and smoke going the other way is what stops a muzzle looking like
+   * a hole things fall out of.
+   */
+  spawnMuzzleSmoke(x: number, y: number, dx: number, dy: number, heat: number): void {
+    if (heat <= 0) return;
+    const fx = palette().effects;
+    const count = 1 + Math.round(heat * 3);
+    for (let i = 0; i < count; i++) {
+      // Strung out ALONG the barrel's line rather than stacked on the tip:
+      // the smoke is what the round left behind it, so the puffs start at
+      // different distances out and drift apart from there.
+      const out = i * 0.9;
+      const drift = (Math.random() - 0.5) * 0.7;
+      const push = 5 + Math.random() * 7;
+      this.particles.push({
+        x: x + dx * out,
+        y: y + dy * out,
+        vx: dx * push - dy * drift * 8,
+        vy: dy * push + dx * drift * 8 - SMOKE_RISE,
+        size: 0.9 + Math.random() * 0.8 + heat,
+        color: fx.smoke[i % fx.smoke.length],
+        age: 0,
+        life: 0.35 + Math.random() * 0.45 + heat * 0.7,
+        gy: -SMOKE_LIFT,
+      });
+    }
   }
 
   /** Brass kicked out perpendicular to the shot, falling with weight. */
@@ -1030,6 +1135,7 @@ export class Effects {
     this.winds = advance(this.winds, dt);
     this.deaths = advance(this.deaths, dt);
     this.levelUps = advance(this.levelUps, dt);
+    if (this.pendingCasings.length > 0) this.openPorts(dt);
     this.particles = stepParticles(this.particles, dt, PARTICLE_DRAG);
     this.dust = stepParticles(this.dust, dt, DUST_DRAG);
     this.textFloats = advance(this.textFloats, dt, (d) => {
@@ -1039,6 +1145,7 @@ export class Effects {
 
   /** Drop every live effect — used on disconnect and when switching rooms. */
   clear(): void {
+    this.pendingCasings.length = 0;
     this.tracers.length = 0;
     this.flashes.length = 0;
     this.bursts.length = 0;

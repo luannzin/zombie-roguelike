@@ -236,6 +236,28 @@ GRIP_CHARS = frozenset("g")
 #: tracer leaves from it.
 MUZZLE_CHARS = frozenset("m")
 
+#: THE ACTION FRAME IS DERIVED, NOT DRAWN. A second art map per weapon would
+#: be twelve more hand-counted grids to keep in step with the first twelve, and
+#: the thing a second map would say is mechanical rather than artistic: the
+#: reciprocating group — slide, bolt carrier, breech block — travels BACKWARD
+#: and leaves a hole where it was. That is a transform of the closed frame, so
+#: it is written once here and applied to all of them.
+#:
+#: WHAT RECIPROCATES is the run of receiver letters on the two top planes: row
+#: 1 (the bore) and row 2 (the side it turns away on). A barrel does not move,
+#: a grip does not move, a magazine does not move, and none of them are `r`.
+#: Recesses already inside the run travel with it — a dust-cover seam is cut
+#: INTO the slide — which is why `x` joins a run but never starts one.
+CYCLE_ROWS = (1, 2)
+CYCLE_CHARS = frozenset("r")
+#: What may be crossed or swallowed as the group travels back: its own letters,
+#: its own seams, and empty space. A stock or a wooden butt is none of those,
+#: and a bolt that ate one would be a rifle a pixel shorter every shot.
+CYCLE_JOIN = frozenset("rx.")
+#: The hole the group leaves. `x` is the sheet's shared VOID ramp, so an open
+#: port on a Glock is exactly as dark as an open port on an AK.
+PORT = "x"
+
 
 def _pad(art: Art) -> Art:
     width = max(len(row) for row in art)
@@ -317,6 +339,49 @@ def _centroid(art: Art, chars: frozenset[str], ox: int, oy: int) -> tuple[int, i
     if not xs:
         return (ox, oy + len(art) // 2)
     return (round(sum(xs) / len(xs)), round(sum(ys) / len(ys)))
+
+
+def _cycled(art: Art) -> tuple[Art, tuple[int, int]] | None:
+    """The same weapon with its action OPEN, and where the brass comes out.
+
+    One pixel of travel is the whole animation, and one pixel is all a nine-row
+    frame has: the group moves back into the space behind it and the cell it
+    vacated at the front becomes a port. At this size that reads as a slide
+    cycling — the eye is catching the DARK NOTCH appearing under the rear
+    sight, not measuring a distance.
+
+    A group with nothing behind it (the P90 and the FAMAS both run their
+    receiver to the back of the frame — one is a bullpup and the other very
+    nearly one) cannot travel, so its port simply opens. That is the honest
+    drawing rather than a fallback: on a real bullpup the breech is behind the
+    grip, and what a shooter sees move is the ejection cover and nothing else.
+
+    Returns the map and the PORT cell in map coordinates, or None for a weapon
+    with no reciprocating group at all — the knife, which is the whole reason
+    this returns an option instead of asserting.
+    """
+    rows = list(_pad(art))
+    port: tuple[int, int] | None = None
+    for y in CYCLE_ROWS:
+        row = list(rows[y])
+        start = next((i for i, ch in enumerate(row) if ch.lower() in CYCLE_CHARS), None)
+        if start is None:
+            continue
+        end = start
+        while end + 1 < len(row) and row[end + 1].lower() in CYCLE_JOIN - {"."}:
+            end += 1
+        # A run ENDS on metal. A trailing seam is the gap before the next part
+        # — the AWP's bolt handle sits in one — and travelling to it would open
+        # the port a pixel further forward than the breech actually is.
+        while end > start and row[end].lower() not in CYCLE_CHARS:
+            end -= 1
+        if start > 0 and row[start - 1].lower() in CYCLE_JOIN:
+            row[start - 1:end] = row[start:end + 1]
+        row[end] = PORT
+        rows[y] = "".join(row)
+        if y == 1:
+            port = (end, y)
+    return None if port is None else (rows, port)
 
 
 def _rightmost(art: Art, chars: frozenset[str], ox: int, oy: int) -> tuple[int, int]:
@@ -678,9 +743,15 @@ def build(args) -> Path:
 
     frames: list[Image.Image] = []
     items: dict[str, dict] = {}
+    # THE ACTION FRAMES ARE APPENDED, never interleaved. Every closed frame
+    # keeps the index it has had since this sheet was first packed: a frame
+    # index is a number already baked into a committed PNG's meaning, and
+    # inserting a row moves all of them (root AGENTS.md).
+    cycles: list[tuple[Art, Palette]] = []
     for index, (key, pal, art) in enumerate(GUNS):
         _check(key, art)
         frames.append(_blit(art, pal, width, height))
+        cycle = _cycled(art)
         art = _pad(art)
         ox, oy = _origin(art, width, height)
         grip = _centroid(art, GRIP_CHARS, ox, oy)
@@ -694,17 +765,33 @@ def build(args) -> Path:
             "hold": HOLD.get(key, HOLD_OUT),
             "scale": SCALE.get(key, 1.0),
         }
+        if cycle is None:
+            continue
+        cycle_art, port = cycle
+        # The cycled map is the same padded size as the closed one — the group
+        # travels INSIDE the frame — so the two share one origin and the grip
+        # does not move between them. A weapon whose pivot jumped on the frame
+        # its action opened would fire out of a hand that had let go of it.
+        items[key]["cycleFrame"] = len(GUNS) + len(cycles)
+        items[key]["portX"] = ox + port[0]
+        items[key]["portY"] = oy + port[1]
+        cycles.append((cycle_art, pal))
+    for cycle_art, cycle_pal in cycles:
+        frames.append(_blit(cycle_art, cycle_pal, width, height))
 
     pack(frames, width, height).save(out_dir / "sheet.png")
     manifest = {
         "tile": args.tile,
         "frameWidth": width,
         "frameHeight": height,
-        "frames": len(GUNS),
+        "frames": len(frames),
         "items": items,
     }
     (out_dir / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
-    print(f"wrote {out_dir}: {len(GUNS)} weapons @ {width}x{height}")
+    print(
+        f"wrote {out_dir}: {len(GUNS)} weapons + {len(cycles)} action "
+        f"frames @ {width}x{height}"
+    )
     return out_dir
 
 

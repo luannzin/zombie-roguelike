@@ -246,7 +246,7 @@ export class TintCache {
 }
 
 /** `#rgb` / `#rrggbb` to three bytes. The palette only ever hands us hex. */
-function parseColor(color: string): [number, number, number] {
+export function parseColor(color: string): [number, number, number] {
   const hex = color.trim().replace('#', '');
   const full = hex.length === 3 ? hex.split('').map((c) => c + c).join('') : hex;
   const value = Number.parseInt(full, 16);

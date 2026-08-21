@@ -148,6 +148,9 @@ cd client && bun install && bun run dev
 - `bun tests/grade.ts` after touching `render/post/grade.ts` — plain script,
   prints `ok`. It is the only automated check on the grade stack; the shader
   half of the post chain has none and cannot have one, so look at the game.
+- `bun tests/weapon-pose.ts` after touching `render/guns.ts`, `render/arms.ts` or
+  `game/weapon-feel.ts` — it reads the generated gun manifest, so it also
+  catches an atlas rebuilt without action frames or ports.
 - `bun run build` before shipping; it typechecks then builds.
 - Open two tabs on `http://localhost:5173` and confirm both players move, shoot
   and light the world without rubber-banding.

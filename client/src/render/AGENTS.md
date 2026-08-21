@@ -10,7 +10,7 @@ mutation, no React.
 | file | owns |
 | --- | --- |
 | `renderer.ts` | pass sequencing and the world/screen transform |
-| `types.ts` | `RenderState`, `DrawableEntity` — the renderer's input contract (`gear` overlays, `weapon` the held gun, `hitSpin` the hit tilt, `pour` the backpack coming off the back) |
+| `types.ts` | `RenderState`, `DrawableEntity` — the renderer's input contract (`gear` overlays, `weapon` the held gun with its whole pose in `gunKick`/`gunSwing`/`gunPump`/`gunLift` plus `gunOpen`/`gunHeat`/`gunHands`, `hitSpin` the hit tilt, `pour` the backpack coming off the back) |
 | `camera.ts` | follow, clamp to map bounds, the arrival push-in |
 | `framing.ts` | the wide shot of the camp — zoom and rest-shot fire position |
 | `projection.ts` | zoom + offset between world and screen space |
@@ -29,7 +29,8 @@ mutation, no React.
 | `layers/store.ts` | his pitch drawn: mat, depth-sorted wagon / counter / tables / gear / torches / merchant / MACHINE, stock FLOATING over the table you are at, the fires, the cabinet's tinted light, the scrolling bands, the pay-line flash and the price tags |
 | `layers/payout.ts` | the night's platforms being lowered into the shop's apron, the drones leaving, and the gold flying to the HUD balance |
 | `loot.ts` | loot atlas: one 16x16 frame per collectable item |
-| `guns.ts` | held-gun atlas and the shared muzzle/grip pose (`gunMuzzle`) |
+| `guns.ts` | held-gun atlas and the ONE pose every reader of a held weapon shares: `gunPose`, and the grip / muzzle / port / support-hand points taken off it. The grip is measured from the body's FEET and offset off its centreline — see `GUN_GRIP_ABOVE_FEET` / `GUN_GRIP_SIDE` |
+| `arms.ts` | the limbs holding it: a run of world pixels from the shoulder socket to the grip, in the player's own dyed cloth, plus the hand pixels drawn OVER the weapon. Nothing here is authored art — the sheet has four facings and the weapon points anywhere |
 | `gore.ts` | gore atlas: small wound decals stamped on a body that has been hit |
 | `fov.ts` | shared field of view — `light` and `heat` fields. Its two sight reaches are NOT constants here: they arrive on `VisionConfig` as `eyeScale` / `sightScale`, off `config.enemyViewDarkScale` / `enemyViewLitScale`, which is what makes an enemy see a shape exactly as far as the shape sees it |
 | `wind.ts` | the shared gust field every bending thing reads |

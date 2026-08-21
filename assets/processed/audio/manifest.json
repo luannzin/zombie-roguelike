@@ -152,6 +152,22 @@
       "bus": "sfx",
       "gain": 0.375
     },
+    "gun-cycle": {
+      "files": [
+        "gun-cycle-0.wav",
+        "gun-cycle-1.wav",
+        "gun-cycle-2.wav"
+      ],
+      "bus": "sfx",
+      "gain": 0.263
+    },
+    "gun-draw": {
+      "files": [
+        "gun-draw.wav"
+      ],
+      "bus": "misc",
+      "gain": 0.0811
+    },
     "knife-swing": {
       "files": [
         "knife-swing-0.wav",

@@ -108,7 +108,13 @@ import type {
 } from '../net/protocol';
 import { Camera } from '../render/camera';
 import { ARENA_ZOOM } from '../render/framing';
-import { gunMuzzle, loadGuns, type GunAtlas } from '../render/guns';
+import {
+  gunMuzzle,
+  gunPort,
+  loadGuns,
+  type GunAtlas,
+  type GunMuzzleArgs,
+} from '../render/guns';
 import { projectionFor } from '../render/projection';
 import { FovField, type LightSource, type Viewer } from '../render/fov';
 import {
@@ -150,6 +156,7 @@ import {
   type HudStore,
 } from './hud-store';
 import { InputController } from './input';
+import { weaponFeel } from './weapon-feel';
 import {
   buyPrompt,
   canStow,
@@ -1261,7 +1268,10 @@ export class Game {
       const hit = shot.hit !== null;
       const weapon = shot.k ? this.config.weapons?.[shot.k] : undefined;
       const body = msg.players.find((p) => p.id === shot.by);
-      const origin = this.shotOrigin(
+      // ONE POSE, READ TWICE: the barrel the tracer leaves and the port the
+      // brass leaves are the same weapon at the same instant, sampled before
+      // the recoil below throws it.
+      const pose = this.gunArgs(
         shot.by,
         shot.k,
         body?.x ?? shot.x,
@@ -1269,6 +1279,8 @@ export class Game {
         shot.dx,
         shot.dy,
       );
+      const origin = gunMuzzle(pose);
+      const feel = weaponFeel(weapon);
       const tracer = aimTracer(origin.x, origin.y, shot.x, shot.y, shot.dx, shot.dy, shot.dist);
       // The pellet list when the server sent one, and the single ray it has
       // always sent otherwise. Rebased onto the drawn barrel the same way
@@ -1291,10 +1303,27 @@ export class Game {
         shooter?.color ?? palette().effects.fallbackShot,
         hit ? (shot.dmg ?? weapon?.damage ?? this.config.shotDamage) : undefined,
         hit,
-        weapon ? shotFeel(weapon) : undefined,
+        weapon ? shotFeel(weapon, gunPort(pose), feel.eject) : undefined,
       );
       this.visuals.kickRecoil(shot.by, shot.dx, shot.dy, weapon?.kick);
-      if (weapon) this.visuals.kickGun(shot.by, weapon.gunKick, weapon.gunPump);
+      if (weapon) {
+        this.visuals.kickGun(shot.by, weapon.gunKick, weapon.gunPump, feel);
+        // Halfway through the travel, which is where the animation has the
+        // action at full stroke. See `WeaponFeel.audible` for why only the
+        // slow mechanisms get one.
+        if (feel.audible) {
+          playSfxAt('gun-cycle', origin.x, origin.y, { delay: feel.cycle * 0.5 });
+        }
+        // After the kick, so the barrel this reads is the one that has just
+        // taken the round.
+        this.effects.spawnMuzzleSmoke(
+          origin.x,
+          origin.y,
+          shot.dx,
+          shot.dy,
+          this.visuals.gunFeelOf(shot.by).heat,
+        );
+      }
       // `hits` when a single pull opened more than one body, `hit`/`dmg`
       // otherwise — the primary victim is always in both, so the fallback is
       // the same event read at lower resolution rather than a different one.
@@ -2402,18 +2431,17 @@ export class Game {
   private predictShot(weapon: WeaponConfig): void {
     const world = this.world!;
     const config = this.config!;
-    const recoil = this.visuals.recoilOf(this.localId);
-    const gun = this.visuals.gunFeelOf(this.localId);
-    const origin = gunMuzzle({
-      x: this.smoothX + recoil.x,
-      y: this.smoothY + recoil.y,
-      ax: this.aimX,
-      ay: this.aimY,
-      weapon: this.weaponKeyOf(this.localId, this.heldSlot),
-      guns: this.guns,
-      pump: gun.pump,
-      kick: gun.kick,
-    });
+    const pose = this.gunArgs(
+      this.localId,
+      this.weaponKeyOf(this.localId, this.heldSlot) ?? undefined,
+      this.smoothX,
+      this.smoothY,
+      this.aimX,
+      this.aimY,
+    );
+    const origin = gunMuzzle(pose);
+    const port = gunPort(pose);
+    const feel = weaponFeel(weapon);
     const ox = origin.x;
     const oy = origin.y;
     const world_ = this.snapshots.sample(performance.now(), this.localId, this.connection.rtt);
@@ -2485,7 +2513,7 @@ export class Game {
       this.localMeta?.color ?? palette().effects.fallbackShot,
       primary?.dmg,
       flesh,
-      shotFeel(weapon),
+      shotFeel(weapon, port, feel.eject),
     );
     this.camera.addTrauma(weapon.trauma + (flesh || anyCrate ? HIT_TRAUMA : 0));
     // And a shove BACK down the barrel. Trauma alone says "that was violent";
@@ -2493,7 +2521,17 @@ export class Game {
     // right stop being the same event.
     this.camera.addImpulse(ox - this.aimX, oy - this.aimY, weapon.trauma * 2.6);
     this.visuals.kickRecoil(this.localId, this.aimX, this.aimY, weapon.kick);
-    this.visuals.kickGun(this.localId, weapon.gunKick, weapon.gunPump);
+    this.visuals.kickGun(this.localId, weapon.gunKick, weapon.gunPump, feel);
+    if (feel.audible) playSfxAt('gun-cycle', ox, oy, { delay: feel.cycle * 0.5 });
+    // Read AFTER the kick: this pull's heat is part of what the barrel is
+    // now giving off, and a magazine's worth of it is what the plume is.
+    this.effects.spawnMuzzleSmoke(
+      ox,
+      oy,
+      this.aimX,
+      this.aimY,
+      this.visuals.gunFeelOf(this.localId).heat,
+    );
     // One bang per PULL. `shotSound` picks the sample and the rate: the
     // catalog ships two recipes and eleven guns, and playback rate is what
     // keeps a P90 and a Deagle from being the same event at different
@@ -3132,8 +3170,18 @@ export class Game {
       this.carryBurdenOf(id),
     );
     const recoil = this.visuals.recoilOf(id);
-    const gun = this.visuals.gunFeelOf(id);
     const weaponKey = this.weaponKeyOf(id, source.isLocal ? this.heldSlot : source.held);
+    // BEFORE the pose is read, not after: `noteWeapon` is what starts the
+    // draw when a body has swapped, and a pose sampled first would spend one
+    // frame with the new weapon already up. It runs for every body every
+    // frame because a remote player's swap arrives as a roster field with no
+    // event attached to it.
+    const feel = weaponFeel(this.weaponConfigOf(weaponKey));
+    // The swap makes a noise wherever the body is — a teammate racking
+    // something behind you is information, and it is free: the roster field
+    // that changed is the same one every client already reads.
+    if (this.visuals.noteWeapon(id, weaponKey, feel)) playSfxAt('gun-draw', x, y);
+    const gun = this.visuals.gunFeelOf(id);
     const pack = this.config?.backpackSprite || BACKPACK_SHEET;
     const pour = this.pourPose(
       id,
@@ -3187,6 +3235,10 @@ export class Game {
       gunKick: gun.kick,
       gunSwing: gun.swing,
       gunPump: gun.pump,
+      gunLift: gun.lift,
+      gunOpen: gun.open,
+      gunHeat: gun.heat,
+      gunHands: feel.hands,
       hitSpin: 0,
       pour,
     };
@@ -3318,6 +3370,10 @@ export class Game {
       gunKick: 0,
       gunSwing: 0,
       gunPump: 0,
+      gunLift: 0,
+      gunOpen: false,
+      gunHeat: 0,
+      gunHands: 1,
       hitSpin: this.visuals.hitSpinOf(id),
       // Only a player carries a bag, and only a player ever pours one out.
       pour: null,
@@ -3761,6 +3817,11 @@ export class Game {
     return this.config?.weapons?.[key] ?? null;
   }
 
+  /** The catalog row for a weapon key, or undefined for an empty hand. */
+  private weaponConfigOf(key: string | null): WeaponConfig | undefined {
+    return key ? this.config?.weapons?.[key] : undefined;
+  }
+
   private weaponKeyOf(id: string, held?: number): string | null {
     const guns = this.roster.get(id)?.guns;
     const index = held ?? guns?.held ?? -1;
@@ -3784,28 +3845,44 @@ export class Game {
     if (power > 1.6) this.camera.addTrauma(0.06 + (power - 1.6) * 0.05);
   }
 
-  /** Visual barrel tip. Hitscan still uses the server origin; the tracer does not. */
-  private shotOrigin(
+  /**
+   * The pose a body's weapon is in RIGHT NOW, as the atlas maths wants it.
+   *
+   * One builder for the muzzle, the port and anything else read off a held
+   * weapon, because they have to be the same pose: a tracer computed off the
+   * recoil and brass computed off the recoil plus the breath would come out
+   * of two weapons.
+   */
+  private gunArgs(
     id: string,
     weapon: string | undefined,
     x: number,
     y: number,
     ax: number,
     ay: number,
-  ): { x: number; y: number } {
+  ): GunMuzzleArgs {
     const recoil = this.visuals.recoilOf(id);
     const gun = this.visuals.gunFeelOf(id);
-    return gunMuzzle({
+    return {
       x: x + recoil.x,
       y: y + recoil.y,
       ax,
       ay,
+      // Every body that holds a weapon is a player, and they are all one
+      // size — but the grip is placed off the box the sprite STANDS on, so
+      // the box travels with the pose rather than being assumed by it. The
+      // assertion is the same one every shot path here makes: nothing fires
+      // before `welcome`.
+      halfHeight: this.config!.playerHalfHeight,
       weapon,
       guns: this.guns,
       pump: gun.pump,
       kick: gun.kick,
-    });
+      swing: gun.swing,
+      lift: gun.lift,
+    };
   }
+
 
   private stepScope(dt: number): void {
     const weapon = this.heldWeapon();
@@ -3816,6 +3893,8 @@ export class Game {
       this.zone?.hostile !== false &&
       this.introLeft === 0 &&
       !this.locked;
+    // The camera answers with zoom; the weapon answers with posture.
+    this.visuals.brace(this.localId, ads ? 1 : 0);
     const want = ads && weapon ? weapon.scopeZoom : ARENA_ZOOM;
     const k = 1 - expDamp(9, dt);
     // Eased on the same curve as the zoom, so the defocus and the push-in are
@@ -4746,7 +4825,11 @@ function shotSound(weapon: WeaponConfig | undefined): { name: string; rate: numb
   return { name: 'shot', rate: weapon?.shotPitch ?? 1 };
 }
 
-function shotFeel(weapon: WeaponConfig): ShotFeel {
+function shotFeel(
+  weapon: WeaponConfig,
+  port?: { x: number; y: number },
+  eject?: number,
+): ShotFeel {
   return {
     tracerLife: weapon.tracerLife,
     tracerWidth: weapon.tracerWidth,
@@ -4756,6 +4839,11 @@ function shotFeel(weapon: WeaponConfig): ShotFeel {
     lightLife: weapon.lightLife,
     // What makes the barrel throw a CONE instead of a muzzle flash.
     pellets: weapon.pellets,
+    // Where the brass comes out and when. Absent for a caller with no pose
+    // to hand over, which falls the effects layer back to the muzzle.
+    portX: port?.x,
+    portY: port?.y,
+    eject,
   };
 }
 

@@ -2,7 +2,7 @@
   "tile": 16,
   "frameWidth": 20,
   "frameHeight": 9,
-  "frames": 12,
+  "frames": 23,
   "items": {
     "glock18": {
       "frame": 0,
@@ -11,7 +11,10 @@
       "muzzleX": 13,
       "muzzleY": 2,
       "hold": 3.0,
-      "scale": 1.0
+      "scale": 1.0,
+      "cycleFrame": 12,
+      "portX": 11,
+      "portY": 2
     },
     "usp_s": {
       "frame": 1,
@@ -20,7 +23,10 @@
       "muzzleX": 15,
       "muzzleY": 2,
       "hold": 3.0,
-      "scale": 1.0
+      "scale": 1.0,
+      "cycleFrame": 13,
+      "portX": 10,
+      "portY": 2
     },
     "dual_berettas": {
       "frame": 2,
@@ -29,7 +35,10 @@
       "muzzleX": 13,
       "muzzleY": 2,
       "hold": 3.0,
-      "scale": 1.0
+      "scale": 1.0,
+      "cycleFrame": 14,
+      "portX": 11,
+      "portY": 2
     },
     "deagle": {
       "frame": 3,
@@ -38,7 +47,10 @@
       "muzzleX": 14,
       "muzzleY": 2,
       "hold": 3.0,
-      "scale": 1.0
+      "scale": 1.0,
+      "cycleFrame": 15,
+      "portX": 11,
+      "portY": 2
     },
     "mp7": {
       "frame": 4,
@@ -47,7 +59,10 @@
       "muzzleX": 15,
       "muzzleY": 2,
       "hold": 3.0,
-      "scale": 1.0
+      "scale": 1.0,
+      "cycleFrame": 16,
+      "portX": 11,
+      "portY": 2
     },
     "p90": {
       "frame": 5,
@@ -56,7 +71,10 @@
       "muzzleX": 14,
       "muzzleY": 2,
       "hold": 3.0,
-      "scale": 1.0
+      "scale": 1.0,
+      "cycleFrame": 17,
+      "portX": 10,
+      "portY": 2
     },
     "xm1014": {
       "frame": 6,
@@ -65,7 +83,10 @@
       "muzzleX": 17,
       "muzzleY": 2,
       "hold": 3.0,
-      "scale": 1.0
+      "scale": 1.0,
+      "cycleFrame": 18,
+      "portX": 9,
+      "portY": 2
     },
     "famas": {
       "frame": 7,
@@ -74,7 +95,10 @@
       "muzzleX": 16,
       "muzzleY": 2,
       "hold": 3.0,
-      "scale": 1.0
+      "scale": 1.0,
+      "cycleFrame": 19,
+      "portX": 9,
+      "portY": 2
     },
     "ak47": {
       "frame": 8,
@@ -83,7 +107,10 @@
       "muzzleX": 16,
       "muzzleY": 2,
       "hold": 3.0,
-      "scale": 1.0
+      "scale": 1.0,
+      "cycleFrame": 20,
+      "portX": 9,
+      "portY": 2
     },
     "m4a1s": {
       "frame": 9,
@@ -92,7 +119,10 @@
       "muzzleX": 16,
       "muzzleY": 2,
       "hold": 3.0,
-      "scale": 1.0
+      "scale": 1.0,
+      "cycleFrame": 21,
+      "portX": 8,
+      "portY": 2
     },
     "awp": {
       "frame": 10,
@@ -101,7 +131,10 @@
       "muzzleX": 18,
       "muzzleY": 2,
       "hold": 3.0,
-      "scale": 1.0
+      "scale": 1.0,
+      "cycleFrame": 22,
+      "portX": 7,
+      "portY": 2
     },
     "knife": {
       "frame": 11,

@@ -127,6 +127,26 @@ export interface DrawableEntity {
   /** Pixels of slide back along aim — or out along the BLADE, mid-swing. */
   gunPump: number;
   /**
+   * World px the grip rides UP from the chest line: the walk under the
+   * weapon, the breath, and the dip it comes out of the holster from.
+   * Screen-space vertical, never rotated with the aim.
+   */
+  gunLift: number;
+  /**
+   * The action is standing OPEN this frame — slide back, port showing. The
+   * entity layer swaps to the atlas's `cycleFrame` while it is true and to
+   * the closed frame the moment it is not.
+   */
+  gunOpen: boolean;
+  /** Barrel heat, 0..1. The bore glows and smokes off it. */
+  gunHeat: number;
+  /**
+   * Hands on the weapon: 2 for a shoulder weapon, 1 for a sidearm or a blade.
+   * The second arm is what makes a rifle read as a rifle rather than as a
+   * long pistol somebody is waving.
+   */
+  gunHands: number;
+  /**
    * The POUR, or null for every body that is not emptying a bag into a
    * platform. `t` is 0..1 through the whole ceremony's grip: 0 is the pack on
    * the back where it always is, 1 is the pack held out at arm's length and

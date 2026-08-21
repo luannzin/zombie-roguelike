@@ -20,8 +20,9 @@ seam React is allowed to read.
 | `world.ts` | client tile map, collision + sight queries, fires, hearth mask, placed scenery, live interactive objects, the extraction rift. The tile alphabet and the four collision/sight queries are a **mirror of `server/app/world.py`** — prediction runs on them |
 | `objects.ts` | the client's copy of `welcome.config.objects`: which sheet, verb, prompt, footprint and hit box each object kind has. No table of its own |
 | `combat.ts` | client-side shot feel: capsules, tile DDA, per-object sprite boxes (BREAKABLE only) |
-| `effects.ts` | tracers, blade paths, dust, blood, floating text, event lights, boot prints, object one-shots, the loot pop, wind, death burst |
-| `entity-visuals.ts` | per-entity flash, recoil, gun kick/pump, hit-stun tilt, anim, worn wounds; `HIT_FLASH_LIFE` is also the object one-shot blink |
+| `weapon-feel.ts` | what a CLASS of weapon does in the hand: hands on it, what its action is, how long the action takes, how hot one pull leaves the barrel, how much it drifts. All of it derived from the catalog row's own `kind` and `fireCooldown` — never a per-weapon table, so a thirteenth gun arrives already behaving |
+| `effects.ts` | tracers, blade paths, dust, blood, floating text, event lights, boot prints, object one-shots, the loot pop, wind, death burst, gunsmoke, and brass held back until the action opens |
+| `entity-visuals.ts` | per-entity flash, recoil, hit-stun tilt, anim, worn wounds, and THE HELD WEAPON'S WHOLE POSE — the kick spring, the action clock, the draw, the breath, the walk under it, the brace and the barrel's heat, all summed into the six numbers of `GunFeel` so the renderer decides nothing; `HIT_FLASH_LIFE` is also the object one-shot blink |
 | `lantern.ts` | four-cell battery, produces `output` 0..1 |
 | `hud-store.ts` | the only seam to React; `HUD_INTERVAL` = 0.2 s |
 | `tooltip-anchors.ts` | screen-space points for world `Tooltip`s, written every frame |

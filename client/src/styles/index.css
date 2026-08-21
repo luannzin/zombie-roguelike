@@ -182,6 +182,24 @@
   --entity-bar-backdrop: rgb(0 0 0 / 0.6);
   --entity-aim-local: rgb(255 255 255 / 0.55);
   --entity-aim-remote: rgb(255 255 255 / 0.25);
+  /*
+   * THE ARMS ON A HELD WEAPON, drawn rather than authored: the player sheet
+   * has four static rows and a weapon that points anywhere, so the reach from
+   * the shoulder to the grip is plotted per frame (render/arms.ts). These are
+   * the sheet's own cloth ramp and skin, out of server/tools/make_player.py,
+   * because a sleeve one step off the coat it grows out of is a stripe.
+   * `--entity-sleeve` is multiplied by the player's colour the same way the
+   * grey pixels of the sheet are — the dye contract in render/sprites.ts.
+   */
+  --entity-sleeve: #c6c6c6;
+  --entity-sleeve-shade: #949494;
+  --entity-hand: #f0c9a3;
+  /* Gunsmoke: cool, thin, and never as light as the muzzle flash under it. */
+  --fx-smoke-a: #7a7880;
+  --fx-smoke-b: #5f5e68;
+  --fx-smoke-c: #918f99;
+  /* What a barrel that has been working looks like down the bore. */
+  --fx-barrel-heat: #ff7a33;
   --fx-casing-a: #c4a35a;
   --fx-casing-b: #e8c878;
   --fx-casing-c: #8a7038;

@@ -61,6 +61,7 @@ walk. Awareness is pinned, so the diamond is already lit. See
 | --- | --- |
 | senses, hunt, steering, the director | `server/app/ai.py` |
 | stat blocks, variants, accessories | `server/app/enemies.py` + a processed sprite folder of the same name |
+| what the BOSS looks like, or a new clip of his | `server/tools/make_sawyer.py` — one rig, one shader, poses as angles. Read its header before adding a clip |
 | what a creature LOOKS like | `server/tools/make_zombie.py` — three anatomies (`Build.kind`), one derived ramp each, then `process_sprites.py --exact` for the sheet AND its `-death` |
 | tuning (reach, rates, group sizes, `BUSH_CONCEAL_SCALE`) | `server/app/config.py` |
 | where undergrowth is, on both sides | `world.tile_hash` / `TileMap.bush_at` + `client/src/render/layers/terrain.ts` |
@@ -114,6 +115,79 @@ the wire protocol pair.
   deadfall is a tree that came down, and putting a creature in it would say the
   map is a list of encounters. The stretches with nothing in them are what make
   the ones with something in them land.
+
+---
+
+## THE SAWYER — the first boss
+
+**Art only, so far.** `assets/processed/sawyer/` and `server/tools/make_sawyer.py`
+exist and are finished; nothing in `server/app/` knows about him yet. What
+follows is the reasoning the art was made under, so that the mechanics, when
+they are written, are written against it rather than around it.
+
+- **HE IS ONE OF THE DEAD, DRAWN BIGGER.** Every material on him is a ramp
+  another creature is already made of — the brute's `HIDE` at a boss's value,
+  the walker's `ROT`, the husk's `BONE`, the brute's `FUNGUS` — and his hard
+  hat is `zhat-hardhat`, the accessory a walker can be wearing when you meet
+  it. That is not thrift. The three creatures answer "what happened to the
+  people who lived here"; the boss has to answer the same question with the
+  same evidence, or he is a monster from another game standing in this one.
+  The forest is already full of felled trunks, stumps and blighted trees:
+  somebody was cutting it down, and he is what is left of the man who ran the
+  crew.
+- **A BOSS IS NOT A BIG ENEMY, IT IS A THING WITH A TELL.** Every attack on
+  the sheet spends more frames winding up than swinging — `chop` holds the bar
+  over his shoulder for four frames and buries it for four more before he can
+  wrench it out, `sweep` plants and coils for six, `rip` cocks for five. The
+  punish window is DRAWN, not configured. A boss whose blow cannot be read
+  before it lands is one players learn by dying rather than by watching, and
+  at 14fps the windup is the only place that information can live. When the
+  numbers are written, they go around those frames: `manifest.clips.*.events`
+  carries `hit` / `release` / `roar` / `impact` as frame indices, and it is the
+  art telling the simulation when the blow lands rather than the simulation
+  guessing.
+- **FOUR ATTACKS THAT ARE FOUR SHAPES, NOT FOUR DAMAGE NUMBERS.** `chop` is
+  vertical and lands on a point; `sweep` is a circle and lands on everything;
+  `rip` is horizontal and lands at range, as a crescent that outlives the
+  animation; `rev` lands on nothing at all. Two attacks that swing in the same
+  plane are one attack the player cannot tell apart until it has hit them,
+  which is why the chop and the throw are authored on perpendicular arcs and
+  why the throw's arc is written down per facing rather than derived — a
+  horizontal swing does not project the same way face-on as it does in
+  profile.
+- **`rev` EXISTS BECAUSE A FIGHT NEEDS A BEAT THAT IS NOT AN ATTACK.** It is
+  the only clip in which nothing moves toward the player: he pulls the cord,
+  the engine catches, and he roars two frames after it peaks — so the sound in
+  the player's head is the saw rather than him. It is the phase change and the
+  free window in one, and it is the last third of the arrival cinematic for
+  the same reason.
+- **THE CINEMATIC IS A SHADOW BEFORE IT IS A BOSS.** `arrive` opens on four
+  frames of nothing but a growing ellipse under the party. Nothing else in
+  this game casts a growing shadow — `render/shadows.ts` draws what is
+  standing on the floor — so the mark is unambiguous, and it is the only
+  warning anybody gets. He enters the frame already falling and already
+  tucked, lands in a crouch that opens the floor, and the clip ends on idle
+  frame 0 so the fight starts from the pose the loop is in.
+- **THE SPIN HAS NO FACING.** `sweep.png` ships once, and the rig's own facing
+  steps through down / right / up / left twice inside it. Authored per facing
+  it would be the same rotation written down four times with a phase offset,
+  and four copies of one rotation drift. The client enters the clip at
+  whatever phase the boss was already facing.
+- **HIS DEATH IS THE ACCENT GOING OUT.** Every creature in this game carries
+  one lit pixel in a dark socket, and the Sawyer carries three: two eyes and
+  the ember in the exhaust, all the same hue, because the player has spent a
+  whole night learning that that colour is a thing that has noticed them.
+  `rev` runs to zero across the collapse, which takes the ember out, stops the
+  shake and stops the chain. He is the only thing in the game with lights to
+  lose, and losing them is the last event on the sheet.
+- **WHAT IS STILL OPEN.** Where he is fought and what starts him (a quest
+  completion? entering a place? see [`extraction.md`](extraction.md)); his
+  stat block and whether he is an `EnemyType` at all or his own entity; whether
+  the crescent is a projectile the existing damage path can carry; and what he
+  drops. None of that is decided, and the art deliberately does not assume it —
+  the manifest carries his `footprint` and `height` in TILES precisely so a
+  hitbox is never taken off `frameWidth`, which is sized by his swing and is
+  seven tiles across.
 
 ---
 

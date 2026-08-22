@@ -1,0 +1,148 @@
+{
+  "name": "sawyer",
+  "frameWidth": 128,
+  "frameHeight": 120,
+  "anchor": {
+    "x": 0.5,
+    "y": 0.8667
+  },
+  "footprint": {
+    "w": 1.625,
+    "h": 0.75
+  },
+  "height": 3.438,
+  "clips": {
+    "idle": {
+      "frames": 8,
+      "fps": 8,
+      "loop": true,
+      "facings": {
+        "down": "idle-down.png",
+        "left": "idle-left.png",
+        "right": "idle-right.png",
+        "up": "idle-up.png"
+      }
+    },
+    "walk": {
+      "frames": 8,
+      "fps": 10,
+      "loop": true,
+      "facings": {
+        "down": "walk-down.png",
+        "left": "walk-left.png",
+        "right": "walk-right.png",
+        "up": "walk-up.png"
+      }
+    },
+    "chop": {
+      "frames": 16,
+      "fps": 14,
+      "loop": false,
+      "facings": {
+        "down": "chop-down.png",
+        "left": "chop-left.png",
+        "right": "chop-right.png",
+        "up": "chop-up.png"
+      },
+      "events": {
+        "hit": 9,
+        "recover": 12
+      }
+    },
+    "rip": {
+      "frames": 14,
+      "fps": 14,
+      "loop": false,
+      "facings": {
+        "down": "rip-down.png",
+        "left": "rip-left.png",
+        "right": "rip-right.png",
+        "up": "rip-up.png"
+      },
+      "events": {
+        "release": 6
+      }
+    },
+    "rev": {
+      "frames": 14,
+      "fps": 14,
+      "loop": false,
+      "facings": {
+        "down": "rev-down.png",
+        "left": "rev-left.png",
+        "right": "rev-right.png",
+        "up": "rev-up.png"
+      },
+      "events": {
+        "roar": 6
+      }
+    },
+    "death": {
+      "frames": 21,
+      "fps": 10,
+      "loop": false,
+      "facings": {
+        "down": "death-down.png",
+        "left": "death-left.png",
+        "right": "death-right.png",
+        "up": "death-up.png"
+      },
+      "events": {
+        "knees": 7,
+        "down": 13,
+        "rest": 20
+      }
+    },
+    "sweep": {
+      "frames": 36,
+      "fps": 16,
+      "loop": false,
+      "file": "sweep.png",
+      "facings": null,
+      "events": {
+        "spin": 6,
+        "spinEnd": 30,
+        "turns": 2,
+        "framesPerTurn": 12
+      }
+    },
+    "arrive": {
+      "frames": 30,
+      "fps": 14,
+      "loop": false,
+      "facings": {
+        "down": "arrive-down.png"
+      },
+      "events": {
+        "impact": 7,
+        "rise": 12,
+        "roar": 18
+      }
+    }
+  },
+  "projectile": {
+    "file": "slash.png",
+    "frameWidth": 40,
+    "frameHeight": 40,
+    "headings": 8,
+    "frames": 5,
+    "fps": 14,
+    "loop": true,
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "burst": {
+      "file": "slash-burst.png",
+      "frameWidth": 32,
+      "frameHeight": 32,
+      "frames": 6,
+      "fps": 18,
+      "loop": false,
+      "anchor": {
+        "x": 0.5,
+        "y": 0.5
+      }
+    }
+  }
+}

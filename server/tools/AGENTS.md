@@ -22,6 +22,7 @@ imported by `app/` and never run at request time.
 | `make_gore.py` | generates final pixels | `assets/processed/gore/` (6 wound decals worn by a hit body) |
 | `make_loot.py` | generates final pixels | `assets/processed/loot/` (one 16x16 frame per item, including gun icons) — banded volume out of `paint_form`, keyed and planted on an offset ground shadow |
 | `make_guns.py` | generates final pixels | `assets/processed/guns/` (held high-3/4, one 20x9 frame per weapon, plus its carry pose) |
+| `make_sawyer.py` | generates final pixels | `assets/processed/sawyer/` (THE FIRST BOSS — one 128x120 rig, eight clips in four facings: `idle`, `walk`, `chop`, `rip`, `rev`, `death`, plus a facing-less `sweep` and the `arrive` cinematic, and the thrown crescent `slash` / `slash-burst` in eight baked headings) |
 | `make_merchant.py` | generates final pixels | `assets/processed/merchant/` (the shopkeeper — green coat, brimmed HAT, a face with two eyes in it: `idle` loop plus three one-shot flourishes — `coat`, `beckon`, `coin` — and the manifest's `randomClips` / `randomGap` that drive them) |
 | `make_store.py` | generates final pixels | `assets/processed/store/` (the merchant's own kit, all in the shop's own warm `WOOD`/`LINEN` and flat-filled: his WAGON ×1 and counter ×1, small round table ×4 with `topY`, `kit` ×5 — crates, a barrel of rods, a rack, a shelf, a padlocked strongbox, all drawn SHUT because nothing in this zone opens — torch ×2 with `flameY`, rug, torchfire, buy glow) |
 | `make_machine.py` | generates final pixels | `assets/processed/machine/` (the upgrade cabinet, two tiles wide and cartoon-flat: body ×2 idle/settled with the reel windows, pay line, lever pivot and tray mouth in its manifest; `strip.png` — the reel BAND, one tall image of ten cells the client scrolls; lever ×6 sweeping on a real angle; marquee, reel backlight and payout burst, all greyscale so the client can tint them by rarity) |
@@ -259,6 +260,33 @@ surface. Output rules live in [`assets/AGENTS.md`](../../assets/AGENTS.md).
   hold this are `TORCH_FIRE_ALPHA` and the scene-light gradient stops in the
   client, the bloom ellipse and `gain` in `make_store.make_torchfire`, and the
   ceilings on `GREEN_GLARE` / `RED_GLARE` here.
+- **`make_sawyer.py` IS A RIG, AND IT IS THE ONLY ONE.** Every other body in
+  this pipeline is authored as ASCII rows — the player, the three creatures,
+  the merchant — and that stays true; the boss is 390 frames on a 128x120
+  grid, and 390 hand-authored frames of a swinging 41px weapon do not agree
+  with each other about where a shoulder is. So a pose is ANGLES AND REACHES
+  (`Pose`), the joints are solved (`_ik`, and every joint on him breaks
+  OUTWARD — a first cut that took the bend direction off which side of the
+  body a limb was on came out knock-kneed with its forearms folded across its
+  own gut), and one shader bands every mass off its own distance field. Do not
+  hand-place a pixel of the body here; place the mass and let the law paint
+  it. The face is the exception and it is deliberate — it is the only part of
+  him that is a drawing, for the reason `make_merchant.py` gives about his.
+- **THE FRAME IS LAW AND THE POSE IS INTENT (`_fit`).** 128x120 is eight
+  pixels short of the worst case a fully extended arm plus a fully extended
+  bar can reach, so where the two disagree the arm tucks along its own angle
+  and, failing that, the bar foreshortens. It is deterministic, it runs last,
+  and it does NOT paper over a badly authored pose: `_off_frame` still fails
+  the build if anything reaches the border afterwards, and `_fit` itself
+  raises rather than silently drawing a pose no tuck can save. Two frame sizes
+  were shipped and rebuilt before this existed (96x88, then 112x104), both
+  chosen by eye against a standing pose, and both silently clipped the frames
+  that carried the fight.
+- **A ONE-SHOT ON THE BOSS SHEET STARTS AND ENDS ON `rest(facing)`**, checked
+  in `build` — `make_merchant.py`'s seam rule, with one difference: the check
+  compares POSES rather than pixels, because the chain phase advances across
+  every clip and is supposed to keep going across the cut. Compare pixels and
+  either every clip fails or the check has to be told to ignore the weapon.
 - Generation is deterministic: the same command must produce byte-identical
   PNGs. Do not introduce unseeded randomness.
 - `--tile` must match `TILE_SIZE` in `app/config.py`.

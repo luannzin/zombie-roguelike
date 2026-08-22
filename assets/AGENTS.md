@@ -21,6 +21,9 @@ output the game actually loads.
   (`sheet.png` + `manifest.json`), `terrain/`, `scenery/`, `vfx/` (greyscale,
   tinted per player), `weapon-vfx/` (muzzle, blast, impact — oriented and
   ramp-baked, because fire is not anybody's colour), `gore/`,
+  `sawyer/` (THE BOSS — his own folder because he is his own
+  vocabulary: clips rather than facing rows, an anchor that is not the frame's
+  bottom edge, and event frames on the manifest),
   `rift/` (the extraction console and the threshold torches), `platform/` (the
   cargo skid, inbound lift drones, corner lamps, imprint), `merchant/`, `store/`
   (his WAGON, his counter, the six round tables, his gear, his torches and

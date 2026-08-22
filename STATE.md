@@ -38,6 +38,17 @@ ceremony.
   door, with the exit corridor coming off its back wall. Two new mirrored tile
   kinds carry it (`BRICK` / `TILEFLOOR`), and `GROUNDS` / `CLEAR` in
   `world.py` + `world.ts` are the pair to keep in step.
+- **THE FIRST BOSS — art is done, mechanics are not.** `make_sawyer.py` and
+  `assets/processed/sawyer/` are finished and verified: 390 frames on a
+  128x120 rig, eight clips (idle, walk, chop, rip, rev, death in four facings;
+  a facing-less sweep; the arrive cinematic) plus the thrown crescent in eight
+  baked headings. **Nothing in `server/app/` or `client/` references him yet** —
+  no `EnemyType`, no spawn, no loader, no wire shape. The design reasoning is
+  in [`docs/design/enemies.md`](docs/design/enemies.md) § THE SAWYER, including
+  the list of what is still undecided (where he is fought, what starts him,
+  whether the crescent rides the existing damage path). Read that before
+  writing the fight; the art's event frames on the manifest are meant to drive
+  the timings rather than the other way round.
 - Weapon feel: shotgun cone and melee swing landed; the catalog's derivation from CS2 stats is stable.
 
 ## Recently completed

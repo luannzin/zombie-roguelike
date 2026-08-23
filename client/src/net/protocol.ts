@@ -313,6 +313,17 @@ export interface GameConfig {
    */
   medicalSlots: number;
   /**
+   * How big the light is that marks something the night's script left on the
+   * map, in tiles.
+   *
+   * Bigger than the extraction pad's, and for the opposite reason: a pad's
+   * lamp lights the deck somebody is already standing on, and this one exists
+   * to be SEEN from wherever they happen to be. The client pushes the beacon
+   * itself off the event's row — same as it does for a pad — so it needs the
+   * radius rather than a light.
+   */
+  eventBeaconTiles: number;
+  /**
    * The worn slots, top to bottom. The HUD stacks its rows in this order and
    * a `lootPickups` row with `dest: "worn"` indexes it, so the order is a
    * contract rather than a convenience.
@@ -1925,6 +1936,40 @@ export interface SnapshotMessage {
    * flash twice.
    */
   heals?: HealEvent[];
+  /**
+   * The night's script fired. One row per event this tick.
+   *
+   * ONE ARRAY FOR THE WHOLE CATALOG, deliberately — a fourth event must not be
+   * a fourth wire field, or "adding an event is a data row" stops being true
+   * the first time anybody tries it. What each key LOOKS and SOUNDS like is
+   * `game/events.ts`; the server ships no copy.
+   *
+   * An EVENT and never replayed: a client that dropped the packet gets the
+   * horde without the card, which is worse than seeing it and far better than
+   * a warning for a wave that already landed.
+   */
+  events?: NightEvent[];
+  /**
+   * Seconds left of an event dark, or 0 on the frame one lifts.
+   *
+   * STATE, NOT AN EVENT, and the same call `blackout` makes for the same
+   * reason: it has a DURATION, so a client that joined or reconnected in the
+   * middle of one has to be told the lamps are off rather than be left
+   * predicting a light that cannot come on. Sent on both edges and omitted on
+   * every tick between, so it costs nothing while nothing is happening.
+   */
+  dark?: number;
+}
+
+/**
+ * One thing the night did. `k` is the catalog key (`events.py`), and `x`/`y`
+ * are there only for the events that HAVE a place — a crate that came down, a
+ * body that fell. The dark has none, because it is not in a direction.
+ */
+export interface NightEvent {
+  k: string;
+  x?: number;
+  y?: number;
 }
 
 /** One kit spent. `hp` is what it actually put back, after the ceiling. */

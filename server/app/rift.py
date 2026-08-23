@@ -639,8 +639,14 @@ def count_for_day(day: int) -> int:
 #: IT HAS A CONSTANT TERM because the two LANDMARKS are one per map whatever
 #: the map's size — a one-pad forest still gets a shrine or a den, and that is
 #: a big share of a small night's value.
-SUPPLY_BASE = 235.0
-SUPPLY_PER_PAD = 262.0
+#: RE-FITTED WHEN MEDICINE LEFT THE ECONOMY. `first_aid` and `morphine` were
+#: ordinary ground loot worth 30 and 58 until they became medical-cell items
+#: with `value=0` (see `medical.py`), and taking two uncommon-to-rare rows out
+#: of the findable pile dropped what a real forest holds by about a tenth at
+#: every pad count. `test_quota.py` caught it, which is the entire reason that
+#: file re-measures instead of trusting a number written down once.
+SUPPLY_BASE = 210.0
+SUPPLY_PER_PAD = 243.0
 
 #: What share of that low quarter night one asks for. A third: enough that the
 #: quota is roughly one full backpack and the party has to actually look for

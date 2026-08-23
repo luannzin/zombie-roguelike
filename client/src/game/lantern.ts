@@ -119,6 +119,20 @@ export class Lantern {
   private refusals = 0;
   /** Extraction chase: charge is zero and it will not trickle back. */
   private blackout = false;
+  /**
+   * An event dark is on: the lamp will not light, but the CELL is untouched.
+   *
+   * DELIBERATELY NOT `blackout`, and the difference is the whole point. The
+   * extraction chase is terminal — charge goes to zero and never trickles
+   * back, because the run home is the last thing that happens on that map. An
+   * event dark LIFTS, and a player who came out the far side of one with a
+   * dead battery would have been charged for something the game did to them.
+   *
+   * So this cuts the light and leaves the charge alone. It even keeps
+   * recharging underneath, which is the right answer: the lamp was off, and
+   * off is when a cell recovers.
+   */
+  private suppressed = false;
   /** Per-instance phase, so the waver is not in lockstep with anything else. */
   private readonly seed = Math.random() * 1000;
   /**
@@ -188,7 +202,7 @@ export class Lantern {
       this.cut();
       return;
     }
-    if (!this.allowed || this.stored <= 0 || this.blackout) {
+    if (!this.allowed || this.stored <= 0 || this.blackout || this.suppressed) {
       this.refusals++;
       return;
     }
@@ -209,6 +223,11 @@ export class Lantern {
     if (this.blackout) {
       this.stored = 0;
       if (this.switchedOn) this.cut();
+    } else if (this.suppressed) {
+      // Cut, but not charged for it — the cell recovers exactly as it would
+      // with the lamp switched off, because that is what it is.
+      if (this.switchedOn) this.cut();
+      this.stored = Math.min(1, this.stored + dt / RECHARGE_SECONDS);
     } else if (this.switchedOn) {
       this.stored = Math.max(0, this.stored - dt / (DRAIN_SECONDS * this.endurance));
       if (this.stored <= 0) this.cut();
@@ -233,6 +252,19 @@ export class Lantern {
     this.cut();
   }
 
+  /**
+   * An event dark, on or off. Mirrors `Room.dark_left` — see `suppressed`.
+   *
+   * The server is authoritative about this (it drops the `lantern` bit out of
+   * every input while the dark is on), and this is the local half so the lamp
+   * goes out on the frame the packet lands instead of a round trip later.
+   */
+  suppress(on: boolean): void {
+    if (this.suppressed === on) return;
+    this.suppressed = on;
+    if (on) this.cut();
+  }
+
   /** Back to a fresh lamp. Called on join and on dispose. */
   reset(): void {
     this.switchedOn = false;
@@ -242,6 +274,7 @@ export class Lantern {
     this.phaseLeft = 0;
     this.dark = false;
     this.blackout = false;
+    this.suppressed = false;
   }
 
   /** Kill the light now, whatever it was in the middle of doing. */

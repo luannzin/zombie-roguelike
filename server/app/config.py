@@ -540,6 +540,72 @@ HORDE_ARC_DEGREES = 55.0
 #: Seconds between the warning and the bodies. Long enough to pick a direction
 #: and start moving, short enough that it is not a free reposition.
 HORDE_TELEGRAPH = 3.4
+# --- the night's script: things that HAPPEN --------------------------------
+#
+# `events.py` schedules them; these are the numbers. The horde's own tuning
+# stays above under `HORDE_*` — it is the one event that was built before the
+# director existed, and its constants are referenced by the row rather than
+# copied into this block.
+#
+# EVERY EVENT IS TUNED AGAINST A NIGHT THAT LASTS ROUGHLY EIGHT TO TWELVE
+# MINUTES, which is what a party spends filling a quota under T-03's bill. A
+# night much shorter than that should contain one scheduled thing at most, and
+# these numbers are chosen so it does.
+
+#: The beat before ANY event may happen, shared with the population ramp for
+#: the same reason: a party walking out of a corridor gets the night they were
+#: promised before it starts happening at them.
+EVENT_GRACE = ENEMY_NIGHT_GRACE
+
+# THE DARK. The lights go out everywhere for a while, and it is the one event
+# that SUBTRACTS — everything else in the catalog adds something to the map.
+# What it takes away is the lantern trade (see it, or be seen), which is the
+# sharpest decision the player makes minute to minute.
+#: Seconds into the night. Deliberately after the grace and after the first
+#: horde roll: the dark should land on a party that is already working, not on
+#: one still deciding where to start.
+EVENT_DARK_AT = 210.0
+#: How long it lasts. Long enough to have to do something about — cross a
+#: clearing blind, or stop and wait — and short enough that waiting it out is a
+#: legitimate answer rather than a surrender of the night.
+EVENT_DARK_SECONDS = 26.0
+#: Not on night one. It is the only event that changes a rule the player has
+#: been relying on, and doing that before they have relied on it is noise.
+EVENT_DARK_MIN_DAY = 2
+
+# THE AIRDROP. The only event in the catalog that is an OPPORTUNITY, which is
+# what stops "an event fired" always meaning "leave".
+#: Seconds between rolls, and the odds. Rarer than a horde on purpose: a crate
+#: that comes as often as a wave is a supply line, and the quota stops being
+#: the reason anybody is out here.
+EVENT_AIRDROP_INTERVAL = 95.0
+EVENT_AIRDROP_CHANCE = 0.3
+EVENT_AIRDROP_CHANCE_PER_ROLL = 0.1
+#: Not on night one — the first night is for learning that the forest is
+#: dangerous, and a free crate is the wrong first lesson.
+EVENT_AIRDROP_MIN_DAY = 2
+#: How much is in it. Roughly a third of a bag, so it is worth the walk and is
+#: not a night's quota lying on the ground.
+EVENT_AIRDROP_ITEMS = 5
+#: How far away it lands, in tiles. Well outside the lantern and outside a
+#: shout — the walk IS the event, and a crate at your feet is a reward rather
+#: than a decision.
+EVENT_AIRDROP_TILES = 26.0
+#: The radius of the light that MARKS it. Bigger than the extraction pad's
+#: (`rift.LIGHT_TILES`, 4) and for the opposite reason: the pad's lamp is there
+#: to light the deck somebody is already standing on, and this one is there to
+#: be SEEN from wherever they happen to be. An opportunity nobody can find is a
+#: threat with extra steps.
+EVENT_BEACON_TILES = 9.0
+
+# THE BLOOD. A body goes down and the woods turn toward it. The only row in
+# the catalog the PLAYER causes, and the only one that makes T-01's rescue
+# harder at the moment the party is deciding whether to attempt it.
+#: The radius of the stir, in tiles. Bigger than a shot (which is a local
+#: problem somebody investigates) and well short of the siren (which is the
+#: whole map) — a fall should be heard across a few clearings, not everywhere.
+EVENT_BLOOD_TILES = 22.0
+
 #: And they arrive FASTER. The cap says how many the forest holds; this says
 #: how quickly it refills after a fight, which is what decides whether a party
 #: can clear a pocket and then work in peace. By night five a wave lands every
@@ -1400,6 +1466,10 @@ def client_config() -> dict:
         #: `medical.py`. The HUD lays out exactly this many and binds them to
         #: the keys after the belt's.
         "medicalSlots": medical.MEDICAL_SLOTS,
+        #: How big the light is that marks something the night's script left on
+        #: the map. The client pushes the beacon itself off the event's row —
+        #: same as it does for an extraction pad — so it needs the radius.
+        "eventBeaconTiles": EVENT_BEACON_TILES,
         # The slots in the order they are worn and drawn, top to bottom. The
         # HUD stacks its rows off this and a `LootPickup` with `dest:"worn"`
         # indexes it, so the order is a contract rather than a convenience.

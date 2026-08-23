@@ -128,17 +128,17 @@ check("a downed party's night stops advancing", room.director.elapsed == before)
 # --- the horde is telegraphed ----------------------------------------------
 room, ids = forest_room(1)
 room.gate = None  # the pack is only allowed to spawn once the entrance is gone
-d = room.director
-# Force the roll rather than waiting on the dice — what is under test is the
-# GAP between the announcement and the bodies, not the odds.
-d.horde_timer = 0.0
-d.horde_rolls = 99  # chance is clamped to 1.0
+# ASK FOR THE WAVE DIRECTLY rather than waiting on the dice. The SCHEDULE
+# moved to `events.py` when the event director was built — `send_horde` is now
+# the effect side, and what is under test here is the GAP between the
+# announcement and the bodies, which never belonged to the odds anyway.
+# `tests/test_events.py` owns the rolling.
 # The map arrives with creatures already on it (`_seed_nests`), so what is
 # under test is the DELTA — a horde is what this call adds, not what exists.
 seeded = len(room.enemies)
-room._step_horde(DT)
+check("the wave was sent", room.send_horde() is not None)
 
-check("the roll announced a wave", len(room.horde_events) == 1)
+check("the send announced a wave", len(room.horde_events) == 1)
 check("the wave has a bearing on the wire", "x" in room.horde_events[0])
 check("it also stirred the woods", len(room.noises) == 1)
 check("the wave is PENDING, not landed", room._horde is not None)
@@ -186,10 +186,18 @@ check("one wave is ONE creature, not a mixed bag", len(kinds) == 1)
 room, ids = forest_room(1)
 room.gate = None
 room.blackout = True
-room.director.horde_timer = 0.0
-room.director.horde_rolls = 99
-room._step_horde(DT)
-check("no horde during the blackout", room._horde is None and not room.horde_events)
+# THE GUARD MOVED WITH THE SCHEDULE, and it moved UP rather than away: it is
+# now `EventDirector._quiet`, which covers the pickup, the run home, an
+# arrival, a departure, the shop and the arena in one place — so no event can
+# forget it and a new one cannot opt out by accident. Driven through `step` so
+# what is under test is the real path a horde takes.
+before_events = len(room.horde_events)
+for _ in range(int(2.0 / DT)):
+    room.events.update(DT, room)
+check(
+    "no horde during the blackout",
+    room._horde is None and len(room.horde_events) == before_events,
+)
 
 
 print("ok" if not FAILED else f"FAILED ({len(FAILED)})")

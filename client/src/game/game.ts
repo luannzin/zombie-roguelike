@@ -178,6 +178,7 @@ import {
   type HudMedical,
   type HudStore,
 } from './hud-store';
+import { EVENT_PRESENTATION } from './events';
 import { InputController } from './input';
 import { weaponFeel } from './weapon-feel';
 import {
@@ -758,6 +759,14 @@ export class Game {
   /** Seconds until the next spatial ping from the exit's mouth. */
   private beaconLeft = 0;
   /**
+   * Lights the night's script has left on the map — today, airdrop markers.
+   *
+   * Held separately from `world.scenery.lights` because that list is the MAP's
+   * and is replaced wholesale on every welcome; these belong to the run and
+   * are cleared with it. `rebuildLights` folds both into one pass.
+   */
+  private eventLights: { x: number; y: number; radiusTiles: number }[] = [];
+  /**
    * The merchant's clip player, and the sheets it drives. He is not an entity
    * and the server has never had an opinion about which frame he is on, so
    * this lives entirely client-side — see `render/merchant.ts`.
@@ -1197,6 +1206,15 @@ export class Game {
     // lasts exactly as long as the server says it does.
     this.wipe = null;
 
+    // The night's markers belong to the map that had them. A crate beacon
+    // carried across an entrance would be a light standing over nothing on a
+    // forest that never had one — and it would keep pointing at it.
+    this.eventLights = [];
+    // And the dark goes with it: `dark` is only sent on its edges, so a lamp
+    // suppressed on the way out would stay suppressed on the new map until
+    // something happened to lift it.
+    this.lantern.suppress(false);
+
     this.rebuildLights();
     // Nothing grows in the hearth: a fern in front of a player hides the
     // character somebody is looking for. Cleared here rather than left over
@@ -1402,6 +1420,38 @@ export class Game {
     for (const heal of msg.heals ?? []) {
       this.effects.spawnHeal(heal.x, heal.y, heal.hp);
       playSfxAt('heal', heal.x, heal.y);
+    }
+
+    // THE DARK, WHICH IS STATE RATHER THAN AN EVENT. Applied before the event
+    // rows below so that the `dark` card and the lamp going out land on the
+    // same frame — the other order shows a player a card about the lights
+    // dying while theirs is still on.
+    if (msg.dark !== undefined) this.lantern.suppress(msg.dark > 0);
+
+    // THE NIGHT'S SCRIPT. One table lookup per row and no `switch` — see
+    // `game/events.ts`. An unknown key is IGNORED rather than thrown on: this
+    // client can be older than the server it is talking to, and one
+    // unrecognised string must not take the frame loop down.
+    for (const row of msg.events ?? []) {
+      const look = EVENT_PRESENTATION[row.k];
+      if (!look) continue;
+      const at = row.x !== undefined && row.y !== undefined;
+      // AT the place when there is one, so an event with a bearing is heard as
+      // a bearing — the channel that works with the player facing the other
+      // way, which is the case a warning exists for.
+      if (look.sfx) {
+        if (at) playSfxAt(look.sfx, row.x!, row.y!);
+        else playSfx(look.sfx);
+      }
+      if (look.trauma > 0) this.camera.addTrauma(look.trauma);
+      if (look.beacon && at) this.pushEventLight(row.x!, row.y!);
+      this.patchHud({
+        announce: {
+          key: `${row.k}-${this.time.toFixed(2)}`,
+          title: look.title,
+          subtitle: look.subtitle,
+        },
+      });
     }
 
     const wasDeparting = this.departing;
@@ -5185,6 +5235,38 @@ export class Game {
         radiusTiles: light.radiusTiles,
       });
     }
+    // And whatever the night's script has left burning. Same list, same pass —
+    // the lighting has no concept of "an event light" and must not grow one:
+    // a crate marker throws real light and casts real shadows for exactly the
+    // same reason a lamp at a dead homestead does.
+    for (const [index, light] of this.eventLights.entries()) {
+      this.lights.push({
+        id: world.fires.length + world.scenery.lights.length + index,
+        x: light.x,
+        y: light.y,
+        radiusTiles: light.radiusTiles,
+      });
+    }
+  }
+
+  /**
+   * Mark a place the night's script wants the party to be able to FIND.
+   *
+   * Only the airdrop uses it today. An opportunity nobody can locate is a
+   * threat with extra steps — the light is what makes the trade legible from
+   * where the party is standing rather than something they have to be told.
+   *
+   * IT DOES NOT EXPIRE, and that is the right answer rather than a shortcut:
+   * the crate does not expire either, so a marker that timed out would leave
+   * loot on the map with nothing pointing at it — which is strictly worse than
+   * no event at all. The list is cleared with the map, like everything else
+   * the map was holding.
+   */
+  private pushEventLight(x: number, y: number): void {
+    const config = this.config;
+    if (!config) return;
+    this.eventLights.push({ x, y, radiusTiles: config.eventBeaconTiles });
+    this.rebuildLights();
   }
 
   /**

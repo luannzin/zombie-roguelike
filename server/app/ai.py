@@ -149,9 +149,6 @@ from .config import (
     ENEMY_NIGHT_RAMP,
     ENEMY_NIGHT_RAMP_MAX,
     ENEMY_NIGHT_GRACE,
-    HORDE_INTERVAL,
-    HORDE_CHANCE,
-    HORDE_CHANCE_PER_ROLL,
     HORDE_SIZE,
     HORDE_SIZE_PER_DAY,
     HORDE_SPAWN_TILES,
@@ -1108,12 +1105,8 @@ class EnemyDirector:
         #: see `config.ENEMY_NIGHT_RAMP`. Zero on arrival because a new night
         #: is a new director (`Room._swap_map`), so nothing has to reset it.
         self.elapsed = 0.0
-        #: Seconds until the next horde ROLL. Not the next horde: the roll is a
-        #: chance, so waves land unevenly and a party cannot time them.
-        self.horde_timer = ENEMY_NIGHT_GRACE + HORDE_INTERVAL
-        #: How many rolls have happened. Feeds `HORDE_CHANCE_PER_ROLL`, so a
-        #: party that stays out keeps meeting a steeper coin.
-        self.horde_rolls = 0
+        # The horde's CLOCK lives in `events.py` now — see `plan_horde`. This
+        # director owns how full the forest is, not when it gets a moment.
 
     @property
     def population_scale(self) -> float:
@@ -1216,17 +1209,17 @@ class EnemyDirector:
         size = min(max(self.pick_size(), kind.group_min), room)
         return [(kind, *place) for place in self.scatter(spot, size)]
 
-    def roll_horde(
-        self, dt: float, players: Iterable[Player]
-    ) -> tuple[float, float, float, int] | None:
-        """Is a wave coming? `(x, y, bearing, size)` of where it will land.
+    def plan_horde(self, players: Iterable[Player]) -> tuple[float, float, float, int] | None:
+        """WHERE a wave would land: `(x, y, bearing, size)`, or None.
 
-        SEPARATE FROM `update` AND ON ITS OWN CLOCK, because it is a different
-        mechanic wearing the same costume. `update` keeps a forest populated —
-        a background process nobody is supposed to notice. This is an EVENT: it
-        is announced, it comes from a direction, and it is meant to make the
-        party stop what they are doing and decide.
-        //
+        THE SCHEDULE IS NOT HERE ANY MORE and that is the point of the split.
+        This director keeps a forest populated — a background process nobody is
+        supposed to notice. WHEN a wave happens is a question about the night's
+        script, and it belongs with every other such question in `events.py`.
+        What is left here is the half that is genuinely about population: which
+        creature, how many for the day, and a bearing anchored on a real player
+        against this map's own free-tile list.
+
         WHY IT RETURNS A PLACE RATHER THAN SPAWNING. The warning has to go out
         before the bodies do (`config.HORDE_TELEGRAPH`), and the thing being
         warned about is a BEARING — "they are coming from over there". So the
@@ -1237,14 +1230,6 @@ class EnemyDirector:
         """
         living = [p for p in players if p.alive]
         if not living or not self.spawn_points:
-            return None
-        self.horde_timer -= dt
-        if self.horde_timer > 0.0:
-            return None
-        self.horde_timer = HORDE_INTERVAL
-        chance = min(1.0, HORDE_CHANCE + HORDE_CHANCE_PER_ROLL * self.horde_rolls)
-        self.horde_rolls += 1
-        if random.random() > chance:
             return None
 
         anchor = random.choice(living)

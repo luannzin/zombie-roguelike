@@ -72,6 +72,7 @@ never all of them.
 | **moving, carrying, shooting, the bag or the belt** | **player** | `docs/design/player.md` |
 | **what a body WEARS, what stops a blow, a lâmina or the shield** | **gear** | `docs/design/gear.md` |
 | **healing, a medkit, the cells on 4 and 5** | **player** | `server/app/medical.py` + `docs/design/player.md` |
+| **a thing that HAPPENS on a night — a wave, the lights, a crate** | **events** | `docs/design/events.md` |
 | a **pixel or a sound that must be regenerated** | **asset pipeline** | `assets/AGENTS.md` -> `server/tools/AGENTS.md` |
 
 If the task names a *feeling* rather than a system ("make the exit more
@@ -166,6 +167,7 @@ owns your task; skip the rest.
 | [`docs/design/enemies.md`](docs/design/enemies.md) | senses, hunt, the director, corpses |
 | [`docs/design/world.md`](docs/design/world.md) | map generation, scenery, objects, zones, weather, the camp |
 | [`docs/design/presentation.md`](docs/design/presentation.md) | audio, VFX, gore, the light budget |
+| [`docs/design/events.md`](docs/design/events.md) | the night's script: what happens on a night, when, and the gate over it |
 
 ---
 
@@ -206,7 +208,7 @@ These bind every subtree. Subsystem-specific rules live in the docs above.
 
 | scope | command |
 | --- | --- |
-| server | `python tests/test_snapshot_shape.py`, `test_pour.py`, `test_store_walk.py`, `test_config_parity.py`, `test_loot_frames.py`, `test_bush_cover.py`, `test_scenery_containers.py`, `test_creature_sheets.py`, `test_map_scale.py`, `test_boss_fight.py`, `test_gear.py`, `test_pack.py`, `test_medical.py` from `server/` — plain scripts, each prints `ok` |
+| server | `python tests/test_snapshot_shape.py`, `test_pour.py`, `test_store_walk.py`, `test_config_parity.py`, `test_loot_frames.py`, `test_bush_cover.py`, `test_scenery_containers.py`, `test_creature_sheets.py`, `test_map_scale.py`, `test_boss_fight.py`, `test_gear.py`, `test_pack.py`, `test_medical.py`, `test_events.py`, `test_night_pressure.py`, `test_quota.py` from `server/` — plain scripts, each prints `ok` |
 | client | `bun run typecheck` from `client/` — required after any change there |
 | client | `bun tests/grade.ts` from `client/` after touching `render/post/grade.ts` — plain script, prints `ok` |
 | client | `bun tests/exit-path.ts` from `client/` after touching `game/exit-path.ts` — plain script, prints `ok` |
@@ -305,6 +307,26 @@ pins the rule the docstrings already claimed but the code did not have — that
 ANY blow cancels a heal, not only a fatal one. Without that, holding 4 while
 walking backwards is free, and the "stand still in the open" the whole verb is
 built on never happens.
+
+Run `test_events.py` after touching `events.py`, the effect doors on `Room`
+(`send_horde`, `begin_dark`, `drop_supplies`, `stir_at_downed`), or anything
+that opens or closes the gate (`sirening`, `blackout`, `arriving`, `departing`,
+the zone). It drives all three triggers with nobody watching, because a trigger
+that never fires is indistinguishable from one whose odds are low and nobody
+plays enough permanent nights to tell. It also pins the two claims that rot
+quietest: that an effect which REFUSES spends no cooldown and no per-night
+allowance — a rare event silently consumed by a firing nobody saw is invisible
+from inside the game — and that adding an event really is a data row, asserted
+against a row the test builds itself and drives through the unmodified
+director.
+
+Run `test_quota.py` after touching `loot.ITEMS` values, `loot.SCENE_COUNTS`,
+`crates.TYPES` or `rift.SUPPLY_BASE` / `SUPPLY_PER_PAD`. It re-measures real
+generated forests and fails if the supply fit has drifted more than a tenth,
+which is the only way a measurement written down once stays honest. It has
+already earned its place: zeroing medicine's value in T-04 took two rows out of
+the findable pile and moved the fit by a tenth at every pad count, and nothing
+else anywhere would have noticed.
 
 Run `test_config_parity.py` after touching `client_config()` or `GameConfig`:
 it fails if either side declares a key the other does not, in either

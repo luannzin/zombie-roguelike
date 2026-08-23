@@ -61,8 +61,8 @@ import time
 import uuid
 
 from . import (
-    ai, ammo, arena, armor, boss, camp, coins, combat, crates, entrance, loot, mapgen,
-    medical, protocol, quests, rift, skills, store, weapons, zones,
+    ai, ammo, arena, armor, boss, camp, coins, combat, crates, entrance, events, loot,
+    mapgen, medical, protocol, quests, rift, skills, store, weapons, zones,
 )
 from . import machine
 from .ai import EnemyDirector
@@ -345,6 +345,17 @@ class Room:
         #: Kits spent this tick. The juice: a green wash on the body, the
         #: number floating off it, and the sound. Cleared every broadcast.
         self.heal_events: list[dict] = []
+        #: THE NIGHT'S SCRIPT. One per map, like the population director and
+        #: for the same reason: a night is a fresh script rather than a
+        #: continuation, so every clock in it restarts at an entrance.
+        self.events = events.EventDirector(self.day)
+        #: Rows fired this tick, drained into the snapshot.
+        self.event_rows: list[dict] = []
+        #: Seconds left of an event dark, or 0. Suppresses every lantern on the
+        #: map through the SAME branch the extraction blackout uses — see
+        #: `begin_dark` for why there is deliberately only one such branch.
+        self.dark_left = 0.0
+        self._dark_dirty = False
         self._load_drops()
         self._load_crates()
         self._load_rifts()
@@ -2239,6 +2250,13 @@ class Room:
         self.heal_events = []
         self._horde = None
         self._horde_left = 0.0
+        # A NEW NIGHT IS A NEW SCRIPT. Every clock, every cooldown and every
+        # per-night allowance restarts here, which is what makes "this night"
+        # mean anything at all.
+        self.events = events.EventDirector(self.day)
+        self.event_rows = []
+        self.dark_left = 0.0
+        self._dark_dirty = True
         self.boss = None
         self.boss_events = []
         self._boss_dirty = False
@@ -2338,7 +2356,11 @@ class Room:
         if player is None:
             return
         cmd = InputCmd.from_message(msg)
-        if self.blackout:
+        # ONE BRANCH, TWO REASONS. The run for the exit and an event dark are
+        # different things that mean the same thing to a lamp, and giving them
+        # separate suppression paths is how a light the player can see and the
+        # server cannot eventually happens.
+        if self.blackout or self.dark_left > 0.0:
             cmd.lantern = False
         # Ignore out-of-order / replayed inputs.
         if cmd.sequence <= player.last_processed_seq:
@@ -2364,6 +2386,15 @@ class Room:
         self.step_coins(dt)
         self.step_rift(dt)
         self._sync_ammo_boxes()
+        self._step_dark(dt)
+        # THE NIGHT'S SCRIPT, AFTER THE NIGHT'S OWN SYSTEMS.
+        #
+        # Ordered here on purpose: `step_rift` and `step_quests` are what turn
+        # the siren on and the blackout over, and the director's gate reads
+        # both. Ticking it earlier would let an event fire on the same frame a
+        # pickup opened — inside the one beat the whole guard exists to keep
+        # clear — because the flags it checks would still be a tick stale.
+        self.events.update(dt, self)
         # LAST, because everything above can be what puts the final body down
         # — a claw, a crescent, a charge. Asking before them would miss a wipe
         # by a tick, and a tick is a whole snapshot of the party standing dead.
@@ -2917,12 +2948,6 @@ class Room:
         there on its way in, so a horde arriving through a quiet pocket brings
         that pocket with it.
         """
-        if self.blackout or self.sirening:
-            # NOT DURING EXTRACTION. `hunt_all` already has every creature on
-            # the map walking at the party; a wave on top of that is not more
-            # pressure, it is the same pressure with the telegraph removed —
-            # and the run home is already the hardest beat of the night.
-            return
         if self._horde_left > 0.0:
             self._horde_left = max(0.0, self._horde_left - dt)
             if self._horde_left > 0.0 or self._horde is None:
@@ -2944,14 +2969,28 @@ class Room:
             places = self.director.horde_places(x, y, bearing, min(size, room))
             for enemy_type, px, py in places:
                 self.spawn_enemy(enemy_type, px, py)
-            return
 
-        rolled = self.director.roll_horde(dt, self.players.values())
-        if rolled is None:
-            return
-        self._horde = rolled
+    def send_horde(self) -> dict | None:
+        """Announce a wave. The bodies follow `HORDE_TELEGRAPH` seconds later.
+
+        THE EFFECT SIDE OF `events.horde`, and it is only the announcement —
+        `_step_horde` runs the telegraph down and does the spawning. The split
+        is what the warning IS: the howl has to be in the air before anything
+        walks out of the treeline, and the gap between them is the only part of
+        this the player actually plays.
+
+        Returns False when nothing was sent — a wave already pending, or a map
+        with nobody living on it — so the director does not spend a cooldown on
+        a horde that never happened.
+        """
+        if self._horde is not None or self._horde_left > 0.0:
+            return None
+        planned = self.director.plan_horde(self.players.values())
+        if planned is None:
+            return None
+        self._horde = planned
         self._horde_left = HORDE_TELEGRAPH
-        x, y, _bearing, _size = rolled
+        x, y, _bearing, _size = planned
         # The howl comes from WHERE THEY ARE, so the sound itself is the
         # bearing. `voice` resolves the audio by prefix on the client; this is
         # the same channel the wolf pack's call already uses.
@@ -2963,11 +3002,147 @@ class Room:
         # treeline should stir the woods and swing every head toward it — it
         # should not tell forty creatures where the party is standing.
         self.noises.append(ai.Noise(x=x, y=y, radius=SHOT_NOISE_DIST * 1.6))
+        # NO PLACE ON THE EVENT ROW, because the horde already has a wire of
+        # its own — `horde_events` carries the bearing the howl plays at. This
+        # row is only "a horde happened", for the card and the log.
+        return {}
 
     def step_coins(self, dt: float) -> None:
         outcome = coins.step(self.coins, self.players.values(), dt)
         for pickup in outcome.collected:
             self.pickup_events.append(pickup.to_payload())
+
+    # --- the night's script: what an event is allowed to do -----------------
+    #
+    # `events.py` schedules; these are the doors it opens. Every one of them is
+    # a thin wrapper over machinery that already existed for some other reason,
+    # and every one returns whether it ACTUALLY happened — an effect that
+    # swallowed its own failure would spend a rare event's whole night
+    # allowance on nothing.
+
+    def begin_dark(self, seconds: float) -> dict | None:
+        """Kill every lantern on the map for `seconds`.
+
+        THE SAME RULE THE EXTRACTION BLACKOUT USES, deliberately: `queue_input`
+        already drops the lantern bit while `blackout` is on, so this adds a
+        second reason for that same branch rather than a second way for a lamp
+        to be off. Two independent lantern-suppression paths would eventually
+        disagree, and the symptom would be a light the player can see and the
+        server cannot.
+
+        Refused while the real blackout is running. The run for the exit
+        already has the lights out, and firing here would let the dark's timer
+        outlive it and take the lamps away again on the far side.
+        """
+        if self.blackout or self.dark_left > 0.0:
+            return None
+        self.dark_left = seconds
+        self._dark_dirty = True
+        for player in self.players.values():
+            player.last_input.lantern = False
+        # NO PLACE. The dark is everywhere, and a cue with a bearing on it
+        # would send the party looking in a direction for something that is
+        # not in one.
+        return {}
+
+    def _step_dark(self, dt: float) -> None:
+        """Run the dark down, and tell the client on the frame it lifts.
+
+        The client needs BOTH edges. It predicts its own lamp, so a dark that
+        ended without saying so would leave a player pressing F at a lantern
+        the server had already re-enabled — which reads as the key being
+        broken rather than as the night being over.
+        """
+        if self.dark_left <= 0.0:
+            return
+        self.dark_left = max(0.0, self.dark_left - dt)
+        if self.dark_left <= 0.0:
+            self._dark_dirty = True
+
+    def drop_supplies(self, count: int, tiles: float) -> dict | None:
+        """Put a cache of loot on the ground, `tiles` away from the party.
+
+        AWAY IS THE WHOLE EVENT. A crate at your feet is a reward; a crate two
+        clearings out is a decision — the forest is fuller than it was an hour
+        ago, the bag is already worth something, and the walk has to be paid
+        for. So the placement is anchored on a living player and pushed out
+        past the lantern, not scattered near one.
+
+        It is marked with a BEACON. An opportunity nobody can find is a threat
+        with extra steps: the light is what makes the trade legible from where
+        the party is standing, rather than something they have to be told.
+        """
+        living = [p for p in self.players.values() if p.alive]
+        if not living:
+            return None
+        anchor = random.choice(living)
+        rng = random.Random()
+        reach = tiles * TILE_SIZE
+        bearing = rng.uniform(0.0, math.tau)
+        want_x = anchor.x + math.cos(bearing) * reach
+        want_y = anchor.y + math.sin(bearing) * reach
+        occupied = [
+            (d.x / TILE_SIZE - 0.5, d.y / TILE_SIZE - 0.5) for d in self.drops.values()
+        ]
+        spot = loot.free_tile_near(
+            self.world.tiles,
+            want_x / TILE_SIZE - 0.5,
+            want_y / TILE_SIZE - 0.5,
+            occupied,
+            rng,
+        )
+        if spot is None:
+            return None
+        cx = (spot[0] + 0.5) * TILE_SIZE
+        cy = (spot[1] + 0.5) * TILE_SIZE
+
+        # MILITARY AND SUPPLIES, because that is what falls out of an aircraft
+        # — and because it is the one loot roll in the game that can be BIASED
+        # without lying: everything else on the map is what happened to be
+        # there, and this was packed.
+        dropped = 0
+        for _ in range(count):
+            item = loot.roll_item(rng, tags=("military", "supplies"))
+            if item is None:
+                continue
+            pos = loot.place_near(self.world.tiles, cx, cy, occupied, rng)
+            if pos is None:
+                pos = (cx, cy)
+            occupied.append((pos[0] / TILE_SIZE - 0.5, pos[1] / TILE_SIZE - 0.5))
+            drop_id = self._next_drop_id()
+            self.drops[drop_id] = Drop(id=drop_id, key=item.key, x=pos[0], y=pos[1])
+            dropped += 1
+        if not dropped:
+            return False
+        self._loot_dirty = True
+        # WHERE, for the wire. The beacon that marks it is pushed CLIENT-side
+        # off this position — the same way the extraction pad's lamp is (see
+        # `scenery.SceneLight`) — so the server ships a place and not a light.
+        return {"x": round(cx, 1), "y": round(cy, 1)}
+
+    def stir_at_downed(self, tiles: float) -> dict | None:
+        """The woods turn toward the body that just fell.
+
+        A NOISE AND NOT A HUNT, and the difference is the whole design.
+        `ai.hear` with no source raises awareness and swings heads toward a
+        sound without committing anything to a target — so the forest stirs
+        toward the fall rather than every creature on the map walking at the
+        survivors. A blanket hunt here would make one player going down
+        equivalent to pressing the extraction siren, which is a far larger
+        event than a fall should be.
+
+        Anchored on the body rather than on the party, because that is where
+        the sound came from — and because it is what makes the rescue the
+        hard part rather than the retreat.
+        """
+        fallen = [p for p in self.players.values() if p.downed]
+        if not fallen:
+            return None
+        body = fallen[-1]
+        self.noises.append(
+            ai.Noise(x=body.x, y=body.y, radius=tiles * TILE_SIZE)
+        )
+        return {"x": round(body.x, 1), "y": round(body.y, 1)}
 
     def spawn_enemy(self, enemy_type: EnemyType, x: float, y: float) -> Enemy:
         self._enemy_id += 1
@@ -3740,6 +3915,11 @@ class Room:
             if self.zone.hostile:
                 target.downed = True
                 target.respawn_timer = 0.0
+                # AND THE WOODS NOTICE. The room says what happened and does
+                # not know or care whether anything answers it — see
+                # `events.EventDirector.report`. A room that called a named
+                # handler here would be a room that knows the event catalog.
+                self.events.report("downed", self)
             else:
                 target.respawn_timer = RESPAWN_DELAY
             if source is not None and source.id != target.id:
@@ -4036,6 +4216,17 @@ class Room:
         self._egress_dirty = False
         blackout_flag = True if self._blackout_dirty else None
         self._blackout_dirty = False
+        # THE DARK IS STATE, NOT AN EVENT, and the distinction is the same one
+        # `blackout` makes: it has a DURATION, so a client that joined or
+        # reconnected in the middle of one has to be told the lamps are off —
+        # an event it missed would leave it predicting a light that cannot
+        # come on. Shipped as seconds remaining, on both edges.
+        dark_row = round(self.dark_left, 2) if self._dark_dirty else None
+        self._dark_dirty = False
+        # And the script's own rows, which ARE events: each one is a thing that
+        # happened once, and a client that dropped the packet must never
+        # replay it.
+        self.event_rows.extend(self.events.drain())
         stand_rows = (
             [row.to_payload() for row in self.stands] if self._stands_dirty else None
         )
@@ -4095,6 +4286,8 @@ class Room:
                 wipe=wipe_row,
                 hordes=self.horde_events or None,
                 heals=self.heal_events or None,
+                events=self.event_rows or None,
+                dark=dark_row,
             )
         )
 
@@ -4139,6 +4332,7 @@ class Room:
                 self.buy_events = []
                 self.horde_events = []
                 self.heal_events = []
+                self.event_rows = []
                 self.spin_events = []
                 self.boss_events = []
             delay = next_time - time.perf_counter()

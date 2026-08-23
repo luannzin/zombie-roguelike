@@ -383,6 +383,8 @@ def snapshot(
     wipe: dict | None = None,
     hordes: list[dict] | None = None,
     heals: list[dict] | None = None,
+    events: list[dict] | None = None,
+    dark: float | None = None,
 ) -> dict:
     payload = {
         "type": MSG_SNAPSHOT,
@@ -489,4 +491,21 @@ def snapshot(
     # client that dropped a packet must never replay.
     if heals:
         payload["heals"] = heals
+    # THE NIGHT'S SCRIPT FIRED. One row per event, `{k, x?, y?}` — the key is
+    # what the client looks its copy and its cue up by, and the place is there
+    # only for the events that HAVE one (a crate that came down, a body that
+    # fell). An EVENT and never replayed.
+    #
+    # ONE ARRAY FOR THE WHOLE CATALOG, deliberately: a fourth event must not be
+    # a fourth wire field, or "adding an event is a data row" stops being true
+    # the first time anybody tries it.
+    if events:
+        payload["events"] = events
+    # SECONDS LEFT OF AN EVENT DARK. STATE, not an event, and the same call
+    # `blackout` makes for the same reason — it has a duration, so a client
+    # that joined halfway through one has to be told the lamps are off rather
+    # than left predicting a light that cannot come on. Sent on both edges
+    # (`0.0` is the lift), and omitted on every tick between.
+    if dark is not None:
+        payload["dark"] = dark
     return payload

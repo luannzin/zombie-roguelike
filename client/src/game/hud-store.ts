@@ -257,15 +257,26 @@ export interface HudBuyPrompt {
  * player has to be able to read while standing at the lever, not one they have
  * to go and find in a corner.
  *
- *   ready   a level is owed and the cabinet is free — E pulls
- *   empty   nothing owed. The lever is shown refusing rather than hidden: a
- *           machine that vanished when you were broke would never teach
- *           anybody what it was for.
+ *   ready   a level is owed and the cabinet is free — E pulls, for nothing
+ *   buy     no level owed, but the party can cover `price` — E pulls for gold
+ *   broke   no level owed and the balance will not reach `price`
  *   busy    somebody else's pull is still running
+ *
+ * THERE IS NO "NOTHING TO DO HERE" STATE ANY MORE. The cabinet used to go
+ * quiet with nothing owed and say where levels come from; it now names a
+ * price instead, because a machine that will always take money is a machine
+ * the party keeps walking back to — and the levels teach themselves in the
+ * woods, where the announce card fires on the body that earned one.
  */
 export interface HudMachinePrompt {
-  mode: 'ready' | 'empty' | 'busy';
+  mode: 'ready' | 'buy' | 'broke' | 'busy';
   spins: number;
+  /**
+   * What the next BOUGHT pull costs. Shown in every mode but `busy`, including
+   * `ready`: somebody holding a free spin still wants to know what the one
+   * after it will run them BEFORE they spend the free one.
+   */
+  price: number;
 }
 
 /** One skill the local player holds, for the tray above the bag. */

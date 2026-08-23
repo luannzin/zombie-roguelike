@@ -43,9 +43,12 @@ client -> server
                                         platform from the bag. `id` is the pad;
                                         omitted = nearest in range.
   {"type":"spin"}                       pull the upgrade machine's lever.
-                                        Store zone only; ignored if too far,
-                                        if no level is owed, or while another
-                                        player's pull is still running
+                                        Store zone only; ignored if too far or
+                                        while another player's pull is still
+                                        running. Spends a banked LEVEL; with
+                                        none owed it spends GOLD instead, at
+                                        `snapshot.spinPrice`, and is ignored if
+                                        the party cannot cover it
   {"type":"buy","id":"s2"}              take the weapon off a shop table and
                                         charge the party balance. Store zone
                                         only; ignored if too far, already
@@ -76,7 +79,8 @@ server -> client
    "corpses":[...],
    "entrance":{...},"tilePatches":[...],"quests":[...],
    "rifts":[...],"egress":{...},"blackout":true,
-   "stands":[...],"boxes":[...],"buys":[...],"balance":240,"spins":[...],
+   "stands":[...],"boxes":[...],"buys":[...],"balance":240,"spinPrice":100,
+   "spins":[...],
    "roster":[...]}                    only every ROSTER_EVERY_N_TICKS ticks
   {"type":"pong","t":<echoed>}
 
@@ -206,11 +210,16 @@ Snapshot arrays:
                roll is already decided, so the reels are telling the
                player something rather than deciding it. The stacks and
                the spin count also ride the ROSTER (`skills`, `spins`),
-               which is what a client that joined mid-pull reads
+               which is what a client that joined mid-pull reads. `cost` is
+               present only when the pull was BOUGHT rather than owed
   balance      THE PARTY'S money, not a player's, so it is one number at the
                top of the snapshot rather than a column on the roster. Sent
                only when it changes — see `Player.gold` for the other,
                personal, one
+  spinPrice    what the NEXT bought pull costs, for a party holding no level.
+               Doubles per purchase and resets on the walk into each night's
+               shop (`Room.spin_price`). Party-wide like the balance it
+               spends, and sent only when it moves
 
 The store's fixtures ride the MAP payload (`store`), not the snapshot: where
 the merchant stands and where his tables are is decided once when the corridor
@@ -289,6 +298,7 @@ def welcome(
     quests: list[dict] | None = None,
     blackout: bool = False,
     balance: int = 0,
+    spin_price: int = 0,
 ) -> dict:
     payload = {
         "type": MSG_WELCOME,
@@ -306,6 +316,11 @@ def welcome(
         # a client that had to wait for the first change to learn it would draw
         # an empty purse over a corridor full of price tags.
         "balance": balance,
+        # Always sent too, and for the same reason: the cabinet's prompt names
+        # a price the moment a body walks up to it, and a client that had to
+        # wait for the first purchase to learn the ladder would offer the first
+        # bought pull for nothing.
+        "spinPrice": spin_price,
     }
     if quests:
         payload["quests"] = quests
@@ -351,6 +366,7 @@ def snapshot(
     boxes: list[dict] | None = None,
     buys: list[dict] | None = None,
     balance: int | None = None,
+    spin_price: int | None = None,
     spins: list[dict] | None = None,
     boss: dict | None = None,
     boss_events: list[dict] | None = None,
@@ -435,4 +451,8 @@ def snapshot(
     # balance change a party most needs to see land.
     if balance is not None:
         payload["balance"] = balance
+    # Moves on exactly two events — a pull bought, and the walk into the next
+    # night's shop — so it rides its own dirty flag rather than the balance's.
+    if spin_price is not None:
+        payload["spinPrice"] = spin_price
     return payload

@@ -1037,6 +1037,11 @@ export interface SpinEvent {
   n: number;
   /** Pulls still banked afterwards. */
   left: number;
+  /**
+   * What the party paid, when this pull was BOUGHT rather than owed. Absent on
+   * a level's free spin, which is most of them.
+   */
+  cost?: number;
   x: number;
   y: number;
 }
@@ -1644,6 +1649,12 @@ export interface WelcomeMessage {
    * picked up off corpses, which nobody pooled.
    */
   balance?: number;
+  /**
+   * What the next BOUGHT pull costs at the cabinet — see
+   * `SnapshotMessage.spinPrice`. Always sent, for the same reason the balance
+   * is: the lever names a price the moment somebody stands at it.
+   */
+  spinPrice?: number;
 }
 
 export interface SnapshotMessage {
@@ -1719,6 +1730,13 @@ export interface SnapshotMessage {
   spins?: SpinEvent[];
   /** The party's balance. Present only when it changed. */
   balance?: number;
+  /**
+   * What the NEXT bought pull costs, for a player holding no level. The
+   * cabinet takes gold once the free spins are gone; every purchase doubles
+   * this and the walk into each night's shop puts it back at the bottom.
+   * Party-wide like the balance it spends, and present only when it moved.
+   */
+  spinPrice?: number;
   /**
    * THE SAWYER. Present only on the boss map, and only on ticks he changed —
    * which during a fight is all of them. Absent is not "he is gone": the

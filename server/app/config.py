@@ -243,6 +243,16 @@ STORE_LIFT_TILES = 0.4
 #: never be offering itself at the same time as the lever.
 STORE_SPIN_TILES = 2.2
 STORE_SPIN_DIST = TILE_SIZE * STORE_SPIN_TILES
+#: What the FIRST bought pull costs once nobody has a level left to spend, in
+#: party gold. The ladder doubles from here with every pull the party buys and
+#: it resets when they walk into the next night's shop — see `Room.spin_price`.
+#:
+#: A LEVEL IS STILL THE CURRENCY; THIS IS THE OVERDRAFT. The number is a little
+#: under the cheapest gun on a table on purpose: the first extra pull is an
+#: easy yes, the second is a real trade against a weapon, and the fourth is
+#: never worth it. That curve is the whole point — the machine keeps saying yes
+#: and the party is the one who has to stop.
+STORE_SPIN_PRICE = 50
 #: How far the machine's own marquee throws, in tiles. It is a LIT OBJECT — the
 #: only electrical thing in the game — and it stands alone on the west arc of
 #: the clearing, so its pool is what pulls a party across to it. Kept SHORT: it

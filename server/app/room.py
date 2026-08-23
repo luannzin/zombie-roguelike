@@ -83,6 +83,7 @@ from .config import (
     INVENTORY_SLOTS,
     STORE_BUY_DIST,
     STORE_SPIN_DIST,
+    STORE_SPIN_PRICE,
     MAX_HP,
     MAX_INPUT_QUEUE,
     MAX_INPUTS_PER_TICK,
@@ -188,6 +189,18 @@ class Room:
         #: `Player.gold` is a different number and stays one: coins picked up
         #: off corpses, which nobody pooled.
         self.balance = 0
+        #: How many pulls the party has BOUGHT at this night's cabinet. A level
+        #: is still the only free spin; once nobody is owed one the lever will
+        #: still take gold, and every purchase doubles what the next one costs
+        #: (`spin_price`). Reset on the walk into each shop, so the ladder is a
+        #: decision the party makes fresh every night rather than a tax that
+        #: compounds across a whole run.
+        #:
+        #: PARTY-WIDE, LIKE THE MONEY IT SPENDS. It is one machine and one
+        #: purse, so four players cannot each buy a 50-gold pull — the second
+        #: one costs 100 whoever is standing at the lever.
+        self._spins_bought = 0
+        self._spin_price_dirty = False
         #: The shop's tables. Empty on every map that is not the store.
         self.stands: list[Stand] = []
         self._stands_dirty = False
@@ -491,6 +504,7 @@ class Room:
             quests=[q.payload() for q in self.quests] or None,
             blackout=self.blackout,
             balance=self.balance,
+            spin_price=self.spin_price,
         )
 
     def hello_payload(self, player: Player) -> dict:
@@ -1553,6 +1567,20 @@ class Room:
             self._roster_dirty = True
         return gained
 
+    @property
+    def spin_price(self) -> int:
+        """What the next BOUGHT pull costs, in party gold.
+
+        `STORE_SPIN_PRICE` doubled once per purchase already made tonight. It
+        is derived rather than stored so there is one number and one place it
+        can be wrong, and it is exponential rather than linear because the
+        thing being sold has no ceiling: a flat price would make the last hour
+        of a rich night a queue at the lever until the balance ran out, which
+        turns a roll into a vending machine. Doubling means the party always
+        gets to buy one more and never gets to buy five.
+        """
+        return STORE_SPIN_PRICE << self._spins_bought
+
     def _machine_spot(self) -> tuple[float, float] | None:
         """Where the cabinet is standing, or None off the shop map."""
         row = (self.world.store or {}).get("machine")
@@ -1583,7 +1611,12 @@ class Room:
         player = self.players.get(pid)
         if player is None or not player.alive:
             return
-        if player.skills.spins <= 0:
+        # A LEVEL FIRST, GOLD ONLY WHEN THERE IS NO LEVEL LEFT. The banked
+        # pull is never skipped in favour of a paid one — nobody would ever
+        # choose to pay while holding a free spin, so making them press twice
+        # to say so would be a menu.
+        price = 0 if player.skills.spins > 0 else self.spin_price
+        if price > self.balance:
             return
         spot = self._machine_spot()
         if spot is None:
@@ -1597,7 +1630,16 @@ class Room:
             return
 
         rolled = skills.roll(random.Random(), player.skills.stacks)
-        player.skills.spins -= 1
+        # CHARGED AFTER THE LAST REFUSAL, like every other purchase in the
+        # shop: a pull that does not happen must not cost anything, and the
+        # ladder must not climb for it either.
+        if price:
+            self.balance -= price
+            self._spins_bought += 1
+            self._balance_dirty = True
+            self._spin_price_dirty = True
+        else:
+            player.skills.spins -= 1
         held = player.skills.add(rolled.key)
         # A slot skill has to actually widen the bag, and it has to do it here
         # rather than in `flatten`: `Mods` is a value and the pocket is state.
@@ -1608,19 +1650,23 @@ class Room:
         player.hp = min(player.hp + max(0, player.skills.mods.max_hp - MAX_HP), player.max_hp)
         self._machine_busy = machine.duration(rolled.rarity)
         self._roster_dirty = True
-        self.spin_events.append(
-            {
-                "by": player.id,
-                "k": rolled.key,
-                "r": rolled.rarity,
-                # Copies held AFTER this one. The HUD tile counts to it, and a
-                # pull past the cap still counts — see `skills.Loadout.add`.
-                "n": held,
-                "left": player.skills.spins,
-                "x": round(spot[0], 1),
-                "y": round(spot[1], 1),
-            }
-        )
+        row = {
+            "by": player.id,
+            "k": rolled.key,
+            "r": rolled.rarity,
+            # Copies held AFTER this one. The HUD tile counts to it, and a
+            # pull past the cap still counts — see `skills.Loadout.add`.
+            "n": held,
+            "left": player.skills.spins,
+            "x": round(spot[0], 1),
+            "y": round(spot[1], 1),
+        }
+        # Present only on a BOUGHT pull, the same way `dest` is only on a buy
+        # that missed the belt: it is what the party paid, and it is what lets
+        # the cabinet read as a till rather than as a reward.
+        if price:
+            row["cost"] = price
+        self.spin_events.append(row)
 
     def _sync_ammo_boxes(self) -> None:
         """Put a crate on the wall for every calibre the party is carrying.
@@ -1918,6 +1964,12 @@ class Room:
         earned = sum(takes)
         self.balance += earned
         self._balance_dirty = True
+        # A NEW NIGHT'S CABINET SELLS AT THE BOTTOM OF THE LADDER AGAIN. The
+        # doubling is meant to make the party stop buying WITHIN a visit; if it
+        # carried across the run, the price by night six would be a number
+        # nobody could reach and the mechanic would quietly stop existing.
+        self._spins_bought = 0
+        self._spin_price_dirty = True
         # The night's platforms come home with the party. `takes` only decides
         # what lands on the shop's apron and what each skid is worth on screen
         # — the balance above is the transaction, and the ceremony the client
@@ -3566,6 +3618,8 @@ class Room:
         self._boxes_dirty = False
         balance_row = self.balance if self._balance_dirty else None
         self._balance_dirty = False
+        spin_price_row = self.spin_price if self._spin_price_dirty else None
+        self._spin_price_dirty = False
         boss_row = self.boss.to_payload() if (self.boss and self._boss_dirty) else None
         self._boss_dirty = False
         await self.broadcast(
@@ -3601,6 +3655,7 @@ class Room:
                 buys=self.buy_events or None,
                 spins=self.spin_events or None,
                 balance=balance_row,
+                spin_price=spin_price_row,
                 boss=boss_row,
                 boss_events=self.boss_events or None,
             )

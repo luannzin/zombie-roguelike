@@ -611,6 +611,13 @@ export class Game {
    */
   private balance = 0;
   /**
+   * What the next BOUGHT pull costs at the cabinet — see
+   * `SnapshotMessage.spinPrice`. Party-wide like the balance it comes out of,
+   * and held beside it for the same reason: the prompt reads both on the frame
+   * a body walks up to the lever.
+   */
+  private spinPrice = 0;
+  /**
    * The lever pull running in the glade, or null. ONE at a time, because the
    * server refuses a second — so this is a field rather than a list, and a
    * spin event arriving over a live pull replaces it rather than queueing,
@@ -1119,6 +1126,7 @@ export class Game {
       (msg.zone.kind === 'forest' || msg.zone.kind === 'store') &&
       msg.map.entrance?.state === 'open';
     this.balance = msg.balance ?? 0;
+    this.spinPrice = msg.spinPrice ?? 0;
     // THE NIGHT'S PLATFORMS COME HOME. Started here rather than on a snapshot
     // because it belongs to the ARRIVAL: the skids are already in the air when
     // the corridor opens, so the first thing the party sees in this glade is
@@ -1425,6 +1433,7 @@ export class Game {
       // total that already has the spend taken off it.
       this.balanceShown += delta;
     }
+    if (msg.spinPrice !== undefined) this.spinPrice = msg.spinPrice;
     for (const ev of msg.buys ?? []) this.onBuy(ev);
     for (const ev of msg.spins ?? []) this.onSpin(ev);
     if (msg.blackout) this.lantern.kill();
@@ -2017,6 +2026,13 @@ export class Game {
     // the ceremony is nothing but the clock — with no clock there is no
     // animation to run, so there is no plausible thing to fall back to.
     if (!this.config) return;
+    // MONEY LEAVING IS ITS OWN SOUND, and everybody in the glade hears it for
+    // the same reason a purchase at a table does: it is the party's gold, not
+    // the puller's. Fired on the press rather than folded into the ceremony
+    // because it belongs to the lever, not to the reels.
+    if (ev.cost) {
+      playSfxAt('coin', ev.x, ev.y, { gain: ev.by === this.localId ? 1 : 0.6 });
+    }
     this.pull = beginPull(ev, this.config.machine);
     if (ev.by === this.localId) {
       this.spins = ev.left;
@@ -2385,8 +2401,17 @@ export class Game {
     const dx = machineX - local.state.x;
     const dy = machineY - (local.state.y + config.playerHalfHeight);
     if (dx * dx + dy * dy > range * range) return null;
-    const mode = this.pull !== null ? 'busy' : this.spins > 0 ? 'ready' : 'empty';
-    return { mode, spins: this.spins };
+    // The order IS the server's: a banked level is spent before gold is
+    // (`Room.spin`), so `ready` wins over the price whenever one is owed.
+    const mode =
+      this.pull !== null
+        ? 'busy'
+        : this.spins > 0
+          ? 'ready'
+          : this.balance >= this.spinPrice
+            ? 'buy'
+            : 'broke';
+    return { mode, spins: this.spins, price: this.spinPrice };
   }
 
   // --- loop ----------------------------------------------------------------
@@ -3893,8 +3918,9 @@ export class Game {
     const lever = this.machinePrompt();
     if (lever) {
       // Both dead presses buzz rather than sending a packet the server would
-      // drop: no level owed, and somebody else's pull still running.
-      if (lever.mode !== 'ready') {
+      // drop: a purse that will not cover the ladder's next rung, and
+      // somebody else's pull still running.
+      if (lever.mode !== 'ready' && lever.mode !== 'buy') {
         playSfx('ui-error');
         return;
       }

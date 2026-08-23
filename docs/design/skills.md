@@ -6,8 +6,8 @@ Nearest contracts: [`server/app/AGENTS.md`](../../server/app/AGENTS.md),
 | | |
 | --- | --- |
 | **Owns** | what a LEVEL buys: the skill catalog (36 rows), the rarity roll, `Loadout` (stacks + spins owed), and `Mods` — the flattened numbers every other module multiplies by |
-| **Inputs** | xp reaching a level (`Room._sync_spins`), `{type:"spin"}` at the cabinet |
-| **Outputs** | `spin` events, `PlayerMeta.skills` / `mods` on the roster, `welcome.config.skills` + `config.machine` |
+| **Inputs** | xp reaching a level (`Room._sync_spins`), `{type:"spin"}` at the cabinet, and the party's `balance` once no level is owed |
+| **Outputs** | `spin` events, `snapshot.spinPrice`, `PlayerMeta.skills` / `mods` on the roster, `welcome.config.skills` + `config.machine` |
 | **Depends on** | `machine.py` (the timeline), `store.py` (the cabinet's spot), `config.py` (the base numbers `Mods` diverges from) |
 | **Consumers** | `simulation.apply_input` (speed, carry ceiling), `Player.max_hp`, `Room.fire` / `Room.swing` (damage), `Room.damage_player` (armour), `damage_enemy` (xp, coin odds), `Room._tip_item` (what a platform credits), the client's battery |
 | **Authoritative** | the roll, the stacks, the spins owed, every number in `Mods` |
@@ -16,6 +16,7 @@ Nearest contracts: [`server/app/AGENTS.md`](../../server/app/AGENTS.md),
 ## Invariants
 
 - **A level is a token and the machine is the only thing that spends it.** Nothing else in the game consumes a spin.
+- **A level is FREE and gold is the overdraft.** `Room.spin` spends a banked level whenever one is owed and only reaches for `Room.balance` when none is. The price doubles per purchase and resets on the walk into each night's shop.
 - **`Loadout.mods` is the ONLY place a player's numbers diverge from `config.py`.** A site still reading the raw constant is a site where a skill silently does nothing.
 - **The roll happens on the press; the show happens after.** One `spin` event carries the whole four seconds. A result arriving mid-animation is a reel that changes its mind.
 - **One lever.** `Room._machine_busy` is a countdown (this room has no wall clock); a second press is refused.
@@ -31,6 +32,7 @@ Nearest contracts: [`server/app/AGENTS.md`](../../server/app/AGENTS.md),
 
 | intent | touch |
 | --- | --- |
+| the price of a bought pull | `STORE_SPIN_PRICE` in `server/app/config.py` (the ladder itself is `Room.spin_price`) |
 | add/retune a skill | `server/app/skills.py` + every consumer site above + an icon in `server/tools/make_skills.py` |
 | machine timing | `server/app/machine.py` AND `client/src/game/machine.ts` |
 | the ceremony drawn | `client/src/render/layers/store.ts`, `client/src/render/machine.ts` |
@@ -63,6 +65,36 @@ disagree) -> `SKILL_FRAMES` in `client/src/components/hud/Hud.tsx`.
   from everything that is about money, so it is somewhere a party WALKS to
   after they have spent — which is the whole difference between a machine and a
   menu item.
+  - **AND WHEN THE LEVELS RUN OUT IT TAKES MONEY.** A cabinet that went dead
+    the moment a party had spent their levels was a machine with an opening
+    hour: everybody pulled in the first ten seconds of the shop and then walked
+    away from it for the rest of the visit, which is exactly the beat the thing
+    was built to own. It now sells a pull for gold once nothing is owed —
+    `STORE_SPIN_PRICE`, doubling with every one the party buys — so there is
+    always an offer standing at the far end of the clearing and the decision is
+    theirs rather than the machine's.
+    - **THE LADDER IS EXPONENTIAL BECAUSE THE THING BEING SOLD HAS NO
+      CEILING.** At a flat price a rich night ends with somebody standing at
+      the lever until the balance runs out, and thirty pulls in a row is not a
+      ceremony, it is a vending machine — the third reel's hold stops being
+      anticipation and becomes latency. Doubling means the party always gets to
+      buy one more and never gets to buy five: 50 is an easy yes, 100 is a real
+      trade against the cheapest gun on a table, and 400 is a number nobody
+      talks themselves into. The machine keeps saying yes and the PARTY is the
+      one who has to stop, which is the only version of this that is a
+      decision.
+    - **IT RESETS PER NIGHT, NOT PER RUN.** The doubling exists to end a
+      VISIT's buying, so carrying it across nights would make the price on
+      night six a number nobody can reach and the whole mechanic would quietly
+      stop existing halfway through a run. `Room.enter_store` puts it back at
+      the bottom.
+    - **AND IT IS THE PARTY'S, NOT A PLAYER'S**, because the purse it comes
+      out of is. Four players cannot each buy a 50-gold pull; the second one
+      costs 100 whoever is standing at the lever, the same way there is one
+      balance and one conversation about who spends it.
+    - **A LEVEL IS ALWAYS SPENT FIRST.** Nobody would ever choose to pay while
+      holding a free spin, so making them say so would be a menu — the prompt
+      names one currency at a time and the server picks the same one.
   - **IT IS A ROLL, NOT A MENU.** A list of upgrades with prices is a
     spreadsheet the player solves once and then executes every run afterwards;
     a roll is a moment. The ladder is the SAME five rarities loot already uses,
@@ -226,3 +258,9 @@ disagree) -> `SKILL_FRAMES` in `client/src/components/hud/Hud.tsx`.
     result that arrived mid-animation is a reel that visibly changes its mind.
   - ONE LEVER. `Room._machine_busy` is a countdown, not a deadline, because
     this room has no wall clock; a second press while it runs is refused.
+  - THE PRICE IS STATE, NOT A CONSTANT, so it rides the wire the way the
+    balance does: `snapshot.spinPrice`, sent on the two events that move it
+    (a pull bought, the walk into the next shop) and always on `welcome`, so a
+    body that walks up to the cabinet reads a price rather than waiting for
+    somebody else to buy one first. `STORE_SPIN_PRICE` is only the bottom rung.
+    A bought pull's `spin` event carries `cost`; a level's does not.

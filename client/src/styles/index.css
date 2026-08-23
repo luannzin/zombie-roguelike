@@ -80,6 +80,37 @@
      light taken out — the bar is still there, it just stops offering. */
   --stamina: #e8c53c;
   --stamina-spent: #7d6a28;
+
+  /* THE BOSS BAR. Its own ramp rather than a meter colour, because it is not
+     a meter: `--hp-*` is a life reading that ramps green-amber-red as a
+     resource drains, and his health does not ramp — it is one long distance
+     you cross once. So it is struck in the game's GOLD, the same ramp the
+     coin and the payout are painted from, and the only thing that changes it
+     is the enrage.
+
+     Five steps, and they are a bevel rather than a palette: a bar filled with
+     one flat colour reads as a progress indicator in a settings dialog. Dark
+     at the top and bottom edge, bright through the middle, is what makes a
+     16-pixel-tall rectangle read as a struck metal plate. */
+  --boss-fill-edge: #7a4a12;
+  --boss-fill-lo: #c47a28;
+  --boss-fill-mid: #f2a541;
+  --boss-fill-hi: #ffd678;
+  --boss-fill-crown: #fff1c2;
+  /* Past half. The same five steps in the game's only red, so the change the
+     player sees is a change of TEMPERATURE and not a change of object. */
+  --boss-rage-edge: #5c1418;
+  --boss-rage-lo: #9e2027;
+  --boss-rage-mid: #e6484f;
+  --boss-rage-hi: #ff8a83;
+  --boss-rage-crown: #ffd0c4;
+  /* The plate the fill sits in, and the hairline round it. */
+  --boss-plate: rgb(6 6 11 / 0.82);
+  --boss-edge: #4a4a63;
+  --boss-edge-lit: #8d8daa;
+  /* The segment ticks. Cut INTO the fill, so they read as divisions of the
+     plate rather than as marks drawn on top of it. */
+  --boss-tick: rgb(4 4 8 / 0.85);
   --neutral: #8b8ba3;
 
   /* world tiles (canvas + minimap) */

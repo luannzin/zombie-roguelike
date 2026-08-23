@@ -13,19 +13,31 @@ chainsaw behind, and a rim you can put your back to without being safe. So this
 map is authored rather than generated: a disc, a corridor in, and a ring of
 light. There is nothing to explore here because exploring is over.
 
-THE FIRES ARE TILES, NOT PROPS, AND THAT IS THE WHOLE LIGHTING DESIGN.
-`world.FIRE` already blocks a body, draws an animated flame and throws
-`CAMPFIRE_LIGHT_TILES` of light — the camp is built out of them. So the ring
-is nine of those tiles, and the arena gets its light, its shadows and its rim
-for free, with no new client code and no new asset. It also gets the thing the
-zone actually needs: the boss is lit FROM BEHIND wherever he stands, so a
-three-and-a-half tile silhouette against a fire is readable from anywhere in
-the ring.
+THE WHOLE YARD IS LIT, AND IT IS LIT IN THREE LAYERS.
 
-That is why this zone keeps `ambient` at zero like every other place a player
-can be killed (see `zones.py`). The rule was never "hostile places are hard to
-see in" — it is that light must come from something you can point at. Nine
-burning drums is an answer to "why can I see"; a floor value is not.
+    THE RIM      nine `world.FIRE` tiles. That tile already blocks a body,
+                 draws an animated flame and throws `CAMPFIRE_LIGHT_TILES` of
+                 light — the camp is built out of them — so the ring costs no
+                 new asset and no new client code. It is what the boss is
+                 silhouetted against wherever he stands.
+    THE HEAPS    four interior scene lights on burning wreckage
+                 (`ARENA_EMBERS`), with a mark on the ground under each.
+                 Lights, never tiles: a solid tile in the middle of a boss
+                 arena is somewhere a two-tile body can wedge itself.
+    THE FLOOR    `zones.ARENA_AMBIENT`, and it is the second exception in the
+                 game to "ambient is zero anywhere you can die".
+
+That last one is a real bend in a real rule and it is worth saying why. The
+rule exists because darkness hiding information is what makes exploring mean
+anything. NOBODY EXPLORES THIS MAP. There is nothing in it to find and exactly
+one thing to look at, and that thing kills you if you cannot see which arm is
+going up. A dark middle does not buy tension here — it buys a fight lost to
+the lighting.
+
+The floor does not replace the other two. `layers/darkness` takes the MAX of
+the zone floor and the fov's own light rather than summing them, so the drums
+and the heaps still read as the brightest things in the room, and the room
+still has shape rather than being an evenly grey field with a boss on it.
 
 THE EXIT IS SHUT UNTIL HE IS DOWN, and it is shut by simply not existing:
 `build_arena` carves the arrival corridor and nothing else, and `Room` calls
@@ -41,10 +53,16 @@ import random
 
 from . import entrance, scenery
 from .config import (
+    ARENA_EMBERS,
     ARENA_FIRES,
     ARENA_RADIUS_TILES,
     TILE_SIZE,
 )
+
+#: How far an interior heap throws. Smaller than a drum's: they are wreckage
+#: burning down, not a beacon, and four of them at a drum's reach would wash
+#: the floor they are meant to be modelling.
+EMBER_LIGHT_TILES = 6.0
 from .maps import count_reachable
 from .world import FIRE, FLOOR, ROCK, TileMap
 
@@ -160,6 +178,43 @@ def _ring_fires(tiles: list[list[int]], cx: float, cy: float, radius: float,
     return placed
 
 
+def _embers(cx: float, cy: float, radius: float) -> list[scenery.PlacedLight]:
+    """Burning wreckage in the middle of the yard. See `ARENA_EMBERS`.
+
+    Placed on an irregular spiral rather than on a circle: four lights at four
+    compass points around a round room is a lighting rig, and the eye finds
+    the pattern before it finds the room. Kept out of the middle third, which
+    is where he lands and where the fight actually happens.
+    """
+    out: list[scenery.PlacedLight] = []
+    for index in range(ARENA_EMBERS):
+        angle = math.tau * (index * 0.31 + 0.12)
+        reach = radius * (0.46 + 0.13 * (index % 3))
+        out.append(scenery.PlacedLight(
+            x=(cx + math.cos(angle) * reach) * TILE_SIZE,
+            y=(cy + math.sin(angle) * reach) * TILE_SIZE,
+            radius_tiles=EMBER_LIGHT_TILES,
+            kind=scenery.EMBER,
+        ))
+    return out
+
+
+def _ember_marks(lights: list[scenery.PlacedLight],
+                 rng: random.Random) -> list[scenery.Prop]:
+    """What is burning, under each interior light. A light with no object
+    under it is the exact failure S22 names."""
+    props: list[scenery.Prop] = []
+    for light in lights:
+        props.append(scenery.Prop("oil", light.x, light.y, rng.randrange(4),
+                                  False, scenery.DECAL))
+        props.append(scenery.Prop("debris", light.x + 3.0, light.y + 2.0,
+                                  rng.randrange(6), rng.random() < 0.5,
+                                  scenery.DECAL))
+        props.append(scenery.Prop("blood", light.x - 4.0, light.y + 3.0,
+                                  rng.randrange(6), False, scenery.DECAL))
+    return props
+
+
 def _dress(cx: float, cy: float, radius: float, rng: random.Random,
            fires: list[tuple[int, int]]) -> list[scenery.Prop]:
     """What the crew left. Flat marks and low junk, and NOTHING in the middle.
@@ -256,11 +311,12 @@ def build_arena(day: int, seed: int | None = None) -> TileMap:
     if count_reachable(tiles) != floor:
         raise ValueError(f"arena seed {used} has unreachable floor")
 
-    props = _dress(cx, cy, radius, rng, fires)
+    lights = _embers(cx, cy, radius)
+    props = _dress(cx, cy, radius, rng, fires) + _ember_marks(lights, rng)
     payload = {
         "propKinds": sorted({prop.kind for prop in props}),
         "props": [],
-        "lights": [],
+        "lights": [light.to_row() for light in lights],
     }
     kinds = payload["propKinds"]
     payload["props"] = [prop.to_row(kinds) for prop in props]

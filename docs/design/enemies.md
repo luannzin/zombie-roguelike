@@ -201,12 +201,23 @@ one place. What follows is why it is shaped the way it is.
   can put your back to without being safe. So `arena.py` is authored — a disc,
   a corridor in, a ring of fires — and the dressing stays on the outer band so
   nothing is ever between the camera and the fight.
-- **THE LIGHT IS NINE BURNING DRUMS AND THE FLOOR IS STILL BLACK.** The zone
-  keeps `ambient` at zero like every other place a player can die. The rule
-  was never "hostile places are dark", it is that light must come from
-  something you can point at — and a ring of `world.FIRE` tiles gives the yard
-  its light, its shadows, its rim and a boss silhouetted from behind wherever
-  he stands, with no new asset and no new client code.
+- **THE YARD IS LIT, AND IT IS THE ONLY HOSTILE PLACE THAT IS.** Three layers:
+  a rim of nine `world.FIRE` tiles (they light, cast, animate and block, for
+  free), four burning heaps inside it as scene lights with a mark on the
+  ground under each, and — the exception — a real `ambient` floor.
+
+  That floor breaks a stated rule and it is worth being honest about why. The
+  rule is that ambient is zero anywhere a player can die, because darkness
+  hiding information is what makes exploring mean anything. **Nobody explores
+  this map.** There is nothing in it to find and exactly one thing to look at,
+  and that thing kills you if you cannot see which arm is going up. A dark
+  middle does not buy tension here; it buys a fight lost to the lighting.
+
+  The floor does not replace the fires. `layers/darkness` takes the MAX of the
+  zone floor and the fov's own light rather than summing them, so the drums
+  and the heaps are still the brightest things in the room and the room still
+  has shape. The heaps are LIGHTS AND DECALS, never tiles: a solid tile in the
+  middle of a boss arena is somewhere a two-tile body can wedge itself.
 - **THE EXIT IS SHUT BY NOT EXISTING.** `build_arena` carves the way IN and
   nothing else; `Room._boss_down` calls `entrance.open_exit` on the frame he
   falls. A door that is drawn and locked invites a party to stand in it. A

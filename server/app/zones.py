@@ -95,6 +95,26 @@ _NIGHT_SPAN_MINUTES = 7 * 60 + 1
 #: pools have not changed — what came down is the flat floor they pool INTO.
 STORE_AMBIENT = 0.32
 
+#: THE BOSS YARD'S FLOOR, and it is the second exception to the ambient rule.
+#:
+#: The rule is that `ambient` is zero everywhere a player can be killed,
+#: because darkness hiding information is what makes exploring mean anything.
+#: THE ARENA IS NOT A PLACE ANYBODY EXPLORES. There is nothing in it to find,
+#: nothing to walk around a corner and be surprised by, and exactly one thing
+#: to look at — and that thing is fifty-five pixels tall, moves at three tiles
+#: a second and kills you if you cannot read which arm is going up. Hiding the
+#: middle of the ring does not buy tension there; it buys a fight you lose to
+#: the lighting.
+#:
+#: It is HIGHER than the shop's, and the shop is the game's lit place. That is
+#: not an accident either: the shop is somewhere you stand still and read
+#: prices, and the yard is somewhere four people and a chainsaw are moving at
+#: once. Everything is still well under one — a lit yard at night, not
+#: daylight — and the nine drums round the rim are still visibly the brightest
+#: things in it, because `layers/darkness` takes the MAX of this floor and the
+#: fov's own light rather than summing them.
+ARENA_AMBIENT = 0.44
+
 # Most nights are dry. Rain is common enough that a second expedition often
 # feels like a different place; fog is the rarer coat.
 _WEATHER_TABLE: tuple[tuple[str, int], ...] = (
@@ -217,14 +237,16 @@ def arena(day: int, clock: str | None = None, weather: str | None = None) -> Zon
     that named the place would tell them what is about to happen before the
     shadow does, and the shadow is the whole opening.
 
-    `ambient` is zero, like every hostile zone. The ring of burning drums is
-    the light and it is a thing in the world, which is the rule (see
-    `arena.py`): a floor value cannot be walked toward, put out, or stood
-    behind.
+    IT IS LIT, INCLUDING THE MIDDLE, and it is the only hostile zone that is.
+    See `ARENA_AMBIENT` for why the rule bends here: the yard is not a place
+    anybody explores, it is a place where one very large thing has to be read
+    at speed. The nine drums round the rim and the burning wreckage inside it
+    are still the brightest things in the room — the floor is a floor, not a
+    replacement for them.
 
-    The lantern still works. It is nearly useless in a yard lit by nine fires,
-    and that is the point — the resource the whole night has been about stops
-    mattering at the end of it.
+    The lantern still works. It is nearly useless in a lit yard, and that is
+    the point — the resource the whole night has been about stops mattering at
+    the end of it.
     """
     return Zone(
         key=f"arena-{day}",
@@ -234,6 +256,7 @@ def arena(day: int, clock: str | None = None, weather: str | None = None) -> Zon
         subtitle=clock if clock is not None else night_clock(),
         hostile=True,
         lantern=True,
+        ambient=ARENA_AMBIENT,
         weather=weather if weather is not None else WEATHER_CLEAR,
     )
 

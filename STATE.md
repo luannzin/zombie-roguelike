@@ -51,6 +51,10 @@ ceremony.
   watch for: whether 900 HP solo is the right length, whether the chop's 0.64s
   windup is readable, and whether the ring at 21 tiles is too big to corner him
   in or too small to kite in.
+  The HUD bar is a struck gold plate with five segments, and the yard is LIT —
+  a ring of drums, four burning heaps and a real ambient floor. That floor is
+  the second exception in the game to "ambient is zero where you can die"; the
+  argument is in `zones.ARENA_AMBIENT`.
 - Weapon feel: shotgun cone and melee swing landed; the catalog's derivation from CS2 stats is stable.
 
 ## Recently completed

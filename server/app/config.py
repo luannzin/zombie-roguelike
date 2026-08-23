@@ -728,10 +728,23 @@ BOSS_XP = 420
 #: is the whole light and the whole edge of the place — was never on screen
 #: with him.
 ARENA_RADIUS_TILES = 15.0
-#: Burning fuel drums around the rim. THE ARENA'S ONLY LIGHT: this zone keeps
-#: `ambient` at zero like every other place a player can die, and what makes
-#: it legible is a ring of fires you can see the boss silhouetted against.
+#: Burning fuel drums around the rim. `world.FIRE` tiles: they light, they
+#: cast, they animate and they block, all for free.
 ARENA_FIRES = 9
+#: Wreckage still burning INSIDE the ring, as scene lights with no collision.
+#:
+#: The floor (`zones.ARENA_AMBIENT`) is what makes the middle of the yard
+#: legible; these are what stop it being FLAT. A uniform floor with a bright
+#: rim reads as a lit stage with nothing on it — S22 is explicit that a glow
+#: carrying no shape carries no information, and that what says "this is lit"
+#: is the lit object. So the interior gets four burning heaps, each with a
+#: mark on the ground under it, and the light in the middle of the room has
+#: somewhere it is coming from.
+#:
+#: They are LIGHTS AND DECALS, never tiles. A `FIRE` tile is solid, and four
+#: solid tiles in the middle of a boss arena is four places a two-tile body
+#: can wedge itself while the party shoots it from behind them.
+ARENA_EMBERS = 4
 ARENA_FIRE_LIGHT_TILES = 7.5
 #: How far into the ring the party has to walk before he comes down.
 ARENA_TRIGGER_TILES = 7.0

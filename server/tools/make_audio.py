@@ -745,6 +745,108 @@ def sfx_kindle(rng: random.Random) -> tuple[Buf, int]:
     return normalize(softclip(out, 1.5), 0.92), rate
 
 
+def sfx_heal_start(rng: random.Random, variant: int) -> tuple[Buf, int]:
+    """A wrapper coming off. The sound of COMMITTING, not of getting better.
+
+    This plays on the keypress, and it is the only feedback the player gets
+    that the seconds have started — so it has to read as an action with a
+    consequence rather than as a menu blip. It is packaging: a plastic seal
+    tearing, a snap of a cap, and nothing musical at all. The relief is
+    `sfx_heal`'s job and it must not be pre-empted here, because a heal that
+    sounded finished at the start would make the wait feel like lag.
+
+    DELIBERATELY DRY AND DELIBERATELY SMALL. It is a thing happening in your
+    own hands two feet from your face, so it has no tail and no room on it —
+    which also keeps it from competing with whatever is walking toward you,
+    which is the sound the player actually needs to be listening to for the
+    next three seconds.
+
+    TWO VARIANTS, and `variant` is unused on purpose: the per-variant seed
+    already reshapes every noise burst and every grain position in here, which
+    is the whole of what makes one tear differ from another. Branching on the
+    index would author two SOUNDS, and two kits opening should differ the way
+    two of the same wrapper do — not the way two different objects do.
+    """
+    rate = SFX_RATE
+    n = dur(0.3, rate)
+
+    # The seal tearing: bright noise under a rising bandpass, uneven so it
+    # sounds like film giving way in fits rather than a clean zip.
+    tear = biquad(white(n, rng), rate, "bandpass", lambda t: 1800 + 3200 * t, 1.4)
+    tear = mul(tear, env_from(n, [(0.0, 0.0), (0.06, 1.0), (0.42, 0.55), (0.8, 0.25), (1.0, 0.0)]))
+    # The grain. Without it the tear is a hiss; with it, it is a material.
+    grit = scatter(
+        n,
+        rate,
+        rng,
+        26,
+        lambda r, _i: mul(
+            biquad(white(dur(0.006, rate), r), rate, "bandpass", 3000 + r.random() * 3500, 4.0),
+            env_perc(dur(0.006, rate), rate, 0.0005, 0.005, 3.0),
+        ),
+        spread=(0.02, 0.72),
+    )
+    # The cap. One small click near the end, so the gesture has a full stop.
+    click = mul(
+        biquad(white(dur(0.02, rate), rng), rate, "bandpass", 2600, 3.2),
+        env_perc(dur(0.02, rate), rate, 0.001, 0.017, 3.0),
+    )
+    out = mix(gain(tear, 0.75), gain(grit, 0.6), at(silence(n), click, int(0.2 * rate), 0.9))
+    return normalize(out, 0.5), rate
+
+
+def sfx_heal(rng: random.Random) -> tuple[Buf, int]:
+    """The kit landing. The one unambiguously GOOD sound in the game.
+
+    Everything else that resolves in this world is a transaction or a threat —
+    a coin, a chime for a rarity, a howl, a body hitting the floor. This is the
+    only cue that means "you are further from losing the run than you were a
+    second ago", and it is the payoff for three seconds of standing still in
+    the open, so it is allowed to be warm in a way nothing else here is.
+
+    A RISING INTERVAL, and the direction is the message. The hurt sound sags;
+    every alarm in this game falls or beats. This one goes UP and resolves onto
+    a fifth, which is the shortest possible way to say "resolved" — and it is
+    the same read as the motes in `Effects.spawnHeal`, which are the only
+    particles in the game that rise. The ear and the eye are told the same
+    thing by the same shape.
+
+    Kept SOFT and slightly distant on purpose. It plays at the end of a
+    vulnerable window and often with something approaching; a bright fanfare
+    would mask the exact sounds the player has been holding still to hear, and
+    would also make a heal feel like a reward for a mistake rather than relief
+    from one.
+    """
+    rate = SFX_RATE
+    n = dur(0.9, rate)
+
+    # A breath of air going in under the whole thing — the body, not the item.
+    # It is what stops the two notes reading as a UI chime.
+    breath = biquad(pink(n, rng), rate, "bandpass", lambda t: 420 + 700 * t, 0.9)
+    breath = mul(breath, env_from(n, [(0.0, 0.0), (0.18, 0.7), (0.5, 0.4), (1.0, 0.0)]))
+
+    # The pair. A root and the fifth above it, the second arriving late enough
+    # to be heard as an answer rather than as a chord.
+    def note(freq: float, start: float, length: float, level: float) -> Buf:
+        m = dur(length, rate)
+        # Sine plus a quiet octave: enough harmonic to carry over a bed, not
+        # enough to sound synthetic.
+        body = mix(
+            gain(tone(m, freq, rate, "sine"), 1.0),
+            gain(tone(m, freq * 2.0, rate, "sine"), 0.16),
+        )
+        body = mul(body, env_from(m, [(0.0, 0.0), (0.1, 1.0), (0.45, 0.6), (1.0, 0.0)]))
+        return at(silence(n), body, int(start * rate), level)
+
+    root = note(392.0, 0.0, 0.62, 0.5)
+    fifth = note(587.33, 0.16, 0.66, 0.42)
+
+    out = mix(gain(breath, 0.3), root, fifth)
+    # A little room, so it sits around the player rather than on the glass.
+    out = reverb(out, rate, room=0.7, damp=0.5, wet=0.16)
+    return normalize(out, 0.52), rate
+
+
 def sfx_summon(rng: random.Random) -> tuple[Buf, int]:
     """A player arriving at the fire. SUBTLE — it is a greeting, not an event.
 
@@ -2544,6 +2646,16 @@ CATALOG: dict[str, tuple[object, int, float, str, bool]] = {
     # only. Loud enough to be an event, short enough not to sit on top of the
     # rarity chime it plays behind.
     "jackpot": (sfx_jackpot, 1, -5.0, "misc", False),
+    # MEDICINE. Both in `misc` rather than `sfx`: neither is combat, and
+    # somebody who turned the fighting down must not lose the only cue that
+    # says whether the three seconds they just spent standing still worked.
+    #
+    # The start sits well below the landing on purpose. It is a confirmation —
+    # the player already knows they pressed the key — whereas the landing is
+    # the answer to the question the whole channel asked, and it is also the
+    # sound a TEAMMATE across the clearing needs to hear.
+    "heal-start": (sfx_heal_start, 2, -15.0, "misc", False),
+    "heal": (sfx_heal, 1, -10.0, "misc", False),
 }
 
 #: Base for every per-sound seed. Changing it reshuffles every variant in the

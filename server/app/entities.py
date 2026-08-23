@@ -455,6 +455,17 @@ class Player:
         # eight players costs more than the one it describes.
         if self.pour is not None:
             row["pour"] = self.pour.phase
+        # MID-HEAL, as a FRACTION rather than as seconds left. The client draws
+        # a ring filling over the body, and a ring wants 0..1 — shipping the
+        # remaining time would make every client divide by a duration it would
+        # have to look up per kit, on a field that is absent almost always.
+        #
+        # It is on the tick row and not the roster because every client draws
+        # it over every body: a teammate standing still with a ring closing
+        # over their head is the clearest "do not expect them for two seconds"
+        # this game can give, and at roster rate it would arrive half spent.
+        if self.using is not None and self.using.total > 0.0:
+            row["use"] = round(1.0 - max(0.0, self.using.left) / self.using.total, 3)
         return row
 
     def to_payload(self) -> dict:
@@ -499,6 +510,11 @@ class Player:
             # teammate's helmet is a thing you can see from across a clearing.
             # Worn slots only — an empty slot is an absent key.
             "armor": self.armor.to_payload(),
+            # THE TWO MEDICAL CELLS. On the ROSTER and not the tick row: they
+            # change when somebody picks a kit up or spends one, which is a
+            # handful of times a night, and two strings thirty times a second
+            # would buy nothing. Same call `armor` and `guns` are here on.
+            "med": self.medical.payload(),
         }
         # The shield's life. Omitted when there is no shield on the belt,
         # which is most bodies in most runs.

@@ -248,6 +248,10 @@ MSG_DROP = "drop"
 MSG_ACTIVATE = "activate"
 MSG_BUY = "buy"
 MSG_SPIN = "spin"
+#: Spend one medical cell. `{type:"use","slot":0|1}` — the CELL, not the item
+#: key, because two cells may hold the same kit and the server has to empty the
+#: one the player pressed.
+MSG_USE = "use"
 
 MSG_HELLO = "hello"
 MSG_LOBBY = "lobby"
@@ -378,6 +382,7 @@ def snapshot(
     boss_events: list[dict] | None = None,
     wipe: dict | None = None,
     hordes: list[dict] | None = None,
+    heals: list[dict] | None = None,
 ) -> dict:
     payload = {
         "type": MSG_SNAPSHOT,
@@ -479,4 +484,9 @@ def snapshot(
     # phantom howl from a wave that already landed.
     if hordes:
         payload["hordes"] = hordes
+    # A kit spent. An EVENT — the health bar moving is a fact the roster
+    # already carries, and this is the flash, the sound and the number, which a
+    # client that dropped a packet must never replay.
+    if heals:
+        payload["heals"] = heals
     return payload

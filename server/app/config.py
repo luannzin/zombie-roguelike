@@ -1231,6 +1231,7 @@ def client_config() -> dict:
     from .enemies import enemy_types_payload
     from .loot import catalog_payload
     from . import armor
+    from . import medical
     from .weapons import (
         BLADE_SLOT,
         GUN_SLOTS,
@@ -1389,6 +1390,16 @@ def client_config() -> dict:
         # has no table of its own — adding a material is a row in
         # `armor.MATERIALS` and a ramp in `make_armor.py`.
         "armor": armor.catalog_payload(),
+        # MEDICINE. Heal, duration and weight per kit — the client needs all
+        # three: the duration drives the ring that fills over the body, the
+        # heal is what the hover card states, and the weight is part of
+        # `Game.moveWeight`, which is rebuilt client-side because `heldSlot` is
+        # the one thing the client authors.
+        "medical": medical.catalog_payload(),
+        #: How many medical cells. TWO, and the number is the mechanic — see
+        #: `medical.py`. The HUD lays out exactly this many and binds them to
+        #: the keys after the belt's.
+        "medicalSlots": medical.MEDICAL_SLOTS,
         # The slots in the order they are worn and drawn, top to bottom. The
         # HUD stacks its rows off this and a `LootPickup` with `dest:"worn"`
         # indexes it, so the order is a contract rather than a convenience.

@@ -62,7 +62,7 @@ import uuid
 
 from . import (
     ai, ammo, arena, armor, boss, camp, coins, combat, crates, entrance, loot, mapgen,
-    protocol, quests, rift, skills, store, weapons, zones,
+    medical, protocol, quests, rift, skills, store, weapons, zones,
 )
 from . import machine
 from .ai import EnemyDirector
@@ -119,6 +119,7 @@ from .world import FLOOR, VOID
 from .entities import (
     POUR_DUMP, POUR_LIFT, POUR_STOW, POUR_WALK,
     InputCmd, Player, Pour, clean_name, pick_color, random_name,
+    Use,
 )
 from .pathing import Navigator
 from .simulation import apply_input, carry_scale, step_stamina
@@ -341,6 +342,9 @@ class Room:
         #: client plays it spatially and puts a card up. Cleared every
         #: broadcast like every other event list.
         self.horde_events: list[dict] = []
+        #: Kits spent this tick. The juice: a green wash on the body, the
+        #: number floating off it, and the sound. Cleared every broadcast.
+        self.heal_events: list[dict] = []
         self._load_drops()
         self._load_crates()
         self._load_rifts()
@@ -660,7 +664,20 @@ class Room:
             self._loot_dirty = True
             self._roster_dirty = True
             return
-        if item is not None and item.pocket == "worn":
+        if item is not None and item.pocket == medical.POCKET:
+            # MEDICINE, into its own two cells. It REFUSES when both are full
+            # rather than swapping, unlike a gun cell: two kits are a QUANTITY
+            # and not alternatives, so silently dropping one to pick up another
+            # would be the game throwing away the exact resource the player was
+            # bending down to stockpile. The drop stays on the ground, which is
+            # the same answer a full ammunition reserve gives.
+            if not player.medical.add(drop.key):
+                return
+            dest = "med"
+            slot = next(
+                (i for i, key in enumerate(player.medical.slots) if key == drop.key), 0
+            )
+        elif item is not None and item.pocket == "worn":
             dest = "worn"
             slot = self.wear_armor(player, drop.key, drop.hp)
         elif item is not None and item.pocket == "hotbar":
@@ -1219,6 +1236,88 @@ class Room:
                 radius=RIFT_ACTIVATE_DIST * 3.0,
                 source_id=player.id,
             )
+        )
+
+    # --- medicine: the only way health comes back ---------------------------
+    def use_medical(self, pid: str, slot: int) -> None:
+        """Start spending one medical cell. Nothing is consumed on this frame.
+
+        THE COST OF A HEAL IS WHERE YOU ARE STANDING, NOT WHAT IT COSTS. Every
+        other resource in this game is spent by pressing a key; medicine is
+        spent by being still, in the open, for seconds, unable to answer
+        anything that walks up. That is the entire design of the verb — a
+        medkit resolved on the keypress would be a second health bar, and a
+        player would top up mid-fight and never think about it again.
+
+        REFUSED AT FULL HEALTH. Not out of tidiness: with only two cells, a
+        kit spent for nothing is a quarter of the night's medicine gone to a
+        mis-key, and on a permanent run that is a real loss to hand somebody
+        for pressing 4 while distracted.
+        """
+        player = self.players.get(pid)
+        if player is None or not player.alive or player.downed:
+            return
+        if player.pour is not None or player.using is not None:
+            return
+        # NOT MID-ARRIVAL AND NOT MID-DEPARTURE. Both puppet the body already,
+        # and a channel started under a cinematic would resolve into a zone the
+        # player has left.
+        if self.departing or self.arriving:
+            return
+        key = player.medical.peek(slot)
+        if key is None:
+            return
+        kit = medical.BY_KEY.get(key)
+        if kit is None:
+            return
+        if player.hp >= player.max_hp:
+            return
+        player.using = Use(slot=slot, left=kit.use_time, total=kit.use_time)
+        player.vx = player.vy = 0.0
+
+    def _step_use(self, player: Player, dt: float) -> None:
+        """Run the clock, and spend the cell on the LAST frame and only there.
+
+        THIS IS THE ONE PLACE A USE DIFFERS FROM A POUR AND IT IS THE
+        IMPORTANT ONE. A pour spends as it goes, so being interrupted still
+        costs you what already left the bag — that is fair, because the only
+        thing that interrupts a pour is being hit while standing at a machine
+        you chose to stand at. A heal is different: what interrupts it is the
+        thing you were healing because of. Taking the kit AND the health for
+        that would be punishing the player twice for one mistake, so an
+        interrupted heal costs the seconds and keeps the item.
+
+        `damage_player` clears `using` outright, so there is no cancellation
+        branch here — being hit is the only interruption there is.
+        """
+        use = player.using
+        if use is None:
+            return
+        player.vx = player.vy = 0.0
+        use.left -= dt
+        if use.left > 0.0:
+            return
+        player.using = None
+        key = player.medical.take(use.slot)
+        kit = medical.BY_KEY.get(key or "")
+        if kit is None:
+            return
+        before = player.hp
+        player.hp = min(player.max_hp, player.hp + kit.heal)
+        self._roster_dirty = True
+        # THE JUICE, and it is an event rather than a state for the same reason
+        # every other ceremony here is: the bar moving is a fact anybody can
+        # read off the roster, and the flash, the sound and the number floating
+        # off the body are a thing that HAPPENED and must never be replayed by
+        # a client that missed a packet.
+        self.heal_events.append(
+            {
+                "id": player.id,
+                "k": key,
+                "hp": player.hp - before,
+                "x": round(player.x, 1),
+                "y": round(player.y, 1),
+            }
         )
 
     def _pour_inputs(self, player: Player) -> None:
@@ -2137,6 +2236,7 @@ class Room:
         self.pour_events = []
         self.spin_events = []
         self.horde_events = []
+        self.heal_events = []
         self._horde = None
         self._horde_left = 0.0
         self.boss = None
@@ -2145,6 +2245,7 @@ class Room:
         self._machine_busy = 0.0
         for player in self.players.values():
             player.pour = None
+            player.using = None
         self._load_drops()
         self._load_crates()
         self._load_rifts()
@@ -2448,6 +2549,13 @@ class Room:
             if player.pour is not None:
                 self._pour_inputs(player)
                 self._step_pour(player, dt)
+                continue
+
+            # Mid-heal, the same puppet rule: the queue drains and the sequence
+            # is acked so prediction hears back, and nothing else happens.
+            if player.using is not None:
+                self._pour_inputs(player)
+                self._step_use(player, dt)
                 continue
 
             budget = MAX_INPUTS_PER_TICK if len(player.inputs) > 3 else 1
@@ -3588,6 +3696,25 @@ class Room:
         # something eats it is the one frame of this ceremony that would read
         # as the game having stopped listening.
         target.pour = None
+        # AND IT ENDS A HEAL, WHICH IS THE ENTIRE COST OF ONE.
+        #
+        # This is what makes medicine a decision about POSITION rather than a
+        # second health bar. If a blow did not interrupt, the correct play
+        # would be to hold 4 the moment anything touched you and keep walking
+        # backwards — the seconds would cost nothing, and the "stand still in
+        # the open" that the whole verb is built on would never happen.
+        #
+        # It costs the seconds and NOT the kit: `_step_use` only spends the
+        # cell on the frame the channel completes, so an interrupted heal
+        # leaves the item on the belt. Taking the kit too would punish the
+        # player twice for one mistake, and what interrupts a heal is precisely
+        # the thing they were healing because of.
+        #
+        # Note this sits ABOVE the shield and the plate on purpose: a blow that
+        # is fully absorbed still returns early, and a heal that survived
+        # because a plate happened to eat the hit would make armour into
+        # "keep healing through it", which is a rule nobody designed.
+        target.using = None
 
         amount = self._block_with_shield(target, amount, from_x, from_y)
         if amount <= 0:
@@ -3602,10 +3729,6 @@ class Room:
             target.alive = False
             target.deaths += 1
             target.vx = target.vy = 0.0
-            # A HEAL IN PROGRESS DIES WITH THE BODY, and it costs nothing —
-            # `Use` only spends its cell on the frame it completes, so a kit
-            # is never lost to the blow that made you need it.
-            target.using = None
             # WHICH KIND OF DEATH THIS IS, AND IT IS THE ZONE THAT DECIDES.
             #
             # Nothing in the camp or the shop can kill you except another
@@ -3971,6 +4094,7 @@ class Room:
                 boss_events=self.boss_events or None,
                 wipe=wipe_row,
                 hordes=self.horde_events or None,
+                heals=self.heal_events or None,
             )
         )
 
@@ -4014,6 +4138,7 @@ class Room:
                 self.armor_events = []
                 self.buy_events = []
                 self.horde_events = []
+                self.heal_events = []
                 self.spin_events = []
                 self.boss_events = []
             delay = next_time - time.perf_counter()

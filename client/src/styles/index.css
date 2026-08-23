@@ -71,6 +71,14 @@
   --hp-high: #7bd389;
   --hp-mid: #f2a541;
   --hp-low: #e6484f;
+  /*
+   * MEDICINE. Deliberately off the HP ramp: the health bar's green→amber→red
+   * is the language of "how bad is it", and a heal is the thing that MOVES you
+   * along that scale rather than a point on it. A cool clinical green so the
+   * ring over a head is never the same colour as the bar under it, whatever
+   * the bar happens to be saying at the time.
+   */
+  --heal: #5fe0b0;
   --xp: #6ea8fe;
   /* Breath. YELLOW, and it is the one meter that never changes colour with its
      own number: green-amber-red is a life reading, and a run bar that ramped

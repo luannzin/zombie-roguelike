@@ -33,6 +33,7 @@ import { DeathScreen } from './DeathScreen';
 import { Armor } from './Armor';
 import { BatteryGauge } from './BatteryGauge';
 import { Hotbar } from './Hotbar';
+import { Medical } from './Medical';
 import { ControlsHint } from './ControlsHint';
 import { HudScreen } from './HudScreen';
 import { NetStats } from './NetStats';
@@ -144,6 +145,7 @@ export function Hud({ snapshot, minimapRef, error }: HudProps) {
           )}
         >
           <Hotbar hotbar={snapshot.hotbar} />
+          <Medical medical={snapshot.medical} />
           <BatteryGauge lantern={snapshot.lantern} />
           {/* DIRECTLY ABOVE THE VITALS, because it answers the same question
               the health bar answers one layer further out — what is between

@@ -64,11 +64,15 @@ class ItemDef:
     weight: float
     #: What it is worth. The HUD slot shows it; extraction will spend it.
     value: int
-    #: Where a collect puts it, and there are four answers because a player
-    #: has four containers. `bag` is the pocket; `hotbar` is a weapon (a gun
+    #: Where a collect puts it, and there are FIVE answers because a player
+    #: has five containers. `bag` is the pocket; `hotbar` is a weapon (a gun
     #: into a gun cell, a lâmina into the blade cell); `ammo` goes straight
     #: into the reserve for its calibre and takes no slot at all (`ammo.py`);
-    #: `worn` goes ON the body (`armor.py`) and takes no slot either.
+    #: `worn` goes ON the body (`armor.py`) and takes no slot either; `med`
+    #: goes in one of the two medical cells (`medical.py`) and takes no slot
+    #: either — medicine is not cargo, it cannot be extracted and it cannot be
+    #: sold, so competing with a gold ring for a pocket cell would make
+    #: surviving a decision against earning.
     #:
     #: Neither `ammo` nor `worn` costs a pocket cell, and for the same reason:
     #: the bag's budget answers "how much loot can I still carry out", and a
@@ -103,14 +107,32 @@ ITEMS: tuple[ItemDef, ...] = (
     ItemDef("portable_radio", "Rádio portátil", "uncommon", ("electronics", "camp", "travel"), 1.4, 28),
     ItemDef("compass", "Bússola", "uncommon", ("travel", "dropped"), 0.3, 24),
     ItemDef("car_battery", "Bateria automotiva", "uncommon", ("travel", "tools", "electronics"), 5.0, 26),
-    ItemDef("first_aid", "Kit de primeiros socorros", "uncommon", ("medical", "supplies"), 1.0, 30),
+    # --- MEDICINE, AND IT IS NOT CARGO ---------------------------------------
+    # These two are the only rows in the catalog with `pocket="med"`, and it
+    # takes them out of the bag entirely: they cannot be poured into a
+    # platform, they cannot be sold, and they are worth nothing toward a quota.
+    #
+    # THEY USED TO BE ORDINARY LOOT WITH A PRICE ON THEM, and the idea was that
+    # the player would weigh "this is fifty-eight gold at the pad" against
+    # "this is being alive". That stopped being a choice the moment a death
+    # ended the run: nobody sells the thing that saves four nights' work to
+    # afford a marginally better rifle, so the decision resolved to KEEP every
+    # time — which is a bag slot that always holds the same object.
+    #
+    # `value=0` is the whole of that rule and it is load-bearing in three
+    # places at once: `Rift.feed` counts catalog value, `store.price_of` reads
+    # it, and the pocket's own weight bar sums it. See `medical.py` for what
+    # replaced the decision.
+    ItemDef("first_aid", "Kit de primeiros socorros", "uncommon", ("medical", "supplies"), 1.0, 0,
+            pocket="med"),
     ItemDef("road_flare", "Sinalizador", "uncommon", ("travel", "supplies", "military"), 0.3, 20),
     ItemDef("wrench_set", "Jogo de chaves", "uncommon", ("tools", "travel", "scrap"), 1.8, 21),
     ItemDef("military_camera", "Câmera militar", "rare", ("military", "electronics"), 1.2, 55),
     ItemDef("gold_ring", "Anel de ouro", "rare", ("valuables", "living"), 0.15, 70),
     ItemDef("binoculars", "Binóculo", "rare", ("travel", "military"), 1.0, 60),
     ItemDef("precious_gem", "Gema preciosa", "rare", ("valuables", "nature"), 0.25, 75),
-    ItemDef("morphine", "Morfina", "rare", ("medical", "supplies"), 0.2, 58),
+    ItemDef("morphine", "Morfina", "rare", ("medical", "supplies"), 0.2, 0,
+            pocket="med"),
     ItemDef("police_radio", "Rádio policial", "rare", ("military", "electronics", "combat"), 0.8, 62),
     ItemDef("night_vision", "Visão noturna", "rare", ("military", "electronics"), 1.1, 80),
     ItemDef("bone_charm", "Amuleto de osso", "rare", ("relics", "nature"), 0.2, 52),

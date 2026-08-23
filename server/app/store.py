@@ -65,7 +65,8 @@ from __future__ import annotations
 import math
 import random
 
-from . import armor, scenery, weapons
+from . import armor
+from . import medical, scenery, weapons
 from .config import (
     PLAYER_HALF_HEIGHT,
     STORE_CIRCLE_TILES,
@@ -483,11 +484,21 @@ STALL_COUNT = 6
 #: a helmet and rounds, and a party that has been dying at doorways knows
 #: which. It also gives the merchant something to sell a party who already
 #: own everything that shoots.
+#: MEDICINE IS ON THE SHELF AND IT IS THE ONLY THING HERE THAT SELLS OUT AND
+#: COMES BACK. Every other row is a one-off purchase: buy the AK, own the AK.
+#: A kit is spent, which makes the merchant the one reliable source of the one
+#: resource a permanent run cannot do without — and it gives him something to
+#: sell on the nights after five, when the whole ladder has unlocked and a
+#: party who owns everything used to walk past six tables with nothing on them
+#: they wanted.
+MEDICAL_KEYS: tuple[str, ...] = tuple(kit.key for kit in medical.KITS)
+
 SELLABLE: tuple[str, ...] = (
     weapons.GUN_KEYS
     + weapons.SHIELD_KEYS
     + tuple(key for key in weapons.BLADE_KEYS if ITEMS[key].droppable)
     + tuple(piece.key for piece in armor.PIECES)
+    + MEDICAL_KEYS
 )
 
 #: What he might be selling, CHEAPEST FIRST. Derived from the weapons
@@ -542,10 +553,17 @@ STOCK_FIRST_BAND = 4
 CATEGORY_ARMOR = "armor"
 CATEGORY_STEEL = "steel"
 CATEGORY_GUN = "gun"
+#: Medicine's own ladder, and it is one rung deep on purpose — see
+#: `_unlock_day`. Both kits are available from night one because the thing they
+#: answer (dying) is available from night one, and gating the panic heal behind
+#: night three would be gating the tutorial's own lesson.
+CATEGORY_MED = "med"
 
 
 def _category(key: str) -> str:
     """Which ladder `key` climbs."""
+    if key in medical.BY_KEY:
+        return CATEGORY_MED
     if key in armor.BY_KEY:
         return CATEGORY_ARMOR
     if weapons.is_blade(key) or weapons.is_shield(key):
@@ -573,7 +591,25 @@ def _unlock_table() -> dict[str, int]:
     for key in STOCK_ORDER:
         ladders.setdefault(_category(key), []).append(key)
     table: dict[str, int] = {}
-    for rungs in ladders.values():
+    for category, rungs in ladders.items():
+        # MEDICINE IS NOT A LADDER AND MUST NOT BE GATED LIKE ONE.
+        #
+        # Every other category here is a power curve: the AWP is strictly
+        # better than the Glock, so the day deciding how far down the list the
+        # roll may reach IS the difficulty curve. The two kits are not that.
+        # The big one heals more and takes three seconds; the small one heals
+        # less and is nearly instant — they are alternatives, and which is
+        # better depends entirely on whether you are being chased.
+        #
+        # Worse, they both have a catalog `value` of ZERO (that is the whole
+        # point of them, see `loot.ITEMS`), so `STOCK_ORDER` sorts them by the
+        # KEY as a tiebreak. Left to the arithmetic, "morphine" losing an
+        # alphabetical coin flip to "first_aid" would have hidden the panic
+        # heal behind night five — a gate nobody designed, expressing nothing.
+        if category == CATEGORY_MED:
+            for key in rungs:
+                table[key] = 1
+            continue
         for rank, key in enumerate(rungs):
             table[key] = _unlock_day(rank, len(rungs))
         # THE DEAREST THING ON A SHELF IS A LAST-NIGHT THING, always, and it
@@ -600,10 +636,40 @@ def price_of(key: str) -> int:
     would be a second opinion about the same thing, and the two would drift the
     first time a weapon was rebalanced.
     """
+    # MEDICINE HAS NO CATALOG VALUE — that is the whole point of it (see
+    # `loot.ITEMS`: it cannot be poured, cannot be sold, and is worth nothing
+    # toward a quota) — so it cannot be priced off the column everything else
+    # is priced off. It gets its own derivation rather than a number:
+    #
+    # A FULL KIT COSTS WHAT THE CHEAPEST SIDEARM COSTS. That is the anchor,
+    # taken from the shelf's own bottom rung rather than invented, and it says
+    # something true about the game: on the night you can afford your first
+    # gun, you can instead afford the thing that lets you survive not having
+    # one. Everything else scales off its own heal, so the panic kit is
+    # cheaper because it does less, and adding a third kit needs no new line.
+    kit = medical.BY_KEY.get(key)
+    if kit is not None:
+        return max(1, round(kit.heal * _med_gold_per_hp() * STORE_MARKUP))
     item = ITEMS.get(key)
     if item is None:
         return 0
     return max(1, round(item.value * STORE_MARKUP))
+
+
+def _med_gold_per_hp() -> float:
+    """Gold per point of health, derived off the cheapest firearm on the shelf.
+
+    A `first_aid` — the big kit — is pinned to that gun's price, and the rate
+    that comes out is what every other kit is charged. Derived rather than
+    written down so that rebalancing a pistol moves medicine with it instead of
+    quietly making one of the two a much better deal than it was.
+    """
+    anchor = min(
+        (ITEMS[key].value for key in weapons.GUN_KEYS if key in ITEMS),
+        default=40,
+    )
+    biggest = max((kit.heal for kit in medical.KITS), default=1)
+    return anchor / max(1, biggest)
 
 
 def _haggle(key: str, rng: random.Random) -> int:

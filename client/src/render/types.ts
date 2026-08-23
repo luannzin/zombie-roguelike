@@ -103,6 +103,15 @@ export interface DrawableEntity {
   downed: boolean;
   /** Seconds since this body went down. Drives the collapse timeline. */
   downAge: number;
+  /**
+   * 0..1 through a heal, or 0. Players only.
+   *
+   * Drawn as a RING over the head — see `drawHealRing`. It is on every body
+   * and not only the local one, because a teammate standing still with a ring
+   * closing over them is the clearest "do not expect them for two seconds"
+   * this game can give.
+   */
+  healing: number;
   moving: boolean;
   animTime: number;
   isLocal: boolean;

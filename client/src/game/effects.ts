@@ -247,7 +247,7 @@ export interface Footprint {
  * picked up off the ground, so nothing in the world ever floats a number in it.
  * `darkGold` is the anomaly shard, the only currency with a sprite.
  */
-export type FloatTone = 'damage' | 'reward' | 'darkGold';
+export type FloatTone = 'damage' | 'reward' | 'darkGold' | 'heal';
 
 export interface TextFloat {
   x: number;
@@ -1067,6 +1067,46 @@ export class Effects {
 
   spawnDamage(x: number, y: number, value: number): void {
     this.pushFloat(x, y, String(Math.round(value)), 'damage', 0.55);
+  }
+
+  /**
+   * A kit landing: the number, and motes drifting UP off the body.
+   *
+   * EVERYTHING ELSE THIS SYSTEM SPAWNS FALLS. Dust settles, casings bounce,
+   * blood arcs down, a death throws dirt along the floor — the whole particle
+   * vocabulary of this game is gravity, because everything it describes is
+   * something coming apart. This is the one event that is the opposite, so it
+   * is the one emitter with a NEGATIVE `gy`. The motes rise and keep rising,
+   * and that read — up, not down — is what separates "you got better" from
+   * every other burst on screen without anybody having to see the colour.
+   *
+   * The float lives as long as a reward rather than as long as damage. A
+   * damage number is one of many and is allowed to be glanced at; there are
+   * two kits in a run, and the number one of them gave back is worth reading.
+   */
+  spawnHeal(x: number, y: number, amount: number): void {
+    this.pushFloat(x, y - 6, `+${Math.round(amount)}`, 'heal', 0.9);
+    const heal = palette().heal;
+    for (let i = 0; i < 14; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 10 + Math.random() * 22;
+      this.particles.push({
+        x: x + Math.cos(angle) * 5,
+        y: y + Math.sin(angle) * 4,
+        vx: Math.cos(angle) * speed * 0.35,
+        vy: -18 - Math.random() * 26,
+        size: 0.8 + Math.random() * 1.3,
+        color: heal,
+        age: 0,
+        life: 0.45 + Math.random() * 0.35,
+        // UP. See the header — this is the only emitter in the file that
+        // does not fall, and the sign is the whole point.
+        gy: -14,
+      });
+    }
+    // A soft wash on the body itself, in the kit's own hue, so the heal reads
+    // from across a clearing on a teammate whose float is too small to see.
+    this.spawnLight(x, y, 30, 0.5, heal, 0.16);
   }
 
   /** Kill reward, e.g. "+12 xp". Lives longer and rises further than damage. */

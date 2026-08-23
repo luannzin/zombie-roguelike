@@ -45,9 +45,16 @@ MOVING = {
 # row unless it is true and `shield` unless there is one, exactly like `wind`,
 # so an equality check against these sets would fail the moment anybody
 # bought a shield or raised it.
+# `med` — the two medical cells — is here on the same argument: a cell changes
+# when somebody picks a kit up or spends one, a handful of times a night. Its
+# companion `use` (the heal's 0..1 progress) is deliberately NOT in MOVING: it
+# is omitted from the row unless a heal is actually running, like `wind` and
+# `blk`, so listing it would fail this check for every player who is not
+# currently bandaging.
 IDENTITY = {
     "name", "color", "kills", "deaths", "xp", "gold", "level", "xpInLevel",
-    "xpToLevel", "inv", "guns", "ammo", "armor", "skills", "spins", "mods",
+    "xpToLevel", "inv", "guns", "ammo", "armor", "med", "skills", "spins",
+    "mods",
 }
 
 

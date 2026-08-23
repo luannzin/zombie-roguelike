@@ -71,6 +71,7 @@ never all of them.
 | the **boss fight** — his moves, the arena, the bar, which night | **enemies** | `docs/design/enemies.md` § THE SAWYER |
 | **moving, carrying, shooting, the bag or the belt** | **player** | `docs/design/player.md` |
 | **what a body WEARS, what stops a blow, a lâmina or the shield** | **gear** | `docs/design/gear.md` |
+| **healing, a medkit, the cells on 4 and 5** | **player** | `server/app/medical.py` + `docs/design/player.md` |
 | a **pixel or a sound that must be regenerated** | **asset pipeline** | `assets/AGENTS.md` -> `server/tools/AGENTS.md` |
 
 If the task names a *feeling* rather than a system ("make the exit more
@@ -180,7 +181,7 @@ These bind every subtree. Subsystem-specific rules live in the docs above.
   - `server/app/protocol.py` <-> `client/src/net/protocol.ts` — every wire shape
   - `server/app/machine.py` <-> `client/src/game/machine.ts` — the pull's clock
   - `server/app/world.py` <-> `client/src/game/world.ts` — the tile alphabet, the `GROUNDS` / `CLEAR` sets, and `move_axis` / `blocks_sight` / `box_blocked` / `raycast_tiles`. Prediction runs on it; a tile kind added on one side alone desyncs collision. Solidity is no longer `!= FLOOR`: the shop's `TILEFLOOR` is a second walkable ground, so both sides test membership of `GROUNDS` and a member added to one alone rubber-bands the shop's doorway
-  - `Room.collect_loot` + `Inventory.add` + `ammo.Reserve` + `armor.Loadout` + `Hotbar` <-> `client/src/game/interaction.ts` (`canStow`, `swapTargetFor`, `replacedBy`) — whether a pickup is legal, and what it displaces. The client answers locally because the prompt cannot wait for a round trip. FOUR containers now, not three: the pocket refuses when full, a gun cell trades, the BLADE cell always swaps (it has no empty state) and a WORN slot refuses only the piece you already have in the same or better condition
+  - `Room.collect_loot` + `Inventory.add` + `ammo.Reserve` + `armor.Loadout` + `Hotbar` + `medical.Medical` <-> `client/src/game/interaction.ts` (`canStow`, `swapTargetFor`, `replacedBy`) — whether a pickup is legal, and what it displaces. The client answers locally because the prompt cannot wait for a round trip. FIVE containers now: the pocket refuses when full, a gun cell trades, the BLADE cell always swaps (it has no empty state), a WORN slot refuses only the piece you already have in the same or better condition, and a MEDICAL cell refuses when both are full — it never swaps, because two kits are a quantity rather than alternatives and trading one away would bin the resource the player bent down for
   - `Room.sync_block` <-> `client/src/game/game.ts`'s `Game.blocking` / `syncBlock` — whether the shield is UP. Both resolve it BEFORE the walk reads it, because the walk is the first thing that asks (`block_speed` / `MovableState.blockSpeed`, one resolved multiplier rather than a catalog lookup inside movement code). A block decided after the step is a tick late on exactly the frame it was raised for
   - `ai.look` <-> `client/src/render/fov.ts` — sight symmetry. No longer a copied constant: both read `enemyViewDarkScale` / `enemyViewLitScale` off `welcome.config`
   - `world.tile_hash` <-> `client/src/render/terrain.ts`'s `tileHash` — where the undergrowth IS. The client draws bushes from it and `ai.look` now shortens a creature's reach over the same tiles, so the two must agree bit for bit (`Math.imul` is a 32-bit multiply; plain Python `*` drifts after a few thousand tiles). `tests/test_bush_cover.py` pins it against browser values
@@ -198,13 +199,14 @@ These bind every subtree. Subsystem-specific rules live in the docs above.
 - **Generated-asset lists are append-only.** Inserting a row moves every existing frame index.
 - **Money is created in exactly one place, once:** `Room.enter_store`. The client never settles.
 - **Damage arrives at exactly one place, once:** `Room.damage_player`. The shield, worn armour and `Mods.armor` are applied there and nowhere else, in that order — a mitigation written at three call sites is one that will be missing from the fourth. Anything that can hurt a player comes through this door, including the boss.
-- **A player has FOUR containers and `loot.ItemDef.pocket` is what decides between them:** the pocket (`bag`, slots and weight), the belt (`hotbar` — a gun into a gun cell, a lâmina into the blade cell), the reserve (`ammo`) and the body (`worn`). Neither `ammo` nor `worn` costs a pocket cell, because the bag's budget answers "how much loot can I still carry out" and neither rounds nor a helmet is cargo. Worn armour still costs SPEED.
+- **A player has FIVE containers and `loot.ItemDef.pocket` is what decides between them:** the pocket (`bag`, slots and weight), the belt (`hotbar` — a gun into a gun cell, a lâmina into the blade cell), the reserve (`ammo`), the body (`worn`) and the medical cells (`med` — two of them, on keys 4 and 5). None of `ammo`, `worn` or `med` costs a pocket cell, because the bag's budget answers "how much loot can I still carry out" and none of rounds, a helmet or a bandage is cargo. Worn armour and medicine still cost SPEED.
+- **Health comes back in exactly one place, once:** `Room._step_use`, on the frame a medical channel completes. Medicine is the only source — there is no regeneration and no heal on extraction. It is not cargo: both kits have `value=0`, so they cannot be sold, poured, or counted toward a quota. The merchant sells them, and that trip is one-way.
 
 ## Verification
 
 | scope | command |
 | --- | --- |
-| server | `python tests/test_snapshot_shape.py`, `test_pour.py`, `test_store_walk.py`, `test_config_parity.py`, `test_loot_frames.py`, `test_bush_cover.py`, `test_scenery_containers.py`, `test_creature_sheets.py`, `test_map_scale.py`, `test_boss_fight.py`, `test_gear.py`, `test_pack.py` from `server/` — plain scripts, each prints `ok` |
+| server | `python tests/test_snapshot_shape.py`, `test_pour.py`, `test_store_walk.py`, `test_config_parity.py`, `test_loot_frames.py`, `test_bush_cover.py`, `test_scenery_containers.py`, `test_creature_sheets.py`, `test_map_scale.py`, `test_boss_fight.py`, `test_gear.py`, `test_pack.py`, `test_medical.py` from `server/` — plain scripts, each prints `ok` |
 | client | `bun run typecheck` from `client/` — required after any change there |
 | client | `bun tests/grade.ts` from `client/` after touching `render/post/grade.ts` — plain script, prints `ok` |
 | client | `bun tests/exit-path.ts` from `client/` after touching `game/exit-path.ts` — plain script, prints `ok` |
@@ -289,6 +291,20 @@ that the shield blocks only what it is FACING, spends itself on the blow that
 breaks it, and leaves the belt when it does. A shield that blocked from behind
 would be a strictly-better plate and nobody would ever notice — they would
 just stop dying.
+
+Run `test_medical.py` after touching `medical.py`, `Room.use_medical` /
+`_step_use` / `damage_player`, the `med` rows in `loot.ITEMS`, or the shop's
+medicine ladder. It pins the four things about the medical belt that have no
+symptom you would see while playing: that medicine is NOT CARGO (both kits are
+`value=0`, and a price creeping back puts them into the quota, the payout and
+the pocket's weight bar at once); that the cell is spent on the LAST frame and
+only there, so an interrupted heal costs the seconds and keeps the item; that a
+full belt REFUSES a third kit rather than swapping one away; and that the two
+kits still trade on different axes rather than being one item twice. It also
+pins the rule the docstrings already claimed but the code did not have — that
+ANY blow cancels a heal, not only a fatal one. Without that, holding 4 while
+walking backwards is free, and the "stand still in the open" the whole verb is
+built on never happens.
 
 Run `test_config_parity.py` after touching `client_config()` or `GameConfig`:
 it fails if either side declares a key the other does not, in either

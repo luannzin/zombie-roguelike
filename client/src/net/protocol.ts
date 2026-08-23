@@ -119,6 +119,20 @@ export interface SpinPacket {
   type: 'spin';
 }
 
+/**
+ * Spend one medical cell. `slot` is the CELL and not the item key, because two
+ * cells may hold the same kit and the server has to empty the one that was
+ * pressed.
+ *
+ * The server refuses silently at full health, mid-pour, mid-heal, while
+ * downed, and during a cinematic. All five are things the HUD already knows,
+ * so the cell says which and this packet is simply not sent.
+ */
+export interface UsePacket {
+  type: 'use';
+  slot: number;
+}
+
 export type ClientMessage =
   | InputPacket
   | PingPacket
@@ -129,6 +143,7 @@ export type ClientMessage =
   | ActivatePacket
   | BuyPacket
   | SpinPacket
+  | UsePacket
   | DropPacket;
 
 /**
@@ -137,6 +152,19 @@ export type ClientMessage =
  * Position is the CENTRE of the collision box; the sprite's bottom edge sits
  * at `y + playerHalfHeight`.
  */
+/** One kind of medicine. Mirrors `medical.MedicalDef`. */
+export interface MedicalConfig {
+  /** Flat points of health it puts back. */
+  heal: number;
+  /**
+   * Seconds the body is a puppet for. This is the entire cost of using one:
+   * standing still, in the open, unable to answer anything that walks up.
+   */
+  useTime: number;
+  /** What carrying it does to the walk. Summed into the carried weight. */
+  weight: number;
+}
+
 export interface GameConfig {
   tickRate: number;
   dt: number;
@@ -268,6 +296,23 @@ export interface GameConfig {
    */
   armor: Record<string, ArmorConfig>;
   /**
+   * MEDICINE. Keyed by kit key, same keys as the loot rows with pocket `med`.
+   * Mirrors `server/app/medical.py`.
+   *
+   * The client needs all three fields and for three different reasons: the
+   * duration drives the ring that fills over the body mid-heal, the heal is
+   * what the hover card states, and the weight is summed into `Game.moveWeight`
+   * — which is rebuilt client-side because `heldSlot` is the one thing the
+   * client authors, so the walk speed cannot wait for a round trip.
+   */
+  medical: Record<string, MedicalConfig>;
+  /**
+   * How many medical cells. Two, and the number is the mechanic rather than a
+   * layout detail — see `medical.py`. The HUD lays out exactly this many and
+   * binds them to the keys after the belt's.
+   */
+  medicalSlots: number;
+  /**
    * The worn slots, top to bottom. The HUD stacks its rows in this order and
    * a `lootPickups` row with `dest: "worn"` indexes it, so the order is a
    * contract rather than a convenience.
@@ -384,14 +429,18 @@ export interface LootItemConfig {
   weight: number;
   value: number;
   /**
-   * Where a collect puts it, and there are four containers. Weapons are
+   * Where a collect puts it, and there are FIVE containers. Weapons are
    * `hotbar` (a gun into a gun cell, a lâmina into the blade cell);
-   * valuables are `bag`; rounds are `ammo` and armour is `worn`, and neither
-   * of those takes a slot anywhere. An `ammo` row's `value` is 0 on purpose:
-   * ammunition is upkeep, not cargo, and an extraction platform will not
-   * carry it.
+   * valuables are `bag`; rounds are `ammo`, armour is `worn` and medicine is
+   * `med`, and none of those three takes a bag slot.
+   *
+   * An `ammo` row's `value` is 0 on purpose: ammunition is upkeep, not cargo,
+   * and an extraction platform will not carry it. A `med` row's is 0 for a
+   * stronger version of the same reason — medicine cannot be extracted OR
+   * sold, so it is worth nothing toward a quota and the merchant prices it off
+   * its own heal instead (`store.price_of`).
    */
-  pocket?: 'bag' | 'hotbar' | 'ammo' | 'worn';
+  pocket?: 'bag' | 'hotbar' | 'ammo' | 'worn' | 'med';
   /** `ammo` rows only: which calibre this fills, and by how many rounds. */
   ammo?: string;
   rounds?: number;
@@ -1282,6 +1331,18 @@ export interface PlayerState {
    * anybody gets that the run is one blow from ending.
    */
   down: boolean;
+  /**
+   * MID-HEAL, as a FRACTION of the way through. Absent for everybody who is
+   * not healing, which is everybody almost always.
+   *
+   * A fraction rather than seconds left, because what it draws is a RING
+   * filling over the body — and a ring wants 0..1. It is on the tick row and
+   * not the roster because every client draws it over every body: a teammate
+   * standing still with a ring closing over their head is the clearest "do not
+   * expect them for two seconds" this game can give, and at roster rate it
+   * would arrive half spent.
+   */
+  use?: number;
   /** Camp only: standing at the fire and confirmed. */
   ready?: boolean;
   /** Hotbar index in hand. -1 is holstered. */
@@ -1363,6 +1424,17 @@ export interface PlayerMeta {
    * across a clearing.
    */
   armor?: Record<string, ArmorPieceState>;
+  /**
+   * THE TWO MEDICAL CELLS. A cell holds a catalog key or null; the array is
+   * always `config.medicalSlots` long, so index IS the key binding — cell 0 is
+   * the first key after the belt's.
+   *
+   * On the ROSTER and not the tick row: these change when somebody picks a kit
+   * up or spends one, which is a handful of times a night, and two strings
+   * thirty times a second would buy nothing. It is the same call `armor` and
+   * `guns` are here on.
+   */
+  med?: Array<string | null>;
   /**
    * What is left of the shield on the belt, or absent when there is none.
    *
@@ -1844,6 +1916,25 @@ export interface SnapshotMessage {
    * wave that already landed on somebody.
    */
   hordes?: HordeEvent[];
+  /**
+   * Kits spent since the last snapshot. The juice — the wash on the body, the
+   * number floating off it, the sound.
+   *
+   * An EVENT and never replayed: the health bar moving is a fact the roster
+   * already carries, and a client that dropped a packet must not play the
+   * flash twice.
+   */
+  heals?: HealEvent[];
+}
+
+/** One kit spent. `hp` is what it actually put back, after the ceiling. */
+export interface HealEvent {
+  id: string;
+  /** Which kit, for the icon that flies off the cell. */
+  k: string;
+  hp: number;
+  x: number;
+  y: number;
 }
 
 /**

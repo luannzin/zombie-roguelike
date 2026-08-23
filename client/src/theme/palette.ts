@@ -111,6 +111,15 @@ export interface Palette {
   };
 
   hp: { high: string; mid: string; low: string };
+  /**
+   * MEDICINE, and it is off the HP ramp on purpose.
+   *
+   * The health bar is green→amber→red, which is the language of "how bad is
+   * it". A heal is not a point on that scale — it is the thing that moves you
+   * along it — so it gets its own hue, and the ring over the head is never the
+   * same colour as the bar underneath it whatever the bar is currently saying.
+   */
+  heal: string;
   /** Breath, and breath that has been spent. Off the HP ramp on purpose. */
   stamina: { ready: string; spent: string };
   progress: { xp: string; neutral: string };
@@ -277,6 +286,7 @@ function resolve(): Palette {
     },
 
     hp: { high: v('--hp-high'), mid: v('--hp-mid'), low: v('--hp-low') },
+    heal: v('--heal'),
     stamina: { ready: v('--stamina'), spent: v('--stamina-spent') },
     progress: { xp: v('--xp'), neutral: v('--neutral') },
     minimap: {

@@ -356,9 +356,13 @@ export function drawTextFloats(
     const color =
       d.tone === 'darkGold'
         ? fx.darkGoldText
-        : d.tone === 'reward'
-          ? fx.rewardText
-          : fx.damageText;
+        : d.tone === 'heal'
+          ? // The kit's own hue, the same one the ring over the head runs in,
+            // so the number and the ring are visibly the same event.
+            palette().heal
+          : d.tone === 'reward'
+            ? fx.rewardText
+            : fx.damageText;
     drawCenteredText(ctx, d.text, view.x(d.x), view.y(d.y), color, fx.textShadow);
   }
   ctx.globalAlpha = 1;

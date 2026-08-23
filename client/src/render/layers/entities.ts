@@ -248,6 +248,7 @@ export function drawEntity(entity: EntityContext, target: DrawableEntity): void 
     // which had every weapon in the game held across its owner's face.
     drawWeapon(entity, target, px, py, spriteTop, col);
     drawHealthBar(entity, target, view.rawX(px), spriteTop);
+    if (target.healing > 0) drawHealRing(entity, target, view.rawX(px), spriteTop);
   } else if (target.hp < target.maxHp || target.rank === RANK_MINIBOSS) {
     // AN ARENA OF FULL GREEN BARS IS NOISE — which is why a zombie only gets
     // one once it is hurt — but a miniboss is exactly one body, and the whole
@@ -430,6 +431,8 @@ function corpseAsTarget(body: DrawableCorpse): DrawableEntity {
     // out, and this body is past waiting for anything.
     downed: false,
     downAge: 0,
+    // A corpse is not healing, and never will be.
+    healing: 0,
     moving: false,
     animTime: 0,
     isLocal: false,
@@ -832,6 +835,60 @@ function drawAimFallback(
  * sprinted, which is exactly the twitch that makes a world-space meter look
  * pasted on.
  */
+/**
+ * A ring closing over the head of a body that is spending a kit.
+ *
+ * A RING AND NOT A BAR, and the shape is the message. Every other meter in
+ * this game is a bar — health, breath, the quota, a durability strip — because
+ * they all answer "how much is left". This one answers "how much longer", and
+ * a circle filling round is the one shape a player reads as TIME without
+ * having to be told. It also cannot be confused with the health bar it sits
+ * directly above, which two stacked rectangles absolutely would be.
+ *
+ * It is drawn for EVERY body, not just the local one. A teammate planted in
+ * the open with a ring closing over them is the clearest possible "they cannot
+ * help you for two seconds", and in a game where the party going down together
+ * ends the run that is worth a few arcs a frame.
+ *
+ * It sweeps from twelve o'clock, clockwise, because that is where every clock
+ * anyone has ever read starts.
+ */
+function drawHealRing(
+  { ctx, view, config }: EntityContext,
+  target: DrawableEntity,
+  centerX: number,
+  spriteTop: number,
+): void {
+  const ts = config.tileSize;
+  const radius = Math.max(4, ts * 0.34 * view.zoom);
+  const cx = Math.round(centerX);
+  // Above the plate the health bar sits on, with a gap — the two must not
+  // touch or they read as one compound widget.
+  const cy = Math.round(view.y(spriteTop - ts * 0.34)) - Math.round(radius * 0.4);
+  const width = Math.max(2, Math.round(ts * 0.1 * view.zoom));
+  const sweep = clamp01(target.healing);
+  const start = -Math.PI / 2;
+
+  ctx.save();
+  ctx.lineCap = 'butt';
+  ctx.lineWidth = width;
+  // The track first: an unfilled ring is what makes the filled part read as a
+  // proportion rather than as a growing arc of nothing in particular.
+  ctx.strokeStyle = palette().entity.barBackdrop;
+  ctx.globalAlpha = 0.75 * target.visibility;
+  ctx.beginPath();
+  ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+  ctx.stroke();
+
+  ctx.strokeStyle = palette().heal;
+  ctx.globalAlpha = target.visibility;
+  ctx.beginPath();
+  ctx.arc(cx, cy, radius, start, start + Math.PI * 2 * sweep);
+  ctx.stroke();
+  ctx.restore();
+  ctx.globalAlpha = 1;
+}
+
 function drawHealthBar(
   { ctx, view, config }: EntityContext,
   target: DrawableEntity,

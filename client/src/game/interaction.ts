@@ -278,6 +278,17 @@ export function canStow(s: InteractionState, key: string, hp?: number): boolean 
   const catalog = s.config?.loot ?? {};
   const def = catalog[key];
   if (def?.pocket === 'ammo') return ammoRefusal(s, def.ammo) === null;
+  if (def?.pocket === 'med') {
+    // MEDICINE REFUSES WHEN BOTH CELLS ARE FULL, and it refuses rather than
+    // swapping — unlike a gun cell. Two kits are a QUANTITY, not alternatives,
+    // so quietly dropping one to pick up another would be the game throwing
+    // away the exact resource the player bent down to stockpile. The drop
+    // stays on the ground, which is the same answer a full ammunition reserve
+    // gives. Mirrors `Room.collect_loot` + `Medical.add`.
+    const cells = s.meta?.med;
+    if (!cells) return true;
+    return cells.some((cell) => cell === null || cell === undefined);
+  }
   if (def?.pocket === 'worn') {
     // ONE REFUSAL, AND IT IS THE ONLY ONE THIS CATEGORY NEEDS: the piece you
     // are already wearing, in the same or better condition. Everything else

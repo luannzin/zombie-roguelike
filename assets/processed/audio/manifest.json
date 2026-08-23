@@ -393,6 +393,21 @@
       ],
       "bus": "misc",
       "gain": 0.3144
+    },
+    "heal-start": {
+      "files": [
+        "heal-start-0.wav",
+        "heal-start-1.wav"
+      ],
+      "bus": "misc",
+      "gain": 0.0979
+    },
+    "heal": {
+      "files": [
+        "heal.wav"
+      ],
+      "bus": "misc",
+      "gain": 0.1449
     }
   }
 }

@@ -81,6 +81,7 @@ Nearest contracts: [`server/app/AGENTS.md`](../../server/app/AGENTS.md),
 | armour, the shield, what stops a blow | [`docs/design/gear.md`](gear.md) |
 | movement / stamina | `server/app/simulation.py` **and** `client/src/game/simulation.ts`, `config.py` |
 | ammunition | `server/app/ammo.py` (mechanics) / `weapons.py` (sizing) |
+| medicine, healing, the two cells | `server/app/medical.py` (the catalog and the container) + `Room.use_medical` / `_step_use` (the channel) + `client/src/components/hud/Medical.tsx` — and the ring over the body, `render/layers/entities.ts`'s `drawHealRing` |
 | pocket rules | `server/app/inventory.py`, `Room.collect_loot` / `drop_loot` — and the client's mirror of what a collect refuses, `client/src/game/interaction.ts` (`canStow`, `swapTargetFor`) |
 | shot feel | `client/src/game/combat.ts`, `effects.ts`, `entity-visuals.ts` |
 | how a weapon is HELD, cycled, drawn, swung | `client/src/render/guns.ts` (the pose), `render/arms.ts` (the limbs), `render/layers/entities.ts` (the draw), `game/entity-visuals.ts` (the clocks) |

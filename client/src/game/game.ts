@@ -175,6 +175,7 @@ import {
   type HudSnapshot,
   type HudParty,
   type HudWipe,
+  type HudMedical,
   type HudStore,
 } from './hud-store';
 import { InputController } from './input';
@@ -596,6 +597,12 @@ interface PlayerSource {
   blk?: boolean;
   /** Which beat of a pour this body is on, if any. Absent for the local one. */
   pour?: number;
+  /**
+   * 0..1 through a heal. Absent for everybody not currently spending a kit,
+   * which is everybody almost always — and absent for the local one, which
+   * reads `Game.healing` instead, exactly like `pour`.
+   */
+  use?: number;
 }
 
 export interface GameOptions {
@@ -789,6 +796,25 @@ export class Game {
    */
   private localPour: number | null = null;
   /**
+   * How far through a heal this body is, 0..1, or 0 when it is not healing.
+   *
+   * Straight off the tick row rather than a local clock, for exactly the
+   * reason the pour's phase is: the server owns the duration, and a ring
+   * driven by a client-side timer would finish at a different instant from
+   * the health it is promising.
+   */
+  private healing = 0;
+  /**
+   * Which cell the current heal is spending, or -1.
+   *
+   * Remembered from the packet this client SENT rather than read off the wire:
+   * the tick row carries how far through the heal is, and adding which cell to
+   * it would be a second field on a per-tick row to answer a question only the
+   * owner can ask. A spectator does not need to know which of somebody else's
+   * two kits is going.
+   */
+  private usingCell = -1;
+  /**
    * THE RUN IS OVER, or null.
    *
    * Latched from the snapshot's `wipe` row and cleared by the `welcome` that
@@ -917,6 +943,7 @@ export class Game {
     this.input.onInteract = () => this.sendInteract();
     this.input.onToggleInventory = () => this.toggleInventory();
     this.input.onHotbar = (slot) => this.selectHotbar(slot);
+    this.input.onMedical = (cell) => this.useMedical(cell);
     bindInventoryDrop((slot) => this.requestDrop(slot));
     this.minimap = new Minimap(options.minimapCanvas);
     // Fire-and-forget, like every other atlas: until it lands the merchant is
@@ -1312,6 +1339,7 @@ export class Game {
       inventory: this.inventoryHud(),
       hotbar: this.hotbarHud(),
       armor: this.armorHud(),
+      medical: this.medicalHud(),
     });
     this.replaceLoot(msg.loot ?? []);
     this.replaceCorpses(msg.corpses ?? [], true);
@@ -1365,6 +1393,15 @@ export class Game {
           subtitle: 'Algo grande vem vindo',
         },
       });
+    }
+
+    // A KIT LANDED. The bar moving is already on the roster; this is the part
+    // that HAPPENED, and it is drawn for every body rather than only the local
+    // one — a teammate you cannot see the health bar of going briefly green
+    // across a clearing is how you know they are back up.
+    for (const heal of msg.heals ?? []) {
+      this.effects.spawnHeal(heal.x, heal.y, heal.hp);
+      playSfxAt('heal', heal.x, heal.y);
     }
 
     const wasDeparting = this.departing;
@@ -1450,6 +1487,17 @@ export class Game {
       if (state.id === this.localId) {
         this.localReady = state.ready ?? false;
         this.localPour = state.pour ?? null;
+        const healingBefore = this.healing;
+        this.healing = state.use ?? 0;
+        // THE WRAPPER, on the frame the server agrees the channel opened.
+        //
+        // Not on the keypress, even though that is where it would feel
+        // snappiest, because this is the one cue that says the seconds have
+        // STARTED — and a tear that played on a use the server then refused
+        // would tell the player they had committed to something they had not.
+        // Every refusal is already answered by `useMedical`'s own error blip.
+        if (healingBefore <= 0 && this.healing > 0) playSfx('heal-start');
+        if (this.healing <= 0) this.usingCell = -1;
         if (this.locked) {
           this.local.state.x = state.x;
           this.local.state.y = state.y;
@@ -2803,7 +2851,11 @@ export class Game {
     // held down while the pack goes over is a step this client would predict
     // and the next snapshot would take straight back. Movement used to CANCEL
     // the pour, which is what made predicting it correct; it no longer does.
-    const puppet = this.localPour !== null;
+    // MID-HEAL IS THE SAME PUPPET. `Room._step_use` zeroes the velocity every
+    // tick and `_pour_inputs` acks the queue without obeying it, so a WASD held
+    // during a heal is a step this client would predict and the next snapshot
+    // would take straight back.
+    const puppet = this.localPour !== null || this.healing > 0;
     return {
       type: 'input',
       sequence,
@@ -3802,6 +3854,12 @@ export class Game {
       alive,
       downed: source.down ?? false,
       downAge: this.downAgeOf(id, source.down ?? false),
+      // The ring over the head. The local body reads the field it already
+      // keeps rather than the row again — they are the same number from the
+      // same packet (`healing` is assigned off `state.use`), and going through
+      // the field means the ring and the medical cell's own fill can never be
+      // one frame apart.
+      healing: source.isLocal ? this.healing : source.use ?? 0,
       moving,
       // The legs keep up with the ground: a run is 1.55x the walk, and the
       // walk cycle at its authored cadence under it is a character skating.
@@ -3948,6 +4006,8 @@ export class Game {
       // stops a creature is a corpse, and `corpses` already owns that.
       downed: false,
       downAge: 0,
+      // Nothing but a player ever spends a kit.
+      healing: 0,
       // THE SLEEP SHEET IS A BREATH, so it has to be told it is animating.
       // Every other loop in the game is driven by the body actually going
       // somewhere; this is the one pose whose whole job is to move while the
@@ -4206,6 +4266,7 @@ export class Game {
       inventory: this.inventoryHud(),
       hotbar: this.hotbarHud(),
       armor: this.armorHud(),
+      medical: this.medicalHud(),
       net: {
         players: this.snapshots.latest?.players.size ?? 0,
         enemies: this.snapshots.latest?.enemies.size ?? 0,
@@ -4331,6 +4392,52 @@ export class Game {
     if (hotbar) this.patchHud({ hotbar });
   }
 
+  /**
+   * Spend one medical cell.
+   *
+   * EVERY REFUSAL IS ANSWERED, and that is most of the code here. The server
+   * refuses silently — correctly, it has no idea what the player was trying to
+   * do — so the client has to be the one that says WHY nothing happened. With
+   * only two cells and a run that does not come back, an unexplained dead
+   * keypress is the worst possible feedback: the player cannot tell "the game
+   * ignored me" from "I already used it".
+   *
+   * It is deliberately NOT predicted. Every other verb here draws its own
+   * result before the server answers, because a tracer that waited for a round
+   * trip feels broken. A heal is the opposite: it is a three-second commitment
+   * whose whole cost is being unable to act, and a client that started the
+   * animation on the keypress would show a body planted for a beat before the
+   * server had agreed it was allowed to be.
+   */
+  private useMedical(cell: number): void {
+    if (this.locked || this.introLeft > 0) return;
+    const local = this.local;
+    const meta = this.localMeta;
+    const config = this.config;
+    if (!local || !meta || !config) return;
+    // Down, or dead. Nothing to say — the screen is already saying it.
+    if (!local.alive) return;
+    // Mid-pour or mid-heal: the body is already committed to something.
+    if (this.localPour !== null || this.healing > 0) {
+      playSfx('ui-error');
+      return;
+    }
+    const key = meta.med?.[cell] ?? null;
+    if (!key) {
+      playSfx('ui-error');
+      return;
+    }
+    if (local.hp >= (meta.mods?.maxHp ?? config.maxHp)) {
+      // THE ONE REFUSAL WORTH PROTECTING SOMEBODY FROM. Two cells is the whole
+      // supply, so a kit spent at full health to a mis-key is a quarter of the
+      // night's medicine gone for nothing.
+      playSfx('ui-error');
+      return;
+    }
+    this.usingCell = cell;
+    this.connection.send({ type: 'use', slot: cell });
+  }
+
   private requestDrop(slot: number): void {
     if (this.locked || this.introLeft > 0) return;
     if (this.zone?.kind === 'camp') return;
@@ -4447,6 +4554,42 @@ export class Game {
    * change size every time something broke — and the empty rows are the
    * information: they are the parts a blow is going to land on.
    */
+  /**
+   * The two medical cells.
+   *
+   * EMPTY CELLS ARE STILL ROWS. The bag renders gaps because a gap there means
+   * "there is room"; an empty medical cell means "you have one left", which is
+   * a different and much more urgent sentence — and one the player has to be
+   * able to read at a glance rather than by counting what is there.
+   */
+  private medicalHud(): HudMedical | null {
+    const config = this.config;
+    if (!config) return null;
+    const cells = this.localMeta?.med ?? [];
+    const slots = Array.from({ length: config.medicalSlots }, (_, index) => {
+      const key = cells[index] ?? null;
+      const def = key ? config.loot[key] : undefined;
+      const kit = key ? config.medical[key] : undefined;
+      return {
+        key,
+        name: def?.name ?? null,
+        frame: def?.frame ?? 0,
+        heal: kit?.heal ?? 0,
+        useTime: kit?.useTime ?? 0,
+        weight: kit?.weight ?? 0,
+        // The belt occupies 1..bladeSlot, so medicine starts straight after
+        // it. Derived rather than written as '4' and '5' so that a third gun
+        // cell would move these instead of colliding with them.
+        hotkey: String(config.hotbarSlots + index + 1),
+      };
+    });
+    return {
+      slots,
+      progress: this.healing,
+      using: this.healing > 0 ? this.usingCell : -1,
+    };
+  }
+
   private armorHud(): HudArmor | null {
     const config = this.config;
     if (!config) return null;

@@ -28,7 +28,7 @@ const LANTERN_KEY = 'KeyF';
 const READY_KEY = 'KeyE';
 /** Expand the pocket. Tab is the key, not a code under a letter. */
 const INVENTORY_KEY = 'Tab';
-/** Two gun slots, then the knife on 3. See `server/app/weapons.py`. */
+/** Two gun slots, then the blade on 3. See `server/app/weapons.py`. */
 const HOTBAR_KEYS: Record<string, number> = {
   Digit1: 0,
   Digit2: 1,
@@ -36,6 +36,26 @@ const HOTBAR_KEYS: Record<string, number> = {
   Numpad1: 0,
   Numpad2: 1,
   Numpad3: 2,
+};
+
+/**
+ * The two medical cells, on the keys straight after the belt's.
+ *
+ * A SEPARATE MAP AND A SEPARATE CALLBACK, not three more entries in
+ * `HOTBAR_KEYS`, because they are not the same verb. A belt key SWAPS what is
+ * in your hands and is free and instant; a medical key SPENDS something and
+ * plants the body for seconds. Folding them into one handler would make the
+ * two feel like neighbours on a strip, which is exactly the mistake that would
+ * get a kit burned by somebody reaching for the knife.
+ *
+ * They are physical codes like everything else here, so they land on 4 and 5
+ * under any layout.
+ */
+const MEDICAL_KEYS: Record<string, number> = {
+  Digit4: 0,
+  Digit5: 1,
+  Numpad4: 0,
+  Numpad5: 1,
 };
 
 export class InputController {
@@ -77,6 +97,8 @@ export class InputController {
   onToggleInventory: (() => void) | null = null;
   /** Fired once per 1/2/3. `slot` is 0..2 — 2 is the knife. Edge, not held. */
   onHotbar: ((slot: number) => void) | null = null;
+  /** A medical cell was pressed. See `MEDICAL_KEYS` for why it is its own. */
+  onMedical: ((cell: number) => void) | null = null;
 
   constructor(private readonly canvas: HTMLCanvasElement) {
     window.addEventListener('keydown', this.onKeyDown);
@@ -137,6 +159,12 @@ export class InputController {
     const slot = HOTBAR_KEYS[e.code];
     if (slot !== undefined && !e.repeat) {
       this.onHotbar?.(slot);
+      e.preventDefault();
+      return;
+    }
+    const cell = MEDICAL_KEYS[e.code];
+    if (cell !== undefined && !e.repeat) {
+      this.onMedical?.(cell);
       e.preventDefault();
     }
   };

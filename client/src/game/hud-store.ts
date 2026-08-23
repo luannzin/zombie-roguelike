@@ -45,6 +45,42 @@ export interface HudHotbarSlot {
   ammo: number | null;
 }
 
+/**
+ * ONE MEDICAL CELL, filled or empty.
+ *
+ * Empty cells are REAL ROWS rather than gaps, unlike the bag's — and the
+ * difference is what the panel is for. A bag with three empty slots says
+ * "there is room"; a medical belt with an empty cell says "you have one left",
+ * which is a much more important sentence and one the player needs to be able
+ * to read without counting.
+ */
+export interface HudMedicalSlot {
+  key: string | null;
+  name: string | null;
+  frame: number;
+  /** Points of health, for the cell's own label. */
+  heal: number;
+  /** Seconds it plants you for. The other half of the decision. */
+  useTime: number;
+  weight: number;
+  /** Which key spends it — `4`, `5`. Rendered on the cell. */
+  hotkey: string;
+}
+
+export interface HudMedical {
+  slots: HudMedicalSlot[];
+  /**
+   * 0..1 through a use, or 0. Drives the cell's own fill as well as the ring
+   * over the body, so the two cannot disagree about how far along it is.
+   */
+  progress: number;
+  /**
+   * The cell being spent, or -1. The panel highlights it — with two cells that
+   * look alike, "which one am I burning" is a question worth answering.
+   */
+  using: number;
+}
+
 /** The named thing you are fighting. */
 export interface HudBoss {
   name: string;
@@ -421,6 +457,8 @@ export interface HudSnapshot {
   wipe: HudWipe | null;
   /** How many of the party are still up. Null solo — see `HudParty`. */
   party: HudParty | null;
+  /** The two medical cells, and whatever is being spent out of them. */
+  medical: HudMedical | null;
   /** Set on entering a zone; the title card plays and then leaves it alone. */
   arrival: HudArrival | null;
   /**
@@ -550,6 +588,7 @@ export const EMPTY_HUD: HudSnapshot = {
   zone: null,
   wipe: null,
   party: null,
+  medical: null,
   arrival: null,
   announce: null,
   introducing: true,

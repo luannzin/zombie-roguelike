@@ -116,6 +116,7 @@ from typing import Iterable, Sequence
 from . import combat
 from .config import (
     ALPHA_WAKE_DELAY,
+    TILE_SIZE,
     BUSH_CONCEAL_SCALE,
     ENEMY_ALERT_SHARE_DIST,
     ENEMY_ARRIVE_DIST,
@@ -139,11 +140,22 @@ from .config import (
     ENEMY_DAY_RATE,
     ENEMY_MAX_PER_PLAYER,
     ENEMY_MAX_TOTAL,
+    ENEMY_HARD_CAP,
     ENEMY_NOTICE_FAR,
     ENEMY_NOTICE_NEAR,
     ENEMY_SEPARATION,
     ENEMY_SPAWN_INTERVAL,
     ENEMY_SPAWN_INTERVAL_MIN,
+    ENEMY_NIGHT_RAMP,
+    ENEMY_NIGHT_RAMP_MAX,
+    ENEMY_NIGHT_GRACE,
+    HORDE_INTERVAL,
+    HORDE_CHANCE,
+    HORDE_CHANCE_PER_ROLL,
+    HORDE_SIZE,
+    HORDE_SIZE_PER_DAY,
+    HORDE_SPAWN_TILES,
+    HORDE_ARC_DEGREES,
     ENEMY_SPAWN_MAX_DIST,
     ENEMY_SPAWN_MIN_DIST,
     ENEMY_STAGGER_STOP,
@@ -1091,16 +1103,61 @@ class EnemyDirector:
         #: therefore a new director (`Room._swap_map`).
         self.day = max(1, day)
         self.timer = ENEMY_FIRST_SPAWN_DELAY
+        #: HOW LONG THE PARTY HAS BEEN ON THIS MAP, in seconds. The night's own
+        #: clock, and the thing the design law claimed existed and did not —
+        #: see `config.ENEMY_NIGHT_RAMP`. Zero on arrival because a new night
+        #: is a new director (`Room._swap_map`), so nothing has to reset it.
+        self.elapsed = 0.0
+        #: Seconds until the next horde ROLL. Not the next horde: the roll is a
+        #: chance, so waves land unevenly and a party cannot time them.
+        self.horde_timer = ENEMY_NIGHT_GRACE + HORDE_INTERVAL
+        #: How many rolls have happened. Feeds `HORDE_CHANCE_PER_ROLL`, so a
+        #: party that stays out keeps meeting a steeper coin.
+        self.horde_rolls = 0
 
     @property
     def population_scale(self) -> float:
-        """What the day multiplies the population ceiling by."""
+        """What the day AND the night so far multiply the population by.
+
+        TWO TERMS, MULTIPLIED. The day says how full this forest starts; the
+        night says how much worse it has got since the party walked in. They
+        multiply rather than add because they are answering different
+        questions — "which night is this" and "how long have you been out" —
+        and a party on night eight who leaves after two minutes should meet
+        night eight's forest, not night three's.
+        """
+        return self.day_scale * self.night_scale
+
+    @property
+    def day_scale(self) -> float:
+        """What the day alone multiplies the population ceiling by."""
         return 1.0 + ENEMY_DAY_POPULATION * (self.day - 1)
 
     @property
+    def night_scale(self) -> float:
+        """What time-on-this-map multiplies it by. 1.0 for the first minute.
+
+        THE GRACE IS NOT POLITENESS. A party walks out of the corridor with an
+        empty bag and the first platform a clearing away; taking the night away
+        from them before they have found it would make the opening a race
+        rather than an arrival, which is the exact failure the night clock was
+        removed for.
+        """
+        over = max(0.0, self.elapsed - ENEMY_NIGHT_GRACE)
+        return min(ENEMY_NIGHT_RAMP_MAX, 1.0 + ENEMY_NIGHT_RAMP * (over / 60.0))
+
+    @property
     def interval(self) -> float:
-        """Seconds between waves tonight, floored so groups stay groups."""
-        pace = 1.0 + ENEMY_DAY_RATE * (self.day - 1)
+        """Seconds between waves tonight, floored so groups stay groups.
+
+        THE NIGHT'S RAMP IS IN HERE TOO, and it has to be: the cap says how
+        many the forest HOLDS and this says how fast it refills toward that
+        cap. Raising only the ceiling makes a late night one that slowly
+        becomes crowded if nobody fights; raising both makes it one that comes
+        back at you after you have cleared it, which is the thing a party
+        actually feels.
+        """
+        pace = (1.0 + ENEMY_DAY_RATE * (self.day - 1)) * self.night_scale
         return max(ENEMY_SPAWN_INTERVAL_MIN, ENEMY_SPAWN_INTERVAL / pace)
 
     def cap(self, living: int) -> int:
@@ -1113,7 +1170,14 @@ class EnemyDirector:
         """
         scale = self.population_scale
         return int(
-            min(ENEMY_MAX_TOTAL * scale, ENEMY_MAX_PER_PLAYER * scale * max(1, living))
+            min(
+                ENEMY_MAX_TOTAL * scale,
+                ENEMY_MAX_PER_PLAYER * scale * max(1, living),
+                # THE BUDGET, under everything. See `config.ENEMY_HARD_CAP`:
+                # the day and the night multiply, and two multiplied curves
+                # reach numbers that are neither drawable nor survivable.
+                ENEMY_HARD_CAP,
+            )
         )
 
     def update(
@@ -1122,6 +1186,12 @@ class EnemyDirector:
         living = [p for p in players if p.alive]
         if not living or not self.spawn_points:
             return []
+
+        # THE NIGHT'S OWN CLOCK, and it only runs while somebody is standing.
+        # A party wiped to one downed body is not "waiting out there getting
+        # into trouble" — they are finished, and winding the forest up while
+        # the last of them bleeds would be the game kicking a corpse.
+        self.elapsed += dt
 
         self.timer -= dt
         if self.timer > 0.0:
@@ -1145,6 +1215,96 @@ class EnemyDirector:
         # than skipping the wave and leaving the map empty for another interval.
         size = min(max(self.pick_size(), kind.group_min), room)
         return [(kind, *place) for place in self.scatter(spot, size)]
+
+    def roll_horde(
+        self, dt: float, players: Iterable[Player]
+    ) -> tuple[float, float, float, int] | None:
+        """Is a wave coming? `(x, y, bearing, size)` of where it will land.
+
+        SEPARATE FROM `update` AND ON ITS OWN CLOCK, because it is a different
+        mechanic wearing the same costume. `update` keeps a forest populated —
+        a background process nobody is supposed to notice. This is an EVENT: it
+        is announced, it comes from a direction, and it is meant to make the
+        party stop what they are doing and decide.
+        //
+        WHY IT RETURNS A PLACE RATHER THAN SPAWNING. The warning has to go out
+        before the bodies do (`config.HORDE_TELEGRAPH`), and the thing being
+        warned about is a BEARING — "they are coming from over there". So the
+        director answers where, `Room` holds it for a few seconds while the
+        howl carries, and only then asks for the bodies. A horde that spawned
+        on the frame it was decided would be a horde nobody was warned about,
+        and with the run permanent that is a deleted run rather than a scare.
+        """
+        living = [p for p in players if p.alive]
+        if not living or not self.spawn_points:
+            return None
+        self.horde_timer -= dt
+        if self.horde_timer > 0.0:
+            return None
+        self.horde_timer = HORDE_INTERVAL
+        chance = min(1.0, HORDE_CHANCE + HORDE_CHANCE_PER_ROLL * self.horde_rolls)
+        self.horde_rolls += 1
+        if random.random() > chance:
+            return None
+
+        anchor = random.choice(living)
+        bearing = random.uniform(0.0, math.tau)
+        reach = TILE_SIZE * HORDE_SPAWN_TILES
+        x = anchor.x + math.cos(bearing) * reach
+        y = anchor.y + math.sin(bearing) * reach
+        size = max(2, round(HORDE_SIZE + HORDE_SIZE_PER_DAY * (self.day - 1)))
+        return x, y, bearing, size
+
+    def horde_places(
+        self, x: float, y: float, bearing: float, size: int
+    ) -> list[tuple[EnemyType, float, float]]:
+        """Bodies for one wave, landed in an ARC on the far side of `bearing`.
+
+        AN ARC, NOT A RING, and that is what makes a horde answerable. A wave
+        you can turn to face is a fight with a shape to it — back into
+        something, put the axe where they are coming from, decide whether to
+        run through the gap. The same bodies spread evenly around the party is
+        not a harder version of that, it is a different and much worse thing:
+        an encounter with no correct answer, which on a permanent run is just a
+        death with extra steps.
+
+        They are placed against the map's own free-tile list like every other
+        spawn, so a wave can no more arrive inside a tree than a wanderer can.
+        """
+        if not self.spawn_points:
+            return []
+        spread = math.radians(HORDE_ARC_DEGREES)
+        reach = TILE_SIZE * HORDE_SPAWN_TILES
+        out: list[tuple[EnemyType, float, float]] = []
+        # ONE TYPE FOR THE WHOLE WAVE. A horde is a thing that arrives, and a
+        # mixed one reads as the ordinary director having a busy minute.
+        kind = self.pick_type()
+        for index in range(size):
+            offset = ((index / max(1, size - 1)) - 0.5) * spread if size > 1 else 0.0
+            angle = bearing + offset
+            # A little depth as well as width, so they arrive as a body of
+            # bodies rather than as a rank.
+            dist = reach * random.uniform(0.82, 1.12)
+            want_x = x - math.cos(bearing) * reach + math.cos(angle) * dist
+            want_y = y - math.sin(bearing) * reach + math.sin(angle) * dist
+            spot = self._nearest_free(want_x, want_y)
+            if spot is not None:
+                out.append((kind, spot[0], spot[1]))
+        return out
+
+    def _nearest_free(self, x: float, y: float) -> tuple[float, float] | None:
+        """The closest tile the map will actually take. Sampled, not searched —
+        the free list is thousands of entries and this runs a handful of times
+        a night."""
+        best: tuple[float, float] | None = None
+        best_d2 = float("inf")
+        for _ in range(SPAWN_ATTEMPTS * 3):
+            point = random.choice(self.spawn_points)
+            d2 = (point[0] - x) ** 2 + (point[1] - y) ** 2
+            if d2 < best_d2:
+                best_d2 = d2
+                best = point
+        return best
 
     def pick_size(self) -> int:
         """How many arrive together, tilted toward the big end by the night.

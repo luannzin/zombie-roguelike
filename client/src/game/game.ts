@@ -501,6 +501,16 @@ const RARITY_CHIME: Record<LootRarity, number> = {
 };
 
 /** Sprite sheet for players. Enemy sheets are named by the server's config. */
+/**
+ * How hard the lens reacts to a horde's warning.
+ *
+ * A fraction of a hit's, deliberately. This is the sound of something a long
+ * way off deciding to come at you — a shake as big as a blow would spend the
+ * flinch the arrival itself needs, and the player would learn to read the
+ * camera instead of the cue.
+ */
+const HORDE_TRAUMA = 0.22;
+
 const PLAYER_SHEET = 'player';
 /**
  * The collapse. A one-shot timeline that holds its last frame, loaded up front
@@ -956,6 +966,11 @@ export class Game {
       'wolf-idle',
       'wolf-alert',
       'wolf-death',
+      // THE HORDE'S WARNING, primed for the same reason the howl is and more
+      // urgently: it is the only thing between a permanent run and a wave
+      // that arrives unannounced, and a cue that decodes half a second late
+      // has already spent most of the warning it was carrying.
+      'horde',
       'wind',
       'night',
       'rain',
@@ -1329,6 +1344,28 @@ export class Game {
       this.pushBeds();
     }
     this.wipe = msg.wipe ? { day: msg.wipe.day } : this.wipe;
+
+    // A WAVE IS COMING. Three channels, because which one works depends on
+    // where the player is looking and what else is on screen.
+    for (const horde of msg.hordes ?? []) {
+      // THE SOUND IS THE BEARING and it is the channel that works with your
+      // back turned, which is the case this cue exists for. Played at the
+      // place the wave will come from, through the same spatial path every
+      // creature sound uses, so a player already knows the direction before
+      // they have read anything.
+      playSfxAt('horde', horde.x, horde.y, { gain: 1 });
+      // The lens flinches away from it — not a hit, a HEARING. Small: this is
+      // a warning, and a camera that shook as hard as a blow would spend the
+      // reaction the wave itself needs.
+      this.camera.addTrauma(HORDE_TRAUMA);
+      this.patchHud({
+        announce: {
+          key: `horde-${this.time.toFixed(2)}`,
+          title: 'A MATA SE MEXE',
+          subtitle: 'Algo grande vem vindo',
+        },
+      });
+    }
 
     const wasDeparting = this.departing;
     this.departing = Boolean(msg.departing) && this.zone?.kind === 'camp';

@@ -602,17 +602,85 @@ def count_for_day(day: int) -> int:
 #: The per-pad surcharge is smaller than a day's step on purpose: a map that
 #: found room for three platforms is a longer night, not a harder one, and the
 #: extra should be paid for in walking rather than in loot.
-NEED_PER_DAY = 40
-NEED_PER_EXTRA_PAD = 24
+# --- what a night costs ------------------------------------------------------
+#
+# THE OLD FORMULA WAS `40 * day + 24 * (pads - 1)` AND IT WAS WRONG AT BOTH
+# ENDS, in opposite directions, for the same reason: it was a straight line
+# with no idea what was actually out there.
+#
+#   Night 1 asked 40 against a forest holding about 500. Seven per cent. At an
+#   expected 34 gold an item that is 1.2 OBJECTS — under a quarter of one
+#   backpack — so the thing the whole night is supposedly about was cleared by
+#   accident on the way to the first platform, and no exploration decision was
+#   ever forced.
+#
+#   Night 24 asked 1008 against a forest still holding about 1000, because the
+#   bill kept climbing linearly for ever while the MAP STOPPED GROWING AT DAY
+#   FIVE (`count_for_day` caps at three pads, and `mapgen.size_for_pads` with
+#   it). Somewhere around night twenty the quota crosses what a bad seed can
+#   even produce and the night becomes unwinnable through no decision anybody
+#   made.
+#
+# So the bill is a SHARE OF WHAT IS OUT THERE, and both halves of that are
+# derived rather than picked: the supply from the pad count (which is what
+# sizes the map and scales the scene budget — see `mapgen.populate_forest`),
+# and the share from the day, capped where the map stops growing.
+
+#: The LOW QUARTER of a night's findable value, in catalog gold, as a function
+#: of how many platforms landed. Measured over forty generated forests per pad
+#: count and fitted; `tests/test_quota.py` re-measures and fails if the fit has
+#: drifted more than a tenth, which is the only way this stays honest when
+#: somebody edits `loot.SCENE_COUNTS` or `crates.TYPES`.
+#:
+#: THE LOW QUARTER AND NOT THE MEDIAN, deliberately and unchanged from the
+#: original design: half the nights should have comfortable margin and a bad
+#: roll should make a night HARD rather than impossible.
+#:
+#: IT HAS A CONSTANT TERM because the two LANDMARKS are one per map whatever
+#: the map's size — a one-pad forest still gets a shrine or a den, and that is
+#: a big share of a small night's value.
+SUPPLY_BASE = 235.0
+SUPPLY_PER_PAD = 262.0
+
+#: What share of that low quarter night one asks for. A third: enough that the
+#: quota is roughly one full backpack and the party has to actually look for
+#: it, nowhere near enough that a first night is a sweep of the whole map.
+NIGHT_SHARE_BASE = 0.30
+#: What each night adds. Small — the DAY's difficulty is supposed to arrive as
+#: population and as a longer walk, not as a bigger bill.
+NIGHT_SHARE_PER_DAY = 0.025
+#: Where it stops, and this cap is the important half of the whole rewrite.
+#:
+#: The map stops growing at day five. A bill that kept climbing past that point
+#: is a difficulty curve made of the same forest and a bigger number, which
+#: ends in a night nobody can finish. Past the cap the nights get harder the
+#: way they should — more bodies, arriving faster, for longer
+#: (`config.ENEMY_NIGHT_RAMP`) — and the quota holds still.
+NIGHT_SHARE_MAX = 0.55
+
+
+def night_supply(count: int) -> float:
+    """The low quarter of what a forest with `count` pads has lying in it."""
+    return SUPPLY_BASE + SUPPLY_PER_PAD * max(1, count)
+
+
+def night_share(day: int) -> float:
+    """What fraction of that the party is asked to load."""
+    return min(
+        NIGHT_SHARE_MAX,
+        NIGHT_SHARE_BASE + NIGHT_SHARE_PER_DAY * (max(1, day) - 1),
+    )
 
 
 def night_need(day: int, count: int) -> int:
     """Catalog value the party has to load across the whole night.
 
-    Scales with the day AND with how many pads landed, so a cramped map that
-    only fitted one still asks less than a night that found room for three.
+    A share of what is actually out there — see the banner above. Rounded to
+    the nearest five, because a quota is a number a player reads off a console
+    in the dark and `413` reads as noise where `415` reads as a price.
     """
-    return NEED_PER_DAY * max(1, day) + NEED_PER_EXTRA_PAD * max(0, count - 1)
+    raw = night_supply(count) * night_share(day)
+    return max(1, int(round(raw / 5.0)) * 5)
 
 
 def pad_need(day: int, count: int) -> int:

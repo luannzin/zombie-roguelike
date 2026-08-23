@@ -1834,6 +1834,26 @@ export interface SnapshotMessage {
    * `welcome` that follows is what clears it.
    */
   wipe?: WipeRow;
+  /**
+   * A WAVE IS COMING, and from over there. One row per horde announced this
+   * tick; the bodies arrive as ordinary `enemies` a few seconds later and need
+   * no wire of their own.
+   *
+   * An EVENT and never replayed. A client that missed it gets the horde
+   * without the warning — bad, but strictly better than a phantom howl for a
+   * wave that already landed on somebody.
+   */
+  hordes?: HordeEvent[];
+}
+
+/**
+ * One horde announced. `x`/`y` is where the howl comes FROM, which is the same
+ * bearing the bodies will walk in on — the sound IS the warning, and it is
+ * spatial so it works with the player facing the other way.
+ */
+export interface HordeEvent {
+  x: number;
+  y: number;
 }
 
 /** The run that just ended. `day` is the night it ended ON, captured when the

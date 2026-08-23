@@ -152,6 +152,14 @@
       "bus": "sfx",
       "gain": 0.375
     },
+    "horde": {
+      "files": [
+        "horde-0.wav",
+        "horde-1.wav"
+      ],
+      "bus": "sfx",
+      "gain": 0.2883
+    },
     "wolf-idle": {
       "files": [
         "wolf-idle-0.wav",

@@ -1797,6 +1797,81 @@ def sfx_wolf_alert(rng: random.Random, variant: int) -> tuple[Buf, int]:
     return normalize(softclip(mul(body, shape), 1.25), 0.9), rate
 
 
+def sfx_horde(rng: random.Random, variant: int) -> tuple[Buf, int]:
+    """A WAVE IS COMING, and it is announcing itself. The one CROWD in the mix.
+
+    Every other creature sound in this game is one throat. This is the sound of
+    a lot of them at once, and it is built as one on purpose: FIVE copies of
+    the growl instrument at detuned pitches, each with its own delay of up to a
+    third of a second, so nothing lines up and the ear reads a NUMBER rather
+    than a voice. That is the whole information content of the cue — not "a
+    zombie", which the player hears all night, but "several, together, over
+    there".
+
+    IT RISES, AND THAT IS WHAT MAKES IT A WARNING. The howl swells in with no
+    attack because it is a message from far away; this one starts low and
+    climbs for a second and a half, because it is a thing GETTING CLOSER and
+    the player has to feel a direction in time rather than only in space. A
+    flat drone would say "something is happening"; a rising one says "you have
+    a few seconds".
+
+    SUB IS HIGH AND ROUGHNESS IS HIGH. The howl is the only clean voice in the
+    mix and this is deliberately its opposite — all tear and all bottom, so the
+    two cues can never be mistaken for each other. A player who hears one
+    should never have to work out which it was: the clean note is the pack
+    reporting you, and this mess is the woods emptying toward you.
+    """
+    rate = SFX_RATE
+    length = 2.1 + rng.random() * 0.35
+    n = dur(length, rate)
+    out = silence(n)
+    # FIVE THROATS. Fewer than four and it is a duet; more than six and the
+    # detuning fills in into a drone with no bodies in it.
+    for voice in range(5):
+        f0 = 86.0 + voice * 13.0 + rng.random() * 16.0
+        # Each one starts somewhere in the first third. The offsets are what
+        # stop this being one loud zombie.
+        skew = rng.random() * 0.34
+
+        def contour(t: float, f0=f0, skew=skew) -> float:
+            # Climbs most of a fifth over the clip. The individual voices climb
+            # at slightly different rates, so the crowd spreads apart as it
+            # comes rather than moving as a block.
+            local = max(0.0, t - skew) / max(1e-3, 1.0 - skew)
+            return f0 * (1.0 + 0.42 * local ** 1.25)
+
+        body = _throat(
+            n,
+            rate,
+            rng,
+            contour,
+            breath=0.3,
+            # Low and closed. No second formant worth the name — this should
+            # not resolve into anything with a mouth shape.
+            formants=((190.0, 2.2, 1.0), (760.0, 1.9, 0.5), (1500.0, 1.7, 0.2)),
+            width=0.3,
+            rough=0.34,
+            sub=0.42,
+        )
+        shape = env_from(
+            n,
+            [(0.0, 0.0), (skew, 0.0), (min(0.99, skew + 0.3), 0.7),
+             (0.82, 1.0), (1.0, 0.0)],
+        )
+        out = mix(out, gain(mul(body, shape), 0.5 + rng.random() * 0.3))
+    # One low swell under all of it, so the cue has a floor and does not read
+    # as five separate animals in five separate places.
+    bed = _throat(
+        n, rate, rng,
+        lambda t: 52.0 * (1.0 + 0.3 * t),
+        breath=0.4,
+        formants=((120.0, 1.8, 1.0), (420.0, 1.6, 0.4)),
+        width=0.4, rough=0.2, sub=0.6,
+    )
+    out = mix(out, mul(bed, env_from(n, [(0.0, 0.0), (0.5, 0.6), (0.85, 0.9), (1.0, 0.0)])))
+    return normalize(softclip(out, 1.6), 0.95), rate
+
+
 def sfx_wolf_death(rng: random.Random, variant: int) -> tuple[Buf, int]:
     """A YELP, and then nothing. Short where the zombie's death is long.
 
@@ -2394,6 +2469,13 @@ CATALOG: dict[str, tuple[object, int, float, str, bool]] = {
     # level. `wolf-idle` and `wolf-death` sit exactly where their equivalents
     # do, because they are the same event happening to a different animal and
     # a creature that was quieter than a zombie would read as further away.
+    # THE HORDE'S WARNING, and it is the loudest cue in the game after the
+    # boss. It has to be: it is the only thing standing between a permanent
+    # run and a wave that arrives with no story attached to it, and a warning
+    # the player can miss is not a warning. Two variants rather than three —
+    # this fires a handful of times a night, and what matters is that it is
+    # instantly recognisable, which repetition helps rather than hurts.
+    "horde": (sfx_horde, 2, -2.0, "sfx", False),
     "wolf-idle": (sfx_wolf_idle, 3, -9.0, "sfx", False),
     "wolf-death": (sfx_wolf_death, 3, -5.0, "sfx", False),
     # THE HOWL IS FOUR DECIBELS OVER THE SNARL, and it is the loudest creature

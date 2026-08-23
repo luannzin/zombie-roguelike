@@ -450,6 +450,96 @@ ENEMY_FIRST_SPAWN_DELAY = 4.0
 #: and a crowd is now genuinely dangerous (see `MELEE_IMMUNITY`), so the same
 #: number of zombies is a harder night than it was.
 ENEMY_DAY_POPULATION = 0.33
+
+# --- the night itself gets worse --------------------------------------------
+# THE HOLE THIS FILLS HAS BEEN OPEN SINCE THE NIGHT CLOCK CAME OUT, and the
+# design law said it was already closed.
+#
+# `docs/design/extraction.md` § No clock argues — correctly — that a visible
+# countdown made every decision a scheduling decision, and then says the cost
+# of staying out is now the crowd's job: "the forest keeps filling up, so the
+# longer a party works a map the more of it is standing behind them."
+#
+# THE CODE NEVER DID THAT. `EnemyDirector.cap()` was a function of the DAY and
+# the party size and nothing else, so the population was a flat ceiling reached
+# in the first thirty seconds and held there until dawn. Killing freed room for
+# a replacement; the count never climbed. Waiting still cost nothing, and the
+# doc was what stopped anybody noticing.
+#
+# So the ceiling walks with the time the party has spent on this map. It is
+# INVISIBLE on purpose — no meter, no countdown, no announcement. The player
+# reads it by looking around and finding more shapes out there than there were
+# a few minutes ago, which is the version the no-clock decision asked for: a
+# deadline you feel rather than one you schedule against.
+
+#: What each minute in the forest adds to the population ceiling, as a fraction
+#: of the night's own base. A quarter per minute is roughly a doubling by the
+#: four-minute mark, which is about as long as a thorough party takes to work
+#: one pad — so the second pad is meaningfully busier than the first and the
+#: third is genuinely dangerous.
+ENEMY_NIGHT_RAMP = 0.25
+#: Where it stops. Without a ceiling a party that never leaves eventually meets
+#: `ENEMY_MAX_TOTAL` bodies and the tick becomes a slideshow — and worse, the
+#: pressure would stop being a reason to leave and become a wall that decides
+#: for them. 2.2x is a forest that has clearly turned against you and can still
+#: be walked out of by somebody who commits.
+ENEMY_NIGHT_RAMP_MAX = 2.2
+#: The ramp does not start on the arrival frame. A party emerging from the
+#: corridor should get the night they were promised before it starts taking it
+#: away — and the first pad is a clearing from the mouth, so this is roughly
+#: "you have found and loaded the first platform, now it gets harder".
+ENEMY_NIGHT_GRACE = 45.0
+#: THE HARD CEILING, and it is not negotiable by any of the curves above.
+#:
+#: The day scale and the night ramp MULTIPLY, which is correct — "which night
+#: is this" and "how long have you been out" are different questions and a
+#: party on night ten who has been working the map for five minutes should meet
+#: both. But two multiplied curves grow like two multiplied curves: night ten
+#: at five minutes came out at 49 bodies chasing ONE player, which is a
+#: slideshow, and at eight zombies-in-contact killing in 1.7 seconds it is also
+#: not a fight anybody can answer.
+#:
+#: So this is the number the tick can actually afford and a party can actually
+#: be asked to survive, and every curve above resolves under it. It is a
+#: BUDGET, not a difficulty knob — turning it up does not make the game harder,
+#: it makes the frame rate worse and the deaths less fair.
+ENEMY_HARD_CAP = 44
+
+# --- the horde --------------------------------------------------------------
+# THE RAMP IS A SLOPE AND A SLOPE HAS NO MOMENTS IN IT. Population climbing
+# steadily is the right pressure and it is completely unreadable in the second
+# it changes — nobody notices a ceiling move. So the slope has EVENTS on it:
+# every so often the forest sends a wave, from one direction, announced.
+#
+# IT IS ANNOUNCED BECAUSE THE RUN IS PERMANENT NOW. A horde that materialises
+# behind a player at twenty hit points ends a run with no story attached to it,
+# and "I got jumped" is not a lesson. The howl goes up first, the pack comes
+# from a bearing, and the party gets long enough to decide whether to answer it
+# or leave. That decision is the entire point of the mechanic — the wave itself
+# is just what makes the decision cost something.
+#: Seconds between horde rolls, once the grace is over. Not the horde's period:
+#: each roll is a CHANCE, so the gaps between waves are uneven and a party
+#: cannot set their watch by it.
+HORDE_INTERVAL = 62.0
+#: Chance one lands per roll, and it climbs with how long the party has been
+#: out — same argument as the ramp, sharper. The first roll is a coin flip and
+#: by the fourth it is near certain.
+HORDE_CHANCE = 0.45
+HORDE_CHANCE_PER_ROLL = 0.18
+#: How many arrive, before the day's tilt. They come as ONE GROUP from ONE
+#: bearing, which is what makes a horde answerable: a wave you can turn to face
+#: is a fight, and the same bodies arriving evenly from all sides is a death.
+HORDE_SIZE = 7
+#: What each night adds to that.
+HORDE_SIZE_PER_DAY = 0.9
+#: How far out they land, in tiles. Beyond the lantern and well beyond a
+#: shout — they have to arrive as a sound and a bearing first.
+HORDE_SPAWN_TILES = 17.0
+#: The arc they land in, in degrees. Tight enough to read as a direction.
+HORDE_ARC_DEGREES = 55.0
+#: Seconds between the warning and the bodies. Long enough to pick a direction
+#: and start moving, short enough that it is not a free reposition.
+HORDE_TELEGRAPH = 3.4
 #: And they arrive FASTER. The cap says how many the forest holds; this says
 #: how quickly it refills after a fight, which is what decides whether a party
 #: can clear a pocket and then work in peace. By night five a wave lands every

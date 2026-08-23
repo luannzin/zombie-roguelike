@@ -95,6 +95,9 @@ from .config import (
     RESPAWN_DELAY,
     RESPAWN_IMMUNITY,
     WIPE_HOLD,
+    HORDE_TELEGRAPH,
+    SHOT_NOISE_DIST,
+    ENEMY_HARD_CAP,
     ROSTER_EVERY_N_TICKS,
     SNAPSHOT_EVERY_N_TICKS,
     SPAWN_RING,
@@ -328,6 +331,16 @@ class Room:
         #: reaches zero on the tick before the reset runs, and a check that
         #: read it would fire the wipe a second time on that frame.
         self._wipe_day = 0
+        #: A wave that has been ROLLED and announced but not yet arrived, as
+        #: `(x, y, bearing, size)`, plus the seconds left before it does. Held
+        #: on the room rather than in the director because the gap between the
+        #: howl and the bodies is a beat of the ROOM's night — see `_step_horde`.
+        self._horde: tuple[float, float, float, int] | None = None
+        self._horde_left = 0.0
+        #: Waves announced this tick. One row is a howl at a bearing; the
+        #: client plays it spatially and puts a card up. Cleared every
+        #: broadcast like every other event list.
+        self.horde_events: list[dict] = []
         self._load_drops()
         self._load_crates()
         self._load_rifts()
@@ -2123,6 +2136,9 @@ class Room:
         self.crate_break_events = []
         self.pour_events = []
         self.spin_events = []
+        self.horde_events = []
+        self._horde = None
+        self._horde_left = 0.0
         self.boss = None
         self.boss_events = []
         self._boss_dirty = False
@@ -2767,6 +2783,78 @@ class Room:
             return
         for enemy_type, x, y in self.director.update(dt, self.players.values(), len(self.enemies)):
             self.spawn_enemy(enemy_type, x, y)
+        self._step_horde(dt)
+
+    # --- the horde ----------------------------------------------------------
+    def _step_horde(self, dt: float) -> None:
+        """Roll for a wave, warn about it, then send it.
+
+        THE POPULATION RAMP IS A SLOPE AND A SLOPE HAS NO MOMENTS IN IT.
+        `EnemyDirector.night_scale` is the right pressure and it is completely
+        unreadable in the second it changes — nobody notices a ceiling move. So
+        the slope has EVENTS on it: every so often the forest sends a wave from
+        one bearing, and the party has to decide whether to answer it or leave.
+
+        THE WARNING IS NOT A COURTESY, IT IS THE MECHANIC. A horde that
+        materialises behind somebody at twenty hit points ends a permanent run
+        with no story attached to it, and "I got jumped" is not a lesson. The
+        howl goes up first, from the direction they are coming from, and the
+        gap between it and the bodies is the only part of this the player
+        actually plays.
+
+        THREE CHANNELS, because the one that works depends on where they are
+        looking: a spatial HOWL at the bearing (which works with your back
+        turned), a map-wide NOISE the pack itself reacts to, and a card. The
+        noise is not decoration — it means the wave wakes what is already out
+        there on its way in, so a horde arriving through a quiet pocket brings
+        that pocket with it.
+        """
+        if self.blackout or self.sirening:
+            # NOT DURING EXTRACTION. `hunt_all` already has every creature on
+            # the map walking at the party; a wave on top of that is not more
+            # pressure, it is the same pressure with the telegraph removed —
+            # and the run home is already the hardest beat of the night.
+            return
+        if self._horde_left > 0.0:
+            self._horde_left = max(0.0, self._horde_left - dt)
+            if self._horde_left > 0.0 or self._horde is None:
+                return
+            x, y, bearing, size = self._horde
+            self._horde = None
+            # AGAINST THE BUDGET, NOT THE STANDING CEILING, and the
+            # difference is the whole mechanic. `director.cap` is how full the
+            # forest is KEPT — an ambient number the trickle refills toward. A
+            # horde is a deliberate spike ON TOP of that, so measuring it
+            # against the same ceiling would mean the wave only ever arrives
+            # when the map happens to be quiet, which is exactly backwards:
+            # the moment a horde is worth having is when things are already
+            # busy. `ENEMY_HARD_CAP` is what it may not exceed, because that
+            # one is a tick budget rather than a difficulty knob.
+            room = ENEMY_HARD_CAP - len(self.enemies)
+            if room <= 0:
+                return
+            places = self.director.horde_places(x, y, bearing, min(size, room))
+            for enemy_type, px, py in places:
+                self.spawn_enemy(enemy_type, px, py)
+            return
+
+        rolled = self.director.roll_horde(dt, self.players.values())
+        if rolled is None:
+            return
+        self._horde = rolled
+        self._horde_left = HORDE_TELEGRAPH
+        x, y, _bearing, _size = rolled
+        # The howl comes from WHERE THEY ARE, so the sound itself is the
+        # bearing. `voice` resolves the audio by prefix on the client; this is
+        # the same channel the wolf pack's call already uses.
+        self.horde_events.append({"x": round(x, 1), "y": round(y, 1)})
+        # And it wakes the woods on the way in.
+        # SOURCE-LESS ON PURPOSE. `ai.hear` turns a creature to FACE a noise
+        # and raises its awareness, but only COMMITS it to a hunt when the
+        # noise came from a player it can be pointed at. A howl out of the
+        # treeline should stir the woods and swing every head toward it — it
+        # should not tell forty creatures where the party is standing.
+        self.noises.append(ai.Noise(x=x, y=y, radius=SHOT_NOISE_DIST * 1.6))
 
     def step_coins(self, dt: float) -> None:
         outcome = coins.step(self.coins, self.players.values(), dt)
@@ -3882,6 +3970,7 @@ class Room:
                 boss=boss_row,
                 boss_events=self.boss_events or None,
                 wipe=wipe_row,
+                hordes=self.horde_events or None,
             )
         )
 
@@ -3924,6 +4013,7 @@ class Room:
                 self.crate_break_events = []
                 self.armor_events = []
                 self.buy_events = []
+                self.horde_events = []
                 self.spin_events = []
                 self.boss_events = []
             delay = next_time - time.perf_counter()

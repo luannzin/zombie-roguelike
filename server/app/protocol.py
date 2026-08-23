@@ -377,6 +377,7 @@ def snapshot(
     boss: dict | None = None,
     boss_events: list[dict] | None = None,
     wipe: dict | None = None,
+    hordes: list[dict] | None = None,
 ) -> dict:
     payload = {
         "type": MSG_SNAPSHOT,
@@ -470,4 +471,12 @@ def snapshot(
     # that follows is what clears it.
     if wipe is not None:
         payload["wipe"] = wipe
+    # A WAVE IS COMING, and from over there. One row per horde announced this
+    # tick, carrying only where the howl is — the bodies arrive as ordinary
+    # enemies a few seconds later and need no special wire of their own. It is
+    # an EVENT and never replayed: a client that missed it gets the horde
+    # without the warning, which is worse than useless but is at least not a
+    # phantom howl from a wave that already landed.
+    if hordes:
+        payload["hordes"] = hordes
     return payload

@@ -40,18 +40,28 @@ ceremony.
     `Player.stagger`, a clock on the tick row, mirrored in `simulation.ts`.
     Staggered walking (2.73 tiles/s) barely beats a zombie's 2.6; staggered
     sprinting still escapes. Stamina is now what decides whether you get out.
-  - **THE NIGHT HAS A CLOCK**
-    ([`docs/design/extraction.md`](docs/design/extraction.md) § The clock).
-    Rolled per night (~3:10–4:20 on night one, +40s a night), announced,
-    counted down top-centre on the HUD, and it closes extraction through the
-    same door the last spent pad uses. It is PRESSURE, not a fail state: the
-    party keeps what they fed in and loses what was still in the bag.
   - **THE FOREST SCALES WITH THE DAY** (same doc as the crowd, § The night gets
     bigger). Population, refill rate and wave size all walk with `day`.
     Deliberately NOT health or damage.
   - **THE SHELF AND THE CURVE** — the shop draws distinct-first so six tables
     show six things (it was routinely showing two), and `XP_BASE` went 40 ->
-    110 with extraction now paying xp per point of value delivered.
+    110 (growth 1.4 -> 1.28) so the first level is a night's fighting rather
+    than the first minute's.
+  - **TWO PIECES OF THAT PASS WERE BUILT AND THEN REVERTED**, both on the
+    user's call after reading them, and both reversals are written up as design
+    law rather than deleted quietly:
+    - **A NIGHT CLOCK** — rolled countdown, HUD timer, closed extraction at
+      zero. Out because it made every decision a scheduling decision: the
+      player reads the corner of the screen instead of the forest, and the
+      pressure it creates is administrative rather than frightening. The hole
+      it aimed at (waiting costs nothing) is now the population curve's job.
+      See [`docs/design/extraction.md`](docs/design/extraction.md) § No clock.
+    - **XP FOR EXTRACTION** — paid per point of value poured into a pad. Out
+      because it made the level bar a second quota meter: one act was already
+      paying money, a quest row and the night's objective, and the number over
+      a dying body stopped being the only reason to fight. Killing is the sole
+      source of xp. See [`docs/design/skills.md`](docs/design/skills.md)
+      § What a level costs.
 
 - **GEAR LANDED BEFORE IT: LÂMINAS, WORN ARMOUR AND THE SHIELD.** Three systems in
   one pass, all documented in the new [`docs/design/gear.md`](docs/design/gear.md).

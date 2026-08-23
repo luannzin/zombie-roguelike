@@ -91,7 +91,6 @@ import type {
   BossEvent,
   BossRow,
   AttackEvent,
-  NightEvent,
   BuyEvent,
   EnemyTypeConfig,
   GameConfig,
@@ -168,7 +167,6 @@ import {
   type HudHotbar,
   type HudInventory,
   type HudMachinePrompt,
-  type HudNight,
   type HudSkill,
   type HudBoss,
   type HudSnapshot,
@@ -302,10 +300,6 @@ const POUR_MOUTH_UP = 15;
 const PLATFORM_TILES_W = 5;
 const PLATFORM_TILES_H = 4;
 /** Camera punch when an enemy drops. */
-/** The night's two thresholds landing. The second is the louder by design. */
-const NIGHT_WARN_TRAUMA = 0.14;
-const NIGHT_PANIC_TRAUMA = 0.3;
-
 const DEATH_TRAUMA = 0.32;
 /** The woods swallowing the way in — one beat per rank of trees. */
 const SEAL_TRAUMA = 0.18;
@@ -638,24 +632,6 @@ export class Game {
    * and the heart, so a swarm is legible a second before it is lethal.
    */
   private pressure = 0;
-  /**
-   * The night's clock, or null on a map that has no deadline.
-   *
-   * COUNTED DOWN LOCALLY AND RESYNCED AT 5 HZ. The server sends it on the
-   * roster's cadence rather than every tick, because a number that moves by a
-   * thirtieth of a second is not worth thirty packets a second — so the client
-   * runs its own seconds and snaps to the authoritative one whenever it
-   * arrives. Drift between two resyncs is at most a fifth of a second, which
-   * is invisible on a figure that reads in whole seconds.
-   */
-  private night: { left: number; total: number } | null = null;
-  /**
-   * Which threshold has already been announced tonight. The beats arrive as
-   * events and the card is keyed off them, but the CLOCK's own colour is
-   * derived per frame — this is only what stops a reconnect at 0:40 replaying
-   * the warning that already happened.
-   */
-  private nightBeat = 0;
   /**
    * What the next BOUGHT pull costs at the cabinet — see
    * `SnapshotMessage.spinPrice`. Party-wide like the balance it comes out of,
@@ -1173,13 +1149,6 @@ export class Game {
       msg.map.entrance?.state === 'open';
     this.balance = msg.balance ?? 0;
     this.spinPrice = msg.spinPrice ?? 0;
-    // A MAP EITHER HAS A CLOCK OR IT DOES NOT, and the welcome is where that
-    // is decided: the shop, the camp and the arena arrive with the field
-    // absent, and the countdown leaves the HUD entirely rather than freezing.
-    this.night = msg.night ? { left: msg.night.left, total: msg.night.total } : null;
-    // Seeded from what arrived rather than from zero, so a reconnect into the
-    // last minute of a night does not replay a warning the party already had.
-    this.nightBeat = this.night ? this.nightPhaseFor(this.night.left).beat : 0;
     // THE NIGHT'S PLATFORMS COME HOME. Started here rather than on a snapshot
     // because it belongs to the ARRIVAL: the skids are already in the air when
     // the corridor opens, so the first thing the party sees in this glade is
@@ -1487,14 +1456,6 @@ export class Game {
       this.balanceShown += delta;
     }
     if (msg.spinPrice !== undefined) this.spinPrice = msg.spinPrice;
-    // THREE STATES. An object resyncs the clock, `false` is the night ending
-    // and takes it off the HUD, and absent means keep counting your own.
-    if (msg.night === false) {
-      this.night = null;
-    } else if (msg.night) {
-      this.night = { left: msg.night.left, total: msg.night.total };
-    }
-    for (const ev of msg.nightEvents ?? []) this.onNightBeat(ev);
     for (const ev of msg.buys ?? []) this.onBuy(ev);
     for (const ev of msg.spins ?? []) this.onSpin(ev);
     if (msg.blackout) this.lantern.kill();
@@ -2001,17 +1962,6 @@ export class Game {
       frameW: tile * PLATFORM_TILES_W,
       frameH: tile * PLATFORM_TILES_H,
     });
-
-    // AND THE CARRY PAYS, which it never used to. Kills were the only source
-    // of xp in the game, so the fastest way to level was to ignore the pad —
-    // the exact behaviour the night is built to punish. It is drawn on the
-    // BODY rather than on the deck because the deck already has a number
-    // climbing on it (the quota) and these are two different currencies
-    // answering two different questions; putting them in one place would read
-    // as one number counted twice.
-    if (ev.by === this.localId && ev.xp > 0) {
-      this.effects.spawnReward(ev.x, ev.y - POUR_MOUTH_UP, `+${ev.xp} xp`);
-    }
   }
 
   /**
@@ -3330,7 +3280,6 @@ export class Game {
     // standing on you is the loudest fact about this frame now that a crowd
     // can kill — see `stepPressure`.
     this.stepPressure(dt);
-    this.stepNight(dt);
     // Last thing before the draw: the grade has to see everything the frame
     // already decided, including the ceremonies stepped just above.
     this.stepGrade(dt);
@@ -3845,84 +3794,6 @@ export class Game {
   }
 
   /** 0..1 screen danger from local HP. Dead = no vignette (respawn clean). */
-  // --- the night's clock -----------------------------------------------------
-  /**
-   * Which of the three readings a given remainder is, and its rung.
-   *
-   * ONE PLACE, because four things react to the night — the figure's colour,
-   * the meter, the card and the mix — and four independent comparisons against
-   * two config numbers is four places for them to disagree by a frame. The
-   * rung is what `nightBeat` latches on; the word is what the HUD draws.
-   */
-  private nightPhaseFor(left: number): { phase: 'calm' | 'warn' | 'panic'; beat: number } {
-    const config = this.config;
-    if (!config) return { phase: 'calm', beat: 0 };
-    if (left <= config.nightPanicSeconds) return { phase: 'panic', beat: 2 };
-    if (left <= config.nightWarnSeconds) return { phase: 'warn', beat: 1 };
-    return { phase: 'calm', beat: 0 };
-  }
-
-  /**
-   * Run the local countdown. Resynced by the snapshot; this is the in-between.
-   *
-   * IT KEEPS COUNTING WHILE THE HUD IS NOT LOOKING, and that is the only
-   * reason it is a field rather than something derived off the last packet:
-   * the HUD republishes at 5 Hz and the clock has to be right on the frame it
-   * does, not on the frame the packet landed.
-   */
-  /** The clock as the HUD wants it: the figure, the meter, and how to read it. */
-  private hudNight(): HudNight | null {
-    const night = this.night;
-    // NOT WHILE THE ARRIVAL IS STILL HOLDING THE PLAYER. The whole HUD is off
-    // the glass for that beat (`introducing`), and a countdown that appeared
-    // over the establishing shot would be the one element that ignored it —
-    // and would be counting seconds the player cannot act in anyway.
-    if (!night || this.locked || this.introLeft > 0) return null;
-    return {
-      left: night.left,
-      total: night.total,
-      phase: this.nightPhaseFor(night.left).phase,
-    };
-  }
-
-  private stepNight(dt: number): void {
-    const night = this.night;
-    if (!night) return;
-    night.left = Math.max(0, night.left - dt);
-  }
-
-  /**
-   * The clock crossed a threshold. Say so once, on every channel at once.
-   *
-   * THE CARD NAMES THE CONSEQUENCE, NOT THE TIME. "1:00" is already on the
-   * HUD and a card that repeated it would be the game reading its own
-   * interface out loud; what the player does not know standing in a forest at
-   * 0:58 is what happens when it reaches zero — the pads go, and whatever is
-   * still in the bag was carried for nothing. Announcing the STAKE is what
-   * turns a number into a decision.
-   */
-  private onNightBeat(ev: NightEvent): void {
-    if (ev.beat <= this.nightBeat) return;
-    this.nightBeat = ev.beat;
-    const panic = ev.beat >= 2;
-    // The camera takes it, harder on the second: the world reacting is what
-    // separates a deadline from a caption.
-    this.camera.addTrauma(panic ? NIGHT_PANIC_TRAUMA : NIGHT_WARN_TRAUMA);
-    playSfx(panic ? 'siren' : 'dread', { gain: panic ? 1 : 0.8 });
-    this.patchHud({
-      announce: {
-        // Keyed on the DAY and the rung together — `Announce` replays whenever
-        // its key changes, so a key naming only the rung would refuse to fire
-        // on the second night.
-        key: `night-${this.zone?.day ?? 0}-${ev.beat}`,
-        title: panic ? 'As Fendas Estão Fechando' : 'A Noite Está Acabando',
-        subtitle: panic
-          ? 'o que não foi entregue se perde'
-          : 'entregue o que estiver na mochila',
-      },
-    });
-  }
-
   /**
    * How many bodies are inside the ring, smoothed, as 0..1.
    *
@@ -4044,7 +3915,6 @@ export class Game {
       cinematic: this.locked,
       boss: this.hudBoss(),
       quests: this.quests,
-      night: this.hudNight(),
       ready: this.readyCount(),
       prompt: readyPrompt(ix),
       lootPrompt: lootPromptInfo(ix),

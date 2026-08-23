@@ -486,15 +486,6 @@
    * outlives the hold it plays inside and lands under the HUD. The slash is
    * shorter and delayed so it lives inside the title's hold, not on its own clock.
    */
-  /*
-   * THE NIGHT'S LAST STRETCH. A pulse rather than a flash, and slow enough
-   * (0.9s) to read as a heartbeat rather than as an alarm — the clock is
-   * counting down to something, and something counting is calmer and worse
-   * than something blinking. Only the panic phase wears it; the warning
-   * phase changes colour and nothing else, so the two readings are
-   * distinguishable from the corner of an eye.
-   */
-  --animate-night-panic: night-panic 0.9s ease-in-out infinite;
   --animate-zone-rule: zone-rule 3s cubic-bezier(0.22, 1, 0.36, 1) 1 forwards;
   --animate-zone-title: zone-title 3s cubic-bezier(0.22, 1, 0.36, 1) 1 forwards;
   --animate-zone-subtitle: zone-subtitle 3s cubic-bezier(0.22, 1, 0.36, 1) 1 forwards;
@@ -748,15 +739,6 @@
     }
   100% {
     opacity: 0;
-    }
-  }
-  @keyframes night-panic {
-  0%,
-  100% {
-    opacity: 1;
-    }
-  50% {
-    opacity: 0.45;
     }
   }
   @keyframes zone-rule {

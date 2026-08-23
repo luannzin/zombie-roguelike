@@ -44,7 +44,6 @@ import { BuyPrompt } from './BuyPrompt';
 import { MachinePrompt } from './MachinePrompt';
 import { SkillTray } from './SkillTray';
 import { QuestLog } from './QuestLog';
-import { NightClock } from './NightClock';
 import { InteractPrompt } from './InteractPrompt';
 import { Inventory } from './Inventory';
 import { LootFly } from './LootFly';
@@ -124,13 +123,6 @@ export function Hud({ snapshot, minimapRef, error }: HudProps) {
         >
           <StatusLine status={snapshot.status} connection={snapshot.connection} error={error} />
           <NetStats net={snapshot.net} />
-        </div>
-
-        {/* TOP CENTRE, and inside `chrome` like every other corner: a
-            countdown over a cinematic would be the one element still making
-            demands while the game has taken the controls away. */}
-        <div className={chrome}>
-          <NightClock night={snapshot.night} />
         </div>
 
         <div className="hud-layer pixel-text top-2.5 right-3 flex flex-col items-end gap-2">

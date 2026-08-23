@@ -620,47 +620,6 @@ ENEMY_ALERT_SHARE_DIST = TILE_SIZE * ENEMY_ALERT_SHARE_TILES
 ENEMY_GLARE_DIST = VISION_LANTERN_DIST * ENEMY_GLARE_REACH
 SHOT_NOISE_DIST = TILE_SIZE * SHOT_NOISE_TILES
 
-# --- the night's clock -------------------------------------------------------
-# A NIGHT NOW ENDS WHETHER OR NOT THE PARTY IS FINISHED, and before this there
-# was no clock in the game at all.
-#
-# The blackout — lanterns dead, exit carved, the whole map hunting — only ever
-# fired when the party spent the LAST pad (`Room._close_extraction`). Nothing
-# else ended a night, which meant thoroughness was free: the optimal play was
-# always to clear the entire forest slowly, because waiting cost nothing and
-# every crate was pure profit. A survival game in which patience is strictly
-# dominant is a game with no tension in it, however dangerous the monsters are.
-#
-# IT IS PRESSURE, NOT A FAIL STATE, and the distinction is the whole design.
-# When the clock runs out the pads collapse and the exit opens: the party keeps
-# every point they already fed in and loses everything they were still carrying
-# toward it. So the cost of running late is going home POOR — no gun this shop,
-# maybe no spin — which is a real loss the party feels for a whole night
-# without ever being a run they have to restart. The decision the clock creates
-# is the one the game was missing: one more crate, or start walking.
-#
-#: The first night's length before jitter. Roughly four minutes: long enough to
-#: find a pad, fill it and get out at a walk, short enough that a detour is a
-#: decision rather than a formality.
-NIGHT_LENGTH_BASE = 225.0
-#: What each night adds. DELIBERATELY SLOWER THAN THE WORKLOAD GROWS — the
-#: quota sextuples across ten nights and the clock barely doubles, so the
-#: squeeze tightens every night without any single one becoming impossible.
-#: That widening gap is the difficulty curve the game did not have.
-NIGHT_LENGTH_PER_DAY = 40.0
-#: Rolled onto every night, either way. It exists so the answer to "how long
-#: have I got" is a number the party READS rather than one they memorised after
-#: two runs — "3:32" is information, "always 4:00" is a habit. Also why the
-#: HUD clock counts real seconds instead of rounding to the minute.
-NIGHT_LENGTH_JITTER = 35.0
-#: When the marquee stops being furniture: the clock takes its warning colour
-#: and the party gets told once, out loud.
-NIGHT_WARN_SECONDS = 60.0
-#: The last stretch. The clock pulses, the card comes back and the mix goes
-#: with it — see the client's `nightPhase`.
-NIGHT_PANIC_SECONDS = 20.0
-
-
 # --- progression -------------------------------------------------------------
 # Levels are derived from total xp by the server and sent already split into
 # (level, xp into level, xp needed) so the client never re-implements the curve.
@@ -673,33 +632,20 @@ NIGHT_PANIC_SECONDS = 20.0
 # anything. Four spins on night one is the machine's whole ceremony spent on a
 # player who has not yet learned what a skill is for.
 #
-# And kills were the ONLY source. Extraction paid nothing, quests paid nothing,
-# crates paid nothing — so the curve rewarded the one activity that was already
-# trivial and was blind to the thing a night is actually about. A level should
-# be what surviving a night buys, not what four zombies do.
+# KILLING IS THE ONLY SOURCE AND THAT IS THE DECISION, not an omission. A pass
+# that paid xp per point of loot extracted was tried and taken back out: it made
+# the level bar a second quota meter, so the pad was already paying money AND
+# progression AND a quest row for the same act, and the number over a body
+# stopped being the only reason to fight anything. Fixing the pace belongs in
+# the price of a level, which is the line below, and not in a second source.
 #
-# 110 is a night's work at the opening: roughly nine zombies, or five plus a
-# pad's worth of `XP_PER_EXTRACTION_VALUE`. The growth is GENTLER than it was
-# (1.4 -> 1.28) because the base carries the weight now — 1.4 off a bigger base
-# put level ten out of reach of a ten-night run, which is the opposite mistake.
+# 110 is a night's work at the opening — roughly nine zombies against the old
+# 3.3. The growth is GENTLER than it was (1.4 -> 1.28) because the base carries
+# the weight now: 1.4 off a bigger base put level ten out of reach of a
+# ten-night run, which is the opposite mistake and just as bad.
 XP_BASE = 110                # xp required for level 2
 XP_GROWTH = 1.28             # each level costs this much more than the last
 MAX_LEVEL = 30
-
-#: Xp per point of catalog value fed into a platform, split among nobody — the
-#: player who loaded it gets it.
-#:
-#: EXTRACTION HAS TO PAY XP OR THE CURVE IS LYING ABOUT WHAT THE GAME IS. Every
-#: other system in this run points at the pad: the quota, the money, the quests,
-#: the whole third act of a night. Having it pay zero progression meant the
-#: optimal way to level was to ignore the platform and farm the woods, which is
-#: the exact behaviour the night is designed to punish.
-#:
-#: A night-one quota is 40 value, so clearing it is 100 xp — a level's worth on
-#: its own, and roughly what nine zombies pay. That parity is the point: killing
-#: and extracting should be worth about the same, so the choice between them is
-#: about risk rather than about rate.
-XP_PER_EXTRACTION_VALUE = 2.5
 
 # --- dark gold (authored in tiles) ------------------------------------------
 # The purple coin, and the PLAYER's own currency — see `coins.py`. A creature's
@@ -1188,11 +1134,4 @@ def client_config() -> dict:
         # for drawing only, because nothing client-side ever starts a stagger.
         "hitStaggerScale": HIT_STAGGER_SCALE,
         "hitStaggerTime": HIT_STAGGER_TIME,
-        # The night's clock. The ROLLED length rides the wire per night; these
-        # are the shape of the roll, so the HUD knows what long looks like.
-        "nightLengthBase": NIGHT_LENGTH_BASE,
-        "nightLengthPerDay": NIGHT_LENGTH_PER_DAY,
-        "nightLengthJitter": NIGHT_LENGTH_JITTER,
-        "nightWarnSeconds": NIGHT_WARN_SECONDS,
-        "nightPanicSeconds": NIGHT_PANIC_SECONDS,
     }

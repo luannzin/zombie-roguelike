@@ -115,9 +115,12 @@ to the design docs indexed below.
   `apply_input` / `applyInput`, not on a room clock — reconciliation replays
   unacked inputs through that function, and a decay stepped anywhere else
   replays the body at speeds the server never used.
-- **A night can end two ways and there is one implementation of ending one.**
-  `Room.step_night` reaching zero calls `_close_extraction`, the same door the
-  last spent pad uses. Do not add a second closing path.
+- **A night ends exactly one way: the last pad is spent.** There is no clock.
+  A countdown was built and reverted — see
+  [`docs/design/extraction.md`](../../docs/design/extraction.md) § No clock.
+- **`Room.damage_enemy` is the only thing in the game that pays xp.** Extraction
+  paying it was tried and reverted; see
+  [`docs/design/skills.md`](../../docs/design/skills.md) § What a level costs.
 - **A snapshot is one payload for the whole room, serialised once.** Nothing on
   it may differ per recipient: a player's input ack rides on their own row as
   `seq`, not at the top level. Adding a per-socket field puts a `dumps()` per

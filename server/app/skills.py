@@ -41,15 +41,21 @@ RARITIES = ("common", "uncommon", "rare", "epic", "legendary")
 
 #: What a pull is worth. Flatter than the loot table on purpose: a spin is
 #: earned by playing a whole level rather than found on the floor, so a
-#: legendary has to be a thing that actually happens to somebody. It is still
-#: the rarest row by a factor of twenty, which is what keeps the machine worth
-#: watching.
+#: legendary has to be a thing that actually happens to somebody.
+#:
+#: THE TOP OF THE LADDER IS TWICE WHAT IT WAS (2 -> 4), and the argument is
+#: about how long a run is. A vertical slice is ten days and a level is a pull,
+#: so a party sees somewhere near a dozen of these in a whole run: at one in
+#: fifty, most runs ended without anybody ever seeing the machine pay out the
+#: colour it spends four seconds building up to. One in twenty-five is still
+#: the rarest row on the reel by a factor of eleven — it is the thing that
+#: happens ONCE in a good run rather than the thing that never happens.
 PULL_WEIGHTS: dict[str, float] = {
     "common": 44,
     "uncommon": 29,
     "rare": 17,
     "epic": 8,
-    "legendary": 2,
+    "legendary": 4,
 }
 
 
@@ -184,6 +190,139 @@ SKILLS: tuple[SkillDef, ...] = (
         (("haul", 0.25),),
         cap=2,
     ),
+    # --- the second pass ----------------------------------------------------
+    # EIGHTEEN MORE ROWS, APPENDED RATHER THAN FILED UNDER THEIR TIERS.
+    #
+    # Catalog order is the ICON ATLAS's frame order (`FRAME`, and
+    # `tools/make_skills.ICONS` beside it), and generated-asset lists in this
+    # repository are append-only: slotting a new common in next to the old ones
+    # would move every frame index after it, and the first thing anybody would
+    # notice is that half the tray is wearing somebody else's picture. Nothing
+    # reads this tuple in order except the sheet — `roll` goes through
+    # `_BY_RARITY` — so the tiers below are a comment, not a structure.
+    #
+    # WHY MORE AT ALL. Five commons and two legendaries is a machine that
+    # repeats itself inside one run: by the fourth pull a party has seen most
+    # of the tier they are actually rolling in, and a duplicate that is only a
+    # smaller version of the same number is the least interesting thing this
+    # cabinet can do. Nine, eight, eight, six and five is roughly double, which
+    # is the point where a ten-day run stops showing you the same three commons.
+    #
+    # WHAT IS NEW IN THEM IS `armor`. Every row above scales something you DO —
+    # move, hit, carry, earn — and there was nothing to buy that made being hit
+    # cost less, which is the one axis a roguelike about walking into the dark
+    # cannot leave empty. It is a multiplier on damage TAKEN, so it stacks
+    # multiplicatively with `max_hp` rather than duplicating it: more health is
+    # a longer bar, armour is a bar that drains slower.
+
+    # --- common -------------------------------------------------------------
+    SkillDef(
+        "lamparina_limpa", "Lamparina Limpa", "common",
+        "a lanterna dura +8%",
+        (("lamp", 0.08),),
+    ),
+    SkillDef(
+        "punho_calejado", "Punho Calejado", "common",
+        "+6% de dano de faca",
+        (("melee", 0.06),),
+    ),
+    SkillDef(
+        "colete_improvisado", "Colete Improvisado", "common",
+        "-4% de dano sofrido",
+        (("armor", -0.04),),
+    ),
+    SkillDef(
+        "caderneta_do_sucateiro", "Caderneta do Sucateiro", "common",
+        "+6% de xp",
+        (("xp", 0.06),),
+    ),
+    # --- uncommon -----------------------------------------------------------
+    SkillDef(
+        "mira_de_ferro", "Mira de Ferro", "uncommon",
+        "+9% de dano de arma",
+        (("gun", 0.09),),
+    ),
+    SkillDef(
+        "couro_batido", "Couro Batido", "uncommon",
+        "-7% de dano sofrido",
+        (("armor", -0.07),),
+    ),
+    SkillDef(
+        "mao_leve", "Mão Leve", "uncommon",
+        "+18% de ouro escuro",
+        (("luck", 0.18),),
+    ),
+    SkillDef(
+        "ombro_firme", "Ombro Firme", "uncommon",
+        "+12 de vida máxima",
+        (("max_hp", 12.0),),
+    ),
+    # --- rare ---------------------------------------------------------------
+    SkillDef(
+        "pisada_de_gato", "Pisada de Gato", "rare",
+        "+10% de velocidade",
+        (("speed", 0.10),),
+    ),
+    SkillDef(
+        "placa_de_aco", "Placa de Aço", "rare",
+        "-12% de dano sofrido",
+        (("armor", -0.12),),
+        cap=4,
+    ),
+    SkillDef(
+        "mochila_de_lona", "Mochila de Lona", "rare",
+        "+4 kg de carga",
+        (("carry", 4.0),),
+        cap=4,
+    ),
+    SkillDef(
+        "fio_da_navalha", "Fio da Navalha", "rare",
+        "+22% de dano de faca",
+        (("melee", 0.22),),
+    ),
+    # --- epic ---------------------------------------------------------------
+    SkillDef(
+        # NAMED FOR ITS ICON, and that is a legitimate reason. It was "Pulso de
+        # Aço" — a steel wrist — which at sixteen pixels is a grey fist, and
+        # the tray already had a helmet, a pauldron and two plates in the same
+        # grey. A longer barrel is the same +22% and it draws as a barrel with
+        # a flash coming off it, which nobody has to be told about.
+        "cano_longo", "Cano Longo", "epic",
+        "+22% de dano de arma",
+        (("gun", 0.22),),
+        cap=3,
+    ),
+    SkillDef(
+        "casco_de_ferro", "Casco de Ferro", "epic",
+        "-18% de dano sofrido",
+        (("armor", -0.18),),
+        cap=3,
+    ),
+    SkillDef(
+        "passo_de_sombra", "Passo de Sombra", "epic",
+        "+12% de velocidade e a lanterna dura +20%",
+        (("speed", 0.12), ("lamp", 0.20)),
+        cap=3,
+    ),
+    # --- legendary ----------------------------------------------------------
+    SkillDef(
+        "pele_de_pedra", "Pele de Pedra", "legendary",
+        "-25% de dano sofrido e +20 de vida máxima",
+        (("armor", -0.25), ("max_hp", 20.0)),
+        cap=2,
+    ),
+    SkillDef(
+        "maos_do_armeiro", "Mãos do Armeiro", "legendary",
+        "+30% de dano de arma e +25% de dano de faca",
+        (("gun", 0.30), ("melee", 0.25)),
+        cap=2,
+    ),
+    SkillDef(
+        "bolsa_sem_fundo", "Bolsa Sem Fundo", "legendary",
+        "+2 espaços na mochila e +3 kg de carga",
+        (("slots", 2.0), ("carry", 3.0)),
+        cap=2,
+    ),
 )
 
 BY_KEY: dict[str, SkillDef] = {row.key: row for row in SKILLS}
@@ -214,6 +353,10 @@ class Mods:
     luck: float = 1.0
     lamp: float = 1.0
     haul: float = 1.0
+    #: Damage TAKEN, as a multiplier. The only field on this struct that a
+    #: skill pushes DOWN — see the armour note in the catalog — and the only
+    #: one with a floor under it, in `flatten`.
+    armor: float = 1.0
 
     def payload(self) -> dict:
         """What the owning client needs to predict its own body.
@@ -246,6 +389,7 @@ _BASE: dict[str, float] = {
     "luck": 1.0,
     "lamp": 1.0,
     "haul": 1.0,
+    "armor": 1.0,
 }
 
 
@@ -271,6 +415,13 @@ def flatten(stacks: dict[str, int]) -> Mods:
         luck=totals["luck"],
         lamp=totals["lamp"],
         haul=totals["haul"],
+        # THE ONE CLAMPED FIELD. Every other stat here is unbounded because an
+        # unbounded speed or carry is a number that gets silly; an unbounded
+        # armour is a number that ENDS THE GAME — five Placas, three Cascos and
+        # two Peles is -1.54, and a player taking negative damage is a player
+        # being healed by zombies. A third of the hit still lands however lucky
+        # the machine has been.
+        armor=max(0.35, totals["armor"]),
     )
 
 

@@ -7,6 +7,7 @@ Output (assets/processed/store/):
     counter.png   3 frames, 16x22   PROP   — the L he trades over
     shelf.png     3 frames, 26x30   PROP   — his stock on the wall behind him
     crate.png     3 frames, 20x24   PROP   — decoration, and none of it opens
+    ammo.png      5 frames, 20x22   PROP   — the ammunition crates, all OPEN
     lamp.png      2 frames, 16x28   PROP   — oil lamps on stands, the room's light
     table.png     4 frames, 24x20   PROP   — the pedestals goods lie on
     kit.png       5 frames, 22x32   PROP   — his own gear, out in the yard
@@ -775,6 +776,200 @@ def make_crate(w: int, h: int, variant: int, rng: random.Random) -> Image.Image:
     outline(img, OUTLINE)
     return img
 
+
+
+# --- the ammunition crates --------------------------------------------------
+# THEY EXIST TO BE INTERACTIVE, AND THE ART IS THE ONLY THING THAT SAYS SO.
+#
+# It is the decoration crates' rule read backwards, and the two sheets stand in
+# the same room, so they have to disagree LOUDLY. Every frame of `make_crate` is
+# drawn shut and bound — roped, lidded, stacked — because those are the boxes
+# nobody may open. These are the boxes you buy out of, so every frame is drawn
+# OPEN: the lid is off, the top plane is the dark inside of the box rather than
+# a lit surface, and there are rounds standing up out of it breaking the
+# silhouette. A player who has walked past three roped crates reads the
+# difference before any prompt has drawn.
+#
+# FIVE FRAMES AND THEY ARE FIVE CALIBRES, in `weapons.AMMO_TYPES` order. The
+# server ships the frame index (`store.AmmoBox.variant`), so the order is one
+# side's fact — but the frames still have to be five READABLE things at sixteen
+# pixels, and at that size a brass cylinder is a brass cylinder. What separates
+# them is what separates the three mats: HUE, on the stencil painted across the
+# front, plus the shape of what is standing in the box — five short rounds, six
+# stubbier ones in two ranks, four red shells with brass heads, four tall rifle
+# rounds, two long ones for the sniper. The stencil is the accent and it is well
+# under S12's eighth of the sprite.
+#
+# NOTHING HERE IS GRIM. It is a wooden box with ammunition in it, in a shop, in
+# the one warm room in the game.
+
+#: A little wider than a decoration crate, and it is not a style choice: the
+#: MOUTH has to be wide enough to stand four rounds in with a dark column
+#: between each pair, and the mouth is the frame minus the keyline, the shear
+#: and the box's own two walls.
+TILE_AMMO_W = 1.25
+#: Taller than the footprint, same as the crates: the box itself is low (you see
+#: over it) and the rounds standing in it are what fills the rest of the cell.
+#: The spare rows at the bottom are the contact patch and the keyline — see
+#: `_check_margins`, which guards this sheet too.
+TILE_AMMO_H = 1.4
+
+#: THE STENCIL, one hue per calibre, painted on the front board — the one plane
+#: read from across the room.
+#:
+#: THE SAME ARGUMENT THE MATS MAKE: five shades of one dye would be five boxes
+#: of the same thing, and the whole point of the wall is that a player crossing
+#: the shop can see which crate is theirs before they can read anything.
+AMMO_STENCIL: tuple[Ramp, ...] = (
+    material_ramp(38.0, 0.42, 0.10, 0.46, steps=6),   # pistol — tan
+    material_ramp(206.0, 0.34, 0.09, 0.40, steps=6),  # smg — steel blue
+    material_ramp(4.0, 0.46, 0.09, 0.40, steps=6),    # shell — red
+    material_ramp(96.0, 0.34, 0.09, 0.38, steps=6),   # rifle — olive
+    material_ramp(272.0, 0.30, 0.09, 0.40, steps=6),  # awp — violet
+)
+
+#: The red tube of a shotgun shell. Cloth-dull, not lacquer: this is a box of
+#: shells in a trader's shop, not a product shot.
+SHELL_RED: Ramp = material_ramp(2.0, 0.44, 0.08, 0.38, steps=6)
+#: A jacketed tip: warmer and darker than the brass under it. It is the only
+#: ramp this sheet adds to the room's palette, and it earns its place on one
+#: pixel per round — without it every round in every box ends in the same pale
+#: dot and the five frames lose their last difference.
+COPPER: Ramp = material_ramp(18.0, 0.48, 0.10, 0.46, steps=6)
+
+_AMMO_METAL: dict[str, Ramp] = {
+    "brass": BRASS,
+    "steel": IRON,
+    "copper": COPPER,
+    "shell": SHELL_RED,
+}
+
+#: What is standing in each box: `(count, height, width, shaft, head)`.
+#:
+#: THE CALIBRE IS THE COUNT AND THE WIDTH, and that pairing is the whole reason
+#: five brass cylinders are five readable things: a small round is THIN and
+#: there are a lot of them, a big one is FAT and there are two. `head` is the
+#: ramp the top pixel takes — a shell is a red tube on a brass head, a rifle
+#: round is brass with a copper tip — and at this size that one pixel is the
+#: rest of the read.
+#:
+#: EVERY ROUND IS DRAWN WITH A GAP BESIDE IT. Packed shoulder to shoulder (the
+#: first cut) they came out as one loaf of brass sitting in a box: the mouth is
+#: eight pixels wide, so anything that does not leave a column of dark between
+#: two rounds is a solid.
+AMMO_ROUNDS: tuple[tuple[int, int, int, str, str], ...] = (
+    (4, 3, 1, "brass", "brass"),
+    (4, 2, 1, "brass", "steel"),
+    (3, 4, 2, "shell", "brass"),
+    (3, 5, 2, "brass", "copper"),
+    (2, 6, 2, "steel", "copper"),
+)
+
+
+def make_ammobox(w: int, h: int, variant: int) -> Image.Image:
+    """One open crate of rounds. Five, and every one of them is open.
+
+    Built on `_block` like the decoration crates and his kit, so a box of
+    ammunition standing beside a roped crate is the same object drawn by the
+    same camera — and then the lid is off, which is the only difference the
+    player is meant to read.
+    """
+    img = Image.new("RGBA", (w, h), TRANSPARENT)
+    px = img.load()
+    salt = 2100 + variant * 7
+
+    # Same derivation the crates use: `_block` shears RIGHT, so the drawing's
+    # span is `2*half + depth` and it needs a pixel either side for its
+    # keyline. Nothing here is hand-picked against the frame.
+    depth = (w - 6) * 0.30
+    half = (w - 6 - depth) / 2.0
+    cx = 2.5 + half
+    base = h - 5
+    tall = 8.0
+    _block(px, (w, h), cx, base, half, tall, depth, WOOD_WORN, salt=salt)
+
+    x0, x1 = int(round(cx - half)), int(round(cx + half))
+    lid = int(round(base - tall))
+    run = int(round(depth))
+    dy = depth * SLOPE
+
+    # THE INSIDE OF THE BOX. The top plane `_block` painted as a lit surface is
+    # repainted dark, INSET by a pixel all round so the crate keeps its own
+    # walls: an interior running to the outer edge is a slab with a dark top,
+    # not something with a hole in it.
+    for step in range(1, run):
+        shift = int(round((step / max(depth, 1.0)) * dy))
+        for x in range(x0 + step + 1, x1 + step):
+            y = lid - shift
+            if 0 <= x < w and 0 <= y < h:
+                px[x, y] = tone(WOOD_WORN, SIDE - 1, x, y, salt=salt)
+
+    # THE ROUNDS, standing in the open box. They start on the interior lattice
+    # and rise out of it, which is what breaks the silhouette — a crate with a
+    # dark lid and a flat top is still a crate.
+    count, height, thick, metal, head = AMMO_ROUNDS[variant % len(AMMO_ROUNDS)]
+    shaft = _AMMO_METAL[metal]
+    tip = _AMMO_METAL[head]
+    # The mouth, and the row of rounds CENTRED in it. Measured off the box
+    # rather than typed, so the sheet survives the cell being resized — which
+    # it already has been once, to fit the fourth round in.
+    mouth_l, mouth_r = x0 + 2, x1 - 1
+    pitch = thick + 1
+    run_w = count * thick + (count - 1)
+    left = mouth_l + max(0, ((mouth_r - mouth_l + 1) - run_w) // 2)
+    for index in range(count):
+        rx = left + index * pitch
+        # One step back into the box, so the rounds stand INSIDE the mouth
+        # rather than on its front lip.
+        shift = int(round((1.0 / max(depth, 1.0)) * dy))
+        crown = lid - shift - height
+        # A round or two sitting a pixel proud of its neighbours. A box packed
+        # dead level is a box nobody has taken anything out of.
+        jitter = 1 if hash01(rx, index, salt) > 0.65 else 0
+        for y in range(crown + jitter, lid - shift + 1):
+            for x in range(rx, rx + thick):
+                if not (0 <= x < w and 0 <= y < h):
+                    continue
+                ramp = tip if y <= crown + jitter else shaft
+                # The lit side of a cylinder is its left edge, the same key
+                # every other volume in this folder is lit by.
+                plane = TOP if x == rx else FRONT
+                px[x, y] = tone(ramp, plane, x, y, salt=salt + index)
+
+    # THE STENCIL on the front board. Dashes, not a stripe: paint sprayed
+    # through a cut card is broken by the card's own bridges, and a solid band
+    # of colour across a wooden box reads as a painted box.
+    stencil = AMMO_STENCIL[variant % len(AMMO_STENCIL)]
+    row = int(base - tall * 0.45)
+    for x in range(x0 + 1, x1):
+        if (x - x0) % 4 == 3:
+            continue
+        for y in (row, row + 1):
+            if 0 <= x < w and 0 <= y < h and px[x, y][3]:
+                px[x, y] = tone(stencil, FRONT + 1 if y == row else FRONT, x, y)
+
+    # One iron band round the box, low and under the stencil: the sheet's
+    # single hard-surface line, the same allowance `make_crate`'s stack takes.
+    band = int(base - 2)
+    for x in range(x0, x1 + 1):
+        if 0 <= x < w and 0 <= band < h and px[x, band][3]:
+            px[x, band] = tone(IRON, FRONT, x, band)
+
+    # TWO LOOSE ROUNDS ON THE FLOOR in front of the crate, lying down. They cost
+    # five pixels and they say "ammunition" from further away than the stencil
+    # is legible — the same job the sack on the barrel does for "his gear".
+    # IN FRONT, not beside: the cell has no spare column either side (the box
+    # is sized to fill it), and a round drawn at the edge puts its keyline
+    # through the frame border. `_check_margins` catches exactly that.
+    for start, length in ((x0 + 1, 3), (x0 + 6, 2)):
+        y = base + 1
+        for x in range(start, start + length):
+            if 0 <= x < w and 0 <= y < h and px[x, y][3] == 0:
+                px[x, y] = tone(shaft, FRONT, x, y, salt=salt)
+
+    shadow(img, cx + depth * 0.5, base + 1.5, half + depth * 0.45, 1.4)
+    outline(img, OUTLINE)
+    return img
 
 
 # --- the lamps --------------------------------------------------------------
@@ -1662,6 +1857,10 @@ FLOOR_VARIANTS = 4
 COUNTER_KINDS = 3
 SHELF_VARIANTS = 3
 CRATE_VARIANTS = 3
+#: One open crate per calibre, in `weapons.AMMO_TYPES` order. Append-only like
+#: every other list here — a sixth calibre goes on the END, because the server
+#: ships a frame index taken from that same order.
+AMMO_VARIANTS = 5
 LAMP_VARIANTS = 2
 TORCHFIRE_FRAMES = 12
 TORCHFIRE_FPS = 12
@@ -1792,6 +1991,12 @@ def build(args) -> Path:
     _check_margins("crate", crates)
     pack(crates, crate_w, crate_h).save(out_dir / "crate.png")
 
+    ammo_w = round(tile * TILE_AMMO_W)
+    ammo_h = round(tile * TILE_AMMO_H)
+    ammo = [make_ammobox(ammo_w, ammo_h, v) for v in range(AMMO_VARIANTS)]
+    _check_margins("ammo", ammo)
+    pack(ammo, ammo_w, ammo_h).save(out_dir / "ammo.png")
+
     lamp_w = round(tile * TILE_LAMP_W)
     lamp_h = round(tile * TILE_LAMP_H)
     lamps = [
@@ -1903,6 +2108,15 @@ def build(args) -> Path:
                 "file": "crate.png", "frameWidth": crate_w,
                 "frameHeight": crate_h, "frames": len(crates), "sway": 0,
             },
+            # THE AMMUNITION CRATES. One frame per calibre, and the ONLY boxes
+            # in this room drawn open — see `make_ammobox`. Which frame a crate
+            # wears is the server's word (`store.AmmoBox.variant`), so this
+            # list's order is a contract with `weapons.AMMO_TYPES` and is
+            # append-only.
+            "ammo": {
+                "file": "ammo.png", "frameWidth": ammo_w,
+                "frameHeight": ammo_h, "frames": len(ammo), "sway": 0,
+            },
             # THE LAMPS. Ordinary standing props: they sit on the floor on
             # their own small tables and sort like anything else. `flameY` is
             # the row `lampfire` burns at inside the chimney, which is art —
@@ -1974,6 +2188,7 @@ def build(args) -> Path:
         f"counter {len(counters)}x{counter_w}x{counter_h}, "
         f"shelf {len(shelves)}x{shelf_w}x{shelf_h}, "
         f"crate {len(crates)}x{crate_w}x{crate_h}, "
+        f"ammo {len(ammo)}x{ammo_w}x{ammo_h}, "
         f"lamp {len(lamps)}x{lamp_w}x{lamp_h}, "
         f"table {len(tables)}x{table_w}x{table_h}, "
         f"wagon 1x{wagon_w}x{wagon_h}, "

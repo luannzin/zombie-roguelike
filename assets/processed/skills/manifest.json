@@ -4,7 +4,7 @@
     "file": "sheet.png",
     "frameWidth": 16,
     "frameHeight": 16,
-    "frames": 18
+    "frames": 36
   },
   "frames": {
     "passo_leve": 0,
@@ -24,7 +24,25 @@
     "bolsos_fundos": 14,
     "faro_de_ouro": 15,
     "coracao_de_ferro": 16,
-    "rei_do_ferro_velho": 17
+    "rei_do_ferro_velho": 17,
+    "lamparina_limpa": 18,
+    "punho_calejado": 19,
+    "colete_improvisado": 20,
+    "caderneta_do_sucateiro": 21,
+    "mira_de_ferro": 22,
+    "couro_batido": 23,
+    "mao_leve": 24,
+    "ombro_firme": 25,
+    "pisada_de_gato": 26,
+    "placa_de_aco": 27,
+    "mochila_de_lona": 28,
+    "fio_da_navalha": 29,
+    "cano_longo": 30,
+    "casco_de_ferro": 31,
+    "passo_de_sombra": 32,
+    "pele_de_pedra": 33,
+    "maos_do_armeiro": 34,
+    "bolsa_sem_fundo": 35
   },
   "can": {
     "file": "can.png",

@@ -717,6 +717,40 @@ export interface StandState {
 }
 
 /**
+ * One AMMUNITION CRATE on the shop's south wall. Mirror of `store.AmmoBox`.
+ *
+ * IT IS NOT A STALL AND IT DOES NOT SELL OUT. A table holds one specific
+ * weapon and empties when somebody takes it; a crate is a SUPPLY, and the row
+ * stays exactly as it is however many boxes come out of it — which is what
+ * stops the fourth player in a room walking into the night dry.
+ *
+ * A ROW APPEARING IS AN EVENT. Which calibres are on the wall is a fact about
+ * the party's belts rather than about the map, so the server sends the list
+ * again whenever it grows, and a crate the client has not seen before is the
+ * one it drops in (see `render/layers/store.ts`). Nothing on the wire says
+ * "this one is new": the client already knows what it was drawing last frame,
+ * and a flag would be a second opinion that can arrive twice.
+ */
+export interface AmmoBoxState {
+  id: string;
+  /** Calibre key — indexes `welcome.config.ammo.max` and a weapon's `ammo`. */
+  c: string;
+  /** The loot catalog row this fills, e.g. `ammo_rifle` — name and icon. */
+  k: string;
+  price: number;
+  /** Rounds ONE purchase hands over. The same box the forest scatters. */
+  n: number;
+  x: number;
+  y: number;
+  /**
+   * Frame on the ammunition sheet — the calibre's index in the server's own
+   * `weapons.AMMO_TYPES`. Shipped rather than derived here so the art's frame
+   * order stays one side's fact.
+   */
+  v: number;
+}
+
+/**
  * One skill, out of `welcome.config.skills`. Mirror of `skills.catalog_payload`.
  *
  * The server only ever names a skill by KEY — on the roster and on a spin
@@ -792,6 +826,13 @@ export interface StorePayload {
    */
   counter?: [number, number, number][];
   stands: StandState[];
+  /**
+   * The ammunition crates, one per calibre somebody in the room is carrying.
+   * Absent on a map nobody has walked into yet — the room fills this in as it
+   * reads the belts, so an empty list is the normal opening state and not a
+   * shop that has run out.
+   */
+  boxes?: AmmoBoxState[];
   /** Torch contact points, all OUTDOORS: `[x, y, variant]`. */
   torches: [number, number, number][];
   /** Contact point of the shop's door, in the middle of its south wall. */
@@ -872,6 +913,14 @@ export interface BuyEvent {
   price: number;
   /** Belt cell it landed in. The client flies the sprite there. */
   slot: number;
+  /**
+   * Where the sprite is going. Absent (a weapon off a table) means the belt
+   * cell in `slot`; `"ammo"` is a crate-load, which flies at the GUN it just
+   * fed — `slot` is that weapon's cell and no cell was spent.
+   */
+  dest?: 'hotbar' | 'ammo';
+  /** Rounds handed over. Ammunition only. */
+  n?: number;
   x: number;
   y: number;
 }
@@ -1479,6 +1528,11 @@ export interface SnapshotMessage {
   /** The shop's tables. Present only when one was bought from. */
   stands?: StandState[];
   /** Purchases since the last snapshot. */
+  /**
+   * The whole crate list, when the wall changed — arriving, and buying a
+   * calibre nobody had. Replaces what the client is holding.
+   */
+  boxes?: AmmoBoxState[];
   buys?: BuyEvent[];
   spins?: SpinEvent[];
   /** The party's balance. Present only when it changed. */

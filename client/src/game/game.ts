@@ -172,6 +172,7 @@ import { InputController } from './input';
 import { weaponFeel } from './weapon-feel';
 import {
   buyPrompt,
+  nearAmmoBox,
   canStow,
   cratePromptInfo,
   lootPromptInfo,
@@ -1383,6 +1384,10 @@ export class Game {
       for (const row of msg.rifts) this.onRiftState(row);
     }
     if (msg.stands) this.world.setStands(msg.stands);
+    // The crates, on the CLIENT's own clock: a row that was not there last
+    // frame is one that just landed, and `setAmmoBoxes` stamps it with the
+    // time so the renderer can drop it in. See `world.AmmoBox.bornAt`.
+    if (msg.boxes) this.world.setAmmoBoxes(msg.boxes, this.time);
     if (msg.balance !== undefined) {
       const delta = msg.balance - this.balance;
       this.balance = msg.balance;
@@ -1909,14 +1914,21 @@ export class Game {
     if (def) {
       playSfx('loot', { delay: 0.05 });
       playSfx('rarity', { variant: RARITY_CHIME[def.rarity], jitter: 0, delay: 0.12 });
-      if (this.heldSlot < 0) this.heldSlot = ev.slot;
+      // AMMUNITION IS BOUGHT OVER AND OVER, so the fly needs an id that
+      // changes: a crate's row id never does, and `spawnLootFly` keyed on a
+      // repeat would put a second box on top of the one still in the air.
+      const dest = ev.dest ?? 'hotbar';
+      // A crate takes no belt cell, so it must not claim the hand either — the
+      // slot on the event is the gun it TOPPED UP, and arming it because
+      // somebody bought rounds would swap the weapon out from under them.
+      if (dest === 'hotbar' && this.heldSlot < 0) this.heldSlot = ev.slot;
       spawnLootFly({
-        id: `buy-${ev.id}`,
+        id: dest === 'ammo' ? `buy-${ev.id}-${this.time.toFixed(3)}` : `buy-${ev.id}`,
         key: ev.k,
         frame: def.frame,
         rarity: def.rarity,
         slot: ev.slot,
-        dest: 'hotbar',
+        dest,
       });
       const hotbar = this.hotbarHud();
       this.patchHud({ hotbar: hotbar ?? undefined, balance: this.balance });
@@ -3758,10 +3770,11 @@ export class Game {
     // console is: there is nothing else in this corridor E could have meant.
     const buy = buyPrompt(ix);
     if (buy) {
-      // Both dead presses buzz rather than sending a packet the server would
-      // drop on the floor: a price the party cannot cover, and a belt with no
-      // free cell and no gun in hand to trade.
-      if (!buy.afford || buy.full) {
+      // Every dead press buzzes rather than sending a packet the server would
+      // drop on the floor: a price the party cannot cover, a belt with no free
+      // cell and no gun in hand to trade, and — on an ammunition crate — a
+      // reserve already at its cap.
+      if (!buy.afford || buy.full || buy.stocked) {
         playSfx('ui-error');
         return;
       }
@@ -4205,10 +4218,18 @@ export class Game {
     const fixtures = this.world?.store;
     if (!fixtures) return null;
     const loot = this.config?.loot;
+    // One view, two reach tests. `interactionState` walks the belt and the bag
+    // to build its row; asking for it twice a frame to answer two questions
+    // about the same body is the sort of thing that is free until it is not.
+    const ix = this.interactionState();
     return {
       fixtures,
       pose: this.merchantPose,
-      nearId: nearStand(this.interactionState())?.id ?? null,
+      nearId: nearStand(ix)?.id ?? null,
+      // The crate answers to the same reach as a table and is resolved in the
+      // same place, for the same reason: it is the test `Room.buy` runs.
+      nearBoxId: nearAmmoBox(ix)?.id ?? null,
+      time: this.time,
       pull: this.pull,
       // The cabinet burns harder for somebody holding an unspent level. It is
       // the only piece of teaching in this zone that happens at a distance,
@@ -4663,7 +4684,12 @@ export class Game {
 
     const buy = buyPrompt(ix);
     if (buy && this.config) {
-      const stand = this.world?.store?.stands.find((row) => row.id === buy.id);
+      // Either wall. The prompt names an id and the fixture it belongs to is
+      // whichever list holds it — a crate's id never collides with a stall's
+      // (`b_rifle` against `s3`), so one lookup either way is the whole test.
+      const stand =
+        this.world?.store?.stands.find((row) => row.id === buy.id)
+        ?? this.world?.store?.boxes.find((row) => row.id === buy.id);
       if (stand) {
         // Above the PRICE, which is already floating above the table — a
         // tooltip pinned to the table itself would land underneath the tag

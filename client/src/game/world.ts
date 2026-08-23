@@ -195,6 +195,45 @@ export interface Stand {
 }
 
 /**
+ * One ammunition crate against the shop's south wall.
+ *
+ * The stall's opposite number in every way that matters: a stall holds one
+ * weapon and empties, a crate holds a calibre and never does. It also arrives
+ * differently — a stall is on the map from the moment it is built, a crate
+ * appears the moment somebody in the room is carrying a gun that eats it, and
+ * `bornAt` is how the renderer knows which of the two it is looking at.
+ */
+export interface AmmoBox {
+  id: string;
+  /** Calibre key. */
+  calibre: string;
+  /** Loot catalog row — what to call it and what colour to say it in. */
+  key: string;
+  price: number;
+  /** Rounds one purchase hands over. */
+  rounds: number;
+  /** Centre of the crate. */
+  x: number;
+  /** Contact — the row it stands on. */
+  y: number;
+  /** Frame on the ammunition sheet. The server's word; never derived here. */
+  variant: number;
+  /**
+   * The GAME CLOCK reading when this client first saw the crate, in seconds —
+   * what the drop-in animation runs off. `LANDED_LONG_AGO` for a crate that
+   * was already on the map payload, so somebody joining mid-visit walks into a
+   * finished room rather than a hailstorm.
+   *
+   * ON THE FIXTURE RATHER THAN IN A MAP BESIDE IT, because the fixture is
+   * already the thing whose lifetime matches: it is created when the crate
+   * arrives and thrown away when the zone changes, which is exactly when the
+   * animation should start and stop existing. Same shape as a crate's
+   * `openedAt`, and on the same clock (`Game.time`).
+   */
+  bornAt: number;
+}
+
+/**
  * The shop's fixtures. Null on every map that is not the store.
  *
  * Only what is FITTED. The masonry is not here — the walls and the floor are
@@ -221,6 +260,12 @@ export interface StoreFixtures {
   doorX: number | null;
   doorY: number | null;
   stands: Stand[];
+  /**
+   * The ammunition crates. Mutable like `stands` and for a stronger reason:
+   * the list GROWS mid-visit, every time the party buys into a calibre they
+   * did not own.
+   */
+  boxes: AmmoBox[];
   torches: readonly { x: number; y: number; variant: number }[];
   /** Wall shelving behind the counter. Decoration; never interactive. */
   shelves: readonly { x: number; y: number; variant: number }[];
@@ -431,6 +476,24 @@ export class TileMap {
       const stand = store.stands.find((item) => item.id === row.id);
       if (stand) stand.sold = row.sold === true;
     }
+  }
+
+  /**
+   * Adopt the server's word on which calibres are on the wall.
+   *
+   * MERGED, NOT REPLACED. A crate the client is already drawing keeps its own
+   * object — and with it `bornAt`, which is the whole point: a snapshot that
+   * rebuilt the list would restart every crate's drop animation every time
+   * somebody bought a new calibre, so the wall would rain boxes.
+   */
+  setAmmoBoxes(rows: readonly {
+    id: string; c: string; k: string; price: number; n: number;
+    x: number; y: number; v: number;
+  }[], time: number): void {
+    const store = this.store;
+    if (!store) return;
+    const known = new Map(store.boxes.map((box) => [box.id, box]));
+    store.boxes = rows.map((row) => known.get(row.id) ?? makeAmmoBox(row, time));
   }
 
   setEntranceState(state: 'open' | 'sealing' | 'gone', elapsed: number): void {
@@ -736,6 +799,9 @@ function unpackStore(payload: MapPayload): StoreFixtures | null {
       variant: stand.v,
       sold: stand.sold === true,
     })),
+    // Off the MAP payload, so these were standing there before this client
+    // arrived: they land instantly rather than dropping in.
+    boxes: (row.boxes ?? []).map((box) => makeAmmoBox(box, LANDED_LONG_AGO)),
     torches: (row.torches ?? []).map(([x, y, variant]) => ({ x, y, variant })),
     shelves: (row.shelves ?? []).map(([x, y, variant]) => ({ x, y, variant })),
     crates: (row.crates ?? []).map(([x, y, variant]) => ({ x, y, variant })),
@@ -747,6 +813,36 @@ function unpackStore(payload: MapPayload): StoreFixtures | null {
     payout: row.payout ?? [],
   };
 }
+
+/** One wire row into a drawable crate. Shared with the snapshot's list. */
+function makeAmmoBox(
+  row: {
+    id: string;
+    c: string;
+    k: string;
+    price: number;
+    n: number;
+    x: number;
+    y: number;
+    v: number;
+  },
+  bornAt: number,
+): AmmoBox {
+  return {
+    id: row.id,
+    calibre: row.c,
+    key: row.k,
+    price: row.price,
+    rounds: row.n,
+    x: row.x,
+    y: row.y,
+    variant: row.v,
+    bornAt,
+  };
+}
+
+/** Old enough that a crate's drop-in is already over on the first frame. */
+const LANDED_LONG_AGO = -1e9;
 
 /** Old enough that `crateAnimFrame` clamps to the last frame on sight. */
 const OPENED_LONG_AGO = -1e9;

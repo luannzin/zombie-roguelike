@@ -18,6 +18,14 @@
  * its own: a full belt with a gun in hand is a TRADE, and naming both halves
  * matters more here than on a world drop, because the gun being given up is
  * being exchanged for one that costs money.
+ *
+ * THE AMMUNITION CRATE SHARES THIS CARD ON PURPOSE. It is the same key, at the
+ * same reach, spending the same purse, so it is the same tooltip in the same
+ * corner — a second prompt component would teach the player that the shop has
+ * two kinds of buying. What changes is the sentence: `rounds` is what marks a
+ * crate, and its refusal is a FULL RESERVE rather than a full belt, which is
+ * muted rather than red because it is not a warning — you already have the
+ * thing it is refusing to sell you.
  */
 
 import type { HudBuyPrompt } from '../../game/hud-store';
@@ -47,6 +55,27 @@ export function BuyPrompt({ prompt }: BuyPromptProps) {
       {prompt.price}
     </span>
   );
+
+  // AN AMMUNITION CRATE, and the copy leads with the NUMBER rather than with
+  // the name. A weapon is bought once and what matters is which one it is; a
+  // crate is bought over and over and what matters is how many rounds come out
+  // of it — "+40 de munição de rifle" is the offer, and the name is the part
+  // that says which crate you are standing at.
+  if (prompt.rounds !== undefined) {
+    if (prompt.stocked) {
+      return (
+        <Tooltip anchor="buy" end={price}>
+          <span className="text-ink-muted">Reserva cheia</span>
+        </Tooltip>
+      );
+    }
+    return (
+      <Tooltip anchor="buy" end={price}>
+        <TooltipKey>E</TooltipKey> comprar <span className="text-ink">+{prompt.rounds}</span>{' '}
+        {name}
+      </Tooltip>
+    );
+  }
 
   if (prompt.full) {
     return (

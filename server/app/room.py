@@ -191,6 +191,17 @@ class Room:
         #: The shop's tables. Empty on every map that is not the store.
         self.stands: list[Stand] = []
         self._stands_dirty = False
+        #: The shop's ammunition crates — one per calibre SOMEBODY IN THE ROOM
+        #: IS CARRYING, and nothing else. Rebuilt from the belts every tick of
+        #: a store visit (`_sync_ammo_boxes`), so buying the first shotgun in
+        #: the party is what puts shells on the wall.
+        self.ammo_boxes: list[store.AmmoBox] = []
+        self._boxes_dirty = False
+        #: Calibres that have ALREADY been stocked this visit. A crate that
+        #: landed stays landed: without this a player swapping their rifle away
+        #: for one step would watch the rifle crate blink out and back, and a
+        #: shop whose shelves flicker reads as broken rather than as responsive.
+        self._boxes_seen: set[str] = set()
         self._balance_dirty = False
         self.corpses: dict[str, Corpse] = {}
         self.sockets: dict[str, object] = {}
@@ -294,6 +305,10 @@ class Room:
         rows = (self.world.store or {}).get("stands")
         self.stands = store.stands_from_payloads(rows)
         self._stands_dirty = bool(self.stands)
+        rows = (self.world.store or {}).get("boxes")
+        self.ammo_boxes = store.ammo_boxes_from_payloads(rows)
+        self._boxes_seen = {box.calibre for box in self.ammo_boxes}
+        self._boxes_dirty = bool(self.ammo_boxes)
 
     def _load_drops(self) -> None:
         """Hydrate live drops from the map the generator left behind."""
@@ -1348,6 +1363,10 @@ class Room:
         player = self.players.get(pid)
         if player is None or not player.alive:
             return
+        box = self._box_in_reach(player, stand_id)
+        if box is not None:
+            self._buy_ammo(player, box)
+            return
         target = self._stand_in_reach(player, stand_id)
         if target is None or target.sold:
             return
@@ -1473,6 +1492,107 @@ class Room:
             }
         )
 
+    def _sync_ammo_boxes(self) -> None:
+        """Put a crate on the wall for every calibre the party is carrying.
+
+        RUN EVERY TICK OF A STORE VISIT, and it is five set lookups over a
+        handful of belts — cheaper than the alternative, which is remembering
+        to call it from every place a weapon can change hands. A gun is bought,
+        traded at a full belt, dropped, picked back up off the floor or walked
+        in by somebody who joined late, and all five have to put shells on the
+        wall; a hook on `buy` alone would have covered exactly one of them.
+
+        MONOTONIC WITHIN A VISIT — see `_boxes_seen`. The set only ever grows
+        while the party is in the shop, because a purchase that trades away the
+        gun you were holding briefly removes its calibre from the room, and a
+        crate that blinked out on the frame you bought something reads as the
+        shop taking it back.
+        """
+        if self.zone.kind != zones.KIND_STORE:
+            return
+        carried = ammo.party_calibres(self.players.values())
+        fresh = carried - self._boxes_seen
+        if not fresh:
+            return
+        self._boxes_seen |= fresh
+        self.ammo_boxes = store.ammo_boxes(self.world.width, self._boxes_seen)
+        self._boxes_dirty = True
+        self._sync_store_payload()
+
+    def _buy_ammo(self, player: Player, box: store.AmmoBox) -> None:
+        """Buy one crate-load of rounds. The crate stays; the reserve fills.
+
+        THREE REFUSALS AND THEY ARE THE SAME THREE A BOX ON THE FOREST FLOOR
+        HAS, plus the price. You must be carrying a gun that eats the calibre
+        (`ammo.carried_by`, the collecting player's OWN belt — the rifle rounds
+        belong to whoever brought the rifle, and that rule does not stop being
+        true because there is a merchant standing there); a reserve already at
+        its cap refuses, because `Reserve.add` returning zero is what a full
+        player looks like everywhere else in this game; and the party has to be
+        able to cover it.
+
+        A PARTIAL FILL IS A FULL PRICE. Buying a box with four rounds of room
+        left hands over four rounds and charges for the crate — the same trade
+        as picking a box up off the floor at 236 of 240, which also throws the
+        rest away. Pro-rating it would mean a price that changed depending on
+        how empty you were, which is a second price on the same wall.
+        """
+        if box.price > self.balance:
+            return
+        if box.calibre not in ammo.carried_by(player.hotbar):
+            return
+        if player.ammo.add(box.calibre, box.rounds) <= 0:
+            return
+        self.balance -= box.price
+        self._balance_dirty = True
+        self._roster_dirty = True
+        # The cell holding the gun this just fed. No slot is spent — rounds
+        # take none — but the client flies the box at the weapon it topped up,
+        # exactly as it does for a box collected off the ground.
+        slot = next(
+            (
+                index
+                for index, key in enumerate(player.hotbar.slots)
+                if ammo.calibre_of(key) == box.calibre
+            ),
+            0,
+        )
+        self.buy_events.append(
+            {
+                "id": box.id,
+                "by": player.id,
+                "k": box.key,
+                "price": box.price,
+                "slot": slot,
+                "dest": "ammo",
+                "n": box.rounds,
+                "x": round(box.x, 2),
+                "y": round(box.y, 2),
+            }
+        )
+
+    def _box_in_reach(self, player: Player, stand_id: str | None) -> store.AmmoBox | None:
+        """The crate this press named, if the player is standing at it.
+
+        BY ID ONLY. Every other fixture in the shop resolves the nearest thing
+        in range when the client names nothing, and a crate deliberately does
+        not: the client always sends the id of the prompt it is showing, and
+        falling through to "the nearest crate" would let a press meant for a
+        table spend money on rounds.
+        """
+        if stand_id is None:
+            return None
+        feet_y = player.y + PLAYER_HALF_HEIGHT
+        for box in self.ammo_boxes:
+            if box.id != stand_id:
+                continue
+            dx = box.x - player.x
+            dy = box.y - feet_y
+            if dx * dx + dy * dy <= STORE_BUY_DIST * STORE_BUY_DIST:
+                return box
+            return None
+        return None
+
     def _stand_in_reach(self, player: Player, stand_id: str | None) -> Stand | None:
         feet_y = player.y + PLAYER_HALF_HEIGHT
         reach = STORE_BUY_DIST * STORE_BUY_DIST
@@ -1494,6 +1614,9 @@ class Room:
         if not self.world.store:
             return
         self.world.store["stands"] = [row.to_payload() for row in self.stands]
+        # The crates go back on the map for the same reason the tables do: a
+        # player who joins mid-visit gets the room as it stands, wall included.
+        self.world.store["boxes"] = [box.to_payload() for box in self.ammo_boxes]
 
     # --- the bag back onto the ground ---------------------------------------
     def drop_loot(self, pid: str, slot: int) -> None:
@@ -1712,6 +1835,14 @@ class Room:
         self._load_crates()
         self._load_rifts()
         self._load_stands()
+        # THE WALL IS STOCKED BEFORE THE MAP GOES OUT. It would be filled a
+        # tick later anyway — `step` runs this every frame of a store visit —
+        # but a tick later is a SNAPSHOT, and a crate the client meets on a
+        # snapshot is a crate it drops in. The party would walk into the shop
+        # through a hail of boxes for calibres they have been carrying all
+        # night. Landing them on the map payload makes the drop-in mean the one
+        # thing it is for: a calibre that is new.
+        self._sync_ammo_boxes()
         self._load_entrance()
         self._rebuild_spawns()
         self.director = EnemyDirector(self.spawn_points)
@@ -1810,6 +1941,7 @@ class Room:
         self.step_boss(dt)
         self.step_coins(dt)
         self.step_rift(dt)
+        self._sync_ammo_boxes()
 
     # --- extraction: the pickup's clock -------------------------------------
     def step_rift(self, dt: float) -> None:
@@ -2913,7 +3045,13 @@ class Room:
         # something eats it is the one frame of this ceremony that would read
         # as the game having stopped listening.
         target.pour = None
-        target.hp -= amount
+        # ARMOUR, and it is applied HERE rather than at each of the things that
+        # can hurt you — a zombie's claw, a shotgun, the Sawyer's bar — because
+        # this is the one door all of them come through, and a mitigation
+        # written at three call sites is a mitigation that will be missing from
+        # the fourth. `max(1, ...)`: a hit that connects always costs something,
+        # or a fully-armoured player standing in a pack takes zero forever.
+        target.hp -= max(1, round(amount * target.skills.mods.armor))
         if target.hp <= 0:
             target.hp = 0
             target.alive = False
@@ -3109,6 +3247,10 @@ class Room:
             [row.to_payload() for row in self.stands] if self._stands_dirty else None
         )
         self._stands_dirty = False
+        box_rows = (
+            [box.to_payload() for box in self.ammo_boxes] if self._boxes_dirty else None
+        )
+        self._boxes_dirty = False
         balance_row = self.balance if self._balance_dirty else None
         self._balance_dirty = False
         boss_row = self.boss.to_payload() if (self.boss and self._boss_dirty) else None
@@ -3141,6 +3283,7 @@ class Room:
                 egress=egress_row,
                 blackout=blackout_flag,
                 stands=stand_rows,
+                boxes=box_rows,
                 buys=self.buy_events or None,
                 spins=self.spin_events or None,
                 balance=balance_row,

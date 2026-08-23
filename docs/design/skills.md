@@ -5,11 +5,11 @@ Nearest contracts: [`server/app/AGENTS.md`](../../server/app/AGENTS.md),
 
 | | |
 | --- | --- |
-| **Owns** | what a LEVEL buys: the skill catalog, the rarity roll, `Loadout` (stacks + spins owed), and `Mods` — the flattened numbers every other module multiplies by |
+| **Owns** | what a LEVEL buys: the skill catalog (36 rows), the rarity roll, `Loadout` (stacks + spins owed), and `Mods` — the flattened numbers every other module multiplies by |
 | **Inputs** | xp reaching a level (`Room._sync_spins`), `{type:"spin"}` at the cabinet |
 | **Outputs** | `spin` events, `PlayerMeta.skills` / `mods` on the roster, `welcome.config.skills` + `config.machine` |
 | **Depends on** | `machine.py` (the timeline), `store.py` (the cabinet's spot), `config.py` (the base numbers `Mods` diverges from) |
-| **Consumers** | `simulation.apply_input` (speed, carry ceiling), `Player.max_hp`, `Room.fire` / `Room.swing` (damage), `damage_enemy` (xp, coin odds), `Room._tip_item` (what a platform credits), the client's battery |
+| **Consumers** | `simulation.apply_input` (speed, carry ceiling), `Player.max_hp`, `Room.fire` / `Room.swing` (damage), `Room.damage_player` (armour), `damage_enemy` (xp, coin odds), `Room._tip_item` (what a platform credits), the client's battery |
 | **Authoritative** | the roll, the stacks, the spins owed, every number in `Mods` |
 | **Presentation** | reels, the lever, the pay-line flash, the tin's flight to the tray, the tray row |
 
@@ -21,6 +21,11 @@ Nearest contracts: [`server/app/AGENTS.md`](../../server/app/AGENTS.md),
 - **One lever.** `Room._machine_busy` is a countdown (this room has no wall clock); a second press is refused.
 - **`server/app/machine.py` and `client/src/game/machine.ts` are one clock.** Change together.
 - **Rarity is the same five-grade ladder as loot**, painted in the same five colours.
+- **The catalog and the icon sheet are ONE LIST IN TWO FILES**, in the same
+  order, and both are append-only. `skills.FRAME` is a row's catalog index, so
+  a row inserted anywhere but the end re-points every tile after it at somebody
+  else's picture and nothing errors. `make_skills._check_order` fails the build
+  on any disagreement — it is the only guard there is.
 
 ## Change surface
 
@@ -36,9 +41,11 @@ Nearest contracts: [`server/app/AGENTS.md`](../../server/app/AGENTS.md),
 **Do not touch from here:** the store's stock/prices, extraction quotas, or the
 economy settlement.
 
-**Adding a skill checklist:** catalog row in `skills.py` -> the number it moves
-must be read through `Mods` at its consumer site -> icon in
-`server/tools/make_skills.py` (append, never insert) -> regenerate.
+**Adding a skill checklist:** catalog row in `skills.py` (append, never insert)
+-> the number it moves must be read through `Mods` at its consumer site -> icon
+in `server/tools/make_skills.py` in the SAME position -> regenerate
+(`python tools/make_skills.py` from `server/`, which fails if the two lists
+disagree) -> `SKILL_FRAMES` in `client/src/components/hud/Hud.tsx`.
 
 ---
 
@@ -110,7 +117,16 @@ must be read through `Mods` at its consumer site -> icon in
     the object stood taller than the icon it was carrying. It is a 16x18 canned
     good now — steel lid with a pull ring, base rim, and the rarity as the
     LABEL, which is most of the object — so the colour is legible at the size
-    it actually appears at and the silhouette is one everybody already knows. A skill is a stack, so a duplicate is a smaller
+    it actually appears at and the silhouette is one everybody already knows.
+    **AND IT FLIES AT TWO THIRDS OF ITS OWN SIZE** (`LootFly.SKILL_TIN_SCALE`).
+    Matching a loot drop's 2x zoom made the two sprites equal in PIXELS, which
+    is not equal on screen: a tin is a solid cylinder where a loot icon is a
+    small object with air around it, so at the same zoom it was still the
+    largest thing that has ever appeared over a player's head — parked there
+    for the length of the hold, covering the body it was being given to. The
+    scale is on a wrapper rather than on the zoom because the zoom also sizes
+    the label window off the manifest, and a fractional zoom would land the
+    tin's picture on half a pixel. A skill is a stack, so a duplicate is a smaller
     pull rather than a dead one. The tray is a list of labelled rows and not a
     grid of tiles, because a wall of 16px icons asks the player to hover
     eighteen things to find out what they own — which is a spreadsheet with the
@@ -119,6 +135,48 @@ must be read through `Mods` at its consumer site -> icon in
     first shop is a region the player has to learn mid-run. There is no
     "giros guardados" badge any more — it repeated one fact for a whole night,
     and the marquee below already says it from across the room.
+  - **THIRTY-SIX ROWS, AND THE SECOND EIGHTEEN EXIST BECAUSE A RUN IS TEN
+    NIGHTS.** The first cut was five commons, four uncommons, four rares, three
+    epics and two legendaries — and a party pulls roughly a dozen times in a
+    whole run, almost all of it in the bottom two tiers. By the fourth pull
+    they had seen most of the tier they were actually rolling in, and every
+    pull after that was a duplicate: a smaller version of a number they already
+    had. A duplicate is meant to be the CONSOLATION, not the median outcome.
+    Nine / eight / eight / six / five is where a ten-day run stops repeating
+    itself, and it costs nothing structural — `roll` picks the tier first and
+    then a row inside it, so widening a tier does not move anybody else's odds.
+    - **AND THE LEGENDARY WEIGHT DOUBLED, 2 -> 4.** Same arithmetic from the
+      other end: at one in fifty, twelve pulls means most runs never once saw
+      the colour the machine spends four seconds building up to — the reels,
+      the pitch ladder and the anticipation on the third reel were all
+      dramatising an outcome the player would not live to see. One in
+      twenty-five is still eleven times rarer than a common. It is the thing
+      that happens ONCE in a good run, rather than the thing that never
+      happens.
+    - **THE NEW AXIS IS ARMOUR**, and it is the only stat the second pass
+      added. Every row in the first eighteen scales something you DO — move,
+      hit, carry, earn, see — and there was nothing to pull that made being hit
+      cost less, which is a strange hole in a game about walking into the dark.
+      `Mods.armor` is a multiplier on damage TAKEN, applied in exactly one
+      place (`Room.damage_player`, the door every claw, pellet and chainsaw
+      comes through), and it is the one field with a FLOOR under it: unclamped,
+      a lucky run stacks past zero and zombies start healing you. A third of
+      every hit lands however the machine has gone, and `max(1, ...)` means a
+      blow that connects always costs something.
+    - It stacks multiplicatively against health rather than duplicating it:
+      more HP is a longer bar, armour is a bar that drains slower. That is also
+      why the two appear together on a legendary (Pele de Pedra) and separately
+      everywhere else.
+  - **AN ICON IS THE OBJECT, NOT THE STAT.** Five rows that all mean "you get
+    hit less" would be five grey plates in a tray that already had one, so each
+    of them is a different THING that happens to protect: a vest, a studded
+    pad, a bolted plate with a scratch across it, a helmet, a skin of cracked
+    stone. Two rows were redrawn during the second pass for exactly this — an
+    open hand became a cut purse (it was the same pink lump as the fist two
+    tiles away) and a steel fist became a barrel with a muzzle flash. The
+    second one took the skill's NAME with it (Pulso de Aço -> Cano Longo),
+    which is allowed: at sixteen pixels the picture is the thing the player
+    reads, and a name that fights it is the wrong name.
   - **A SKILL HAS TO ACTUALLY DO SOMETHING**, and `skills.Mods` is the one
     place a player's numbers diverge from `config.py`. Speed, carry ceiling,
     health ceiling, gun and blade damage, xp, dark-gold odds, lantern life and

@@ -61,7 +61,7 @@ import { BossBar } from './BossBar';
  * republished five times a second. It must match `SKILLS` in
  * `server/app/skills.py`.
  */
-const SKILL_FRAMES = 18;
+const SKILL_FRAMES = 36;
 
 export interface HudProps {
   snapshot: HudSnapshot;

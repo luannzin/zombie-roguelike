@@ -25,7 +25,7 @@ game's scale.
 | `loot.py` | world collectables: catalog, scene-context scatter, E-to-collect |
 | `weapons.py` | weapon catalog (11 guns + the knife) DERIVED from CS2's stat block against the zombie's health, hotbar, per-shot stats, the melee combo, and the ammunition SIZING `ammo.py` imports |
 | `crates.py` | INTERACTIVE OBJECTS: the type table (barrels, boxes, chests, stashes, vehicles, altars), their verbs, drop tables, ambush odds and hit boxes; extract from scenery, use, roll |
-| `ammo.py` | the reserve MECHANICS: per-player rounds, boxes gated on what the party carries, scatter, collection. How big a reserve is belongs to `weapons.py` — it is a question about the guns that eat it |
+| `ammo.py` | the reserve MECHANICS: per-player rounds, boxes gated on what the party carries, scatter, collection, and the calibre set the shop stocks its crates off (`party_calibres`). How big a reserve is belongs to `weapons.py` — it is a question about the guns that eat it |
 | `corpses.py` | dead enemies left on the floor: persist until the map swaps |
 | `rift.py` | extraction pads: day-scaled count, plot, the cargo platform and its corner lamps, inbound pickup, per-pad quota, the pour's timing, overfeed, hand-called launch, siren / `hunt_all` |
 | `entrance.py` | forest edge VOID corridor, emerge formation, staggered seal (`seal_to`), `bounds` for a map with two corridors, extraction `open_exit` (flared at the border) |
@@ -36,7 +36,7 @@ game's scale.
 | `mapgen.py` | procedural forest, seeded and connectivity-checked; `NEST_SCENES` / `HAUNT_SCENES` decide which scenes have creatures standing in them before anyone arrives |
 | `scenery.py` | story SCENES: the layouts, the thread linking them, their lights, the wire rows |
 | `camp.py` | the camp clearing, its bonfire, the seat ring, the VOID exit, and the walk-out formation |
-| `store.py` | the merchant's CLEARING: corridor / small round room / corridor, the two end gates, the man in the middle with his wagon, counter, fire, gear (`KIT_SPOTS`) and torches, the six-stall grid in front of him and the stock rolled onto it, `price_of` + `_haggle`, the cabinet's spot, and the apron the night's platforms land on (`PAYOUT_SPOTS`) |
+| `store.py` | the merchant's CLEARING: corridor / small round room / corridor, the two end gates, the man in the middle with his wagon, counter, fire, gear (`KIT_SPOTS`) and torches, the six-stall grid in front of him and the stock rolled onto it, `price_of` + `_haggle`, the AMMUNITION CRATES on the south wall (`AMMO_SPOTS`, `ammo_price_of` — a crate for every calibre the party is carrying, priced off the cheapest gun that eats it), the cabinet's spot, and the apron the night's platforms land on (`PAYOUT_SPOTS`) |
 | `zones.py` | where a run is: title card, `hostile`, `lantern`, `ambient` (zero everywhere but the shop) |
 | `skills.py` | what a LEVEL buys: the catalog, the rarity roll, `Loadout` (stacks + spins owed) and `Mods`, the flattened numbers every other module multiplies by |
 | `machine.py` | the upgrade machine's TIMELINE — one clock shared with `client/src/game/machine.ts`, including the third reel's per-rarity hold |

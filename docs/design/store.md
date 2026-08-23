@@ -5,12 +5,12 @@ Nearest contracts: [`server/app/AGENTS.md`](../../server/app/AGENTS.md),
 
 | | |
 | --- | --- |
-| **Owns** | the outdoor apron, the SHOP BUILDING and everything fitted in it, the six-stall grid and its stock roll, prices, the purchase, the payout ceremony's data, and the party balance |
+| **Owns** | the outdoor apron, the SHOP BUILDING and everything fitted in it, the six-stall grid and its stock roll, the AMMUNITION CRATES on the south wall, prices, the purchase, the payout ceremony's data, and the party balance |
 | **Inputs** | `{type:"buy","id"}`, the night's per-pad takes from `rift.fed`, the day number |
-| **Outputs** | `map.store` (`StorePayload`), `buy` events, `snapshot.balance`, `payout` rows, the next day's forest on departure |
-| **Depends on** | `loot.py` (catalog `value` — prices are derived), `weapons.py` (what a stall can sell), `rift.py` (the takings), `zones.py` (`STORE_AMBIENT`), `machine.py` |
+| **Outputs** | `map.store` (`StorePayload`), `snapshot.boxes`, `buy` events, `snapshot.balance`, `payout` rows, the next day's forest on departure |
+| **Depends on** | `loot.py` (catalog `value` — prices are derived), `weapons.py` (what a stall can sell, and every ammunition table), `ammo.py` (whose belts decide which crates exist), `rift.py` (the takings), `zones.py` (`STORE_AMBIENT`), `machine.py` |
 | **Consumers** | `skills.py` (the cabinet stands here), `client/src/render/layers/store.ts`, `layers/payout.ts` |
-| **Authoritative** | `Room.balance`, `Stand.sold`, prices + haggle, stock roll, the belt after a purchase |
+| **Authoritative** | `Room.balance`, `Stand.sold`, prices + haggle, stock roll, which calibres have crates, the belt and the reserve after a purchase |
 | **Presentation** | the coin spray, the counting balance, the merchant's idle clips, the floating stock, the light budget |
 
 ## Invariants
@@ -19,6 +19,8 @@ Nearest contracts: [`server/app/AGENTS.md`](../../server/app/AGENTS.md),
 - **The client NEVER settles.** The payout animation is presentation; a reconnect mid-animation must not pay twice.
 - **Prices are derived**, never listed: `store.price_of` = catalog `value` x `STORE_MARKUP`, plus a per-stall `_haggle` too small to reorder the ladder.
 - **A stall sells once** and the empty table stays on the wire.
+- **An ammunition crate NEVER sells out**, and one only exists for a calibre somebody in the room is carrying. The wall is a portrait of the party's belts.
+- **A crate's tile is never claimed.** It can arrive mid-visit, after the tile map has gone out — so it stands flat against the south wall where nobody walks and is walked through, exactly like the merchant.
 - **Two currencies, never merged**: `Room.balance` (party GOLD) vs `Player.gold` (personal DARK GOLD).
 - **The floor and every light on top of it are ONE budget** — see the ambient contract below. Adding a light means taking brightness out of another.
 - **The APRON is an ordinary forest map; the SHOP is the game's one building.** A new object should be an existing prop or tile kind before it is a new payload field — and the building itself IS tile kinds (`BRICK` / `TILEFLOOR`), never a rectangle on the wire.
@@ -37,15 +39,19 @@ Nearest contracts: [`server/app/AGENTS.md`](../../server/app/AGENTS.md),
 | --- | --- |
 | layout, stalls, gear, torches | `server/app/store.py` (+ `tests/test_store_walk.py`) |
 | what is for sale, unlock day | `server/app/store.py` (`STOCK_ORDER`, `_unlock_day`) |
+| ammunition: where the crates stand, what a box costs | `server/app/store.py` (`AMMO_SPOTS`, `AMMO_RESERVE_SHARE`, `ammo_price_of`) |
+| who gets a crate, and buying out of one | `server/app/room.py` (`_sync_ammo_boxes`, `_buy_ammo`) |
+| the crates drawn / the drop-in | `client/src/render/layers/store.ts` (`dropOffset`), `server/tools/make_store.py` (`make_ammobox`) |
 | prices | `server/app/loot.py` catalog value or `STORE_MARKUP` — never a price list |
 | the shop drawn | `client/src/render/layers/store.ts`, `client/src/render/store.ts`, `render/merchant.ts` |
 | the walls and floor drawn | `client/src/render/layers/terrain.ts` — they are TILE KINDS, so the pass that paints tiles owns them |
 | the shop's art | `server/tools/make_store.py` (+ `make_merchant.py`, `make_machine.py`) |
 | payout ceremony | `client/src/game/payout.ts`, `client/src/render/layers/payout.ts` |
-| buy prompt | `client/src/components/hud/BuyPrompt.tsx`, `client/src/game/interaction.ts` (`buyPrompt`, `nearStand`) |
+| buy prompt | `client/src/components/hud/BuyPrompt.tsx`, `client/src/game/interaction.ts` (`buyPrompt`, `nearStand`, `nearAmmoBox`) |
 
 **Do not touch from here:** `rift.py`'s quota math, inventory authority, the
-skills catalog, or the wire protocol pair.
+skills catalog, `weapons.py`'s reserve sizing (`RESERVE_MAX` / `BOX_ROUNDS` —
+the shop READS them and must never re-derive one), or the wire protocol pair.
 
 ---
 
@@ -286,6 +292,47 @@ skills catalog, or the wire protocol pair.
     of reach is doing more work than a tutorial line about saving up would. The
     colour is the whole message; the tooltip does not also spell out that you
     are short.
+  - **AMMUNITION IS BOUGHT HERE, AND THE WALL IT IS BOUGHT FROM IS A PORTRAIT
+    OF THE PARTY.** `ammo.py` opens with the rule that ammunition is not cargo:
+    a round is what you SPEND to fill the bag, never a thing in it. The shop is
+    the other half of that sentence — if rounds are the cost of playing, the
+    place money exists has to be where you buy them back. Before this the only
+    supply was what the forest happened to scatter, which made the calibre you
+    owned something you HOPED about rather than something you supplied.
+    - **A CRATE ONLY EXISTS IF SOMEBODY CAN SHOOT IT.** That is `ammo.scatter`'s
+      second rule standing indoors, and it is why the row against the south
+      wall is worth looking at: it says what the party is carrying. A party of
+      knives walks into a shop with no ammunition in it at all. **And the
+      moment somebody buys a gun of a calibre nobody had, a crate DROPS IN** —
+      falls from over the wall, lands hard, bounces twice. A box that simply
+      WAS there on the next frame is a box nobody notices, and the arrival is
+      the one moment the shop gets to say "you can supply that now". The fall
+      is the client's own clock off a row it has not drawn before
+      (`AmmoBox.bornAt`); nothing about it is worth a message.
+    - **IT NEVER SELLS OUT, and a table always does.** A stall holds one
+      specific weapon, so the gap where it was is the information; a crate is a
+      SUPPLY, and one that emptied after a purchase would send the fourth
+      player in a four-player room into the night dry.
+    - **THE PRICE IS DERIVED OFF THE GUN, because the catalog cannot answer.**
+      A box is `value` 0 in `loot.py` — deliberately, it is not shippable
+      cargo — so the only column that knows what a round is worth is the
+      WEAPON that eats it. Filling an empty reserve costs half the cheapest gun
+      of that calibre (`AMMO_RESERVE_SHARE`), and one box is its own share of
+      that reserve read off `BOX_ROUNDS / RESERVE_MAX`. Pistol rounds come out
+      at almost nothing and the sniper's at the most expensive thing on the
+      floor that is not a gun — the same shape `weapons.catalog_value` gave the
+      guns, for free, with no second price list to disagree with the first.
+    - **A PARTIAL FILL IS STILL A FULL PRICE**, exactly as picking a box up off
+      the forest floor at 236 of 240 rounds throws the rest away. Pro-rating it
+      would be a price that changes with how empty you are, which is a second
+      price on the same wall.
+    - **THE ART IS THE INTERACTION.** The decoration crates in this room are
+      drawn shut and bound specifically to say that nothing in this shop opens;
+      these are drawn OPEN — no lid, a dark interior, rounds standing proud of
+      the mouth — because they are the boxes you buy out of. The five frames
+      are five calibres and they are told apart the way the three mats are: by
+      HUE, on a stencil across the front, plus how many rounds are in them and
+      how fat those rounds are.
   - It runs the darkness like every other forest map, because it IS one — the
     ambient floor above is a value on the zone, not a branch in the renderer.
     The pitch being the brightest pool in a lit-but-dim clearing is the whole

@@ -47,7 +47,7 @@ import {
 import { groundShadow } from '../shadows';
 import { palette } from '../../theme/palette';
 import { hudFont } from '../../theme/fonts';
-import type { StoreFixtures, Stand } from '../../game/world';
+import type { AmmoBox, StoreFixtures, Stand } from '../../game/world';
 
 /** Price tag geometry, in screen pixels. */
 const PRICE_TEXT_PX = 11;
@@ -101,16 +101,44 @@ const FLOAT_DEPTH = 0.28;
 /** How long the pay line stays lit after the third reel lands, in seconds. */
 const PAY_LINE_FLASH = 0.55;
 
+/**
+ * THE CRATE DROPS IN, and that is the only animation in this room that exists
+ * to make an ARRIVAL legible.
+ *
+ * Every other fixture here is on the map from the moment the party walks in.
+ * An ammunition crate is not: it lands the instant somebody buys the first gun
+ * of a calibre nobody owned, and a box that simply WAS there on the next frame
+ * is a box nobody notices — which would waste the one moment the shop has to
+ * say "you can buy rounds for that now". So it falls in from over the wall,
+ * lands hard, and bounces twice.
+ *
+ * IT IS THE CLIENT'S OWN CLOCK AND NOTHING ACKNOWLEDGES IT. The server ships a
+ * list of crates; a row this client has not drawn before is a row that just
+ * arrived, and `AmmoBox.bornAt` is when it noticed. Nothing about a falling
+ * box is worth a message, and a "landed" packet would be one more thing to get
+ * out of sync with the sprite.
+ */
+const DROP_FALL = 0.40;
+/** How far above its contact the crate starts, in world pixels. */
+const DROP_HEIGHT = 190;
+/** The two bounces after it lands: `[seconds, peak in pixels]`. */
+const DROP_BOUNCES: readonly (readonly [number, number])[] = [
+  [0.17, 7],
+  [0.11, 2],
+];
+
 /** One thing in the zone that stands up and has to be depth-sorted. */
 export interface StoreStanding {
   kind:
     | 'table' | 'kit' | 'wagon' | 'counter' | 'torch' | 'merchant' | 'machine'
-    | 'shelf' | 'crate' | 'lamp';
+    | 'shelf' | 'crate' | 'lamp' | 'ammo';
   /** Contact row, world pixels — what it is sorted by. */
   y: number;
   x: number;
   /** Tables only. */
   stand?: Stand;
+  /** Ammunition crates only. */
+  box?: AmmoBox;
   /**
    * Which frame of its own sheet this piece uses. Torches, kit, shelves,
    * crates and counter sections all key off it; for a counter it is the
@@ -131,6 +159,14 @@ export interface StoreScene {
   fixtures: StoreFixtures;
   pose: MerchantPose;
   nearId: string | null;
+  /**
+   * The ammunition crate the local player is close enough to buy from, or
+   * null. A SECOND field rather than one "nearest fixture", because the two
+   * answers are read by different code — the stall's drives the lift on a
+   * weapon, the crate's drives a pool on the floor — and folding them into one
+   * would make every reader test the kind before it could use it.
+   */
+  nearBoxId: string | null;
   /**
    * The lever pull running right now, or null. It is the CLIENT's own copy of
    * a ceremony the server resolved in one frame — see `game/machine.ts`.
@@ -153,6 +189,13 @@ export interface StoreScene {
    * name the same gun the same way.
    */
   labelOf: (key: string) => { name: string; rarity: string };
+  /**
+   * The render clock, in seconds. Only the price pass reads it — every other
+   * user of this scene is handed `time` as an argument — and it is here
+   * because a crate's tag has to ride the same drop-in its crate does, and
+   * `drawStorePrices` is called from the HUD pass, which has no clock.
+   */
+  time: number;
 }
 
 /** Everything that goes into the entity depth sort, in ascending contact. */
@@ -187,6 +230,9 @@ export function storeStanding(scene: StoreScene | null): StoreStanding[] {
   }
   for (const piece of scene.fixtures.crates) {
     out.push({ kind: 'crate', x: piece.x, y: piece.y, variant: piece.variant });
+  }
+  for (const box of scene.fixtures.boxes) {
+    out.push({ kind: 'ammo', x: box.x, y: box.y, box });
   }
   for (const lamp of scene.fixtures.lamps) {
     out.push({ kind: 'lamp', x: lamp.x, y: lamp.y });
@@ -285,6 +331,28 @@ export function drawStoreProp(
     drawSheet(ctx, view, atlas.crate, piece.variant ?? 0, piece.x, piece.y);
     return;
   }
+  if (piece.kind === 'ammo') {
+    const box = piece.box;
+    if (!box) return;
+    const sheet = atlas.ammo;
+    const frame = box.variant % sheet.frames;
+    // Above its own contact while it is still coming down. The SHADOW stays on
+    // the floor the whole way — it is the ground going dark under a falling
+    // object, and a shadow that fell with the crate would make the box read as
+    // sliding down a wall rather than dropping onto a floor.
+    const drop = dropOffset(time - box.bornAt);
+    propShadow(ctx, view, sheet, piece.x, piece.y, drop > 0 ? SHADOW_ALPHA * 0.5 : SHADOW_ALPHA);
+    const zoom = view.zoom;
+    ctx.drawImage(
+      sheet.image,
+      frame * sheet.frameWidth, 0, sheet.frameWidth, sheet.frameHeight,
+      view.x(piece.x) - Math.round((sheet.frameWidth * zoom) / 2),
+      Math.round(view.y(piece.y - drop) - sheet.frameHeight * zoom),
+      sheet.frameWidth * zoom,
+      sheet.frameHeight * zoom,
+    );
+    return;
+  }
   if (piece.kind === 'lamp') {
     // An oil lamp on a small stand: an ordinary standing prop. Its FLAME is
     // additive and burns in `drawStoreLight`, for the same reason a torch's
@@ -355,6 +423,32 @@ export function drawStoreProp(
  * ramp (the item is only ever a couple of pixels out) and reads as the table
  * answering rather than as an animation starting.
  */
+/**
+ * How far above its own contact a crate is `age` seconds after it appeared.
+ *
+ * A FALL AND TWO BOUNCES, in world pixels, and zero forever after the second
+ * one — the sprite is furniture from then on and must cost nothing to draw.
+ * The fall is quadratic because that is what falling is; the bounces are
+ * parabolas because that is what bouncing is. Neither is eased, because an
+ * eased fall is a box being lowered on a rope.
+ */
+function dropOffset(age: number): number {
+  if (age < 0) return DROP_HEIGHT;
+  if (age < DROP_FALL) {
+    const t = age / DROP_FALL;
+    return DROP_HEIGHT * (1 - t * t);
+  }
+  let since = age - DROP_FALL;
+  for (const [span, peak] of DROP_BOUNCES) {
+    if (since < span) {
+      const t = since / span;
+      return peak * 4 * t * (1 - t);
+    }
+    since -= span;
+  }
+  return 0;
+}
+
 function standLift(near: boolean, liftPx: number, time: number): number {
   if (!near) return 0;
   return liftPx * (1 - FLOAT_DEPTH + FLOAT_DEPTH * Math.sin(time * FLOAT_RATE));
@@ -598,7 +692,6 @@ export function drawStorePrices(
   balance: number,
 ): void {
   if (!atlas || !scene) return;
-  const tone = palette();
   const table = atlas.table;
 
   ctx.textAlign = 'left';
@@ -608,68 +701,126 @@ export function drawStorePrices(
     if (stand.sold) continue;
     const frame = stand.variant % table.frames;
     const surface = stand.y - table.frameHeight + tableTopY(table, frame);
-    const cx = view.x(stand.x);
-    const bottom = view.y(surface - PRICE_LIFT);
-    const card = PRICE_CARD_H + NAME_ROW_H;
-    const top = bottom - card;
-
     const item = scene.labelOf(stand.key);
-    const label = String(stand.price);
+    priceCard(ctx, atlas, {
+      cx: view.x(stand.x),
+      bottom: view.y(surface - PRICE_LIFT),
+      name: item.name,
+      rarity: item.rarity,
+      price: stand.price,
+      afford: stand.price <= balance,
+      near: stand.id === scene.nearId,
+    });
+  }
 
-    ctx.font = hudFont(PRICE_TEXT_PX);
-    const priceWidth = Math.ceil(ctx.measureText(label).width);
-    ctx.font = hudFont(NAME_TEXT_PX);
-    const nameWidth = Math.ceil(ctx.measureText(item.name).width);
-    const coinWidth = atlas.coin ? COIN_PX + PRICE_GAP : 0;
-    const width = PRICE_PAD_X * 2 + Math.max(coinWidth + priceWidth, nameWidth);
-    const left = Math.round(cx - width / 2);
-
-    const afford = stand.price <= balance;
-    const near = stand.id === scene.nearId;
-
-    ctx.globalAlpha = near ? 0.94 : 0.82;
-    ctx.fillStyle = tone.panelInset;
-    ctx.fillRect(left, top, width, card);
-    // Border as four fills rather than a stroke: at this size a 1px stroke
-    // straddles the path and comes out as two half-lit rows.
-    ctx.globalAlpha = near ? 0.95 : 0.5;
-    ctx.fillStyle = tone.panelBorder;
-    ctx.fillRect(left, top, width, 1);
-    ctx.fillRect(left, bottom - 1, width, 1);
-    ctx.fillRect(left, top, 1, card);
-    ctx.fillRect(left + width - 1, top, 1, card);
-    // The hairline between the two rows. It is what stops a name and a number
-    // in different colours reading as one string that changed its mind.
-    ctx.globalAlpha = near ? 0.55 : 0.3;
-    ctx.fillRect(left + 1, top + NAME_ROW_H, width - 2, 1);
-
-    ctx.globalAlpha = near ? 1 : 0.85;
-    ctx.font = hudFont(NAME_TEXT_PX);
-    ctx.fillStyle = rarityInk(item.rarity);
-    ctx.fillText(
-      item.name,
-      left + Math.round((width - nameWidth) / 2),
-      top + NAME_ROW_H - Math.round((NAME_ROW_H - NAME_TEXT_PX) / 2) - 1,
-    );
-
-    ctx.globalAlpha = afford ? 1 : 0.45;
-    if (atlas.coin) {
-      ctx.drawImage(
-        atlas.coin, 0, 0, COIN_PX, COIN_PX,
-        left + PRICE_PAD_X,
-        top + NAME_ROW_H + Math.round((PRICE_CARD_H - COIN_PX) / 2),
-        COIN_PX, COIN_PX,
-      );
-    }
-    ctx.font = hudFont(PRICE_TEXT_PX);
-    ctx.fillStyle = afford ? tone.ink : tone.inkMuted;
-    ctx.fillText(
-      label,
-      left + PRICE_PAD_X + coinWidth,
-      bottom - Math.round((PRICE_CARD_H - PRICE_TEXT_PX) / 2) - 2,
-    );
+  // THE CRATES GET THE SAME CARD, and that is the point of it being a
+  // function. A shop where the guns are priced in a panel and the ammunition
+  // is priced some other way is a shop with two price tags; the party learns
+  // one card, in one place, and reads both walls with it.
+  //
+  // The tag hangs off the crate's own HEIGHT rather than off a surface, since
+  // a crate has no top a thing rests on — and it rides the drop, so a box
+  // still falling has its price falling with it instead of a tag parked in
+  // mid-air waiting for its object.
+  const ammo = atlas.ammo;
+  for (const box of scene.fixtures.boxes) {
+    const item = scene.labelOf(box.key);
+    const drop = dropOffset(scene.time - box.bornAt);
+    priceCard(ctx, atlas, {
+      cx: view.x(box.x),
+      bottom: view.y(box.y - drop - ammo.frameHeight - PRICE_LIFT * 0.5),
+      name: item.name,
+      rarity: item.rarity,
+      price: box.price,
+      afford: box.price <= balance,
+      near: box.id === scene.nearBoxId,
+    });
   }
   ctx.globalAlpha = 1;
+}
+
+/** What one price tag says. Screen pixels, already projected. */
+interface PriceCard {
+  cx: number;
+  /** Bottom edge of the card, screen pixels. */
+  bottom: number;
+  name: string;
+  rarity: string;
+  price: number;
+  /** The party can cover it. False mutes the number, and only the number. */
+  afford: boolean;
+  /** The local player is standing at it. Brightens the whole card. */
+  near: boolean;
+}
+
+/**
+ * One two-row tag: the item's NAME in its rarity colour over a coin and a
+ * price.
+ *
+ * A FUNCTION BECAUSE THERE ARE TWO WALLS NOW. It was written inline for the
+ * six stalls and copied nowhere; the ammunition crates want exactly the same
+ * card at a different height, and a second copy would be the thing that lets
+ * a stall's tag and a crate's tag drift apart by a pixel and a shade.
+ */
+function priceCard(
+  ctx: CanvasRenderingContext2D,
+  atlas: StoreAtlas,
+  row: PriceCard,
+): void {
+  const tone = palette();
+  const label = String(row.price);
+  const card = PRICE_CARD_H + NAME_ROW_H;
+  const top = row.bottom - card;
+
+  ctx.font = hudFont(PRICE_TEXT_PX);
+  const priceWidth = Math.ceil(ctx.measureText(label).width);
+  ctx.font = hudFont(NAME_TEXT_PX);
+  const nameWidth = Math.ceil(ctx.measureText(row.name).width);
+  const coinWidth = atlas.coin ? COIN_PX + PRICE_GAP : 0;
+  const width = PRICE_PAD_X * 2 + Math.max(coinWidth + priceWidth, nameWidth);
+  const left = Math.round(row.cx - width / 2);
+
+  ctx.globalAlpha = row.near ? 0.94 : 0.82;
+  ctx.fillStyle = tone.panelInset;
+  ctx.fillRect(left, top, width, card);
+  // Border as four fills rather than a stroke: at this size a 1px stroke
+  // straddles the path and comes out as two half-lit rows.
+  ctx.globalAlpha = row.near ? 0.95 : 0.5;
+  ctx.fillStyle = tone.panelBorder;
+  ctx.fillRect(left, top, width, 1);
+  ctx.fillRect(left, row.bottom - 1, width, 1);
+  ctx.fillRect(left, top, 1, card);
+  ctx.fillRect(left + width - 1, top, 1, card);
+  // The hairline between the two rows. It is what stops a name and a number
+  // in different colours reading as one string that changed its mind.
+  ctx.globalAlpha = row.near ? 0.55 : 0.3;
+  ctx.fillRect(left + 1, top + NAME_ROW_H, width - 2, 1);
+
+  ctx.globalAlpha = row.near ? 1 : 0.85;
+  ctx.font = hudFont(NAME_TEXT_PX);
+  ctx.fillStyle = rarityInk(row.rarity);
+  ctx.fillText(
+    row.name,
+    left + Math.round((width - nameWidth) / 2),
+    top + NAME_ROW_H - Math.round((NAME_ROW_H - NAME_TEXT_PX) / 2) - 1,
+  );
+
+  ctx.globalAlpha = row.afford ? 1 : 0.45;
+  if (atlas.coin) {
+    ctx.drawImage(
+      atlas.coin, 0, 0, COIN_PX, COIN_PX,
+      left + PRICE_PAD_X,
+      top + NAME_ROW_H + Math.round((PRICE_CARD_H - COIN_PX) / 2),
+      COIN_PX, COIN_PX,
+    );
+  }
+  ctx.font = hudFont(PRICE_TEXT_PX);
+  ctx.fillStyle = row.afford ? tone.ink : tone.inkMuted;
+  ctx.fillText(
+    label,
+    left + PRICE_PAD_X + coinWidth,
+    row.bottom - Math.round((PRICE_CARD_H - PRICE_TEXT_PX) / 2) - 2,
+  );
 }
 
 /** One rarity ink as a CSS colour, out of the same tokens the HUD uses. */
@@ -780,6 +931,26 @@ export function drawStoreLight(
     );
   });
   ctx.globalAlpha = 1;
+
+  // THE POOL UNDER THE CRATE YOU ARE AT. The stalls answer a nearby player by
+  // LIFTING their weapon off the boards; a crate cannot — a box of rounds
+  // floating in the air is a bug, not an offer — so it gets the other half of
+  // that statement on its own: the same pool, on the floor, at its feet.
+  if (scene.nearBoxId !== null) {
+    const box = scene.fixtures.boxes.find((row) => row.id === scene.nearBoxId);
+    if (box) {
+      const glow = atlas.glow;
+      const step = Math.floor(time * glow.fps) % glow.frames;
+      ctx.drawImage(
+        glow.image,
+        step * glow.frameWidth, 0, glow.frameWidth, glow.frameHeight,
+        Math.round(box.x - glow.frameWidth / 2),
+        Math.round(box.y - glow.anchorY),
+        glow.frameWidth,
+        glow.frameHeight,
+      );
+    }
+  }
 
   if (scene.nearId !== null) {
     const stand = scene.fixtures.stands.find((row) => row.id === scene.nearId);

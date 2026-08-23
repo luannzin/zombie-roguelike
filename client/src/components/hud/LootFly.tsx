@@ -20,6 +20,12 @@ import { SkillCanIcon } from './SkillCanIcon';
 export interface LootFlyProps {
 }
 
+/**
+ * How much of its own size the skill tin flies at. See the note in the sprite
+ * below — it is the one sprite in this animation that had to come DOWN.
+ */
+const SKILL_TIN_SCALE = 0.66;
+
 export function LootFly() {
   const flies = useSyncExternalStore(subscribeLootFlies, listLootFlies, listLootFlies);
   if (flies.length === 0) return null;
@@ -73,9 +79,21 @@ function LootFlySprite({ fly }: { fly: LootFlySpec }) {
           the one that looked like the bigger prize. What the player is being
           shown is a PICKUP either way; a payout that arrives larger than
           everything else they collect all night reads as a different system
-          announcing itself. Same size, same flight, different object. */}
+          announcing itself. Same size, same flight, different object.
+
+          AND THE TIN IS THEN TRIMMED BACK BY A THIRD. Equal zoom made the two
+          sprites equal in PIXELS and not on screen: a tin is 16x18 of solid
+          cylinder where a loot icon is a small object with air around it, so
+          at the same scale it still arrived as the biggest thing that has ever
+          appeared over the player's head — parked there for half a second,
+          covering their own body during the hold. The scale is on a wrapper
+          rather than on `zoom` because `zoom` also sizes the label window off
+          the manifest, and a fractional zoom would put the tin's picture on
+          half a pixel. */}
       {fly.dest === 'skill' ? (
-        <SkillCanIcon rarity={fly.rarity} frame={fly.frame} zoom={2} />
+        <div style={{ transform: `scale(${SKILL_TIN_SCALE})` }}>
+          <SkillCanIcon rarity={fly.rarity} frame={fly.frame} zoom={2} />
+        </div>
       ) : (
         <LootIcon frame={fly.frame} zoom={2} />
       )}

@@ -107,6 +107,14 @@ export interface StoreAtlas {
   /** Shop-floor decoration. None of it opens either — see the generator. */
   crate: StoreProp;
   /**
+   * THE AMMUNITION CRATES, one frame per calibre, and the only boxes in this
+   * atlas drawn OPEN. That is deliberate and it is the whole tell: `crate` is
+   * roped and lidded because nothing in it may be touched, and these are lidless
+   * with rounds standing out of them because they are what the party buys from.
+   * Which frame a crate wears is the server's word — see `AmmoBox.variant`.
+   */
+  ammo: StoreProp;
+  /**
    * The lamps that light the room, on chains from the beams. Anchored on the
    * FLOOR; `hangY` is where the body sits above that contact.
    */
@@ -161,7 +169,7 @@ interface SheetManifest {
 }
 
 type PropName =
-  | 'brick' | 'table' | 'shelf' | 'crate' | 'lamp'
+  | 'brick' | 'table' | 'shelf' | 'crate' | 'ammo' | 'lamp'
   | 'kit' | 'wagon' | 'counter' | 'torch';
 
 interface StoreManifest {
@@ -190,7 +198,7 @@ async function fetchStore(): Promise<StoreAtlas | null> {
   try {
     const manifest = await loadJson<StoreManifest>(`${ROOT}/manifest.json`);
     const [
-      brick, tilefloor, table, shelf, crate, lamp,
+      brick, tilefloor, table, shelf, crate, ammo, lamp,
       kit, wagon, counter, torch, rug, torchfire, lampfire, glow, coin,
     ] = await Promise.all([
       loadProp(manifest.props.brick),
@@ -198,6 +206,7 @@ async function fetchStore(): Promise<StoreAtlas | null> {
       loadProp(manifest.props.table),
       loadProp(manifest.props.shelf),
       loadProp(manifest.props.crate),
+      loadProp(manifest.props.ammo),
       loadProp(manifest.props.lamp),
       loadProp(manifest.props.kit),
       loadProp(manifest.props.wagon),
@@ -211,7 +220,7 @@ async function fetchStore(): Promise<StoreAtlas | null> {
       loadImage('/hud/coin.png').catch(() => null),
     ]);
     return {
-      brick, tilefloor, table, shelf, crate, lamp,
+      brick, tilefloor, table, shelf, crate, ammo, lamp,
       kit, wagon, counter, torch, rug, torchfire, lampfire, glow, coin,
     };
   } catch (err) {

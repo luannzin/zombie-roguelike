@@ -52,7 +52,8 @@ an AK is.
 WHAT THIS MODULE OWNS AND WHAT IT DOES NOT
 It owns the tiles, the two end corridors, and where everything stands: his
 wagon, his counter, his fire, his own gear, the torches, the six stalls and
-the stock rolled onto them, `price_of`, the cabinet's spot, and the apron the
+the stock rolled onto them, `price_of`, the ammunition crates along the south
+wall and what a crate-load costs, the cabinet's spot, and the apron the
 night's platforms are lowered onto. It does not own the ART
 (`server/tools/make_store.py`, `make_merchant.py`, `make_machine.py`), and it
 does not own what a purchase DOES — that is `Room.buy`, for the same reason
@@ -627,6 +628,175 @@ def _roll_stock(day: int, count: int, rng: random.Random) -> list[str]:
     # on the shelf is the likeliest thing on a table.
     weights = [1.0 + pool.index(key) * 1.1 for key in pool]
     return rng.choices(pool, weights=weights, k=max(0, count))
+
+
+# --- the ammunition crates ---------------------------------------------------
+# THE ONE THING IN THIS SHOP THAT IS NOT A DECISION, AND IT IS DELIBERATE.
+#
+# Six tables are six choices; a crate of rounds is upkeep. It is the counterpart
+# of the rule `ammo.py` opens with — ammunition is not cargo — said from the
+# other side of the loop: if a round is what you SPEND to fill the bag, then the
+# shop has to be where you buy the spending money back. Until this existed a
+# party's ammunition came entirely off the forest floor, which made the calibre
+# you owned a thing you hoped about rather than a thing you supplied.
+#
+# A CRATE ONLY EXISTS IF SOMEBODY CAN SHOOT IT, and that is `ammo.scatter`'s
+# second rule standing indoors. The merchant does not stock .308 for a party of
+# knives — he stocks what they walked in carrying — so the row of crates against
+# the south wall is a PORTRAIT OF THE PARTY'S BELT, and the moment somebody buys
+# a calibre nobody had, another one lands there. `Room` owns that; this module
+# owns where they stand and what they cost.
+#
+# THEY DO NOT SELL OUT. A table sells once because it holds one specific weapon;
+# a crate is a supply, and a supply that emptied after one purchase would make
+# the fourth player in a room the one who goes into the night dry.
+#
+# NOTHING CLAIMS THE TILE UNDER ONE. Every other fixture in this room is stamped
+# solid at build time, and a crate that arrives mid-visit cannot be — the tile
+# map went out with the map. Rather than reserve five tiles that might stay
+# empty (a wall in the middle of a floor with nothing standing on it is the
+# worst bug this room can have), they stand flat against the south wall, on the
+# strip nobody walks, and you can step through one. The merchant is walked
+# through for the same reason and it has never been noticed.
+
+#: Where the crates stand: `(col, row)` from the INTERIOR'S CENTRE, one slot per
+#: calibre in `weapons.AMMO_TYPES` order, so a given calibre is always in the
+#: same place and a returning party knows where their rounds are without
+#: reading a label.
+#:
+#: ALONG THE SOUTH WALL, EAST OF THE DOOR. Two reasons and both are about the
+#: walk: it is the first wall the party passes coming in, which is when
+#: resupply is the cheap decision to make, and it is the one strip of floor the
+#: room's own furniture never uses — the stalls are in the middle and his
+#: counter is in the far corner. The last slot stops short of the decoration
+#: crate at `(10.0, 6.5)` by a tile and a half.
+AMMO_SPOTS: tuple[tuple[float, float], ...] = (
+    (3.2, 6.6),
+    (4.6, 6.6),
+    (6.0, 6.6),
+    (7.4, 6.6),
+    (8.8, 6.6),
+)
+#: How wide one crate is, in tiles. Mirrors `TILE_AMMO_W` in
+#: server/tools/make_store.py. Nothing is claimed with it — see above — but the
+#: renderer sorts and shadows off the same footprint every other prop uses.
+AMMO_TILES_W = 1.1
+
+#: What filling an EMPTY reserve costs, as a share of the cheapest weapon that
+#: eats the calibre.
+#:
+#: DERIVED LIKE EVERY OTHER PRICE IN THIS ROOM, and off the same column: a box
+#: has `value` 0 in the loot catalog (it is not cargo and may not be shipped),
+#: so the thing that has to answer "what is a round worth" is the GUN. Half a
+#: pistol buys six boxes of pistol rounds; half an AWP buys six of its five —
+#: so a calibre costs what its weapon costs, ammunition never overtakes the
+#: thing it feeds, and a party can rearm twice a night for a long time before
+#: they have paid for the weapon a second time.
+#:
+#: It is also what keeps the ladder honest at both ends without a table: the
+#: cheap sidearm's rounds are almost free and the sniper's are the most
+#: expensive thing on the floor that is not a gun, which is exactly the shape
+#: `weapons.catalog_value` already gave the weapons themselves.
+AMMO_RESERVE_SHARE = 0.5
+
+
+def ammo_price_of(calibre: str) -> int:
+    """What ONE crate-load of `calibre` costs, with the merchant's cut on top.
+
+    The box is the same box the forest scatters (`weapons.BOX_ROUNDS`), so its
+    share of a full reserve is read off the two tables rather than typed here:
+    a shell box is a sixth of sixty and a pistol box is a sixth of two hundred
+    and forty, and both come out of the same line.
+    """
+    cap = weapons.RESERVE_MAX.get(calibre, 0)
+    rounds = weapons.BOX_ROUNDS.get(calibre, 0)
+    if cap <= 0 or rounds <= 0:
+        return 0
+    floor_value = min(
+        (gun.value for gun in weapons.WEAPONS if gun.ammo == calibre),
+        default=0,
+    )
+    if floor_value <= 0:
+        return 0
+    full = floor_value * AMMO_RESERVE_SHARE
+    return max(1, round(full * (rounds / cap) * STORE_MARKUP))
+
+
+class AmmoBox:
+    """One crate of rounds against the wall. Sells forever; never sells out.
+
+    `x` is the CENTRE and `y` the contact, exactly like a `Stand`. `variant` is
+    the frame on the ammunition sheet and it is the calibre's index in
+    `weapons.AMMO_TYPES` — shipped rather than derived on the client, so the
+    art's frame order is a fact one side owns.
+    """
+
+    __slots__ = ("id", "calibre", "key", "price", "rounds", "x", "y", "variant")
+
+    def __init__(
+        self,
+        calibre: str,
+        x: float,
+        y: float,
+        variant: int,
+    ) -> None:
+        self.id = f"b_{calibre}"
+        self.calibre = calibre
+        self.key = f"ammo_{calibre}"
+        self.price = ammo_price_of(calibre)
+        self.rounds = weapons.BOX_ROUNDS.get(calibre, 0)
+        self.x = x
+        self.y = y
+        self.variant = variant
+
+    def to_payload(self) -> dict:
+        return {
+            "id": self.id,
+            "c": self.calibre,
+            "k": self.key,
+            "price": self.price,
+            "n": self.rounds,
+            "x": round(self.x, 1),
+            "y": round(self.y, 1),
+            "v": self.variant,
+        }
+
+
+def ammo_boxes(width: int, calibres: set[str]) -> list[AmmoBox]:
+    """A crate for every calibre in `calibres`, in `weapons.AMMO_TYPES` order.
+
+    The ORDER IS THE TABLE'S, not the party's: a calibre keeps its slot on the
+    wall whether or not the ones before it are stocked, so the .308 crate does
+    not slide two feet to the left the night somebody sells the shotgun.
+    """
+    out: list[AmmoBox] = []
+    for index, calibre in enumerate(weapons.AMMO_TYPES):
+        if calibre not in calibres or index >= len(AMMO_SPOTS):
+            continue
+        col, row = AMMO_SPOTS[index]
+        x, y = _in(width, col, row)
+        out.append(AmmoBox(calibre=calibre, x=x, y=y, variant=index))
+    return out
+
+
+def ammo_boxes_from_payloads(rows: list | None) -> list[AmmoBox]:
+    """Rebuild the crates off a map payload — a late join, or a reconnect."""
+    out: list[AmmoBox] = []
+    for row in rows or []:
+        if not isinstance(row, dict):
+            continue
+        calibre = str(row.get("c", ""))
+        if calibre not in weapons.AMMO_TYPES:
+            continue
+        out.append(
+            AmmoBox(
+                calibre=calibre,
+                x=float(row.get("x", 0.0)),
+                y=float(row.get("y", 0.0)),
+                variant=int(row.get("v", 0)),
+            )
+        )
+    return out
 
 
 # --- the ground -------------------------------------------------------------
@@ -1274,6 +1444,12 @@ def build_store(day: int, seed: int, takes: list[int] | None = None) -> TileMap:
         "wagon": [round(wagon[0], 1), round(wagon[1], 1)],
         "door": [round(door[0], 1), round(door[1], 1)],
         "stands": [stand.to_payload() for stand in stands],
+        # THE AMMUNITION CRATES START EMPTY AND THE ROOM FILLS THEM. Which
+        # calibres are on the wall is a fact about the PARTY's belt, and this
+        # function is handed a day and a seed — see `Room._sync_ammo_boxes`,
+        # which writes the row back onto this payload the moment somebody
+        # walks in carrying a gun.
+        "boxes": [],
         "torches": [[round(x, 1), round(y, 1), kind] for x, y, kind in torches],
         "machine": [round(machine[0], 1), round(machine[1], 1)],
         "kit": [[round(x, 1), round(y, 1), variant] for x, y, variant in kit],

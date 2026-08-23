@@ -51,6 +51,12 @@ client -> server
                                         only; ignored if too far, already
                                         sold, unaffordable, or the belt is
                                         full with no legal trade.
+                                        An `id` naming an AMMUNITION CRATE
+                                        ("b_rifle") buys one box of that
+                                        calibre instead: the crate never sells
+                                        out, and it is refused for a calibre
+                                        this player is not carrying or a
+                                        reserve already at its cap
 
 server -> client
   {"type":"hello","playerId":"...","code":"ABC1234",
@@ -70,7 +76,7 @@ server -> client
    "corpses":[...],
    "entrance":{...},"tilePatches":[...],"quests":[...],
    "rifts":[...],"egress":{...},"blackout":true,
-   "stands":[...],"buys":[...],"balance":240,"spins":[...],
+   "stands":[...],"boxes":[...],"buys":[...],"balance":240,"spins":[...],
    "roster":[...]}                    only every ROSTER_EVERY_N_TICKS ticks
   {"type":"pong","t":<echoed>}
 
@@ -168,9 +174,19 @@ Snapshot arrays:
                and again on a snapshot only when one was bought from. A sold
                table keeps its row and its price; `sold` is what empties it,
                because the gap where a weapon was is information
+  boxes        the shop's AMMUNITION CRATES, one row per calibre somebody in
+               the room is carrying — `c` the calibre, `n` the rounds one
+               purchase hands over, `v` the frame on the ammunition sheet
+               (the calibre's index in `weapons.AMMO_TYPES`, shipped so the
+               art's frame order stays one side's fact). Sent when the wall
+               CHANGES, which is arriving and buying a calibre nobody had;
+               a row the client has not seen before is what it drops in.
+               A crate never sells out, so there is no `sold` here
   buys         purchases since the last snapshot (juice). `slot` is the belt
                cell it landed in; the client flies the sprite there and
-               counts the balance down
+               counts the balance down. `dest` is "ammo" for a crate-load —
+               the sprite flies at the GUN it fed rather than into a cell it
+               never occupied — and `n` is how many rounds arrived
   spins        lever pulls since the last snapshot (juice). ONE ROW IS A
                WHOLE CEREMONY: `k` is the skill that came out, `r` its
                rarity, `n` how many copies the puller holds now, `left`
@@ -188,7 +204,9 @@ Snapshot arrays:
 
 The store's fixtures ride the MAP payload (`store`), not the snapshot: where
 the merchant stands and where his tables are is decided once when the corridor
-is built, the same as a rift's geometry. Only what SELLS moves.
+is built, the same as a rift's geometry. Only what SELLS moves — and the
+ammunition crates, which are the one fixture in the room whose EXISTENCE is a
+fact about the party rather than about the map.
 """
 
 from __future__ import annotations
@@ -319,6 +337,7 @@ def snapshot(
     egress: dict | None = None,
     blackout: bool | None = None,
     stands: list[dict] | None = None,
+    boxes: list[dict] | None = None,
     buys: list[dict] | None = None,
     balance: int | None = None,
     spins: list[dict] | None = None,
@@ -374,6 +393,11 @@ def snapshot(
         payload["blackout"] = True
     if stands is not None:
         payload["stands"] = stands
+    # The ammunition crates, when the wall changed — which in practice is the
+    # frame somebody walks into the shop and the frame they buy a calibre
+    # nobody had. A row appearing is what the client animates the drop off.
+    if boxes is not None:
+        payload["boxes"] = boxes
     if buys:
         payload["buys"] = buys
     if spins:

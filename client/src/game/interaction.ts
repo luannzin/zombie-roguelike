@@ -33,7 +33,7 @@ import type { GameConfig, LootState, PlayerMeta } from '../net/protocol';
 import type { HudBuyPrompt, HudLootPrompt, HudRiftPrompt } from './hud-store';
 import { objectLabel, objectTilesW } from './objects';
 import type { LocalPlayer } from './prediction';
-import type { CratePiece, Rift, Stand, TileMap } from './world';
+import type { AmmoBox, CratePiece, Rift, Stand, TileMap } from './world';
 
 /**
  * Everything a reach test or a prompt reads, and nothing else.
@@ -199,6 +199,39 @@ export function nearStand(s: InteractionState): Stand | null {
   return best;
 }
 
+/**
+ * The ammunition crate the local player could buy from, or null.
+ *
+ * Same measurement `nearStand` makes and against the same reach, because the
+ * server checks both with one constant (`STORE_BUY_DIST`) — a crate that
+ * answered at a different distance from the table beside it would be a second
+ * idea of "standing at something" in one room.
+ *
+ * A CRATE IS NEVER SKIPPED FOR BEING SPENT. `nearStand` steps over a sold
+ * table because an empty table is not something to stand at; a crate never
+ * empties, so the only thing that can take it out of the prompt is walking
+ * away from it.
+ */
+export function nearAmmoBox(s: InteractionState): AmmoBox | null {
+  const config = s.config;
+  const fixtures = s.world?.store;
+  const at = feet(s);
+  if (!config || !fixtures || !at) return null;
+  const range = config.storeBuyTiles * config.tileSize;
+  let best: AmmoBox | null = null;
+  let bestD2 = range * range;
+  for (const box of fixtures.boxes) {
+    const dx = box.x - at.x;
+    const dy = box.y - at.y;
+    const d2 = dx * dx + dy * dy;
+    if (d2 <= bestD2) {
+      bestD2 = d2;
+      best = box;
+    }
+  }
+  return best;
+}
+
 // --- legality: the two rules mirrored off the server -------------------------
 
 /**
@@ -359,7 +392,12 @@ export function buyPrompt(s: InteractionState): HudBuyPrompt | null {
   if (s.locked || s.introHold) return null;
   if (s.zoneKind !== 'store') return null;
   const stand = nearStand(s);
-  if (!stand) return null;
+  // THE TABLE WINS A TIE. The two reaches only overlap on the frame somebody
+  // is standing exactly between a stall and a crate, and when they do, the
+  // expensive irreversible purchase is the one the player meant — a press that
+  // spent four gold on rounds when it meant to buy an AK is a worse mistake in
+  // both directions than the other way round.
+  if (!stand) return ammoPrompt(s);
   const item = s.config?.loot?.[stand.key];
   // A full belt is a TRADE here exactly as it is on a world drop, and the
   // tooltip has to say whose gun is being given up — otherwise E silently
@@ -374,6 +412,45 @@ export function buyPrompt(s: InteractionState): HudBuyPrompt | null {
     afford: stand.price <= s.balance,
     full: !room && swap === null,
     swap: swap ?? undefined,
+  };
+}
+
+/**
+ * What E is offering on an ammunition crate, or null.
+ *
+ * THE REFUSALS ARE NAMED, exactly as they are on a table: a calibre you are
+ * not carrying, a reserve already full, and a price the party cannot cover are
+ * three different sentences, and hiding any of them would leave a player
+ * standing at a crate wondering why the key does nothing.
+ *
+ * `canStow` is not reused here even though it answers two of the three, and
+ * that is deliberate: it answers about the box on the FLOOR — whether this
+ * player may pick that drop up — and a crate is not a drop. Reusing it would
+ * tie the shop's refusal to a function whose whole job is the forest's.
+ */
+function ammoPrompt(s: InteractionState): HudBuyPrompt | null {
+  const box = nearAmmoBox(s);
+  if (!box) return null;
+  const item = s.config?.loot?.[box.key];
+  const guns = s.meta?.guns;
+  const owns = (guns?.slots ?? []).some(
+    (cell) => cell !== null && s.config?.weapons?.[cell]?.ammo === box.calibre,
+  );
+  // A calibre nobody in the room owns has no crate at all, so this is the
+  // four-player case: the rifle crate is on the wall because a teammate
+  // brought the rifle, and it is not this player's to buy out of.
+  if (!owns) return null;
+  const cap = s.config?.ammo?.max?.[box.calibre];
+  const stocked = cap !== undefined && (s.ammo[box.calibre] ?? 0) >= cap;
+  return {
+    id: box.id,
+    name: item?.name ?? box.key,
+    rarity: item?.rarity ?? 'common',
+    price: box.price,
+    afford: box.price <= s.balance,
+    full: false,
+    rounds: box.rounds,
+    stocked,
   };
 }
 

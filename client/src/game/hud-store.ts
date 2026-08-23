@@ -149,6 +149,20 @@ export interface HudBuyPrompt {
    * on the floor. Absent on an ordinary purchase.
    */
   swap?: string;
+  /**
+   * Rounds this press would hand over. Set on an AMMUNITION CRATE and absent
+   * on a stall, which is what the card branches on: a crate is bought over and
+   * over and the number is the whole offer, where a weapon is bought once and
+   * its name is.
+   */
+  rounds?: number;
+  /**
+   * The reserve is already at its cap. The crate's version of `full` — named
+   * apart from it because the refusals are different sentences: a belt with no
+   * room is a thing you can fix by trading, and a full magazine pouch is a
+   * thing you fix by shooting.
+   */
+  stocked?: boolean;
 }
 
 /**

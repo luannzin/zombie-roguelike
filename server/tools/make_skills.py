@@ -3,6 +3,7 @@
 
 Output (assets/processed/skills/):
     sheet.png      one 16x16 icon per skill, left to right in catalog order
+                   (36 of them — the order is `app/skills.SKILLS`, checked)
     can.png        5 frames, 16x18 — one tin per rarity
     cap.png        5 frames, 16x18 — the same tin, lit, for the additive
                    pass, so a legendary can actually glows in a dark glade
@@ -435,7 +436,323 @@ ICONS: list[tuple[str, Palette, Art]] = [
             ".ssssss.",
         ],
     ),
+    # --- the second pass, APPENDED --------------------------------------------
+    # Eighteen more, in the order `server/app/skills.py` appends them, and for
+    # the same reason it appends rather than files them under their tiers: a
+    # row inserted in the middle of this list moves every frame index after it,
+    # and the whole tray ends up wearing somebody else's picture. `_check_order`
+    # below fails the build if the two lists ever disagree.
+    #
+    # THE HARD ONES WERE THE ARMOUR ROWS. Five skills that all mean "you get hit
+    # less" would be five grey plates, and the tray already has one (Pele Dura).
+    # So each of them is a different OBJECT that happens to protect: a vest, a
+    # studded pad, a bolted plate with a scratch across it, a helmet, a skin of
+    # cracked stone. The tier is the colour of the border; the icon has to be
+    # the thing.
+    (
+        # Lamparina Limpa — a lantern, burning clean behind glass.
+        "lamparina_limpa",
+        {"s": STEEL, "g": GLASS, "w": SPARK},
+        [
+            "..ss..",
+            ".s..s.",
+            "sggggs",
+            "sgwwgs",
+            "sgwwgs",
+            "sggggs",
+            ".ssss.",
+        ],
+    ),
+    (
+        # Punho Calejado — a bare fist. It pairs with Pulso de Aço the way the
+        # two mira rows pair: same gesture, one in flesh and one in steel, so a
+        # glance at the tray says which of your two hands got better.
+        "punho_calejado",
+        {"f": FLESH, "d": DARK, "h": HIDE},
+        [
+            ".ffff..",
+            "ffffff.",
+            "fdfdfdf",
+            "fffffff",
+            "ffffffh",
+            ".ffff.h",
+        ],
+    ),
+    (
+        # Colete Improvisado — plates lashed to a shirt. The cloth is what says
+        # IMPROVISED: a full steel front would be the epic's icon.
+        "colete_improvisado",
+        {"c": CLOTH, "s": STEEL, "d": DARK},
+        [
+            ".cc..cc.",
+            "cccccccc",
+            "cssssssc",
+            "cs.dd.sc",
+            "cssssssc",
+            "cccccccc",
+            ".cccccc.",
+        ],
+    ),
+    (
+        # Caderneta do Sucateiro — a notebook with a pencil down the spine.
+        "caderneta_do_sucateiro",
+        {"h": HIDE, "c": CLOTH, "d": DARK, "g": GOLD},
+        [
+            ".hhhhhh.",
+            "hccccccg",
+            "hcddddcg",
+            "hcccccch",
+            "hcddddch",
+            "hcccccch",
+            ".hhhhhh.",
+        ],
+    ),
+    (
+        # Mira de Ferro — a post standing in a notch, tipped red. Deliberately
+        # NOT another circle: Mira Apurada already owns the reticle, and two
+        # gun rows drawn as rings would be one row drawn twice.
+        "mira_de_ferro",
+        {"s": STEEL, "r": BLOOD},
+        [
+            "ss.r.ss",
+            "ss.s.ss",
+            "ss.s.ss",
+            "sssssss",
+            "..sss..",
+            "..sss..",
+        ],
+    ),
+    (
+        # Couro Batido — a hide pad under a grid of studs.
+        "couro_batido",
+        {"h": HIDE, "s": STEEL},
+        [
+            ".hhhhhh.",
+            "hhhhhhhh",
+            "hshhhhsh",
+            "hhhhhhhh",
+            "hshhhhsh",
+            "hhhhhhhh",
+            ".hhhhhh.",
+        ],
+    ),
+    (
+        # Mão Leve — a purse, and the cut that opened it. It was a HAND first
+        # and the hand was the problem: Punho Calejado is a fist in the same
+        # flesh ramp two tiles away, and at sixteen pixels an open hand and a
+        # closed one are the same pink lump. The purse says the same thing
+        # about the skill and shares its silhouette with nothing.
+        "mao_leve",
+        {"h": HIDE, "g": GOLD, "n": NEON, "d": DARK},
+        [
+            "..h..h..",
+            ".hhhhhh.",
+            "hgggnggh",
+            "hggnnggh",
+            "hggngggh",
+            "hgdggdgh",
+            ".hhhhhh.",
+        ],
+    ),
+    (
+        # Ombro Firme — a pauldron on its strap.
+        "ombro_firme",
+        {"s": STEEL, "d": DARK, "h": HIDE},
+        [
+            "..ssss..",
+            ".ssssss.",
+            "ssssssss",
+            "sdssssds",
+            "ssssssss",
+            ".hhhhhh.",
+            "..hhhh..",
+        ],
+    ),
+    (
+        # Pisada de Gato — a paw, which is the one silhouette in this tray that
+        # is not a made object. That is the point: the rows that are about YOUR
+        # body read as bodies.
+        "pisada_de_gato",
+        {"h": HIDE},
+        [
+            ".hh.hh..",
+            ".hh.hh.h",
+            "........",
+            "..hhhh..",
+            ".hhhhhh.",
+            "..hhhh..",
+        ],
+    ),
+    (
+        # Placa de Aço — a bolted plate with a scratch across it. The scratch
+        # is what separates it from Pele Dura at a glance: same material, one
+        # of them has been HIT.
+        "placa_de_aco",
+        {"s": STEEL, "d": DARK, "f": FROST},
+        [
+            "ssssssss",
+            "sdsfssds",
+            "sssfssss",
+            "ssfsssss",
+            "sfssssss",
+            "sdssssds",
+            "ssssssss",
+        ],
+    ),
+    (
+        # Mochila de Lona — a rolled duffel under its strap. Bolsos Fundos is a
+        # pack with pouches; this is a bag, and the difference is the roll.
+        "mochila_de_lona",
+        {"c": CLOTH, "h": HIDE, "d": DARK},
+        [
+            "..h..h..",
+            ".chhhhc.",
+            "cccccccc",
+            "cchddhcc",
+            "cccccccc",
+            ".cccccc.",
+            "..cccc..",
+        ],
+    ),
+    (
+        # Fio da Navalha — an edge coming off a stone. Lâmina Afiada is the
+        # knife and Açougueiro is the cleaver, so the third blade row is not a
+        # blade at all: it is the honing.
+        "fio_da_navalha",
+        {"w": FROST, "s": STEEL, "k": DARK},
+        [
+            ".wwwwww.",
+            "ssssssss",
+            "........",
+            "kkkkkkkk",
+            ".kkkkkk.",
+        ],
+    ),
+    (
+        # Cano Longo — a barrel with the flash still on it. See the note on the
+        # catalog row: this was a steel fist, and a steel fist in a tray that
+        # already holds a helmet, a pauldron and two plates is a fifth grey
+        # lump. A muzzle is a shape with a direction, which is also the only
+        # icon in the gun family that says WHEN it helps.
+        "cano_longo",
+        {"s": STEEL, "d": DARK, "w": SPARK, "g": GOLD},
+        [
+            "......w..",
+            "sssssdwg.",
+            "sdsssdwwg",
+            "sssssdwg.",
+            "......w..",
+        ],
+    ),
+    (
+        # Casco de Ferro — a helmet with a visor slit.
+        "casco_de_ferro",
+        {"s": STEEL, "d": DARK},
+        [
+            "..ssss..",
+            ".ssssss.",
+            "ssssssss",
+            "sdddddds",
+            "ssssssss",
+            ".ssssss.",
+            "..s..s..",
+        ],
+    ),
+    (
+        # Passo de Sombra — a footprint with the dark still glowing around it.
+        # Passo Leve is the BOOT; this is what the boot left behind.
+        "passo_de_sombra",
+        {"h": HIDE, "n": NEON},
+        [
+            "n..hhh..",
+            "..hhhhh.",
+            "..hhhhhn",
+            "...hhh..",
+            "........",
+            "n...hh..",
+            "...hhhh.",
+            "....hh.n",
+        ],
+    ),
+    (
+        # Pele de Pedra — a mass of cracked stone. No plates, no rivets: this
+        # is the one armour row that is not equipment.
+        "pele_de_pedra",
+        {"c": CLOTH, "d": DARK},
+        [
+            ".cccccc.",
+            "cccdcccc",
+            "ccdccccc",
+            "cccccdcc",
+            "ccdccccc",
+            "cccccccc",
+            ".cccccc.",
+        ],
+    ),
+    (
+        # Mãos do Armeiro — an anvil, with the spark still coming off it.
+        "maos_do_armeiro",
+        {"s": STEEL, "g": GOLD},
+        [
+            "..ssss.g",
+            ".sssssss",
+            "ssssss.g",
+            "..sss...",
+            "..sss...",
+            ".sssss..",
+            "sssssss.",
+        ],
+    ),
+    (
+        # Bolsa Sem Fundo — a bag whose inside is somewhere else.
+        "bolsa_sem_fundo",
+        {"h": HIDE, "d": DARK, "n": NEON, "c": CLOTH},
+        [
+            ".hhhhhh.",
+            "hddddddh",
+            "hdn.ddnh",
+            "hdddnddh",
+            "cdddddnc",
+            "ccddddcc",
+            ".cccccc.",
+            "..cccc..",
+        ],
+    ),
 ]
+
+
+def _check_order() -> None:
+    """Fail the build if this sheet and the catalog have drifted apart.
+
+    THE ONE THING NOTHING AT RUNTIME NOTICES. `skills.FRAME` is the catalog's
+    own index, so a row added here and not there — or, far more likely, added
+    there and not here — does not error anywhere: the HUD asks for frame 22 of
+    a sheet with 21 frames and draws whatever the modulo lands on. Every tile
+    in the tray keeps working and half of them are wearing the wrong picture.
+
+    Best-effort on the import: this script is run from `server/` where `app` is
+    importable, and it stays runnable without it.
+    """
+    try:
+        import sys
+        from pathlib import Path as _Path
+
+        sys.path.insert(0, str(_Path(__file__).resolve().parents[1]))
+        from app import skills as catalog  # noqa: E402
+    except Exception:  # pragma: no cover - the standalone case
+        print("  (catalog not importable — skipping the order check)")
+        return
+    mine = [key for key, _, _ in ICONS]
+    theirs = [row.key for row in catalog.SKILLS]
+    if mine != theirs:
+        extra = [k for k in mine if k not in theirs]
+        missing = [k for k in theirs if k not in mine]
+        raise SystemExit(
+            "skill icons and the catalog disagree — they are ONE list in two "
+            f"files:\n  no catalog row: {extra}\n  no icon: {missing}\n"
+            "  (if both sides have every key, they are in a different ORDER, "
+            "which moves frame indices — append, never insert)"
+        )
 
 
 # --- the canister -------------------------------------------------------------
@@ -664,6 +981,7 @@ def _tint(colour: RGBA, light: float) -> RGBA:
 
 
 def build(args) -> Path:
+    _check_order()
     out_dir = PROCESSED_DIR / "skills"
     out_dir.mkdir(parents=True, exist_ok=True)
     cell = args.tile

@@ -117,6 +117,8 @@ from .quests import Quest
 from .enemies import ENEMY_TYPES, Enemy, EnemyType, dress
 from .world import FLOOR, VOID
 from .entities import (
+    USE_CRATE,
+    USE_HEAL,
     POUR_DUMP, POUR_LIFT, POUR_STOW, POUR_WALK,
     InputCmd, Player, Pour, clean_name, pick_color, random_name,
     Use,
@@ -908,6 +910,70 @@ class Room:
         dy = crate.y - feet_y
         if dx * dx + dy * dy > CRATE_BREAK_DIST * CRATE_BREAK_DIST:
             return
+        # A TIMED OBJECT OPENS A CHANNEL INSTEAD OF OPENING. Everything else in
+        # the game resolves on this frame; the vault asks the player to stand
+        # here first — see `crates.ObjectType.open_time`.
+        if crate.type.open_time > 0.0:
+            self._begin_force(player, crate)
+            return
+        self.smash_crate(crate, player)
+
+    def _begin_force(self, player: Player, crate: Crate) -> None:
+        """Start working on a timed object. Nothing opens on this frame.
+
+        THE NOISE GOES OUT NOW, AND THAT IS THE MECHANIC RATHER THAN A DETAIL.
+        A slow open whose noise fired on completion would be a gamble with no
+        stake in it — you would hear whether it was worth it before anything
+        heard you. Announcing first means the risk is committed before the
+        payoff is known, which is the only arrangement under which "do I open
+        this now or come back later" is a real question.
+
+        An interrupted force therefore costs the seconds AND the attention of
+        everything in earshot, and leaves the object shut. That is the price of
+        trying, and it is payable more than once.
+        """
+        if player.pour is not None or player.using is not None:
+            return
+        # ONE PAIR OF HANDS PER OBJECT. Two players forcing the same vault
+        # would both finish and it would pay twice — the second channel is
+        # refused rather than queued, because a player standing next to
+        # somebody else's four seconds should go and do something useful.
+        if any(
+            other.using is not None
+            and other.using.kind == USE_CRATE
+            and other.using.target == crate.id
+            for other in self.players.values()
+        ):
+            return
+        player.using = Use(
+            kind=USE_CRATE,
+            target=crate.id,
+            left=crate.type.open_time,
+            total=crate.type.open_time,
+        )
+        player.vx = player.vy = 0.0
+        self.noises.append(
+            ai.Noise(
+                x=crate.x, y=crate.y, radius=crate.type.noise, source_id=player.id
+            )
+        )
+
+    def _finish_force(self, player: Player, crate_id: str) -> None:
+        """The channel completed. Open it exactly as a keypress would have.
+
+        THE SAME DOOR, deliberately: `smash_crate` owns the roll, the ambush,
+        the wire row and the noise, and a timed object that resolved through
+        its own copy of that would be the place the two drift. What the
+        channel changed is WHEN this is called, and nothing else.
+
+        The object is re-read off the room rather than held, because four
+        seconds is long enough for the map to have moved on — and an opened
+        vault is refused by `smash_crate` anyway, so a race resolves to a miss
+        rather than to a double payout.
+        """
+        crate = self.crates.get(crate_id)
+        if crate is None or crate.opened:
+            return
         self.smash_crate(crate, player)
 
     def smash_crate(self, crate: Crate, source: Player | None) -> None:
@@ -941,7 +1007,12 @@ class Room:
         self.world.crates = [row.to_payload() for row in self.crates.values()]
         self._crates_dirty = True
 
-        if source is not None:
+        # ONE ANNOUNCEMENT PER OBJECT. A timed one already made it, at the
+        # START of the channel — that is the whole gamble (see `_begin_force`),
+        # and shouting again on completion would both double a very large
+        # radius and quietly undo the arrangement: the point is that the risk
+        # is committed before the payoff is known.
+        if source is not None and kind.open_time <= 0.0:
             self.noises.append(
                 ai.Noise(x=crate.x, y=crate.y, radius=kind.noise, source_id=source.id)
             )
@@ -1283,7 +1354,7 @@ class Room:
             return
         if player.hp >= player.max_hp:
             return
-        player.using = Use(slot=slot, left=kit.use_time, total=kit.use_time)
+        player.using = Use(kind=USE_HEAL, slot=slot, left=kit.use_time, total=kit.use_time)
         player.vx = player.vy = 0.0
 
     def _step_use(self, player: Player, dt: float) -> None:
@@ -1309,6 +1380,12 @@ class Room:
         if use.left > 0.0:
             return
         player.using = None
+        # THE ONLY THING THE KIND DECIDES IS WHAT THE LAST FRAME DOES. Every
+        # other rule about a channel — the puppet, the clock, the cancel, the
+        # ring on the client — is the same for both and is written once above.
+        if use.kind == USE_CRATE:
+            self._finish_force(player, use.target)
+            return
         key = player.medical.take(use.slot)
         kit = medical.BY_KEY.get(key or "")
         if kit is None:

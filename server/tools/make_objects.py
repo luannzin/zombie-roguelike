@@ -138,7 +138,11 @@ BOX_KINDS = 3
 BOX_FRAMES = 6
 BOX_FPS = 14
 
-CHEST_KINDS = 2
+# THREE, and the third is APPENDED. The strip is generated kind-major
+# (`for kind: for frame:`), so a new kind's frames land at the END of the sheet
+# and every existing frame index is untouched — which is the only way to add to
+# a generated list in this repository.
+CHEST_KINDS = 3
 CHEST_FRAMES = 8
 CHEST_FPS = 11
 
@@ -1786,7 +1790,19 @@ def make_box(width: int, height: int, kind: int, frame: int, frames: int) -> Ima
 
 
 def make_chest(width: int, height: int, kind: int, frame: int, frames: int) -> Image.Image:
-    """`kind`: 0 iron-bound chest, 1 strongbox. Slower, taller, always paying.
+    """`kind`: 0 iron-bound chest, 1 strongbox, 2 VAULT. Slower, taller, always paying.
+
+    THE VAULT IS THE ONE YOU HAVE TO STAND STILL FOR. It is the only object in
+    the game that takes real seconds to open (`ObjectType.open_time`), and the
+    art has exactly one job: to be legible as "that one is different again"
+    from the same distance the domed lid already says "that one is different".
+
+    So it is read off PROPORTION and BAND COUNT rather than detail. It is
+    squatter and wider than the other two — a thing built to sit still rather
+    than be carried — and it wears four straps instead of two, in brass over
+    cold steel. At this size a lock is two pixels, so the silhouette has to
+    carry it, and a heavier, lower, more banded box is what "reinforced" looks
+    like when you only have a silhouette to say it with.
 
     Deliberately the ONE object in the forest with a curved lid. Everything
     else here is a flat top — a box, a bin, a bonnet — so the dome is doing
@@ -1809,10 +1825,19 @@ def make_chest(width: int, height: int, kind: int, frame: int, frames: int) -> I
     open_t = _ease(frame / max(frames - 1, 1))
 
     body = PLANK if kind == 0 else STEEL
-    bandmetal = BRASS if kind == 0 else CHROME
+    # The vault wears BRASS over cold steel — the strongbox's material with the
+    # chest's banding, which is the whole idea of it: the good one, reinforced.
+    bandmetal = CHROME if kind == 1 else BRASS
 
-    lw, rw = width * 0.40, width * 0.31
-    tall = height * 0.32
+    # SQUATTER AND WIDER. A thing built to sit somewhere rather than be
+    # carried, and the proportion is what reads at sixteen pixels across a
+    # dark clearing — long before anybody can count a strap.
+    if kind == 2:
+        lw, rw = width * 0.46, width * 0.36
+        tall = height * 0.27
+    else:
+        lw, rw = width * 0.40, width * 0.31
+        tall = height * 0.32
     base = ground - 1.0
     rim = base - tall
 
@@ -1820,7 +1845,10 @@ def make_chest(width: int, height: int, kind: int, frame: int, frames: int) -> I
 
     # Iron straps down the near wall. They follow the contact slope, so they
     # stay vertical on the object rather than on the frame.
-    for offset in (-0.60, -0.12):
+    # FOUR STRAPS ON THE VAULT, TWO ON THE OTHERS. Band count is the second
+    # read after proportion, and it is the one that survives being half behind
+    # a bush.
+    for offset in ((-0.72, -0.36, 0.0, 0.36) if kind == 2 else (-0.60, -0.12)):
         bx = int(round(cx + offset * lw))
         if not 0 <= bx < width:
             continue

@@ -8,13 +8,21 @@
  * point of the object vocabulary reaching the client as data: a barrel says
  * destruir, a chest says abrir, a car boot says vasculhar, and the HUD learns
  * a new one when `server/app/crates.py` grows a row.
+ *
+ * AND IT STATES THE PRICE BEFORE THE PRESS. One object in the game plants you
+ * for real seconds (`open_time` — the vault), and the whole design of that is
+ * that choosing WHEN to pay it is the interesting part. A player who only
+ * finds out they are committed once they are standing still has been trapped
+ * rather than asked, so the seconds are on the prompt, in the same line, and
+ * nowhere else in the HUD needs to know.
  */
 
 import { Tooltip, TooltipKey } from './Tooltip';
+import type { HudCratePrompt } from '../../game/hud-store';
 
 export interface CratePromptProps {
-  /** The verb, or null when nothing is in reach. */
-  prompt: string | null;
+  /** The object under E, or null when nothing is in reach. */
+  prompt: HudCratePrompt | null;
 }
 
 export function CratePrompt({ prompt }: CratePromptProps) {
@@ -22,7 +30,14 @@ export function CratePrompt({ prompt }: CratePromptProps) {
 
   return (
     <Tooltip anchor="crate">
-      Aperte <TooltipKey>E</TooltipKey> para {prompt}
+      Aperte <TooltipKey>E</TooltipKey> para {prompt.label}
+      {prompt.seconds > 0 ? (
+        // Its own muted span rather than part of the sentence: the verb is
+        // what the player reads at a glance and the cost is what they read
+        // when they stop to think, and running the two together makes the
+        // fast read slower for every object that has no cost at all.
+        <span className="text-ink-muted"> ({prompt.seconds.toFixed(1)}s parado)</span>
+      ) : null}
     </Tooltip>
   );
 }

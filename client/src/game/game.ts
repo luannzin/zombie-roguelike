@@ -604,6 +604,8 @@ interface PlayerSource {
    * reads `Game.healing` instead, exactly like `pour`.
    */
   use?: number;
+  /** Which kind of channel `use` is measuring. Absent means a heal. */
+  uk?: string;
 }
 
 export interface GameOptions {
@@ -813,6 +815,15 @@ export class Game {
    * the health it is promising.
    */
   private healing = 0;
+  /**
+   * True while `healing` is measuring a VAULT rather than a kit.
+   *
+   * Read off the tick row like the progress itself, rather than remembered
+   * from the keypress: a force can be started by the same E that opens every
+   * other object, so the client does not know which it was until the server
+   * says a channel opened at all.
+   */
+  private forcingKind = false;
   /**
    * Which cell the current heal is spending, or -1.
    *
@@ -1539,6 +1550,7 @@ export class Game {
         this.localPour = state.pour ?? null;
         const healingBefore = this.healing;
         this.healing = state.use ?? 0;
+        this.forcingKind = (state.uk ?? '') === 'crate';
         // THE WRAPPER, on the frame the server agrees the channel opened.
         //
         // Not on the keypress, even though that is where it would feel
@@ -1546,7 +1558,13 @@ export class Game {
         // STARTED — and a tear that played on a use the server then refused
         // would tell the player they had committed to something they had not.
         // Every refusal is already answered by `useMedical`'s own error blip.
-        if (healingBefore <= 0 && this.healing > 0) playSfx('heal-start');
+        if (healingBefore <= 0 && this.healing > 0) {
+          // A wrapper for a kit; the object's own noise already went out for a
+          // vault (the server makes it at the START of the force — that is the
+          // gamble), so playing a medical cue over it would be the game
+          // describing the wrong action.
+          if (!this.forcingKind) playSfx('heal-start');
+        }
         if (this.healing <= 0) this.usingCell = -1;
         if (this.locked) {
           this.local.state.x = state.x;
@@ -3910,6 +3928,8 @@ export class Game {
       // the field means the ring and the medical cell's own fill can never be
       // one frame apart.
       healing: source.isLocal ? this.healing : source.use ?? 0,
+      // WHAT the ring is measuring. Same source as `healing` on both paths.
+      forcing: source.isLocal ? this.forcingKind : (source.uk ?? '') === 'crate',
       moving,
       // The legs keep up with the ground: a run is 1.55x the walk, and the
       // walk cycle at its authored cadence under it is a character skating.
@@ -4056,8 +4076,9 @@ export class Game {
       // stops a creature is a corpse, and `corpses` already owns that.
       downed: false,
       downAge: 0,
-      // Nothing but a player ever spends a kit.
+      // Nothing but a player ever spends a kit or forces a vault.
       healing: 0,
+      forcing: false,
       // THE SLEEP SHEET IS A BREATH, so it has to be told it is animating.
       // Every other loop in the game is driven by the body actually going
       // somewhere; this is the one pose whose whole job is to move while the
@@ -5046,6 +5067,9 @@ export class Game {
       localReady: this.localReady,
       departing: this.departing,
       pouring: this.localPour !== null,
+      // A heal or a vault. Both plant the body and both make the server refuse
+      // a second press, so both take the prompt away.
+      channelling: this.healing > 0,
     };
   }
 

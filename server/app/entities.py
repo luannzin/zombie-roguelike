@@ -130,9 +130,21 @@ class Pour:
     y: float = 0.0
 
 
+#: What a `Use` channel IS. Two kinds today and the list is open.
+#:
+#: ONE CHANNEL FOR BOTH, rather than a second timer beside the first, because
+#: everything about them is already identical: the body is a puppet, the server
+#: owns the clock, movement is acked and ignored, a blow cancels, and the
+#: client draws a ring filling over the head. The only thing that differs is
+#: what happens on the last frame — which is one branch in `Room._step_use`
+#: rather than a parallel system with its own cancel rule to get wrong.
+USE_HEAL = "heal"
+USE_CRATE = "crate"
+
+
 @dataclass
 class Use:
-    """One player spending one medical cell, over time.
+    """One player standing still doing something that takes real seconds.
 
     THE SAME SHAPE AS `Pour`, AND THAT IS DELIBERATE. Both are a body standing
     still doing something that takes real seconds, both are driven by the
@@ -148,11 +160,24 @@ class Use:
     for one mistake, so an interrupted heal costs the seconds and keeps the
     item. `Medical.take` is therefore called on the last frame and never on
     the first.
+
+    THE SAME RULE COVERS THE VAULT, and it is why forcing one is a gamble
+    rather than a tax: an interrupted force costs the seconds and the NOISE
+    (which went out at the start, on purpose) and leaves the object shut. The
+    party can come back and try again, having spent nothing but the attention
+    of everything that heard the first attempt.
     """
 
+    #: `USE_HEAL` or `USE_CRATE`. Decides only what the LAST frame does.
+    kind: str = USE_HEAL
     #: Which medical cell is being spent. Held rather than the key, because
     #: the cell is what has to be emptied and two cells can hold the same key.
-    slot: int
+    #: -1 when this channel is not a heal.
+    slot: int = -1
+    #: Which object is being forced, or "". Held rather than a reference so a
+    #: crate that left the map mid-channel (it cannot today, but the room owns
+    #: that question) resolves to a miss rather than to a stale object.
+    target: str = ""
     #: Seconds left. The client draws a ring filling from `total`.
     left: float = 0.0
     total: float = 0.0
@@ -466,6 +491,17 @@ class Player:
         # this game can give, and at roster rate it would arrive half spent.
         if self.using is not None and self.using.total > 0.0:
             row["use"] = round(1.0 - max(0.0, self.using.left) / self.using.total, 3)
+            # WHICH KIND OF CHANNEL, so the ring can be the right colour.
+            #
+            # Sent only for the non-default kind, like every other conditional
+            # field on this row: a heal is by far the commoner of the two and
+            # paying a string for it thirty times a second to say "the usual"
+            # would be the whole saving thrown away. A green ring over somebody
+            # forcing a vault would read as healing, which is the one thing it
+            # must not — a teammate you think is topping up is a teammate you
+            # do not walk over to cover.
+            if self.using.kind != USE_HEAL:
+                row["uk"] = self.using.kind
         return row
 
     def to_payload(self) -> dict:

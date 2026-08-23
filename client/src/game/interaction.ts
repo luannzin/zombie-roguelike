@@ -31,8 +31,8 @@
 
 import { gearCard } from './gear-card';
 import type { GameConfig, LootState, PlayerMeta } from '../net/protocol';
-import type { HudBuyPrompt, HudLootPrompt, HudRiftPrompt } from './hud-store';
-import { objectLabel, objectTilesW } from './objects';
+import type { HudBuyPrompt, HudCratePrompt, HudLootPrompt, HudRiftPrompt } from './hud-store';
+import { objectLabel, objectOpenTime, objectTilesW } from './objects';
 import type { LocalPlayer } from './prediction';
 import type { AmmoBox, CratePiece, Rift, Stand, TileMap } from './world';
 
@@ -79,6 +79,13 @@ export interface InteractionState {
   departing: boolean;
   /** Mid-pour: the server refuses a second press for the length of one. */
   pouring: boolean;
+  /**
+   * Mid-channel: a heal or a vault is running. Same rule as `pouring` and a
+   * separate flag because they are separate refusals on the server — a body
+   * can only be doing one of the three, but the client learns about them from
+   * different fields.
+   */
+  channelling: boolean;
 }
 
 // --- reach: what is in front of the feet -------------------------------------
@@ -398,12 +405,18 @@ export function readyPrompt(s: InteractionState): 'ready' | null {
  * is authored server-side next to the object's drop table
  * (`crates.ObjectType.label`) so the promise and the prompt cannot drift.
  */
-export function cratePromptInfo(s: InteractionState): string | null {
+export function cratePromptInfo(s: InteractionState): HudCratePrompt | null {
   if (s.locked || s.introHold) return null;
+  // Mid-channel there is nothing to offer. The server refuses a second press
+  // for the length of one — and for a vault it refuses somebody else's press
+  // too — so a prompt that did nothing when pressed is worse than no prompt.
+  // Same rule the pad's prompt already applies to a pour.
+  if (s.pouring || s.channelling) return null;
   if (nearLoot(s)) return null;
   if (riftPrompt(s)) return null;
   const near = nearCrate(s);
-  return near ? objectLabel(near.kind) : null;
+  if (!near) return null;
+  return { label: objectLabel(near.kind), seconds: objectOpenTime(near.kind) };
 }
 
 /**

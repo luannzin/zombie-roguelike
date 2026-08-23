@@ -81,6 +81,22 @@ export interface HudMedical {
   using: number;
 }
 
+/**
+ * The object under E: what pressing it does, and what it will COST.
+ *
+ * `seconds` is 0 for every object in the game except the vault. It is on the
+ * prompt rather than discovered on the press because `open_time`'s whole
+ * design is that choosing WHEN to pay it is the interesting part — a slow open
+ * the player only learns about once they are already planted is a trap, not a
+ * decision.
+ */
+export interface HudCratePrompt {
+  /** The verb, authored server-side beside the drop table. */
+  label: string;
+  /** Seconds it plants you for. 0 means it resolves on the press. */
+  seconds: number;
+}
+
 /** The named thing you are fighting. */
 export interface HudBoss {
   name: string;
@@ -511,7 +527,7 @@ export interface HudSnapshot {
    * flag because the objects do not share a verb any more — see
    * `server/app/crates.py`.
    */
-  cratePrompt: string | null;
+  cratePrompt: HudCratePrompt | null;
   /**
    * Proximity prompt on an extraction pad. `open` while dormant, `feed`
    * once the platform is running and the load quest is live.

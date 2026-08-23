@@ -286,6 +286,10 @@ FOOTPRINTS: dict[str, tuple[int, int, int]] = {
     "tote": (1, 1, LOW),
     "chest": (1, 1, LOW),
     "strongbox": (1, 1, LOW),
+    # Wider than the other two, because it is drawn wider — see `make_chest`.
+    # Still one tile of footprint: the overhang is the same trick a statue's
+    # shoulders play.
+    "vault": (1, 1, LOW),
     "mailbox": (1, 1, LOW),
     "suitcase": (1, 1, LOW),
     "freezer": (1, 1, LOW),
@@ -493,7 +497,7 @@ def _from_pool(rng: random.Random, pool, dx: float, dy: float) -> Piece:
 #: to `CRATE_POOL` is thinned like the other seven without a second edit.
 CONTAINER_KINDS: frozenset[str] = frozenset(
     [kind for pool in (CRATE_POOL, BARREL_POOL, STASH_POOL) for kind, _ in pool]
-    + ["chest", "strongbox", "tote", "ammo_case"]
+    + ["chest", "strongbox", "vault", "tote", "ammo_case"]
 )
 
 #: The most openables one scene may keep. Scenes roll their containers
@@ -688,6 +692,18 @@ def _checkpoint(rng: random.Random) -> Layout:
     for _ in range(rng.randint(1, 2)):
         pieces.append(_from_pool(rng, CRATE_POOL, rng.uniform(2.5, width - 2.5),
                                  row + rng.uniform(-2.4, -1.2)))
+    # AND SOMETIMES THE STRONGBOX THEY WERE GUARDING. It is one of the two
+    # objects in the game that never comes up empty, and this is the only
+    # scene whose fiction issues one — a government line has a payroll behind
+    # it, a deadfall does not.
+    #
+    # It was dead content until now: `strongbox` has been in the catalog, the
+    # footprint table and `CONTAINER_KINDS` since they were written, and no
+    # scene ever placed one. The domed lid `make_chest` argues about at length
+    # had never appeared on a map.
+    if rng.random() < 0.3:
+        pieces.append(Piece("strongbox", STANDING, rng.uniform(2.5, width - 2.5),
+                            row + rng.uniform(-2.4, -1.4), 0, rng.random() < 0.5))
     pieces.append(Piece("sign", STANDING, gap + 0.5, row - 0.4, rng.randrange(3)))
     for _ in range(rng.randint(2, 5)):
         pieces.append(Piece("debris", DECAL, rng.uniform(2, width - 2),
@@ -813,7 +829,15 @@ def _flight(rng: random.Random) -> Layout:
     if rng.random() < 0.45:
         # Sometimes they made it far enough to drop one more thing. Sometimes.
         fx, fy = at(11.0)
-        pieces.append(_from_pool(rng, STASH_POOL, fx, fy))
+        # AND ONCE IN A WHILE THE THING THEY WERE CARRYING ALL OF IT IN. A
+        # chest at the far end of the sentence is the scene's best possible
+        # last word: they were hauling something worth hauling, they got this
+        # far, and then the blood. It is also the fix for a chest never having
+        # been placed by anything — see the note in `_checkpoint`.
+        if rng.random() < 0.28:
+            pieces.append(Piece("chest", STANDING, fx, fy, 0, rng.random() < 0.5))
+        else:
+            pieces.append(_from_pool(rng, STASH_POOL, fx, fy))
     return Layout(width, height, tuple(pieces))
 
 
@@ -1013,6 +1037,30 @@ def _sanctuary(rng: random.Random) -> Layout:
         Piece("altar" if rng.random() < 0.6 else "cairn", STANDING, cx, cy + 0.4, 0,
               rng.random() < 0.5)
     )
+
+    # AND SOMETIMES, BEHIND IT, A VAULT — the only object in the game you have
+    # to stand still for (`crates.ObjectType.open_time`).
+    #
+    # THIS IS ITS ONLY HOME AND THAT IS THE ARGUMENT FOR IT. The vault pays off
+    # `SHRINE_ODDS`, and nothing else in the forest rolls off that table
+    # because it was written for exactly this clearing: statues, bones, and a
+    # nest seeded on top (`mapgen.populate_forest`). Putting the game's richest
+    # container anywhere else would either be free money or would need a second
+    # guard invented to justify it.
+    #
+    # It is what turns the sanctuary from a place you clear into a place you
+    # have to STAY in. The nest was always answerable by fighting from the
+    # treeline; four planted seconds in the middle of the ring is not, and the
+    # bargain the scene has been stating in props since it was written finally
+    # has a number attached to it.
+    #
+    # BEHIND the altar, so reaching it means crossing the ring rather than
+    # working the edge — and so the two payoffs are not one press apart.
+    if rng.random() < SANCTUARY_VAULT_CHANCE:
+        pieces.append(
+            Piece("vault", STANDING, cx + rng.uniform(-0.8, 0.8), cy - 1.9, 0,
+                  rng.random() < 0.5)
+        )
 
     # Bones inside the ring, denser toward the middle.
     for _ in range(rng.randint(7, 12)):
@@ -1214,6 +1262,15 @@ CAMP_POOL = (
 #: lands as the route's far end). A run has one place it is walking TOWARD;
 #: the den is a thing it walks PAST, and it should not be able to take over
 #: the shape of the night.
+#: How often the one sanctuary on a map has a vault in it.
+#:
+#: NOT ALWAYS, because a landmark that contains the same thing every time is a
+#: vending machine — the walk stops being a question the second the player
+#: knows the answer. A little under half means finding one is an event and
+#: finding the shrine is still always worth it (the altar and the guaranteed
+#: scatter are the floor).
+SANCTUARY_VAULT_CHANCE = 0.45
+
 LANDMARKS = (
     ("sanctuary", _sanctuary),
     ("den", _den),

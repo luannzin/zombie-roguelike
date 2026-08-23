@@ -43,7 +43,7 @@ import math
 import random
 from dataclasses import dataclass, field
 
-from .config import TILE_SIZE
+from .config import CRATE_FORCE_SECONDS, TILE_SIZE
 from .loot import RARITY_WEIGHTS, roll_item
 from .scenery import STANDING, Prop
 
@@ -112,6 +112,21 @@ class ObjectType:
     rarity: dict[str, float] | None = None
     #: Chance that opening this wakes something that was inside it.
     ambush: float = 0.0
+    #: Seconds the body is planted for. 0 is every object in the game except
+    #: the vault, and that is deliberate — see `app/config.py`'s CRATE block.
+    #:
+    #: WHAT IT BUYS IS EXPOSURE, NOT DELAY. A keypress that opens a box is a
+    #: free action, so looting has never been an ACT — it is something you do
+    #: while walking past. A timed open is the same object asking "are you
+    #: willing to stand here for four seconds", and with the forest filling up
+    #: as the night goes on (`ai.EnemyDirector.night_scale`) that question has
+    #: a different answer at minute two and minute ten. Which is the whole
+    #: point: it makes WHEN you loot something a decision.
+    #:
+    #: The noise fires at the START of the channel rather than the end, so the
+    #: risk is committed before the payoff. An object that announced you on
+    #: completion would be a slow open with no gamble in it.
+    open_time: float = 0.0
 
     @property
     def hit_w(self) -> float:
@@ -134,6 +149,11 @@ class ObjectType:
             "tilesW": self.tiles_w,
             "hitW": self.hit_w,
             "hitH": self.hit_h,
+            # Seconds this plants you for, 0 for everything but the vault. The
+            # client needs it for the PROMPT — a press that is about to cost
+            # four seconds has to say so before it is pressed, or the first
+            # vault anybody meets is a surprise rather than a decision.
+            "openTime": self.open_time,
         }
 
 
@@ -155,6 +175,10 @@ JUNK_ODDS: dict[str, float] = {
 OPEN_LABEL = "abrir"
 BREAK_LABEL = "destruir"
 SEARCH_LABEL = "vasculhar"
+#: The vault's, and it is a different word on purpose. `abrir` is what you do
+#: to a lid; this is the one container that does not simply open, and the verb
+#: on the prompt is the player's first warning that this press is not free.
+FORCE_LABEL = "arrombar"
 
 TYPES: tuple[ObjectType, ...] = (
     # --- BREAK ---------------------------------------------------------
@@ -279,6 +303,43 @@ TYPES: tuple[ObjectType, ...] = (
         hit_w_tiles=1.25, hit_h_tiles=1.5, noise_tiles=4.0,
         tags=("valuables", "military", "supplies"),
         drops={DROP_ITEM: 100}, rarity=GOOD_ODDS,
+    ),
+    # THE VAULT, AND IT IS THE ONLY OBJECT IN THE GAME YOU HAVE TO STAND STILL
+    # FOR.
+    #
+    # Everything else here is a keypress, which means looting has never been an
+    # ACT — it is something you do while walking past, and the only cost is the
+    # noise afterwards. This one asks a real question: four seconds, planted,
+    # in a forest that is fuller than it was an hour ago, with the noise
+    # already out before you know whether it was worth it.
+    #
+    # IT PAYS OFF `SHRINE_ODDS`, which nothing else in the forest does. That
+    # table was built for a clearing full of statues and a dozen creatures, and
+    # putting it on a single object is only honest because this object charges
+    # something comparable — not bodies, but the one currency the map has never
+    # taken from anybody before: TIME, spent standing still, at a moment of
+    # your choosing.
+    #
+    # That last clause is what makes it a decision rather than a tax. The
+    # vault does not expire. A party that finds one early can leave it and come
+    # back with the map cleared, or open it now while the forest is still
+    # quiet and carry the loot for the whole night. Both are correct, and which
+    # one is better depends on things the player knows and the game does not.
+    ObjectType(
+        key="vault", sheet="chest", variant=2, verb=VERB_OPEN, label=FORCE_LABEL,
+        hit_w_tiles=1.4, hit_h_tiles=1.5,
+        # LOUDER THAN ANYTHING ELSE THAT OPENS, and it goes out at the START.
+        # A chest is 4 tiles; this reaches most of a clearing, which is what
+        # makes the four seconds afterwards mean something.
+        noise_tiles=8.0,
+        tags=("valuables", "military", "relics"),
+        drops={DROP_ITEM: 100}, rarity=SHRINE_ODDS,
+        open_time=CRATE_FORCE_SECONDS,
+        # And sometimes something was already in there. Higher than any vehicle
+        # because the player is committed: an ambush on a keypress is a scare,
+        # and an ambush three seconds into a channel you cannot finish is the
+        # story they tell afterwards.
+        ambush=0.30,
     ),
     # --- OPEN: the small stuff -----------------------------------------
     ObjectType(

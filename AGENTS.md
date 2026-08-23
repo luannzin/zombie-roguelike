@@ -208,7 +208,7 @@ These bind every subtree. Subsystem-specific rules live in the docs above.
 
 | scope | command |
 | --- | --- |
-| server | `python tests/test_snapshot_shape.py`, `test_pour.py`, `test_store_walk.py`, `test_config_parity.py`, `test_loot_frames.py`, `test_bush_cover.py`, `test_scenery_containers.py`, `test_creature_sheets.py`, `test_map_scale.py`, `test_boss_fight.py`, `test_gear.py`, `test_pack.py`, `test_medical.py`, `test_events.py`, `test_night_pressure.py`, `test_quota.py` from `server/` — plain scripts, each prints `ok` |
+| server | `python tests/test_snapshot_shape.py`, `test_pour.py`, `test_store_walk.py`, `test_config_parity.py`, `test_loot_frames.py`, `test_bush_cover.py`, `test_scenery_containers.py`, `test_creature_sheets.py`, `test_map_scale.py`, `test_boss_fight.py`, `test_gear.py`, `test_pack.py`, `test_medical.py`, `test_events.py`, `test_night_pressure.py`, `test_quota.py`, `test_containers.py` from `server/` — plain scripts, each prints `ok` |
 | client | `bun run typecheck` from `client/` — required after any change there |
 | client | `bun tests/grade.ts` from `client/` after touching `render/post/grade.ts` — plain script, prints `ok` |
 | client | `bun tests/exit-path.ts` from `client/` after touching `game/exit-path.ts` — plain script, prints `ok` |
@@ -319,6 +319,20 @@ allowance — a rare event silently consumed by a firing nobody saw is invisible
 from inside the game — and that adding an event really is a data row, asserted
 against a row the test builds itself and drives through the unmodified
 director.
+
+Run `test_containers.py` after touching `crates.ObjectType.open_time`, the
+vault row, `Room._begin_force` / `_finish_force`, or any scene that places a
+chest-family container. It pins the four things about a timed object that
+playing cannot see: that the noise goes out at the START (a slow open whose
+noise came at the end is a gamble whose stake is paid after the payoff is
+known, which is backwards and is one line away at all times); that an
+interrupted force costs the seconds and leaves the object shut; that only ONE
+pair of hands may work an object, since two completions would pay twice and a
+duplication bug that looks like good luck is the kind nobody reports; and that
+the tier is ACTUALLY ON THE MAP — `chest` and `strongbox` were catalog rows
+with footprints and container-set entries that no scene ever placed, so the
+domed lid `make_chest.py` argues about at length had never once appeared in a
+game.
 
 Run `test_quota.py` after touching `loot.ITEMS` values, `loot.SCENE_COUNTS`,
 `crates.TYPES` or `rift.SUPPLY_BASE` / `SUPPLY_PER_PAD`. It re-measures real

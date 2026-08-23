@@ -81,6 +81,18 @@ export function objectLabel(kind: string): string {
   return catalog[kind]?.label ?? 'E';
 }
 
+/**
+ * Seconds this object plants you for. 0 for everything but the vault.
+ *
+ * The prompt reads it so a press that is about to cost four seconds SAYS so
+ * before it is pressed — a slow open the player only finds out about once they
+ * are already committed is a trap rather than a decision, and the whole design
+ * of `open_time` is that choosing when to pay it is the interesting part.
+ */
+export function objectOpenTime(kind: string): number {
+  return catalog[kind]?.openTime ?? 0;
+}
+
 /** Footprint width in tiles. A vehicle is four; almost everything else is one. */
 export function objectTilesW(kind: string): number {
   return catalog[kind]?.tilesW ?? 1;

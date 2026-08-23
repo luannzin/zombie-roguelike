@@ -598,6 +598,24 @@ EVENT_AIRDROP_TILES = 26.0
 #: threat with extra steps.
 EVENT_BEACON_TILES = 9.0
 
+# --- the vault: the one container you have to stand still for ---------------
+#
+# Every other object in the game opens on a keypress, which means looting has
+# never been an ACT — it is something you do while walking past, and the only
+# cost is the noise afterwards. `ObjectType.open_time` is what makes one object
+# ask a real question instead.
+#
+# WHAT IT CHARGES IS EXPOSURE, NOT TIME. Four seconds is nothing by itself; four
+# seconds PLANTED, with the noise already out, in a forest whose population is
+# climbing all night (`ENEMY_NIGHT_RAMP`), is a different number at minute two
+# and at minute ten. That is the entire mechanic — it makes WHEN you open
+# something a decision, on a map where nothing else ever has.
+#: How long the vault takes. Tuned against `first_aid`'s 2.8s heal, which is
+#: the game's other "you are a puppet for this long" number: comfortably longer
+#: than that, because the payoff is `SHRINE_ODDS` rather than staying alive,
+#: and short enough that a party who cleared the clearing first is safe.
+CRATE_FORCE_SECONDS = 4.2
+
 # THE BLOOD. A body goes down and the woods turn toward it. The only row in
 # the catalog the PLAYER causes, and the only one that makes T-01's rescue
 # harder at the moment the party is deciding whether to attempt it.

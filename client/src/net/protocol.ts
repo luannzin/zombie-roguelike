@@ -475,6 +475,12 @@ export interface ObjectDef {
   /** Shot box, in world pixels, bottom-centred on the contact. */
   hitW: number;
   hitH: number;
+  /**
+   * Seconds the body is planted for while this is opened. 0 for everything
+   * except the vault, which is the only object in the game you have to stand
+   * still for. The prompt states it before the press.
+   */
+  openTime: number;
 }
 
 /** Calibres, which catalog row is a box of each, and the reserve caps. */
@@ -1354,6 +1360,16 @@ export interface PlayerState {
    * would arrive half spent.
    */
   use?: number;
+  /**
+   * WHICH kind of channel `use` is measuring. Absent means a heal, which is
+   * the common one — the field is paid for only by the rarer kind, like every
+   * other conditional field on this row.
+   *
+   * It exists because the ring is COLOURED by it. A green ring over somebody
+   * forcing a vault would read as healing, and a teammate you think is topping
+   * up is a teammate you do not walk over to cover.
+   */
+  uk?: string;
   /** Camp only: standing at the fire and confirmed. */
   ready?: boolean;
   /** Hotbar index in hand. -1 is holstered. */

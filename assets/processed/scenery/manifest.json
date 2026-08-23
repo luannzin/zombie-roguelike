@@ -79,9 +79,9 @@
       "file": "chest.png",
       "frameWidth": 20,
       "frameHeight": 20,
-      "frames": 16,
+      "frames": 24,
       "sway": 0,
-      "kinds": 2,
+      "kinds": 3,
       "animFrames": 8,
       "fps": 11
     },

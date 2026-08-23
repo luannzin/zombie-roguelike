@@ -639,14 +639,23 @@ def count_for_day(day: int) -> int:
 #: IT HAS A CONSTANT TERM because the two LANDMARKS are one per map whatever
 #: the map's size — a one-pad forest still gets a shrine or a den, and that is
 #: a big share of a small night's value.
-#: RE-FITTED WHEN MEDICINE LEFT THE ECONOMY. `first_aid` and `morphine` were
-#: ordinary ground loot worth 30 and 58 until they became medical-cell items
-#: with `value=0` (see `medical.py`), and taking two uncommon-to-rare rows out
-#: of the findable pile dropped what a real forest holds by about a tenth at
-#: every pad count. `test_quota.py` caught it, which is the entire reason that
-#: file re-measures instead of trusting a number written down once.
-SUPPLY_BASE = 210.0
-SUPPLY_PER_PAD = 243.0
+#: RE-FITTED TWICE IN ONE PASS, and both times because `test_quota.py` caught
+#: it rather than because anybody remembered to look:
+#:
+#:   * medicine LEFT the economy. `first_aid` and `morphine` were ordinary
+#:     ground loot worth 30 and 58 until they became medical-cell items with
+#:     `value=0` (see `medical.py`), which took what a real forest holds down
+#:     by about a tenth at every pad count;
+#:   * then three containers ARRIVED. The vault is new, and `chest` and
+#:     `strongbox` had been catalog rows no scene ever placed — so all three
+#:     came into the findable pile at once and put it back up again.
+#:
+#: THE CONSTANT TERM MOVED MOST, which is the fit behaving exactly as its
+#: docstring says it should: the sanctuary is one per map whatever the map's
+#: size, so its vault is a far bigger share of a one-pad night than of a
+#: three-pad one.
+SUPPLY_BASE = 271.0
+SUPPLY_PER_PAD = 251.5
 
 #: What share of that low quarter night one asks for. A third: enough that the
 #: quota is roughly one full backpack and the party has to actually look for

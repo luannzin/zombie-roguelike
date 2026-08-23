@@ -112,6 +112,15 @@ export interface DrawableEntity {
    * this game can give.
    */
   healing: number;
+  /**
+   * True when `healing` is measuring a VAULT rather than a kit.
+   *
+   * The ring is the same widget for both — it answers "how much longer", which
+   * is the same question — but it must not be the same COLOUR. A green ring
+   * over somebody forcing a vault reads as healing, and a teammate you think
+   * is topping up is a teammate you do not walk over to cover.
+   */
+  forcing: boolean;
   moving: boolean;
   animTime: number;
   isLocal: boolean;

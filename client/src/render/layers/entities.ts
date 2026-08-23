@@ -433,6 +433,7 @@ function corpseAsTarget(body: DrawableCorpse): DrawableEntity {
     downAge: 0,
     // A corpse is not healing, and never will be.
     healing: 0,
+    forcing: false,
     moving: false,
     animTime: 0,
     isLocal: false,
@@ -880,7 +881,9 @@ function drawHealRing(
   ctx.arc(cx, cy, radius, 0, Math.PI * 2);
   ctx.stroke();
 
-  ctx.strokeStyle = palette().heal;
+  // The kit's green, or the vault's own colour. Same ring, same question —
+  // "how much longer" — and deliberately not the same answer to "of what".
+  ctx.strokeStyle = target.forcing ? palette().rarity.epic : palette().heal;
   ctx.globalAlpha = target.visibility;
   ctx.beginPath();
   ctx.arc(cx, cy, radius, start, start + Math.PI * 2 * sweep);

@@ -20,6 +20,8 @@ import type { StoreScene } from './layers/store';
 import type { Payout } from '../game/payout';
 import type { Grade } from './post/grade';
 import type { BossRow } from '../net/protocol';
+import type { BossHit } from '../game/boss';
+import type { TrailPoint } from './layers/boss-vfx';
 
 export type EntityKind = 'player' | 'enemy';
 
@@ -301,9 +303,13 @@ export interface RenderState {
   boss: DrawableBoss | null;
 }
 
-/** The boss, his crescents, and the one flash that says he was hit. */
+/** The boss, his crescents, his trail, and the flashes his blows leave. */
 export interface DrawableBoss {
   row: BossRow;
+  /** The bar's recent path, newest first. Drawn as a hot ribbon. */
+  trail: readonly TrailPoint[];
+  /** Live impact crescents. */
+  hits: readonly BossHit[];
   /** 0..1, decaying. Painted as a white wash over the whole sprite. */
   hitFlash: number;
   /**

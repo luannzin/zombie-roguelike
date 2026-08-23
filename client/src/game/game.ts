@@ -3106,7 +3106,7 @@ export class Game {
     // The boss's flash, wobble and jolt, on the render clock. Same rule as
     // the two below it: decay stepped at the snapshot rate visibly stairsteps,
     // and none of this is state anybody can act on.
-    stepBossFeel(this.bossFeel, dt, this.time);
+    stepBossFeel(this.bossFeel, dt, this.time, this.config);
     // The merchant's performance runs on the render clock for the same reason
     // the rift's ceremony does: it is pure presentation between snapshots, and
     // nothing about which frame he is on has ever been on the wire.
@@ -3154,6 +3154,8 @@ export class Game {
       boss: this.bossFeel.row
         ? {
             row: this.bossFeel.row,
+            trail: this.bossFeel.trail,
+            hits: this.bossFeel.hits,
             hitFlash: this.bossFeel.flash,
             shakeX: this.bossFeel.shakeX,
             shakeY: this.bossFeel.shakeY,

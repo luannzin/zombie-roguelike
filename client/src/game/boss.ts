@@ -20,7 +20,8 @@
  * may ever be the reason a player knows something.
  */
 
-import type { BossEvent, BossRow } from '../net/protocol';
+import type { BossEvent, BossRow, GameConfig } from '../net/protocol';
+import { TRAIL_LENGTH, tipAt, type TrailPoint } from '../render/layers/boss-vfx';
 
 /** How long a hit flash lasts. Short — it is a punch, not a glow. */
 const FLASH_LIFE = 0.11;
@@ -46,6 +47,28 @@ export interface BossFeel {
   slainAt: number | null;
   /** Bumps whenever the name plate should re-announce itself. */
   announce: number;
+  /**
+   * The bar's recent path, NEWEST FIRST.
+   *
+   * Newest first because the ribbon tapers from the head and every consumer
+   * wants to walk it in that order; pushing to the front of a 12-element
+   * array costs nothing and saves every reader from reversing it.
+   */
+  trail: TrailPoint[];
+  /** Live impact flashes. Short-lived, and they outlive the event. */
+  hits: BossHit[];
+}
+
+/** One landed blow, as a thing on screen rather than a thing that happened. */
+export interface BossHit {
+  x: number;
+  y: number;
+  dx: number;
+  dy: number;
+  age: number;
+  life: number;
+  /** Scales the crescent. A blow that caught somebody is bigger. */
+  power: number;
 }
 
 export function newBossFeel(): BossFeel {
@@ -58,6 +81,8 @@ export function newBossFeel(): BossFeel {
     engaged: -1,
     slainAt: null,
     announce: 0,
+    trail: [],
+    hits: [],
   };
 }
 
@@ -161,8 +186,25 @@ export function feelEvent(feel: BossFeel, event: BossEvent): void {
       feel.flash = 1;
       feel.slainAt = 0;
       break;
-    case 'impact':
-      feel.jolt = Math.max(feel.jolt, (event.hits ?? 0) > 0 ? 1 : 0.6);
+    case 'impact': {
+      const landed = (event.hits ?? 0) > 0;
+      feel.jolt = Math.max(feel.jolt, landed ? 1 : 0.6);
+      feel.hits.push({
+        x: event.x,
+        y: event.y,
+        dx: event.dx ?? 0,
+        dy: event.dy ?? 1,
+        age: 0,
+        life: 0.22,
+        power: landed ? 1.25 : 0.85,
+      });
+      break;
+    }
+    case 'crestBurst':
+      feel.hits.push({
+        x: event.x, y: event.y, dx: event.dx ?? 1, dy: event.dy ?? 0,
+        age: 0, life: 0.18, power: 0.7,
+      });
       break;
     case 'engage':
       feel.engaged = 0;
@@ -184,7 +226,34 @@ export function feelEvent(feel: BossFeel, event: BossEvent): void {
  * gone entirely while he is down. Two sines at unrelated rates, because one
  * sine on a 128px sprite reads as a bob and two read as vibration.
  */
-export function stepBossFeel(feel: BossFeel, dt: number, time: number): void {
+export function stepBossFeel(
+  feel: BossFeel,
+  dt: number,
+  time: number,
+  config: GameConfig | null = null,
+): void {
+  // THE TRAIL IS SAMPLED ON THE RENDER CLOCK, not on the snapshot. The bar
+  // moves a third of a circle between two 30Hz rows during a sweep, so a
+  // ribbon built from snapshot positions is a ribbon with three points in it.
+  // `tipAt` re-derives the nose from the row's own playhead, which advances
+  // smoothly, so sampling it every frame gives a smooth path from a stepped
+  // source — and costs nothing, because it is two trig calls.
+  const row = feel.row;
+  const tip = row && config ? tipAt(row, config) : null;
+  if (tip) {
+    feel.trail.unshift({ x: tip.x, y: tip.y, age: 0 });
+    if (feel.trail.length > TRAIL_LENGTH) feel.trail.length = TRAIL_LENGTH;
+  } else if (feel.trail.length > 0) {
+    // Not swinging: let the ribbon run out rather than cutting it. A trail
+    // that vanishes on the frame the move ends takes the follow-through with
+    // it, and the follow-through is half of what makes a swing feel heavy.
+    feel.trail.pop();
+  }
+  for (const point of feel.trail) point.age += dt;
+
+  for (const hit of feel.hits) hit.age += dt;
+  feel.hits = feel.hits.filter((hit) => hit.age < hit.life);
+
   feel.flash = Math.max(0, feel.flash - dt / FLASH_LIFE);
   feel.jolt = Math.max(0, feel.jolt - dt * 6);
   if (feel.engaged >= 0) feel.engaged += dt;
@@ -193,7 +262,6 @@ export function stepBossFeel(feel: BossFeel, dt: number, time: number): void {
     feel.flash = Math.max(feel.flash, Math.max(0, 1 - feel.slainAt / SLAIN_FLASH) * 0.5);
   }
 
-  const row = feel.row;
   if (!row || row.s === 'dead' || row.s === 'sleep') {
     feel.shakeX = 0;
     feel.shakeY = 0;

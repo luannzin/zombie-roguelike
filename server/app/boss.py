@@ -154,6 +154,53 @@ class Move:
     def reach(self) -> float:
         return TILE_SIZE * self.reach_tiles
 
+    def client_payload(self) -> dict:
+        """What the client needs to DRAW this move before it happens.
+
+        THE TELEGRAPH IS THE HITBOX OR IT IS A LIE. A ground marker that
+        promises a 3.6-tile wedge in front of a boss whose chop actually
+        reaches 4.0 teaches the player a rule the simulation does not keep,
+        and they learn it by stepping to the edge of the mark and dying there.
+        So the shape on the floor is drawn from these numbers, which are the
+        same numbers `_in_arc` tests against — not from a constant somebody
+        matched by eye.
+
+        The TIMINGS come too, because the mark has to fill up in step with the
+        windup, and the windup is the art's number (see `_clip`). A marker
+        that finishes early is a marker that cried wolf.
+        """
+        return {
+            "key": self.key,
+            "windup": round(self.windup, 4),
+            "active": round(self.active, 4),
+            "recover": round(self.recover, 4),
+            "damage": self.damage,
+            "reach": round(self.reach, 2),
+            "arcDegrees": self.arc_degrees,
+        }
+
+
+def moves_payload() -> dict:
+    """Every move's shape and clock, for `welcome.config.bossMoves`."""
+    return {key: move.client_payload() for key, move in MOVES.items()}
+
+
+def crescent_payload() -> dict:
+    """The thrown crescent's reach, for the lane the client draws under `rip`.
+
+    `rip`'s own `reach` is zero — nothing leaves his hands that touches
+    anybody, the crescent does — so the lane it telegraphs is the crescent's
+    travel, which is speed times life. Derived here rather than in the client
+    for the same reason the arcs are: it is the distance the simulation will
+    actually carry the thing.
+    """
+    return {
+        "speed": round(TILE_SIZE * BOSS_CREST_SPEED_TILES, 2),
+        "life": BOSS_CREST_LIFE,
+        "radius": round(TILE_SIZE * BOSS_CREST_RADIUS_TILES, 2),
+        "reach": round(TILE_SIZE * BOSS_CREST_SPEED_TILES * BOSS_CREST_LIFE, 2),
+    }
+
 
 def _move(clip: str, event: str, *, damage: int, reach: float, arc: float,
           min_tiles: float, max_tiles: float, active: float = 0.14) -> Move:

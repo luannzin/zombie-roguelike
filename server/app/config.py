@@ -804,6 +804,16 @@ def _boss_title() -> str:
     return TITLE
 
 
+def _boss_moves() -> dict:
+    from .boss import moves_payload
+    return moves_payload()
+
+
+def _boss_crescent() -> dict:
+    from .boss import crescent_payload
+    return crescent_payload()
+
+
 def client_config() -> dict:
     """Gameplay constants mirrored by the client's prediction code."""
     # Local import: enemies.py reads TILE_SIZE from this module, so importing it
@@ -859,6 +869,13 @@ def client_config() -> dict:
         # one label an entire fight is announced with.
         "bossName": _boss_name(),
         "bossTitle": _boss_title(),
+        # HIS MOVES' SHAPES AND CLOCKS. The client draws a telegraph on the
+        # floor from these — see `boss.Move.client_payload`. Shipped rather
+        # than mirrored because a marker that disagrees with the hitbox is
+        # worse than no marker: it teaches a rule the simulation does not keep.
+        "bossMoves": _boss_moves(),
+        # The crescent's travel, for the lane `rip` telegraphs.
+        "bossCrescent": _boss_crescent(),
         "hearthTiles": CAMP_HEARTH_TILES,
         "ringTilesX": CAMP_RING_TILES_X,
         "ringTilesY": CAMP_RING_TILES_Y,

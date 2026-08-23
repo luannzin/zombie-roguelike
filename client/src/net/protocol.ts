@@ -188,6 +188,18 @@ export interface GameConfig {
    */
   bossName: string;
   bossTitle: string;
+  /**
+   * Every move's SHAPE and CLOCK, keyed by clip name.
+   *
+   * The client draws the ground telegraph from these, and that is the whole
+   * reason they are on the wire rather than in a constant here: the mark on
+   * the floor is the hitbox `boss._in_arc` will test, drawn at the reach and
+   * arc it will test at, filling over the windup the art authored. A marker
+   * matched by eye is a marker that lies the first time anybody tunes a reach.
+   */
+  bossMoves: Record<string, BossMove>;
+  /** How far the thrown crescent travels, for the lane `rip` telegraphs. */
+  bossCrescent: BossCrescentSpec;
   /** The fire plus the seat ring, in tiles: nothing grows inside it. */
   hearthTiles: number;
   /** Seat ring radii, in tiles. Elliptical — see server/app/camp.py. */
@@ -1512,6 +1524,33 @@ export interface BossRow {
   rage?: boolean;
   /** Crescents in the air. Absent when there are none. */
   crest?: BossCrescent[];
+}
+
+/** One attack's shape and clock. See `boss.Move.client_payload`. */
+export interface BossMove {
+  key: string;
+  /** Seconds from the start of the clip to the frame the blow lands. */
+  windup: number;
+  /** Seconds the hitbox is open. */
+  active: number;
+  /** Seconds rooted afterwards — the punish window. */
+  recover: number;
+  damage: number;
+  /** World px, centre to the edge of the swing. Zero for a move that throws. */
+  reach: number;
+  /** Full angle of the arc it covers. 180 is everything around him. */
+  arcDegrees: number;
+}
+
+export interface BossCrescentSpec {
+  /** World px per second. */
+  speed: number;
+  /** Seconds before it expires. */
+  life: number;
+  /** World px. Its own hit radius. */
+  radius: number;
+  /** `speed * life` — how far it actually gets. */
+  reach: number;
 }
 
 export type BossState =

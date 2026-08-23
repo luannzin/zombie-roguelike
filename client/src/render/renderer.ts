@@ -81,6 +81,7 @@ import { loadScenery, type SceneryAtlas } from './scenery';
 import { loadMerchant, type MerchantAtlas } from './merchant';
 import { loadBoss, type BossAtlas } from './boss';
 import { drawBoss } from './layers/boss';
+import { drawBossTelegraph } from './layers/boss-vfx';
 import { loadStore, type StoreAtlas } from './store';
 import { loadMachine, type MachineAtlas } from './machine';
 import {
@@ -380,6 +381,13 @@ export class Renderer {
     // hundred pixels in the air has no honest contact row to sort by.
     drawPayoutRigs(ctx, view, this.platformAtlas, state.payout);
     drawCorpseSprites(entity, state.corpses);
+    // THE TELEGRAPH GOES UNDER EVERY BODY, including his own. It is a mark on
+    // the floor, and the whole question it answers is "are my feet inside it"
+    // — drawn over the party it would be answering that question by hiding
+    // the feet. Before the depth sort for the same reason the corpses are.
+    if (state.boss) {
+      drawBossTelegraph(ctx, view, state.boss.row, state.config);
+    }
 
     // Scratch array, reused every frame: this list is rebuilt and re-sorted
     // 60 times a second and none of it outlives the call.
@@ -513,7 +521,7 @@ export class Renderer {
           if (row.boss) {
             if (state.boss) {
               drawBoss(ctx, view, this.bossAtlas, state.boss, state.time,
-                       palette().entity.shadow);
+                       palette().entity.shadow, state.config);
             }
           } else if (row.rift) {
             drawRiftProp(

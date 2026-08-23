@@ -29,6 +29,8 @@ import type { Projection } from '../projection';
 import type { DrawableBoss } from '../types';
 import type { BossAtlas } from '../boss';
 import { bossFrame, crescentFrame } from '../boss';
+import { drawBossImpact, drawBossTrail, drawSweepWind } from './boss-vfx';
+import type { GameConfig } from '../../net/protocol';
 
 /** How wide the contact pool is, as a multiple of his footprint. */
 const SHADOW_SPREAD = 1.15;
@@ -41,6 +43,7 @@ export function drawBoss(
   boss: DrawableBoss,
   time: number,
   shadowColour: string,
+  config: GameConfig | null = null,
 ): void {
   if (!atlas) return;
   const row = boss.row;
@@ -89,6 +92,15 @@ export function drawBoss(
                   dx, dy, w, h);
     ctx.restore();
   }
+
+  // AFTER THE BODY, ALL OF IT. The bar passes in front of him through most
+  // of every swing — it is bolted to the arm nearest the camera — so a trail
+  // drawn under the sprite would disappear behind the shoulder it came off.
+  if (config) {
+    drawSweepWind(ctx, view, row, config, time);
+  }
+  drawBossTrail(ctx, view, boss.trail, row.rage === true);
+  for (const hit of boss.hits) drawBossImpact(ctx, view, hit);
 
   drawCrescents(ctx, view, atlas, row.crest, time);
 }

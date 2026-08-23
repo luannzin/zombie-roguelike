@@ -22,6 +22,17 @@ export interface MovableState {
   stamina: number;
   /** Bar spent: SHIFT is refused until `staminaRecover` of it is back. */
   winded: boolean;
+  /**
+   * What the walk is multiplied by right now because of the shield. 1
+   * whenever it is down. Mirror of `Player.block_speed`.
+   *
+   * A RESOLVED NUMBER RATHER THAN A LOOKUP, because this file is a
+   * line-for-line mirror of `simulation.py` and movement code on either side
+   * must not have to reach into a weapon catalog to know how fast a body is.
+   * Both sides decide it in the same place — the frame the button is read —
+   * and this just multiplies. See `Room.sync_block` and `Game.syncBlock`.
+   */
+  blockSpeed: number;
 }
 
 export function moveDir(input: InputPacket): { dx: number; dy: number } {
@@ -142,6 +153,11 @@ export function applyInput(
 
   let speed = config.moveSpeed * (mods?.speed ?? 1) * carryScale(weight, config, mods?.carry);
   if (running) speed *= config.sprintSpeed;
+  // THE SHIELD IS THE LAST TERM AND IT MULTIPLIES EVERYTHING. A body behind
+  // one is slow whatever else is true about it — sprinting behind a riot
+  // shield is still slower than walking without one, which is the whole
+  // reason raising it is a decision rather than a posture.
+  speed *= state.blockSpeed;
   state.vx = dx * speed;
   state.vy = dy * speed;
 

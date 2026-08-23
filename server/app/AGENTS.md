@@ -23,8 +23,9 @@ game's scale.
 | `pathing.py` | BFS flow field, one per player |
 | `coins.py` | DARK GOLD, the player's purple coin: drop roll, burst, magnet, collection |
 | `loot.py` | world collectables: catalog, scene-context scatter, E-to-collect |
-| `weapons.py` | weapon catalog (11 guns + the knife) DERIVED from CS2's stat block against the zombie's health, hotbar, per-shot stats, the melee combo, and the ammunition SIZING `ammo.py` imports |
+| `weapons.py` | weapon catalog DERIVED twice over — 11 guns off CS2's stat block against the zombie's health, and every lâmina off the KNIFE'S own chain — plus the hotbar (two gun cells and the blade cell), per-shot stats, the melee combo, the shield's belt row, and the ammunition SIZING `ammo.py` imports |
 | `crates.py` | INTERACTIVE OBJECTS: the type table (barrels, boxes, chests, stashes, vehicles, altars), their verbs, drop tables, ambush odds and hit boxes; extract from scenery, use, roll |
+| `armor.py` | worn plates, their four materials, where a blow lands, and the shield's numbers. THE FOURTH CONTAINER — see [`docs/design/gear.md`](../../docs/design/gear.md) |
 | `ammo.py` | the reserve MECHANICS: per-player rounds, boxes gated on what the party carries, scatter, collection, and the calibre set the shop stocks its crates off (`party_calibres`). How big a reserve is belongs to `weapons.py` — it is a question about the guns that eat it |
 | `corpses.py` | dead enemies left on the floor: persist until the map swaps |
 | `rift.py` | extraction pads: day-scaled count, plot, the cargo platform and its corner lamps, inbound pickup, per-pad quota, the pour's timing, overfeed, hand-called launch, siren / `hunt_all` |

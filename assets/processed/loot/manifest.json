@@ -2,7 +2,7 @@
   "tile": 16,
   "frameWidth": 16,
   "frameHeight": 16,
-  "frames": 58,
+  "frames": 73,
   "items": {
     "old_tools": {
       "frame": 0
@@ -142,41 +142,86 @@
     "rift_shard": {
       "frame": 45
     },
-    "glock18": {
+    "head_cloth": {
       "frame": 46
     },
-    "usp_s": {
+    "head_leather": {
       "frame": 47
     },
-    "dual_berettas": {
+    "head_steel": {
       "frame": 48
     },
-    "deagle": {
+    "head_kevlar": {
       "frame": 49
     },
-    "mp7": {
+    "body_cloth": {
       "frame": 50
     },
-    "p90": {
+    "body_leather": {
       "frame": 51
     },
-    "xm1014": {
+    "body_steel": {
       "frame": 52
     },
-    "famas": {
+    "body_kevlar": {
       "frame": 53
     },
-    "ak47": {
+    "legs_cloth": {
       "frame": 54
     },
-    "m4a1s": {
+    "legs_leather": {
       "frame": 55
     },
-    "awp": {
+    "legs_steel": {
       "frame": 56
     },
-    "knife": {
+    "legs_kevlar": {
       "frame": 57
+    },
+    "glock18": {
+      "frame": 58
+    },
+    "usp_s": {
+      "frame": 59
+    },
+    "dual_berettas": {
+      "frame": 60
+    },
+    "deagle": {
+      "frame": 61
+    },
+    "mp7": {
+      "frame": 62
+    },
+    "p90": {
+      "frame": 63
+    },
+    "xm1014": {
+      "frame": 64
+    },
+    "famas": {
+      "frame": 65
+    },
+    "ak47": {
+      "frame": 66
+    },
+    "m4a1s": {
+      "frame": 67
+    },
+    "awp": {
+      "frame": 68
+    },
+    "knife": {
+      "frame": 69
+    },
+    "axe": {
+      "frame": 70
+    },
+    "katana": {
+      "frame": 71
+    },
+    "riot_shield": {
+      "frame": 72
     }
   }
 }

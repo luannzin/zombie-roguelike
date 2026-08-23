@@ -65,7 +65,7 @@ from __future__ import annotations
 import math
 import random
 
-from . import scenery, weapons
+from . import armor, scenery, weapons
 from .config import (
     PLAYER_HALF_HEIGHT,
     STORE_CIRCLE_TILES,
@@ -457,17 +457,54 @@ LAMP_LIGHT_TILES = 5.2
 #: reads as a shop that has run out rather than as one that is starting small.
 STALL_COUNT = 6
 
+#: Everything that may lie on a table: every gun, and every lâmina the world
+#: is allowed to hand out.
+#:
+#: THE BLADES ARE HERE EVEN THOUGH THE FOREST ALSO DROPS THEM, and the guns
+#: are here because nothing else produces one. That asymmetry is the point of
+#: the shop rather than a hole in it: a firearm is the only thing you can ONLY
+#: buy, so the merchant is where a party's money turns into range — but a
+#: night that went badly can still walk in with sixty gold and leave holding
+#: an axe, and a party that found the axe on night two can spend that money
+#: on rounds instead. A shelf that sold nothing you could also find would make
+#: every bad night the same bad night.
+#:
+#: The knife is excluded by `droppable` for the reason it is excluded
+#: everywhere: everybody already has one, and a table selling it would be a
+#: table selling nothing. The SHIELD is in, and it is bought-only like the
+#: guns: a riot shield is the one defensive thing in the game that did not
+#: come off a body in this forest, and the merchant having the only one is
+#: most of why it reads as police equipment rather than as scrap.
+#:
+#: ARMOUR IS IN TOO, and it is the reason this list stopped being a list of
+#: weapons. A shelf of nothing but guns asks one question every night — which
+#: gun — and the answer is always the most expensive one affordable. A shelf
+#: with plate on it asks a better one: this night's take is a rifle, or it is
+#: a helmet and rounds, and a party that has been dying at doorways knows
+#: which. It also gives the merchant something to sell a party who already
+#: own everything that shoots.
+SELLABLE: tuple[str, ...] = (
+    weapons.GUN_KEYS
+    + weapons.SHIELD_KEYS
+    + tuple(key for key in weapons.BLADE_KEYS if ITEMS[key].droppable)
+    + tuple(piece.key for piece in armor.PIECES)
+)
+
 #: What he might be selling, CHEAPEST FIRST. Derived from the weapons
 #: catalog and sorted by what it costs, because a shelf is a ladder of what
 #: the party can afford — the catalog's own order groups by weapon class,
 #: which is the right order for a sprite sheet and the wrong one for a shop.
 #: The day gates how far down this list the roll may reach — see
 #: `_stock_pool`.
-#: Sorted on the CATALOG value rather than on `price_of` below, which is
-#: only defined further down the file — and which is a fixed multiple of
-#: it anyway, so the two orders cannot disagree.
+#: Sorted on the LOOT catalog's value rather than on `price_of` below, which
+#: is only defined further down the file — and which is a fixed multiple of it
+#: anyway, so the two orders cannot disagree. On the LOOT catalog's value
+#: because the shelf now carries things that are not weapons at all. The two
+#: agree for everything that is one — a weapon's loot row derives its value
+#: from `WeaponDef.value` — so this is the same order it always was, asked of
+#: the one table that can answer for every row on the shelf.
 STOCK_ORDER: tuple[str, ...] = tuple(
-    sorted(weapons.GUN_KEYS, key=lambda key: (weapons.BY_KEY[key].value, key))
+    sorted(SELLABLE, key=lambda key: (ITEMS[key].value, key))
 )
 
 #: How many nights of shelf there are. The pool is split into this many
@@ -475,7 +512,7 @@ STOCK_ORDER: tuple[str, ...] = tuple(
 #: the same pace a catalog of five did and adding a twelfth does not need a
 #: new line in a hand-written table.
 STOCK_DAYS = 5
-#: The first day each weapon may appear on a table. An AWP on night one would
+#: The first day each thing may appear on a table. An AWP on night one would
 #: end the game's difficulty curve at the first shop.
 #:
 #: THE FIRST BAND IS WIDER THAN THE REST. The roll is with replacement, so
@@ -486,19 +523,72 @@ STOCK_DAYS = 5
 #: thing on the ladder lands on `STOCK_DAYS` however long the ladder gets.
 STOCK_FIRST_BAND = 4
 
+#: THE DAY WALKS EVERY LADDER AT ONCE, and this is what makes that true.
+#:
+#: The shelf used to be one list — the guns, cheapest first — so gating by
+#: POSITION in it was the same as gating by price. It is three lists now, and
+#: a merged sort would have quietly rewritten the gun ladder the moment
+#: armour was added to it: three cloth rags cost less than the cheapest
+#: pistol, so they would have taken the whole opening band and pushed the
+#: first firearm off night one. That is not a rebalance anybody asked for, it
+#: is an accident of concatenation.
+#:
+#: So the bands are cut inside each CATEGORY. Night one is the bottom of
+#: every ladder — a sidearm, some rags, an axe — and night five is the top of
+#: every ladder, whatever the categories happen to cost relative to each
+#: other. The share is read off the guns so the eleven-weapon ladder comes
+#: out of this byte-for-byte what it was before there was anything else on
+#: the shelf.
+CATEGORY_ARMOR = "armor"
+CATEGORY_STEEL = "steel"
+CATEGORY_GUN = "gun"
 
-def _unlock_day(index: int) -> int:
-    """The night `STOCK_ORDER[index]` first appears on a table."""
-    if index < STOCK_FIRST_BAND:
+
+def _category(key: str) -> str:
+    """Which ladder `key` climbs."""
+    if key in armor.BY_KEY:
+        return CATEGORY_ARMOR
+    if weapons.is_blade(key) or weapons.is_shield(key):
+        return CATEGORY_STEEL
+    return CATEGORY_GUN
+
+
+#: What fraction of a ladder is available on night one. Derived off the guns,
+#: because that is the ladder `STOCK_FIRST_BAND` was tuned against.
+STOCK_FIRST_SHARE = STOCK_FIRST_BAND / max(1, len(weapons.GUN_KEYS))
+
+
+def _unlock_day(rank: int, total: int) -> int:
+    """The night the `rank`-th cheapest thing in a ladder of `total` appears."""
+    first = max(1, round(total * STOCK_FIRST_SHARE))
+    if rank < first:
         return 1
-    remaining = max(1, len(STOCK_ORDER) - STOCK_FIRST_BAND)
-    step = (index - STOCK_FIRST_BAND) / remaining
+    remaining = max(1, total - first)
+    step = (rank - first) / remaining
     return min(STOCK_DAYS, 2 + int(step * (STOCK_DAYS - 1)))
 
 
-STOCK_UNLOCK: dict[str, int] = {
-    key: _unlock_day(index) for index, key in enumerate(STOCK_ORDER)
-}
+def _unlock_table() -> dict[str, int]:
+    ladders: dict[str, list[str]] = {}
+    for key in STOCK_ORDER:
+        ladders.setdefault(_category(key), []).append(key)
+    table: dict[str, int] = {}
+    for rungs in ladders.values():
+        for rank, key in enumerate(rungs):
+            table[key] = _unlock_day(rank, len(rungs))
+        # THE DEAREST THING ON A SHELF IS A LAST-NIGHT THING, always, and it
+        # is pinned rather than left to the arithmetic. `_unlock_day` divides
+        # a rank by the rungs above the first band, which lands the top of an
+        # ELEVEN-rung ladder on the last night and the top of a THREE-rung one
+        # two nights early — an accident of integer truncation, not a
+        # statement anybody wanted to make about riot shields. Changing the
+        # divisor instead would re-cut the gun ladder, which has been tuned
+        # against eleven weapons since before there was anything else to buy.
+        table[rungs[-1]] = STOCK_DAYS
+    return table
+
+
+STOCK_UNLOCK: dict[str, int] = _unlock_table()
 
 
 def price_of(key: str) -> int:

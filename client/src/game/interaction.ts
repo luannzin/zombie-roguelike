@@ -240,7 +240,7 @@ export function nearAmmoBox(s: InteractionState): AmmoBox | null {
  * See the file header: this is a duplicate of a server rule on purpose, and
  * the two have to move together.
  */
-export function canStow(s: InteractionState, key: string): boolean {
+export function canStow(s: InteractionState, key: string, hp?: number): boolean {
   const catalog = s.config?.loot ?? {};
   const def = catalog[key];
   if (def?.pocket === 'ammo') {
@@ -260,10 +260,38 @@ export function canStow(s: InteractionState, key: string): boolean {
     const cap = s.config?.ammo?.max?.[calibre];
     return cap === undefined || (s.ammo[calibre] ?? 0) < cap;
   }
+  if (def?.pocket === 'worn') {
+    // ONE REFUSAL, AND IT IS THE ONLY ONE THIS CATEGORY NEEDS: the piece you
+    // are already wearing, in the same or better condition. Everything else
+    // goes on — including a piece that is WORSE than what is there, because
+    // "worse" is not something the game gets to decide for you. Mirrors
+    // `Room.wear_armor`.
+    const piece = s.config?.armor?.[key];
+    if (!piece) return false;
+    const worn = s.meta?.armor?.[piece.slot];
+    if (!worn || worn.k !== key) return true;
+    return worn.hp < (hp ?? piece.maxHp);
+  }
   if (def?.pocket === 'hotbar') {
     const guns = s.meta?.guns;
     if (!guns) return true;
-    return guns.slots.some((cell) => cell === null);
+    const weapon = s.config?.weapons?.[key];
+    // A LÂMINA ALWAYS HAS ROOM, because its cell is never empty and picking
+    // one up is a replacement rather than a stow. The only refusal is the
+    // blade already in the cell: a pickup that changed nothing and dropped
+    // what it replaced reads as the game taking something off you. Mirrors
+    // `Hotbar.can_stow`.
+    if (weapon?.melee) {
+      const cell = s.config ? guns.slots[s.config.bladeSlot] : null;
+      return cell !== key;
+    }
+    // AT MOST ONE SHIELD, EVER. Not a technical limit — a belt holding two
+    // riot shields is a belt with no guns on it at all.
+    if (weapon?.shield && guns.slots.some((cell) => !!cell && !!s.config?.weapons?.[cell]?.shield)) {
+      return false;
+    }
+    const gunCells = s.config?.gunSlots ?? guns.slots.length;
+    return guns.slots.slice(0, gunCells).some((cell) => cell === null);
   }
   const inv = s.meta?.inv;
   if (!inv) return true;
@@ -297,6 +325,31 @@ export function swapTargetFor(s: InteractionState): string | null {
   if (!def || def.pocket !== 'hotbar') return null;
   if (s.config?.weapons?.[key]?.melee) return null;
   return def.name;
+}
+
+/**
+ * What picking `key` up would DISPLACE, when the pickup is a swap rather than
+ * a stow. Null when nothing comes off.
+ *
+ * The counterpart of `swapTargetFor`, and deliberately a different function:
+ * that one answers "the belt is full, what can I give up", which is a
+ * REFUSAL turned into a choice. This one answers "this always fits, and here
+ * is what it lands on top of" — which is the blade cell and the three worn
+ * parts, the places in this game where there is no such thing as empty.
+ */
+export function replacedBy(s: InteractionState, key: string): string | null {
+  const piece = s.config?.armor?.[key];
+  if (piece) {
+    const worn = s.meta?.armor?.[piece.slot];
+    return worn ? (s.config?.loot?.[worn.k]?.name ?? null) : null;
+  }
+  if (!s.config?.weapons?.[key]?.melee) return null;
+  const cell = s.meta?.guns?.slots[s.config.bladeSlot];
+  // THE KNIFE IS NOT AN OBJECT and is never named as something you give up:
+  // it is the promise that the cell is full, and it does not land on the
+  // floor when a better lâmina replaces it. Mirrors `Room.swap_blade`.
+  if (!cell || cell === s.config.startingBlade) return null;
+  return s.config.loot?.[cell]?.name ?? null;
 }
 
 // --- prompts: the answer the tooltip and the keypress both read --------------
@@ -460,8 +513,19 @@ export function lootPromptInfo(s: InteractionState): HudLootPrompt | null {
   if (!near || !s.config) return null;
   const def = s.config.loot?.[near.k];
   if (!def) return null;
-  if (canStow(s, near.k)) {
-    return { id: near.id, name: def.name, rarity: def.rarity, full: false };
+  if (canStow(s, near.k, near.hp)) {
+    // A LÂMINA AND A PLATE ARE ALWAYS SWAPS, so they name what they replace
+    // even though nothing is refusing them. The cell is never empty and the
+    // part is often not bare, and "you are about to put down the axe" is the
+    // half of the decision the drop's own tooltip cannot show.
+    const swap = replacedBy(s, near.k);
+    return {
+      id: near.id,
+      name: def.name,
+      rarity: def.rarity,
+      full: false,
+      swap: swap ?? undefined,
+    };
   }
   // Belt full. If a gun is in hand this is a TRADE, not a refusal — the
   // prompt names what you would be putting down, because that is the half

@@ -77,11 +77,20 @@ const base = (over: Partial<GunMuzzleArgs> = {}): GunMuzzleArgs => ({
 {
   const items = manifest.items;
   const closed = Object.values(items).map((item) => item.frame);
+  // WHAT HAS NO ACTION TO OPEN. Not a list of exceptions — a list of the
+  // things on this sheet that are not firearms, which is a category with a
+  // reason: a lâmina has no reciprocating group and a shield has no trigger
+  // at all. `make_guns._cycled` returns null for exactly these, so the two
+  // sides of this check are the same fact said twice, and a FIREARM that ever
+  // lost its action frame still fails below.
+  const NO_ACTION = new Set(['knife', 'axe', 'katana', 'riot_shield']);
+  const silent = Object.keys(items).filter((key) => items[key].cycleFrame === undefined);
+  assert(
+    silent.length === NO_ACTION.size && silent.every((key) => NO_ACTION.has(key)),
+    `only the blades and the shield have no action; got [${silent.join(', ')}]`,
+  );
   for (const [key, item] of Object.entries(items)) {
-    if (key === 'knife') {
-      assert(item.cycleFrame === undefined, 'a blade has no action to open');
-      continue;
-    }
+    if (NO_ACTION.has(key)) continue;
     assert(item.cycleFrame !== undefined, `${key} has no action frame`);
     assert(item.portX !== undefined && item.portY !== undefined, `${key} has no port`);
     assert(

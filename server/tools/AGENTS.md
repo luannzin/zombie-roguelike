@@ -21,6 +21,7 @@ imported by `app/` and never run at request time.
 | `make_platform.py` | generates final pixels | `assets/processed/platform/` (the extraction platform: the cargo skid ×3 states cold/standby/alarm, a lift drone ×2 postures hover/cruise, rotor and strobe loops, standby and siren lamp glare, the imprint it leaves, rotor downwash, the ground-break burst) |
 | `make_gore.py` | generates final pixels | `assets/processed/gore/` (6 wound decals worn by a hit body) |
 | `make_loot.py` | generates final pixels | `assets/processed/loot/` (one 16x16 frame per item, including gun icons) — banded volume out of `paint_form`, keyed and planted on an offset ground shadow |
+| `make_armor.py` | generates raw art AND processes it | `assets/raw/armor-*.png` + `assets/processed/armor-<slot>-<material>/` (twelve worn overlays on the player's own 16x16 grid: three shapes x four materials, one pose block, ramps IMPORTED from `make_loot.py` so the plate on the floor and the plate on the body are the same colour by construction). The one script here that runs `process_sprites` itself — twelve pairs of commands in this file is a list nobody keeps in step |
 | `make_guns.py` | generates final pixels | `assets/processed/guns/` (held high-3/4, one 20x9 frame per weapon, plus its carry pose) |
 | `make_sawyer.py` | generates final pixels | `assets/processed/sawyer/` (THE FIRST BOSS — one 128x120 rig, eight clips in four facings: `idle`, `walk`, `chop`, `rip`, `rev`, `death`, plus a facing-less `sweep` and the `arrive` cinematic, and the thrown crescent `slash` / `slash-burst` in eight baked headings) |
 | `make_merchant.py` | generates final pixels | `assets/processed/merchant/` (the shopkeeper — green coat, brimmed HAT, a face with two eyes in it: `idle` loop plus three one-shot flourishes — `coat`, `beckon`, `coin` — and the manifest's `randomClips` / `randomGap` that drive them) |
@@ -735,6 +736,7 @@ python tools/make_skills.py
 python tools/make_gore.py
 python tools/make_loot.py
 python tools/make_guns.py
+python tools/make_armor.py
 python tools/make_hud_icons.py
 python tools/make_coin.py
 python tools/make_audio.py
@@ -755,6 +757,23 @@ python tools/make_audio.py
   frame the prone rest). Process the death raw the same way.
 - Detail finer than 2 raw pixels does not survive the downscale to a 16x16
   frame — read features need luminance contrast, not hue.
+- **Worn armour is `make_armor.py` and it is BAKED, not greyscale.** The
+  backpack is greyscale so the client can multiply the wearer's identity
+  colour through it; a plate's colour IS its material, which is the whole
+  armour ladder, so it is painted in its own ramp and the drawable says so per
+  layer (`GearLayer.tint`). The two live in the same `gear` list and are drawn
+  by the same `blitGear`.
+- **Armour overlays carry ONE pose block where the player carries two.** The
+  hold pose moves ARMS; a helmet, a breastplate over the coat's centre and a
+  pair of greaves sit on the three parts of this figure that are identical
+  between the blocks, so a second block would be twelve sheets that are
+  pixel-for-pixel the first twelve.
+- **Twelve pieces are three SHAPES in four colours, and that is the opposite
+  of the creature rule on purpose.** `make_zombie.py`'s variants must be three
+  silhouettes because the question there is "what is that". Four helmets are
+  four rungs of one ladder: the player already knows it is a helmet, and a
+  ladder whose rungs are four different shapes cannot be ordered at a glance.
+  See `make_armor.py`'s header and `make_loot._ARMOR_FORMS`.
 
 ## Verification
 

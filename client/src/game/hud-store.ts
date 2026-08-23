@@ -71,6 +71,54 @@ export interface HudHotbar {
   picks: number;
 }
 
+/**
+ * One part of the body and what is protecting it.
+ *
+ * ALWAYS PRESENT, EVEN BARE. A row with nothing in it is not missing
+ * information — it is the information: that is a part the next blow can land
+ * on with nothing in the way, and a panel that only listed what you owned
+ * would go quiet at exactly the moment the player most needs to look at it.
+ */
+export interface HudArmorSlot {
+  /** `head` / `body` / `legs`. */
+  slot: string;
+  /** Portuguese, off `config.armorSlotNames`. */
+  label: string;
+  key: string | null;
+  name: string | null;
+  rarity: LootRarity | null;
+  /** `cloth` / `leather` / `steel` / `kevlar`. Null when the part is bare. */
+  material: string | null;
+  /** Fraction of a blow landing here that the plate takes. 0 when bare. */
+  soak: number;
+  hp: number;
+  maxHp: number;
+}
+
+/** The shield, when there is one on the belt. */
+export interface HudShield {
+  key: string;
+  name: string;
+  hp: number;
+  maxHp: number;
+  /** It is up RIGHT NOW. Local, off the button — not a five-hertz value. */
+  up: boolean;
+}
+
+export interface HudArmor {
+  slots: HudArmorSlot[];
+  shield: HudShield | null;
+  /**
+   * What fraction of an average blow the whole set takes.
+   *
+   * The one piece of arithmetic worth doing for the player, and it is not the
+   * average of the three: a plate only soaks the blows that land on ITS part,
+   * and where a blow lands is weighted by how much of the sprite that part is
+   * (`config.armorCoverage`). Nobody is working that out from three bars.
+   */
+  soak: number;
+}
+
 export interface HudInventory {
   open: boolean;
   cap: number;
@@ -392,6 +440,13 @@ export interface HudSnapshot {
   /** The gun belt. Always on screen; 1/2/3 selects. */
   hotbar: HudHotbar | null;
   /**
+   * What is between this body and the next blow: three worn parts and the
+   * shield. Beside the vitals rather than beside the belt, because it answers
+   * a question about the BODY — the same question the health bar answers,
+   * one layer further out.
+   */
+  armor: HudArmor | null;
+  /**
    * Run objectives. Empty until the forest entrance seals; the HUD is a
    * mirror — progress as numbers, a done flag, optional risk, and dropping
    * a row is how a task leaves the screen.
@@ -426,6 +481,7 @@ export const EMPTY_HUD: HudSnapshot = {
   exitGuide: 0,
   inventory: null,
   hotbar: null,
+  armor: null,
   quests: [],
 };
 

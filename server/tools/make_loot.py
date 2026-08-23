@@ -1311,6 +1311,131 @@ ITEMS: list[tuple[str, Art]] = [
 
 
 # ---------------------------------------------------------------------------
+# THE ARMOUR, AND IT IS THREE DRAWINGS RATHER THAN TWELVE.
+#
+# Twelve pieces, and only three SHAPES: a helmet, a cuirass and a pair of
+# leggings. The material is the other axis and it is a RECOLOUR — which is
+# normally the thing this sheet exists to refuse (S15: three variants of a
+# creature have to be three silhouettes, and `test_creature_sheets.py` fails
+# the build if they are not).
+#
+# It is right here for exactly the reason it is wrong there, and the reason is
+# what the player is being asked. Two zombies are two THINGS, and telling them
+# apart across a dark clearing is a survival question, so they must differ in
+# outline. Four helmets are four RUNGS OF ONE LADDER, and the question is not
+# "what is that" — the player already knows it is a helmet, the slot label
+# says so — it is "is it better than mine". A ladder whose rungs are four
+# different shapes is a ladder nobody can order at a glance; a ladder whose
+# rungs are one shape in four colours is one everybody can, and it is the same
+# rarity ramp this sheet has been teaching since the first night.
+#
+# So: SLOT SETS THE SHAPE, MATERIAL SETS THE COLOUR — the same split
+# `server/app/armor.py` makes about the numbers, said in pixels. A player who
+# has learnt that green is leather has learnt it for all three slots at once.
+#
+# The templates are written in placeholders rather than in letters, so the
+# substitution is the only thing that varies and a shape cannot accidentally
+# be authored in one material:
+#
+#     #  the material, at its own step
+#     @  the material, lifted one step — the lit crest (S14)
+#     x  a recess in VOID: the visor gap, the breastplate seam, the gap
+#        between the legs. The one place interior form is allowed a
+#        single-pixel line (S6)
+_ARMOR_FORMS: dict[str, Art] = {
+    # A DOME WITH A FACE CUT OUT OF IT. The crown is the contour and the visor
+    # is the only interior mark — at sixteen pixels a helmet is a curve with a
+    # dark band across it and nothing else survives. The cheek pieces at the
+    # bottom are uneven on purpose: a symmetric helmet reads as a UI icon, and
+    # the right one hanging a row lower is the lean (S21) this shape can take
+    # without stopping being a helmet.
+    "head": [
+        "..@@#..",
+        ".@####.",
+        ".######",
+        "#######",
+        "##xxx##",
+        "#######",
+        ".######",
+        ".##..##",
+        "..#...#",
+    ],
+    # SHOULDERS. The two raised pauldrons are the top contour and they are what
+    # separate this from the leggings below at a glance — one shape opens
+    # upward and the other closes. The seam runs down the left of centre
+    # rather than through it, which is both how a real cuirass is laced and
+    # what keeps the icon off its own axis of symmetry.
+    "body": [
+        ".@@..@@.",
+        "@######@",
+        "########",
+        "###x####",
+        "###x####",
+        ".##x####",
+        ".#######",
+        ".######.",
+        "..#####.",
+        "..###.#.",
+    ],
+    # A BELT AND TWO LEGS. The band across the top is the read — greaves
+    # without one are two vertical bars and could be anything — and the legs
+    # are deliberately unequal, the right one a row longer, so the shape leans
+    # the way everything else on this sheet does.
+    "legs": [
+        ".@@@@@@.",
+        "########",
+        "########",
+        ".###x###",
+        ".###x###",
+        ".###x###",
+        ".###x###",
+        "..##x###",
+        "..##..##",
+        "..#...##",
+    ],
+}
+
+#: MATERIAL -> the sheet's own alphabet letter. Four rungs, four materials
+#: this catalog already had: rags are cloth, a jacket is leather, plate is
+#: metal, and the one modern thing in the game is the sheet's olive — the
+#: tactical hue, and the only entry here that is not simply the material's
+#: name, because there is no aramid ramp and inventing one for three icons
+#: would be a fifth material nothing else on the sheet ever spends.
+_ARMOR_LETTERS: dict[str, str] = {
+    "cloth": "f",
+    "leather": "l",
+    "steel": "m",
+    "kevlar": "v",
+}
+
+
+def _armor_icons() -> list[tuple[str, Art]]:
+    """Twelve icons out of three templates and four letters.
+
+    Keyed to match `server/app/armor.ArmorDef.key` — `{slot}_{material}` —
+    which is the same string the loot catalog, the wire and the HUD use. There
+    is deliberately no second list of names here: a piece the server can
+    produce and this cannot draw is caught by `tests/test_loot_frames.py`, and
+    a piece drawn here that the server cannot produce is simply an unused
+    frame.
+    """
+    rows: list[tuple[str, Art]] = []
+    for slot, form in _ARMOR_FORMS.items():
+        for material, letter in _ARMOR_LETTERS.items():
+            art = [
+                "".join(
+                    letter.upper() if ch == "@" else letter if ch == "#" else ch
+                    for ch in line
+                )
+                for line in form
+            ]
+            rows.append((f"{slot}_{material}", art))
+    return rows
+
+
+ITEMS += _armor_icons()
+
+# ---------------------------------------------------------------------------
 # THE WEAPONS, AND THEY ARE NOT PAINTED BY `paint_form`.
 #
 # Everything above is banded by the blob rule: a pixel's step comes from where

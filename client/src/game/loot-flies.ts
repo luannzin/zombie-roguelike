@@ -30,7 +30,7 @@ export const LOOT_FLY_LIFE = LOOT_FLY_HOLD + LOOT_FLY_TRAVEL;
  * as a whole, not a cell), and neither is worth a second copy of the hold,
  * the arc and the rAF pose.
  */
-export type LootFlyDest = 'bag' | 'hotbar' | 'ammo' | 'skill';
+export type LootFlyDest = 'bag' | 'hotbar' | 'ammo' | 'worn' | 'skill';
 
 export interface LootFlySpec {
   id: string;
@@ -64,6 +64,10 @@ export function anchorFor(fly: LootFlySpec): string {
     case 'hotbar':
     case 'ammo':
       return `hotbar-${fly.slot}`;
+    // A plate flies at the armour row it went on. `slot` is an index into
+    // `config.armorSlots`, not a bag cell — see `Room.wear_armor`.
+    case 'worn':
+      return `armor-${fly.slot}`;
     default:
       return `slot-${fly.slot}`;
   }

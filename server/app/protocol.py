@@ -152,9 +152,11 @@ Snapshot arrays:
             and again on a snapshot only when the ground list changed
             (collect or a bag toss)
   lootPickups  drops collected since the last snapshot (juice). `slot` is
-               the bag or hotbar index it landed in; `dest` is `hotbar`
-               for a gun and omitted for the pocket. The client flies
-               the sprite onto that HUD cell.
+               the index it landed on in whichever container took it; `dest`
+               says WHICH container — `hotbar` for a weapon, `ammo` for a
+               calibre, `worn` for a piece of armour (and then `slot` indexes
+               `armor.SLOTS`) — and is omitted for the pocket. The client
+               flies the sprite onto that HUD cell.
   pours        items tipped out of a backpack onto a platform since the last
                snapshot (juice). `by` is the body doing it, `r` the pad, `k`
                the catalog key, `v` what it paid, `s` the drawn size when the
@@ -165,6 +167,14 @@ Snapshot arrays:
                on (walk / lift / dump / stow, absent when not pouring)
   crates       remaining interactive objects; attached like loot — on the map
                payload, and again on a snapshot only when one was used
+  armorHits    blows that landed on GEAR since the last snapshot (juice).
+               `slot` is which piece took it — `head` / `body` / `legs`, or
+               the literal `shield` — `k` the piece, `dmg` what it stopped,
+               `left` what is still on it, and `broke` the one frame it came
+               apart on. The DURABILITY rides the roster (`armor`, `shield`);
+               this is the EVENT, the same split `kills` keeps from
+               `enemies`. A client that missed a packet must never replay a
+               piece breaking
   crateBreaks  objects used since the last snapshot (juice). `t` names the
                type so the client can play the right sheet for something that
                is already gone from the live list; `drop` is empty / coin /
@@ -329,6 +339,7 @@ def snapshot(
     pours: list[dict] | None = None,
     crates: list[dict] | None = None,
     crate_breaks: list[dict] | None = None,
+    armor_hits: list[dict] | None = None,
     corpses: list[dict] | None = None,
     rifts: list[dict] | None = None,
     entrance: dict | None = None,
@@ -375,6 +386,10 @@ def snapshot(
         payload["crates"] = crates
     if crate_breaks:
         payload["crateBreaks"] = crate_breaks
+    # Blows that landed on GEAR. Absent on almost every tick — the roster is
+    # what carries the durability, and this is only the frames it moved.
+    if armor_hits:
+        payload["armorHits"] = armor_hits
     if corpses is not None:
         payload["corpses"] = corpses
     # Rift rows when any pad changed state. The client runs the ceremony

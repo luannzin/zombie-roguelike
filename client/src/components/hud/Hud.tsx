@@ -29,6 +29,7 @@ import type { HudSnapshot } from '../../game/hud-store';
 import { cn } from '@/lib/utils';
 import { MinimapCanvas } from '../game/MinimapCanvas';
 import { Announce } from './Announce';
+import { Armor } from './Armor';
 import { BatteryGauge } from './BatteryGauge';
 import { Hotbar } from './Hotbar';
 import { ControlsHint } from './ControlsHint';
@@ -143,6 +144,14 @@ export function Hud({ snapshot, minimapRef, error }: HudProps) {
         >
           <Hotbar hotbar={snapshot.hotbar} />
           <BatteryGauge lantern={snapshot.lantern} />
+          {/* DIRECTLY ABOVE THE VITALS, because it answers the same question
+              the health bar answers one layer further out — what is between
+              this body and the next blow — and the two are read together or
+              not at all. Always drawn, even with nothing on: the three empty
+              rows are the parts a blow can land on with nothing in the way,
+              and a region that appeared for the first time at the first plate
+              would be one more thing to learn mid-run. */}
+          <Armor armor={snapshot.armor} />
           <Vitals vitals={snapshot.vitals} />
         </div>
 

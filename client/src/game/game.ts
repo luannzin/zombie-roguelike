@@ -96,6 +96,7 @@ import type {
   HotbarState,
   InputPacket,
   KillEvent,
+  ArmorHitEvent,
   CrateBreakEvent,
   CrateState,
   CorpseState,
@@ -149,6 +150,7 @@ import type {
   DrawableCoin,
   DrawableCorpse,
   DrawableEntity,
+  GearLayer,
   DrawableLoot,
   PourPose,
 } from '../render/types';
@@ -160,6 +162,7 @@ import { EntityVisuals, hitPower, type BloodStain } from './entity-visuals';
 import {
   EMPTY_HUD,
   HUD_INTERVAL,
+  type HudArmor,
   type HudHotbar,
   type HudInventory,
   type HudMachinePrompt,
@@ -519,6 +522,12 @@ interface PlayerSource {
   ready: boolean;
   held?: number;
   ads?: boolean;
+  /**
+   * The shield is UP. Off the tick row for every body but the local one,
+   * which reads its own button — see `Game.blocking`. Absent for the local
+   * one for the same reason `stamina` is read off prediction there.
+   */
+  blk?: boolean;
   /** Which beat of a pour this body is on, if any. Absent for the local one. */
   pour?: number;
 }
@@ -1073,6 +1082,14 @@ export class Game {
       ...names.map((name) => `${name}-death`),
       msg.config.coinSprite || COIN_SHEET,
       msg.config.backpackSprite || BACKPACK_SHEET,
+      // EVERY PIECE OF ARMOUR IN THE GAME, not the ones this player is
+      // wearing. The overlays are drawn on EVERY body in the room, a teammate
+      // can put a helmet on at any moment, and a sheet that started loading on
+      // the frame it was first needed would be a body that walks around
+      // bare-headed for a few hundred milliseconds after picking one up. There
+      // are twelve of them at 48x64 — the whole set costs less than one
+      // scenery sheet.
+      ...Object.values(msg.config.armor).map((piece) => piece.sheet),
     ];
     void this.sprites.load(sheets);
 
@@ -1168,6 +1185,7 @@ export class Game {
       buyPrompt: null,
       inventory: this.inventoryHud(),
       hotbar: this.hotbarHud(),
+      armor: this.armorHud(),
     });
     this.replaceLoot(msg.loot ?? []);
     this.replaceCorpses(msg.corpses ?? [], true);
@@ -1389,6 +1407,7 @@ export class Game {
     for (const ev of msg.pours ?? []) this.onPour(ev);
     if (msg.crates) this.replaceCrates(msg.crates);
     for (const ev of msg.crateBreaks ?? []) this.onCrateBreak(ev);
+    for (const ev of msg.armorHits ?? []) this.onArmorHit(ev);
     if (msg.rifts) {
       for (const row of msg.rifts) this.onRiftState(row);
     }
@@ -2450,6 +2469,11 @@ export class Game {
     const config = this.config!;
     const local = this.local!;
 
+    // THE SHIELD RESOLVES BEFORE THE WALK DOES. Mirror of the order in
+    // `Room.step_players`, and the reason is the same on both sides: the walk
+    // is the first thing that asks how fast this body is, so a block decided
+    // after the step would be a tick late on the frame it was raised for.
+    this.syncBlock();
     const packet = this.liveInput(local.nextSequence());
     if (!this.locked) {
       local.predict(packet, world, config);
@@ -2556,8 +2580,11 @@ export class Game {
         shoot: false,
         lantern: this.lantern.on,
         // Nobody runs through a cutscene. The march is on rails and the
-        // breath comes back over it, server-side as well as here.
+        // breath comes back over it, server-side as well as here. Nobody
+        // blocks through one either — the shield is a stance, and a body on
+        // rails is not standing anywhere.
         sprint: false,
+        block: false,
         held: this.heldSlot,
       };
     }
@@ -2578,8 +2605,40 @@ export class Game {
       shoot: this.input.shooting && this.canAttack(),
       lantern: this.lantern.on,
       sprint: this.input.sprinting && !puppet,
+      block: this.input.blocking && !puppet,
       held: this.heldSlot,
     };
+  }
+
+  /**
+   * Decide whether the shield is up, and what that costs the walk.
+   *
+   * MIRROR OF `Room.sync_block`, and it has to run before `predict` for the
+   * same reason the server runs it before `apply_input`: the walk is the
+   * first thing that asks. A block resolved after the body had already moved
+   * would make the shield a tick late every time it goes up, and the client
+   * would predict a full-speed step the server never took.
+   *
+   * The DURABILITY comes off the roster and the POSE comes off the local
+   * button, which is the same split every predicted thing in this file
+   * keeps: the server owns what is left of the shield, this owns whether the
+   * player is currently holding it in front of them.
+   */
+  private syncBlock(): void {
+    const local = this.local;
+    if (!local) return;
+    local.state.blockSpeed = this.blocking() ? (this.heldWeapon()?.shield?.speed ?? 1) : 1;
+  }
+
+  /** Whether the shield is up right now. Mirror of `Room.sync_block`. */
+  private blocking(): boolean {
+    if (!this.input.blocking || this.localPour !== null || this.locked) return false;
+    if (this.introLeft > 0 || !this.local?.alive) return false;
+    const weapon = this.heldWeapon();
+    if (!weapon?.shield) return false;
+    const worn = this.localMeta?.shield;
+    const key = this.localMeta?.guns?.slots?.[this.heldSlot];
+    return !!worn && worn.k === key && worn.hp > 0;
   }
 
   /**
@@ -2595,6 +2654,10 @@ export class Game {
     // length of a pour, so predicting a swing here would draw an arc that
     // never happened.
     if (this.localPour !== null) return false;
+    // A SHIELD HAS NO TRIGGER. Not "suppressed while blocking" — there is
+    // nothing to suppress, and the left button does nothing at all with one
+    // in hand. Mirror of `Room.handle_attack`.
+    if (this.heldWeapon()?.shield) return false;
     if (this.zone?.hostile !== false) return true;
     return !!this.heldWeapon()?.melee;
   }
@@ -3411,6 +3474,14 @@ export class Game {
     // something behind you is information, and it is free: the roster field
     // that changed is the same one every client already reads.
     if (this.visuals.noteWeapon(id, weaponKey, feel)) playSfxAt('gun-draw', x, y);
+    // THE SHIELD, FOR EVERY BODY IN THE ROOM. The local player's own answer
+    // comes off their button (so raising it is not a round trip); everybody
+    // else's comes off the tick row, which is why `blk` is on the row and not
+    // on the roster — a shield is a POSE, and a pose that arrived five times
+    // a second would let you watch a blow land on a plate that had not come
+    // up yet.
+    const blocking = source.isLocal ? this.blocking() : (source.blk ?? false);
+    this.visuals.guard(id, blocking ? 1 : 0);
     const gun = this.visuals.gunFeelOf(id);
     const pack = this.config?.backpackSprite || BACKPACK_SHEET;
     const pour = this.pourPose(
@@ -3427,11 +3498,20 @@ export class Game {
       kind: 'player',
       sheet: PLAYER_SHEET,
       tint: source.color,
-      // Always on for now — the overlay is what "equipped" means, and every
-      // player walks out of camp wearing one. A body mid-POUR is the one
-      // exception: its pack has come off, so it stops being gear and is drawn
-      // as something held instead (see `pour` below).
-      gear: pour ? [] : [pack],
+      // The pack, then whatever they are WEARING. Armour is visible through
+      // the overlay system that was already here rather than through a second
+      // one — the same `blitGear` that puts a backpack on a player and a cap
+      // on a zombie, registered to the same 16x16 grid, in the same facing
+      // and walk column.
+      //
+      // ORDER IS PAINT ORDER and it is `config.armorSlots` — head, body, legs
+      // — with the pack UNDER all of it, because a chestplate goes on over
+      // the straps. A body mid-POUR is the one exception: its pack has come
+      // off, so it stops being gear and is drawn as something held instead
+      // (see `pour` below).
+      gear: pour
+        ? this.wornSheets(id)
+        : [{ sheet: pack, tint: true }, ...this.wornSheets(id)],
       color: source.color,
       name: source.name,
       ready: source.ready,
@@ -3739,6 +3819,7 @@ export class Game {
       exitGuide: this.guidePose() !== null ? 1 : 0,
       inventory: this.inventoryHud(),
       hotbar: this.hotbarHud(),
+      armor: this.armorHud(),
       net: {
         players: this.snapshots.latest?.players.size ?? 0,
         enemies: this.snapshots.latest?.enemies.size ?? 0,
@@ -3943,6 +4024,90 @@ export class Game {
       gold,
       catches: this.bagCatches,
       refusals: this.bagRefusals,
+    };
+  }
+
+  /**
+   * The overlay sheets for what one body is wearing, in paint order.
+   *
+   * Off the ROSTER rather than off anything local, because every client draws
+   * every body: a teammate's helmet is a thing you can see from across a
+   * clearing, and the roster is the only place this client knows about it.
+   * A piece that broke is simply absent from the next roster, which is what
+   * takes it off the sprite.
+   */
+  private wornSheets(id: string): GearLayer[] {
+    const config = this.config;
+    const meta = id === this.localId ? this.localMeta : this.roster.get(id);
+    if (!config || !meta?.armor) return [];
+    const sheets: GearLayer[] = [];
+    for (const slot of config.armorSlots) {
+      const piece = meta.armor[slot];
+      const sheet = piece && config.armor[piece.k]?.sheet;
+      // NEVER TINTED. A plate's colour is its material, which is the whole
+      // ladder — multiplying a player's identity swatch through it would turn
+      // steel and leather into two shades of that player.
+      if (sheet) sheets.push({ sheet, tint: false });
+    }
+    return sheets;
+  }
+
+  /**
+   * The three armour rows: what is on each part and how much of it is left.
+   *
+   * ALWAYS THREE, including the bare ones. A panel that only listed what you
+   * were wearing would be empty for the first half of most runs and would
+   * change size every time something broke — and the empty rows are the
+   * information: they are the parts a blow is going to land on.
+   */
+  private armorHud(): HudArmor | null {
+    const config = this.config;
+    if (!config) return null;
+    const worn = this.localMeta?.armor;
+    const slots = config.armorSlots.map((slot) => {
+      const piece = worn?.[slot];
+      const def = piece ? config.armor[piece.k] : undefined;
+      return {
+        slot,
+        label: config.armorSlotNames[slot] ?? slot,
+        key: piece?.k ?? null,
+        name: def?.name ?? null,
+        rarity: def?.rarity ?? null,
+        material: def?.material ?? null,
+        soak: def?.soak ?? 0,
+        hp: piece?.hp ?? 0,
+        maxHp: piece?.max ?? 0,
+      };
+    });
+    // WHAT THE SET ACTUALLY STOPS, and it is not the average of the three.
+    // A plate only soaks the blows that land on ITS part, so the honest
+    // total is each plate's soak weighted by that part's share of the body
+    // (`config.armorCoverage`, which is the player sprite's own anatomy).
+    // A helmet alone on this sprite is worth nearly half a set; a pair of
+    // leggings alone is worth a fifth. Nobody works that out from three bars.
+    let soak = 0;
+    for (const row of slots) {
+      if (row.hp > 0) soak += row.soak * (config.armorCoverage[row.slot] ?? 0);
+    }
+
+    const shield = this.localMeta?.shield ?? null;
+    const shieldDef = shield ? config.loot[shield.k] : undefined;
+    return {
+      slots,
+      soak,
+      // The shield rides the same panel as the plates even though it lives on
+      // the belt, because what the player is asking when they look here is
+      // "how much is between me and the next hit" — and the answer includes
+      // the thing in their hand.
+      shield: shield
+        ? {
+            key: shield.k,
+            name: shieldDef?.name ?? shield.k,
+            hp: shield.hp,
+            maxHp: shield.max,
+            up: this.blocking(),
+          }
+        : null,
     };
   }
 
@@ -4167,10 +4332,36 @@ export class Game {
   private moveWeight(id?: string): number {
     if (id === undefined || id === this.localId) {
       const meta = this.localMeta;
-      return (meta?.inv?.w ?? 0) + this.heldWeaponWeight(meta?.guns, this.heldSlot);
+      return (
+        (meta?.inv?.w ?? 0) +
+        this.heldWeaponWeight(meta?.guns, this.heldSlot) +
+        this.wornWeight(meta)
+      );
     }
     const meta = this.roster.get(id);
-    return (meta?.inv?.w ?? 0) + this.heldWeaponWeight(meta?.guns, meta?.guns?.held ?? -1);
+    return (
+      (meta?.inv?.w ?? 0) +
+      this.heldWeaponWeight(meta?.guns, meta?.guns?.held ?? -1) +
+      this.wornWeight(meta)
+    );
+  }
+
+  /**
+   * Kilos of worn armour. Mirror of `armor.Loadout.weight`.
+   *
+   * THE THIRD TERM OF THE WALK, and it is deliberately not in `inv.w`: the
+   * bag's bar answers "how much loot can I still carry out" and a helmet is
+   * not cargo. What steel costs you is speed, and this is where that is
+   * charged.
+   */
+  private wornWeight(meta: PlayerMeta | null | undefined): number {
+    const catalog = this.config?.armor;
+    if (!catalog || !meta?.armor) return 0;
+    let kg = 0;
+    for (const piece of Object.values(meta.armor)) {
+      kg += catalog[piece.k]?.weight ?? 0;
+    }
+    return kg;
   }
 
   private carryBurdenOf(id: string): number {
@@ -4545,6 +4736,35 @@ export class Game {
     // Through the same unpacker the map payload uses, so a snapshot row and a
     // map row can never resolve to different sheets for the same object.
     this.world.replaceCrates(rows.map((row) => makeCrate(row)));
+  }
+
+  /**
+   * A blow landing on a plate or on the shield.
+   *
+   * TWO EVENTS IN ONE ROW, AND ONLY ONE OF THEM IS NEWS. A plate taking its
+   * share is the system working, and it already has a picture — the hit
+   * flash, the blood, the knockback all fired off the same blow — so adding a
+   * second reaction to every one of them would put a sound on the most common
+   * thing that happens in a fight. What is news is a piece COMING APART: the
+   * one moment the player has to be told in the world rather than on a bar,
+   * because the next blow is going to land somewhere that was covered a
+   * second ago.
+   *
+   * The DURABILITY is not touched here. It rides the roster (`PlayerMeta`),
+   * which is the resync — a client that missed a packet must never replay a
+   * piece breaking, and a bar driven off events would drift.
+   */
+  private onArmorHit(ev: ArmorHitEvent): void {
+    if (!ev.broke) return;
+    playSfxAt('crate-break', ev.x, ev.y, { gain: 0.8, rate: 1.35 });
+    // Only YOUR gear shakes YOUR camera. A teammate's helmet going across
+    // the clearing is something you hear, not something that hits you.
+    if (ev.by === this.localId) {
+      // Harder for the shield than for a plate, and deliberately: a plate
+      // wearing out is attrition finishing its job, and a riot shield coming
+      // apart is the wall in front of you going away.
+      this.camera.addTrauma(ev.slot === 'shield' ? 0.45 : 0.25);
+    }
   }
 
   private onCrateBreak(ev: CrateBreakEvent): void {
@@ -5000,17 +5220,21 @@ export class Game {
 }
 
 /** Clothes first so a hat draws on top. Missing or out-of-range indices skip. */
-function enemyGear(type: EnemyTypeConfig, enemy: RenderedEnemy): string[] {
+function enemyGear(type: EnemyTypeConfig, enemy: RenderedEnemy): GearLayer[] {
   return corpseGear(type, enemy.cloth, enemy.hat);
 }
 
-function corpseGear(type: EnemyTypeConfig, cloth?: number, hat?: number): string[] {
-  const gear: string[] = [];
+/**
+ * What a creature is wearing. NEVER TINTED — a zombie's cap and shirt bake
+ * their own colour, and the body under them is untinted too.
+ */
+function corpseGear(type: EnemyTypeConfig, cloth?: number, hat?: number): GearLayer[] {
+  const gear: GearLayer[] = [];
   if (cloth != null && cloth >= 0 && type.clothes?.[cloth]) {
-    gear.push(type.clothes[cloth]);
+    gear.push({ sheet: type.clothes[cloth], tint: false });
   }
   if (hat != null && hat >= 0 && type.hats?.[hat]) {
-    gear.push(type.hats[hat]);
+    gear.push({ sheet: type.hats[hat], tint: false });
   }
   return gear;
 }

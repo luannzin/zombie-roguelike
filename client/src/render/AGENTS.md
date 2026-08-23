@@ -10,7 +10,7 @@ mutation, no React.
 | file | owns |
 | --- | --- |
 | `renderer.ts` | pass sequencing and the world/screen transform |
-| `types.ts` | `RenderState`, `DrawableEntity` — the renderer's input contract (`gear` overlays, `weapon` the held gun with its whole pose in `gunKick`/`gunSwing`/`gunPump`/`gunLift` plus `gunOpen`/`gunHeat`/`gunHands`, `hitSpin` the hit tilt, `pour` the backpack coming off the back) |
+| `types.ts` | `RenderState`, `DrawableEntity` — the renderer's input contract (`gear` overlays as `GearLayer`s, each saying whether it wears the body's `tint`: a greyscale backpack does, baked armour does not — a plate's colour is its material and that is the whole ladder; `weapon` the held gun with its whole pose in `gunKick`/`gunSwing`/`gunPump`/`gunLift` plus `gunOpen`/`gunHeat`/`gunHands`, `hitSpin` the hit tilt, `pour` the backpack coming off the back) |
 | `camera.ts` | follow, clamp to map bounds, the arrival push-in |
 | `framing.ts` | the wide shot of the camp — zoom and rest-shot fire position |
 | `projection.ts` | zoom + offset between world and screen space |

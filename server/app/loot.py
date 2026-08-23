@@ -24,7 +24,7 @@ import random
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import weapons
+from . import armor, weapons
 from .config import TILE_SIZE
 from .world import FLOOR
 
@@ -64,11 +64,18 @@ class ItemDef:
     weight: float
     #: What it is worth. The HUD slot shows it; extraction will spend it.
     value: int
-    #: Where a collect puts it. `hotbar` is guns (no stack); `bag` is the
-    #: pocket; `ammo` goes straight into the reserve for its calibre and takes
-    #: no slot at all — see `ammo.py`. Ammunition is not cargo, it is upkeep,
-    #: and a round that ate a pocket slot would be competing with the loot the
-    #: gun exists to help you carry out.
+    #: Where a collect puts it, and there are four answers because a player
+    #: has four containers. `bag` is the pocket; `hotbar` is a weapon (a gun
+    #: into a gun cell, a lâmina into the blade cell); `ammo` goes straight
+    #: into the reserve for its calibre and takes no slot at all (`ammo.py`);
+    #: `worn` goes ON the body (`armor.py`) and takes no slot either.
+    #:
+    #: Neither `ammo` nor `worn` costs a pocket cell, and for the same reason:
+    #: the bag's budget answers "how much loot can I still carry out", and a
+    #: round or a chestplate competing with a gold ring for a cell would make
+    #: surviving a choice against extracting — which is a tax on playing
+    #: rather than a trade-off. Armour still costs you SPEED, which is where
+    #: the price of wearing it belongs.
     pocket: str = "bag"
     #: Which reserve an `ammo` row fills, and how many rounds one box is
     #: worth. Empty on everything else.
@@ -122,15 +129,6 @@ ITEMS: tuple[ItemDef, ...] = (
     ItemDef("royal_ring", "Anel da família real", "legendary", ("valuables", "living"), 0.15, 420),
     ItemDef("obsidian_totem", "Totem de obsidiana", "legendary", ("relics", "nature"), 2.4, 360),
     ItemDef("ancestor_skull", "Crânio do ancestral", "legendary", ("relics",), 1.2, 340),
-    # The knife is a catalog row for its NAME, its ICON and its WEIGHT, and
-    # for nothing else: it is never scattered, never rolled and never
-    # collected — everybody already has one. It stays out of `BY_RARITY`'s
-    # useful half by being the cheapest common in the game, and `scatter`
-    # only ever reaches it through a tag overlap it does not have. Its weight
-    # is the one carry number NOT taken from the CS2 speed column: it is not
-    # a purchase and it is not a firearm, and it has to stay under the
-    # lightest gun or "switch to the blade to move faster" stops being true.
-    ItemDef("knife", "Faca", "common", ("combat",), 0.5, 12, "hotbar", droppable=False),
     # WHAT THE ANOMALY GAVE BACK. Never scattered, never rolled, never in a
     # crate: the only thing that makes one is overfeeding a pad and then
     # closing it (`Room._drop_excess`). Its catalog `value` and `weight` are a
@@ -211,6 +209,102 @@ _AMMO_RARITY: dict[str, str] = {
 }
 
 
+#: Where a lâmina turns up. NOT the guns' tags: a blade is not ordnance, it
+#: is a TOOL somebody was using when this place stopped being a place — an
+#: axe at a deadfall, a machete in a shed, and the one imported thing in the
+#: category behind glass in a cabin. That is why the pools differ, and it is
+#: also why blades are found at all when firearms never are.
+_BLADE_TAGS: dict[str, tuple[str, ...]] = {
+    "axe": ("tools", "abandoned", "camp", "scrap"),
+    "katana": ("relics", "valuables", "living"),
+}
+
+
+#: Where a piece of armour turns up, by MATERIAL rather than by slot: a
+#: leather jacket and leather leggings came off the same person, and the
+#: place that has one has the other. The ladder doubles as a map of the
+#: world — rags at a camp, leather where people lived, plate among the
+#: relics, and the one modern material in the game only where there were
+#: soldiers.
+_ARMOR_TAGS: dict[str, tuple[str, ...]] = {
+    "cloth": ("camp", "abandoned", "scrap", "dropped"),
+    "leather": ("living", "travel", "camp", "abandoned"),
+    "steel": ("relics", "abandoned", "tools"),
+    "kevlar": ("military", "combat"),
+}
+
+
+def _armor_rows() -> tuple[ItemDef, ...]:
+    """Every wearable piece as a catalog row, derived from `armor.PIECES`.
+
+    ARMOUR IS FOUND AND BOUGHT BOTH, which is the whole reason it is a good
+    category to add to this game. A firearm can only be bought, because the
+    merchant being the only source is what makes ammunition mean anything; a
+    lâmina can be found, because steel eats nothing and a broke party needs a
+    route to better steel. Armour is the first thing that is genuinely on
+    BOTH ladders — you can walk out of a cabin wearing a leather jacket you
+    did not pay for, or you can decide that this night's take is going on a
+    helmet instead of on a rifle. That decision is the one the shop has
+    always been missing.
+
+    Nothing here is `droppable=False`: every piece can be rolled, and the
+    rarity a roll has to clear is the MATERIAL's, so the ladder gates itself.
+    """
+    rows: list[ItemDef] = []
+    for piece in armor.PIECES:
+        rows.append(
+            ItemDef(
+                key=piece.key,
+                name=piece.name,
+                rarity=piece.rarity,
+                tags=_ARMOR_TAGS[piece.material],
+                weight=piece.weight,
+                value=piece.value,
+                pocket="worn",
+            )
+        )
+    return tuple(rows)
+
+
+def _blade_rows() -> tuple[ItemDef, ...]:
+    """Every lâmina as a catalog row, derived from `weapons.BLADES`.
+
+    LÂMINAS ARE FOUND, AND THAT IS THE ONE PLACE THIS CATEGORY PARTS COMPANY
+    WITH THE GUNS. A firearm is `droppable=False` because the merchant being
+    the only source is what makes calibre and ownership the same question —
+    the forest stocks ammunition against what the party PAID for. None of that
+    argument survives contact with a blade: steel eats nothing, so there is no
+    economy to protect, and a run that opens on the knife with no money needs
+    a route to better steel that does not go through a shop it cannot afford.
+    A hatchet in a logging camp is also simply what is there.
+
+    The knife is the exception inside the exception: it is `droppable=False`
+    because everybody already has one, and a second knife on the forest floor
+    would be a pickup that changes nothing. Its rarity is read off its value
+    like every other blade's, which lands it on common — where the floor
+    belongs.
+    """
+    rows: list[ItemDef] = []
+    for profile in weapons.BLADES:
+        value = weapons.blade_value(profile)
+        rows.append(
+            ItemDef(
+                key=profile.key,
+                name=profile.name,
+                # Off the same bands the guns use, so the colour ladder and
+                # the price ladder cannot come apart: a blade that got better
+                # gets more expensive-looking in the same commit.
+                rarity=_gun_rarity(value),
+                tags=_BLADE_TAGS.get(profile.key, ("combat",)),
+                weight=weapons.blade_weight(profile),
+                value=value,
+                pocket="hotbar",
+                droppable=profile.key != weapons.STARTING_MELEE,
+            )
+        )
+    return tuple(rows)
+
+
 def _arms_rows() -> tuple[ItemDef, ...]:
     """Every ammunition-box row and every gun row.
 
@@ -265,7 +359,7 @@ def _arms_rows() -> tuple[ItemDef, ...]:
     return tuple(rows)
 
 
-ITEMS = ITEMS + _arms_rows()
+ITEMS = ITEMS + _armor_rows() + _blade_rows() + _arms_rows()
 
 BY_KEY: dict[str, ItemDef] = {item.key: item for item in ITEMS}
 #: The roll pools, and they are built from what the world may PRODUCE rather
@@ -376,6 +470,13 @@ class Drop:
     weight: float | None = None
     #: Sprite multiplier. Only ever set on a shard; everything else draws at 1.
     scale: float | None = None
+    #: WHAT IS LEFT OF IT. Only ever set on a piece of armour that has been
+    #: worn — a cracked steel plate taken off to put a fresh cloth one on has
+    #: to still be cracked when somebody picks it back up, or "is this
+    #: actually an upgrade" becomes a question the world quietly answers yes
+    #: to every time. A piece that has never been worn leaves this None and
+    #: arrives whole.
+    hp: int | None = None
 
     def to_payload(self) -> dict:
         row = {
@@ -390,6 +491,8 @@ class Drop:
             row["w"] = round(self.weight, 2)
         if self.scale is not None:
             row["s"] = round(self.scale, 3)
+        if self.hp is not None:
+            row["hp"] = self.hp
         return row
 
 
@@ -402,7 +505,9 @@ class LootPickup:
     y: float
     #: Which bag or hotbar slot it landed in. The client flies the sprite there.
     slot: int
-    #: `hotbar` for guns; omitted on the wire when it is the pocket.
+    #: `hotbar` for a weapon, `ammo` for a crate-load, `worn` for a piece of
+    #: armour. Omitted on the wire when it is the pocket, which is most of
+    #: the time.
     dest: str = "bag"
 
     def to_payload(self) -> dict:

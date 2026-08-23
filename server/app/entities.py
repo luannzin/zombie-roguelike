@@ -26,6 +26,7 @@ from .weapons import Hotbar
 
 # Imported after `weapons` on purpose: `ammo` reads the weapon catalog to
 # answer what calibre a key eats, so the module order here is the dependency.
+from . import armor
 from .ammo import Reserve
 
 COLORS = [
@@ -51,6 +52,12 @@ class InputCmd:
     sprint: bool = False
     #: Hotbar slot the client wants in hand. -1 is holstered.
     held: int = 0
+    #: RIGHT MOUSE, held. A REQUEST to raise the shield, and like `sprint` it
+    #: is nothing on its own: whether the shield is actually up is decided
+    #: per tick against what is in the hand and whether it is still in one
+    #: piece (`Player.blocking`). The second button in the game and the first
+    #: one that is not the trigger.
+    block: bool = False
 
     @staticmethod
     def from_message(msg: dict) -> "InputCmd":
@@ -77,6 +84,7 @@ class InputCmd:
             aim_x=ax,
             aim_y=ay,
             shoot=bool(msg.get("shoot")),
+            block=bool(msg.get("block")),
             lantern=bool(msg.get("lantern")),
             sprint=bool(msg.get("sprint")),
             held=held,
@@ -156,6 +164,15 @@ class Player:
     #: belt is: the first reserve in a run arrives with the first gun, out of
     #: the merchant's hands (`Reserve.grant_for`).
     ammo: Reserve = field(default_factory=Reserve)
+    #: WHAT THIS BODY IS WEARING. Three slots, any of them empty, each with
+    #: its own life left — see `armor.py`. A run opens with nothing on: the
+    #: first plate is something the forest handed over or the merchant sold.
+    armor: armor.Loadout = field(default_factory=armor.Loadout)
+    #: The shield's own durability, or None when there is no shield on the
+    #: belt. It is not on the `Hotbar` because a belt cell holds a KEY and
+    #: this is state; it is not in `armor.Loadout` because you hold it rather
+    #: than wear it. At most one, ever — `Hotbar.holds_shield`.
+    shield: armor.Piece | None = None
     #: How long the trigger has been held. AWP spends this before it fires.
     aim_hold: float = 0.0
     #: Which beat of the melee chain the next swing is. Never on the wire —
@@ -165,6 +182,22 @@ class Player:
     #: Seconds left to keep the chain. Runs out and the next swing is a first
     #: slash again.
     combo_left: float = 0.0
+    #: THE SHIELD IS UP. Latched here rather than read off the input at every
+    #: reader, because three things ask the question on different clocks —
+    #: the walk (`simulation.step_player`), the blow
+    #: (`Room.damage_player`) and the wire — and an input packet that has not
+    #: arrived yet would make them disagree within one tick.
+    blocking: bool = False
+    #: What the walk is multiplied by right now because of the shield. 1.0
+    #: whenever it is down.
+    #:
+    #: A RESOLVED NUMBER RATHER THAN A LOOKUP, because `simulation.py` is a
+    #: line-for-line mirror of `simulation.ts` and the client cannot reach a
+    #: `ShieldDef` from inside its movement code without importing the whole
+    #: weapon catalog into prediction. Both sides decide the same thing in the
+    #: same place — the frame the button is read — and the movement code just
+    #: multiplies.
+    block_speed: float = 1.0
 
     # server bookkeeping (never sent verbatim)
     inputs: deque = field(default_factory=deque)
@@ -222,10 +255,17 @@ class Player:
             knife is a real way to move faster and a full rack is not a
             silent tax on having found things.
 
+        WORN ARMOUR IS THE THIRD TERM, and it breaks the second rule above
+        on purpose: a plate is not in your hands, and it still slows you
+        down, because that is the entire price of wearing one. It stays out
+        of `inv.w` — the bag's bar answers "how much loot can I still carry
+        out" and a helmet is not cargo — so the two numbers say two
+        different true things about the same body.
+
         The client mirrors this sum from the same catalog — see
         `Game.moveWeight`.
         """
-        return self.inventory.weight + self.hotbar.held_weight
+        return self.inventory.weight + self.hotbar.held_weight + self.armor.weight
 
     def snapshot_payload(self) -> dict:
         """What changes every tick. Everything else rides the roster.
@@ -266,6 +306,13 @@ class Player:
             # under the health bar over every body — not only its own.
             "st": round(self.stamina, 1),
         }
+        # THE SHIELD IS UP, and it is on the TICK row rather than the roster
+        # because it is a POSE: every client draws a raised shield over every
+        # body that has one up, and a five-hertz pose would let a player watch
+        # a blow land on a shield that had not come up yet. Omitted when down,
+        # which is almost always — the same trade `wind` makes.
+        if self.blocking:
+            row["blk"] = True
         # Omitted while there is breath left, which is almost always: it is the
         # exhaustion LATCH, and a false on every row all night costs more than
         # the moment it describes.
@@ -281,7 +328,7 @@ class Player:
     def to_payload(self) -> dict:
         """The whole player: `welcome`, and the snapshot roster."""
         level, into_level, to_level = level_progress(self.xp)
-        return {
+        row = {
             **self.snapshot_payload(),
             "name": self.name,
             "color": self.color,
@@ -315,7 +362,17 @@ class Player:
             # predicts movement, so five times a second is a resync, not the
             # counter. Every calibre is present, including the zeroes.
             "ammo": self.ammo.to_payload(),
+            # WHAT THIS BODY IS WEARING, and every client needs it rather than
+            # only the owner: armour is DRAWN (`DrawableEntity.gear`), so a
+            # teammate's helmet is a thing you can see from across a clearing.
+            # Worn slots only — an empty slot is an absent key.
+            "armor": self.armor.to_payload(),
         }
+        # The shield's life. Omitted when there is no shield on the belt,
+        # which is most bodies in most runs.
+        if self.shield is not None:
+            row["shield"] = self.shield.to_payload()
+        return row
 
 
 #: Longest name the roster can show without truncating. Also the cap that keeps

@@ -30,6 +30,7 @@
 
 import type { Projection } from '../projection';
 import type { GunAtlas } from '../guns';
+import type { LootAtlas } from '../loot';
 import type { MerchantAtlas, MerchantPose } from '../merchant';
 import { merchantFrame } from '../merchant';
 import type { StoreAtlas } from '../store';
@@ -292,6 +293,7 @@ export function drawStoreProp(
   liftPx: number,
   machine: MachineAtlas | null,
   time: number,
+  loot: LootAtlas | null = null,
 ): void {
   if (piece.kind === 'merchant') {
     drawMerchant(ctx, view, merchant, scene, piece);
@@ -396,22 +398,67 @@ export function drawStoreProp(
     left, top, table.frameWidth * zoom, table.frameHeight * zoom,
   );
 
-  if (stand.sold || !guns) return;
-  const gun = guns.items[stand.key];
-  if (!gun) return;
+  if (stand.sold) return;
+  // TWO ATLASES, AND THE STOCK DECIDES WHICH. A weapon is drawn from the
+  // HELD-weapon sheet, because that art is a picture of the object in profile
+  // and it is what the buyer will be holding an hour from now. Everything
+  // else on the shelf — armour, and whatever comes after it — has no held
+  // pose at all and is drawn from the LOOT icon, which is the same 16x16 the
+  // player will see in a prompt and on the floor.
+  //
+  // The gun sheet is tried FIRST and the loot sheet is the fallback rather
+  // than the other way round: every weapon has a loot icon too, and falling
+  // through to it would quietly replace eleven pieces of profile art with
+  // eleven thumbnails.
+  const sheet = stockSheet(stand.key, guns, loot);
+  if (!sheet) return;
   // The row this table's surface is at, out of the ART. `topY` is measured from
   // the table frame's own top edge, so it has to be added to where that edge
   // landed on screen rather than to the contact.
   const surface = top + tableTopY(table, frame) * zoom;
   const lift = standLift(stand.id === scene.nearId, liftPx, time) * zoom;
   ctx.drawImage(
-    guns.image,
-    gun.frame * guns.frameWidth, 0, guns.frameWidth, guns.frameHeight,
-    view.x(piece.x) - Math.round((guns.frameWidth * zoom) / 2),
-    Math.round(surface - guns.frameHeight * zoom - lift),
-    guns.frameWidth * zoom,
-    guns.frameHeight * zoom,
+    sheet.image,
+    sheet.frame * sheet.frameWidth, 0, sheet.frameWidth, sheet.frameHeight,
+    view.x(piece.x) - Math.round((sheet.frameWidth * zoom) / 2),
+    Math.round(surface - sheet.frameHeight * zoom - lift),
+    sheet.frameWidth * zoom,
+    sheet.frameHeight * zoom,
   );
+}
+
+interface StockSheet {
+  image: HTMLImageElement;
+  frame: number;
+  frameWidth: number;
+  frameHeight: number;
+}
+
+/** Where the art for one thing on a table comes from. See `drawStoreProp`. */
+function stockSheet(
+  key: string,
+  guns: GunAtlas | null,
+  loot: LootAtlas | null,
+): StockSheet | null {
+  const gun = guns?.items[key];
+  if (guns && gun) {
+    return {
+      image: guns.image,
+      frame: gun.frame,
+      frameWidth: guns.frameWidth,
+      frameHeight: guns.frameHeight,
+    };
+  }
+  const item = loot?.items[key];
+  if (loot && item) {
+    return {
+      image: loot.image,
+      frame: item.frame,
+      frameWidth: loot.frameWidth,
+      frameHeight: loot.frameHeight,
+    };
+  }
+  return null;
 }
 
 /**

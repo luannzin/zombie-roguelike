@@ -525,6 +525,7 @@ export class Renderer {
               drawStoreProp(
                 ctx, view, this.storeAtlas, this.gunAtlas, this.merchantAtlas,
                 row.store, store, storeLift, this.machineAtlas, state.time,
+                this.lootAtlas,
               );
             }
           } else if (scenery && row.piece) {

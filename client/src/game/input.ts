@@ -1,5 +1,5 @@
 /**
- * Raw input collection. Produces movement/shoot booleans and the mouse
+ * Raw input collection. Produces movement/shoot/block booleans and the mouse
  * position in CSS pixels; converting the mouse to world space needs the
  * camera, so that happens in game.ts.
  */
@@ -47,6 +47,17 @@ export class InputController {
    * by the same code the server runs.
    */
   sprinting = false;
+  /**
+   * RIGHT MOUSE is down. A REQUEST to raise the shield and nothing more:
+   * whether it actually goes up is decided against what is in the hand and
+   * what is left of the shield, in `Game.blocking`, by the same rule the
+   * server runs.
+   *
+   * The second mouse button in the game. The context menu was already
+   * suppressed on this canvas long before there was anything to put on the
+   * button — see `onContextMenu` — so nothing about the page changes.
+   */
+  blocking = false;
   mouseX = 0;
   mouseY = 0;
 
@@ -145,7 +156,10 @@ export class InputController {
     this.shooting = false;
     // A window that lost focus under a held SHIFT never sees the keyup, and a
     // body that came back sprinting on nobody's finger would empty the bar.
+    // Same for the shield: a body still braced behind one nobody is holding
+    // would be slow for no reason the player can see.
     this.sprinting = false;
+    this.blocking = false;
   };
 
   private onMouseMove = (e: MouseEvent) => {
@@ -156,9 +170,11 @@ export class InputController {
 
   private onMouseDown = (e: MouseEvent) => {
     if (e.button === 0) this.shooting = true;
+    if (e.button === 2) this.blocking = true;
   };
 
   private onMouseUp = (e: MouseEvent) => {
     if (e.button === 0) this.shooting = false;
+    if (e.button === 2) this.blocking = false;
   };
 }

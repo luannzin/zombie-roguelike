@@ -6,6 +6,7 @@ Nearest contracts: [`server/app/AGENTS.md`](../../server/app/AGENTS.md),
 | | |
 | --- | --- |
 | **Owns** | movement + stamina, the 3-cell belt, the weapon catalog and both resolvers, ammunition, the pocket, and the two carried weights |
+| **Next door** | [`docs/design/gear.md`](gear.md) — what is IN the blade cell, what a body WEARS, and the shield. This file owns the belt; that one owns the things on it that are not guns |
 | **Inputs** | `InputPacket` (move, aim, attack, `held`, `sprint`, lantern), `{type:"collect"}`, `{type:"drop","slot"}`, `{type:"buy"}` |
 | **Outputs** | player tick rows (`st` stamina, `wind`, `held`, `ads`), roster `inv` / `guns` / `mods`, `shots` / `swings` events, `welcome.config.weapons` |
 | **Depends on** | `skills.Mods` (every ceiling), `config.py` (the base numbers), `loot.py` (catalog rows), `store.py` (the only gun source) |
@@ -19,8 +20,8 @@ Nearest contracts: [`server/app/AGENTS.md`](../../server/app/AGENTS.md),
 - **Two weights, and conflating them is a bug this split exists to fix.** Roster `inv.w` is the POCKET alone (what the bag bar measures); `Player.carry_weight` is the bag **plus only the weapon in hand**, and the client rebuilds it (`Game.moveWeight`) because `heldSlot` is client-authored.
 - **The whole gun catalog is derived from CS2's stat block**, scaled by `DAMAGE_SCALE = ZOMBIE_HP / 100`. Do not add a hand-written number to `weapons.py` — add a row with its source columns.
 - **A trigger resolves in one of three ways and the catalog says which**: one ray, `pellets > 1` (shotgun, one shell, six rays, a fixed cone), or `fire_on_release` (the AWP).
-- **A gun FIRES and the knife SWINGS, and they are two resolvers.** `Room.handle_attack` dispatches on the weapon's `melee` block, never on a `kind` string — so a second blade is a catalog row and no code.
-- **The belt has a floor and the floor is the KNIFE.** Not collectable, not droppable, not swappable; it costs a gun slot rather than adding a fourth cell. **A run opens with no gun.**
+- **A gun FIRES, a lâmina SWINGS and a shield BLOCKS, and they are three resolvers.** `Room.handle_attack` dispatches on the weapon's `melee` / `shield` block, never on a `kind` string — so a second blade is a catalog row and no code.
+- **The belt has a floor and the floor is the BLADE CELL.** It is never empty and no gun may land in it; what it HOLDS changes, and the knife is the fallback under it rather than its contents. It costs a gun slot rather than adding a fourth cell. **A run opens with no gun.** The rules about what may go in it, and what a lâmina displaces, are [`docs/design/gear.md`](gear.md).
 - **Guns are BOUGHT and never found.** Every weapon row is `droppable=False`; `store.py` is the only source.
 - **Ammunition is upkeep, not cargo.** Boxes are worth 0, take no pocket slot, and are collectable only by a player whose own belt holds that calibre. Reserves are sized in KILLS (`KILLS_PER_RESERVE`), not seconds of trigger.
 - **A dry trigger burns the cooldown**, on both sides.
@@ -40,7 +41,8 @@ Nearest contracts: [`server/app/AGENTS.md`](../../server/app/AGENTS.md),
 | intent | touch |
 | --- | --- |
 | add a gun | `server/app/weapons.py` + `loot.py` row (`pocket="hotbar"`) + `server/tools/make_guns.py` + `make_loot.py` (append) |
-| add a melee weapon | the same list plus a `MeleeDef` of `ComboStep`s — nothing else |
+| add a melee weapon | one `BladeProfile` — see [`docs/design/gear.md`](gear.md) |
+| armour, the shield, what stops a blow | [`docs/design/gear.md`](gear.md) |
 | movement / stamina | `server/app/simulation.py` **and** `client/src/game/simulation.ts`, `config.py` |
 | ammunition | `server/app/ammo.py` (mechanics) / `weapons.py` (sizing) |
 | pocket rules | `server/app/inventory.py`, `Room.collect_loot` / `drop_loot` — and the client's mirror of what a collect refuses, `client/src/game/interaction.ts` (`canStow`, `swapTargetFor`) |
@@ -288,10 +290,13 @@ When the user requests a durable behavior change, record it here or in the relev
   number. The shell reserve is the smallest in the game and deliberately so:
   sixty answers to "something is already touching me" and no answer at all to
   anything further off.
-- **The belt's last cell is the KNIFE and it is not loot.** Nobody collects
-  it, drops it or rolls a second one — it is placed by `Hotbar` itself, and
-  that guarantee is the feature: a run OPENS with no gun, and the hand is
-  still not empty. It costs a gun slot rather than adding a fourth cell, so
+- **The belt's last cell is the BLADE CELL and it is never empty.** Nothing
+  can take it to nothing — `Hotbar.__post_init__` puts a blade back — and that
+  guarantee is the feature: a run OPENS with no gun, and the hand is still not
+  empty. What the cell HOLDS does change (a found axe replaces a knife, a
+  katana replaces the axe and the axe hits the floor); the knife is the floor
+  under it, not its contents, and it is the one lâmina that is not an object.
+  See [`docs/design/gear.md`](gear.md) for the whole rule. It costs a gun slot rather than adding a fourth cell, so
   carrying it is not free. It also does not shoot, which makes it the one
   weapon in the game
   that resolves as an ARC (`combat.sweep`) instead of a ray, and the only

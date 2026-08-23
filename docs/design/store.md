@@ -5,7 +5,7 @@ Nearest contracts: [`server/app/AGENTS.md`](../../server/app/AGENTS.md),
 
 | | |
 | --- | --- |
-| **Owns** | the outdoor apron, the SHOP BUILDING and everything fitted in it, the six-stall grid and its stock roll, the AMMUNITION CRATES on the south wall, prices, the purchase, the payout ceremony's data, and the party balance |
+| **Owns** | the outdoor apron, the SHOP BUILDING and everything fitted in it, the six-stall grid and its stock roll across THREE ladders (guns, steel, armour), the AMMUNITION CRATES on the south wall, prices, the purchase, the payout ceremony's data, and the party balance |
 | **Inputs** | `{type:"buy","id"}`, the night's per-pad takes from `rift.fed`, the day number |
 | **Outputs** | `map.store` (`StorePayload`), `snapshot.boxes`, `buy` events, `snapshot.balance`, `payout` rows, the next day's forest on departure |
 | **Depends on** | `loot.py` (catalog `value` — prices are derived), `weapons.py` (what a stall can sell, and every ammunition table), `ammo.py` (whose belts decide which crates exist), `rift.py` (the takings), `zones.py` (`STORE_AMBIENT`), `machine.py` |
@@ -38,7 +38,8 @@ Nearest contracts: [`server/app/AGENTS.md`](../../server/app/AGENTS.md),
 | intent | touch |
 | --- | --- |
 | layout, stalls, gear, torches | `server/app/store.py` (+ `tests/test_store_walk.py`) |
-| what is for sale, unlock day | `server/app/store.py` (`STOCK_ORDER`, `_unlock_day`) |
+| what is for sale, unlock day | `server/app/store.py` (`SELLABLE`, `STOCK_ORDER`, `_category`, `_unlock_day`) |
+| what a table DRAWS when the stock is not a weapon | `client/src/render/layers/store.ts` (`stockSheet`) — a weapon comes off the held atlas, everything else off the loot icon |
 | ammunition: where the crates stand, what a box costs | `server/app/store.py` (`AMMO_SPOTS`, `AMMO_RESERVE_SHARE`, `ammo_price_of`) |
 | who gets a crate, and buying out of one | `server/app/room.py` (`_sync_ammo_boxes`, `_buy_ammo`) |
 | the crates drawn / the drop-in | `client/src/render/layers/store.ts` (`dropOffset`), `server/tools/make_store.py` (`make_ammobox`) |
@@ -56,6 +57,26 @@ the shop READS them and must never re-derive one), or the wire protocol pair.
 ---
 
 ## Design law
+
+- **THE SHELF IS THREE LADDERS AND THE DAY WALKS ALL OF THEM AT ONCE.** It
+  used to be one list — the guns, cheapest first — so gating by POSITION in it
+  was the same as gating by price. That stopped being true the moment armour
+  was on it: three cloth rags cost less than the cheapest pistol, so a merged
+  sort would have taken the whole opening band and pushed the first firearm
+  off night one, which is not a rebalance anybody asked for. So the bands are
+  cut inside each CATEGORY (`_category`) and the first band's share is read
+  off the guns, which makes the eleven-weapon ladder come out of this
+  byte-for-byte what it was before there was anything else to buy. Night one
+  is the bottom of every ladder — a sidearm, some rags, an axe — and the
+  dearest rung of each is pinned to the last night.
+- **A SHELF OF NOTHING BUT GUNS ASKS ONE QUESTION EVERY NIGHT**, and the
+  answer is always the most expensive thing the party can afford. Armour is
+  what makes it a real question: this night's take is a rifle, or it is a
+  helmet and rounds, and a party that has been dying at doorways knows which.
+  It is also the first thing the merchant can sell to a party who already own
+  everything that shoots. The reasoning for the category is in
+  [`docs/design/gear.md`](gear.md); what belongs here is only that the shop is
+  one of its two sources and the forest is the other.
 
 - **The STORE is the fourth beat of the loop and the only place money exists.**
   A trader's pitch in a small round forest CLEARING, walked SOUTH TO NORTH

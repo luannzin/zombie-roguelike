@@ -61,7 +61,7 @@ import time
 import uuid
 
 from . import (
-    ai, ammo, arena, boss, camp, coins, combat, crates, entrance, loot, mapgen,
+    ai, ammo, arena, armor, boss, camp, coins, combat, crates, entrance, loot, mapgen,
     protocol, quests, rift, skills, store, weapons, zones,
 )
 from . import machine
@@ -226,6 +226,13 @@ class Room:
         #: deck, and `n` is the pile index so they all stack it the same way.
         self.pour_events: list[dict] = []
         self.crate_break_events: list[dict] = []
+        #: Blows that landed on GEAR this tick: a plate soaking one, a shield
+        #: eating one whole, and the frame either of them came apart on. The
+        #: juice — a spark off steel, a crack, and the one moment the player
+        #: has to be told in the world rather than on a bar that a piece is
+        #: gone. The roster carries the durability; this carries the EVENT,
+        #: the same split every other ceremony in this file keeps.
+        self.armor_events: list[dict] = []
         #: Purchases made this tick. The juice: the client flies the gun onto
         #: the belt cell and counts the balance down.
         self.buy_events: list[dict] = []
@@ -611,22 +618,12 @@ class Room:
             self._loot_dirty = True
             self._roster_dirty = True
             return
-        if item is not None and item.pocket == "hotbar":
-            # A gun goes straight to the hand when there was no gun in it.
-            # The knife counts as no gun for this: a run opens holding the
-            # blade, so testing "is the hand empty" would mean nobody's
-            # FIRST pickup ever equipped itself, which is the one time this
-            # matters most. A second gun does not steal the hand.
-            held = player.hotbar.equipped()
-            unarmed = held is None or held.melee is not None
-            slot = player.hotbar.add(drop.key)
+        if item is not None and item.pocket == "worn":
+            dest = "worn"
+            slot = self.wear_armor(player, drop.key, drop.hp)
+        elif item is not None and item.pocket == "hotbar":
             dest = "hotbar"
-            if slot is not None and unarmed:
-                player.hotbar.held = slot
-            elif slot is None:
-                # Belt full: trade whatever is in the hand for this. See
-                # `swap_weapon` — refuses unless a GUN is held.
-                slot = self.swap_weapon(player, drop.key)
+            slot = self.take_weapon(player, drop.key, drop.hp)
         else:
             # A condensed core carries its own value, weight and drawn size —
             # they came off the rift that made it, not off the catalog — so
@@ -646,31 +643,124 @@ class Room:
         self._loot_dirty = True
         self._roster_dirty = True
 
-    def swap_weapon(self, player: Player, key: str) -> int | None:
-        """Trade the gun in hand for `key`, dropping the old one at the feet.
+    def wear_armor(self, player: Player, key: str, hp: int | None = None) -> int | None:
+        """Put a plate on. Returns its slot INDEX, or None if it was refused.
 
-        The way OUT of a full belt, and it is deliberately narrow: the hand
-        has to be holding a GUN. Holding the knife refuses, because the knife
-        is not yours to trade away — it is the one thing on the belt that
-        cannot be lost, and letting a pickup consume its cell would turn the
-        floor under the whole loadout into something you can stand on by
-        accident. Holstered refuses for the same reason it cannot fire: an
-        empty hand is not a choice about which gun to keep.
+        ONE REFUSAL, AND IT IS THE ONLY ONE THIS CATEGORY NEEDS: the piece
+        you are already wearing, in the same or better condition. Everything
+        else goes on, including a piece that is WORSE than what is there —
+        because "worse" is not something the server gets to decide. A fresh
+        cloth vest over a steel one with four points left is a real choice a
+        player might make on purpose, and a game that quietly refused it
+        would be answering a question the player was in the middle of asking.
 
-        Returns the slot the new gun landed in, or None if no trade was legal.
+        The piece that comes off keeps whatever life it had and lands at the
+        feet, so the swap is reversible one step later — the same promise
+        `swap_weapon` makes about a traded gun.
+
+        The index rather than the slot name because it is going onto a
+        `LootPickup`, which carries an int for every other destination: the
+        client flies the sprite at the armour row it landed on.
+        """
+        piece = armor.BY_KEY.get(key)
+        if piece is None:
+            return None
+        worn = player.armor.get(piece.slot)
+        incoming = piece.max_hp if hp is None else hp
+        if worn is not None and worn.key == key and worn.hp >= incoming:
+            return None
+        old = player.armor.equip(key, hp)
+        if old is not None:
+            self._drop_at_feet(player, old.key, old.hp)
+        self._roster_dirty = True
+        return armor.SLOTS.index(piece.slot)
+
+    def take_gear(self, player: Player, key: str) -> tuple[int | None, str]:
+        """Route one bought or found thing to the container it belongs in.
+
+        THE SHOP AND THE FOREST HAND OVER THE SAME OBJECTS THROUGH THE SAME
+        RULES. `loot.ItemDef.pocket` is the only thing that decides where
+        something lands, so a table selling a helmet and a cabin dropping one
+        cannot disagree about what happens when you already have one.
+        """
+        item = loot.BY_KEY.get(key)
+        if item is not None and item.pocket == "worn":
+            return self.wear_armor(player, key), "worn"
+        return self.take_weapon(player, key), "hotbar"
+
+    def take_weapon(self, player: Player, key: str, hp: int | None = None) -> int | None:
+        """Put a found or bought weapon on the belt. Returns the cell, or None.
+
+        THE ONE DOOR, and it exists because a pickup and a purchase have to
+        answer the belt's rules identically — the shop is not a second set of
+        rules about what fits where, it is the same belt with a price on it.
+        A gun looks for an empty cell and trades if there is none; a lâmina
+        goes into the blade cell and displaces whatever was in it.
+        """
+        if weapons.is_blade(key):
+            return self.swap_blade(player, key)
+        # A gun goes straight to the hand when there was no gun in it. A
+        # BLADE counts as no gun for this: a run opens holding steel, so
+        # testing "is the hand empty" would mean nobody's FIRST pickup ever
+        # equipped itself, which is the one time this matters most. A second
+        # gun does not steal the hand.
+        held = player.hotbar.equipped()
+        unarmed = held is None or held.melee is not None
+        slot = player.hotbar.add(key)
+        if slot is None:
+            # Belt full: trade whatever is in the hand for this. See
+            # `swap_weapon` — refuses unless a GUN is held.
+            slot = self.swap_weapon(player, key)
+            if slot is None:
+                return None
+        elif unarmed:
+            player.hotbar.held = slot
+        # A SHIELD BRINGS ITS DURABILITY WITH IT. The belt cell holds a key
+        # and the body holds what is left of the thing — see `Player.shield`
+        # — so this is the one join where the two have to be made at the same
+        # moment. `hp` carries a second-hand shield's wear through a trade.
+        if weapons.is_shield(key):
+            player.shield = armor.fresh_shield(key, hp)
+        return slot
+
+    def swap_blade(self, player: Player, key: str) -> int | None:
+        """Put `key` in the blade cell and leave the old lâmina at the feet.
+
+        THE CELL IS NEVER EMPTY, SO THIS IS NEVER A REFUSAL — it is always a
+        trade, and the only thing that can refuse it is picking up the blade
+        you are already carrying. That is the whole difference between this
+        and a gun cell: a belt with two guns has to be asked which one you
+        want to lose, and a belt with one blade does not.
+
+        THE KNIFE IS NOT AN OBJECT AND DOES NOT FALL ON THE FLOOR. It is the
+        promise that the cell is full, not a thing the party owns — leaving a
+        knife in the grass every time somebody found an axe would litter the
+        map with pickups nobody would ever want, and `loot.py` marks it
+        `droppable=False` precisely so no pool can produce one. Every other
+        lâmina lands at the feet, where its owner can change their mind one
+        step later, exactly like a traded gun.
         """
         bar = player.hotbar
-        held = bar.held
-        if held < 0 or held >= weapons.GUN_SLOTS:
+        old = bar.blade
+        slot = bar.add(key)
+        if slot is None:
             return None
-        old = bar.slots[held]
-        if old is None or old == weapons.STARTING_MELEE:
-            return None
+        if old != weapons.STARTING_MELEE:
+            self._drop_at_feet(player, old)
+        # Steel that replaces the steel in your hand stays in your hand. The
+        # cell did not move, so neither did the selection — but a player who
+        # was holding a GUN keeps holding it, because a pickup that yanked
+        # the rifle out of somebody's hands mid-fight to show them a knife is
+        # the worst moment this system could produce.
+        return slot
 
-        bar.slots[held] = key
-        # The gun you gave up lands where you are standing, not in the void:
-        # a trade you can change your mind about one step later is a trade,
-        # and one that eats the loser is a punishment for experimenting.
+    def _drop_at_feet(self, player: Player, key: str, hp: int | None = None) -> str:
+        """Put one `key` on walkable ground near `player`. Returns the drop id.
+
+        The tail of every trade: the weapon you gave up lands where you are
+        standing rather than in the void, so a trade is reversible one step
+        later and experimenting is not punished by eating the loser.
+        """
         feet_y = player.y + PLAYER_HALF_HEIGHT
         occupied = [
             (d.x / TILE_SIZE - 0.5, d.y / TILE_SIZE - 0.5) for d in self.drops.values()
@@ -679,7 +769,43 @@ class Room:
         if pos is None:
             pos = (player.x, feet_y)
         drop_id = self._next_drop_id()
-        self.drops[drop_id] = Drop(id=drop_id, key=old, x=pos[0], y=pos[1])
+        self.drops[drop_id] = Drop(id=drop_id, key=key, x=pos[0], y=pos[1], hp=hp)
+        self._loot_dirty = True
+        return drop_id
+
+    def swap_weapon(self, player: Player, key: str) -> int | None:
+        """Trade the gun in hand for `key`, dropping the old one at the feet.
+
+        The way OUT of a full belt, and it is deliberately narrow: the hand
+        has to be holding a GUN. Holding a BLADE refuses — not because the
+        lâmina is precious, but because it is not in a gun cell and trading
+        it for a rifle would empty the one cell that is never empty. Steel is
+        traded for steel, through `swap_blade`. Holstered refuses for the
+        same reason it cannot fire: an empty hand is not a choice about which
+        gun to keep.
+
+        Returns the slot the new gun landed in, or None if no trade was legal.
+        """
+        bar = player.hotbar
+        held = bar.held
+        if held < 0 or held >= weapons.GUN_SLOTS:
+            return None
+        old = bar.slots[held]
+        if old is None or weapons.is_blade(old):
+            return None
+
+        bar.slots[held] = key
+        # A SHIELD TRADED AWAY TAKES ITS DAMAGE WITH IT. Its durability lives
+        # on the body, so handing the object over means handing the number
+        # over too — and the wreck of a shield somebody spent half of is
+        # exactly what a teammate should find on the floor when they pick it
+        # up, not a fresh one.
+        worn = player.shield
+        if weapons.is_shield(old) and worn is not None and worn.key == old:
+            player.shield = None
+            self._drop_at_feet(player, old, worn.hp)
+        else:
+            self._drop_at_feet(player, old)
         return held
 
     # --- interactive objects: using one, and what falls out -----------------
@@ -1373,16 +1499,10 @@ class Room:
         if target.price > self.balance:
             return
 
-        held = player.hotbar.equipped()
-        unarmed = held is None or held.melee is not None
-        slot = player.hotbar.add(target.key)
-        if slot is not None and unarmed:
-            player.hotbar.held = slot
-        elif slot is None:
-            # Belt full: the same trade a pickup gets. It refuses while the
-            # knife is in hand or the hand is empty, and a refused trade must
-            # not charge for a gun that was never handed over.
-            slot = self.swap_weapon(player, target.key)
+        # THE SAME DOOR A PICKUP USES. A refused trade must not charge for a
+        # thing that was never handed over, which is why this is tested
+        # before the balance moves.
+        slot, dest = self.take_gear(player, target.key)
         if slot is None:
             return
 
@@ -1390,24 +1510,28 @@ class Room:
         # A GUN COMES LOADED. The merchant is the only source of firearms in
         # the game, so a purchase that handed over an empty weapon would ask
         # the party to survive a night before the thing they just spent the
-        # last night earning does anything at all.
+        # last night earning does anything at all. A lâmina eats nothing and
+        # `grant_for` knows it.
         player.ammo.grant_for(target.key)
         target.sold = True
         self._balance_dirty = True
         self._stands_dirty = True
         self._roster_dirty = True
         self._sync_store_payload()
-        self.buy_events.append(
-            {
-                "id": target.id,
-                "by": player.id,
-                "k": target.key,
-                "price": target.price,
-                "slot": slot,
-                "x": round(target.x, 2),
-                "y": round(target.y, 2),
-            }
-        )
+        row = {
+            "id": target.id,
+            "by": player.id,
+            "k": target.key,
+            "price": target.price,
+            "slot": slot,
+            "x": round(target.x, 2),
+            "y": round(target.y, 2),
+        }
+        # Omitted for the belt, which is what most tables sell — the same
+        # trade `LootPickup` makes with the pocket.
+        if dest != "hotbar":
+            row["dest"] = dest
+        self.buy_events.append(row)
 
     def _sync_spins(self, player: Player) -> int:
         """Pay out any levels this player has crossed. Returns how many.
@@ -2120,8 +2244,9 @@ class Room:
             consumed = 0
             while player.inputs and consumed < budget:
                 cmd = player.inputs.popleft()
-                apply_input(player, cmd, self.world, dt)
                 player.hotbar.apply_held(cmd.held)
+                self.sync_block(player, cmd)
+                apply_input(player, cmd, self.world, dt)
                 self.handle_attack(player, cmd, dt)
                 player.last_processed_seq = cmd.sequence
                 player.last_input = cmd
@@ -2131,8 +2256,9 @@ class Room:
                 # Network jitter: briefly extrapolate the last known input so
                 # remote viewers do not see a stutter.
                 if player.idle_ticks < 3:
-                    apply_input(player, player.last_input, self.world, dt)
                     player.hotbar.apply_held(player.last_input.held)
+                    self.sync_block(player, player.last_input)
+                    apply_input(player, player.last_input, self.world, dt)
                     self.handle_attack(player, player.last_input, dt)
                 else:
                     # Past the extrapolation window nothing calls `apply_input`
@@ -2516,7 +2642,7 @@ class Room:
             # already applied) and this path only refreshes the shared one so
             # the party is not chopped and bitten on the same frame.
             player.hurt_immunity = max(player.hurt_immunity, MELEE_IMMUNITY)
-            self.damage_player(player, damage, None)
+            self.damage_player(player, damage, None, sx, sy)
             self.boss_events.append({
                 "kind": "hurt",
                 "target": player.id,
@@ -2689,7 +2815,7 @@ class Room:
 
         if not blocked:
             target.hurt_immunity = MELEE_IMMUNITY
-            self.damage_player(target, damage, None)
+            self.damage_player(target, damage, None, enemy.x, enemy.y)
 
         self.attack_events.append(
             {
@@ -2703,6 +2829,35 @@ class Room:
                 "blocked": blocked,
             }
         )
+
+    def sync_block(self, player: Player, cmd: InputCmd) -> None:
+        """Decide whether the shield is up, BEFORE anything reads it.
+
+        Called ahead of `apply_input` rather than inside `handle_attack`,
+        because the walk is the first thing that asks: a block resolved after
+        the body had already moved would make the shield a tick late every
+        time it goes up, and a tick late on the frame you raise it is exactly
+        the frame it was raised for.
+
+        RIGHT MOUSE IS A REQUEST, the same way SHIFT is. What answers it is
+        the belt: a shield in the hand, still in one piece. Anything else and
+        the button does nothing at all — no error, no prompt. A control that
+        is meaningless without the object is a control the player only ever
+        presses while holding the object.
+        """
+        weapon = player.hotbar.equipped()
+        up = (
+            cmd.block
+            and player.alive
+            and player.pour is None
+            and weapon is not None
+            and weapon.shield is not None
+            and player.shield is not None
+            and player.shield.key == weapon.key
+            and not player.shield.spent
+        )
+        player.blocking = up
+        player.block_speed = weapon.shield.speed if up and weapon is not None and weapon.shield else 1.0
 
     def handle_attack(self, player: Player, cmd: InputCmd, dt: float) -> None:
         """One trigger, two weapons. A gun fires a ray; the knife swings an arc.
@@ -2720,6 +2875,16 @@ class Room:
         weapon = player.hotbar.equipped()
         if weapon is None or not player.alive:
             player.aim_hold = 0.0
+            return
+        if weapon.shield is not None:
+            # A SHIELD HAS NO TRIGGER. Not "the attack is suppressed while
+            # blocking" — there is nothing to suppress. The left button does
+            # nothing at all with one in hand, which is the price of the cell
+            # it is standing in and the reason a party with two of them is a
+            # party that cannot kill anything.
+            player.aim_hold = 0.0
+            player.combo_step = 0
+            player.combo_left = 0.0
             return
         if weapon.melee is not None:
             self.handle_melee(player, cmd, weapon)
@@ -2889,7 +3054,7 @@ class Room:
             elif isinstance(victim, Enemy):
                 self.damage_enemy(victim, damage, attacker, hit.dx, hit.dy)
             else:
-                self.damage_player(victim, damage, attacker)
+                self.damage_player(victim, damage, attacker, attacker.x, attacker.y)
 
     def _pellet_aim(
         self, dx: float, dy: float, weapon: weapons.WeaponDef
@@ -3036,20 +3201,60 @@ class Room:
             elif isinstance(victim, Enemy):
                 self.damage_enemy(victim, total, shooter, vx, vy)
             else:
-                self.damage_player(victim, total, shooter)
+                self.damage_player(victim, total, shooter, ox, oy)
 
-    def damage_player(self, target: Player, amount: int, source: Player | None) -> None:
+    def damage_player(
+        self,
+        target: Player,
+        amount: int,
+        source: Player | None,
+        from_x: float | None = None,
+        from_y: float | None = None,
+    ) -> None:
+        """Hurt a player, through everything that stands between the blow and them.
+
+        THE ONE DOOR, and everything defensive in the game is written here
+        rather than at each of the things that can hurt you — a zombie's claw,
+        a shotgun, the Sawyer's bar. A mitigation written at three call sites
+        is a mitigation that will be missing from the fourth.
+
+        THREE LAYERS, IN THIS ORDER, AND THE ORDER IS THE ARGUMENT:
+
+          1. THE SHIELD, which is not mitigation at all — it is a wall. If it
+             is up and the blow came from in front of it, the blow does not
+             happen: the shield eats every point of it and loses that much of
+             itself. That is the only thing in this game that takes a hit to
+             zero, and it is why the shield costs a gun cell, only faces one
+             way, and breaks.
+          2. WORN ARMOUR, which is attrition. One blow lands on one part
+             (`armor.Loadout.absorb`), the plate there takes its material's
+             share onto its own durability, and the rest carries on. The
+             plate that breaks doing it still did its job on the way out.
+          3. TOUGHNESS (`Mods.armor`), which is the body rather than the
+             gear: a multiplier a skill bought and nothing can take away. It
+             applies to WHAT GOT THROUGH, because being hard to hurt is about
+             the blow that reached you.
+
+        `from_x` / `from_y` are where the blow came from, and only the shield
+        reads them — everything else in this game is direction-blind on
+        purpose. A caller that does not know passes nothing, and a shield
+        that cannot tell where it was hit from does not block: guessing would
+        make the one honest thing about the shield (that it has a back) into
+        a coin flip.
+        """
         if not target.alive:
             return
         # BEING HIT ENDS A POUR. A body standing over an open backpack while
         # something eats it is the one frame of this ceremony that would read
         # as the game having stopped listening.
         target.pour = None
-        # ARMOUR, and it is applied HERE rather than at each of the things that
-        # can hurt you — a zombie's claw, a shotgun, the Sawyer's bar — because
-        # this is the one door all of them come through, and a mitigation
-        # written at three call sites is a mitigation that will be missing from
-        # the fourth. `max(1, ...)`: a hit that connects always costs something,
+
+        amount = self._block_with_shield(target, amount, from_x, from_y)
+        if amount <= 0:
+            return
+        amount = self._soak_with_armor(target, amount)
+
+        # `max(1, ...)`: a hit that got past the plate always costs something,
         # or a fully-armoured player standing in a pack takes zero forever.
         target.hp -= max(1, round(amount * target.skills.mods.armor))
         if target.hp <= 0:
@@ -3071,6 +3276,108 @@ class Room:
                     "gold": 0,
                 }
             )
+
+    def _block_with_shield(
+        self,
+        target: Player,
+        amount: int,
+        from_x: float | None,
+        from_y: float | None,
+    ) -> int:
+        """Put the blow into the shield, if the shield is up and facing it.
+
+        ALL OR NOTHING, up to what is left of the shield. A blow bigger than
+        the shield's remaining life takes the shield apart and the rest goes
+        through — the last thing a riot shield does is spend itself, and the
+        Sawyer's bar going through the wreckage of one is the moment the
+        player learns what "126" meant.
+
+        The arc is tested against the AIM, not against the facing: the shield
+        is drawn where the mouse is pointing, so the thing that decides
+        whether it caught a blow has to be the thing the player was looking
+        at when they turned to face it.
+        """
+        piece = target.shield
+        if piece is None or not target.blocking or piece.spent:
+            return amount
+        if from_x is None or from_y is None:
+            return amount
+        weapon = target.hotbar.equipped()
+        if weapon is None or weapon.shield is None or weapon.key != piece.key:
+            return amount
+
+        dx = from_x - target.x
+        dy = from_y - target.y
+        length = math.hypot(dx, dy)
+        if length > 1e-6:
+            # Facing is the aim, and both are unit vectors, so the dot IS the
+            # cosine of the angle between them.
+            facing = dx / length * target.aim_x + dy / length * target.aim_y
+            if facing < weapon.shield.half_arc_cos:
+                return amount
+
+        soaked = piece.take(amount)
+        self._roster_dirty = True
+        broke = piece.spent
+        if broke:
+            self._break_shield(target)
+        self.armor_events.append(
+            {
+                "by": target.id,
+                "slot": "shield",
+                "k": piece.key,
+                "dmg": soaked,
+                "left": 0 if broke else piece.hp,
+                "broke": broke,
+                "x": round(target.x, 2),
+                "y": round(target.y, 2),
+            }
+        )
+        return amount - soaked
+
+    def _break_shield(self, target: Player) -> None:
+        """Take the wreckage off the belt. The cell it was in goes empty.
+
+        Not dropped: a shield at zero is not a shield, and leaving one on the
+        floor would invite somebody to pick up a thing that cannot do
+        anything. It is the one piece of gear in the game that leaves nothing
+        behind, which is also the clearest possible statement that it is
+        gone.
+        """
+        target.shield = None
+        bar = target.hotbar
+        for index, key in enumerate(bar.slots):
+            if weapons.is_shield(key):
+                bar.slots[index] = None
+                if bar.held == index:
+                    bar.held = -1
+        target.blocking = False
+        target.block_speed = 1.0
+
+    def _soak_with_armor(self, target: Player, amount: int) -> int:
+        """Land the blow on one part of the body and let the plate there take its share."""
+        if not target.armor.worn:
+            return amount
+        through, slot, key, broke = target.armor.absorb(amount)
+        if key is None:
+            # Nothing there. No event, no roster churn — a blow that hit a
+            # bare leg is not news about armour.
+            return amount
+        self._roster_dirty = True
+        piece = target.armor.get(slot)
+        self.armor_events.append(
+            {
+                "by": target.id,
+                "slot": slot,
+                "k": key,
+                "dmg": amount - through,
+                "left": piece.hp if piece is not None else 0,
+                "broke": broke,
+                "x": round(target.x, 2),
+                "y": round(target.y, 2),
+            }
+        )
+        return through
 
     def damage_enemy(
         self,
@@ -3275,6 +3582,7 @@ class Room:
                 pours=self.pour_events or None,
                 crates=crate_rows,
                 crate_breaks=self.crate_break_events or None,
+                armor_hits=self.armor_events or None,
                 corpses=corpse_rows,
                 rifts=rift_rows,
                 entrance=entrance_row,
@@ -3321,6 +3629,7 @@ class Room:
                 self.loot_pickup_events = []
                 self.pour_events = []
                 self.crate_break_events = []
+                self.armor_events = []
                 self.buy_events = []
                 self.spin_events = []
                 self.boss_events = []

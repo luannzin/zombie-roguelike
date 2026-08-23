@@ -84,20 +84,28 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 
+from . import armor
 from .config import TILE_SIZE
 from .enemies import ZOMBIE
 
-#: Gun slots, then the knife after them. The knife's cell is `KNIFE_SLOT`
-#: and nothing else may ever land in it. The belt is three cells total —
-#: the blade takes one of them rather than adding a fourth, so carrying it
-#: costs a gun slot instead of being free.
+#: Gun slots, then the BLADE after them. The belt is three cells total —
+#: the lâmina takes one of them rather than adding a fourth, so carrying
+#: steel costs a gun slot instead of being free.
+#:
+#: THE BLADE CELL CANNOT BE EMPTIED, AND THAT IS THE WHOLE INVARIANT. What
+#: it holds changed — a better lâmina replaces what is in it — but that it
+#: holds SOMETHING never does. The guarantee a player learns on their first
+#: screen is "the hand is never empty", not "the hand always holds a knife",
+#: and the second one was only ever an implementation of the first.
 GUN_SLOTS = 2
-KNIFE_SLOT = GUN_SLOTS
+BLADE_SLOT = GUN_SLOTS
 HOTBAR_SLOTS = GUN_SLOTS + 1
-#: The one weapon nobody picks up, drops or loses — and the ONLY thing a
-#: run starts with. There is no starting gun: the first one is something
-#: you BUY, out of the first night's extraction, which is what makes owning
-#: one an event and what makes the first shop mean something.
+#: What the cell falls back to. The floor of the floor: a run opens holding
+#: this, a blade lost or traded away leaves this behind, and no roll, table
+#: or corpse can ever produce a second one. There is no starting gun — the
+#: first firearm is something you BUY, out of the first night's extraction,
+#: which is what makes owning one an event and what makes the first shop
+#: mean something.
 STARTING_MELEE = "knife"
 
 # --- the scale ---------------------------------------------------------------
@@ -255,6 +263,8 @@ AMMO_AWP = "awp"
 AMMO_NONE = "none"
 
 KIND_MELEE = "melee"
+#: The one thing on the belt that does not attack. See `ShieldDef`.
+KIND_SHIELD = "shield"
 
 #: What a combo step reads as. `slash` is a sweep across the body; `cut` is
 #: the finisher that goes through it. The client draws them differently and
@@ -353,6 +363,44 @@ class MeleeDef:
 
 
 @dataclass(frozen=True)
+class ShieldDef:
+    """The blocking half of a belt item. Absent on everything that attacks.
+
+    THE THIRD THING A BELT CELL CAN HOLD. A gun fires, a lâmina swings, and a
+    shield does neither — `Room.handle_attack` dispatches on which block the
+    row carries, never on the `kind` string, exactly as it already did for
+    the blade. That is why this is a block and not a flag: a second shield is
+    a catalog row and no code.
+
+    Every number is `armor.py`'s. What lives here is only the fact that you
+    select it off the belt instead of wearing it.
+    """
+
+    #: Points of damage it eats before it comes apart.
+    hp: int
+    #: Full width of the protected arc, in degrees, centred on the aim.
+    arc_degrees: float
+    #: What the walk is multiplied by while it is up. See `armor.SHIELD_SPEED`.
+    speed: float
+
+    @property
+    def half_arc_cos(self) -> float:
+        """cos of the half-arc: the dot product a blow has to clear.
+
+        Precomputed because `Room.damage_player` is on the hot path and the
+        alternative is an `acos` per blow to compare an angle to a constant.
+        """
+        return math.cos(math.radians(self.arc_degrees) / 2)
+
+    def client_payload(self) -> dict:
+        return {
+            "hp": self.hp,
+            "arcDegrees": self.arc_degrees,
+            "speed": self.speed,
+        }
+
+
+@dataclass(frozen=True)
 class WeaponDef:
     """One catalog row.
 
@@ -423,6 +471,9 @@ class WeaponDef:
     #: The swing. Set on melee weapons and None on everything else — it is
     #: what `Room.handle_attack` dispatches on, not the `kind` string.
     melee: MeleeDef | None = None
+    #: The block. Set on shields and None on everything else. A row with this
+    #: has no trigger at all: it is held up, not fired.
+    shield: ShieldDef | None = None
 
     @property
     def range(self) -> float:
@@ -457,12 +508,28 @@ class WeaponDef:
 
     @property
     def value(self) -> int:
-        """What the loot catalog says one is worth. See `catalog_value`."""
+        """What the loot catalog says one is worth.
+
+        TWO LADDERS, AND THE ROW SAYS WHICH IT IS ON. A firearm is priced off
+        the CS2 dollar column (`catalog_value`); a lâmina has no such column
+        and is priced off what its chain does (`blade_value`). They meet here
+        rather than at every reader, because `store.price_of`, the stock sort
+        and the loot catalog all ask this one question and none of them
+        should have to know which kind of weapon it is asking about.
+        """
+        if self.shield is not None:
+            return armor.shield_value()
+        if self.melee is not None:
+            return blade_value(BLADE_BY_KEY[self.key])
         return catalog_value(self.cs_price)
 
     @property
     def weight(self) -> float:
-        """Kilos in the hand. See `carry_weight`."""
+        """Kilos in the hand. See `carry_weight` and `blade_weight`."""
+        if self.shield is not None:
+            return armor.shield_weight()
+        if self.melee is not None:
+            return blade_weight(BLADE_BY_KEY[self.key])
         return carry_weight(self.cs_speed)
 
     def client_payload(self) -> dict:
@@ -497,27 +564,263 @@ class WeaponDef:
         # that only one weapon in the catalog has ever used.
         if self.melee is not None:
             payload["melee"] = self.melee.client_payload()
+        if self.shield is not None:
+            payload["shield"] = self.shield.client_payload()
         return payload
 
 
-# --- the knife ---------------------------------------------------------------
+# --- the blades --------------------------------------------------------------
+#
+# THE KNIFE IS THE UNIT, EXACTLY AS THE ZOMBIE IS THE UNIT FOR GUNS.
+#
+# A blade is not a firearm and there is no published stat block to port, so
+# the ladder is anchored on the one melee weapon this game has always had.
+# Every lâmina below is the knife's own chain — its three beats, its splits,
+# its windows — scaled by SEVEN character columns, and nothing else. That is
+# what keeps a katana and a hatchet comparable: they are the same swing seen
+# through different multipliers, so "is this better than what I am holding"
+# is a question about seven numbers rather than about thirty.
+#
+# The knife's own profile is all ones, which is not a convenience — it is the
+# check. A generator that could not reproduce the weapon it was derived from
+# would be a second opinion about the swing, and the swing is tuned.
 
-#: What a WHOLE chain — slash, slash, cut — takes off a zombie.
+#: What a WHOLE chain — slash, slash, cut — takes off a zombie, on the KNIFE.
 #:
 #: Under one, and that is the entire design of the weapon. A chain that
 #: killed would make the blade a rotation you execute; a chain that lands on
 #: nine tenths leaves you standing in front of something still alive with
 #: your cooldown spent, which is the moment the knife is actually about.
+#: Every other blade in the game is measured as a multiple of it, and the
+#: ones that go past 1.0 are exactly the ones that stopped being a last
+#: resort and started being a weapon.
 KNIFE_CHAIN_SHARE = 0.9
-KNIFE_CHAIN = round(ZOMBIE_HP * KNIFE_CHAIN_SHARE)
 #: How the chain is split. The finisher is worth more than both slashes
 #: together or it is something you get interrupted out of rather than
-#: something you land.
+#: something you land. Shared by every blade — the SHAPE of a chain is the
+#: category's identity; what changes between blades is its size.
 KNIFE_SPLIT = (0.22, 0.26, 0.52)
+#: Kilos of the lightest blade there is. Every lâmina is under the lightest
+#: firearm (`GUN_WEIGHT_BASE`) on purpose: switching to steel has to stay a
+#: real way to move faster, whatever steel you switched to.
+KNIFE_WEIGHT = 0.5
+#: What one knife is worth on the loot catalog. It is never sold and never
+#: dropped, so this number only ever appears in a tooltip — but it is the
+#: anchor the whole blade price ladder hangs off, so it lives here rather
+#: than typed into `loot.py` where it used to be.
+KNIFE_VALUE = 12
+
+#: THE KNIFE'S OWN CHAIN, as the base every blade is scaled from.
+#:
+#: `(cooldown, reach_tiles, arc_degrees, window, max_targets, lunge, trauma,
+#:   sweep, swing_time, swing_thrust, noise_tiles)`
+#:
+#: Two slashes that cross — the second sweeps the other way, so the pair
+#: reads as one X and not as the same swing played twice — and then a cut
+#: that is slower, wider, opens more than one body and ENDS the chain
+#: (`window` 0). The finisher's cooldown is the price of whiffing it.
+_CHAIN: tuple[tuple[float, float, float, float, int, float, float, int, float, float, float], ...] = (
+    (0.30, 1.05, 95.0, 0.55, 1, 2.2, 0.07, 1, 0.17, 2.0, 3.5),
+    (0.28, 1.10, 105.0, 0.50, 1, 2.6, 0.09, -1, 0.16, 2.4, 3.5),
+    (0.62, 1.35, 130.0, 0.00, 3, 4.4, 0.20, 1, 0.26, 4.2, 5.0),
+)
+
+#: The widest a swing may be. Past a half-turn an arc stops reading as a
+#: swing and starts reading as an aura: everything behind you is inside it,
+#: and the player can no longer tell which way they were facing when it
+#: landed. The axe is the only blade that comes near it.
+ARC_MAX_DEGREES = 170.0
 
 
-def _knife_damage(index: int) -> int:
-    return max(1, int(KNIFE_CHAIN * KNIFE_SPLIT[index] + 0.5))
+@dataclass(frozen=True)
+class BladeProfile:
+    """One lâmina, as seven multipliers on the knife.
+
+    Nothing here is a damage number, a cooldown or a reach — they are all
+    RATIOS, so the tuning that made the knife's swing feel like a swing is
+    inherited rather than re-litigated per weapon. A blade authored by typing
+    absolute numbers into a `ComboStep` would drift out of the category the
+    first time the base chain was retuned.
+    """
+
+    key: str
+    name: str
+    #: What a whole chain takes off a zombie. THE headline number and the one
+    #: the ladder is really about: under 1.0 the blade cannot finish what it
+    #: started, over 1.0 it can.
+    share: float
+    #: How far the arc reaches. A katana is a longer weapon than a hatchet
+    #: and the game has to say so before anybody reads a tooltip.
+    reach: float = 1.0
+    #: How wide it sweeps. Reach is who you can touch; arc is how many.
+    arc: float = 1.0
+    #: Cadence. ABOVE ONE IS SLOWER — it multiplies cooldowns and the time
+    #: the steel spends travelling, so a heavy blade is heavy to hold as well
+    #: as to be hit by.
+    tempo: float = 1.0
+    #: Lunge, camera trauma and the mid-swing thrust: how much of the body
+    #: goes into it. Pure feel, and the only column that touches no rule.
+    heft: float = 1.0
+    #: How far the swing carries as sound. Every blade is quieter than every
+    #: gun — that is the category — but an axe burying itself in something is
+    #: not a knife opening it.
+    noise: float = 1.0
+    #: Extra bodies the FINISHER opens, on top of the knife's three. Only the
+    #: wide blades get one: it is the reward for the arc, not a free stat.
+    targets: int = 0
+
+
+#: A blade's worth, and it is derived from what the blade DOES rather than
+#: picked off a feel for what a katana ought to cost.
+#:
+#: Two things make one lâmina better than another and both are in the
+#: profile: how fast the chain comes round (share per second of chain), and
+#: how much ground one chain covers (reach, and how many bodies the finisher
+#: opens). Multiply them, take the ratio against the knife, and raise it —
+#: the exponent is what stops a blade that is forty percent better costing
+#: forty percent more, which is not how anybody values the difference between
+#: a weapon that finishes a zombie and one that does not.
+BLADE_VALUE_CURVE = 2.4
+#: What one extra body on the finisher is worth against one more of reach.
+#: A quarter: an arc that opens a fourth body is real, and it is not the
+#: same order of thing as being able to touch something a tile further away.
+BLADE_CROWD_SHARE = 0.25
+
+
+def blade_power(profile: BladeProfile) -> float:
+    """Throughput times ground covered. The one ranking of blades there is."""
+    seconds = sum(step[0] for step in _CHAIN) * profile.tempo
+    crowd = 1.0 + profile.targets * BLADE_CROWD_SHARE
+    return (profile.share / seconds) * profile.reach * crowd * math.sqrt(profile.arc)
+
+
+def blade_value(profile: BladeProfile) -> int:
+    """What one is worth on the loot catalog. See `BLADE_VALUE_CURVE`."""
+    base = blade_power(BLADES[0])
+    if base <= 0:
+        return KNIFE_VALUE
+    ratio = blade_power(profile) / base
+    return max(1, round(KNIFE_VALUE * ratio**BLADE_VALUE_CURVE))
+
+
+def blade_weight(profile: BladeProfile) -> float:
+    """Kilos in the hand. Heft and length, both damped.
+
+    Damped because a blade twice the weapon is not twice the burden — a
+    katana is long rather than dense — and because the whole category has to
+    stay under the lightest firearm for the knife's oldest promise to hold.
+    """
+    return round(KNIFE_WEIGHT * profile.heft**0.7 * profile.reach**0.5, 1)
+
+
+def _blade_melee(profile: BladeProfile) -> MeleeDef:
+    """The knife's three beats, seen through one profile's seven columns."""
+    chain = round(ZOMBIE_HP * profile.share)
+    steps: list[ComboStep] = []
+    for index, base in enumerate(_CHAIN):
+        (
+            cooldown, reach_tiles, arc_degrees, window, max_targets,
+            lunge, trauma, sweep, swing_time, swing_thrust, noise_tiles,
+        ) = base
+        arc = min(ARC_MAX_DEGREES, arc_degrees * profile.arc)
+        steps.append(
+            ComboStep(
+                kind=STEP_CUT if index == len(_CHAIN) - 1 else STEP_SLASH,
+                damage=max(1, int(chain * KNIFE_SPLIT[index] + 0.5)),
+                cooldown=round(cooldown * profile.tempo, 3),
+                reach_tiles=round(reach_tiles * profile.reach, 2),
+                arc_degrees=round(arc, 1),
+                # The WINDOW does not scale with tempo. It is how long the
+                # player has to decide, and a slower blade that also gave you
+                # longer to think would be slower for free.
+                window=window,
+                # Only the finisher takes the crowd column: a slash that
+                # opened three bodies would make the chain's own shape
+                # pointless.
+                max_targets=max_targets + (profile.targets if window == 0.0 else 0),
+                lunge=round(lunge * profile.heft, 2),
+                trauma=round(trauma * profile.heft, 3),
+                sweep=sweep,
+                # HALF THE ARC, IN RADIANS, AND DERIVED RATHER THAN TYPED.
+                # The held sprite tracks the drawn white path edge for edge
+                # (`entity-visuals.ts` runs the same easing `drawSwings`
+                # does), so a value disagreeing with the arc would put the
+                # steel somewhere the path is not. It used to be a free
+                # number on every step that agreed with the arc by hand.
+                swing=round(math.radians(arc) / 2, 3),
+                swing_time=round(swing_time * profile.tempo, 3),
+                swing_thrust=round(swing_thrust * profile.heft, 2),
+                noise_tiles=round(noise_tiles * profile.noise, 1),
+            )
+        )
+    return MeleeDef(steps=tuple(steps))
+
+
+#: EVERY LÂMINA, and the knife is first because it is the unit.
+#:
+#: The ladder is one column — `share` — and the rest is character. Under 1.0
+#: the blade leaves you standing in front of something still alive; over it,
+#: the chain finishes what it started, which is the single largest thing that
+#: happens to a run that has been living on the knife.
+BLADES: tuple[BladeProfile, ...] = (
+    # THE FLOOR. Every run opens holding this and nothing takes it away: it
+    # is the guarantee that the hand is never empty, so its damage is a floor
+    # rather than a benchmark. A full chain lands at about a third of a
+    # Glock's dps, which is what keeps the first gun in the shop worth saving
+    # for. All ones by definition — see the section header.
+    BladeProfile(key="knife", name="Faca", share=KNIFE_CHAIN_SHARE),
+    # THE AXE. What the logging crew left behind, and the first blade most
+    # parties will ever hold: a common find rather than a purchase. Slow
+    # enough that a whiffed finisher is a real mistake, wide enough that the
+    # finisher is how you answer three of them at once, and the loudest thing
+    # in the category — still under half a pistol shot, because quiet is what
+    # the category IS.
+    BladeProfile(
+        key="axe", name="Machado", share=1.7,
+        reach=0.95, arc=1.25, tempo=1.35, heft=1.6, noise=1.5, targets=1,
+    ),
+    # THE KATANA. The rare one. Long, fast and narrow — everything the axe is
+    # not — so the two never obsolete each other: the axe answers a crowd and
+    # the katana answers the one thing that got close before you heard it.
+    # Its chain kills outright and comes round in a second, which is a
+    # sidearm's job done silently, and the price says so.
+    BladeProfile(
+        key="katana", name="Katana", share=1.5,
+        reach=1.5, arc=0.85, tempo=0.85, heft=1.15, noise=1.15,
+    ),
+)
+
+BLADE_BY_KEY: dict[str, BladeProfile] = {b.key: b for b in BLADES}
+
+
+def _blade_rows() -> tuple[WeaponDef, ...]:
+    """Every lâmina as a catalog row.
+
+    APPENDED AFTER THE GUNS and in `BLADES` order, so the knife keeps the
+    index it has always had on the held-weapon atlas and every frame already
+    committed stays where it is.
+    """
+    rows: list[WeaponDef] = []
+    for profile in BLADES:
+        melee = _blade_melee(profile)
+        rows.append(
+            WeaponDef(
+                key=profile.key,
+                name=profile.name,
+                kind=KIND_MELEE,
+                ammo=AMMO_NONE,
+                # What an un-comboed hit is worth, for anything that reads
+                # `damage` off the catalog without knowing about steps.
+                damage=melee.steps[0].damage,
+                range_tiles=melee.steps[0].reach_tiles,
+                muzzle_tiles=0.5,
+                noise_tiles=melee.steps[-1].noise_tiles,
+                kick=0.0,
+                trauma=round(0.06 * profile.heft, 3),
+                melee=melee,
+            )
+        )
+    return tuple(rows)
 
 
 # Cadence and punch are the identity. Everything below is generated from the
@@ -763,100 +1066,71 @@ WEAPONS: tuple[WeaponDef, ...] = (
         casings=1,
         **feel(dmg(AWP_CHEST), punch=1.12),
     ),
-    # --- the blade ------------------------------------------------------------
-    # The knife is last in the catalog and last on the belt, and it is the
-    # only row here with no ammo, no tracer and no light. Two quick slashes
-    # that cross, then a cut that is slower, wider, hits everything in front
-    # of it and is worth waiting for. Nothing in the chain is loud: an AK
-    # wakes fourteen tiles of forest, the whole combo wakes five.
-    #
-    # It is also the weapon every run STARTS with, so its damage is a floor
-    # rather than a benchmark: a full chain is `KNIFE_CHAIN_SHARE` of one
-    # zombie and the whole thing lands at about a third of a Glock's dps,
-    # which is what keeps the first gun in the shop worth saving for.
+)
+
+#: THE SHIELDS. One for now, and the row is the whole feature.
+#:
+#: A police riot shield: the one thing in the shop that is not a way to hurt
+#: something. It costs a GUN CELL, which is the price — a party member behind
+#: one is a party member who is not shooting — and it only answers what is in
+#: front of them, which is what makes standing behind one a formation rather
+#: than a stance.
+SHIELDS: tuple[WeaponDef, ...] = (
     WeaponDef(
-        key="knife",
-        name="Faca",
-        kind=KIND_MELEE,
+        key="riot_shield",
+        name="Escudo policial",
+        kind=KIND_SHIELD,
         ammo=AMMO_NONE,
-        # What an un-comboed hit is worth, for anything that reads `damage`
-        # off the catalog without knowing about steps.
-        damage=_knife_damage(0),
-        range_tiles=1.05,
-        muzzle_tiles=0.5,
-        noise_tiles=4.0,
-        kick=0.0,
-        trauma=0.06,
-        melee=MeleeDef(
-            steps=(
-                ComboStep(
-                    kind=STEP_SLASH,
-                    damage=_knife_damage(0),
-                    cooldown=0.30,
-                    reach_tiles=1.05,
-                    arc_degrees=95.0,
-                    window=0.55,
-                    max_targets=1,
-                    lunge=2.2,
-                    trauma=0.07,
-                    sweep=1,
-                    # Half of `arc_degrees` in radians: the steel travels the
-                    # same path the white arc does, edge for edge.
-                    swing=0.829,
-                    swing_time=0.17,
-                    swing_thrust=2.0,
-                    noise_tiles=3.5,
-                ),
-                ComboStep(
-                    kind=STEP_SLASH,
-                    damage=_knife_damage(1),
-                    cooldown=0.28,
-                    reach_tiles=1.1,
-                    arc_degrees=105.0,
-                    window=0.5,
-                    max_targets=1,
-                    lunge=2.6,
-                    trauma=0.09,
-                    # Back the other way, so the pair reads as one X and not
-                    # as the same swing played twice.
-                    sweep=-1,
-                    swing=0.916,
-                    swing_time=0.16,
-                    swing_thrust=2.4,
-                    noise_tiles=3.5,
-                ),
-                ComboStep(
-                    kind=STEP_CUT,
-                    damage=_knife_damage(2),
-                    # The price of the finisher. Long enough that whiffing it
-                    # is a real mistake.
-                    cooldown=0.62,
-                    reach_tiles=1.35,
-                    arc_degrees=130.0,
-                    # Zero: the cut ENDS the chain rather than looping it.
-                    window=0.0,
-                    max_targets=3,
-                    lunge=4.4,
-                    trauma=0.2,
-                    sweep=1,
-                    swing=1.134,
-                    # Slower through the arc than either slash. The finisher
-                    # is the one beat you can watch travel.
-                    swing_time=0.26,
-                    swing_thrust=4.2,
-                    noise_tiles=5.0,
-                ),
-            )
+        shield=ShieldDef(
+            hp=armor.shield_hp(),
+            arc_degrees=armor.SHIELD_ARC_DEGREES,
+            speed=armor.SHIELD_SPEED,
         ),
     ),
 )
+
+#: THE WHOLE CATALOG: the guns above, then every lâmina, then the shields.
+#:
+#: Appended and never inserted — the held-weapon atlas, the loot atlas and
+#: the audio pitch ladder all key off this order, so a row that moved would
+#: move every committed frame index with it. The knife is the first blade for
+#: the same reason it always was the last row: it is the one that was already
+#: there.
+WEAPONS = WEAPONS + _blade_rows() + SHIELDS
+
 
 BY_KEY: dict[str, WeaponDef] = {weapon.key: weapon for weapon in WEAPONS}
 
 #: Every gun, in catalog order. `store.STOCK_ORDER` re-sorts this by price
 #: and `store.STOCK_UNLOCK` gates it by day, so adding a weapon to the
 #: catalog above is the only place a new gun has to be named.
-GUN_KEYS: tuple[str, ...] = tuple(w.key for w in WEAPONS if w.melee is None)
+GUN_KEYS: tuple[str, ...] = tuple(
+    w.key for w in WEAPONS if w.melee is None and w.shield is None
+)
+
+#: Every lâmina, in catalog order. Derived off the `melee` block for the same
+#: reason `Room.handle_attack` dispatches on it: what makes a weapon a blade
+#: is that it swings, not that somebody typed "melee" into a `kind` field.
+BLADE_KEYS: tuple[str, ...] = tuple(w.key for w in WEAPONS if w.melee is not None)
+
+#: Every shield, in catalog order.
+SHIELD_KEYS: tuple[str, ...] = tuple(w.key for w in WEAPONS if w.shield is not None)
+
+
+def is_blade(key: str | None) -> bool:
+    """Whether `key` belongs in the blade cell rather than in a gun cell."""
+    if key is None:
+        return False
+    weapon = BY_KEY.get(key)
+    return weapon is not None and weapon.melee is not None
+
+
+def is_shield(key: str | None) -> bool:
+    """Whether `key` is a shield. Shields ride a GUN cell — that is the price."""
+    if key is None:
+        return False
+    weapon = BY_KEY.get(key)
+    return weapon is not None and weapon.shield is not None
 
 #: Every calibre anything in the catalog actually eats, in catalog order.
 #: Derived, so a weapon whose calibre nothing else uses brings its reserve,
@@ -939,13 +1213,21 @@ def catalog_payload() -> dict:
 
 @dataclass
 class Hotbar:
-    """Three gun slots plus the knife. No stacking. `held` is -1 for an empty hand.
+    """Two gun cells plus the BLADE cell. No stacking. `held` is -1 for an empty hand.
 
-    The last cell is the knife's and it is not a slot in the sense the other
-    three are: nothing may be stowed in it, nothing may push the knife out of
-    it, and `__post_init__` puts the blade back if anything ever built a bar
-    without one. A belt whose last cell could be emptied would make "you
-    always have something" a thing the player has to check rather than know.
+    The last cell is the lâmina's and it is not a slot in the sense the other
+    two are: no gun may be stowed in it, nothing may empty it, and
+    `__post_init__` puts a blade back if anything ever built a bar without
+    one. A belt whose last cell could be emptied would make "you always have
+    something" a thing the player has to check rather than know.
+
+    WHAT IT HOLDS DOES CHANGE. A better blade REPLACES what is in the cell —
+    that is the one way steel is upgraded, and the guarantee survives it
+    because the replacement lands on the same frame the old one leaves. The
+    knife is the floor under that, not the contents of the cell: trade an axe
+    for a katana and the axe hits the floor, but trade the KNIFE for anything
+    and nothing hits the floor at all, because the knife was never an object
+    the party owned. It is the promise that the cell is full.
     """
 
     cap: int = HOTBAR_SLOTS
@@ -957,22 +1239,56 @@ class Hotbar:
             self.slots.extend([None] * (self.cap - len(self.slots)))
         elif len(self.slots) > self.cap:
             self.slots = self.slots[: self.cap]
-        if 0 <= KNIFE_SLOT < self.cap:
-            self.slots[KNIFE_SLOT] = STARTING_MELEE
+        if 0 <= BLADE_SLOT < self.cap:
+            # Whatever is in the cell has to BE a blade, and the cell has to
+            # be full. Anything else — empty, a gun that got in there, a key
+            # from a save that no longer exists — falls back to the floor.
+            if not is_blade(self.slots[BLADE_SLOT]):
+                self.slots[BLADE_SLOT] = STARTING_MELEE
         if self.held < -1 or self.held >= self.cap:
             self.held = -1
 
     @classmethod
     def starting(cls) -> Hotbar:
-        """A blade and two empty cells. `__post_init__` placed the knife."""
+        """A knife and two empty cells. `__post_init__` placed the blade."""
         bar = cls()
-        bar.held = KNIFE_SLOT
+        bar.held = BLADE_SLOT
         return bar
 
+    @property
+    def blade(self) -> str:
+        """The lâmina in the blade cell. Never None — see `__post_init__`."""
+        if 0 <= BLADE_SLOT < self.cap:
+            return self.slots[BLADE_SLOT] or STARTING_MELEE
+        return STARTING_MELEE
+
+    def holds_shield(self) -> bool:
+        """Whether a shield is already on the belt. At most one, ever.
+
+        Not a technical limit — the durability lives on the body
+        (`Player.shield`) and a second one would need a second field — but a
+        design one first: nobody carries two riot shields, and a belt holding
+        two of them is a belt with no guns on it at all.
+        """
+        return any(is_shield(key) for key in self.slots)
+
     def add(self, key: str) -> int | None:
-        """Put `key` in the first empty GUN slot. None if unknown or full."""
-        if key not in BY_KEY or key == STARTING_MELEE:
+        """Put `key` where it belongs. None if unknown, or if there is no room.
+
+        A BLADE ALWAYS HAS ROOM, because its cell is never empty and picking
+        one up is a replacement rather than a stow. What it displaces is the
+        caller's problem — `Room.collect_loot` puts the old lâmina on the
+        floor, unless it was the knife, which is not an object.
+        """
+        if key not in BY_KEY:
             return None
+        if is_shield(key) and self.holds_shield():
+            return None
+        if is_blade(key):
+            if key == self.blade or not 0 <= BLADE_SLOT < self.cap:
+                return None
+            self.slots[BLADE_SLOT] = key
+            return BLADE_SLOT
         for index in range(min(GUN_SLOTS, self.cap)):
             if self.slots[index] is None:
                 self.slots[index] = key
@@ -980,8 +1296,15 @@ class Hotbar:
         return None
 
     def can_stow(self, key: str) -> bool:
-        if key not in BY_KEY or key == STARTING_MELEE:
+        if key not in BY_KEY:
             return False
+        if is_shield(key) and self.holds_shield():
+            return False
+        if is_blade(key):
+            # A duplicate of what is already in the cell is refused: it would
+            # be a pickup that changed nothing and dropped the thing it
+            # replaced, which reads as the game taking something off you.
+            return key != self.blade
         return any(self.slots[i] is None for i in range(min(GUN_SLOTS, self.cap)))
 
     def select(self, index: int) -> None:

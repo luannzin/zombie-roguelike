@@ -31,8 +31,12 @@ live in a code comment.
 ## Child DOX Index
 
 - `design/` — per-subsystem DESIGN LAW: the argument behind each system, its
-  ownership, invariants, danger zones and change surface. Seven files, one per
+  ownership, invariants, danger zones and change surface. Eight files, one per
   subsystem, indexed from the root `AGENTS.md`. They are the "why"; the
   `AGENTS.md` chain is the "must". A rule that binds work belongs in an
   `AGENTS.md`; the reasoning that produced it belongs here.
-  Do not add an eighth without a subsystem to match it.
+  Do not add a ninth without a subsystem to match it. The eighth is `gear.md`,
+  and it earned the split: worn armour, the shield and the blade cell are one
+  question — what stands between a blow and a player — asked across four files
+  (`armor.py`, `weapons.py`, `room.py`, `store.py`), and `player.md` was
+  already the longest doc here before any of it existed.

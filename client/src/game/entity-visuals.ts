@@ -91,6 +91,28 @@ const BRACE_PULL = 1.3;
 const BRACE_LIFT = 0.7;
 /** How much of the drift a brace takes away. Never all of it — hands shake. */
 const BRACE_STEADY = 0.72;
+/**
+ * THE GUARD — a shield going up — and it is the BRACE'S OPPOSITE ON EVERY
+ * AXIS, which is why it is three constants beside those three rather than a
+ * separate animation.
+ *
+ * Bracing a rifle pulls the weapon IN toward the eye and steadies it, because
+ * that is what aiming is. Raising a shield pushes it OUT, away from the body,
+ * because the whole mechanic is that the thing is BETWEEN you and the blow —
+ * a riot shield drawn tucked against its owner's chest would be a picture
+ * that contradicts the rule it is illustrating. It rides down rather than up
+ * for the same reason: you look over a shield, not through it.
+ *
+ * And it is the one posture in this game that takes ALL of the drift. Every
+ * other weapon keeps some sway because hands shake; a shield is braced
+ * against a forearm and a shoulder, and the stillness is most of what says
+ * "planted" as opposed to "held".
+ */
+const GUARD_RATE = 11;
+/** World px the grip goes OUT, away from the body. */
+const GUARD_PUSH = 2.6;
+/** World px it settles down — you look over a shield, not through it. */
+const GUARD_DROP = 0.9;
 /** Radians the muzzle is still pointed DOWN at the instant of the swap. */
 const DRAW_TILT = 0.95;
 /** World px the grip is still pulled back toward the body at that instant. */
@@ -282,6 +304,9 @@ interface VisualState {
   /** 0..1 how far into the brace this body is, and where it is heading. */
   brace: number;
   braceWant: number;
+  /** 0..1 how far the shield is up, and where it is heading. */
+  guard: number;
+  guardWant: number;
   /** Radians of hit tilt around the feet. Springs back after stun. */
   hitSpin: number;
   /** Seconds the body stays planted before the knockback springs back. */
@@ -320,6 +345,8 @@ function blank(): VisualState {
     feel: EMPTY_FEEL,
     brace: 0,
     braceWant: 0,
+    guard: 0,
+    guardWant: 0,
     hitSpin: 0,
     stunLeft: 0,
   };
@@ -494,6 +521,19 @@ export class EntityVisuals {
   }
 
   /**
+   * The shield, going up or coming down. `want` is 1 while it is raised.
+   *
+   * A REQUEST, eased, exactly like the brace: the server's `blk` flips on one
+   * frame and the plate takes a fifth of a second to get there, because a
+   * shield that teleported into position would make the block feel free. It
+   * is deliberately FASTER than the brace — a rifle coming to the eye is a
+   * decision you were already making, and a shield going up is a reaction.
+   */
+  guard(id: string, want: number): void {
+    this.state(id).guardWant = clamp01(want);
+  }
+
+  /**
    * What this body is holding, checked every frame it is drawn.
    *
    * The weapon KEY is the trigger, not the slot: selecting the slot already
@@ -612,15 +652,20 @@ export class EntityVisuals {
       (Math.sin(t * BREATH_FAST * TAU) + 0.5 * Math.sin(t * BREATH_SLOW * TAU + 1.1)) / 1.5;
     // The walk is a separate clock from the breath and stops with the feet.
     const stride = state.animTime > 0 ? Math.sin((state.animTime / WALK_STRIDE) * 2 * TAU) : 0;
-    // A braced weapon is a STEADIER weapon, not a still one.
-    const steady = 1 - state.brace * BRACE_STEADY;
+    // A braced weapon is a STEADIER weapon, not a still one. A RAISED SHIELD
+    // is a still one: it is planted against a forearm and a shoulder, and the
+    // stillness is most of what separates "braced" from "carried".
+    const steady = (1 - state.brace * BRACE_STEADY) * (1 - state.guard);
     return {
       kick: state.gunKick + breath * feel.sway * steady + back * DRAW_TILT,
-      pump: state.gunPump - back * DRAW_PULL - state.brace * BRACE_PULL,
+      // OUT, not in — see `GUARD_PUSH`. It is the only term in this sum with
+      // the opposite sign to the brace beside it, and that is the mechanic.
+      pump: state.gunPump - back * DRAW_PULL - state.brace * BRACE_PULL + state.guard * GUARD_PUSH,
       swing: 0,
       lift:
         (stride * feel.bob + breath * feel.bob * 0.4) * steady +
         state.brace * BRACE_LIFT -
+        state.guard * GUARD_DROP -
         back * DRAW_DIP,
       open: state.cycleLife > 0 && state.cycleAge < state.cycleLife,
       heat: state.heat,
@@ -658,6 +703,11 @@ export class EntityVisuals {
         }
       }
       if (state.heat > 0) state.heat = Math.max(0, state.heat - HEAT_COOL * dt);
+      if (state.guard !== state.guardWant) {
+        const g = expDamp(GUARD_RATE, dt);
+        state.guard = state.guardWant + (state.guard - state.guardWant) * g;
+        if (Math.abs(state.guard - state.guardWant) < 0.002) state.guard = state.guardWant;
+      }
       if (state.brace !== state.braceWant) {
         const k = expDamp(BRACE_RATE, dt);
         state.brace = state.braceWant + (state.brace - state.braceWant) * k;

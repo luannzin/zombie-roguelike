@@ -38,9 +38,16 @@ MOVING = {
 # integers thirty times a second would buy nothing. `skills` / `spins` / `mods`
 # are the same call taken further: they change once a day, in a shop, in front
 # of a machine.
+# `armor` is here rather than above for the same reason `guns` is: a plate
+# changes when somebody picks one up or one comes apart, which is a handful
+# of times a night. Its companions `blk` (the shield is UP) and `shield` (what
+# is left of it) are NOT listed and must not be — `blk` is omitted from the
+# row unless it is true and `shield` unless there is one, exactly like `wind`,
+# so an equality check against these sets would fail the moment anybody
+# bought a shield or raised it.
 IDENTITY = {
     "name", "color", "kills", "deaths", "xp", "gold", "level", "xpInLevel",
-    "xpToLevel", "inv", "guns", "ammo", "skills", "spins", "mods",
+    "xpToLevel", "inv", "guns", "ammo", "armor", "skills", "spins", "mods",
 }
 
 

@@ -69,6 +69,7 @@ never all of them.
 | **maps, scenes, props, objects, weather, zones** | **world** | `docs/design/world.md` |
 | the **boss fight** — his moves, the arena, the bar, which night | **enemies** | `docs/design/enemies.md` § THE SAWYER |
 | **moving, carrying, shooting, the bag or the belt** | **player** | `docs/design/player.md` |
+| **what a body WEARS, what stops a blow, a lâmina or the shield** | **gear** | `docs/design/gear.md` |
 | a **pixel or a sound that must be regenerated** | **asset pipeline** | `assets/AGENTS.md` -> `server/tools/AGENTS.md` |
 
 If the task names a *feeling* rather than a system ("make the exit more
@@ -159,6 +160,7 @@ owns your task; skip the rest.
 | [`docs/design/store.md`](docs/design/store.md) | the merchant's clearing, stalls, prices, the payout, the balance |
 | [`docs/design/skills.md`](docs/design/skills.md) | levels, the upgrade machine, `Mods` |
 | [`docs/design/player.md`](docs/design/player.md) | movement, stamina, the belt, weapons, ammo, the pocket |
+| [`docs/design/gear.md`](docs/design/gear.md) | lâminas, worn armour and its materials, the shield |
 | [`docs/design/enemies.md`](docs/design/enemies.md) | senses, hunt, the director, corpses |
 | [`docs/design/world.md`](docs/design/world.md) | map generation, scenery, objects, zones, weather, the camp |
 | [`docs/design/presentation.md`](docs/design/presentation.md) | audio, VFX, gore, the light budget |
@@ -177,7 +179,8 @@ These bind every subtree. Subsystem-specific rules live in the docs above.
   - `server/app/protocol.py` <-> `client/src/net/protocol.ts` — every wire shape
   - `server/app/machine.py` <-> `client/src/game/machine.ts` — the pull's clock
   - `server/app/world.py` <-> `client/src/game/world.ts` — the tile alphabet, the `GROUNDS` / `CLEAR` sets, and `move_axis` / `blocks_sight` / `box_blocked` / `raycast_tiles`. Prediction runs on it; a tile kind added on one side alone desyncs collision. Solidity is no longer `!= FLOOR`: the shop's `TILEFLOOR` is a second walkable ground, so both sides test membership of `GROUNDS` and a member added to one alone rubber-bands the shop's doorway
-  - `Room.collect_loot` + `Inventory.add` + `ammo.Reserve` <-> `client/src/game/interaction.ts` (`canStow`, `swapTargetFor`) — whether a pickup is legal. The client answers locally because the prompt cannot wait for a round trip
+  - `Room.collect_loot` + `Inventory.add` + `ammo.Reserve` + `armor.Loadout` + `Hotbar` <-> `client/src/game/interaction.ts` (`canStow`, `swapTargetFor`, `replacedBy`) — whether a pickup is legal, and what it displaces. The client answers locally because the prompt cannot wait for a round trip. FOUR containers now, not three: the pocket refuses when full, a gun cell trades, the BLADE cell always swaps (it has no empty state) and a WORN slot refuses only the piece you already have in the same or better condition
+  - `Room.sync_block` <-> `client/src/game/game.ts`'s `Game.blocking` / `syncBlock` — whether the shield is UP. Both resolve it BEFORE the walk reads it, because the walk is the first thing that asks (`block_speed` / `MovableState.blockSpeed`, one resolved multiplier rather than a catalog lookup inside movement code). A block decided after the step is a tick late on exactly the frame it was raised for
   - `ai.look` <-> `client/src/render/fov.ts` — sight symmetry. No longer a copied constant: both read `enemyViewDarkScale` / `enemyViewLitScale` off `welcome.config`
   - `world.tile_hash` <-> `client/src/render/terrain.ts`'s `tileHash` — where the undergrowth IS. The client draws bushes from it and `ai.look` now shortens a creature's reach over the same tiles, so the two must agree bit for bit (`Math.imul` is a 32-bit multiply; plain Python `*` drifts after a few thousand tiles). `tests/test_bush_cover.py` pins it against browser values
   - `make_player.py`'s `HOLD_ARM_X` <-> `client/src/render/guns.ts`'s `GUN_GRIP_SIDE` and `arms.ts`'s `WRIST_OUT` / `SHOULDER_OUT` — WHICH HAND the weapon is in. The sheet draws a holding pose with the weapon arm raised on one side; the client places the grip, and starts the drawn forearm, off the same side. Move one alone and the weapon floats beside a body whose arm is out the other way
@@ -191,17 +194,20 @@ These bind every subtree. Subsystem-specific rules live in the docs above.
 - **`assets/processed/` is generated output.** Edit the generator in `server/tools/`, never the PNG.
 - **Generated-asset lists are append-only.** Inserting a row moves every existing frame index.
 - **Money is created in exactly one place, once:** `Room.enter_store`. The client never settles.
+- **Damage arrives at exactly one place, once:** `Room.damage_player`. The shield, worn armour and `Mods.armor` are applied there and nowhere else, in that order — a mitigation written at three call sites is one that will be missing from the fourth. Anything that can hurt a player comes through this door, including the boss.
+- **A player has FOUR containers and `loot.ItemDef.pocket` is what decides between them:** the pocket (`bag`, slots and weight), the belt (`hotbar` — a gun into a gun cell, a lâmina into the blade cell), the reserve (`ammo`) and the body (`worn`). Neither `ammo` nor `worn` costs a pocket cell, because the bag's budget answers "how much loot can I still carry out" and neither rounds nor a helmet is cargo. Worn armour still costs SPEED.
 
 ## Verification
 
 | scope | command |
 | --- | --- |
-| server | `python tests/test_snapshot_shape.py`, `test_pour.py`, `test_store_walk.py`, `test_config_parity.py`, `test_loot_frames.py`, `test_bush_cover.py`, `test_scenery_containers.py`, `test_creature_sheets.py`, `test_map_scale.py`, `test_boss_fight.py` from `server/` — plain scripts, each prints `ok` |
+| server | `python tests/test_snapshot_shape.py`, `test_pour.py`, `test_store_walk.py`, `test_config_parity.py`, `test_loot_frames.py`, `test_bush_cover.py`, `test_scenery_containers.py`, `test_creature_sheets.py`, `test_map_scale.py`, `test_boss_fight.py`, `test_gear.py` from `server/` — plain scripts, each prints `ok` |
 | client | `bun run typecheck` from `client/` — required after any change there |
 | client | `bun tests/grade.ts` from `client/` after touching `render/post/grade.ts` — plain script, prints `ok` |
 | client | `bun tests/exit-path.ts` from `client/` after touching `game/exit-path.ts` — plain script, prints `ok` |
 | client | `bun tests/weapon-pose.ts` from `client/` after touching `render/guns.ts`, `game/weapon-feel.ts` or `make_guns.py` — plain script, prints `ok`. It reads the REAL atlas manifest, so it fails if the generator stops appending action frames |
 | client | `bun tests/boss-clock.ts` from `client/` after touching `render/boss.ts`, `app/boss.py` or `make_sawyer.py` — plain script, prints `ok`. It reads the REAL sawyer manifest and pins the one thing nothing at runtime notices: that the frame on screen when a blow lands is the frame the art says it lands on |
+| assets | `python tools/make_armor.py` from `server/` after touching a worn overlay — it writes the raw art AND processes it, and it fails the build if any piece leaves the 16x16 player grid, which is the one way an overlay goes wrong invisibly |
 | assets | `python tools/make_sawyer.py` from `server/` after touching the boss rig — it is its own test: it fails the build if a one-shot does not start and end on the resting pose, or if any frame's art reaches the frame border |
 | both | run the server, open two browser tabs, confirm both players move, shoot and light the world without rubber-banding |
 
@@ -243,6 +249,18 @@ the cinematic's length, blows landing, the crescent expiring, the enrage, the
 exit his death carves, the crossing, and the night's takings surviving the
 detour to reach the shop. Every one of those is a join where the fight can
 silently stop, and none of them has a symptom you would see in a screenshot.
+
+Run `test_gear.py` after touching `armor.py`, the blade cell in `weapons.Hotbar`,
+`Room.damage_player` / `wear_armor` / `swap_blade` / `sync_block`, or the shop's
+stock ladders. It pins the three things about gear that have no symptom you
+would see while playing: that the blade cell is never empty and that the KNIFE
+is not an object (replacing it drops nothing, replacing anything else does);
+that a set soaks its material's share over the whole distribution of where
+blows land, and that a plate survives exactly `HITS_BASE * tier` of them; and
+that the shield blocks only what it is FACING, spends itself on the blow that
+breaks it, and leaves the belt when it does. A shield that blocked from behind
+would be a strictly-better plate and nobody would ever notice — they would
+just stop dying.
 
 Run `test_config_parity.py` after touching `client_config()` or `GameConfig`:
 it fails if either side declares a key the other does not, in either

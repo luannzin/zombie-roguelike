@@ -43,6 +43,13 @@ export interface InputPacket {
   sprint: boolean;
   /** Hotbar slot in hand. -1 is holstered. Empty slots are treated as -1. */
   held: number;
+  /**
+   * RIGHT MOUSE. A REQUEST to raise the shield, exactly as `sprint` is a
+   * request to run: the server decides what it buys against what is in the
+   * hand and whether the shield is still in one piece, and so does prediction
+   * — see `Room.sync_block` and `game/simulation.ts`.
+   */
+  block: boolean;
 }
 
 export interface PingPacket {
@@ -241,10 +248,46 @@ export interface GameConfig {
   objects: Record<string, ObjectDef>;
   /** Ammunition: the calibres, their boxes and how much of each fits. */
   ammo: AmmoConfig;
+  /**
+   * Catalog of wearable armour. Keyed by piece key, same keys as the loot
+   * rows with pocket `worn`. Mirrors `server/app/armor.py` — the client has
+   * no numbers of its own here: the durability bar, the overlay sheet and the
+   * tooltip all read this.
+   */
+  armor: Record<string, ArmorConfig>;
+  /**
+   * The worn slots, top to bottom. The HUD stacks its rows in this order and
+   * a `lootPickups` row with `dest: "worn"` indexes it, so the order is a
+   * contract rather than a convenience.
+   */
+  armorSlots: string[];
+  /** Portuguese for each slot, for a HUD row and a tooltip line. */
+  armorSlotNames: Record<string, string>;
+  /**
+   * What share of blows land on each slot. The player sprite's own anatomy —
+   * see `armor.COVERAGE` — so it is a fact about the art rather than a tuning
+   * knob. The HUD needs it to say what a whole set actually stops.
+   */
+  armorCoverage: Record<string, number>;
   /** Starting bag size. A later upgrade grows it. */
   inventorySlots: number;
   /** Gun belt size. */
   hotbarSlots: number;
+  /**
+   * How many of those cells are GUN cells. The rest is the blade cell — see
+   * `bladeSlot` — and the split is what tells the client that key 3 is never
+   * empty and that a lâmina REPLACES rather than stows.
+   */
+  gunSlots: number;
+  /** Index of the blade cell. Always the last one; never empty. */
+  bladeSlot: number;
+  /**
+   * What the blade cell falls back to. Needed for exactly one thing: a knife
+   * replaced by a better lâmina does NOT land on the floor — it is the
+   * promise that the cell is full, not an object the party owns — so the
+   * pickup prompt must not offer it as something you are giving up.
+   */
+  startingBlade: string;
   /** Weight the walk is tuned around. The bag may go past this. */
   carryMaxWeight: number;
   /** Fraction of max weight that is still full speed. */
@@ -270,6 +313,39 @@ export interface GameConfig {
 
 export type LootRarity = 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary';
 
+/**
+ * One wearable piece. Mirrors `server/app/armor.ArmorDef`.
+ *
+ * MATERIAL SETS THE NUMBERS, SLOT SETS WHERE THE HITS LAND — every field here
+ * but `slot` and `sheet` is a function of the material's tier, which is why
+ * a player who has learnt what leather does has learnt it for all three
+ * slots.
+ */
+export interface ArmorConfig {
+  name: string;
+  /** `head` / `body` / `legs`. Indexes `GameConfig.armorSlots`. */
+  slot: string;
+  /** `cloth` / `leather` / `steel` / `kevlar`. */
+  material: string;
+  /** 1..4. The one number the rest is derived from. */
+  tier: number;
+  /** Fraction of a blow landing on this part that the plate takes. */
+  soak: number;
+  /** Points of damage a fresh one absorbs before it comes apart. */
+  maxHp: number;
+  /** Kilos. On the WALK, never in the bag — see `Game.moveWeight`. */
+  weight: number;
+  value: number;
+  rarity: LootRarity;
+  /**
+   * The overlay sheet drawn on the body. Registered to the player's own
+   * 16x16 grid and drawn by the same `blitGear` that draws the backpack and
+   * a zombie's hat — armour is visible through the system that was already
+   * there.
+   */
+  sheet: string;
+}
+
 export interface LootItemConfig {
   name: string;
   rarity: LootRarity;
@@ -277,12 +353,14 @@ export interface LootItemConfig {
   weight: number;
   value: number;
   /**
-   * Where a collect puts it. Guns are `hotbar`; valuables are `bag`; rounds
-   * are `ammo` and take no slot anywhere — they top up a reserve and are
-   * gone. An `ammo` row's `value` is 0 on purpose: ammunition is upkeep, not
-   * cargo, and an extraction platform will not carry it.
+   * Where a collect puts it, and there are four containers. Weapons are
+   * `hotbar` (a gun into a gun cell, a lâmina into the blade cell);
+   * valuables are `bag`; rounds are `ammo` and armour is `worn`, and neither
+   * of those takes a slot anywhere. An `ammo` row's `value` is 0 on purpose:
+   * ammunition is upkeep, not cargo, and an extraction platform will not
+   * carry it.
    */
-  pocket?: 'bag' | 'hotbar' | 'ammo';
+  pocket?: 'bag' | 'hotbar' | 'ammo' | 'worn';
   /** `ammo` rows only: which calibre this fills, and by how many rounds. */
   ammo?: string;
   rounds?: number;
@@ -417,6 +495,23 @@ export interface WeaponConfig {
    * not the `kind` string. A second blade is a catalog row and no code.
    */
   melee?: MeleeConfig;
+  /**
+   * THE BLOCK. Present on shields and absent on everything that attacks —
+   * the third thing a belt cell can hold, and the client dispatches on which
+   * block a row carries exactly as `Room.handle_attack` does. A row with
+   * this has no trigger at all.
+   */
+  shield?: ShieldConfig;
+}
+
+/** Mirrors `server/app/weapons.ShieldDef`. */
+export interface ShieldConfig {
+  /** Points of damage it eats before it comes apart. */
+  hp: number;
+  /** Full width of the protected arc, in degrees, centred on the AIM. */
+  arcDegrees: number;
+  /** What the walk is multiplied by while it is up. */
+  speed: number;
 }
 
 /** One world drop. `k` keys into `GameConfig.loot`. */
@@ -437,6 +532,13 @@ export interface LootState {
   w?: number;
   /** Sprite multiplier. Only a core sets it; everything else draws at 1. */
   s?: number;
+  /**
+   * WHAT IS LEFT OF IT. Only a piece of armour that has been WORN sets this —
+   * a cracked steel plate taken off to put a fresh one on has to still be
+   * cracked when somebody picks it back up. A piece that has never been worn
+   * omits it and arrives whole.
+   */
+  hp?: number;
 }
 
 /** A drop that just entered a player's pocket. */
@@ -446,15 +548,41 @@ export interface LootPickupEvent {
   k: string;
   x: number;
   y: number;
-  /** Bag or hotbar slot it landed in. The fly aims at this cell. */
+  /** The index it landed on, in whichever container took it. */
   slot: number;
-  /** `hotbar` for a gun; omitted for the pocket. */
   /**
-   * Where it landed. `hotbar` is a gun, `ammo` is rounds that went into a
+   * Where it landed. `hotbar` is a weapon; `ammo` is rounds that went into a
    * reserve — `slot` then names the belt cell holding the weapon they feed,
-   * so the sprite flies onto the gun it topped up. Omitted for the pocket.
+   * so the sprite flies onto the gun it topped up; `worn` is a piece of
+   * armour and `slot` indexes `config.armorSlots`. Omitted for the pocket.
    */
-  dest?: 'bag' | 'hotbar' | 'ammo';
+  dest?: 'bag' | 'hotbar' | 'ammo' | 'worn';
+}
+
+/**
+ * One blow landing on a plate or on the shield.
+ *
+ * THE ROSTER CARRIES THE DURABILITY AND THIS CARRIES THE EVENT — the same
+ * split `kills` keeps from `enemies`. A client that missed a packet must
+ * never replay a piece breaking, so the bar is resynced from `PlayerMeta` and
+ * this is only ever juice: a spark off steel, a crack, and the one frame the
+ * piece came apart on.
+ */
+export interface ArmorHitEvent {
+  /** The body wearing it. */
+  by: string;
+  /** `head` / `body` / `legs`, or the literal `shield`. */
+  slot: string;
+  /** The piece. Keys into `config.armor`, or into `config.weapons`. */
+  k: string;
+  /** What it stopped. On the shield that is the whole blow. */
+  dmg: number;
+  /** What is still on it. 0 on the frame it broke. */
+  left: number;
+  /** The one frame it came apart on. */
+  broke: boolean;
+  x: number;
+  y: number;
 }
 
 /**
@@ -911,14 +1039,15 @@ export interface BuyEvent {
   by: string;
   k: string;
   price: number;
-  /** Belt cell it landed in. The client flies the sprite there. */
+  /** The index it landed on, in whichever container took it. */
   slot: number;
   /**
    * Where the sprite is going. Absent (a weapon off a table) means the belt
    * cell in `slot`; `"ammo"` is a crate-load, which flies at the GUN it just
-   * fed — `slot` is that weapon's cell and no cell was spent.
+   * fed — `slot` is that weapon's cell and no cell was spent; `"worn"` is a
+   * piece of armour off a table, and `slot` indexes `config.armorSlots`.
    */
-  dest?: 'hotbar' | 'ammo';
+  dest?: 'hotbar' | 'ammo' | 'worn';
   /** Rounds handed over. Ammunition only. */
   n?: number;
   x: number;
@@ -1096,6 +1225,13 @@ export interface PlayerState {
    */
   wind?: boolean;
   /**
+   * THE SHIELD IS UP. On the tick row and not the roster because it is a
+   * POSE: every client draws a raised shield over every body that has one up,
+   * and a five-hertz pose would let a player watch a blow land on a shield
+   * that had not come up yet. Omitted when down, which is almost always.
+   */
+  blk?: boolean;
+  /**
    * Which beat of a POUR this body is on — 0 walk, 1 lift, 2 dump, 3 stow.
    * Absent for everybody who is not emptying their pocket into a platform,
    * which is everybody almost all of the time. The client runs its own clock
@@ -1133,6 +1269,26 @@ export interface PlayerMeta {
    */
   ammo?: Record<string, number>;
   /**
+   * WHAT THIS BODY IS WEARING. Worn slots only — an absent key is a bare
+   * part, not a null.
+   *
+   * On the roster and not the tick row because a plate changes when somebody
+   * picks one up or one comes apart, which is a handful of times a night.
+   * Every client gets it rather than only the owner, because armour is DRAWN
+   * (`DrawableEntity.gear`): a teammate's helmet is a thing you can see from
+   * across a clearing.
+   */
+  armor?: Record<string, ArmorPieceState>;
+  /**
+   * What is left of the shield on the belt, or absent when there is none.
+   *
+   * Not inside `armor`, because you hold it rather than wear it, and not on
+   * `guns`, because a belt cell holds a KEY and this is state. The POSE —
+   * whether it is up right now — is on the tick row (`blk`), because that
+   * moves every time a finger does.
+   */
+  shield?: ArmorPieceState;
+  /**
    * What the levels bought: `{k, n}` per skill, sorted by catalog order.
    *
    * On the roster for the same reason `ammo` is, taken further — a stack
@@ -1149,6 +1305,19 @@ export interface PlayerMeta {
    * wrong bar for exactly the frames somebody just changed it.
    */
   mods?: PlayerMods;
+}
+
+/**
+ * One thing with a durability on it: a worn plate, or the shield.
+ *
+ * It carries its own ceiling rather than looking one up, which is what lets
+ * the same shape describe a helmet (whose numbers live in `config.armor`) and
+ * a riot shield (whose numbers live in `config.weapons[k].shield`).
+ */
+export interface ArmorPieceState {
+  k: string;
+  hp: number;
+  max: number;
 }
 
 /** One skill and how many copies of it are held. */
@@ -1508,6 +1677,11 @@ export interface SnapshotMessage {
   crates?: CrateState[];
   /** Crates smashed since the last snapshot. */
   crateBreaks?: CrateBreakEvent[];
+  /**
+   * Blows that landed on GEAR. Absent on almost every tick — the roster is
+   * what carries the durability, and this is only the frames it moved.
+   */
+  armorHits?: ArmorHitEvent[];
   /** Remaining corpses. Present only when one was added. */
   corpses?: CorpseState[];
   /**

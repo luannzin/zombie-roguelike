@@ -109,6 +109,12 @@ def apply_input(player: Player, cmd: InputCmd, world: TileMap, dt: float) -> Non
     speed = MOVE_SPEED * mods.speed * carry_scale(player.carry_weight, mods.carry)
     if run:
         speed *= SPRINT_SPEED
+    # THE SHIELD IS THE LAST TERM AND IT MULTIPLIES EVERYTHING. A body behind
+    # one is slow whatever else is true about it — sprinting behind a riot
+    # shield is still slower than walking without one, which is the whole
+    # reason raising it is a decision rather than a posture. Resolved before
+    # this runs; see `Player.block_speed`.
+    speed *= player.block_speed
     player.vx = dx * speed
     player.vy = dy * speed
 

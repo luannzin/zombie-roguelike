@@ -311,8 +311,8 @@ function blitCorpseGear(
   dh: number,
   useDeath: boolean,
 ): void {
-  for (const name of body.gear) {
-    const sheetName = useDeath ? deathSheetName(name) : name;
+  for (const layer of body.gear) {
+    const sheetName = useDeath ? deathSheetName(layer.sheet) : layer.sheet;
     const sheet = book.get(sheetName);
     const image = book.image(sheetName, null);
     if (!sheet || !image) continue;
@@ -381,8 +381,12 @@ function corpseAsTarget(body: DrawableCorpse): DrawableEntity {
 
 /**
  * Equipped overlays, registered to the same 16x16 grid as the body. Same
- * facing and walk column. A tinted target (the player) multiply-tints
- * every layer; an untinted one (a zombie) keeps the art's own colours.
+ * facing and walk column.
+ *
+ * WHETHER A LAYER TAKES THE BODY'S COLOUR IS THE LAYER'S OWN BUSINESS — see
+ * `GearLayer`. It used to be the body's: every overlay on a tinted target was
+ * tinted, which was right while the only thing a player wore was a greyscale
+ * backpack and wrong the moment they could wear steel.
  */
 function blitGear(
   { ctx, book }: EntityContext,
@@ -393,9 +397,12 @@ function blitGear(
   dw: number,
   dh: number,
 ): void {
-  for (const name of target.gear) {
-    const sheet = book.get(name);
-    const image = book.image(name, target.tint);
+  for (const layer of target.gear) {
+    const sheet = book.get(layer.sheet);
+    // The layer decides, not the body. A player carries both kinds at once:
+    // a backpack in their own colour and, over it, plate in the colour of the
+    // metal it is made of.
+    const image = book.image(layer.sheet, layer.tint ? target.tint : null);
     if (!sheet || !image) continue;
     const row = sheet.rows[facing] ?? 0;
     const col = frameIndex(sheet, target.animTime, target.moving);

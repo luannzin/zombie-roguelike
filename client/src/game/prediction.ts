@@ -62,6 +62,9 @@ export class LocalPlayer {
       // that reset to full there would be a free sprint every zone.
       stamina: initial.st ?? config.staminaMax,
       winded: initial.wind ?? false,
+      // Down. A body cannot arrive in a zone already blocking — the shield
+      // goes up on a button, and the button is not held across a welcome.
+      blockSpeed: 1,
     };
     this.hp = initial.hp;
     // A second welcome (forest after camp) rebuilds this object. Sequence is

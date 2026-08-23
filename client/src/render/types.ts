@@ -25,6 +25,13 @@ import type { TrailPoint } from './layers/boss-vfx';
 
 export type EntityKind = 'player' | 'enemy';
 
+/** One overlay sheet on a body, and whether it wears that body's colour. */
+export interface GearLayer {
+  sheet: string;
+  /** Multiply the wearer's `tint` through it. False for baked material art. */
+  tint: boolean;
+}
+
 export interface DrawableEntity {
   id: string;
   kind: EntityKind;
@@ -34,11 +41,19 @@ export interface DrawableEntity {
   tint: string | null;
   /**
    * Overlay sheets, back-to-front. Drawn on the body in the same facing
-   * and walk frame. Multiply-tinted with `tint` when one is set — the
-   * backpack follows the wearer; enemy hats and clothes bake their own
-   * colour and ride an untinted enemy (`tint` is null).
+   * and walk frame.
+   *
+   * EACH LAYER SAYS WHETHER IT WEARS THE BODY'S COLOUR, because two kinds of
+   * thing ride a body and they want opposite treatment. A backpack is
+   * greyscale and takes the wearer's `tint`: it is issued kit, and wearing
+   * your own colour is the point of it. A steel plate is baked: its colour IS
+   * its material, which is the entire armour ladder, and multiplying a
+   * player's identity swatch through it would turn the rungs into whatever
+   * that player happens to be. Enemy hats and clothes bake their own colour
+   * too and ride an untinted enemy (`tint` is null), which is the same answer
+   * arrived at from the other side.
    */
-  gear: readonly string[];
+  gear: readonly GearLayer[];
   /** Identity colour — name label and minimap dot. */
   color: string;
   /** Display name. Empty for enemies, which are never labelled. */
@@ -215,7 +230,7 @@ export interface DrawableCorpse {
   x: number;
   y: number;
   sheet: string;
-  gear: readonly string[];
+  gear: readonly GearLayer[];
   ax: number;
   ay: number;
   /** Killing blow. The body falls along this. */

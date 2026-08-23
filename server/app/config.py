@@ -824,7 +824,14 @@ def client_config() -> dict:
     from .crates import catalog_payload as objects_payload
     from .enemies import enemy_types_payload
     from .loot import catalog_payload
-    from .weapons import HOTBAR_SLOTS, catalog_payload as weapons_payload
+    from . import armor
+    from .weapons import (
+        BLADE_SLOT,
+        GUN_SLOTS,
+        HOTBAR_SLOTS,
+        STARTING_MELEE,
+        catalog_payload as weapons_payload,
+    )
 
     return {
         "tickRate": TICK_RATE,
@@ -954,8 +961,36 @@ def client_config() -> dict:
         # Guns also have a combat block in `weapons`.
         "loot": catalog_payload(),
         "weapons": weapons_payload(),
+        # WHAT A BODY CAN WEAR: twelve pieces, three slots, four materials,
+        # and every number on them derived from one claw. The client draws
+        # the durability bars, the overlay sheets and the tooltip off this and
+        # has no table of its own — adding a material is a row in
+        # `armor.MATERIALS` and a ramp in `make_armor.py`.
+        "armor": armor.catalog_payload(),
+        # The slots in the order they are worn and drawn, top to bottom. The
+        # HUD stacks its rows off this and a `LootPickup` with `dest:"worn"`
+        # indexes it, so the order is a contract rather than a convenience.
+        "armorSlots": list(armor.SLOTS),
+        "armorSlotNames": dict(armor.SLOT_NAMES),
+        # WHERE A BLOW LANDS, per slot. The client needs it for one honest
+        # number — what a whole set actually stops, which is the
+        # coverage-weighted sum of what each plate stops on its own part — and
+        # a HUD that averaged the three instead would be quietly wrong about
+        # every partial set. See `armor.COVERAGE`: it is the player sprite's
+        # own anatomy, so it is a fact about the art rather than a tuning knob.
+        "armorCoverage": {slot: round(share, 4) for slot, share in armor.COVERAGE.items()},
         "inventorySlots": INVENTORY_SLOTS,
         "hotbarSlots": HOTBAR_SLOTS,
+        # WHICH CELLS ARE WHICH. The belt is `gunSlots` gun cells and then the
+        # BLADE cell, and the client needs the split to know that key 3 is
+        # never empty and that a lâmina replaces rather than stows.
+        "gunSlots": GUN_SLOTS,
+        "bladeSlot": BLADE_SLOT,
+        # What the blade cell falls back to. The client needs it for exactly
+        # one thing: knowing that a knife replaced by a better lâmina does not
+        # land on the floor, so the pickup prompt must not offer it as
+        # something you are giving up. See `Room.swap_blade`.
+        "startingBlade": STARTING_MELEE,
         "carryMaxWeight": CARRY_MAX_WEIGHT,
         "carrySlowStart": CARRY_SLOW_START,
         "carrySlowAtMax": CARRY_SLOW_AT_MAX,

@@ -156,6 +156,17 @@ HOLD_OUT = 3.0
 #: part in front of it. That is the difference between a knife and a sword at
 #: this size — what reaches forward is the blade's length, never the arm's.
 HOLD_IN = 0.0
+#: A HAFT. Between the two: an axe is not tucked in like a knife and it is not
+#: presented like a pistol — it hangs off the end of an arm with a weight on
+#: the far end of it, and the extra pixel and a half is what stops the head
+#: overlapping its owner's chest through the whole swing.
+HOLD_HAFT = 1.5
+#: A SHIELD IS THE ONLY THING IN THIS GAME HELD FURTHER OUT THAN A WEAPON,
+#: and that is not a drawing decision — it is the mechanic. What the shield
+#: does is BE BETWEEN you and the blow, so it has to be visibly outside the
+#: silhouette of the body; a riot shield drawn at a rifle's extension reads as
+#: a briefcase somebody is carrying.
+HOLD_SHIELD = 4.5
 
 # Materials against the night, DERIVED rather than picked. Every ramp is five
 # steps built by `_ramp` out of PIXEL-ART-DIRECTION-V2.md S11's table, so a
@@ -220,6 +231,11 @@ OPTIC: Ramp = _ramp(150, 0.09, 0.07, 0.36)
 #: The AWP's objective. The one accent hue on this sheet (S12), two pixels
 #: wide, which is the whole budget an accent gets.
 LENS: Ramp = _ramp(196, 0.62, 0.12, 0.74)
+#: The shield's window. Polycarbonate: cooler and LIGHTER than the frame it
+#: is set into, because the one thing a riot shield has to say at sixteen
+#: pixels is that somebody is looking through it. A window darker than its
+#: frame is a hole, and this sheet already has a ramp for holes.
+GLASS: Ramp = _ramp(198, 0.12, 0.16, 0.70)
 #: `x`. Not a material — a hole in one. Shared by every weapon, so a port on a
 #: Glock and a port on an AK are the same darkness. It is the only ramp allowed
 #: to sit near the outline, because that is what a hole looks like.
@@ -696,6 +712,84 @@ GUNS: list[tuple[str, Palette, Art]] = [
             "........",
         ],
     ),
+    # THE AXE. The one weapon on this sheet whose weight is at the FAR end,
+    # and the entire drawing is that fact. A haft the length of a pistol with
+    # a three-by-four block of steel hung off the front of it: the silhouette
+    # is top-heavy, which is what a player reads as slow before they have
+    # swung it once, and it is the honest picture of a weapon whose finisher
+    # costs most of a second.
+    #
+    # The head takes all four bore-adjacent rows, so it is the only thing here
+    # that is TALLER than the line it is carried on. That is the axe's whole
+    # separation from the knife and the katana at this size — those two are
+    # lines with a guard on them, and this is a line with a mass on it.
+    (
+        "axe",
+        {"b": CHROME, "k": STEEL, "w": WOOD, "g": GRIP, "m": CHROME},
+        [
+            ".........kBb.",
+            "ggggwwwwwkBbm",
+            "ggggwwwwwkBb.",
+            ".........kbb.",
+            ".............",
+            ".............",
+            ".............",
+        ],
+    ),
+    # THE KATANA. Everything the axe is not: the longest blade on the belt,
+    # nothing on it that is not the line, and a guard exactly one pixel proud
+    # of it at each side. It is drawn STRAIGHT for the same reason the knife
+    # is — a curve authored across sixteen columns at one pixel of sagitta is
+    # not a curve, it is a jagged line — and the length is doing the work the
+    # curve would have done.
+    #
+    # It is the only thing on this sheet that reads long WITHOUT reading like
+    # a barrel, and the guard is what does it: every firearm here breaks its
+    # line downward at the grip, and this one breaks it symmetrically, which
+    # is a shape no gun on the sheet has.
+    (
+        "katana",
+        {"b": CHROME, "k": STEEL, "g": GRIP, "m": CHROME},
+        [
+            "......k.........",
+            "gggggkkBbbbbbbbm",
+            "gggggkkbbbbbbbb.",
+            "......k.........",
+            "................",
+            "................",
+            "................",
+        ],
+    ),
+    # --- the shield -----------------------------------------------------------
+    # THE RIOT SHIELD, and it is the first frame on this sheet with no bore,
+    # no grip below the line and nothing that reaches. It fills all SEVEN rows
+    # — the only entry here that does — because the row grid's job on a gun is
+    # to shade a long thin object lit from above, and its job here is to shade
+    # a PLATE: the crown catches, the middle is the window, and the bottom
+    # third falls off into shadow exactly the way a curved sheet of
+    # polycarbonate does.
+    #
+    # The window is two rows and it is LIGHTER than the frame around it. That
+    # is the whole read at this size: a dark rectangle with a lighter band
+    # across its top third is somebody looking over a shield, and the same
+    # rectangle with a darker band is a hole in a wall.
+    #
+    # It carries an `m` like everything else because the sheet's invariant
+    # wants one on the bore row, and it is honest here rather than a
+    # workaround: on a shield the front face IS where things stop.
+    (
+        "riot_shield",
+        {"c": POLY, "v": GLASS, "g": GRIP, "m": POLY},
+        [
+            "..ccc..",
+            "ggCvvm.",
+            "ggCvvv.",
+            "..Cccc.",
+            "..Cccc.",
+            "..Cccc.",
+            "..ccc..",
+        ],
+    ),
 ]
 
 #: How far in front of the body each weapon is carried, and how big it is
@@ -703,7 +797,12 @@ GUNS: list[tuple[str, Palette, Art]] = [
 #: row: eleven of the twelve entries are guns held the one way guns are held
 #: at the one scale this sheet is authored at, and repeating that eleven times
 #: would bury the one row where either is a decision.
-HOLD: dict[str, float] = {"knife": HOLD_IN}
+HOLD: dict[str, float] = {
+    "knife": HOLD_IN,
+    "katana": HOLD_IN,
+    "axe": HOLD_HAFT,
+    "riot_shield": HOLD_SHIELD,
+}
 #: DRAWN SMALLER THAN IT IS AUTHORED, and the two numbers are answering two
 #: different questions.
 #:
@@ -729,7 +828,15 @@ DRAW_SCALE = 0.75
 #: knife is the one entry and it earns it: it is the one thing on this sheet
 #: that is not a firearm, and reading smaller than everything on the belt is
 #: how a 16px sprite says "sidearm".
-SCALE: dict[str, float] = {"knife": 0.65}
+SCALE: dict[str, float] = {
+    "knife": 0.65,
+    # THE ONE THING ON THIS SHEET DRAWN AT FULL SIZE. Everything else is
+    # shrunk so it stops out-measuring the body carrying it; a shield is
+    # SUPPOSED to out-measure the body — that is what it is for — and one
+    # drawn at three quarters is a shield with a gap round it that blows do
+    # not go through, which is a picture that lies about the rule.
+    "riot_shield": 1.0,
+}
 
 
 def _check(key: str, art: Art) -> None:

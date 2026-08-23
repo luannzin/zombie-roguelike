@@ -9,7 +9,7 @@ recently changed system, when something looks like a regression, before
 modifying anything under *Do not touch*, or when the task asks what to work on
 next. Skip it for a self-contained change to a stable system.
 
-_Last verified: 2026-08-20 against `main` @ `869e36c` + the fix pass below._
+_Last verified: 2026-08-23 against `main` @ `a5b69aa` + the GEAR pass below._
 
 ## Current phase
 
@@ -20,6 +20,43 @@ knife got a real swing, the shotgun got its own dynamics, the machine got its
 ceremony.
 
 ## Currently working on
+
+- **GEAR JUST LANDED: LÂMINAS, WORN ARMOUR AND THE SHIELD.** Three systems in
+  one pass, all documented in the new [`docs/design/gear.md`](docs/design/gear.md).
+  Headlines:
+  - **The belt's last cell is a BLADE CELL now, not "the knife".** It is still
+    never empty — that was always the promise, and the fixed knife was one
+    implementation of it — but what it holds changes. `axe` and `katana` are
+    real rows, found in the world AND sold, and every lâmina is the knife's
+    own three beats through seven multipliers (`weapons.BladeProfile`). The
+    knife's profile is all ones and `test_gear.py` pins that the generator
+    reproduces it exactly. The knife itself is NOT AN OBJECT: replace it and
+    nothing hits the floor; replace an axe and the axe does.
+  - **Armour is the fourth container** (`server/app/armor.py`): three slots,
+    four materials, per-piece durability, visible on the body through the
+    `gear` overlay system that already carried the backpack. Everything is
+    derived from the zombie's CLAW the way the guns are derived from its
+    health. One blow lands on ONE part, rolled against coverage taken off the
+    player sprite's own row bands — so on this chibi figure the HELMET is the
+    piece that matters most, which is what the silhouette says rather than a
+    balance call.
+  - **The riot shield** eats a gun cell, goes up on RIGHT MOUSE, blocks
+    completely inside a 140-degree arc, slows the walk, and comes apart in
+    fourteen claws. It is the only thing in the game that takes a blow to
+    zero.
+  - **The shop is three ladders now** and the day walks all of them; the
+    eleven-gun ladder comes out byte-for-byte what it was.
+  **VERIFIED HEADLESSLY, NOT PLAYED.** `test_gear.py` (8 groups) plus the
+  whole existing suite and `bun run typecheck` are green, and the live wire
+  was checked from a browser console — the config, the catalogs and the belt
+  all arrive correctly. Nobody has yet worn a set, watched a plate break
+  mid-fight, or stood behind the shield. First playthrough should watch for:
+  whether the three HUD bars read at a glance or are just noise beside the
+  health bar; whether a steel set at 2.7 kg is a real movement cost or is
+  ignored; whether losing the chestplate mid-fight lands as an EVENT (it has
+  no sound of its own yet — see below); and whether the shield's 0.55x walk
+  makes raising it a decision or just makes it annoying.
+
 
 - **The visual refactor toward depth / 3D-ish volume** (`PIXEL-ART-DIRECTION-V2.md`).
   The art half is moving asset by asset; the RENDER half landed as a whole (see
@@ -61,6 +98,7 @@ ceremony.
 
 | | |
 | --- | --- |
+| **the belt lost its knife and kept its promise** | `KNIFE_SLOT` is `BLADE_SLOT`, `Hotbar.add` routes on `is_blade`, and `Room.swap_blade` is the one way steel changes hands. Every rule about that cell follows from it having no empty state, which is the one shape the rest of the belt does not have |
 | **the shop sells AMMUNITION** | a row of open crates against the south wall, one per calibre somebody in the room is carrying — so a party of knives sees an empty wall, and buying the first shotgun DROPS a crate of shells in (a fall, a hard landing, two bounces, on the client's own clock off a row it has not drawn before). A crate never sells out, and a box costs its own share of a full reserve at half the price of the cheapest gun that eats it — derived, no price list. New art: `make_store.make_ammobox`, five frames, the only boxes in the room drawn OPEN. **Not yet played in a browser** — worth watching whether the crates read as buyable next to the six tables, and whether pistol rounds at 4 gold are too close to free |
 | **eighteen more skills, and armour** | the catalog is 36 rows (9/8/8/6/5) because a ten-day run was seeing the same three commons; legendary odds doubled (2 -> 4 in `PULL_WEIGHTS`) because at one in fifty most runs never saw the colour the machine dramatises. `Mods.armor` is the one new axis — damage TAKEN, applied in `Room.damage_player`, floored at 0.35 so a stacked run cannot reach zero. `make_skills._check_order` now fails the build if the icon sheet and the catalog disagree, which nothing at runtime would notice |
 | **the dead were redrawn** | three creatures, three ANATOMIES: the walker keeps the player's build, the husk became a real skeleton (skull, a gap of neck, ribs with gaps you can see through), the brute became a mass with fungus growing out of it. Every ramp is derived through `material_ramp` instead of typed hex, and every creature carries an EYE — one saturated pixel in a dark socket, the sheet's single accent. The S15 test (all three in solid black) is in `make_zombie.py`'s header and passes |
@@ -95,6 +133,22 @@ ceremony.
 | container density | scenes rolled openables in independent loops that summed, and nothing stopped two landing on one tile. `scenery._thin_containers` caps a scene at five and drops collisions |
 
 ## Known problems
+
+- **Gear has no sound of its own.** A plate soaking is silent (the blow it
+  came with is not) and a piece breaking borrows `crate-break` pitched up. The
+  three that are missing are a steel tick, a leather scuff and a
+  polycarbonate crack — three recipes in `make_audio.py` and one call site
+  each. Losing a chestplate is currently an event with no audio, which is the
+  weakest part of the whole system.
+- **The shield has no impact art.** A blow stopping dead on it looks the same
+  as a blow missing. It belongs in `weapon-vfx` and wants the hit point, which
+  `snapshot.armorHits` already carries.
+- **The twelve armour overlays have not been watched at speed.**
+  `make_armor._check` fails the build if a piece leaves the 16x16 grid and the
+  bands were measured off the real player sheet, so they are ON the body — but
+  nobody has watched a full steel set walk across a clearing to see whether it
+  reads as worn or as painted on. The head piece is the one to look at: it
+  covers the top four rows of a head that is nearly half the figure.
 
 - **The "darker grade" request is still unanswered.** A darker `forestLook` was
   tried and reverted by hand; the dark now comes from `UNSEEN_ALPHA` instead,
@@ -137,6 +191,10 @@ ceremony.
 1. Keep the shop layout stable long enough for `test_store_walk.py` to be a meaningful regression check rather than a per-commit fixture.
 2. Something for dark gold to buy (per-player, never party-funded).
 3. Ammunition tuning once more guns are routinely owned by day 5+.
+4. Play a night in a full set and a night behind the shield, then tune
+   `armor.HITS_BASE`, `SOAK_CEILING` and `SHIELD_HITS` against what actually
+   happened rather than against the arithmetic.
+5. The three missing gear sounds, and the shield's block spark.
 
 ## Do not touch
 
@@ -146,6 +204,10 @@ Unless the task is explicitly about them:
 - `assets/processed/**` — generated output. Edit the generator in `server/tools/`.
 - `assets/raw/**` and `assets/inspiration/**` — never served, never read at runtime.
 - `server/.venv/`, `client/node_modules/`, `client/dist/`.
+- `Room.damage_player` — the ONE door every damaging thing in the game comes
+  through, and now the only place the shield, worn armour and `Mods.armor` are
+  applied. A `return` added above the plate is armour that silently stops
+  working.
 - The **eight** mirror pairs, one side alone. Three are line-for-line (`simulation.py`/`simulation.ts`, `protocol.py`/`protocol.ts`, `machine.py`/`machine.ts`); five are the same rule re-derived on the other side (`world.py`/`world.ts`, `Room.collect_loot`+`Inventory.add`/`game/interaction.ts`, `ai.look`/`render/fov.ts`, `world.tile_hash`/`render/terrain.ts`'s `tileHash`, `make_platform.py`'s deck/`game/pad-cargo.ts`). The full list with the reason for each is in the root `AGENTS.md`.
 - `Room.enter_store`'s balance credit — the single settlement point.
 

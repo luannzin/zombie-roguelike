@@ -8,8 +8,9 @@ output the game actually loads.
 ## Ownership
 
 - `raw/` — source art (`player.png`, `zombie.png`, `zombie-husk.png`,
-  `zombie-brute.png`, `backpack.png`, `zhat-*.png`, `zcloth-*.png`, and
-  `<name>-death.png` collapse timelines for exact creatures and overlays)
+  `zombie-brute.png`, `backpack.png`, `zhat-*.png`, `zcloth-*.png`,
+  `armor-*.png`, and `<name>-death.png` collapse timelines for exact creatures
+  and overlays)
   and font sources (`fonts/DepartureMono-Regular.otf`). **Never served.**
 - `inspiration/` — reference recordings a generator was tuned AGAINST, never
   shipped and never decoded at runtime (`gun/*.mp3`). They are the measuring
@@ -29,6 +30,9 @@ output the game actually loads.
   (his WAGON, his counter, the six round tables, his gear, his torches and
   mat), `machine/` (the upgrade cabinet, its reel BAND `strip.png`, and its
   lights), `skills/` (skill icons and the canisters they come out in),
+  `armor-<slot>-<material>/` (twelve WORN overlays on the player's own 16x16
+  grid — head / body / legs in cloth, leather, steel and kevlar; baked, NOT
+  greyscale, because a plate's colour is its material),
   `loot/`, `guns/` (held high-3/4), `hud/`, and `audio/` (16-bit mono wavs +
   `manifest.json`) — the folder is art too,
   generated the same way, and `/audio/shot-0.wav` is served like any sprite.

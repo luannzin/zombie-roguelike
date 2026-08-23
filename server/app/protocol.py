@@ -216,6 +216,14 @@ Snapshot arrays:
                top of the snapshot rather than a column on the roster. Sent
                only when it changes — see `Player.gold` for the other,
                personal, one
+  night        THE NIGHT'S CLOCK, forest maps only. `{"left":N,"total":N}`
+               while it runs, sent at the roster's cadence (5 Hz) — the client
+               counts its own seconds down in between. `false` is the night
+               ENDING, which is a state absence cannot express. Absent
+               otherwise, including on every map that has no clock
+  nightEvents  the clock crossing a threshold, once each: `beat` 1 is the
+               warning and 2 is the last stretch. Juice only — the countdown
+               itself is `night` above
   spinPrice    what the NEXT bought pull costs, for a party holding no level.
                Doubles per purchase and resets on the walk into each night's
                shop (`Room.spin_price`). Party-wide like the balance it
@@ -299,6 +307,7 @@ def welcome(
     blackout: bool = False,
     balance: int = 0,
     spin_price: int = 0,
+    night: dict | None = None,
 ) -> dict:
     payload = {
         "type": MSG_WELCOME,
@@ -326,6 +335,10 @@ def welcome(
         payload["quests"] = quests
     if blackout:
         payload["blackout"] = True
+    # Absent on any map with no clock — the shop, the arena, the camp. A HUD
+    # with no countdown on it is a different thing from one showing zero.
+    if night is not None:
+        payload["night"] = night
     return payload
 
 
@@ -367,6 +380,8 @@ def snapshot(
     buys: list[dict] | None = None,
     balance: int | None = None,
     spin_price: int | None = None,
+    night: dict | bool | None = None,
+    night_events: list[dict] | None = None,
     spins: list[dict] | None = None,
     boss: dict | None = None,
     boss_events: list[dict] | None = None,
@@ -455,4 +470,13 @@ def snapshot(
     # night's shop — so it rides its own dirty flag rather than the balance's.
     if spin_price is not None:
         payload["spinPrice"] = spin_price
+    # THREE STATES, AND `False` IS THE ONE THAT MATTERS. A dict is a running
+    # clock; `False` is a clock that just STOPPED (the night closed, either
+    # way); absent is "nothing changed, keep counting your own seconds down".
+    # Without the middle one the client cannot tell the end of a night from a
+    # dropped packet, and would keep a dead countdown on screen.
+    if night is not None:
+        payload["night"] = night
+    if night_events:
+        payload["nightEvents"] = night_events
     return payload

@@ -26,15 +26,51 @@ Nearest contracts: [`server/app/AGENTS.md`](../../server/app/AGENTS.md),
 - **Ammunition is upkeep, not cargo.** Boxes are worth 0, take no pocket slot, and are collectable only by a player whose own belt holds that calibre. Reserves are sized in KILLS (`KILLS_PER_RESERVE`), not seconds of trigger.
 - **A dry trigger burns the cooldown**, on both sides.
 - **A full belt TRADES rather than refusing**, and a refused trade must not charge.
+- **BEING HIT TAKES YOUR SPEED, and the drag is the last term in the walk** —
+  under even the shield. `Player.stagger` is a CLOCK on the tick row (`sg`),
+  not a resolved multiplier like `block_speed`, because only the server sees a
+  swing land; both `step_stagger` and `stepStagger` tick it inside `apply_input`
+  so reconciliation replays it at the speeds the server actually used.
 - **Stamina is stateless apart from the `winded` latch** — that is what lets prediction replay it. Every tick that skips `apply_input` must still tick the breath.
 - **Never hardcode a gameplay constant client-side.** They arrive in `welcome.config`.
 
 ## Danger zones
 
-- `simulation.py` / `simulation.ts` — the mirror.
+- `simulation.py` / `simulation.ts` — the mirror. `stagger` is now part of it:
+  a decay ticked outside `apply_input` would replay at the wrong speed.
 - `prediction.ts` reconciliation and `last_processed_seq` (never reset on embark).
 - `weapons.WEAPONS` ordering — **append, never insert**, or every generated frame index moves.
 - Any site reading a raw `config.py` constant instead of `Mods` — a skill that silently does nothing.
+
+
+## Being hit
+
+- **THE ANSWER TO EVERY SITUATION USED TO BE "WALK AWAY", AND IT ALWAYS
+  WORKED.** A player walks at 4.4 tiles/s and sprints at 6.8; a zombie moves at
+  2.6. Disengaging was free, instant, unconditional and correct — so no
+  encounter in the game could ever close, and a genre built on the exit
+  sometimes being shut had an exit that never was. Fixing the crowd's damage
+  (see [`enemies.md`](enemies.md)) does nothing on its own if the player can
+  simply leave the crowd at any moment for no cost.
+- **SO A BLOW THAT CONNECTS DRAGS THE BODY, AND THE DRAG REFRESHES.**
+  `HIT_STAGGER_TIME` seconds at `HIT_STAGGER_SCALE` of the walk. Because
+  every connecting hit re-arms it, a pack that is landing blows keeps you at
+  walking pace INSIDE it, which is the entire mechanic: the crowd stops being
+  something you are standing next to and becomes something you are in.
+- **THE NUMBER IS DERIVED FROM THE ZOMBIE'S OWN SPEED, NOT PICKED BY FEEL.**
+  Staggered walking is 4.4 x 0.62 = 2.73 tiles/s against their 2.6 — a hair
+  over, so walking out of a pack that is connecting is technically possible and
+  practically hopeless. Staggered SPRINTING is 4.2, which still outruns them.
+  That gap is the design: the escape is real, and it costs the bar. Stamina
+  becomes the resource that decides whether you get out, and stamina is what
+  you spent getting in.
+- **IT LANDS ON THE BLOW, NOT ON THE DAMAGE.** A hit stopped dead by the shield
+  or eaten by a plate still staggers, because something the size of a person
+  walked into you. Armour buys HEALTH; letting it buy momentum too would hand
+  a well-geared party the old game back, where standing in a crowd was free.
+- **IT IS CLEARED ON RESPAWN AND ON EVERY MAP SWAP.** Coming back still limping
+  from the blow that killed you is being punished twice for one death, in the
+  exact second `RESPAWN_IMMUNITY` exists to protect.
 
 ## Change surface
 

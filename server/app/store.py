@@ -696,28 +696,67 @@ def _stock_pool(day: int) -> list[str]:
     return [key for key in STOCK_ORDER if STOCK_UNLOCK.get(key, 1) <= max(1, day)]
 
 
-def _roll_stock(day: int, count: int, rng: random.Random) -> list[str]:
-    """`count` guns for tonight's grid, weighted toward the day.
+#: How hard the roll leans on the deep end of the shelf. Weight is
+#: `1 + rank * this`, so the dearest unlocked thing is this many times likelier
+#: than the cheapest.
+#:
+#: IT WAS 1.1 AND THAT IS WHAT BROKE THE SHOP. A day-one pool is nine rows, so
+#: the top of it carried weight 9.8 against the bottom's 1.0 — a ten to one
+#: skew — and six draws with replacement out of a distribution that steep is
+#: not a shelf, it is the same two items over and over. Six sampled day-one
+#: shops out of eight came back with a duplicate on them and one came back
+#: holding four of the same pistol, which is a grid of six choices offering
+#: two. A third of that lean still puts the new stock on the table more often
+#: than the old without collapsing the pool onto its last two rows.
+STOCK_DEPTH_BIAS = 0.35
 
-    WITH REPLACEMENT, which is the change. Distinct stock was right for a lane
-    of four tables read in order — a repeat there was a table that had nothing
-    to say. In a grid of six it is the opposite: a trader with three of the
-    same pistol at three prices is a trader, and the stall spread (`_haggle`)
-    is what turns the repeat into the question the zone is actually about. It
-    also means the pool no longer has to be as long as the grid, so a day-one
-    shop is six full tables rather than three and a gap.
+
+def _roll_stock(day: int, count: int, rng: random.Random) -> list[str]:
+    """`count` things for tonight's grid, weighted toward the day.
+
+    DISTINCT FIRST, REPEATS ONLY TO FILL. Both halves of that are deliberate
+    and the game has now been wrong in both directions.
+
+    Distinct-only was right for a lane of four tables read in order and wrong
+    for a grid: it made the pool have to be as long as the shelf, and a day-one
+    shop came out as three tables and three gaps. Straight replacement fixed
+    the gaps and broke the shelf — see `STOCK_DEPTH_BIAS` for what six draws
+    out of a steep distribution actually produces.
+
+    So: draw WITHOUT replacement while the pool can still answer, and only
+    start repeating once every distinct row is already on a table. A trader
+    with two of the same pistol at two prices is still a trader — that reading
+    was never wrong — but he is that on the night his shelf is genuinely
+    shorter than his grid, which is what a repeat should MEAN. Six tables now
+    show `min(6, len(pool))` different things, always, and the day-one shop
+    goes from "two guns, four times" to "six of the nine there are".
 
     The weighting walks with the day rather than switching: an unlocked weapon
     stays possible forever (a cheap sidearm is still a real answer when the
     party came home broke), it just stops being the likely roll.
     """
     pool = _stock_pool(day)
-    if not pool:
+    if not pool or count <= 0:
         return []
-    # Distance from the deepest weapon the day has unlocked. The newest thing
-    # on the shelf is the likeliest thing on a table.
-    weights = [1.0 + pool.index(key) * 1.1 for key in pool]
-    return rng.choices(pool, weights=weights, k=max(0, count))
+    # Distance from the deepest thing the day has unlocked. The newest row on
+    # the shelf is the likeliest thing to be on a table.
+    weights = {key: 1.0 + rank * STOCK_DEPTH_BIAS for rank, key in enumerate(pool)}
+
+    out: list[str] = []
+    remaining = list(pool)
+    while remaining and len(out) < count:
+        # Weighted draw, then REMOVE — `rng.choices` cannot do this itself, and
+        # doing it by hand keeps the same weights governing both halves of the
+        # roll rather than having a second rule for the distinct pass.
+        pick = rng.choices(remaining, weights=[weights[k] for k in remaining], k=1)[0]
+        remaining.remove(pick)
+        out.append(pick)
+    # Only now, with the shelf exhausted: a short pool duplicating onto the
+    # tables it could not fill.
+    while len(out) < count:
+        out.append(rng.choices(pool, weights=[weights[k] for k in pool], k=1)[0])
+    rng.shuffle(out)
+    return out
 
 
 # --- the ammunition crates ---------------------------------------------------

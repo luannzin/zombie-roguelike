@@ -19,6 +19,10 @@ Nearest contracts: [`server/app/AGENTS.md`](../../server/app/AGENTS.md),
 - **The client NEVER settles.** The payout animation is presentation; a reconnect mid-animation must not pay twice.
 - **Prices are derived**, never listed: `store.price_of` = catalog `value` x `STORE_MARKUP`, plus a per-stall `_haggle` too small to reorder the ladder.
 - **A stall sells once** and the empty table stays on the wire.
+- **THE GRID SHOWS `min(6, len(pool))` DIFFERENT THINGS, ALWAYS.**
+  `_roll_stock` draws WITHOUT replacement until the shelf is exhausted and only
+  then repeats. A duplicate on a table means the merchant genuinely has less
+  stock than tables, which is what a duplicate should mean.
 - **An ammunition crate NEVER sells out**, and one only exists for a calibre somebody in the room is carrying. The wall is a portrait of the party's belts.
 - **A crate's tile is never claimed.** It can arrive mid-visit, after the tile map has gone out — so it stands flat against the south wall where nobody walks and is walked through, exactly like the merchant.
 - **Two currencies, never merged**: `Room.balance` (party GOLD) vs `Player.gold` (personal DARK GOLD).
@@ -26,6 +30,35 @@ Nearest contracts: [`server/app/AGENTS.md`](../../server/app/AGENTS.md),
 - **The APRON is an ordinary forest map; the SHOP is the game's one building.** A new object should be an existing prop or tile kind before it is a new payload field — and the building itself IS tile kinds (`BRICK` / `TILEFLOOR`), never a rectangle on the wire.
 - **Its art may be poor, worn and improvised; it may not be grim.**
 - **`BRICK` and `TILEFLOOR` are a MIRRORED pair.** They live in `server/app/world.py` and `client/src/game/world.ts`, and so do `GROUNDS` and `CLEAR`. A kind added to one side alone desyncs collision — it shows up as rubber-banding in the shop's doorway, not as an error.
+
+
+## The shelf
+
+- **THE ROLL COLLAPSED THE SHOP ONTO ITS TOP TWO ROWS AND NOBODY NOTICED FOR A
+  LONG TIME.** Stock was drawn with replacement, weighted `1 + rank * 1.1`
+  toward the newest thing unlocked. A day-one pool is nine rows, so the top of
+  it carried weight 9.8 against the bottom's 1.0 — ten to one — and six draws
+  out of a distribution that steep is not a shelf, it is the same two items
+  repeated. Six of eight sampled day-one shops came back holding a duplicate;
+  one came back holding four of the same pistol. A grid of six choices was
+  routinely offering two.
+- **BOTH DIRECTIONS HAVE NOW BEEN WRONG, AND THE FIX IS THE ORDER, NOT THE
+  WEIGHTS.** Distinct-only was right for a lane of four tables read in sequence
+  and wrong for a grid — it forced the pool to be as long as the shelf, so a
+  day-one shop came out as three tables and three gaps. Replacement fixed the
+  gaps and broke the shelf. Drawing without replacement FIRST and repeating
+  only once every distinct row is on a table keeps both properties: no gaps, no
+  accidental duplicates, and a repeat that carries real information — this
+  merchant has fewer things than tables tonight.
+- **AND THE LEAN CAME DOWN TO A THIRD** (`STOCK_DEPTH_BIAS`, 1.1 -> 0.35). The
+  intent behind it was right — the newest unlock should be the likeliest thing
+  on a table — but at 1.1 the cheap end of the shelf effectively did not exist,
+  which quietly removed the "we came home broke, buy the sidearm" line that the
+  price ladder is built to offer.
+- **`_haggle` STILL EARNS ITS KEEP.** Two tables holding the same gun at the
+  same number would be a duplicate; at two prices it is a merchant. That
+  reading was never wrong — it was just being asked to justify a duplicate rate
+  it was never meant to cover.
 
 ## Danger zones
 

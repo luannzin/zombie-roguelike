@@ -14,6 +14,16 @@ Nearest contract: [`server/app/AGENTS.md`](../../server/app/AGENTS.md).
 
 ## Invariants
 
+- **A PACK IS N TIMES ONE ZOMBIE, and nothing shared may gate that.** Each
+  creature's `EnemyType.attack_cooldown` is the ONLY rate limit on its melee.
+  `Room.resolve_attack` must never set `Player.hurt_immunity` — that field is
+  the boss's suppression window and the respawn grace, and a swing blocked by
+  it is a swing whose cooldown was already spent, so any shared window makes a
+  synchronised pack pay for one hit between them. See *The crowd* below.
+- **A body's attack phase is scattered at birth** (`Room.spawn_enemy`). A group
+  arrives together and would otherwise swing in lockstep forever.
+- **The director scales with the DAY, and only on population.** Never on health
+  or damage — see *The night gets bigger* below.
 - **An enemy chases nothing it has not noticed.** Awareness fills only inside the sight cone; `aggro_range` is the GIVE-UP distance, not the notice distance.
 - **Sight is symmetric with the lantern.** `ENEMY_VIEW_DARK_SCALE` and `ENEMY_VIEW_LIT_SCALE` are the reaches BOTH sides use — they ship as `enemyViewDarkScale` / `enemyViewLitScale` and `client/src/render/fov.ts` reads them. One source, so there is nothing to keep in step. Never give a creature an absolute view distance.
 - **Undergrowth is cover, and it is cover because the picture already said so.**
@@ -80,6 +90,83 @@ sprite folder. It must require **no client change**.
 the wire protocol pair.
 
 ---
+
+## The crowd
+
+- **A HORDE THAT CANNOT KILL YOU FASTER THAN ONE ZOMBIE IS NOT A HORDE, IT IS
+  A PICTURE OF ONE.** For most of this game's life, melee damage was
+  rate-limited PER PLAYER: one hit opened a 0.6s window every other creature
+  whiffed into, so the ceiling was `max(damage) / MELEE_IMMUNITY` dps
+  **regardless of how many were on you**. Thirty-two zombies did exactly as
+  much damage as one, and a body could stand still inside the entire population
+  of a map for 6.7 seconds. That single constant is why the game had no horror
+  in it. Every other lever — spawning, lighting, sound, the sight cone, the
+  director — was decorating a threat that arithmetically could not escalate.
+  - **THE FIX WAS A DELETION, NOT A NUMBER.** The first attempt shrank the
+    window to a floor (0.14s) on the theory that the creature's own cooldown
+    was the real limiter and the shared one was a second limiter stacked on
+    top. Half right, and the half that was wrong is the interesting half: a
+    blocked swing still spends the swinger's cooldown up in `ai.step`, so ANY
+    shared window makes a pack that swings TOGETHER land one blow between them
+    and then reset in lockstep. A pack that walked to you together is
+    synchronised by construction. The window had to stop gating melee entirely,
+    not get smaller.
+  - **AND THE PHASE HAD TO BE SCATTERED**, or the fix produced a different bad
+    game. With every swing landing, a synchronised six delivers 54 damage in one
+    frame and nothing for the rest of the second — a coin flip rather than a
+    fight: you survive the volley untouched or you are deleted by it, and
+    nothing you do in between changes it. One random offset at spawn turns the
+    volley into a STREAM. Same damage per second, spread across the second, so
+    being surrounded is a cost you feel accumulating and can pull out of — and
+    the bites, flinches and hurt sounds become a rhythm instead of one stacked
+    frame of noise.
+  - **THE SHAPE THAT CAME OUT IS THE RIGHT ONE, INCLUDING THE PART THAT GOT
+    EASIER.** A lone zombie now takes ~13s to kill a full-health player, up from
+    6.7 — because it was never the threat, and the old cap was holding the
+    SINGLE creature's damage up to the same ceiling as the crowd's. Two is
+    ~6.6s, three ~4.4s, five ~2.8s, eight ~1.7s. The unit of danger moved from
+    the creature to the SITUATION, which is what the encounter design already
+    assumed and never got to be true.
+  - **THE PLAYER HAS TO BE TOLD BEFORE IT KILLS THEM.** A crowd that can delete
+    you in under two seconds needs a tell, or a death reads as the game cheating
+    rather than as a mistake. The client counts bodies inside `PRESSURE_TILES`
+    of the local player and drives the danger vignette and the heartbeat off it
+    (`Game.stepPressure`), so the screen closes in and the pulse comes up while
+    the pack is still CLOSING. Same two channels low health already used, which
+    is deliberate: one message, two deliveries, and a player with the sound off
+    still gets it.
+
+## The night gets bigger
+
+- **THE FOREST USED TO GET EMPTIER AS THE RUN WENT ON**, and nothing in this
+  module or `enemies.py` had ever heard of the day. The map triples between
+  night one and night five (4 028 tiles -> 12 144) and the quota sextuples, so
+  density fell from 1.49 enemies per 1000 tiles to 0.49. Night five was three
+  times quieter than night one while asking six times the work — which a player
+  reads as padding, because that is what it is.
+  - **THREE NUMBERS WALK WITH THE DAY AND THEY ARE ALL ABOUT PRESSURE**: how
+    many the forest holds (`ENEMY_DAY_POPULATION`), how fast it refills
+    (`ENEMY_DAY_RATE`), and how big a wave is (`ENEMY_DAY_GROUP_TILT`).
+  - **NOT HEALTH AND NOT DAMAGE**, which is the tempting fourth and the wrong
+    one. A zombie with 90 HP on night five is the same encounter taking three
+    times as long, and the player reads that as their gun getting worse — the
+    bullet-sponge trade, where the answer to "make it harder" is "make it
+    slower". Now that a crowd can kill, POPULATION is the difficulty knob: the
+    same zombie is frightening in sixes and was never frightening alone.
+    Scaling stats would also force a per-day `enemyTypes` payload, because the
+    client draws health bars off the catalog — a whole contract bought in
+    exchange for a worse game.
+  - **THE REFILL RATE IS THE ONE THAT CHANGES BEHAVIOUR.** The cap decides how
+    crowded a forest is; the interval decides whether clearing a pocket buys
+    any peace. By night five a wave lands every 1.7s rather than every 2.5, so
+    standing and fighting stops being a way to make ground safe and starts
+    being a way to be surrounded.
+  - **WHAT IS STILL MISSING IS A SECOND SILHOUETTE.** `ENEMY_TYPES` holds
+    exactly one row; the three "variants" are sprites over identical stats. So
+    a run's whole bestiary is learned in the first sixty seconds and nothing
+    new ever walks out of the dark until the Sawyer. Population scaling buys
+    pressure, not surprise, and surprise is the next thing this subsystem owes
+    the game.
 
 ## Design law
 

@@ -9,7 +9,7 @@ recently changed system, when something looks like a regression, before
 modifying anything under *Do not touch*, or when the task asks what to work on
 next. Skip it for a self-contained change to a stable system.
 
-_Last verified: 2026-08-23 against `main` @ `a5b69aa` + the GEAR pass below._
+_Last verified: 2026-08-23 against `main` @ `844686a` + the DIFFICULTY pass below._
 
 ## Current phase
 
@@ -21,7 +21,39 @@ ceremony.
 
 ## Currently working on
 
-- **GEAR JUST LANDED: LÂMINAS, WORN ARMOUR AND THE SHIELD.** Three systems in
+- **THE DIFFICULTY PASS JUST LANDED. The loop was complete and had no
+  pressure in it; this is the pass that gave it some.** Five changes, all with
+  their reasoning written into the owning design docs. The short version of the
+  diagnosis: the game had no failure state, so nothing else could feel
+  dangerous.
+  - **A CROWD CAN KILL YOU NOW** ([`docs/design/enemies.md`](docs/design/enemies.md)
+    § The crowd). Melee was rate-limited per PLAYER, so thirty-two zombies did
+    exactly as much damage as one and a body survived 6.7s inside the whole
+    map's population. `Room.resolve_attack` no longer touches
+    `hurt_immunity`; each creature's own `attack_cooldown` is the only limit,
+    and `spawn_enemy` scatters attack phase so a pack streams damage rather
+    than volleying it. 1 zombie ~13s, 3 ~4.4s, 5 ~2.8s, 8 ~1.7s. The client
+    counts bodies in contact (`Game.stepPressure`) and drives the vignette and
+    the heartbeat off it, so being surrounded is legible before it is lethal.
+  - **BEING HIT COSTS YOU YOUR SPEED**
+    ([`docs/design/player.md`](docs/design/player.md) § Being hit).
+    `Player.stagger`, a clock on the tick row, mirrored in `simulation.ts`.
+    Staggered walking (2.73 tiles/s) barely beats a zombie's 2.6; staggered
+    sprinting still escapes. Stamina is now what decides whether you get out.
+  - **THE NIGHT HAS A CLOCK**
+    ([`docs/design/extraction.md`](docs/design/extraction.md) § The clock).
+    Rolled per night (~3:10–4:20 on night one, +40s a night), announced,
+    counted down top-centre on the HUD, and it closes extraction through the
+    same door the last spent pad uses. It is PRESSURE, not a fail state: the
+    party keeps what they fed in and loses what was still in the bag.
+  - **THE FOREST SCALES WITH THE DAY** (same doc as the crowd, § The night gets
+    bigger). Population, refill rate and wave size all walk with `day`.
+    Deliberately NOT health or damage.
+  - **THE SHELF AND THE CURVE** — the shop draws distinct-first so six tables
+    show six things (it was routinely showing two), and `XP_BASE` went 40 ->
+    110 with extraction now paying xp per point of value delivered.
+
+- **GEAR LANDED BEFORE IT: LÂMINAS, WORN ARMOUR AND THE SHIELD.** Three systems in
   one pass, all documented in the new [`docs/design/gear.md`](docs/design/gear.md).
   Headlines:
   - **The belt's last cell is a BLADE CELL now, not "the knife".** It is still

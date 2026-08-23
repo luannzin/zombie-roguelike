@@ -16,6 +16,11 @@ Nearest contracts: [`server/app/AGENTS.md`](../../server/app/AGENTS.md),
 ## Invariants
 
 - **A level is a token and the machine is the only thing that spends it.** Nothing else in the game consumes a spin.
+- **XP COMES FROM TWO PLACES NOW, AND EXTRACTION IS ONE OF THEM.**
+  `Room._tip_item` pays `XP_PER_EXTRACTION_VALUE` per point of catalog value
+  the platform credited, through `mods.haul` and `mods.xp` exactly as a kill
+  is. Kills being the only source is what made ignoring the pad the fastest way
+  to level.
 - **A level is FREE and gold is the overdraft.** `Room.spin` spends a banked level whenever one is owed and only reaches for `Room.balance` when none is. The price doubles per purchase and resets on the walk into each night's shop.
 - **`Loadout.mods` is the ONLY place a player's numbers diverge from `config.py`.** A site still reading the raw constant is a site where a skill silently does nothing.
 - **The roll happens on the press; the show happens after.** One `spin` event carries the whole four seconds. A result arriving mid-animation is a reel that changes its mind.
@@ -32,6 +37,7 @@ Nearest contracts: [`server/app/AGENTS.md`](../../server/app/AGENTS.md),
 
 | intent | touch |
 | --- | --- |
+| the xp curve, or what pays it | `XP_BASE` / `XP_GROWTH` / `XP_PER_EXTRACTION_VALUE` in `server/app/config.py`, plus `Room._tip_item` and `damage_enemy` |
 | the price of a bought pull | `STORE_SPIN_PRICE` in `server/app/config.py` (the ladder itself is `Room.spin_price`) |
 | add/retune a skill | `server/app/skills.py` + every consumer site above + an icon in `server/tools/make_skills.py` |
 | machine timing | `server/app/machine.py` AND `client/src/game/machine.ts` |
@@ -48,6 +54,35 @@ economy settlement.
 in `server/tools/make_skills.py` in the SAME position -> regenerate
 (`python tools/make_skills.py` from `server/`, which fails if the two lists
 disagree) -> `SKILL_FRAMES` in `client/src/components/hud/Hud.tsx`.
+
+
+## What a level costs
+
+- **THE OPENING WAS FREE AND IT PAID FOR THE WRONG THING.** At `XP_BASE` 40
+  against a zombie's 12 xp, level 2 cost 3.3 zombies and level 5 cost 24 of
+  them cumulatively — one night-one forest, with its 32-body cap and its 2.5s
+  respawns, handed out four or five levels before the party had met anything.
+  Four spins on night one is the machine's entire ceremony spent on somebody
+  who has not yet learned what a skill is for, and it is why the run's back
+  half felt flat: the interesting part of the curve was over before the game
+  had started.
+- **AND KILLS WERE THE ONLY SOURCE.** Extraction paid nothing, quests paid
+  nothing, crates paid nothing. So the curve rewarded the one activity that was
+  already trivial and was blind to the thing a night is actually about — the
+  optimal way to level was to ignore the platform and farm the woods, which is
+  the exact behaviour the night is designed to punish. A system that pays best
+  for doing the thing the rest of the game argues against is a system telling
+  the player the rest of the game is wrong.
+- **110 IS A NIGHT'S WORK AT THE OPENING** — roughly nine zombies, or five plus
+  a pad's worth of extraction. The growth came DOWN (1.4 -> 1.28) at the same
+  time, because the base now carries the weight: 1.4 off a bigger base puts
+  level ten out of reach of a ten-night run, which is the opposite mistake and
+  just as bad.
+- **THE PARITY IS THE POINT.** A night-one quota is 40 catalog value, so
+  clearing it pays 100 xp — about what nine zombies pay. Killing and extracting
+  being worth roughly the same is what makes the choice between them a question
+  about RISK rather than a question about rate. Tuning either number alone
+  re-opens the hole this closed.
 
 ---
 

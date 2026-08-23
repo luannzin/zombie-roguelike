@@ -105,6 +105,19 @@ to the design docs indexed below.
   `client/src/net/protocol.ts` mirrors it.
 - Per-creature stats never enter a snapshot. The wire carries a type key and
   the client resolves it against `welcome.config.enemyTypes`.
+- **MELEE IS RATE-LIMITED BY THE ATTACKER, NEVER BY THE VICTIM.**
+  `Room.resolve_attack` reads `Player.hurt_immunity` and must not set it: a
+  swing blocked by a shared window has already spent the swinger's cooldown up
+  in `ai.step`, so any shared window makes a synchronised pack land one blow
+  between them. `hurt_immunity` belongs to the boss's chop and the respawn
+  grace. See [`docs/design/enemies.md`](../../docs/design/enemies.md) § The crowd.
+- **`Player.stagger` is part of the movement mirror.** It is ticked inside
+  `apply_input` / `applyInput`, not on a room clock — reconciliation replays
+  unacked inputs through that function, and a decay stepped anywhere else
+  replays the body at speeds the server never used.
+- **A night can end two ways and there is one implementation of ending one.**
+  `Room.step_night` reaching zero calls `_close_extraction`, the same door the
+  last spent pad uses. Do not add a second closing path.
 - **A snapshot is one payload for the whole room, serialised once.** Nothing on
   it may differ per recipient: a player's input ack rides on their own row as
   `seq`, not at the top level. Adding a per-socket field puts a `dumps()` per
@@ -238,6 +251,11 @@ table and the gameplay state machine.
   night), and `depart_store()` swaps that for the NEXT night's forest,
   incrementing `day`. All three keep guns, the leftover bag, xp and the party
   balance, and all three obey the same sequence rule.
+- **The director reads the DAY** (`EnemyDirector(spawn_points, day)`), and it
+  scales population, refill rate and wave size only. Creature stats never
+  scale: the client resolves health bars against `welcome.config.enemyTypes`,
+  so a per-day stat means a per-day catalog payload — bought in exchange for a
+  bullet sponge, which is the wrong answer to "make it harder" regardless.
 - Keep the tick O(entities). Anything that scales with map size belongs in a
   cached structure (see `pathing.py`, one field per player shared by the horde).
 - New tuning goes in `config.py` in tiles/seconds, plus a `client_config()` key

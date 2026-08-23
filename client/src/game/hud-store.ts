@@ -499,6 +499,33 @@ export interface HudSnapshot {
    * a row is how a task leaves the screen.
    */
   quests: HudQuest[];
+  /**
+   * The night's countdown, or null on a map that has no clock.
+   *
+   * IT IS THE ONLY DEADLINE IN THE GAME and it is the first one there has ever
+   * been — before it, a night ended when the party decided it had, so patience
+   * was strictly dominant and thoroughness cost nothing. Null in the shop, the
+   * camp and the arena, which is deliberate rather than incidental: the shop is
+   * defined as the place the clock is NOT running, and that only reads if the
+   * clock visibly leaves the screen when you walk in.
+   */
+  night: HudNight | null;
+}
+
+/** The night's countdown, as the HUD needs it. */
+export interface HudNight {
+  /** Seconds left. Counted down client-side and resynced at 5 Hz. */
+  left: number;
+  /** What it was rolled at, for the meter's denominator. */
+  total: number;
+  /**
+   * How the clock should be READ, which is not the same question as how much
+   * time is left — the thresholds are the server's (`nightWarnSeconds` /
+   * `nightPanicSeconds`) and this is them already resolved, so the component
+   * does no arithmetic and every part of the HUD that wants to react to the
+   * night reacts to the same word.
+   */
+  phase: 'calm' | 'warn' | 'panic';
 }
 
 export const EMPTY_HUD: HudSnapshot = {
@@ -530,6 +557,7 @@ export const EMPTY_HUD: HudSnapshot = {
   hotbar: null,
   armor: null,
   quests: [],
+  night: null,
 };
 
 export type HudStore = Store<HudSnapshot>;

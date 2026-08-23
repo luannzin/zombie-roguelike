@@ -33,6 +33,18 @@ export interface MovableState {
    * and this just multiplies. See `Room.sync_block` and `Game.syncBlock`.
    */
   blockSpeed: number;
+  /**
+   * Seconds of drag left from the last blow that connected. Mirror of
+   * `Player.stagger`.
+   *
+   * A CLOCK RATHER THAN A RESOLVED MULTIPLIER, unlike `blockSpeed` above, and
+   * the difference is who can see the decision. The shield is a button both
+   * sides read on the same frame; a stagger is a swing only the server watches
+   * land, so the number TRAVELS — it rides the tick row like `stamina`, gets
+   * snapped on reconcile, and is ticked down here so the replay walks the body
+   * at the speeds the server actually used.
+   */
+  stagger: number;
 }
 
 export function moveDir(input: InputPacket): { dx: number; dy: number } {
@@ -132,6 +144,21 @@ export function stepStamina(
   }
 }
 
+/**
+ * Run the drag from the last blow down, and return what it multiplies by.
+ * Mirror of `step_stagger` in server/app/simulation.py.
+ *
+ * Ticked inside the walk rather than on the render clock for the same reason
+ * `stepStamina` is: reconciliation replays every unacked input through
+ * `applyInput`, so anything that decays with time and changes speed has to
+ * decay in here or the replay moves the body at a speed that never existed.
+ */
+export function stepStagger(state: MovableState, config: GameConfig, dt: number): number {
+  if (state.stagger <= 0) return 1;
+  state.stagger = Math.max(0, state.stagger - dt);
+  return config.hitStaggerScale;
+}
+
 export function applyInput(
   state: MovableState,
   input: InputPacket,
@@ -158,6 +185,12 @@ export function applyInput(
   // shield is still slower than walking without one, which is the whole
   // reason raising it is a decision rather than a posture.
   speed *= state.blockSpeed;
+  // AND THE DRAG IS THE LAST TERM OF ALL, under even the shield. Being hit
+  // takes precedence over every choice the player made about how fast to move,
+  // because the whole point of it is that it is not a choice — a body that
+  // could sprint out of a pack at full speed is a body for which being
+  // surrounded costs nothing.
+  speed *= stepStagger(state, config, dt);
   state.vx = dx * speed;
   state.vy = dy * speed;
 

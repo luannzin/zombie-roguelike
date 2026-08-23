@@ -65,6 +65,9 @@ export class LocalPlayer {
       // Down. A body cannot arrive in a zone already blocking — the shield
       // goes up on a button, and the button is not held across a welcome.
       blockSpeed: 1,
+      // Clear. Nothing has hit this body on a map it has not stood on yet, and
+      // the server clears the drag on every arrival for the same reason.
+      stagger: 0,
     };
     this.hp = initial.hp;
     // A second welcome (forest after camp) rebuilds this object. Sequence is
@@ -101,6 +104,11 @@ export class LocalPlayer {
     // the server will hold a round trip from now.
     if (server.st !== undefined) this.state.stamina = server.st;
     this.state.winded = server.wind ?? false;
+    // AUTHORITATIVE LIKE THE BREATH IS, and absent means zero rather than
+    // means unchanged: the server omits the field the moment the drag runs
+    // out, so treating absence as "keep what I had" would leave a body limping
+    // forever after one hit.
+    this.state.stagger = server.sg ?? 0;
 
     const beforeX = this.state.x;
     const beforeY = this.state.y;

@@ -309,6 +309,31 @@ export interface GameConfig {
   staminaRegenWalk: number;
   staminaRegenRest: number;
   staminaRecover: number;
+  /**
+   * What the walk is multiplied by while a blow's drag is still on the body,
+   * and how long one blow leaves it there. Mirrors `HIT_STAGGER_*` in
+   * server/app/config.py; `stepStagger` in game/simulation.ts is the mirror
+   * that spends it.
+   *
+   * The client needs the SCALE because prediction multiplies by it every
+   * frame. It needs the TIME only to draw with — nothing local ever starts a
+   * stagger, because only the server sees a swing land.
+   */
+  hitStaggerScale: number;
+  hitStaggerTime: number;
+  /**
+   * The night's clock, in seconds: what a first night is worth before jitter,
+   * what each later night adds, and how far either way the roll can land.
+   * Mirrors `NIGHT_LENGTH_*`. The client is told the rolled total on the wire
+   * (`night.total`) — these are here so the HUD can say what a LONG night is
+   * without waiting to have seen one.
+   */
+  nightLengthBase: number;
+  nightLengthPerDay: number;
+  nightLengthJitter: number;
+  /** Where the countdown changes colour, and where it starts pulsing. */
+  nightWarnSeconds: number;
+  nightPanicSeconds: number;
 }
 
 export type LootRarity = 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary';
@@ -611,6 +636,12 @@ export interface PourEvent {
   k: string;
   /** What it paid toward the quota. */
   v: number;
+  /**
+   * What it paid the CARRIER, in xp. Separate from `v` because the same load
+   * answers two different questions — how much closer the pad is to launching,
+   * and how much closer the person who walked it there is to a spin.
+   */
+  xp: number;
   /** Drawn size. Only a condensed core sets it. */
   s?: number;
   /** How many items were already on that deck. The pile's index. */
@@ -1238,6 +1269,14 @@ export interface PlayerState {
    */
   wind?: boolean;
   /**
+   * Seconds of drag left from the last blow that connected — see
+   * `MovableState.stagger`. On the tick row beside the breath and for the same
+   * two reasons: it moves every tick it exists, and every client draws it,
+   * because a staggered body lurches for whoever is looking at it. Omitted at
+   * zero, which is almost always.
+   */
+  sg?: number;
+  /**
    * THE SHIELD IS UP. On the tick row and not the roster because it is a
    * POSE: every client draws a raised shield over every body that has one up,
    * and a five-hertz pose would let a player watch a blow land on a shield
@@ -1655,6 +1694,32 @@ export interface WelcomeMessage {
    * is: the lever names a price the moment somebody stands at it.
    */
   spinPrice?: number;
+  /**
+   * The night's clock, if this map has one. Forest only — the shop, the camp
+   * and the arena all arrive with it absent, which is how the HUD knows to
+   * draw no countdown rather than a stopped one.
+   */
+  night?: NightClock;
+}
+
+/** How long is left of tonight, and how long it was to begin with. */
+export interface NightClock {
+  /** Seconds remaining at the moment the packet left the server. */
+  left: number;
+  /**
+   * What it was rolled at. Constant for a whole night, and the only reason the
+   * HUD can draw a meter — a client holding just the remainder cannot tell a
+   * long night nearly over from a short one just begun.
+   */
+  total: number;
+}
+
+/** The clock crossing a threshold. Once each, per night. */
+export interface NightEvent {
+  /** 1 the warning, 2 the last stretch. Rungs, so a third can be added. */
+  beat: number;
+  /** Seconds left when it fired. */
+  left: number;
 }
 
 export interface SnapshotMessage {
@@ -1737,6 +1802,19 @@ export interface SnapshotMessage {
    * Party-wide like the balance it spends, and present only when it moved.
    */
   spinPrice?: number;
+  /**
+   * THE NIGHT'S CLOCK, and it has three states rather than two.
+   *
+   * An object is a running clock, sent at the roster's cadence (5 Hz) — the
+   * client counts its own seconds down in between, so this is a resync and not
+   * a feed. `false` is the night ENDING, which is the state absence cannot
+   * express: without it a client could not tell a finished night from a
+   * dropped packet and would leave a dead countdown on screen. Absent is
+   * "nothing changed".
+   */
+  night?: NightClock | false;
+  /** The clock crossing a threshold. Juice only; never replayed. */
+  nightEvents?: NightEvent[];
   /**
    * THE SAWYER. Present only on the boss map, and only on ticks he changed —
    * which during a fight is all of them. Absent is not "he is gone": the

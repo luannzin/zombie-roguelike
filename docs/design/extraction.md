@@ -16,6 +16,12 @@ Whole-system map: [`ARCHITECTURE.md`](../../ARCHITECTURE.md).
 
 ## Invariants
 
+- **A NIGHT HAS A CLOCK AND IT CAN END WITHOUT THE PARTY.** `Room.step_night`
+  runs `night_left` down and calls `_close_extraction` at zero — the SAME door
+  the last spent pad uses. There are two ways for a night to end and exactly
+  one implementation of ending one.
+- **The clock is forest-only, and stops on the blackout.** No countdown in the
+  shop, the camp or the arena; none while `arriving` puppets the party in.
 - **One awake pad at a time.** `Room._awake_rift` refuses a second console.
 - **A pour is server-clocked.** One item leaves the pocket per `rift.POUR_BEAT`; the client draws what the server already spent. Never empty a pocket in one call.
 - **A pour is a commitment.** Nothing but damage ends it: movement keys are acked and ignored, and there is no ceiling — the press tips the WHOLE bag in, on either side of the quota.
@@ -29,11 +35,53 @@ Whole-system map: [`ARCHITECTURE.md`](../../ARCHITECTURE.md).
 - `Room._free_deck` vs SPENT — two separate beats, seconds apart, on purpose.
 - `entrance.carve` / `open_exit` — `flare` selects the depth AND the connectivity question (`_walkable_connected`, not `maps.count_reachable`).
 - `_close_extraction` ordering: sweep, egress carve, blackout, `hunt_all` are one beat.
+- `snapshot.night` has THREE states — a dict, `false` (the night ended), and
+  absent (nothing changed). Collapsing `false` into absent leaves a dead
+  countdown on every client's HUD.
+
+
+## The clock
+
+- **THERE WAS NO DEADLINE IN THIS GAME AND THAT IS WHY IT HAD NO TENSION.** The
+  blackout only ever fired when the party spent the LAST pad, so a night ended
+  when the players decided it had. Nothing cost time, which means patience was
+  strictly dominant: the optimal line was always to clear the entire forest
+  slowly, because waiting was free and every crate was pure profit. A survival
+  game in which the best play is to take your time is a game with no pressure
+  in it, however dangerous the monsters are.
+- **IT IS PRESSURE, NOT A FAIL STATE, AND THAT DISTINCTION IS THE DESIGN.** At
+  zero the pads collapse and the exit opens: the party KEEPS every point already
+  fed in and loses only what was still in the bag on the way to it. So running
+  late costs a poor night — no gun at the next shop, maybe no spin — which is a
+  loss they feel for a whole day and never a run they have to restart. The
+  decision it creates is the one the loop was missing, and it is a good one:
+  one more crate, or start walking.
+- **IT IS ROLLED, AND THAT IS WHY IT IS ON THE HUD AT ALL.** A fixed four
+  minutes becomes a habit after two runs — players stop reading the clock and
+  start knowing it. `NIGHT_LENGTH_JITTER` means the answer to "how long have I
+  got" is a number that has to be LOOKED AT, and a number the player looks at
+  is a number applying pressure. Same reason the figure counts real seconds
+  instead of rounding to the minute.
+- **THE LENGTH GROWS SLOWER THAN THE WORKLOAD, ON PURPOSE.** The quota
+  sextuples across ten nights and the clock barely doubles
+  (`NIGHT_LENGTH_PER_DAY`). That widening gap IS the difficulty curve — no
+  single night is impossible and every night is tighter than the one before,
+  which is the shape the run never had when the only thing scaling was how far
+  the party had to walk.
+- **THE WARNINGS NAME THE STAKE, NOT THE TIME.** The card at 60s and 20s does
+  not say "1:00" — that figure is already on screen, and a card repeating it
+  would be the game reading its own interface aloud. It says what happens at
+  zero: the fendas close, and whatever is still in the bag was carried for
+  nothing. Announcing the CONSEQUENCE is what turns a number into a decision.
+- **AND THE CLOCK LEAVES THE SCREEN IN THE SHOP.** That is not an omission —
+  the shop is defined as the place the clock is not running, and that only
+  reads if the countdown visibly goes away when the party walks in.
 
 ## Change surface
 
 | intent | touch |
 | --- | --- |
+| the night's length or its beats | `NIGHT_LENGTH_*` / `NIGHT_WARN_SECONDS` / `NIGHT_PANIC_SECONDS` in `server/app/config.py`; `Room._roll_night` / `step_night`; `client/src/components/hud/NightClock.tsx` |
 | pad timing, quota, overfeed | `server/app/rift.py`, `server/app/config.py` |
 | pour mechanics | `server/app/room.py` (`_begin_pour`/`_step_pour`/`_tip_item`), `server/app/inventory.py` |
 | quest rows | `server/app/quests.py`, `server/app/room.py` (`offer_*`/`step_quests`) |

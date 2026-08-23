@@ -16,6 +16,7 @@ from .config import (
     CARRY_SLOW_AT_MAX,
     CARRY_SLOW_FLOOR,
     CARRY_SLOW_START,
+    HIT_STAGGER_SCALE,
     MOVE_SPEED,
     PLAYER_HALF_HEIGHT,
     PLAYER_HALF_WIDTH,
@@ -99,6 +100,24 @@ def step_stamina(player: Player, run: bool, moving: bool, dt: float) -> None:
         player.winded = False
 
 
+def step_stagger(player: Player, dt: float) -> float:
+    """Run the drag from the last blow down, and return what it multiplies by.
+
+    A CLOCK, TICKED IN THE WALK, and it lives here rather than in the room's
+    tick for exactly one reason: prediction. The client replays unacked inputs
+    through `apply_input` after every reconcile, so anything that decays with
+    time and changes speed has to decay inside the same function, or the replay
+    walks the body at a speed the server never used. Same shape as
+    `step_stamina` above and for the same reason.
+
+    Mirror: client/src/game/simulation.ts.
+    """
+    if player.stagger <= 0.0:
+        return 1.0
+    player.stagger = max(0.0, player.stagger - dt)
+    return HIT_STAGGER_SCALE
+
+
 def apply_input(player: Player, cmd: InputCmd, world: TileMap, dt: float) -> None:
     dx, dy = move_dir(cmd)
     moving = dx != 0.0 or dy != 0.0
@@ -115,6 +134,12 @@ def apply_input(player: Player, cmd: InputCmd, world: TileMap, dt: float) -> Non
     # reason raising it is a decision rather than a posture. Resolved before
     # this runs; see `Player.block_speed`.
     speed *= player.block_speed
+    # AND THE DRAG IS THE LAST TERM OF ALL, under even the shield. Being hit
+    # takes precedence over every choice the player made about how fast to
+    # move, because the entire point of it is that it is not a choice — a body
+    # that could sprint out of a pack at full speed is a body for which being
+    # surrounded costs nothing. See `HIT_STAGGER_SCALE`.
+    speed *= step_stagger(player, dt)
     player.vx = dx * speed
     player.vy = dy * speed
 

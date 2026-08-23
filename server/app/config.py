@@ -310,13 +310,64 @@ VISION_LANTERN_DIST = TILE_SIZE * VISION_LANTERN_TILES
 # units and shipped to the client in `welcome.config.enemyTypes`. Only the rules
 # that apply to *every* enemy live below.
 
-# Damage a player can take from melee is rate-limited PER PLAYER, not per
-# attacker. Without this, N zombies in contact deal N x damage on the same tick
-# and a pack is an instant death sentence no matter how well you play. One hit
-# opens a window during which further melee whiffs harmlessly, so the ceiling is
-# `max(enemy damage) / MELEE_IMMUNITY` dps regardless of how many are on you.
-MELEE_IMMUNITY = 0.6         # seconds of melee i-frames after being hit
+# THE I-FRAME IS A FLOOR, NOT A SHIELD, and that is the whole difference
+# between a horde and a crowd.
+#
+# It used to be 0.6s, which was sized to make a pack survivable: one hit opened
+# a window every other zombie whiffed into, so the ceiling was
+# `max(enemy damage) / MELEE_IMMUNITY` dps REGARDLESS OF HOW MANY WERE ON YOU.
+# Thirty-two zombies did exactly as much damage as one. That number is the
+# reason the game had no horror in it — the crowd on screen was decoration,
+# because arithmetically it was a single body wearing thirty-two sprites, and
+# no amount of spawning, lighting or sound design can make a threat out of
+# something that cannot hurt you faster than its smallest unit.
+#
+# A pack is now rate-limited PER ATTACKER, and it always was: every creature
+# carries its own `EnemyType.attack_cooldown` (1.1s on a zombie), so a body
+# already swings at its own cadence and the shared window was a SECOND limiter
+# stacked on top of the real one. What is left here is only the floor that
+# stops two of them landing on the same tick — enough that the hurt flash, the
+# shove and the sound each get a frame to read, and nothing more. Damage now
+# scales with how many things are actually touching you, which is what makes
+# being surrounded a thing that happens to you rather than a picture of one.
+#
+#     1 zombie      8 dps   ~12s     a chore, exactly as before
+#     3 zombies    25 dps    ~4s     a fight you are losing
+#     5 zombies    41 dps    ~2.4s   the moment you have to leave
+#     8           65 dps    ~1.5s    surrounded is fatal
+#
+# AND SHRINKING IT WAS NOT ENOUGH — IT HAD TO STOP GATING MELEE ALTOGETHER.
+# A blocked swing still spends the swinger's cooldown, so ANY shared window
+# makes a pack that swings together pay for one hit between them. A pack that
+# walked to you together is synchronised by construction, so the window was
+# still collapsing the exact case it existed for, at any size. `resolve_attack`
+# no longer sets it; `Room.spawn_enemy` scatters each body's attack phase so
+# the pack's damage arrives as a stream rather than a volley.
+#
+# WHAT STILL USES IT are the two things a shared window was always right for,
+# and neither is a rate limit: the boss's chop (something enormous just hit
+# you — the small things do not get to pile onto that frame) and the grace
+# below. Both SET it; regular melee only reads it.
+MELEE_IMMUNITY = 0.14        # the boss's suppression window, not a melee gate
 RESPAWN_IMMUNITY = 1.5       # longer window on respawn, so you can walk away
+
+# BEING HIT COSTS YOU THE ONE THING THAT ALWAYS WORKED: LEAVING.
+#
+# A player walks at 4.4 tiles/s and sprints at 6.8 against a zombie's 2.6, so
+# disengaging was free, instant and always correct — every situation in the
+# game had the same answer and it was "walk away". Horror needs the exit to
+# close sometimes, and this is the cheapest honest way to close it: a blow that
+# lands puts a brief drag on the body, and the drag REFRESHES, so a crowd that
+# is landing hits keeps you at walking pace inside it.
+#
+# THE NUMBER IS PICKED AGAINST THE ZOMBIE'S OWN SPEED, not by feel. Staggered
+# walking is 4.4 * 0.62 = 2.7 tiles/s — a hair over their 2.6, so walking out of
+# a pack that is connecting is *technically* possible and practically hopeless.
+# Staggered sprinting is 4.2, which still outruns them: the escape is real, it
+# just costs the bar. That is the trade the whole system now turns on — you get
+# out on stamina, and stamina is the resource you spent getting into it.
+HIT_STAGGER_TIME = 0.5       # seconds of drag one connecting blow leaves
+HIT_STAGGER_SCALE = 0.62     # what the walk is multiplied by while it lasts
 
 # Gun hits slow then pin. Damage adds to a 0..1 meter; at STOP they plant.
 # A Glock (~7) is a hitch; a burst stacks into a stop. A Deagle (~24) almost
@@ -333,11 +384,48 @@ ENEMY_STAGGER_HOLD_MAX = 1.05
 ENEMY_STAGGER_DECAY = 1.6
 
 # Population. The cap scales with the number of living players so a solo run is
-# not a swarm and a full room is not empty.
+# not a swarm and a full room is not empty — and WITH THE DAY, which it did not
+# used to, and which was the second reason the game got easier as it went on.
+#
+# The forest triples between night one and night five (4 028 tiles -> 12 144,
+# see `mapgen.size_for_pads`) and the night's quota sextuples, but nothing in
+# `ai.py` or `enemies.py` had ever heard of the day. So the density fell off a
+# cliff exactly as the party was asked to spend longer out there:
+#
+#     night 1   76x53    6 enemies per player   1.49 per 1000 tiles
+#     night 3  108x75    6                      0.74
+#     night 5+ 132x92    6                      0.49
+#
+# Night five was three times EMPTIER than night one. The walk got longer, the
+# quota got bigger, and the forest got quieter — which reads to a player as
+# padding, because that is what it is.
 ENEMY_MAX_PER_PLAYER = 6
 ENEMY_MAX_TOTAL = 32
 ENEMY_SPAWN_INTERVAL = 2.5   # seconds between spawn attempts
 ENEMY_FIRST_SPAWN_DELAY = 4.0
+
+#: What each night adds to the population ceiling, as a fraction of the first
+#: night's. Linear rather than exponential: this multiplies a cap that already
+#: multiplies by the party, and two compounding curves is how a day-nine forest
+#: becomes a slideshow.
+#:
+#: A THIRD A NIGHT IS WHAT HOLDS DENSITY ROUGHLY FLAT ACROSS THE MAP GROWTH,
+#: and holding it flat is the FLOOR of this fix, not the goal. The map triples
+#: by night five, so +33%/night lands night five at 2.3x the bodies on 3x the
+#: ground — still slightly thinner per tile, but the party is stronger by then
+#: and a crowd is now genuinely dangerous (see `MELEE_IMMUNITY`), so the same
+#: number of zombies is a harder night than it was.
+ENEMY_DAY_POPULATION = 0.33
+#: And they arrive FASTER. The cap says how many the forest holds; this says
+#: how quickly it refills after a fight, which is what decides whether a party
+#: can clear a pocket and then work in peace. By night five a wave lands every
+#: 1.5s rather than every 2.5, so standing and fighting stops being a way to
+#: make the map safe and becomes a way to be surrounded.
+ENEMY_DAY_RATE = 0.11
+#: The floor under the interval however long a run goes. Below this the
+#: director is spawning faster than a group can walk out of its landing spot,
+#: which stacks bodies on the anchor tile instead of making a wave.
+ENEMY_SPAWN_INTERVAL_MIN = 1.1
 
 # Spawns land in a ring around a random living player: far enough not to appear
 # in your face, close enough that they actually reach you.
@@ -351,6 +439,14 @@ ENEMY_SEPARATION_TILES = 0.75
 # before it decides about you. Weights are relative, matched index for index.
 ENEMY_GROUP_SIZES = (1, 2, 3, 4)
 ENEMY_GROUP_WEIGHTS = (4.0, 3.0, 2.0, 1.5)
+#: How much the day tilts those weights toward the BIG end. The size of the
+#: group you meet is the difference between an obstacle and an encounter now
+#: that a crowd can kill — one shambler is a chore at any point in a run, and
+#: four arriving together on night eight is the game asking a question. Applied
+#: as a multiplier on each weight raised to its own index, so night one is
+#: untouched and later nights bend the same curve rather than switching to a
+#: different table.
+ENEMY_DAY_GROUP_TILT = 0.16
 # How far apart a group's members land, in tiles. They wander around their OWN
 # landing spot afterwards, so this is also roughly how loose the pack stays.
 ENEMY_GROUP_SPREAD_TILES = 2.5
@@ -524,12 +620,86 @@ ENEMY_ALERT_SHARE_DIST = TILE_SIZE * ENEMY_ALERT_SHARE_TILES
 ENEMY_GLARE_DIST = VISION_LANTERN_DIST * ENEMY_GLARE_REACH
 SHOT_NOISE_DIST = TILE_SIZE * SHOT_NOISE_TILES
 
+# --- the night's clock -------------------------------------------------------
+# A NIGHT NOW ENDS WHETHER OR NOT THE PARTY IS FINISHED, and before this there
+# was no clock in the game at all.
+#
+# The blackout — lanterns dead, exit carved, the whole map hunting — only ever
+# fired when the party spent the LAST pad (`Room._close_extraction`). Nothing
+# else ended a night, which meant thoroughness was free: the optimal play was
+# always to clear the entire forest slowly, because waiting cost nothing and
+# every crate was pure profit. A survival game in which patience is strictly
+# dominant is a game with no tension in it, however dangerous the monsters are.
+#
+# IT IS PRESSURE, NOT A FAIL STATE, and the distinction is the whole design.
+# When the clock runs out the pads collapse and the exit opens: the party keeps
+# every point they already fed in and loses everything they were still carrying
+# toward it. So the cost of running late is going home POOR — no gun this shop,
+# maybe no spin — which is a real loss the party feels for a whole night
+# without ever being a run they have to restart. The decision the clock creates
+# is the one the game was missing: one more crate, or start walking.
+#
+#: The first night's length before jitter. Roughly four minutes: long enough to
+#: find a pad, fill it and get out at a walk, short enough that a detour is a
+#: decision rather than a formality.
+NIGHT_LENGTH_BASE = 225.0
+#: What each night adds. DELIBERATELY SLOWER THAN THE WORKLOAD GROWS — the
+#: quota sextuples across ten nights and the clock barely doubles, so the
+#: squeeze tightens every night without any single one becoming impossible.
+#: That widening gap is the difficulty curve the game did not have.
+NIGHT_LENGTH_PER_DAY = 40.0
+#: Rolled onto every night, either way. It exists so the answer to "how long
+#: have I got" is a number the party READS rather than one they memorised after
+#: two runs — "3:32" is information, "always 4:00" is a habit. Also why the
+#: HUD clock counts real seconds instead of rounding to the minute.
+NIGHT_LENGTH_JITTER = 35.0
+#: When the marquee stops being furniture: the clock takes its warning colour
+#: and the party gets told once, out loud.
+NIGHT_WARN_SECONDS = 60.0
+#: The last stretch. The clock pulses, the card comes back and the mix goes
+#: with it — see the client's `nightPhase`.
+NIGHT_PANIC_SECONDS = 20.0
+
+
 # --- progression -------------------------------------------------------------
 # Levels are derived from total xp by the server and sent already split into
 # (level, xp into level, xp needed) so the client never re-implements the curve.
-XP_BASE = 40                 # xp required for level 2
-XP_GROWTH = 1.4              # each level costs this much more than the last
+#
+# THE OPENING WAS FREE AND IT PAID FOR THE WRONG THING.
+#
+# At XP_BASE 40 against a zombie's 12 xp, level 2 cost 3.3 zombies and level 5
+# cost 24 of them CUMULATIVELY — one night-one forest, with its 32-body cap and
+# its 2.5s respawns, handed out four or five levels before the party had met
+# anything. Four spins on night one is the machine's whole ceremony spent on a
+# player who has not yet learned what a skill is for.
+#
+# And kills were the ONLY source. Extraction paid nothing, quests paid nothing,
+# crates paid nothing — so the curve rewarded the one activity that was already
+# trivial and was blind to the thing a night is actually about. A level should
+# be what surviving a night buys, not what four zombies do.
+#
+# 110 is a night's work at the opening: roughly nine zombies, or five plus a
+# pad's worth of `XP_PER_EXTRACTION_VALUE`. The growth is GENTLER than it was
+# (1.4 -> 1.28) because the base carries the weight now — 1.4 off a bigger base
+# put level ten out of reach of a ten-night run, which is the opposite mistake.
+XP_BASE = 110                # xp required for level 2
+XP_GROWTH = 1.28             # each level costs this much more than the last
 MAX_LEVEL = 30
+
+#: Xp per point of catalog value fed into a platform, split among nobody — the
+#: player who loaded it gets it.
+#:
+#: EXTRACTION HAS TO PAY XP OR THE CURVE IS LYING ABOUT WHAT THE GAME IS. Every
+#: other system in this run points at the pad: the quota, the money, the quests,
+#: the whole third act of a night. Having it pay zero progression meant the
+#: optimal way to level was to ignore the platform and farm the woods, which is
+#: the exact behaviour the night is designed to punish.
+#:
+#: A night-one quota is 40 value, so clearing it is 100 xp — a level's worth on
+#: its own, and roughly what nine zombies pay. That parity is the point: killing
+#: and extracting should be worth about the same, so the choice between them is
+#: about risk rather than about rate.
+XP_PER_EXTRACTION_VALUE = 2.5
 
 # --- dark gold (authored in tiles) ------------------------------------------
 # The purple coin, and the PLAYER's own currency — see `coins.py`. A creature's
@@ -1014,4 +1184,15 @@ def client_config() -> dict:
         "staminaRegenWalk": STAMINA_REGEN_WALK,
         "staminaRegenRest": STAMINA_REGEN_REST,
         "staminaRecover": STAMINA_RECOVER,
+        # Prediction multiplies by the scale every frame it is set; the time is
+        # for drawing only, because nothing client-side ever starts a stagger.
+        "hitStaggerScale": HIT_STAGGER_SCALE,
+        "hitStaggerTime": HIT_STAGGER_TIME,
+        # The night's clock. The ROLLED length rides the wire per night; these
+        # are the shape of the roll, so the HUD knows what long looks like.
+        "nightLengthBase": NIGHT_LENGTH_BASE,
+        "nightLengthPerDay": NIGHT_LENGTH_PER_DAY,
+        "nightLengthJitter": NIGHT_LENGTH_JITTER,
+        "nightWarnSeconds": NIGHT_WARN_SECONDS,
+        "nightPanicSeconds": NIGHT_PANIC_SECONDS,
     }

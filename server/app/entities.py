@@ -198,6 +198,18 @@ class Player:
     #: same place — the frame the button is read — and the movement code just
     #: multiplies.
     block_speed: float = 1.0
+    #: Seconds of drag left from the last blow that connected. While it is
+    #: above zero the walk is multiplied by `HIT_STAGGER_SCALE`.
+    #:
+    #: A CLOCK RATHER THAN A RESOLVED MULTIPLIER, unlike `block_speed` beside
+    #: it, and the difference is who owns the decision. The shield is decided
+    #: by a button both sides can read on the frame it is pressed; a stagger is
+    #: decided by a swing only the server can see land, so the number has to
+    #: TRAVEL. It rides the tick row like `stamina` does, gets snapped on
+    #: reconcile, and both `simulation.py` and `simulation.ts` tick it down the
+    #: same way — which means the local body feels the drag about a round trip
+    #: after the blow, and then predicts the rest of it exactly.
+    stagger: float = 0.0
 
     # server bookkeeping (never sent verbatim)
     inputs: deque = field(default_factory=deque)
@@ -306,6 +318,12 @@ class Player:
             # under the health bar over every body — not only its own.
             "st": round(self.stamina, 1),
         }
+        # THE DRAG, and it is on the tick row for the same two reasons the
+        # breath is: it moves every tick it exists, and every client draws it —
+        # a staggered body lurches whoever is looking at it. Omitted when zero,
+        # which is almost always.
+        if self.stagger > 0.0:
+            row["sg"] = round(self.stagger, 2)
         # THE SHIELD IS UP, and it is on the TICK row rather than the roster
         # because it is a POSE: every client draws a raised shield over every
         # body that has one up, and a five-hertz pose would let a player watch

@@ -87,6 +87,13 @@ from .config import (
     MAX_HP,
     MAX_INPUT_QUEUE,
     MAX_INPUTS_PER_TICK,
+    HIT_STAGGER_TIME,
+    XP_PER_EXTRACTION_VALUE,
+    NIGHT_LENGTH_BASE,
+    NIGHT_LENGTH_JITTER,
+    NIGHT_LENGTH_PER_DAY,
+    NIGHT_PANIC_SECONDS,
+    NIGHT_WARN_SECONDS,
     MELEE_IMMUNITY,
     PLAYER_HALF_HEIGHT,
     PLAYER_HALF_WIDTH,
@@ -201,6 +208,18 @@ class Room:
         #: one costs 100 whoever is standing at the lever.
         self._spins_bought = 0
         self._spin_price_dirty = False
+        #: Seconds left of tonight, or None off a forest map. THE ONLY CLOCK
+        #: IN THE GAME — see `_roll_night` and `step_night`. `None` rather than
+        #: `inf` because it is what the wire carries, and a HUD with no clock
+        #: on it is a different thing from a HUD with an empty one.
+        self.night_left: float | None = None
+        #: What it was rolled at, so the client can draw a meter rather than
+        #: only a number. Sent once per night on the zone's own payload.
+        self.night_total: float | None = None
+        self._night_dirty = False
+        #: Which warning has already fired. A beat that re-announced itself
+        #: every tick under the threshold would be a card that never leaves.
+        self._night_beat = 0
         #: The shop's tables. Empty on every map that is not the store.
         self.stands: list[Stand] = []
         self._stands_dirty = False
@@ -218,7 +237,7 @@ class Room:
         self._balance_dirty = False
         self.corpses: dict[str, Corpse] = {}
         self.sockets: dict[str, object] = {}
-        self.director = EnemyDirector(self.spawn_points)
+        self.director = EnemyDirector(self.spawn_points, self.day)
         self.navigator = Navigator(self.world)
         self.tick = 0
         self.shot_events: list[dict] = []
@@ -253,6 +272,10 @@ class Room:
         #: the roll is already decided, and every client in the glade flies the
         #: reels, the eject and the settle off it plus `config.machine`.
         self.spin_events: list[dict] = []
+        #: The night's clock crossing a threshold. Juice only — the countdown
+        #: itself rides `snapshot.night`, and this is the one frame the client
+        #: is allowed to shout about it.
+        self.night_events: list[dict] = []
         #: Seconds left on the cabinet's own ceremony. ONE machine, one lever:
         #: a second player pulling into somebody else's spin would have to
         #: interrupt an animation everybody in the glade is already watching.
@@ -505,6 +528,7 @@ class Room:
             blackout=self.blackout,
             balance=self.balance,
             spin_price=self.spin_price,
+            night=self.night_payload(),
         )
 
     def hello_payload(self, player: Player) -> dict:
@@ -1301,11 +1325,30 @@ class Room:
         # would make two players carrying the same ring disagree about it.
         value = round(slot.unit_value() * player.skills.mods.haul)
         target.feed(value)
+        # AND THE PLATFORM PAYS XP, which it did not use to and which was one
+        # of the two reasons the curve was lying. Kills were the only source in
+        # the game, so the fastest way to level was to ignore the pad and farm
+        # the woods — the exact behaviour a night is built to punish. It is
+        # paid PER UNIT rather than on the launch for the same reason the quota
+        # is: a pour that gets interrupted at eight items out of ten still
+        # happened, and the player who carried them still walked there.
+        #
+        # It rides `mods.haul` because it is measured off what the platform
+        # CREDITED, not off the catalog: a scavenger's eye makes a load worth
+        # more to the quota and it should be worth more to the man carrying it.
+        # `mods.xp` still applies on top, exactly as it does on a kill.
+        gained = max(1, round(value * XP_PER_EXTRACTION_VALUE * player.skills.mods.xp))
+        player.xp += gained
+        self._sync_spins(player)
         row = {
             "by": player.id,
             "r": target.id,
             "k": slot.key,
             "v": value,
+            # What the carry was worth to the CARRIER. Separate from `v`, which
+            # is what the quota moved by — the same load answers two different
+            # questions and the HUD shows both.
+            "xp": gained,
             "n": target.cargo,
             "x": round(player.x, 1),
             "y": round(player.y + PLAYER_HALF_HEIGHT, 1),
@@ -1419,6 +1462,83 @@ class Room:
         )
         self._loot_dirty = True
 
+    # --- the night's clock ---------------------------------------------------
+    def _roll_night(self) -> None:
+        """Set tonight's length. Called once, on the map that starts a night.
+
+        ROLLED RATHER THAN FIXED, and the jitter is the whole reason the number
+        is on the HUD at all. A constant four minutes becomes a habit after two
+        runs — the party stops reading the clock and starts knowing it. "3:47"
+        has to be looked at, and a thing the player looks at is a thing that is
+        applying pressure. It is announced on arrival for the same reason.
+
+        FOREST ONLY. The shop has no clock because the shop is the place the
+        clock is not running, and the arena has none because the fight is its
+        own timer; a countdown over the Sawyer would be two things asking for
+        the same attention.
+        """
+        if self.zone.kind != zones.KIND_FOREST:
+            self.night_left = None
+            self.night_total = None
+            self._night_beat = 0
+            self._night_dirty = True
+            return
+        span = NIGHT_LENGTH_BASE + NIGHT_LENGTH_PER_DAY * max(0, self.day - 1)
+        span += random.uniform(-NIGHT_LENGTH_JITTER, NIGHT_LENGTH_JITTER)
+        self.night_total = max(NIGHT_LENGTH_JITTER, round(span, 1))
+        self.night_left = self.night_total
+        self._night_beat = 0
+        self._night_dirty = True
+
+    def night_payload(self) -> dict | None:
+        """`{left, total}`, or None on a map with no clock.
+
+        BOTH NUMBERS, because the HUD draws a meter as well as a figure and a
+        client that only knew the remainder could not tell a long night nearly
+        over from a short one just begun. `total` never changes within a night,
+        so it is the cheapest possible way to buy the client a denominator.
+        """
+        if self.night_left is None or self.night_total is None:
+            return None
+        return {"left": round(self.night_left, 1), "total": round(self.night_total, 1)}
+
+    def step_night(self, dt: float) -> None:
+        """Run the clock down and close the night when it lands on zero.
+
+        IT DOES NOT TICK WHILE THE PARTY IS STILL WALKING IN. `arriving` is the
+        corridor cinematic — bodies puppeted onto the mouth of the map with
+        input locked — and charging somebody for seconds they could not act in
+        is the cheapest kind of unfair. Same reason it stops the moment the
+        blackout starts: after that the clock has already done its job and the
+        run home should not be counting down to anything.
+        """
+        if self.night_left is None or self.blackout or self.arriving or self.departing:
+            return
+        self.night_left = max(0.0, self.night_left - dt)
+
+        # The two beats, each fired ONCE. `_night_beat` is a rung rather than a
+        # bool because there are two of them and a third is likely.
+        beat = 0
+        if self.night_left <= NIGHT_PANIC_SECONDS:
+            beat = 2
+        elif self.night_left <= NIGHT_WARN_SECONDS:
+            beat = 1
+        if beat > self._night_beat:
+            self._night_beat = beat
+            self._night_dirty = True
+            self.night_events.append({"beat": beat, "left": round(self.night_left, 1)})
+
+        if self.night_left <= 0.0:
+            # THE SAME DOOR THE LAST PAD USES. The clock running out and the
+            # party finishing the job are the same EVENT — lanterns out, exit
+            # carved, everything still on the ground swept — and they have to
+            # be, or there are two ways for a night to end and only one of them
+            # gets maintained. What differs is only what the party is holding
+            # when it happens, which is the entire point of the mechanic.
+            self.night_left = None
+            self._night_dirty = True
+            self._close_extraction()
+
     def _close_extraction(self) -> None:
         """Every pad gone: the exit opens and the night hunts.
 
@@ -1434,6 +1554,13 @@ class Room:
         self._begin_blackout()
         self._clear_loot()
         self.offer_exit_quest()
+        # AND THE CLOCK STOPS, whichever of the two ended the night. A party
+        # that cleared every pad with a minute to spare has beaten the night;
+        # leaving the countdown running over their sprint home would be the
+        # game still threatening them with a deadline they already met.
+        if self.night_left is not None:
+            self.night_left = None
+            self._night_dirty = True
 
     def _clear_loot(self) -> None:
         """Sweep every drop still lying on this map. The run home is a RUN.
@@ -1998,6 +2125,10 @@ class Room:
         self._slots = {}
         self.zone = zone
         self.world = world
+        # TONIGHT'S LENGTH IS ROLLED WITH THE MAP, because it is a property of
+        # the night and a night is a map. Self-guarding on the zone: the shop
+        # and the arena come out of here with no clock at all.
+        self._roll_night()
         self.navigator = Navigator(self.world)
         self.enemies.clear()
         self.coins.clear()
@@ -2007,6 +2138,7 @@ class Room:
         self.crate_break_events = []
         self.pour_events = []
         self.spin_events = []
+        self.night_events = []
         self.boss = None
         self.boss_events = []
         self._boss_dirty = False
@@ -2027,7 +2159,7 @@ class Room:
         self._sync_ammo_boxes()
         self._load_entrance()
         self._rebuild_spawns()
-        self.director = EnemyDirector(self.spawn_points)
+        self.director = EnemyDirector(self.spawn_points, self.day)
         self._seed_nests()
         self._load_boss()
         self.begin_arrive()
@@ -2041,6 +2173,7 @@ class Room:
             player.alive = True
             player.respawn_timer = 0.0
             player.hurt_immunity = 0.0
+            player.stagger = 0.0
             slot = self._slots.get(player.id)
             if slot is not None:
                 player.x, player.y = slot
@@ -2116,6 +2249,7 @@ class Room:
         # the zone to find out whether to do it.
         if self._machine_busy > 0.0:
             self._machine_busy = max(0.0, self._machine_busy - dt)
+        self.step_night(dt)
         self.step_players(dt)
         self.step_seal(dt)
         self.step_quests()
@@ -2482,7 +2616,7 @@ class Room:
             self._entrance_dirty = True
             self._sync_entrance_payload()
             self._rebuild_spawns()
-            self.director = EnemyDirector(self.spawn_points)
+            self.director = EnemyDirector(self.spawn_points, self.day)
             # The way back closing is the moment either zone gets a job. In the
             # forest that is finding the pads; in the shop it is the doorway at
             # the far end, which has been standing open the whole time and now
@@ -2640,6 +2774,22 @@ class Room:
     def spawn_enemy(self, enemy_type: EnemyType, x: float, y: float) -> Enemy:
         self._enemy_id += 1
         enemy = Enemy(id=f"e{self._enemy_id}", type=enemy_type, x=x, y=y)
+        # A PACK MUST NOT SWING IN LOCKSTEP, and without this it does.
+        #
+        # Creatures arrive as a GROUP, walk to you together and come into reach
+        # on the same tick, so their cooldowns run in phase for the rest of
+        # their lives. Now that every one of those swings lands (see
+        # `resolve_attack`), a synchronised six delivers 54 damage in one frame
+        # and then nothing at all for a second — which is a slot machine, not a
+        # fight: you either survive the volley untouched or you are deleted by
+        # it, and no play in between changes the outcome.
+        #
+        # One random offset at birth turns that volley into a STREAM. Same
+        # total damage per second, spread across the second, so being surrounded
+        # is a rising cost you can feel accumulating and pull out of — and the
+        # bites, the flinches and the hurt sound become a rhythm instead of one
+        # stacked frame of noise.
+        enemy.attack_cooldown = random.uniform(0.0, enemy_type.attack_cooldown)
         dress(enemy)
         self.enemies[enemy.id] = enemy
         if self.panic:
@@ -2700,6 +2850,11 @@ class Room:
             # already applied) and this path only refreshes the shared one so
             # the party is not chopped and bitten on the same frame.
             player.hurt_immunity = max(player.hurt_immunity, MELEE_IMMUNITY)
+            # HIS BLOWS DRAG TOO. A bar that size connecting and leaving the
+            # body's footwork untouched would make him the one thing in the
+            # game you can walk away from mid-combo — and his whole fight is
+            # built on committing to a dodge before the swing lands.
+            player.stagger = HIT_STAGGER_TIME
             self.damage_player(player, damage, None, sx, sy)
             self.boss_events.append({
                 "kind": "hurt",
@@ -2862,9 +3017,32 @@ class Room:
     def resolve_attack(self, attack: ai.Attack) -> None:
         """Apply one melee swing, honouring the victim's i-frames.
 
+        THE RATE LIMIT IS THE ATTACKER'S OWN, AND IT IS THE ONLY ONE. Every
+        creature carries `EnemyType.attack_cooldown` (1.1s on a zombie) and
+        `ai.step` spends it to produce exactly one `Attack` per creature per
+        cycle — so the crowd is ALREADY rate-limited, per body, by the thing
+        that should be doing it. This no longer touches `hurt_immunity`, and
+        that one deletion is the whole of the fix.
+
+        WHY SHRINKING THE SHARED WINDOW WAS NOT ENOUGH, because it is not
+        obvious and it cost a rewrite to find out. A blocked swing still spends
+        the swinger's cooldown up in `ai.step` — the enemy has committed either
+        way. So any shared window at all makes a pack that swings TOGETHER pay
+        for one hit: eight zombies arriving as a group land one blow between
+        them, reset in lockstep, and land one blow again 1.1s later. At 0.6s
+        that was catastrophic and at 0.14s it was still exactly as bad for the
+        case that matters, because a pack that walked to you together IS
+        synchronised. The window has to be gone, not small.
+
+        WHAT STILL READS IT: the boss's chop and the respawn grace, both of
+        which SET it and neither of which is a rate limit — one is "you were
+        just hit by something enormous, the small things do not get to pile on
+        top of that" and the other is "you have just stood up". Those are the
+        two things a shared window was ever right for.
+
         A blocked swing is still broadcast: the player needs to see that the
-        zombie hit them and it did nothing, otherwise the immunity window reads
-        as the server dropping hits.
+        zombie hit them and it did nothing, otherwise the window reads as the
+        server dropping hits.
         """
         enemy = attack.enemy
         target = attack.target
@@ -2872,7 +3050,13 @@ class Room:
         damage = 0 if blocked else enemy.type.damage
 
         if not blocked:
-            target.hurt_immunity = MELEE_IMMUNITY
+            # THE DRAG GOES ON BEFORE THE DAMAGE DOES, and it goes on whatever
+            # the damage turns out to be. A blow stopped dead by a shield or
+            # eaten by a plate still CONNECTED — something the size of a person
+            # walked into you — and a player who could stand in a pack at full
+            # speed because their armour was good would have found the way back
+            # to the old game. Armour is meant to buy health, not momentum.
+            target.stagger = HIT_STAGGER_TIME
             self.damage_player(target, damage, None, enemy.x, enemy.y)
 
         self.attack_events.append(
@@ -3550,6 +3734,11 @@ class Room:
         player.combo_left = 0.0
         # Grace period: respawning into a waiting pack is not a fair death.
         player.hurt_immunity = RESPAWN_IMMUNITY
+        # And the limp goes with the body that had it. Coming back still
+        # dragging from the blow that killed you is being punished twice for
+        # one death, and it lands in the exact second the grace window above
+        # exists to protect.
+        player.stagger = 0.0
         player.last_input = InputCmd(sequence=player.last_processed_seq)
 
     # --- networking ---------------------------------------------------------
@@ -3574,6 +3763,19 @@ class Room:
         due = self.tick % ROSTER_EVERY_N_TICKS == 0 or self._roster_dirty
         roster = [p.to_payload() for p in self.players.values()] if due else None
         self._roster_dirty = False
+        # THE CLOCK RIDES THE ROSTER'S CADENCE, not the tick's. It is one float
+        # that moves by a thirtieth every frame and the client counts its own
+        # seconds down between packets — five hertz is far more than enough to
+        # keep two clocks agreeing, and the alternative is paying for a number
+        # thirty times a second that nobody can read changing that fast. The
+        # dirty flag is what makes the beats and the final zero land exactly.
+        night_row = self.night_payload() if (due or self._night_dirty) else None
+        if self._night_dirty and night_row is None and self.night_left is None:
+            # The night ENDING has to be transmitted, and it is the one state
+            # that cannot be: `night_payload` is None both for "no clock here"
+            # and for "the clock just stopped". False is the difference.
+            night_row = False
+        self._night_dirty = False
         loot_rows = (
             [drop.to_payload() for drop in self.drops.values()] if self._loot_dirty else None
         )
@@ -3656,6 +3858,8 @@ class Room:
                 spins=self.spin_events or None,
                 balance=balance_row,
                 spin_price=spin_price_row,
+                night=night_row,
+                night_events=self.night_events or None,
                 boss=boss_row,
                 boss_events=self.boss_events or None,
             )
@@ -3693,6 +3897,7 @@ class Room:
                 self.armor_events = []
                 self.buy_events = []
                 self.spin_events = []
+                self.night_events = []
                 self.boss_events = []
             delay = next_time - time.perf_counter()
             if delay > 0:

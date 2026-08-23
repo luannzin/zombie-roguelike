@@ -119,12 +119,16 @@ from .config import (
     ENEMY_IDLE_TURN_DEGREES,
     ENEMY_LEASH_DIST,
     ENEMY_LOSE_DELAY,
+    ENEMY_DAY_GROUP_TILT,
+    ENEMY_DAY_POPULATION,
+    ENEMY_DAY_RATE,
     ENEMY_MAX_PER_PLAYER,
     ENEMY_MAX_TOTAL,
     ENEMY_NOTICE_FAR,
     ENEMY_NOTICE_NEAR,
     ENEMY_SEPARATION,
     ENEMY_SPAWN_INTERVAL,
+    ENEMY_SPAWN_INTERVAL_MIN,
     ENEMY_SPAWN_MAX_DIST,
     ENEMY_SPAWN_MIN_DIST,
     ENEMY_STAGGER_STOP,
@@ -914,11 +918,57 @@ class EnemyDirector:
     as HOME and patrols it, so what the director really places is a pocket of
     forest that is occupied. Nothing walks at the party until something in that
     pocket notices them.
+
+    AND IT SCALES WITH THE NIGHT. It did not use to — neither this module nor
+    `enemies.py` had ever heard of the day — while the map it fills triples
+    across a run, so the forest got measurably emptier every night the party
+    survived. Three numbers walk with the day and they are deliberately the
+    three about PRESSURE rather than about any individual creature:
+
+      how many the forest holds  `ENEMY_DAY_POPULATION`
+      how fast it refills        `ENEMY_DAY_RATE`
+      how big a wave is          `ENEMY_DAY_GROUP_TILT`
+
+    NOT their health and NOT their damage, which is the tempting fourth and
+    the wrong one. A zombie with 90 HP on night five is the same encounter
+    taking three times as long, and a player reads that as their gun getting
+    worse — the classic bullet-sponge trade, where the game's answer to "make
+    it harder" is "make it slower". Now that a crowd can actually kill
+    (`config.MELEE_IMMUNITY`), population IS the difficulty knob: the same
+    zombie is frightening in sixes and was never frightening alone.
     """
 
-    def __init__(self, spawn_points: Sequence[tuple[float, float]]):
+    def __init__(self, spawn_points: Sequence[tuple[float, float]], day: int = 1):
         self.spawn_points = spawn_points
+        #: Which night this forest is. Held rather than passed per call because
+        #: it cannot change while a map is alive — a new night is a new map and
+        #: therefore a new director (`Room._swap_map`).
+        self.day = max(1, day)
         self.timer = ENEMY_FIRST_SPAWN_DELAY
+
+    @property
+    def population_scale(self) -> float:
+        """What the day multiplies the population ceiling by."""
+        return 1.0 + ENEMY_DAY_POPULATION * (self.day - 1)
+
+    @property
+    def interval(self) -> float:
+        """Seconds between waves tonight, floored so groups stay groups."""
+        pace = 1.0 + ENEMY_DAY_RATE * (self.day - 1)
+        return max(ENEMY_SPAWN_INTERVAL_MIN, ENEMY_SPAWN_INTERVAL / pace)
+
+    def cap(self, living: int) -> int:
+        """The ceiling for this many living players, on this night.
+
+        BOTH TERMS SCALE, and the total is what stops that compounding into a
+        slideshow: a full room on night ten is capped at 32 * 3.97 rather than
+        at 6 * 4 * 3.97, so the per-player number is what a solo run feels and
+        the total is what a party shares.
+        """
+        scale = self.population_scale
+        return int(
+            min(ENEMY_MAX_TOTAL * scale, ENEMY_MAX_PER_PLAYER * scale * max(1, living))
+        )
 
     def update(
         self, dt: float, players: Iterable[Player], enemy_count: int
@@ -930,10 +980,9 @@ class EnemyDirector:
         self.timer -= dt
         if self.timer > 0.0:
             return []
-        self.timer = ENEMY_SPAWN_INTERVAL
+        self.timer = self.interval
 
-        cap = min(ENEMY_MAX_TOTAL, ENEMY_MAX_PER_PLAYER * len(living))
-        room = cap - enemy_count
+        room = self.cap(len(living)) - enemy_count
         if room <= 0:
             return []
 
@@ -947,7 +996,17 @@ class EnemyDirector:
         return [(self.pick_type(), *place) for place in self.scatter(spot, size)]
 
     def pick_size(self) -> int:
-        return random.choices(ENEMY_GROUP_SIZES, weights=ENEMY_GROUP_WEIGHTS, k=1)[0]
+        """How many arrive together, tilted toward the big end by the night.
+
+        The tilt is applied as `(1 + tilt*(day-1)) ** index`, so night one is
+        the authored table untouched and every night after bends the SAME
+        curve rather than switching to a second hand-written one. By night ten
+        a four is likelier than a one, which is the difference between a forest
+        with things in it and a forest that sends waves.
+        """
+        bend = 1.0 + ENEMY_DAY_GROUP_TILT * (self.day - 1)
+        weights = [w * bend**i for i, w in enumerate(ENEMY_GROUP_WEIGHTS)]
+        return random.choices(ENEMY_GROUP_SIZES, weights=weights, k=1)[0]
 
     def scatter(self, spot: tuple[float, float], size: int) -> list[tuple[float, float]]:
         """`size` free tiles clustered around `spot`.

@@ -90,6 +90,19 @@ export interface DrawableEntity {
   /** Bar spent, key locked out. Drains the colour out of the run bar. */
   winded: boolean;
   alive: boolean;
+  /**
+   * ON THE FLOOR. Players only.
+   *
+   * The one state where `alive:false` still DRAWS. Everything else in this
+   * renderer that is not alive is either gone or has become a corpse; a downed
+   * player is neither, and has to stay on screen because a teammate finding
+   * the body is the entire rescue mechanic. It plays its own one-shot sheet
+   * (`player-down`) rather than a rotated walk frame — see the rule on
+   * `drawCorpseSprites`.
+   */
+  downed: boolean;
+  /** Seconds since this body went down. Drives the collapse timeline. */
+  downAge: number;
   moving: boolean;
   animTime: number;
   isLocal: boolean;

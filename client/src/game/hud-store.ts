@@ -303,6 +303,14 @@ export interface HudVitals {
   maxHp: number;
   alive: boolean;
   /**
+   * ON THE FLOOR. Not a respawn timer — nothing stands this body up except
+   * the party reaching the next zone, and if nobody is left standing to get
+   * them there the run is over. The HUD says so in place of the vitals,
+   * because a health bar reading zero over a body that is not coming back is
+   * the wrong information.
+   */
+  downed: boolean;
+  /**
    * Breath, 0..`staminaMax`. Read from the PREDICTED body, not the roster:
    * SHIFT has to empty the bar on the frame it is pressed, and a value that
    * waited for a snapshot would lag the speed the player can already feel.
@@ -320,6 +328,29 @@ export interface HudVitals {
   xpInLevel: number;
   xpToLevel: number;
   gold: number;
+}
+
+/**
+ * HOW MANY OF THE PARTY ARE STILL ON THEIR FEET.
+ *
+ * The only warning anybody gets that the run is one blow from ending, and it
+ * is a COUNT rather than a list because that is the question being asked in
+ * the half-second it gets read. Null solo — one of one is not information,
+ * it is the health bar restated, and a "1/1 up" pip on a solo screen would be
+ * permanent furniture that never changes.
+ */
+export interface HudParty {
+  up: number;
+  total: number;
+}
+
+/**
+ * The run is over. Present only while the death card holds, and cleared by the
+ * `welcome` that puts the party back at the fire.
+ */
+export interface HudWipe {
+  /** The night it ended ON — by the time the reset lands the day is 1 again. */
+  day: number;
 }
 
 export interface HudNetStats {
@@ -382,6 +413,14 @@ export interface HudSnapshot {
   lantern: LanternReading | null;
   /** Where the run is. Decides what the HUD offers and what it greys out. */
   zone: ZoneInfo | null;
+  /**
+   * The run ended. Everything else on the glass is irrelevant while this is
+   * set — `HudScreen` draws the card over the top and nothing under it needs
+   * to know.
+   */
+  wipe: HudWipe | null;
+  /** How many of the party are still up. Null solo — see `HudParty`. */
+  party: HudParty | null;
   /** Set on entering a zone; the title card plays and then leaves it alone. */
   arrival: HudArrival | null;
   /**
@@ -509,6 +548,8 @@ export const EMPTY_HUD: HudSnapshot = {
   net: null,
   lantern: null,
   zone: null,
+  wipe: null,
+  party: null,
   arrival: null,
   announce: null,
   introducing: true,

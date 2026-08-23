@@ -79,6 +79,8 @@ import { GradeStack } from '../render/post/grade';
 import {
   dangerLook,
   deathLook,
+  downedLook,
+  wipeLook,
   enrageLook,
   extractionLook,
   hitLook,
@@ -171,6 +173,8 @@ import {
   type HudSkill,
   type HudBoss,
   type HudSnapshot,
+  type HudParty,
+  type HudWipe,
   type HudStore,
 } from './hud-store';
 import { InputController } from './input';
@@ -498,6 +502,13 @@ const RARITY_CHIME: Record<LootRarity, number> = {
 
 /** Sprite sheet for players. Enemy sheets are named by the server's config. */
 const PLAYER_SHEET = 'player';
+/**
+ * The collapse. A one-shot timeline that holds its last frame, loaded up front
+ * beside the walk sheet rather than on demand: the frame a body goes down is
+ * the frame it has to be visible, and a fetch starting on that frame would
+ * show nothing during the only second that matters.
+ */
+const PLAYER_DOWN_SHEET = `${PLAYER_SHEET}-down`;
 /** Fallback if welcome.config.coinSprite is missing (older server). */
 const COIN_SHEET = 'coin';
 /** Fallback if welcome.config.backpackSprite is missing (older server). */
@@ -560,6 +571,8 @@ interface PlayerSource {
   stamina: number;
   winded: boolean;
   alive: boolean;
+  /** On the floor — see `PlayerState.down`. Absent means up. */
+  down?: boolean;
   moving: boolean;
   isLocal: boolean;
   ready: boolean;
@@ -766,6 +779,26 @@ export class Game {
    */
   private localPour: number | null = null;
   /**
+   * THE RUN IS OVER, or null.
+   *
+   * Latched from the snapshot's `wipe` row and cleared by the `welcome` that
+   * puts the party back at the fire. It is deliberately not derived from the
+   * local body being down: solo those are the same frame, but in a party the
+   * run ends when the LAST of them falls, which is a fact about the room.
+   */
+  private wipe: HudWipe | null = null;
+  /**
+   * When each body went down, on the game clock. Drives the collapse timeline
+   * — the sheet is a one-shot that holds its last frame, so what it needs is
+   * an AGE and not a phase.
+   *
+   * Kept here rather than on the wire because the server already says WHETHER
+   * a body is down every tick, and the frame it started is derivable from the
+   * first tick that said so. Cleared when the body stands up, so a rescue
+   * followed by a second fall replays the fall.
+   */
+  private downSince = new Map<string, number>();
+  /**
    * How the frame is finished. Owned here rather than by the renderer for the
    * same reason the camera is: a grade is a reaction to the GAME — how hurt
    * you are, which place this is, whether a pickup is coming down — and the
@@ -893,7 +926,7 @@ export class Game {
     // here: which ones exist is the server's answer, and it arrives with
     // `welcome` — long before the first zombie does.
     await Promise.all([
-      this.sprites.load([PLAYER_SHEET, BACKPACK_SHEET]),
+      this.sprites.load([PLAYER_SHEET, PLAYER_DOWN_SHEET, BACKPACK_SHEET]),
       whenFontsReady(),
       loadGuns().then((atlas) => {
         this.guns = atlas;
@@ -1115,6 +1148,12 @@ export class Game {
     this.adsHold = 0;
     this.comboStep = 0;
     this.comboLeft = 0;
+    // A WELCOME IS THE END OF A DEATH SCREEN. The card holds over the last
+    // frames of the run that ended; the next thing down the socket is the
+    // camp, and arriving anywhere is proof there is something to look at
+    // again. Clearing it here rather than on a timer means the black screen
+    // lasts exactly as long as the server says it does.
+    this.wipe = null;
 
     this.rebuildLights();
     // Nothing grows in the hearth: a fern in front of a player hides the
@@ -1268,6 +1307,29 @@ export class Game {
     if (msg.zoneKey && this.zone && msg.zoneKey !== this.zone.key) return;
 
     this.snapshots.push(msg, performance.now());
+
+    // THE RUN ENDED. It is a STATE on the row, not an event, so this is an
+    // assignment rather than a latch-once — a client that joins or reconnects
+    // during the hold gets the black screen on its first snapshot, and the
+    // `welcome` that follows is the only thing that clears it.
+    if (msg.wipe && !this.wipe) {
+      // Everything on the glass goes at once. A prompt offering to open a
+      // crate, over a body that is not getting up, on a run that no longer
+      // exists, is the game failing to notice what just happened.
+      this.patchHud({
+        prompt: null,
+        lootPrompt: null,
+        cratePrompt: null,
+        riftPrompt: null,
+        buyPrompt: null,
+        machinePrompt: null,
+      });
+      playSfx('void', { jitter: 0 });
+      this.beds = { fire: 0, wind: 0.12 };
+      this.pushBeds();
+    }
+    this.wipe = msg.wipe ? { day: msg.wipe.day } : this.wipe;
+
     const wasDeparting = this.departing;
     this.departing = Boolean(msg.departing) && this.zone?.kind === 'camp';
     if (this.departing && !wasDeparting) {
@@ -3600,6 +3662,27 @@ export class Game {
     }
   }
 
+  /**
+   * Seconds this body has been on the floor, starting the tick it went down.
+   *
+   * A body that stands back up forgets its clock, so a second fall in the same
+   * run plays the collapse again rather than snapping straight to the settled
+   * frame — which is what a latch that only ever set once would do, and it
+   * would eat the single most legible frame in the whole state.
+   */
+  private downAgeOf(id: string, downed: boolean): number {
+    if (!downed) {
+      this.downSince.delete(id);
+      return 0;
+    }
+    const since = this.downSince.get(id);
+    if (since === undefined) {
+      this.downSince.set(id, this.time);
+      return 0;
+    }
+    return Math.max(0, this.time - since);
+  }
+
   /** Build one renderable player and advance its per-entity visual state. */
   private toDrawablePlayer(source: PlayerSource, dt: number): DrawableEntity {
     const config = this.config!;
@@ -3680,6 +3763,8 @@ export class Game {
       staminaMax: config.staminaMax,
       winded: source.winded,
       alive,
+      downed: source.down ?? false,
+      downAge: this.downAgeOf(id, source.down ?? false),
       moving,
       // The legs keep up with the ground: a run is 1.55x the walk, and the
       // walk cycle at its authored cadence under it is a character skating.
@@ -3822,6 +3907,10 @@ export class Game {
       staminaMax: 0,
       winded: false,
       alive: true,
+      // A CREATURE IS NEVER DOWNED. That state belongs to players alone: what
+      // stops a creature is a corpse, and `corpses` already owns that.
+      downed: false,
+      downAge: 0,
       // THE SLEEP SHEET IS A BREATH, so it has to be told it is animating.
       // Every other loop in the game is driven by the body actually going
       // somewhere; this is the one pose whose whole job is to move while the
@@ -3980,6 +4069,29 @@ export class Game {
     this.hud.update((previous) => ({ ...previous, ...patch }));
   }
 
+  /**
+   * How many of the party are still on their feet, or null solo.
+   *
+   * Null rather than `{up:1,total:1}` on purpose: one of one is the health bar
+   * restated, and a pip that can only ever read "1/1 up" is furniture. In a
+   * party it is the only warning anybody gets that the run is one blow from
+   * over, which is why it is a COUNT — that is the question being asked in the
+   * half-second it gets looked at.
+   *
+   * Read off the SNAPSHOT rather than the roster: `down` is on the tick row
+   * because it has to land the frame it flips, and a teammate going down is
+   * the single most time-critical thing this HUD reports.
+   */
+  private partyStanding(): HudParty | null {
+    const latest = this.snapshots.latest;
+    if (!latest) return null;
+    const rows = [...latest.players.values()];
+    if (rows.length < 2) return null;
+    let up = 0;
+    for (const row of rows) if (!row.down) up += 1;
+    return { up, total: rows.length };
+  }
+
   /** Republish HUD state at HUD_INTERVAL — text does not need 60 Hz. */
   private publishHud(dt: number): void {
     this.hudTimer += dt;
@@ -4011,6 +4123,7 @@ export class Game {
               // while the player was thirty points down.
               maxHp: meta.mods?.maxHp ?? config.maxHp,
               alive: local.alive,
+              downed: local.downed,
               // Straight off the predicted body. The bar under the HP bar is
               // the same number, so the two agree frame for frame.
               stamina: local.state.stamina,
@@ -4023,6 +4136,12 @@ export class Game {
             }
           : null,
       lantern: local ? this.lantern.reading() : null,
+      // THE RUN ENDED. Latched off the snapshot rather than off the local
+      // body: solo they are the same frame, but in a party the run ends when
+      // the LAST of them goes down, which is a fact about the room and not
+      // about you. Cleared by the `welcome` that lands everyone at the fire.
+      wipe: this.wipe,
+      party: this.partyStanding(),
       cinematic: this.locked,
       boss: this.hudBoss(),
       quests: this.quests,
@@ -5431,7 +5550,19 @@ export class Game {
 
     // Dead. Slow in, quick out — the picture should take a moment to stop
     // being a place, and none at all to start being one again.
-    if (this.local && !this.local.alive) {
+    //
+    // TWO DEPTHS NOW, because there are two kinds of dead. A body killed in
+    // the camp or the shop is coming back in two seconds and gets the grade it
+    // always had. A body DOWN in a hostile zone might be the end of the run,
+    // so the picture goes most of the way out — and if the party is actually
+    // wiped it goes all the way, under the card. Slower in the worse it is:
+    // the drop to black is the game taking the world away, and taking it away
+    // instantly reads as a bug rather than as an ending.
+    if (this.wipe) {
+      this.grade.hold('death', wipeLook(), { attack: 1.6, release: 0.4 });
+    } else if (this.local?.downed) {
+      this.grade.hold('death', downedLook(), { attack: 1.3, release: 0.5 });
+    } else if (this.local && !this.local.alive) {
       this.grade.hold('death', deathLook(), { attack: 1.1, release: 0.5 });
     } else {
       this.grade.release('death', 0.5);

@@ -295,6 +295,64 @@ export function scopeLook(intensity: number): GradeLayer {
 	};
 }
 
+/**
+ * DOWN, and possibly for good.
+ *
+ * `deathLook` was written for a death that cost two seconds, and it is still
+ * right for one — a body knifed at the merchant's counter is coming back. A
+ * body down in a hostile zone is not on a timer: nothing stands it up but the
+ * party reaching the next zone, and if nobody is left to get them there the
+ * run is over. So this is the same photograph pushed a long way further down:
+ * darker, flatter, almost no colour left, and the vignette closed to a hole.
+ *
+ * IT IS NOT BLACK, and the gap between this and `wipeLook` is the whole point.
+ * A downed player in a party can still SEE — their teammate working the
+ * clearing, the pack drifting off them, the pad two screens away — and that
+ * view is the entire experience of being down. Taking the picture away would
+ * turn the most tense minute in a co-op run into a loading screen.
+ */
+export function downedLook(): GradeLayer {
+	return {
+		exposure: 0.5,
+		contrast: 1.34,
+		saturation: 0.05,
+		blur: 0.72,
+		focus: 0.22,
+		vignette: 0.82,
+		vignetteSoft: 0.3,
+		vignetteTint: palette().grade.vignette,
+		grain: 0.1,
+		bloom: 0.22,
+	};
+}
+
+/**
+ * THE RUN IS OVER. The world goes out from under the card.
+ *
+ * Everything on the floor: no exposure, no colour, no bloom to give a shape
+ * back. What is left underneath the death card is a black frame with grain on
+ * it, which is the point — the card is the only thing on screen, and it is not
+ * competing with a forest still visible behind it.
+ *
+ * The grain stays deliberately. A perfectly flat black reads as the renderer
+ * having stopped rather than as an ending, and the difference between "the
+ * game crashed" and "you died" is worth one float.
+ */
+export function wipeLook(): GradeLayer {
+	return {
+		exposure: 0.0,
+		contrast: 1.5,
+		saturation: 0.0,
+		blur: 1.0,
+		focus: 0.0,
+		vignette: 1.0,
+		vignetteSoft: 0.16,
+		vignetteTint: palette().grade.vignette,
+		grain: 0.14,
+		bloom: 0.0,
+	};
+}
+
 /** Dead. The picture stops being a place and becomes a photograph of one. */
 export function deathLook(): GradeLayer {
 	return {

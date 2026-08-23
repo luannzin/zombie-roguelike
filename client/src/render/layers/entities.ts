@@ -23,7 +23,15 @@ import type { GunAtlas, GunMuzzleArgs } from '../guns';
 import { gunMuzzle, gunPose, gunSupport } from '../guns';
 import type { Projection } from '../projection';
 import { groundShadow } from '../shadows';
-import { facingFromAim, frameIndex, poseRow, timelineFrame, type SpriteBook } from '../sprites';
+import {
+  facingFromAim,
+  frameIndex,
+  poseRow,
+  timelineFrame,
+  type Facing,
+  type SpriteBook,
+  type SpriteSheet,
+} from '../sprites';
 import { RANK_MINIBOSS, type DrawableCoin, type DrawableCorpse, type DrawableEntity } from '../types';
 
 /** Player name label size, in screen px. One step of the font's pixel grid. */
@@ -89,7 +97,11 @@ export interface EntityContext {
 }
 
 export function drawShadow(entity: EntityContext, target: DrawableEntity): void {
-  if (!target.alive || target.visibility <= 0.01) return;
+  // A DOWNED BODY STILL CASTS ONE. It is the one thing on this map that is
+  // `alive:false` and still lying in the light, and a body with no shadow
+  // floats — which on a dark forest floor is exactly the read that would stop
+  // a teammate recognising it as a person.
+  if ((!target.alive && !target.downed) || target.visibility <= 0.01) return;
   const { ctx, view } = entity;
 
   // A BODY IS THE ONE CASTER THAT MOVES. Everything else on the floor is
@@ -160,7 +172,9 @@ function hashId(id: string): number {
 
 export function drawEntity(entity: EntityContext, target: DrawableEntity): void {
   // Unlit enemies are not drawn at all — see DrawableEntity.visibility.
-  if (!target.alive || target.visibility <= 0.01) return;
+  // A DOWNED PLAYER IS THE ONE EXCEPTION to `alive` gating the draw: they are
+  // still lying there, and being able to find them is the rescue.
+  if ((!target.alive && !target.downed) || target.visibility <= 0.01) return;
   const { ctx, view, book } = entity;
 
   const sheet = book.get(target.sheet);
@@ -169,6 +183,10 @@ export function drawEntity(entity: EntityContext, target: DrawableEntity): void 
   if (!sheet || !image) return;
 
   const facing = facingFromAim(target.ax, target.ay);
+  if (target.downed) {
+    drawDownedBody(entity, target, sheet, image, facing);
+    return;
+  }
   // THE BODY CHANGES POSE WHEN IT IS CARRYING SOMETHING. The player sheet has
   // a second block of rows with the weapon arm up (`make_player.py`), and the
   // grip is placed off the same side — see `GUN_GRIP_SIDE`. Gear overlays are
@@ -238,6 +256,57 @@ export function drawEntity(entity: EntityContext, target: DrawableEntity): void 
     // beat the decision to fight or leave is actually made.
     drawHealthBar(entity, target, view.rawX(px), spriteTop);
   }
+  ctx.globalAlpha = 1;
+}
+
+/**
+ * A player on the floor, mid-collapse or settled.
+ *
+ * Split out of `drawEntity` rather than branching through it because almost
+ * nothing that function does applies: there is no weapon in these hands, no
+ * health bar worth drawing over a body whose bar is the point, no walk frame,
+ * no recoil and no shield pose. What is left is one sprite off a one-shot
+ * timeline, and keeping that here means the living path stays the shape it was.
+ *
+ * NO GEAR OVERLAYS. The pack and the plate are authored against a figure
+ * standing up, and there is no `-down` variant of either — a rucksack blitted
+ * at the standing offset over a body lying down is a bag floating where the
+ * back used to be, which `make_zombie.py` names as the loudest possible bug in
+ * a sprite like this. The coat is enough to say who it is; the colour tint is
+ * still theirs.
+ */
+function drawDownedBody(
+  entity: EntityContext,
+  target: DrawableEntity,
+  walk: SpriteSheet,
+  walkImage: CanvasImageSource,
+  facing: Facing,
+): void {
+  const { ctx, view, book } = entity;
+  const downName = `${target.sheet}-down`;
+  const down = book.get(downName);
+  const image = down ? book.image(downName, target.tint) : walkImage;
+  const sheet = down ?? walk;
+  if (!image) return;
+
+  const row = sheet.rows[facing] ?? 0;
+  const col = down ? timelineFrame(sheet, target.downAge) : sheet.idleFrame;
+  const w = sheet.frameWidth;
+  const h = sheet.frameHeight;
+  const spriteTop = target.y + target.halfHeight - h;
+  const dx = view.x(target.x - w / 2);
+  const dy = view.y(spriteTop);
+  const dw = view.size(w);
+  const dh = view.size(h);
+
+  // Dimmer once it has settled, the same beat a corpse takes. While it is
+  // still falling it is at full — the collapse is the thing a teammate sees
+  // out of the corner of their eye, and dimming it as it happens would hide
+  // the one frame that says somebody just went down.
+  const settled = !down || col >= sheet.frames - 1;
+  ctx.globalAlpha = target.visibility * (settled ? 0.9 : 1);
+  ctx.drawImage(image, col * w, row * h, w, h, dx, dy, dw, dh);
+  drawStains(entity, target, image, col * w, row * h, w, h, dx, dy, dw, dh);
   ctx.globalAlpha = 1;
 }
 
@@ -357,6 +426,10 @@ function corpseAsTarget(body: DrawableCorpse): DrawableEntity {
     staminaMax: 0,
     winded: false,
     alive: false,
+    // A corpse is not "downed" — that state is a player waiting to be carried
+    // out, and this body is past waiting for anything.
+    downed: false,
+    downAge: 0,
     moving: false,
     animTime: 0,
     isLocal: false,

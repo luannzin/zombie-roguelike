@@ -94,6 +94,7 @@ from .config import (
     MOVE_SPEED,
     RESPAWN_DELAY,
     RESPAWN_IMMUNITY,
+    WIPE_HOLD,
     ROSTER_EVERY_N_TICKS,
     SNAPSHOT_EVERY_N_TICKS,
     SPAWN_RING,
@@ -314,6 +315,19 @@ class Room:
         #: the receipt travelling with the party, because the pads that earned
         #: it belong to a map they have already left.
         self._night_takes: list[int] | None = None
+        #: THE RUN IS OVER AND THE SCREEN IS BLACK. Counts down while the
+        #: death card holds; the reset itself happens when it reaches zero
+        #: (`run`). A hold rather than a keypress because the last thing
+        #: anybody wants on that frame is another decision to make.
+        self._wipe_hold = 0.0
+        #: Which night it ended on. The card says so, and it is captured when
+        #: the party goes down rather than read at reset time — by then the day
+        #: is already back to one.
+        #: Non-zero means A WIPE IS IN PROGRESS — it is the latch as well as
+        #: the number the card shows. `_wipe_hold` alone cannot be one: it
+        #: reaches zero on the tick before the reset runs, and a check that
+        #: read it would fire the wipe a second time on that frame.
+        self._wipe_day = 0
         self._load_drops()
         self._load_crates()
         self._load_rifts()
@@ -1862,6 +1876,89 @@ class Room:
         self._loot_dirty = True
         self._roster_dirty = True
 
+    # --- the wipe: the one way a run ends -----------------------------------
+    def _check_wipe(self) -> None:
+        """Is anybody still standing? If not, the run is over.
+
+        ONE RULE FOR SOLO AND CO-OP, and that is the whole reason it is written
+        as a count rather than as two branches. A death DOWNS a body; a run
+        ends when the party has nobody left up. Alone, those are the same
+        frame — you are the whole party, so going down is wiping. With company,
+        a body on the floor is a clock on everyone still walking: they can
+        finish the night and carry it out, and the pressure that creates is the
+        kind a co-op game should get from its own players rather than from a
+        number in the corner of the screen.
+
+        NON-HOSTILE ZONES CANNOT WIPE A PARTY. Nothing in the camp or the shop
+        downs anybody in the first place (`damage_player` respawns there), so
+        the guard is belt-and-braces — but it also means a room sitting in the
+        lobby with no players cannot trip this on an empty `values()`.
+
+        A DISCONNECT IS NOT A RESCUE AND DOES NOT NEED TO BE SPECIAL-CASED.
+        `remove_player` drops the row entirely, so a party whose last standing
+        member's socket dies is a party with nobody left up — which is exactly
+        what this counts, and exactly what it should mean.
+        """
+        if not self.zone.hostile or self._wipe_day:
+            return
+        players = list(self.players.values())
+        if not players:
+            return
+        if any(not p.downed for p in players):
+            return
+        self._wipe_hold = WIPE_HOLD
+        self._wipe_day = self.day
+
+    async def wipe(self) -> None:
+        """The run is over. Everything goes back to the first night.
+
+        TRUE PERMADEATH, AND THE LIST IS DELIBERATELY TOTAL: day one, a knife,
+        no skills, no plate, no rounds, no balance, a fresh camp. A partial
+        reset is a tax, and a player learns to pay a tax — what makes a run
+        worth protecting is that losing it costs the whole thing.
+
+        THE CAMP COMES BACK FOR THIS AND ONLY THIS. `advance_zone`'s contract
+        is that the loop never returns to the fire, because the shop already
+        resets a party between nights and routing them home made them ready up
+        twice for one decision. That argument is about a run CONTINUING. A run
+        that has ended has to begin again, and beginning is the one thing the
+        camp has always been for — so this is the reason the door was left
+        open for, not an exception to the rule.
+
+        It goes through `_swap_map` like every other map change, so the second
+        `welcome` and the socket hand-off are the ones every transition uses.
+        The players are stripped BEFORE the swap, because `_swap_map`'s whole
+        promise is that what a body is carrying survives it.
+        """
+        self._wipe_hold = 0.0
+        self._wipe_day = 0
+        self.day = 1
+        self.balance = 0
+        self._balance_dirty = True
+        self._spins_bought = 0
+        self._spin_price_dirty = True
+        self._night_takes = None
+        for player in self.players.values():
+            player.reset_for_new_run()
+        # Seats are the camp's, and the camp is where a run begins. Reseating
+        # before the swap means `_slots` is already the formation the fire
+        # expects when `_swap_map` places bodies.
+        self.reseat()
+        await self._swap_map(
+            zones.camp(self.day),
+            camp.build_camp(random.randrange(1, 2**31)),
+        )
+        # A fresh camp is a fresh readiness check. `_swap_map` already clears
+        # `ready`; what it cannot know is that the party should be standing on
+        # their seats rather than on a spawn ring, because there is no arrival
+        # corridor here to be marched out of.
+        for index, pid in enumerate(self.seating):
+            player = self.players.get(pid)
+            if player is not None:
+                player.x, player.y = camp.seat_position(
+                    self.world, index, len(self.seating)
+                )
+
     # --- zone transit: the three legal map swaps, all via _swap_map ---------
     def begin_depart(self) -> None:
         """Lock input and line the party up for the exit."""
@@ -2058,6 +2155,12 @@ class Room:
             # with nothing that could have killed it.
             player.hp = player.max_hp
             player.alive = True
+            # THE CROSSING IS THE RESCUE. A downed body cannot walk, so it got
+            # here because somebody else finished the night — which is the
+            # whole of the co-op contract, and it costs nothing here because
+            # arriving already stands everybody up.
+            player.downed = False
+            player.using = None
             player.respawn_timer = 0.0
             player.hurt_immunity = 0.0
             player.stagger = 0.0
@@ -2144,6 +2247,12 @@ class Room:
         self.step_coins(dt)
         self.step_rift(dt)
         self._sync_ammo_boxes()
+        # LAST, because everything above can be what puts the final body down
+        # — a claw, a crescent, a charge. Asking before them would miss a wipe
+        # by a tick, and a tick is a whole snapshot of the party standing dead.
+        self._check_wipe()
+        if self._wipe_hold > 0.0:
+            self._wipe_hold = max(0.0, self._wipe_hold - dt)
 
     # --- extraction: the pickup's clock -------------------------------------
     def step_rift(self, dt: float) -> None:
@@ -2305,6 +2414,13 @@ class Room:
 
             if not player.alive:
                 player.inputs.clear()
+                # DOWN IS NOT A TIMER, and this guard is the whole difference.
+                # A downed body has no `respawn_timer` at all, so without the
+                # test below it would tick straight past zero and stand back
+                # up on the next frame — permadeath undone by a subtraction.
+                # Nothing brings it back but the party reaching the next zone.
+                if player.downed:
+                    continue
                 player.respawn_timer -= dt
                 if player.respawn_timer <= 0.0:
                     self.respawn(player)
@@ -3397,8 +3513,24 @@ class Room:
             target.hp = 0
             target.alive = False
             target.deaths += 1
-            target.respawn_timer = RESPAWN_DELAY
             target.vx = target.vy = 0.0
+            # A HEAL IN PROGRESS DIES WITH THE BODY, and it costs nothing —
+            # `Use` only spends its cell on the frame it completes, so a kit
+            # is never lost to the blow that made you need it.
+            target.using = None
+            # WHICH KIND OF DEATH THIS IS, AND IT IS THE ZONE THAT DECIDES.
+            #
+            # Nothing in the camp or the shop can kill you except another
+            # player, and a knife at the merchant's counter is a fumble rather
+            # than the end of four nights' work — so those keep the two-second
+            # respawn they always had. A hostile zone does not respawn anybody
+            # any more: the body goes DOWN and stays there, and the run ends
+            # only when nobody is left standing to carry it out (`_check_wipe`).
+            if self.zone.hostile:
+                target.downed = True
+                target.respawn_timer = 0.0
+            else:
+                target.respawn_timer = RESPAWN_DELAY
             if source is not None and source.id != target.id:
                 source.kills += 1
             self.kill_events.append(
@@ -3617,6 +3749,8 @@ class Room:
             player.x, player.y = self.pick_spawn()
         player.hp = player.max_hp
         player.alive = True
+        player.downed = False
+        player.using = None
         player.vx = player.vy = 0.0
         # A new body is a rested one. The bar is not a punishment that outlives
         # the death that emptied it.
@@ -3705,6 +3839,12 @@ class Room:
         self._spin_price_dirty = False
         boss_row = self.boss.to_payload() if (self.boss and self._boss_dirty) else None
         self._boss_dirty = False
+        # STATE, NOT EVENT — see the note in `protocol.snapshot`. It rides
+        # every tick of the hold rather than once, so a client that joined or
+        # reconnected halfway through still gets the black screen.
+        wipe_row = (
+            {"day": self._wipe_day} if (self._wipe_day and self._wipe_hold > 0.0) else None
+        )
         await self.broadcast(
             protocol.snapshot(
                 self.tick,
@@ -3741,6 +3881,7 @@ class Room:
                 spin_price=spin_price_row,
                 boss=boss_row,
                 boss_events=self.boss_events or None,
+                wipe=wipe_row,
             )
         )
 
@@ -3756,6 +3897,14 @@ class Room:
             next_time += DT
             self.tick += 1
             self.step(DT)
+            # THE HOLD RAN OUT AND THE RUN GOES BACK TO NIGHT ONE. Checked
+            # before the transitions below because a wiped party has no
+            # pending crossing worth honouring — the map they were walking
+            # toward belongs to a run that no longer exists.
+            if self._wipe_day and self._wipe_hold <= 0.0:
+                await self.broadcast_snapshot()
+                await self.wipe()
+                continue
             if self._pending_embark:
                 await self.embark()
                 continue

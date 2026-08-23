@@ -28,6 +28,13 @@ export class LocalPlayer {
   sequence = 0;
   lastAck = 0;
   alive = true;
+  /**
+   * ON THE FLOOR, and not on a timer — see `PlayerState.down`. Kept beside
+   * `alive` rather than derived from it because the two answer different
+   * questions: `alive` gates input and prediction, `downed` is what the HUD
+   * and the grade read to say the run is one blow from over.
+   */
+  downed = false;
   hp: number;
   /** Authoritative carried weight. Roster-only; prediction reads it every tick. */
   carryWeight = 0;
@@ -97,6 +104,7 @@ export class LocalPlayer {
   reconcile(server: PlayerState, ack: number, world: TileMap, config: GameConfig): void {
     this.lastAck = ack;
     this.alive = server.alive;
+    this.downed = server.down ?? false;
     this.hp = server.hp;
     // Breath is authoritative like position is: snap it, then let the replay
     // below spend the inputs the server has not seen yet. `stepStamina` is a

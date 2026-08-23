@@ -376,6 +376,7 @@ def snapshot(
     spins: list[dict] | None = None,
     boss: dict | None = None,
     boss_events: list[dict] | None = None,
+    wipe: dict | None = None,
 ) -> dict:
     payload = {
         "type": MSG_SNAPSHOT,
@@ -461,4 +462,12 @@ def snapshot(
     # night's shop — so it rides its own dirty flag rather than the balance's.
     if spin_price is not None:
         payload["spinPrice"] = spin_price
+    # THE RUN IS OVER. Present on every tick the death card is holding and
+    # absent on every other, which makes it a STATE rather than an event on
+    # purpose: a client that missed the one frame a run ended would otherwise
+    # walk a party out of a camp it never saw them arrive in. Whoever
+    # reconnects mid-hold gets the black screen too, and the fresh `welcome`
+    # that follows is what clears it.
+    if wipe is not None:
+        payload["wipe"] = wipe
     return payload

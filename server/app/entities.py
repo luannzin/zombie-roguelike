@@ -21,6 +21,7 @@ from .config import (
     level_progress,
 )
 from .inventory import Inventory
+from .medical import Medical
 from .skills import Loadout
 from .weapons import Hotbar
 
@@ -130,6 +131,34 @@ class Pour:
 
 
 @dataclass
+class Use:
+    """One player spending one medical cell, over time.
+
+    THE SAME SHAPE AS `Pour`, AND THAT IS DELIBERATE. Both are a body standing
+    still doing something that takes real seconds, both are driven by the
+    server's clock so the client can only ever draw what has already happened,
+    and both are read by `step_players` before movement. A heal that resolved
+    on the keypress would be a hotkey; a heal that takes three seconds in the
+    open is a decision about where you are standing.
+
+    IT DIFFERS FROM A POUR IN EXACTLY ONE WAY, AND IT IS THE IMPORTANT ONE: a
+    pour spends as it goes, so being interrupted still costs you what already
+    left the bag. A use spends NOTHING until it completes. Losing the kit AND
+    the health to a wolf you did not hear would be punishing the player twice
+    for one mistake, so an interrupted heal costs the seconds and keeps the
+    item. `Medical.take` is therefore called on the last frame and never on
+    the first.
+    """
+
+    #: Which medical cell is being spent. Held rather than the key, because
+    #: the cell is what has to be emptied and two cells can hold the same key.
+    slot: int
+    #: Seconds left. The client draws a ring filling from `total`.
+    left: float = 0.0
+    total: float = 0.0
+
+
+@dataclass
 class Player:
     id: str
     name: str
@@ -142,6 +171,21 @@ class Player:
     aim_y: float = 0.0
     hp: int = MAX_HP
     alive: bool = True
+    #: ON THE FLOOR, AND NOT COMING BACK ON A TIMER.
+    #:
+    #: `alive` says whether this body acts; `downed` says WHY it stopped, and
+    #: the two are not the same question. A body killed in the camp or the shop
+    #: is `alive=False` with a respawn timer running — a fumble, two seconds,
+    #: it always worked that way. A body killed in a hostile zone is
+    #: `alive=False` AND `downed`, with no timer at all: nothing brings it back
+    #: except the party reaching the next zone, and if nobody is left standing
+    #: to get them there the run is over (`Room._check_wipe`).
+    #:
+    #: It is a separate flag rather than "alive is false and respawn_timer is
+    #: zero" because that reading is true for one tick of an ordinary death
+    #: too, and a wipe check that fires on a rounding error is a run deleted by
+    #: a float.
+    downed: bool = False
     radius: float = PLAYER_HIT_RADIUS
     #: Breath. Spent by SHIFT, refilled by not holding it — the whole system is
     #: `simulation.step_stamina`, and it is on the body rather than in a side
@@ -173,6 +217,10 @@ class Player:
     #: this is state; it is not in `armor.Loadout` because you hold it rather
     #: than wear it. At most one, ever — `Hotbar.holds_shield`.
     shield: armor.Piece | None = None
+    #: THE TWO MEDICAL CELLS, on keys 4 and 5. The fifth container, and the
+    #: only source of health in the game — see `medical.py` for why medicine
+    #: is not in the pocket. Costs no bag cell and does cost bag WEIGHT.
+    medical: Medical = field(default_factory=Medical)
     #: How long the trigger has been held. AWP spends this before it fires.
     aim_hold: float = 0.0
     #: Which beat of the melee chain the next swing is. Never on the wire —
@@ -231,6 +279,11 @@ class Player:
     #: acked and dropped, the walk is driven by `Room._step_pour`, and the only
     #: thing a key can still do is cancel.
     pour: "Pour | None" = None
+    #: Mid-heal, or None. Same puppet rule as `pour`: input is acked and
+    #: dropped and the walk is zero, but unlike a pour this one CAN be ended
+    #: early — by a blow, and only by a blow — and ending it costs nothing but
+    #: the time already spent.
+    using: "Use | None" = None
 
     @property
     def max_hp(self) -> int:
@@ -241,6 +294,50 @@ class Player:
         the constant is a site where Couro Grosso silently does nothing.
         """
         return self.skills.mods.max_hp
+
+    def reset_for_new_run(self) -> None:
+        """Strip this body back to what a run OPENS with. Nothing survives.
+
+        THE LIST IS EVERYTHING A NIGHT CAN GIVE YOU, and it is written out
+        field by field rather than by rebuilding the `Player` because the id,
+        the name, the colour and the socket bookkeeping have to survive — the
+        person is still sitting there, it is their run that ended.
+
+        The rule for what goes: if a night could have handed it over, it goes.
+        The belt drops to a knife, the pocket empties, the reserve empties, the
+        plate comes off, the shield is gone, the levels are gone and the xp
+        that bought them is gone. `kills` and `deaths` are the only counters
+        kept, because they are a record of the session rather than of the run.
+
+        The PARTY's balance is not here: it is `Room.balance`, one number for
+        the whole room, and `Room.wipe` clears it in the same breath.
+        """
+        self.hp = MAX_HP
+        self.alive = True
+        self.downed = False
+        self.stamina = STAMINA_MAX
+        self.winded = False
+        self.xp = 0
+        self.gold = 0
+        self.inventory = Inventory(INVENTORY_SLOTS)
+        self.hotbar = Hotbar.starting()
+        self.ammo = Reserve()
+        self.armor = armor.Loadout()
+        self.shield = None
+        self.skills = Loadout()
+        self.pour = None
+        self.medical = Medical()
+        self.aim_hold = 0.0
+        self.combo_step = 0
+        self.combo_left = 0.0
+        self.blocking = False
+        self.block_speed = 1.0
+        self.stagger = 0.0
+        self.respawn_timer = 0.0
+        self.hurt_immunity = 0.0
+        self.ready = False
+        self.vx = self.vy = 0.0
+        self.inputs.clear()
 
     @property
     def capsule_y0(self) -> float:
@@ -267,6 +364,13 @@ class Player:
             knife is a real way to move faster and a full rack is not a
             silent tax on having found things.
 
+        MEDICINE IS THE FOURTH TERM and it breaks the second rule for the
+        same reason armour does: two kits are not in your hands and they still
+        slow you down, because that is the whole price of walking in stocked.
+        It stays out of `inv.w` for the same reason too — a bandage is not
+        cargo — so a party carrying medicine carries less loot out, which is
+        where the greed trade went when medicine stopped being sellable.
+
         WORN ARMOUR IS THE THIRD TERM, and it breaks the second rule above
         on purpose: a plate is not in your hands, and it still slows you
         down, because that is the entire price of wearing one. It stays out
@@ -277,7 +381,12 @@ class Player:
         The client mirrors this sum from the same catalog — see
         `Game.moveWeight`.
         """
-        return self.inventory.weight + self.hotbar.held_weight + self.armor.weight
+        return (
+            self.inventory.weight
+            + self.hotbar.held_weight
+            + self.armor.weight
+            + self.medical.weight
+        )
 
     def snapshot_payload(self) -> dict:
         """What changes every tick. Everything else rides the roster.
@@ -308,6 +417,11 @@ class Player:
             "lantern": self.last_input.lantern,
             "hp": self.hp,
             "alive": self.alive,
+            # DOWN, rather than merely not alive. The client draws a body on
+            # the floor instead of an absence, and the HUD counts how many of
+            # the party are still up — which is the only warning anybody gets
+            # that the run is one blow from over.
+            "down": self.downed,
             # Not identity, but it has to land the moment it flips: it is what
             # the campfire's ready count is counting.
             "ready": self.ready,

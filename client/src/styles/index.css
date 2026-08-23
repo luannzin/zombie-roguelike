@@ -492,6 +492,29 @@
   --animate-zone-title-slash: zone-title-slash 0.52s cubic-bezier(0.65, 0, 0.35, 1) 1.05s 1 both;
 
   /*
+   * THE DEATH CARD, and it is deliberately paced against the arrival card
+   * above rather than with it.
+   *
+   * `zone-*` eases IN and OUT over three seconds because arriving somewhere is
+   * a calm beat. A run ending is not: the veil takes the frame in a quarter of
+   * a second, the word lands already large and settles DOWN into place rather
+   * than rising into it, and the rules slam to full width instead of drawing
+   * out. Nothing here loops and nothing here leaves — the card is removed by
+   * the `welcome` that follows the server's hold, not by its own clock, so
+   * every one of these is `forwards` and simply stops.
+   *
+   * The three text beats are staggered so they are read in order — the fact,
+   * then the score, then what happens next — inside `WIPE_HOLD` (4s, in
+   * server/app/config.py). Move that constant and the last line here has to
+   * still be on screen when it expires.
+   */
+  --animate-death-veil: death-veil 0.26s cubic-bezier(0.4, 0, 1, 1) 1 forwards;
+  --animate-death-word: death-word 0.62s cubic-bezier(0.16, 1, 0.3, 1) 0.1s 1 forwards;
+  --animate-death-rule: death-rule 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.16s 1 forwards;
+  --animate-death-score: death-line 0.7s cubic-bezier(0.16, 1, 0.3, 1) 0.66s 1 forwards;
+  --animate-death-note: death-line 0.8s cubic-bezier(0.16, 1, 0.3, 1) 1.15s 1 forwards;
+
+  /*
    * The letterbox, in its two halves. It is ONE continuous element across two
    * screens, which is the only reason the handover works: `in` runs in the
    * lobby and darkens the frame as the camera pushes, reaching full exactly as
@@ -739,6 +762,59 @@
     }
   100% {
     opacity: 0;
+    }
+  }
+  /* The world goes out. Fast, and all the way — see the note on the vars. */
+  @keyframes death-veil {
+  0% {
+    opacity: 0;
+    }
+  100% {
+    opacity: 1;
+    }
+  }
+  /*
+   * The word arrives ALREADY THERE and settles. `zone-title` grows from 0.95
+   * because a place should step into the light; this comes in at 1.14 and
+   * comes down, which reads as an impact rather than as an entrance. The blur
+   * clears fast so the letters are hard before they stop moving.
+   */
+  @keyframes death-word {
+  0% {
+    opacity: 0;
+    scale: 1.14;
+    filter: blur(10px);
+    }
+  55% {
+    opacity: 1;
+    filter: blur(0);
+    }
+  100% {
+    opacity: 1;
+    scale: 1;
+    filter: blur(0);
+    }
+  }
+  /* Slams out and stays. No retract — nothing about this card is temporary. */
+  @keyframes death-rule {
+  0% {
+    width: 0;
+    opacity: 0;
+    }
+  100% {
+    width: 320px;
+    opacity: 1;
+    }
+  }
+  /* The score and the note: a plain rise, held. They are read, not performed. */
+  @keyframes death-line {
+  0% {
+    opacity: 0;
+    translate: 0 8px;
+    }
+  100% {
+    opacity: 1;
+    translate: 0 0;
     }
   }
   @keyframes zone-rule {

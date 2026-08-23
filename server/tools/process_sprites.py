@@ -263,7 +263,12 @@ def process(args) -> Path:
     # that play once and hold the last — a prone rest, not a ping-pong.
     # `--uniform` used to mean a 3-frame ping-pong; the world coin now lives
     # in make_coin.py and owns its own order.
-    timeline = cols != GRID_COLS or args.name.endswith("-death")
+    # `-down` is the player's collapse and plays exactly like a `-death`: a
+    # one-shot that holds its last frame. It is named separately because it is
+    # NOT a death — a downed player can still be carried out by their party —
+    # and the two suffixes are listed here rather than folded into one test so
+    # that difference stays visible to whoever adds the third.
+    timeline = cols != GRID_COLS or args.name.endswith(("-death", "-down"))
     if timeline:
         walk_order = list(range(cols))
         idle = cols - 1

@@ -31,7 +31,7 @@ from app.entities import Player  # noqa: E402
 # equality check against this set would fail the moment somebody got tired.
 MOVING = {
     "id", "x", "y", "vx", "vy", "ax", "ay", "seq", "lantern", "hp", "alive",
-    "ready", "held", "ads", "st",
+    "ready", "held", "ads", "st", "down",
 }
 # What rides the 5 Hz roster. `ammo` is here and not above on purpose: the
 # client predicts its own trigger and this is the resync, so paying for three

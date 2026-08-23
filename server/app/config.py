@@ -68,7 +68,41 @@ PLAYER_HIT_RADIUS = TILE_SIZE * PLAYER_HIT_TILES_R      # 4.8
 MOVE_SPEED = TILE_SIZE * MOVE_TILES_PER_SEC             # 70.4 px/s
 
 MAX_HP = 100
+#: How long a body stays down in a zone that CANNOT kill a run — the camp and
+#: the shop. Nothing out there can hurt you, so a death in one of those is a
+#: fumble rather than an ending and it costs the two seconds it always did.
 RESPAWN_DELAY = 2.0          # seconds
+
+# --- dying, which now ends things -------------------------------------------
+# THIS GAME USED TO HAVE NO FAILURE STATE AND EVERYTHING ELSE WAS SHAPED BY
+# THAT. Death cost two seconds, dropped nothing, and restored full health and
+# full stamina — which made it not merely survivable but the FASTEST HEAL IN
+# THE GAME, since nothing else anywhere put a point of health back. A player at
+# twelve hp with a full bag had no reason to walk home. Every mitigation the
+# game owns — worn plate, the shield, `Mods.armor`, the stagger, the whole
+# crowd-damage pass — was balancing a resource that refilled for free.
+#
+# So a hostile zone no longer respawns anybody. It DOWNS them, and the run ends
+# when the party runs out of people who are still standing.
+#
+# TWO STATES, ONE RULE. A blow that empties the bar puts that body DOWN: it
+# stays where it fell, it cannot move, act or be hurt again, and nothing but
+# reaching the next zone brings it back. The run itself only ends when NOBODY
+# is left up — and that single rule is what makes solo and co-op the same
+# system rather than two. Alone you are the whole party, so down and wiped
+# land on the same frame; with company, a body on the floor is a clock on
+# everyone still walking, which is the pressure a co-op game should get from
+# its own players rather than from a number in the corner.
+#
+# WHAT A WIPE COSTS IS EVERYTHING. Day back to one, the belt back to a knife,
+# no skills, no plate, no rounds, no balance. That is the whole point of it:
+# a partial reset is a tax, and a tax is something a player learns to pay.
+
+#: Seconds the black screen holds before the party is put back at the fire.
+#: Long enough to read, short enough that it is not a punishment on top of a
+#: punishment — and it is a HOLD rather than a keypress because the one thing
+#: nobody wants at that moment is another decision.
+WIPE_HOLD = 4.0
 
 # --- running (authored as multipliers and points per second) ----------------
 # SHIFT IS A DECISION, NOT A SECOND WALK SPEED. Sprinting is how a party
@@ -815,7 +849,15 @@ SHOT_DAMAGE = 8
 #: It is a DAY NUMBER rather than a flag because the fight is a milestone in a
 #: run, and a run's shape is measured in nights. `Room` tests it once, on the
 #: crossing, so changing it mid-session takes effect on the next night.
-BOSS_DAY: int | None = 1
+#:
+#: FIVE, AND THE REASON IS PERMADEATH. It sat at 1 while the fight was being
+#: built, because the quickest way to test a boss is to walk into him — and
+#: that was harmless while a death cost two seconds. It is not harmless now:
+#: night one ended in nine hundred hit points of chainsaw before the party
+#: owned a firearm, and losing there costs the whole run. Five is also where
+#: the shop's last rung unlocks, so he arrives on the first night a party can
+#: be carrying the best thing the merchant sells.
+BOSS_DAY: int | None = 5
 
 #: His health, and how much a second, third and fourth gun add. See
 #: `boss.hp_for` — the first player is worth more than the rest.

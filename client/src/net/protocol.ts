@@ -1267,6 +1267,21 @@ export interface PlayerState {
   lantern: boolean;
   hp: number;
   alive: boolean;
+  /**
+   * ON THE FLOOR, AND NOT COMING BACK ON A TIMER.
+   *
+   * `alive` says whether this body acts; `down` says WHY it stopped. A death
+   * in the camp or the shop is `alive:false` with a two-second respawn behind
+   * it — a fumble. A death in a hostile zone is `alive:false` AND `down`, with
+   * no timer at all: the only thing that stands it back up is the party
+   * reaching the next zone, and if nobody is left standing to get them there
+   * the run is over (`wipe` below).
+   *
+   * The client draws a body on the floor rather than an absence, and the HUD
+   * counts how many of the party are still up — which is the only warning
+   * anybody gets that the run is one blow from ending.
+   */
+  down: boolean;
   /** Camp only: standing at the fire and confirmed. */
   ready?: boolean;
   /** Hotbar index in hand. -1 is holstered. */
@@ -1810,6 +1825,21 @@ export interface SnapshotMessage {
   boss?: BossRow;
   /** What he DID this tick: shake, dust, sound, gore. Never replayed. */
   bossEvents?: BossEvent[];
+  /**
+   * THE RUN IS OVER. Present on every tick of the death card's hold and absent
+   * on every other one, which makes it a STATE rather than an event on
+   * purpose: a client that happened to miss the single frame a run ended would
+   * otherwise walk a party out of a camp it never saw them arrive in. Anybody
+   * who joins or reconnects mid-hold gets the black screen too, and the fresh
+   * `welcome` that follows is what clears it.
+   */
+  wipe?: WipeRow;
+}
+
+/** The run that just ended. `day` is the night it ended ON, captured when the
+ *  party went down — by the time the reset runs the day is already back to 1. */
+export interface WipeRow {
+  day: number;
 }
 
 /**

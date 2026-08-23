@@ -29,6 +29,7 @@ import type { HudSnapshot } from '../../game/hud-store';
 import { cn } from '@/lib/utils';
 import { MinimapCanvas } from '../game/MinimapCanvas';
 import { Announce } from './Announce';
+import { DeathScreen } from './DeathScreen';
 import { Armor } from './Armor';
 import { BatteryGauge } from './BatteryGauge';
 import { Hotbar } from './Hotbar';
@@ -210,6 +211,16 @@ export function Hud({ snapshot, minimapRef, error }: HudProps) {
       <MachinePrompt prompt={snapshot.machinePrompt} />
       <ExitGuide strength={snapshot.exitGuide} />
       <LootFly />
+
+      {/*
+        LAST, AND OUTSIDE THE GLASS. It is outside `HudScreen` for the same
+        reason the world tooltips are — but for the opposite purpose: they are
+        out here so the fish-eye does not drag them off the thing they point
+        at, and this is out here so nothing the screen does can be seen
+        through it. A run ending is the one moment this HUD is allowed to cover
+        everything, including its own prompts and the arrival card.
+      */}
+      <DeathScreen wipe={snapshot.wipe} />
     </>
   );
 }

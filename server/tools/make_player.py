@@ -54,7 +54,14 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+import sys
+from types import SimpleNamespace
+
 from PIL import Image
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+import process_sprites  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
 RAW_DIR = ROOT / "assets" / "raw"
@@ -649,6 +656,123 @@ def _frame(facing: str, frame: int, skin: str, hold: bool = False) -> list[list[
     return cell
 
 
+# --- going down -------------------------------------------------------------
+# THE COLLAPSE, and it is a real sheet rather than a rotated walk frame.
+#
+# The rule this obeys is the corpse system's and it is written on
+# `drawCorpseSprites`: never rotate or squash a walk sprite. Sixteen pixels
+# through a canvas transform is mush, and mush is exactly what the player must
+# be able to read at a glance here — a body on the floor across a dark clearing
+# is the thing a teammate is looking for, and if they cannot tell it from a
+# rock the rescue mechanic does not exist.
+#
+# IT IS A DOWNED BODY, NOT A CORPSE, AND THE ART HAS TO SAY SO. The zombie's
+# `-death` sheet ends in a heap with a blood pool under it, because a zombie
+# that stops moving is finished. A player who goes down is *waiting*: their
+# party can still reach the next zone and carry them out, and that possibility
+# is the whole tension of the state. So this timeline ends CURLED ON ITS SIDE
+# — knees up, one arm out, the head still a head — and there is no pool. A
+# body that read as a corpse would tell every teammate the wrong thing about
+# whether it was worth finishing the night.
+#
+# Five frames, holding the last, exactly like every other one-shot in the
+# pipeline (`process_sprites.py` keys the timeline off the `-down` suffix the
+# same way it does `-death`).
+
+#: How far the body has folded, per frame: the head's drop and the torso's.
+#: It sinks fast and then settles — a collapse that eased in would read as
+#: lying down on purpose.
+DOWN_HEAD = (0, 3, 5, 6, 6)
+DOWN_BODY = (0, 2, 3, 4, 4)
+#: The frame the figure stops being upright and becomes a shape on the floor.
+DOWN_PRONE = 3
+
+
+#: THE BODY ON THE GROUND, as literal rows — see `_down_frame`.
+#:
+#: Two frames: the moment it lands, and the settle a beat later. The settle is
+#: not a copy — the arm slides out a pixel and the head tips — because a
+#: timeline whose last two frames are identical reads as the animation having
+#: hung, and this one holds its final frame for as long as the player is down.
+#:
+#: Read right to left: head (hair over skin), shoulder, the coat along the
+#: ground, then the knees drawn up behind. `o` is outline, `s`/`d` skin,
+#: `W`/`w`/`v` the dyed coat, `k` its dark, `P` trousers, `B` boot.
+PRONE_ART = (
+    (
+        "................",
+        "..........oooo..",
+        ".....ooooohhhho.",
+        "...ooWWWWoshhso.",
+        "..oPPvwwWoosdso.",
+        ".oBPPvwwwWooooo.",
+        ".oBBovvvvo......",
+        "..oo..oooo......",
+    ),
+    (
+        "................",
+        "..........oooo..",
+        ".....ooooohhhho.",
+        "...ooWWWWoshhso.",
+        "..oPPvwwWoosdoo.",
+        ".oBPPvwwwWoooo..",
+        ".oBBovvvvoos.o..",
+        "..oo..oooo......",
+    ),
+)
+
+
+def _down_frame(facing: str, frame: int, skin: str) -> list[list[str]]:
+    """One column of the fall. Frames 0-2 buckle; 3-4 are the body on its side.
+
+    The two halves are drawn differently on purpose. While it is still upright
+    the ordinary primitives do the work with a growing offset, so the figure
+    that buckles is unmistakably the same figure that was walking. Once it is
+    down the sprite is authored directly — a torso lying across the cell, the
+    head at the end it fell toward, and the knees drawn up behind it — because
+    a prone body is not a standing body with a bigger offset.
+    """
+    cell = [["." for _ in range(TILE)] for _ in range(TILE)]
+    recipe = SKINS[skin]
+    if frame < DOWN_PRONE:
+        drop = DOWN_BODY[frame]
+        _body(cell, facing, BODY_TOP + drop)
+        _head(cell, facing, HEAD_TOP + DOWN_HEAD[frame], recipe["hair"])
+        # The legs give way under it rather than staying planted. Two rows of
+        # coat shade where the shins were is a body folding; shins still
+        # upright under a sunk torso is a character standing in a hole.
+        for x in range(MID - BODY_HALF + 1, MID + BODY_HALF - 1):
+            _put(cell, x, min(TILE - 1, LEG_TOP + drop), CLOTH_LO)
+            _put(cell, x, min(TILE - 1, LEG_TOP + drop + 1), DARKCLOTH)
+        return cell
+
+    # THE SHAPE ON THE FLOOR, AUTHORED PIXEL BY PIXEL.
+    #
+    # The first cut built it out of `_box` at an offset and it came out a
+    # rounded PILL — a capsule with a bump on one end, floating. That is what
+    # happens when a pose gets composed out of primitives written for a figure
+    # standing up: the outline closes into a lozenge and the head, drawn at the
+    # same value as the coat, merges straight into it.
+    #
+    # So the prone pose is drawn directly, the same way the legs are
+    # (`LEGS_DOWN`), and it is built around the one thing it has to say from
+    # across a dark clearing: THAT IS A PERSON, AND THEY ARE NOT GETTING UP.
+    # Three separate masses with outline between them — the head is its own
+    # shape with hair on top and a face under it, the coat is a distinct value
+    # from both, and the knees are drawn up behind with a gap you can see. It
+    # sits on the FLOOR ROW, so it reads as lying on the ground rather than
+    # hovering over it.
+    _blit(cell, PRONE_ART[min(frame - DOWN_PRONE, len(PRONE_ART) - 1)],
+          TILE - len(PRONE_ART[0]))
+    if recipe["stamp"]:
+        # Whatever the skin adds rides the standing pose only. A hat authored
+        # against a head at HEAD_TOP has nowhere to sit on a body lying down,
+        # and a hat floating where the head used to be is the loudest possible
+        # bug in a sprite like this one.
+        pass
+    return cell
+
+
 def _pack_frame(facing: str, frame: int) -> list[list[str]]:
     cell = [["." for _ in range(TILE)] for _ in range(TILE)]
     _pack(cell, facing, BODY_TOP + BOB[frame])
@@ -717,6 +841,16 @@ def build(args) -> list[Path]:
         path = RAW_DIR / f"{skin}.png"
         sheet(cells).save(path)
         written.append(path)
+        # THE DOWNED TIMELINE, as its own sheet. Its own file rather than more
+        # rows on the walk sheet for the reason every generated list in this
+        # repository is append-only: the walk sheet is 3 columns and this is 5,
+        # so it cannot share a grid, and `process_sprites.py` already keys a
+        # one-shot off the file's own name.
+        down = [[_down_frame(facing, frame, skin) for frame in range(5)]
+                for facing in ("down", "side", "up")]
+        path = RAW_DIR / f"{skin}-down.png"
+        sheet(down).save(path)
+        written.append(path)
     cells = [[_pack_frame(facing, frame) for frame in range(3)]
              for facing in ("down", "side", "up")]
     path = RAW_DIR / "backpack.png"
@@ -725,12 +859,39 @@ def build(args) -> list[Path]:
     return written
 
 
+def _process(name: str) -> None:
+    """Straight through the same door every other body goes through.
+
+    `make_armor.py` and `make_wolf.py` already process what they write, and for
+    the same reason: a generator that only emits RAW leaves a second manual
+    step nobody remembers, and the first symptom is a sheet in `processed/`
+    that is one revision behind the art. The side row faces LEFT on this
+    sprite — `process_sprites` mirrors it into the fourth output row.
+    """
+    process_sprites.process(
+        SimpleNamespace(
+            name=name,
+            tile=TILE,
+            width=0,
+            height=0,
+            tolerance=40,
+            no_hue_key=False,
+            side_facing="left",
+            filter="auto",
+            exact=True,
+            uniform=False,
+        )
+    )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Generate the player sheets.")
     parser.add_argument("--seed", type=int, default=1337)
     args = parser.parse_args()
     for path in build(args):
         print(f"wrote {path.relative_to(ROOT)}")
+        _process(path.stem)
+        print(f"  processed {path.stem}")
 
 
 if __name__ == "__main__":

@@ -160,7 +160,8 @@ the doc says so rather than letting somebody discover it.
 
 ## Verification
 
-`python tests/test_events.py` from `server/`.
+`python tests/test_events.py` from `server/`, and `bun tests/events.ts` from
+`client/`.
 
 It drives all three triggers with nobody watching, because a trigger that never
 fires is indistinguishable from one whose odds are low, and nobody plays enough
@@ -168,3 +169,8 @@ permanent nights to tell the difference. It also asserts the two claims that rot
 quietest — that a refusing effect spends nothing, and that a new event really is
 a data row, checked against a row the test builds itself and drives through the
 unmodified director.
+
+The client-side one pins the mirror. The server ships an event key and no copy,
+so a row added on one side only produces the quietest failure available: the
+event fires, does everything it was written to do, and says nothing at all.
+Both sides are behaving correctly and the game is broken in between them.

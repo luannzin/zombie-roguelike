@@ -213,6 +213,7 @@ These bind every subtree. Subsystem-specific rules live in the docs above.
 | client | `bun tests/grade.ts` from `client/` after touching `render/post/grade.ts` — plain script, prints `ok` |
 | client | `bun tests/exit-path.ts` from `client/` after touching `game/exit-path.ts` — plain script, prints `ok` |
 | client | `bun tests/weapon-pose.ts` from `client/` after touching `render/guns.ts`, `game/weapon-feel.ts` or `make_guns.py` — plain script, prints `ok`. It reads the REAL atlas manifest, so it fails if the generator stops appending action frames |
+| client | `bun tests/events.ts` from `client/` after touching `server/app/events.py`'s catalog or `client/src/game/events.ts` — plain script, prints `ok`. It reads the REAL catalog out of the Python, so it fails if the two sides of the night's script drift |
 | client | `bun tests/boss-clock.ts` from `client/` after touching `render/boss.ts`, `app/boss.py` or `make_sawyer.py` — plain script, prints `ok`. It reads the REAL sawyer manifest and pins the one thing nothing at runtime notices: that the frame on screen when a blow lands is the frame the art says it lands on |
 | assets | `python tools/make_armor.py` from `server/` after touching a worn overlay — it writes the raw art AND processes it, and it fails the build if any piece leaves the 16x16 player grid, which is the one way an overlay goes wrong invisibly |
 | assets | `python tools/make_wolf.py` from `server/` after touching the pack rig — it writes the raw art AND processes all seven sheets, and it fails the build if any pixel reaches a frame unshaded (which is what a part painted outside the mask pass looks like). Follow it with `test_creature_sheets.py`, which counts the heads |
@@ -307,6 +308,14 @@ pins the rule the docstrings already claimed but the code did not have — that
 ANY blow cancels a heal, not only a fatal one. Without that, holding 4 while
 walking backwards is free, and the "stand still in the open" the whole verb is
 built on never happens.
+
+Run `bun tests/events.ts` from `client/` alongside it. `events.py` and
+`client/src/game/events.ts` are a mirror pair — the server ships an event KEY
+and holds no interface copy — and the failure mode when they drift is the
+quietest in the codebase: an event with no client row fires, does everything it
+was written to do, and says NOTHING. The horde arrives with no howl and no
+card. Both sides are behaving correctly and the game is broken in between them,
+with no error anywhere to find.
 
 Run `test_events.py` after touching `events.py`, the effect doors on `Room`
 (`send_horde`, `begin_dark`, `drop_supplies`, `stir_at_downed`), or anything

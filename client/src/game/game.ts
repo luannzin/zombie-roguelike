@@ -171,6 +171,7 @@ import {
   type HudHotbar,
   type HudInventory,
   type HudMachinePrompt,
+  type HudRerollPrompt,
   type HudSkill,
   type HudBoss,
   type HudSnapshot,
@@ -406,6 +407,14 @@ const BUY_TOOLTIP_LIFT_TILES = 2.6;
  * part of it they are watching while the canister comes out.
  */
 const MACHINE_TOOLTIP_LIFT_TILES = 3.4;
+/**
+ * How far above the merchant's contact his card sits, in tiles.
+ *
+ * Shorter than the cabinet's, because he is a person rather than a three-tile
+ * machine — but taller than a table's, because the card has to clear his head
+ * and the counter he is standing behind.
+ */
+const MERCHANT_TOOLTIP_LIFT_TILES = 2.2;
 
 /** How far above the console the activate tooltip sits, in tiles. */
 const RIFT_TOOLTIP_LIFT_TILES = 1.9;
@@ -769,6 +778,8 @@ export class Game {
    * are cleared with it. `rebuildLights` folds both into one pass.
    */
   private eventLights: { x: number; y: number; radiusTiles: number }[] = [];
+  /** What the next reroll costs. `spinPrice`'s twin — see `rerollPrompt`. */
+  private rerollPrice = 0;
   /**
    * Creature projectiles in the air, straight off the snapshot.
    *
@@ -1316,6 +1327,7 @@ export class Game {
       msg.map.entrance?.state === 'open';
     this.balance = msg.balance ?? 0;
     this.spinPrice = msg.spinPrice ?? 0;
+    this.rerollPrice = msg.rerollPrice ?? 0;
     // THE NIGHT'S PLATFORMS COME HOME. Started here rather than on a snapshot
     // because it belongs to the ARRIVAL: the skids are already in the air when
     // the corridor opens, so the first thing the party sees in this glade is
@@ -1411,6 +1423,7 @@ export class Game {
         riftPrompt: null,
         buyPrompt: null,
         machinePrompt: null,
+        rerollPrompt: null,
       });
       playSfx('void', { jitter: 0 });
       this.beds = { fire: 0, wind: 0.12 };
@@ -1438,6 +1451,15 @@ export class Game {
           subtitle: 'Algo grande vem vindo',
         },
       });
+    }
+
+    // THE SHELF TURNED OVER. Everybody in the room hears it, for the same
+    // reason a purchase is broadcast: it is the PARTY's gold. The tables
+    // themselves arrive on `msg.stands` — this is the coin and the sound.
+    for (const roll of msg.rerolls ?? []) {
+      playSfxAt('coin', roll.x, roll.y, { gain: roll.by === this.localId ? 1 : 0.6 });
+      playSfxAt('lever', roll.x, roll.y, { gain: 0.5 });
+      this.effects.spawnReward(roll.x, roll.y, `-${roll.cost}`);
     }
 
     // A KIT LANDED. The bar moving is already on the roster; this is the part
@@ -1758,6 +1780,7 @@ export class Game {
       this.balanceShown += delta;
     }
     if (msg.spinPrice !== undefined) this.spinPrice = msg.spinPrice;
+    if (msg.rerollPrice !== undefined) this.rerollPrice = msg.rerollPrice;
     for (const ev of msg.buys ?? []) this.onBuy(ev);
     for (const ev of msg.spins ?? []) this.onSpin(ev);
     if (msg.blackout) this.lantern.kill();
@@ -2390,6 +2413,7 @@ export class Game {
         spins: this.spins,
         skills: this.skillList(),
         machinePrompt: this.machinePrompt(),
+        rerollPrompt: this.rerollPrompt(),
       });
     }
   }
@@ -2515,6 +2539,7 @@ export class Game {
       reward: this.reward,
       spins: this.spins,
       machinePrompt: this.machinePrompt(),
+      rerollPrompt: this.rerollPrompt(),
     });
   }
 
@@ -2762,6 +2787,33 @@ export class Game {
             ? 'buy'
             : 'broke';
     return { mode, spins: this.spins, price: this.spinPrice };
+  }
+
+  /**
+   * The merchant, and what he will do for money.
+   *
+   * MIRRORS `machinePrompt` deliberately, down to the reach: the two fixtures
+   * are the same kind of thing (stand near it, press a key, spend party gold)
+   * and the whole reason they read differently is that they stand at opposite
+   * ends of the room and sell different things.
+   */
+  private rerollPrompt(): HudRerollPrompt | null {
+    if (this.locked || this.introLeft > 0) return null;
+    if (this.zone?.kind !== 'store') return null;
+    const config = this.config;
+    const local = this.local;
+    const fixtures = this.world?.store;
+    if (!config || !local || !fixtures) return null;
+    const range = config.storeSpinTiles * config.tileSize;
+    const dx = fixtures.merchantX - local.state.x;
+    const dy = fixtures.merchantY - (local.state.y + config.playerHalfHeight);
+    if (dx * dx + dy * dy > range * range) return null;
+    const left = fixtures.stands.filter((stand) => !stand.sold).length;
+    // THE ORDER IS THE SERVER'S (`Room.reroll`): an empty shelf is refused
+    // before the purse is even looked at, because charging for a shuffle of
+    // nothing is worse than being told you cannot afford one.
+    const mode = left === 0 ? 'empty' : this.balance >= this.rerollPrice ? 'buy' : 'broke';
+    return { mode, price: this.rerollPrice, left };
   }
 
   // --- loop ----------------------------------------------------------------
@@ -3812,7 +3864,18 @@ export class Game {
       this.lights,
       {
         ambientTiles: config.visionAmbientTiles,
-        lanternTiles: config.visionLanternTiles,
+        // THE WEATHER, ON THE ONE NUMBER BOTH REACHES ARE DERIVED FROM.
+        //
+        // `eyeScale` and `sightScale` are fractions OF this, and the server's
+        // `view_range` / `view_lit_range` are the same two fractions of the
+        // same tile count — so scaling here scales both cones by exactly what
+        // `ai.look` multiplies its own reach by. Applying it to the two
+        // fractions instead would be the same arithmetic written twice, which
+        // is how one of them ends up missing it.
+        //
+        // The ambient bubble is deliberately NOT scaled: it is arm's reach,
+        // and fog does not hide something that is touching you.
+        lanternTiles: config.visionLanternTiles * this.weatherSight(),
         coneDegrees: config.visionConeDegrees,
         eyeScale: config.enemyViewDarkScale,
         sightScale: config.enemyViewLitScale,
@@ -4379,6 +4442,7 @@ export class Game {
       riftPrompt: riftPrompt(ix),
       buyPrompt: buyPrompt(ix),
       machinePrompt: this.machinePrompt(),
+      rerollPrompt: this.rerollPrompt(),
       skills: this.skillList(),
       spins: this.spins,
       reward: this.reward,
@@ -4466,6 +4530,21 @@ export class Game {
     // The lever. After the tables because the cabinet stands past the last of
     // them, so the two reaches never overlap and the order is only a rule for
     // the frame somebody is standing exactly between them.
+    // THE MERCHANT. Before the cabinet in this list only because the two
+    // stand at opposite ends of the room and can never both be in reach —
+    // the order is a rule for a frame that cannot happen, written down so
+    // nobody has to work that out again.
+    const trader = this.rerollPrompt();
+    if (trader) {
+      if (trader.mode !== 'buy') {
+        // Both refusals buzz rather than sending a packet the server drops:
+        // a purse short of the next rung, and a shelf with nothing left on it.
+        playSfx('ui-error');
+        return;
+      }
+      this.connection.send({ type: 'reroll' });
+      return;
+    }
     const lever = this.machinePrompt();
     if (lever) {
       // Both dead presses buzz rather than sending a packet the server would
@@ -5363,6 +5442,24 @@ export class Game {
     return 0;
   }
 
+  /**
+   * Tonight's coat, as a multiplier on how far anything can see.
+   *
+   * HALF OF A MIRROR PAIR. `ai.look` multiplies every creature's reach by the
+   * same number off the same shipped table, because sight is symmetric in this
+   * game: a creature sees a shape exactly as far as the shape sees it. A fog
+   * that shortened one side only would be a stealth power or an ambush
+   * generator depending on which side, and neither has any symptom — the
+   * player simply gets spotted from further away than they were shown.
+   *
+   * Unknown coats fall back to 1, matching `zones.rule_for`, so a night with
+   * weather nobody wrote a rule for plays as a clear one on both sides.
+   */
+  private weatherSight(): number {
+    const coat = this.zone?.weather ?? 'clear';
+    return this.config?.weather?.[coat]?.sight ?? 1;
+  }
+
   private pushEventLight(x: number, y: number): void {
     const config = this.config;
     if (!config) return;
@@ -5732,6 +5829,21 @@ export class Game {
       writeTooltipAnchor('machine', view.x(fixtures.machineX), view.y(fixtures.machineY - lift));
     } else {
       dropTooltipAnchor('machine');
+    }
+
+    // THE MERCHANT. Lifted over his head rather than his feet, the same
+    // reasoning the cabinet's tooltip uses — he is a standing figure and a
+    // card pinned to his contact row lands behind him.
+    const trader = this.rerollPrompt();
+    if (trader && this.config && fixtures) {
+      const lift = this.config.tileSize * MERCHANT_TOOLTIP_LIFT_TILES;
+      writeTooltipAnchor(
+        'merchant',
+        view.x(fixtures.merchantX),
+        view.y(fixtures.merchantY - lift),
+      );
+    } else {
+      dropTooltipAnchor('merchant');
     }
 
     const crate = cratePromptInfo(ix) !== null ? nearCrate(ix) : null;

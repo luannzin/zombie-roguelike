@@ -43,6 +43,53 @@ means something is a scene.
 - `FOOTPRINTS` depth and `_claim` — silently invisible walls.
 - `crates.attach` + `Navigator.invalidate()` — freeing a tile without invalidating leaves pathing walking into thin air.
 
+## Weather with teeth
+
+Weather used to be **paint**. It was rolled, shipped and drawn — a rainy night
+was the same night with a wash over it — which made it the cheapest thing in
+the game to notice and the least worth noticing.
+
+`zones.WeatherRule` gives each coat two scalars, and they are an **inverted
+pair**:
+
+| coat | sight | noise | the night it makes |
+| --- | --- | --- | --- |
+| clear | 1.0 | 1.0 | The baseline. The only night where what you learned about ranges is true. |
+| rain | 0.88 | 0.55 | **The sneaking night.** You can see; you cannot hear. Best night to work a clearing, worst night to be surprised on. |
+| fog | 0.58 | 1.15 | **The blind night.** You cannot see; sound carries further than usual. A gunshot here is a much worse idea than anywhere else. |
+
+Neither is simply *harder*. Each takes away a different one of the two senses
+this game is about, so the correct way to play a rainy night and a foggy one
+are **different from each other** rather than differently difficult. If one
+coat ever became worse than another on both axes, weather would go back to
+being a difficulty roll in a costume — `test_weather.py` fails if it does.
+
+**Clear having no modifier is not an absence of a rule.** It is the reference
+the other two are read against, and a game where every night modified something
+would have nothing to modify it *from*.
+
+### Sight is a mirror and has to ship
+
+`ai.look` and the client's `render/fov.ts` multiply by the same number off
+`welcome.config.weather`. Sight symmetry is a hard contract here — a creature
+sees a shape exactly as far as the shape sees it — and the failure when the two
+drift has **no symptom at all**: the player simply gets spotted from further
+away than the wash they were shown said they could be. Nobody reports that;
+they report the game feeling unfair.
+
+The scalar multiplies the tile count both reaches are fractions of, rather than
+the two fractions separately — the same arithmetic written twice is how one of
+them ends up missing it.
+
+### Noise has one door
+
+`ai.hear`, and only there. Every sound in the game — a gunshot, the extraction
+siren, a horde's howl, a vault being forced — passes through it, and a coat
+applied at the call sites instead would be missing from the next one somebody
+adds.
+
+---
+
 ## Change surface
 
 | intent | touch |

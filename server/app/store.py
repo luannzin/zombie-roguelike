@@ -1327,6 +1327,38 @@ def _place_stands(width: int, height: int, day: int, rng: random.Random) -> list
     return stands
 
 
+def reroll_stands(stands: list[Stand], day: int, rng: random.Random) -> None:
+    """Re-roll what is on the UNSOLD tables, in place.
+
+    IN PLACE, and only the unsold ones. Both halves are the mechanic.
+
+    A SOLD TABLE STAYS SOLD. It is the difference between a reroll and an
+    infinite-stock exploit: if a purchase came back on the next spin, the
+    correct play would be to buy the cheapest thing on the shelf and reroll
+    until the shop had paid for itself, and the merchant would become a machine
+    for turning gold into more gold. What the party bought is gone, and the
+    table it was on is still empty.
+
+    AND THE FURNITURE DOES NOT MOVE. Same table, same place, same frame — only
+    what is lying on it changes. A shop that rearranged itself would make the
+    player re-read a room they had already learned, which is a cost with no
+    decision in it; the whole value of a reroll is that the ANSWER changes and
+    the question does not.
+
+    THE PRICES ARE RE-HAGGLED WITH THE STOCK, because a price belongs to the
+    thing on the table. What is deliberately NOT preserved is the cheapest-first
+    ordering the night opened with: that ramp is the zone's tutorial about
+    money, and it is taught once on arrival. A party pressing the lever a third
+    time has learned it.
+    """
+    open_stalls = [stand for stand in stands if not stand.sold]
+    if not open_stalls:
+        return
+    for stand, key in zip(open_stalls, _roll_stock(day, len(open_stalls), rng)):
+        stand.key = key
+        stand.price = _haggle(key, rng)
+
+
 def payout_spots(width: int, height: int, count: int) -> list[tuple[float, float]]:
     """Landing points for `count` platforms, in world pixels.
 

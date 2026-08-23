@@ -66,6 +66,56 @@ Nearest contracts: [`server/app/AGENTS.md`](../../server/app/AGENTS.md),
 - `Entrance.bounds` — this is the only map with TWO corridors; a scan without bounds bricks up the exit.
 - `zones.STORE_AMBIENT` / `store.RING_TORCHES` / `TORCH_LIGHT_TILES` / `layers/payout` alphas — one budget, moved together.
 
+## The reroll
+
+The shop had exactly one decision in it: **buy what is there, or save.** Both
+answers are fine and neither is interesting on the fourth night, because the
+shelf is not a choice — it is a hand the party was dealt.
+
+A reroll turns saving into a **gamble against the shelf**, and the price is
+what stops that gamble being free.
+
+### It is priced like the spin, on purpose
+
+`Room.reroll_price` is `Room.spin_price`'s shape, copied rather than
+re-derived. The two are the same argument about the same kind of purchase —
+something with no ceiling, sold repeatedly, inside one visit — and having one
+of them be linear would be an accident nobody could defend afterwards.
+
+Doubling means the party always gets to reroll one more time and never gets to
+reroll five. It resets on the next night's shop, because a ladder carried
+across the run would be a number nobody can reach by night six, and the
+mechanic would quietly stop existing.
+
+It is **cheaper than a bought pull**, and the gap is the argument: a pull is a
+skill you keep for the rest of the run, a reroll is six things you might not
+want either.
+
+### A sold table stays sold
+
+This is the whole difference between a reroll and an infinite-stock exploit.
+If a purchase came back on the next spin, the correct play would be to buy the
+cheapest thing on the shelf and reroll until the shop had paid for itself —
+and the merchant would become a machine for turning gold into more gold.
+
+Nobody reports a shop that is too generous. They just get rich, and the
+economy quietly stops mattering.
+
+### And the furniture does not move
+
+Same table, same place, same frame; only what is lying on it changes. A shop
+that rearranged itself would make the player re-read a room they had already
+learned, which is a cost with no decision in it. The value of a reroll is that
+the **answer** changes and the question does not.
+
+### At the merchant, not at the cabinet
+
+The machine sells **skills** and he sells **objects**. A party pressing one
+lever for both would have no idea which of the two they were bargaining with —
+which is also why the two fixtures stand at opposite ends of the room.
+
+---
+
 ## Change surface
 
 | intent | touch |

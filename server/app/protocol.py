@@ -248,6 +248,9 @@ MSG_DROP = "drop"
 MSG_ACTIVATE = "activate"
 MSG_BUY = "buy"
 MSG_SPIN = "spin"
+#: Buy a new shelf. `{type:"reroll"}` — no payload: what is rerolled is every
+#: unsold table, and there has never been a reason to reroll one of them.
+MSG_REROLL = "reroll"
 #: Spend one medical cell. `{type:"use","slot":0|1}` — the CELL, not the item
 #: key, because two cells may hold the same kit and the server has to empty the
 #: one the player pressed.
@@ -385,6 +388,8 @@ def snapshot(
     heals: list[dict] | None = None,
     events: list[dict] | None = None,
     dark: float | None = None,
+    reroll_price: int | None = None,
+    rerolls: list[dict] | None = None,
     spits: list[dict] | None = None,
     spit_events: list[dict] | None = None,
     spit_bursts: list[dict] | None = None,
@@ -511,6 +516,15 @@ def snapshot(
     # (`0.0` is the lift), and omitted on every tick between.
     if dark is not None:
         payload["dark"] = dark
+    # WHAT THE NEXT REROLL COSTS. STATE, like `spinPrice` beside it and for the
+    # same reason: it is a price tag, and a client that missed the event that
+    # moved it would show the party a number the server will refuse.
+    if reroll_price is not None:
+        payload["rerollPrice"] = reroll_price
+    # And the shelf turning over. An EVENT — the tables themselves ride the
+    # `stands` row, and this is the lever, the coin and the sound.
+    if rerolls:
+        payload["rerolls"] = rerolls
     # WHAT IS IN THE AIR — creature projectiles, NOT the hitscan `shots`
     # above, which are gunfire and arrive on the frame they were fired.
     #

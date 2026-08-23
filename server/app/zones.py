@@ -115,6 +115,82 @@ STORE_AMBIENT = 0.32
 #: fov's own light rather than summing them.
 ARENA_AMBIENT = 0.44
 
+@dataclass(frozen=True)
+class WeatherRule:
+    """What a coat of weather DOES, as two scalars.
+
+    WEATHER USED TO BE PAINT. It was rolled, shipped and drawn — a rainy night
+    was the same night with a wash over it — which made it the cheapest thing
+    in the game to notice and the least worth noticing. These two numbers are
+    what turn it into a thing the player plays around.
+
+    THEY ARE AN INVERTED PAIR, and that is the whole design. Rain is the night
+    you can SEE and cannot HEAR; fog is the night you can HEAR and cannot SEE.
+    Neither is simply "harder" — each takes away a different one of the two
+    senses this game is about, so the correct way to play a rainy night and a
+    foggy one are different from each other rather than differently difficult.
+
+    CLEAR IS THE BASELINE, deliberately, and it is the only night where both
+    numbers are 1. That is not an absence of a rule: it is the reference the
+    other two are read against, and a game where every night modified something
+    would have nothing to modify it FROM. It is also the only night where a
+    player can trust what they learned about ranges.
+    """
+
+    #: Multiplies every sight reach — the creature's and, through
+    #: `client_config`, the player's own fov. SYMMETRIC BY CONTRACT: sight in
+    #: this game is shared, and a fog that blinded only one side would be a
+    #: stealth power or an ambush generator depending on which.
+    sight: float
+    #: Multiplies how far a noise carries (`ai.hear`). Cuts BOTH ways too — a
+    #: gunshot and a horde's howl are the same kind of thing to this number.
+    noise: float
+
+
+#: What each coat does. See `WeatherRule` for why they are an inverted pair.
+WEATHER_RULES: dict[str, WeatherRule] = {
+    # The reference. Both senses whole; the night the numbers mean what the
+    # player learned they mean.
+    WEATHER_CLEAR: WeatherRule(sight=1.0, noise=1.0),
+    # THE SNEAKING NIGHT. Rain eats sound — a shot barely carries, and neither
+    # does anything walking toward you. Sight is only lightly touched, so the
+    # player can still see: what they lose is the warning. It is the best night
+    # to work a clearing and the worst night to be surprised on.
+    WEATHER_RAIN: WeatherRule(sight=0.88, noise=0.55),
+    # THE BLIND NIGHT, and the exact inverse. Nothing sees far, including you —
+    # but sound carries slightly BETTER than usual in still, heavy air, so
+    # listening is what a foggy night is played with. A gunshot on this night
+    # is a much worse idea than on any other.
+    WEATHER_FOG: WeatherRule(sight=0.58, noise=1.15),
+}
+
+
+def rule_for(weather: str) -> WeatherRule:
+    """The rule for a coat, falling back to the baseline for an unknown one.
+
+    Falls back rather than raising because weather arrives as a string on a
+    `Zone`, and a zone with a coat nobody wrote a rule for should play like a
+    clear night rather than take the room down.
+    """
+    return WEATHER_RULES.get(weather, WEATHER_RULES[WEATHER_CLEAR])
+
+
+def weather_payload() -> dict:
+    """Every coat's rules, for `welcome.config`.
+
+    THE SIGHT SCALAR HAS TO SHIP. `ai.look` and the client's `render/fov.ts`
+    are a mirror pair — sight symmetry is a hard contract in this game — and a
+    fog that shortened the server's cone while the client kept drawing the old
+    one would be a creature seeing exactly as far as the player was shown it
+    could, on a night when it could not. Hardcoding it on either side is the
+    way that breaks.
+    """
+    return {
+        key: {"sight": rule.sight, "noise": rule.noise}
+        for key, rule in WEATHER_RULES.items()
+    }
+
+
 # Most nights are dry. Rain is common enough that a second expedition often
 # feels like a different place; fog is the rarer coat.
 _WEATHER_TABLE: tuple[tuple[str, int], ...] = (

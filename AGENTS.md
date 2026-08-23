@@ -208,7 +208,7 @@ These bind every subtree. Subsystem-specific rules live in the docs above.
 
 | scope | command |
 | --- | --- |
-| server | `python tests/test_snapshot_shape.py`, `test_pour.py`, `test_store_walk.py`, `test_config_parity.py`, `test_loot_frames.py`, `test_bush_cover.py`, `test_scenery_containers.py`, `test_creature_sheets.py`, `test_map_scale.py`, `test_boss_fight.py`, `test_gear.py`, `test_pack.py`, `test_medical.py`, `test_events.py`, `test_night_pressure.py`, `test_quota.py`, `test_containers.py`, `test_skills.py`, `test_ranged.py` from `server/` — plain scripts, each prints `ok` |
+| server | `python tests/test_snapshot_shape.py`, `test_pour.py`, `test_store_walk.py`, `test_config_parity.py`, `test_loot_frames.py`, `test_bush_cover.py`, `test_scenery_containers.py`, `test_creature_sheets.py`, `test_map_scale.py`, `test_boss_fight.py`, `test_gear.py`, `test_pack.py`, `test_medical.py`, `test_events.py`, `test_night_pressure.py`, `test_quota.py`, `test_containers.py`, `test_skills.py`, `test_ranged.py`, `test_reroll.py`, `test_weather.py` from `server/` — plain scripts, each prints `ok` |
 | client | `bun run typecheck` from `client/` — required after any change there |
 | client | `bun tests/grade.ts` from `client/` after touching `render/post/grade.ts` — plain script, prints `ok` |
 | client | `bun tests/exit-path.ts` from `client/` after touching `game/exit-path.ts` — plain script, prints `ok` |
@@ -375,6 +375,25 @@ tested against bodies, because the other order is a hit through cover; and that
 `ai.py` still does not contain the name of a single creature — checked as text,
 because a key comparison would work perfectly while quietly making the second
 ranged creature a code change instead of a stat block.
+
+Run `test_reroll.py` after touching `Room.reroll` / `reroll_price` or
+`store.reroll_stands`. It pins the exploit that is one line away from this
+feature: if a SOLD table came back on the next spin, the correct play would be
+to buy the cheapest thing on the shelf and reroll until the shop had paid for
+itself. Nobody reports a shop that is too generous — they just get rich, and
+the economy quietly stops mattering. It also pins that the ladder doubles AND
+resets (flat makes a rich night a queue at the counter; carried across the run
+the price by night six is unreachable and the mechanic silently stops
+existing), and that an empty shelf is a refusal rather than a purchase.
+
+Run `test_weather.py` after touching `zones.WEATHER_RULES`, `ai.look` or
+`ai.hear`. The sight scalar is half of a MIRROR — the other half is the
+client's `render/fov.ts`, and the two are in different languages — and the
+failure when they drift has no symptom: the player gets spotted from further
+away than the wash they were shown said they could be. It also pins that a coat
+cuts BOTH reaches (applied to the naked eye alone, the lantern silently becomes
+a stealth item on foggy nights), and that the coats stay an INVERTED pair
+rather than a difficulty ladder.
 
 Run `test_config_parity.py` after touching `client_config()` or `GameConfig`:
 it fails if either side declares a key the other does not, in either

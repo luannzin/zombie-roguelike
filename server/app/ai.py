@@ -261,6 +261,8 @@ def update(
     noises: Sequence[Noise] = (),
     hunt_all: bool = False,
     alarm_at: tuple[float, float] | None = None,
+    sight_scale: float = 1.0,
+    noise_scale: float = 1.0,
 ) -> Outcome:
     """Advance every enemy one tick.
 
@@ -284,7 +286,7 @@ def update(
     # Ears before eyes. The room steps players first, so a shot fired this tick
     # is already in the list and is answered on the same tick it was fired.
     for noise in noises:
-        hear(pack, noise, by_id)
+        hear(pack, noise, by_id, noise_scale)
 
     # Then the beam, before anything looks: an enemy the lantern is turning has
     # to be facing its new direction when its own cone is tested this tick, or
@@ -338,7 +340,7 @@ def update(
         else:
             enemy.abandoned = 0.0
 
-        seen = look(enemy, living, world)
+        seen = look(enemy, living, world, sight_scale)
 
         if hunt_all and nearest is not None and enemy.mode != MODE_HUNT:
             commit(enemy, nearest)
@@ -526,7 +528,12 @@ def update(
 
 
 # --- noticing ----------------------------------------------------------------
-def look(enemy: Enemy, living: Sequence[Player], world: TileMap) -> Player | None:
+def look(
+    enemy: Enemy,
+    living: Sequence[Player],
+    world: TileMap,
+    sight_scale: float = 1.0,
+) -> Player | None:
     """The closest living player inside this enemy's sight cone, or None.
 
     Three tests, cheapest first: range, then the cone's half angle against the
@@ -546,6 +553,18 @@ def look(enemy: Enemy, living: Sequence[Player], world: TileMap) -> Player | Non
     somewhere on the line grants a player standing in the open behind it.
 
     The lamp still overrules it. Light in a bush is a lit bush.
+
+    AND BY THE WEATHER. `sight_scale` is the coat's own multiplier
+    (`zones.WeatherRule.sight`), and it is applied to BOTH reaches rather than
+    only the dark one: fog does not care whether you are carrying a lamp, and a
+    coat that shortened one reach and not the other would quietly make the
+    lantern a stealth item on foggy nights.
+
+    IT SHIPS TO THE CLIENT AND MUST. Sight is symmetric in this game — the
+    player's fov and this cone are a mirror pair — so the same scalar has to
+    shorten the wash the client draws. Hardcoding it on either side is how a
+    creature ends up seeing exactly as far as the player was shown it could, on
+    a night when it could not.
     """
     cos_half = enemy.type.view_cos
     best: Player | None = None
@@ -558,7 +577,7 @@ def look(enemy: Enemy, living: Sequence[Player], world: TileMap) -> Player | Non
             else enemy.type.view_range * (
                 BUSH_CONCEAL_SCALE if world.bush_at_point(player.x, player.y) else 1.0
             )
-        )
+        ) * sight_scale
         dx = player.x - enemy.x
         dy = player.y - enemy.y
         distance = math.hypot(dx, dy)
@@ -728,22 +747,34 @@ def shout(spotter: Enemy, target: Player, pack: Sequence[Enemy]) -> None:
         commit(other, target)
 
 
-def hear(pack: Sequence[Enemy], noise: Noise, by_id: dict[str, Player]) -> None:
+def hear(
+    pack: Sequence[Enemy],
+    noise: Noise,
+    by_id: dict[str, Player],
+    noise_scale: float = 1.0,
+) -> None:
     """Fold one noise into every enemy within its radius.
 
     Awareness gain tapers from the centre outward and overshoots on purpose
     (NOISE_ALERT_GAIN > 1), so the middle of a gunshot is an instant hunt and
     the outer band only turns heads. An enemy already hunting has nothing to
     learn from it.
+
+    `noise_scale` is the weather's (`zones.WeatherRule.noise`), applied HERE
+    rather than where each noise is made. Every sound in the game — a gunshot,
+    the extraction siren, a horde's howl, a vault being forced — goes through
+    this one door, and a coat applied at the four call sites instead would be
+    missing from the fifth.
     """
-    if noise.radius <= 0.0:
+    radius = noise.radius * noise_scale
+    if radius <= 0.0:
         return
     source = by_id.get(noise.source_id or "")
     for enemy in pack:
         if enemy.mode == MODE_HUNT:
             continue
         distance = math.hypot(noise.x - enemy.x, noise.y - enemy.y)
-        if distance > noise.radius:
+        if distance > radius:
             continue
         # A SLEEPER EITHER WAKES OR HEARS NOTHING. Awareness is what the hunt
         # diamond is drawn from, and a curled body with a half-full meter over
@@ -756,7 +787,12 @@ def hear(pack: Sequence[Enemy], noise: Noise, by_id: dict[str, Player]) -> None:
             continue
         face(enemy, noise.x, noise.y)
         enemy.awareness = min(
-            1.0, enemy.awareness + NOISE_ALERT_GAIN * (1.0 - distance / noise.radius)
+            # THE TAPER USES THE SCALED RADIUS TOO. Against the raw one, a
+            # rainy night would shorten how far a sound reached and leave the
+            # gain at the edge of that shorter circle still counted as though
+            # the sound were quiet — so the last creature to hear a shot would
+            # react as hard as one standing on top of it.
+            1.0, enemy.awareness + NOISE_ALERT_GAIN * (1.0 - distance / radius)
         )
         if enemy.awareness >= 1.0 and source is not None:
             commit(enemy, source)

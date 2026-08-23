@@ -34,6 +34,7 @@ import { Armor } from './Armor';
 import { BatteryGauge } from './BatteryGauge';
 import { Hotbar } from './Hotbar';
 import { Medical } from './Medical';
+import { RerollPrompt } from './RerollPrompt';
 import { ControlsHint } from './ControlsHint';
 import { HudScreen } from './HudScreen';
 import { NetStats } from './NetStats';
@@ -211,6 +212,7 @@ export function Hud({ snapshot, minimapRef, error }: HudProps) {
       <RiftPrompt prompt={snapshot.riftPrompt} />
       <BuyPrompt prompt={snapshot.buyPrompt} />
       <MachinePrompt prompt={snapshot.machinePrompt} />
+      <RerollPrompt prompt={snapshot.rerollPrompt} />
       <ExitGuide strength={snapshot.exitGuide} />
       <LootFly />
 

@@ -84,6 +84,7 @@ from .config import (
     INVENTORY_SLOTS,
     STORE_BUY_DIST,
     STORE_SPIN_DIST,
+    STORE_REROLL_PRICE,
     STORE_SPIN_PRICE,
     MAX_HP,
     MAX_INPUT_QUEUE,
@@ -210,6 +211,13 @@ class Room:
         #: one costs 100 whoever is standing at the lever.
         self._spins_bought = 0
         self._spin_price_dirty = False
+        #: Rerolls bought THIS VISIT. Resets with the shop, like the spins,
+        #: because both ladders are about one merchant on one night.
+        self._rerolls_bought = 0
+        self._reroll_price_dirty = False
+        #: Rerolls this tick. The lever's own ceremony — one row, for the
+        #: sound and the shelf visibly turning over.
+        self.reroll_events: list[dict] = []
         #: The shop's tables. Empty on every map that is not the store.
         self.stands: list[Stand] = []
         self._stands_dirty = False
@@ -1832,6 +1840,83 @@ class Room:
         """
         return STORE_SPIN_PRICE << self._spins_bought
 
+    @property
+    def reroll_price(self) -> int:
+        """What the next reroll of the merchant's tables costs, in party gold.
+
+        `spin_price`'s shape, copied on purpose rather than re-derived: the two
+        are the same argument about the same kind of purchase — something with
+        no ceiling, sold repeatedly, inside one visit — and having one of them
+        be linear would be an accident nobody could defend afterwards.
+
+        Doubling means the party always gets to reroll one more time and never
+        gets to reroll five. A flat price would make a rich night a queue at
+        the merchant until the balance ran out, which turns a shelf into a
+        vending machine — the exact failure `spin_price` names.
+        """
+        return STORE_REROLL_PRICE << self._rerolls_bought
+
+    def reroll(self, pid: str) -> None:
+        """Buy a new shelf. The tables stay; what is on them changes.
+
+        THE MIRROR OF `spin`, down to the refusals being silent. Standing too
+        far away, being broke, being on the wrong map — the client already
+        knows all three and says so locally, and a server that answered them
+        would be answering a question it cannot see the player asking.
+
+        A SOLD TABLE STAYS SOLD (`store.reroll_stands`). Without that, the
+        correct play is to buy the cheapest thing on the shelf and reroll until
+        the shop has paid for itself, which makes the merchant a machine for
+        turning gold into more gold.
+        """
+        if self.phase != protocol.PHASE_PLAYING or self.departing or self.arriving:
+            return
+        if self.zone.kind != zones.KIND_STORE:
+            return
+        player = self.players.get(pid)
+        if player is None or not player.alive:
+            return
+        if not self.stands:
+            return
+        # NOTHING LEFT TO REROLL IS A REFUSAL, not a purchase. A party who
+        # bought the whole shelf pressing this would pay for a shuffle of
+        # nothing, and the one thing a price ladder must never do is charge for
+        # an outcome the game already knows is empty.
+        if all(stand.sold for stand in self.stands):
+            return
+        price = self.reroll_price
+        if self.balance < price:
+            return
+        # AT THE MERCHANT, not at the cabinet. It is HIS stock — the machine
+        # sells skills and he sells objects, and a party pressing one lever for
+        # both would have no idea which of the two they were bargaining with.
+        # It also puts the reroll where the party is already standing when they
+        # decide they do not like the shelf.
+        spot = self._merchant_spot()
+        if spot is None:
+            return
+        # Measured from the FEET, like every other press in this room.
+        feet_y = player.y + PLAYER_HALF_HEIGHT
+        if math.hypot(player.x - spot[0], feet_y - spot[1]) > STORE_SPIN_DIST:
+            return
+
+        self.balance -= price
+        self._balance_dirty = True
+        self._rerolls_bought += 1
+        self._reroll_price_dirty = True
+        store.reroll_stands(self.stands, self.day, random.Random())
+        self._stands_dirty = True
+        self.reroll_events.append(
+            {"by": pid, "cost": price, "x": round(spot[0], 1), "y": round(spot[1], 1)}
+        )
+
+    def _merchant_spot(self) -> tuple[float, float] | None:
+        """Where the trader is standing, or None off the shop map."""
+        row = (self.world.store or {}).get("merchant")
+        if not isinstance(row, (list, tuple)) or len(row) < 2:
+            return None
+        return float(row[0]), float(row[1])
+
     def _machine_spot(self) -> tuple[float, float] | None:
         """Where the cabinet is standing, or None off the shop map."""
         row = (self.world.store or {}).get("machine")
@@ -2155,6 +2240,9 @@ class Room:
         self._balance_dirty = True
         self._spins_bought = 0
         self._spin_price_dirty = True
+        self._rerolls_bought = 0
+        self._reroll_price_dirty = True
+        self.reroll_events = []
         self._night_takes = None
         for player in self.players.values():
             player.reset_for_new_run()
@@ -2304,6 +2392,12 @@ class Room:
         # nobody could reach and the mechanic would quietly stop existing.
         self._spins_bought = 0
         self._spin_price_dirty = True
+        # Same argument, same reset: a reroll ladder that carried across the
+        # run would be a number nobody could reach by night six, and the
+        # mechanic would quietly stop existing.
+        self._rerolls_bought = 0
+        self._reroll_price_dirty = True
+        self.reroll_events = []
         # The night's platforms come home with the party. `takes` only decides
         # what lands on the shop's apron and what each skid is worth on screen
         # — the balance above is the transaction, and the ceremony the client
@@ -2538,6 +2632,11 @@ class Room:
             if row.state == rift.SPENT:
                 self._drop_excess(row)
             self.world.rifts = [item.geometry_payload() for item in self.rifts]
+
+    @property
+    def _weather(self) -> zones.WeatherRule:
+        """What tonight's coat does. Falls back to clear for an unknown one."""
+        return zones.rule_for(self.zone.weather)
 
     @property
     def sirening(self) -> bool:
@@ -3010,6 +3109,12 @@ class Room:
             # stand next to the pad for thirteen seconds while they arrive.
             hunt_all=self.panic or self.sirening,
             alarm_at=self.alarm_point,
+            # THE WEATHER, AS TWO SCALARS. Read off the zone every tick rather
+            # than cached: a coat belongs to the map, and the map can change
+            # under a room mid-run. See `zones.WeatherRule` for why they are an
+            # inverted pair rather than a difficulty knob.
+            sight_scale=self._weather.sight,
+            noise_scale=self._weather.noise,
         )
         # Heard once. A noise that survived the tick would keep waking whatever
         # walked into its radius long after the sound was over.
@@ -4438,6 +4543,8 @@ class Room:
         self._balance_dirty = False
         spin_price_row = self.spin_price if self._spin_price_dirty else None
         self._spin_price_dirty = False
+        reroll_price_row = self.reroll_price if self._reroll_price_dirty else None
+        self._reroll_price_dirty = False
         boss_row = self.boss.to_payload() if (self.boss and self._boss_dirty) else None
         self._boss_dirty = False
         # STATE, NOT EVENT — see the note in `protocol.snapshot`. It rides
@@ -4487,6 +4594,8 @@ class Room:
                 heals=self.heal_events or None,
                 events=self.event_rows or None,
                 dark=dark_row,
+                reroll_price=reroll_price_row,
+                rerolls=self.reroll_events or None,
                 spits=[
                     {
                         "id": shot.id,
@@ -4545,6 +4654,7 @@ class Room:
                 self.horde_events = []
                 self.heal_events = []
                 self.event_rows = []
+                self.reroll_events = []
                 self.shot_events = []
                 self.shot_bursts = []
                 self.spin_events = []

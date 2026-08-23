@@ -331,6 +331,28 @@ export interface HudMachinePrompt {
   price: number;
 }
 
+/**
+ * The merchant, and what he will do for money.
+ *
+ * A PROMPT OF HIS OWN rather than a mode on `HudMachinePrompt`. The cabinet
+ * sells SKILLS and he sells OBJECTS, and a party pressing one lever for both
+ * would have no idea which of the two they were bargaining with — which is
+ * also why the two fixtures stand at opposite ends of the room.
+ */
+export interface HudRerollPrompt {
+  /**
+   * `buy` — he will do it. `broke` — the purse will not cover the next rung.
+   * `empty` — the party has bought the whole shelf and there is nothing left
+   * to shuffle, which is a refusal rather than a purchase: charging for a
+   * reroll of nothing is the one thing a price ladder must never do.
+   */
+  mode: 'buy' | 'broke' | 'empty';
+  /** What the NEXT one costs. Doubles per purchase, resets each night. */
+  price: number;
+  /** How many tables are still holding something. */
+  left: number;
+}
+
 /** One skill the local player holds, for the tray above the bag. */
 export interface HudSkill {
   key: string;
@@ -537,6 +559,8 @@ export interface HudSnapshot {
   buyPrompt: HudBuyPrompt | null;
   /** Proximity prompt on the upgrade machine. Null outside the store. */
   machinePrompt: HudMachinePrompt | null;
+  /** Proximity prompt on the merchant himself. Null outside the store. */
+  rerollPrompt: HudRerollPrompt | null;
   /**
    * What the levels bought, for the tray ABOVE the bag.
    *
@@ -617,6 +641,7 @@ export const EMPTY_HUD: HudSnapshot = {
   riftPrompt: null,
   buyPrompt: null,
   machinePrompt: null,
+  rerollPrompt: null,
   skills: [],
   spins: 0,
   reward: null,

@@ -133,6 +133,21 @@ export interface UsePacket {
   slot: number;
 }
 
+/**
+ * Buy a new shelf at the merchant.
+ *
+ * NO PAYLOAD. What is rerolled is every UNSOLD table — there has never been a
+ * reason to reroll one of them, and a slot index would invite exactly the
+ * exploit `store.reroll_stands` exists to prevent.
+ *
+ * The server refuses silently when the party is broke, standing too far away,
+ * off the shop map, or has already bought the whole shelf. All four are things
+ * the HUD already knows, so the prompt says which and this packet is not sent.
+ */
+export interface RerollPacket {
+  type: 'reroll';
+}
+
 export type ClientMessage =
   | InputPacket
   | PingPacket
@@ -144,6 +159,7 @@ export type ClientMessage =
   | BuyPacket
   | SpinPacket
   | UsePacket
+  | RerollPacket
   | DropPacket;
 
 /**
@@ -323,6 +339,21 @@ export interface GameConfig {
    * radius rather than a light.
    */
   eventBeaconTiles: number;
+  /**
+   * What each coat of weather DOES, keyed by the string on `zone.weather`.
+   *
+   * `sight` IS HALF OF A MIRROR. `ai.look` multiplies every creature's reach
+   * by the same number, because sight is symmetric in this game — a creature
+   * sees a shape exactly as far as the shape sees it. It ships rather than
+   * living as a constant on either side precisely because the rule breaking
+   * has no symptom: the player simply gets spotted from further away than the
+   * wash they were shown said they could be.
+   *
+   * `noise` is the server's alone (it scales how far a sound carries in
+   * `ai.hear`) and rides along because it is the other half of the same table
+   * — splitting them would invite one to be updated without the other.
+   */
+  weather: Record<string, { sight: number; noise: number }>;
   /**
    * The worn slots, top to bottom. The HUD stacks its rows in this order and
    * a `lootPickups` row with `dest: "worn"` indexes it, so the order is a
@@ -1902,6 +1933,12 @@ export interface WelcomeMessage {
    * is: the lever names a price the moment somebody stands at it.
    */
   spinPrice?: number;
+  /**
+   * What the next reroll of the merchant's tables costs. Always sent, for the
+   * same reason `spinPrice` is: the price tag has to be there the moment
+   * somebody walks up to it.
+   */
+  rerollPrice?: number;
 }
 
 export interface SnapshotMessage {
@@ -1985,6 +2022,15 @@ export interface SnapshotMessage {
    */
   spinPrice?: number;
   /**
+   * What the NEXT reroll of the shelf costs. `spinPrice`'s twin, doubling per
+   * purchase within a visit and resetting on arrival — the two are the same
+   * argument about the same kind of purchase, so they behave identically.
+   * Present only when it moved.
+   */
+  rerollPrice?: number;
+  /** The shelf turning over. An event: the lever, the coin and the sound. */
+  rerolls?: RerollEvent[];
+  /**
    * THE SAWYER. Present only on the boss map, and only on ticks he changed —
    * which during a fight is all of them. Absent is not "he is gone": the
    * client keeps the last row it saw until the zone changes, exactly the way
@@ -2064,6 +2110,20 @@ export interface NightEvent {
   k: string;
   x?: number;
   y?: number;
+}
+
+/**
+ * The merchant's shelf re-rolled. `cost` is what it took, for the float.
+ *
+ * `by` is who pressed it, and every client in the room gets the row for the
+ * same reason a purchase is broadcast: it is the PARTY's gold, and a shelf
+ * turning over is the loudest thing in the room after the cabinet.
+ */
+export interface RerollEvent {
+  by: string;
+  cost: number;
+  x: number;
+  y: number;
 }
 
 /** One kit spent. `hp` is what it actually put back, after the ceiling. */

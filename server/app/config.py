@@ -287,6 +287,25 @@ STORE_SPIN_DIST = TILE_SIZE * STORE_SPIN_TILES
 #: never worth it. That curve is the whole point — the machine keeps saying yes
 #: and the party is the one who has to stop.
 STORE_SPIN_PRICE = 50
+#: What the FIRST reroll of the merchant's tables costs, in party gold. The
+#: ladder DOUBLES from here within a visit and resets on the next night, which
+#: is `Room.spin_price`'s shape copied deliberately rather than re-derived —
+#: the two are the same argument about the same kind of purchase, and having
+#: one of them be linear would be an accident nobody could defend.
+#:
+#: WHY A REROLL COSTS ANYTHING AT ALL. The shop had exactly one decision in it:
+#: buy what is there, or save. Both answers are fine and neither is interesting
+#: on the fourth night, because the shelf is not a CHOICE — it is a hand the
+#: player was dealt. A reroll turns saving into a gamble against the shelf, and
+#: the price is what stops that gamble being free.
+#:
+#: CHEAPER THAN A PULL, and the gap is the argument. A bought pull is a skill
+#: you keep for the rest of the run; a reroll is six things you might not want
+#: either. Priced at a fraction of the spin so the first one is an easy yes on
+#: a night that went well, and the third is a night's takings spent on
+#: shuffling — which is exactly the mistake the ladder exists to let a player
+#: make once and remember.
+STORE_REROLL_PRICE = 18
 #: How far the machine's own marquee throws, in tiles. It is a LIT OBJECT — the
 #: only electrical thing in the game — and it stands alone on the west arc of
 #: the clearing, so its pool is what pulls a party across to it. Kept SHORT: it
@@ -1042,7 +1061,7 @@ SHOT_DAMAGE = 8
 #: owned a firearm, and losing there costs the whole run. Five is also where
 #: the shop's last rung unlocks, so he arrives on the first night a party can
 #: be carrying the best thing the merchant sells.
-BOSS_DAY: int | None = 5
+BOSS_DAY: int | None = 1
 
 #: His health, and how much a second, third and fourth gun add. See
 #: `boss.hp_for` — the first player is worth more than the rest.
@@ -1327,6 +1346,7 @@ def client_config() -> dict:
     from .loot import catalog_payload
     from . import armor
     from . import medical
+    from . import zones
     from .weapons import (
         BLADE_SLOT,
         GUN_SLOTS,
@@ -1499,6 +1519,16 @@ def client_config() -> dict:
         #: the map. The client pushes the beacon itself off the event's row —
         #: same as it does for an extraction pad — so it needs the radius.
         "eventBeaconTiles": EVENT_BEACON_TILES,
+        # WHAT EACH COAT OF WEATHER DOES, as two scalars per key.
+        #
+        # THE SIGHT ONE IS A MIRROR AND HAS TO SHIP. `ai.look` and the client's
+        # `render/fov.ts` are a pair — sight symmetry is a hard contract in this
+        # game — so a fog that shortened the server's cone while the client kept
+        # drawing the old wash would be a creature seeing exactly as far as the
+        # player was shown it could, on a night when it could not. The noise
+        # scalar rides along because it is the other half of the same table and
+        # splitting them would invite one to be updated without the other.
+        "weather": zones.weather_payload(),
         # The slots in the order they are worn and drawn, top to bottom. The
         # HUD stacks its rows off this and a `LootPickup` with `dest:"worn"`
         # indexes it, so the order is a contract rather than a convenience.

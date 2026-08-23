@@ -869,6 +869,17 @@ WOLF_PACK_MIN = 2
 #: often as the first would make both of them ordinary.
 WOLF_SPAWN_WEIGHT = 0.34
 
+# --- the bloater: the only thing that reaches --------------------------------
+#
+# See `enemies.BLOATER` for what it is and why. This is the one number that is
+# a balance decision rather than a stat block.
+#: RARER THAN THE WOLF, and much rarer than the horde. One bloater changes how
+#: a clearing is fought; three is a firing line, and a firing line in a dark
+#: forest is not a decision, it is a wall. It is also the only creature whose
+#: answer requires the player to move TOWARD something, and a map that asked
+#: for that constantly would stop being a place you can retreat through.
+BLOATER_SPAWN_WEIGHT = 0.16
+
 # --- progression -------------------------------------------------------------
 # Levels are derived from total xp by the server and sent already split into
 # (level, xp into level, xp needed) so the client never re-implements the curve.

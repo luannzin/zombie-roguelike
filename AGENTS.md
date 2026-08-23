@@ -208,7 +208,7 @@ These bind every subtree. Subsystem-specific rules live in the docs above.
 
 | scope | command |
 | --- | --- |
-| server | `python tests/test_snapshot_shape.py`, `test_pour.py`, `test_store_walk.py`, `test_config_parity.py`, `test_loot_frames.py`, `test_bush_cover.py`, `test_scenery_containers.py`, `test_creature_sheets.py`, `test_map_scale.py`, `test_boss_fight.py`, `test_gear.py`, `test_pack.py`, `test_medical.py`, `test_events.py`, `test_night_pressure.py`, `test_quota.py`, `test_containers.py`, `test_skills.py` from `server/` — plain scripts, each prints `ok` |
+| server | `python tests/test_snapshot_shape.py`, `test_pour.py`, `test_store_walk.py`, `test_config_parity.py`, `test_loot_frames.py`, `test_bush_cover.py`, `test_scenery_containers.py`, `test_creature_sheets.py`, `test_map_scale.py`, `test_boss_fight.py`, `test_gear.py`, `test_pack.py`, `test_medical.py`, `test_events.py`, `test_night_pressure.py`, `test_quota.py`, `test_containers.py`, `test_skills.py`, `test_ranged.py` from `server/` — plain scripts, each prints `ok` |
 | client | `bun run typecheck` from `client/` — required after any change there |
 | client | `bun tests/grade.ts` from `client/` after touching `render/post/grade.ts` — plain script, prints `ok` |
 | client | `bun tests/exit-path.ts` from `client/` after touching `game/exit-path.ts` — plain script, prints `ok` |
@@ -362,6 +362,19 @@ lantern suppression (one alone produces a lamp that lights for a single
 packet), and asserts the trade-off rows still cost what their blurbs say — a
 downside dropped in a rebalance is a strictly-better row, and nobody reports a
 skill that is too good.
+
+Run `test_ranged.py` after touching `projectiles.py`, `EnemyType`'s `ranged_*`
+or `shot_*` fields, `ai.py`'s ranged branch, or `Room._throw` / `step_shots`.
+It pins the five things about a creature that reaches which playing cannot
+show you: that the near edge of its band HOLDS (a minimum that silently stopped
+working turns it into a creature that is strictly better the closer it gets,
+which just feels unfair); that the windup exists, PLANTS it and reaches the
+wire; that the disc is slower than the player walks, which is arithmetic
+nothing at runtime checks; that a disc is tested against the MAP before it is
+tested against bodies, because the other order is a hit through cover; and that
+`ai.py` still does not contain the name of a single creature — checked as text,
+because a key comparison would work perfectly while quietly making the second
+ranged creature a code change instead of a stat block.
 
 Run `test_config_parity.py` after touching `client_config()` or `GameConfig`:
 it fails if either side declares a key the other does not, in either

@@ -130,6 +130,13 @@ EYE = material_ramp(16, 0.78, 0.26, 0.70)
 #: bone or blood, so the thing coming out of its shoulders reads as something
 #: that GREW there rather than as more brute.
 FUNGUS = material_ramp(58, 0.34, 0.20, 0.62)
+#: THE BLOATER'S SKIN, and it has to say "swollen" at sixteen pixels with no
+#: room for a bulge. What does that is HUE: rot is a cool desaturated green,
+#: and this is pushed toward sick yellow and up in saturation, which is the
+#: colour of something distended and about to give. A recolour would not be
+#: enough on its own — the silhouette carries the shape (see `Build`) — but
+#: the two together are what stop it reading as a fat walker.
+BILE = material_ramp(74, 0.40, 0.22, 0.62)
 
 
 def _hex(colour) -> str:
@@ -153,6 +160,9 @@ PALETTE.update({
     "G": _hex(HIDE[3]),     # brute hide, lit
     "y": _hex(HIDE[2]),     # brute hide
     "u": _hex(HIDE[1]),     # brute hide, shade
+    "P": _hex(BILE[3]),     # bloater skin, lit
+    "p": _hex(BILE[2]),     # bloater skin
+    "k": _hex(BILE[1]),     # bloater skin, shade
     "F": _hex(FUNGUS[3]),   # growth, lit
     "f": _hex(FUNGUS[1]),   # growth, shade
     "X": _hex(GORE[3]),     # blood, wet
@@ -226,6 +236,26 @@ BUILDS: dict[str, Build] = {
     # GROWING out of it. The growths are what make its outline unmistakable
     # at the size where the brute is still a blob.
     "zombie-brute": Build("brute", 4, 6, 3, 9, 13, ("G", "y", "u"), None, 2),
+    # THE BLOATER. A PEAR, and it is the only one on the sheet.
+    #
+    # Every other build here is widest at the shoulders — a walker is straight,
+    # a husk is narrow, a brute is a wedge. This one is widest at the BELLY and
+    # has a small head sunk into almost nothing, so its top contour is the
+    # opposite shape to all three: narrow where they are wide, and bulging
+    # where they taper. That inversion is what makes it identifiable as a black
+    # shape at the edge of a lantern, which is the only distance that matters
+    # for a creature you are supposed to react to before it fires.
+    #
+    # SHORT ARMS (`reach=1`). The overhang is the walker's tell and this thing
+    # does not want it: a bloater that read as reaching would look like a
+    # melee creature, and the entire encounter is about it NOT needing to
+    # reach you.
+    # SQUAT AND NEARLY THE FULL WIDTH OF THE CELL, with a head barely bigger
+    # than a fist. The first cut kept the brute's proportions and only pulled
+    # the shoulders in, and the silhouette test correctly called it a recolour:
+    # both were simply "wide". What separates them now is HEIGHT — the brute is
+    # tall and wide, this is short and wide — and a head half the size.
+    "zombie-bloater": Build("bloater", 2, 7, 5, 9, 15, ("P", "p", "k"), None, 1),
 }
 
 
@@ -308,6 +338,9 @@ def _head(cell, facing: str, build: Build, top: int, dx: int = 0,
         return
     if build.kind == "brute":
         _brute_head(cell, facing, build, top, dx)
+        return
+    if build.kind == "bloater":
+        _bloater_head(cell, facing, build, top, dx)
         return
     _walker_head(cell, facing, build, top, dx, lit, mid, shade)
 
@@ -487,6 +520,52 @@ def _skull(cell, facing: str, build: Build, top: int, dx: int) -> None:
     _bite(cell, x0, top)
 
 
+def _bloater_head(cell, facing: str, build: Build, top: int, dx: int) -> None:
+    """A small head on a swollen neck, with the jaw already open.
+
+    THE HEAD IS THE SMALLEST ON THE SHEET and that is the whole read. Every
+    other creature here is identified by what is on top of it — hair, a skull,
+    growths — and this one is identified by there being almost nothing there
+    over a body that is enormous. Narrow-over-wide is the inverted silhouette
+    (see the `Build`), and the head is the half of it that has to be small.
+
+    THE JAW IS OPEN, ALWAYS. It is the only face on the sheet drawn mid-action,
+    because this creature's whole verb comes out of its mouth — a bloater with
+    a closed jaw is a fat zombie, and the player has to be able to tell before
+    it fires rather than after.
+
+    ONE SOCKET, not two. The other side of the face is swollen shut, which is
+    the asymmetry (S15) and is also cheaper than it sounds: the lit accent is
+    what a player finds in the dark, and one of them on a body this wide reads
+    as a bigger creature than two would.
+    """
+    lit, mid, shade = build.ramp
+    x0 = MID - build.head_half + dx
+    x1 = x0 + build.head_half * 2 - 1
+    bottom = top + build.head_bottom - build.head_top
+    _box(cell, x0, top, x1, bottom, mid)
+    # The crown takes the light; the far side goes to shade, so a head this
+    # small still has a direction to it.
+    for x in range(x0 + 1, x1):
+        _put(cell, x, top + 1, lit if x < x1 - 1 else shade)
+    if facing == "up":
+        # From behind there is no face and no jaw — just the swollen mass.
+        for y in range(top + 2, bottom):
+            _put(cell, x1 - 1, y, shade)
+        return
+    # THE SOCKET, on the key side. The other eye is swollen shut and is drawn
+    # as skin rather than as a second hole.
+    _put(cell, x0 + 1, top + 2, SOCKET)
+    _put(cell, x0 + 1, top + 2, EYE_LIT if facing != "up" else SOCKET)
+    _put(cell, x1 - 1, top + 2, shade)
+    # THE OPEN JAW. Two rows of ink under the face with a lip of skin either
+    # side, so it reads as a mouth held open rather than as a shadow.
+    for x in range(x0 + 1, x1):
+        _put(cell, x, bottom, INK)
+    _put(cell, x0, bottom, mid)
+    _put(cell, x1, bottom, shade)
+
+
 def _brute_head(cell, facing: str, build: Build, top: int, dx: int) -> None:
     """The brute's head, which is barely a head: a mass with eyes in it.
 
@@ -546,6 +625,55 @@ def _brute_head(cell, facing: str, build: Build, top: int, dx: int) -> None:
     _put(cell, x1 + 1, bottom - 1, INK)
 
 
+def _belly(cell, build: Build, x0: int, x1: int, top: int, bottom: int) -> None:
+    """A torso that gets WIDER on the way down. The whole silhouette.
+
+    THIS IS THE ONLY SHAPE ON THE SHEET THAT TAPERS UPWARD. A walker is a
+    rectangle, a husk is a narrow cage, a brute is a wedge with the mass at
+    the shoulders — all three are widest at the top. Drawing this one as a
+    fatter rectangle would have made it a fat walker, which is the failure the
+    variants test exists to catch (a variant that is a recolour of another).
+    So the shoulders are pulled IN by two pixels and the belly is left at full
+    width, and the outline does the work.
+
+    THE SEAMS ARE HORIZONTAL. A distended thing is under pressure, and what
+    reads as pressure at this size is banding across the widest part — the same
+    trick a barrel's hoops play in `make_objects`. Two bands, unevenly spaced,
+    because two evenly spaced ones are a pattern and a pattern reads as cloth.
+    """
+    lit, mid, shade = build.ramp
+    # THE SHOULDERS, pulled in HARD. Three pixels narrower than the belly on
+    # each side — the first cut used two and the silhouette test called the
+    # result a recolour of the brute, because a barely-tapered wide body is
+    # just a wide body. The taper has to be visible in the outline at one
+    # pixel per pixel or it is not a shape, it is a shading choice.
+    for y in range(top, top + 2):
+        for x in range(x0 + 3, x1 - 2):
+            _put(cell, x, y, mid)
+        _put(cell, x0 + 3, y, INK)
+        _put(cell, x1 - 3, y, INK)
+    # THE BELLY, at full width from the third row down.
+    _box(cell, x0, top + 2, x1, bottom, mid, round_top=False, round_bottom=False)
+    for y in range(top + 3, bottom):
+        for x in range(x0 + 1, x1):
+            # Light from the same key corner every other body here uses, so a
+            # clearing of mixed creatures is lit by one sun.
+            reach = (x - x0) + (y - top)
+            if reach <= 4:
+                _put(cell, x, y, lit)
+            elif reach >= 9:
+                _put(cell, x, y, shade)
+    # THE SEAMS. Unevenly spaced — see the docstring.
+    for x in range(x0 + 1, x1):
+        _put(cell, x, top + 4, shade)
+    for x in range(x0 + 2, x1 - 1):
+        _put(cell, x, bottom - 2, shade)
+    # And one split already open, low and off-centre, with bile in it. It is
+    # the two-pixel promise that this thing is going to come apart.
+    _put(cell, x0 + 2, bottom - 1, "F")
+    _put(cell, x0 + 3, bottom - 1, "f")
+
+
 def _body(cell, facing: str, build: Build, top: int, dx: int = 0,
           flat: bool = False) -> None:
     """The torso, and the arms that are the whole tell.
@@ -561,6 +689,8 @@ def _body(cell, facing: str, build: Build, top: int, dx: int = 0,
     bottom = top + (2 if flat else build.body_bottom - build.body_top)
     if build.kind == "husk" and not flat:
         _ribcage(cell, facing, build, x0, x1, top, bottom)
+    elif build.kind == "bloater" and not flat:
+        _belly(cell, build, x0, x1, top, bottom)
     else:
         _box(cell, x0, top, x1, bottom, mid, round_top=False, round_bottom=False)
         for y in range(top + 1, bottom):

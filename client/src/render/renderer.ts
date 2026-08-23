@@ -23,6 +23,7 @@
 import { createSurface, get2d, type OffscreenSurface } from '../lib/canvas';
 import {
   drawCombatEffects,
+  drawSpits,
   drawDeathBursts,
   drawDust,
   drawLevelUps,
@@ -584,6 +585,9 @@ export class Renderer {
       state.time,
     );
     drawCombatEffects(ctx, state.effects, state.config.tileSize, this.weaponVfx);
+    // OVER the bodies and the scenery — see `drawSpits`. A disc lost behind a
+    // shoulder is a hit taken.
+    drawSpits(ctx, view, state.spits);
     this.darkness.drawLights(ctx, state.effects.lights);
     drawLootAuras(ctx, state.loot, state.time);
     drawLootMotes(ctx, state.loot, state.time, state.config.tileSize);

@@ -153,6 +153,7 @@ import { tileHash } from '../render/terrain';
 import type {
   DrawableCoin,
   DrawableCorpse,
+  DrawableSpit,
   DrawableEntity,
   GearLayer,
   DrawableLoot,
@@ -769,6 +770,18 @@ export class Game {
    */
   private eventLights: { x: number; y: number; radiusTiles: number }[] = [];
   /**
+   * Creature projectiles in the air, straight off the snapshot.
+   *
+   * NOT INTERPOLATED, and that is a deliberate exception to how every other
+   * moving thing here is drawn. A disc travels in a straight line at a
+   * constant speed and the server sends its position five times a second, so
+   * smoothing it would mean drawing it slightly BEHIND where the server thinks
+   * it is — and the one frame that matters for this object is the frame it
+   * reaches you. Being a little ahead of the truth is survivable; being behind
+   * it means the player dodges something that already hit them.
+   */
+  private spits: DrawableSpit[] = [];
+  /**
    * The merchant's clip player, and the sheets it drives. He is not an entity
    * and the server has never had an opinion about which frame he is on, so
    * this lives entirely client-side — see `render/merchant.ts`.
@@ -1221,6 +1234,9 @@ export class Game {
     // carried across an entrance would be a light standing over nothing on a
     // forest that never had one — and it would keep pointing at it.
     this.eventLights = [];
+    // Nothing crosses an entrance. A disc still drawn from the last packet of
+    // the old forest would hang in the new one until something else flew.
+    this.spits = [];
     // And the dark goes with it: `dark` is only sent on its edges, so a lamp
     // suppressed on the way out would stay suppressed on the new map until
     // something happened to lift it.
@@ -1431,6 +1447,36 @@ export class Game {
     for (const heal of msg.heals ?? []) {
       this.effects.spawnHeal(heal.x, heal.y, heal.hp);
       playSfxAt('heal', heal.x, heal.y);
+    }
+
+    // WHAT IS IN THE AIR. Replaced wholesale rather than patched: the server
+    // sends the array whole on every tick it is non-empty, and an empty one is
+    // omitted — so an absent field means "nothing is flying", which is the
+    // common case and has to clear the list rather than leave the last disc
+    // hanging in the forest for ever.
+    this.spits = (msg.spits ?? []).map((row) => ({
+      id: row.id,
+      x: row.x,
+      y: row.y,
+      dx: row.dx,
+      dy: row.dy,
+      // The disc's size belongs to whatever threw it, and the row does not
+      // carry the thrower — every projectile in the game today comes off the
+      // one creature that has a `shotRadius`, so it is resolved through the
+      // catalog rather than paid for per row, thirty times a second.
+      radius: this.spitRadius(),
+    }));
+
+    // IT LEFT SOMETHING. The wet cough, at the mouth it came out of.
+    for (const fired of msg.spitFired ?? []) {
+      playSfxAt('zombie-attack', fired.x, fired.y, { gain: 0.9, rate: 0.72 });
+      this.effects.spawnImpact(fired.x, fired.y, fired.dx, fired.dy, false, 0.6);
+    }
+    // AND WHERE ONE ENDED. A splash, so a miss is as legible as a hit —
+    // without it a dodged projectile simply vanishes, and the player never
+    // learns that dodging was what worked.
+    for (const burst of msg.spitBurst ?? []) {
+      this.effects.spawnSpitBurst(burst.x, burst.y);
     }
 
     // THE DARK, WHICH IS STATE RATHER THAN AN EVENT. Applied before the event
@@ -3610,6 +3656,7 @@ export class Game {
       coins,
       loot,
       corpses,
+      spits: this.spits,
       weather: this.zone?.weather ?? 'clear',
       // How much light this PLACE has of its own. Zero everywhere but the
       // shop; see `server/app/zones.py`.
@@ -3935,6 +3982,8 @@ export class Game {
       healing: source.isLocal ? this.healing : source.use ?? 0,
       // WHAT the ring is measuring. Same source as `healing` on both paths.
       forcing: source.isLocal ? this.forcingKind : (source.uk ?? '') === 'crate',
+      // Only creatures throw.
+      windup: 0,
       moving,
       // The legs keep up with the ground: a run is 1.55x the walk, and the
       // walk cycle at its authored cadence under it is a character skating.
@@ -4084,6 +4133,11 @@ export class Game {
       // Nothing but a player ever spends a kit or forces a vault.
       healing: 0,
       forcing: false,
+      // THE TELEGRAPH. Straight off the row rather than a local clock, for the
+      // same reason the heal ring is: the server owns the duration, and a
+      // swell driven by a client-side timer would finish at a different
+      // instant from the thing it is promising.
+      windup: enemy.wu ?? 0,
       // THE SLEEP SHEET IS A BREATH, so it has to be told it is animating.
       // Every other loop in the game is driven by the body actually going
       // somewhere; this is the one pose whose whole job is to move while the
@@ -5291,6 +5345,24 @@ export class Game {
    * no event at all. The list is cleared with the map, like everything else
    * the map was holding.
    */
+  /**
+   * The disc's half-width, off the one creature in the catalog that throws.
+   *
+   * RESOLVED FROM THE CATALOG rather than shipped per row. A projectile's size
+   * is a fact about its thrower, and putting it on the wire would be paying
+   * for a constant thirty times a second. If a second ranged creature ever
+   * wants a different disc, the row grows a thrower key and this becomes a
+   * lookup — which is a smaller change than the wire would have been.
+   */
+  private spitRadius(): number {
+    const types = this.config?.enemyTypes;
+    if (!types) return 0;
+    for (const type of Object.values(types)) {
+      if (type.shotRadius > 0) return type.shotRadius;
+    }
+    return 0;
+  }
+
   private pushEventLight(x: number, y: number): void {
     const config = this.config;
     if (!config) return;

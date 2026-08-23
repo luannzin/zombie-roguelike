@@ -788,6 +788,21 @@ export interface EnemyTypeConfig {
   /** Clothes overlay sheets. `EnemyState.cloth` indexes this. */
   clothes?: string[];
   /**
+   * The disc's own half-width in world px, for drawing one in flight. Zero on
+   * everything that does not reach.
+   */
+  shotRadius: number;
+  /**
+   * The BAND this creature fires in, in world px. `rangedMax` is zero on
+   * everything that does not reach, which is what the client tests.
+   *
+   * The near end is the mechanic and not a detail: inside `rangedMin` the
+   * creature cannot fire at all, so CLOSING is the answer to it — the exact
+   * inversion of every other threat in the game, where backing away works.
+   */
+  rangedMin: number;
+  rangedMax: number;
+  /**
    * What KIND of thing this is, for the HUD only: `''` for everything the
    * director spawns, `'miniboss'` for a placed one. It drives the crown over
    * the head and the always-visible health bar, and nothing else — the
@@ -1601,6 +1616,50 @@ export interface EnemyState {
    * crown rather than a lit one. Absent means awake.
    */
   sl?: number;
+  /**
+   * 0..1 through a ranged WINDUP. Absent for everything not currently winding
+   * up, which is almost everything almost always.
+   *
+   * THE MOST IMPORTANT FIELD ON THIS ROW for a player about to be hit by
+   * something they cannot see coming. Everything else here says what a
+   * creature IS; this says what it is ABOUT TO DO, which is the only thing
+   * they can still act on. It is a fraction rather than seconds because what
+   * the client draws is a SWELL — the creature filling up before it spits —
+   * and a swell wants a proportion, not a duration it would have to divide by
+   * a stat block.
+   */
+  wu?: number;
+}
+
+/**
+ * One creature projectile in the air.
+ *
+ * NOT `ShotEvent`, which is gunfire: a bullet is hitscan and arrives on the
+ * frame it was fired, and these are the opposite — slow enough to walk away
+ * from, which is the entire mechanic (`server/app/projectiles.py`).
+ *
+ * STATE rather than an event, and it has to be: a disc takes seconds to cross
+ * a clearing, so a client that dropped the launch packet must still be able to
+ * draw the thing about to hit it.
+ */
+export interface SpitState {
+  id: number;
+  x: number;
+  y: number;
+  /** World px/s. The client uses it to point the sprite, not to move it. */
+  dx: number;
+  dy: number;
+}
+
+/** One projectile LEAVING a creature. An event: the cough and the muzzle burst. */
+export interface SpitFired {
+  id: number;
+  /** The creature that threw it, so the burst can be drawn on its mouth. */
+  by: string;
+  x: number;
+  y: number;
+  dx: number;
+  dy: number;
 }
 
 /**
@@ -1975,6 +2034,15 @@ export interface SnapshotMessage {
    * a warning for a wave that already landed.
    */
   events?: NightEvent[];
+  /**
+   * Creature projectiles in the air. Whole every tick it is non-empty, which
+   * is almost never — see `SpitState` for why this is state and not an event.
+   */
+  spits?: SpitState[];
+  /** Projectiles that LEFT something this tick. An event, never replayed. */
+  spitFired?: SpitFired[];
+  /** Where projectiles ENDED this tick, for the splash. Also an event. */
+  spitBurst?: { x: number; y: number }[];
   /**
    * Seconds left of an event dark, or 0 on the frame one lifts.
    *

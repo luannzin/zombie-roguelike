@@ -61,7 +61,7 @@ EMBER = EYE[4][:3]
 #: size, and the recolour failure this test exists to catch is a failure
 #: between siblings on one sheet.
 FAMILIES = (
-    ("zombie", "zombie-husk", "zombie-brute"),
+    ("zombie", "zombie-husk", "zombie-brute", "zombie-bloater"),
     ("wolf", "wolf-twin", "wolf-alpha"),
 )
 CREATURES = tuple(name for family in FAMILIES for name in family)

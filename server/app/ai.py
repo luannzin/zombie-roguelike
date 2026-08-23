@@ -206,10 +206,20 @@ RESETTLE_DELAY = 1.5
 
 @dataclass
 class Attack:
-    """One enemy's swing connecting with one player. The room resolves it."""
+    """One enemy's attack landing on one player. The room resolves it.
+
+    `ranged` is what the room reads to decide whether this is a blow or a
+    THROW. It is a flag rather than two lists because everything upstream is
+    identical — the same cooldown discipline, the same target, the same
+    facing — and the only thing that differs is what `Room` does with it.
+    """
 
     enemy: Enemy
     target: Player
+    #: A projectile leaves the creature instead of a blow landing. The damage
+    #: arrives later, from wherever the disc gets to — which is the whole point
+    #: of it (see `projectiles.py`).
+    ranged: bool = False
 
 
 @dataclass(frozen=True)
@@ -289,6 +299,13 @@ def update(
         enemy.tick_stagger(dt)
         if enemy.attack_cooldown > 0.0:
             enemy.attack_cooldown = max(0.0, enemy.attack_cooldown - dt)
+        # ITS OWN CLOCK, and deliberately not nested under the one above: a
+        # creature that reaches has two rate limits and they are independent,
+        # so walking into a bloater's face must not also hand you a free melee
+        # beat it had been saving — nor stall its shots because it happened to
+        # swing once.
+        if enemy.shot_cooldown > 0.0:
+            enemy.shot_cooldown = max(0.0, enemy.shot_cooldown - dt)
 
         nearest, nearest_dist = nearest_player(enemy, living)
 
@@ -433,6 +450,46 @@ def update(
         if goal_dist > 1e-6:
             enemy.aim_x = (goal_x - enemy.x) / goal_dist
             enemy.aim_y = (goal_y - enemy.y) / goal_dist
+
+        # --- ATTACKING FROM A DISTANCE --------------------------------------
+        #
+        # DRIVEN BY A FIELD. `ranged_damage` is the switch and nothing in this
+        # module knows the name of the creature that has it — the second ranged
+        # creature is a stat block and a sheet, exactly like the second melee
+        # one was.
+        #
+        # It sits ABOVE the melee test, and the order is the mechanic: a
+        # creature that reaches will always prefer to stand off, so the only
+        # way to stop it is to get INSIDE its band. That is what makes it the
+        # one threat in the game whose answer is to move toward it.
+        if enemy.type.ranged_damage > 0:
+            if enemy.windup > 0.0:
+                # COMMITTED. Planted, facing where it aimed, and the easiest
+                # thing on the map to shoot. The windup is not a courtesy to
+                # the player — it is what the creature PAYS for reaching.
+                face(enemy, target.x, target.y)
+                enemy.vx = enemy.vy = 0.0
+                enemy.stuck = 0.0
+                enemy.windup -= dt
+                if enemy.windup <= 0.0:
+                    enemy.windup = 0.0
+                    enemy.shot_cooldown = enemy.type.ranged_cooldown
+                    attacks.append(Attack(enemy=enemy, target=target, ranged=True))
+                continue
+            if (
+                enemy.type.ranged_min <= distance <= enemy.type.ranged_max
+                and enemy.shot_cooldown <= 0.0
+                # ONLY AT SOMETHING IT CAN SEE. `lost` is the beat after a
+                # target breaks line of sight, and a creature that kept firing
+                # through it would be shooting at a remembered position through
+                # a tree — which reads as the map being able to hit you.
+                and enemy.lost == 0.0
+            ):
+                face(enemy, target.x, target.y)
+                enemy.vx = enemy.vy = 0.0
+                enemy.stuck = 0.0
+                enemy.windup = enemy.type.ranged_windup
+                continue
 
         if distance <= enemy.type.attack_range:
             # In reach: plant your feet and swing when your own cooldown allows.

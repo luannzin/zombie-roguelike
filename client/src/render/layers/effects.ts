@@ -13,6 +13,7 @@
  */
 
 import type { Effects, WindPuff, DeathBurst, LevelUp } from '../../game/effects';
+import type { DrawableSpit } from '../types';
 import { fadeOf } from '../../lib/math';
 import { hudFont } from '../../theme/fonts';
 import { palette } from '../../theme/palette';
@@ -339,6 +340,78 @@ function drawSlashes(
 }
 
 /** Screen space, over everything except the vignette. */
+/**
+ * Creature projectiles in the air.
+ *
+ * OVER EVERYTHING, and that is the one decision here. A disc is the only thing
+ * on screen the player must never lose behind a tree or a shoulder, because
+ * losing it is taking the hit — so it is drawn after the depth sort rather
+ * than inside it, exactly like a health bar.
+ *
+ * IT IS DRAWN AS A COMET, not a ball. A circle in flight has no direction in
+ * it, and direction is the whole of what the player has to read: a disc coming
+ * AT you and one crossing in front of you demand completely different
+ * responses, and at this size a trail is the only thing that tells them apart.
+ * The tail runs backwards along the velocity, so it is the flight path itself
+ * rather than a decoration pointing somewhere plausible.
+ *
+ * `lighter`, so it survives the darkness pass — a projectile that dimmed with
+ * the forest would be invisible in exactly the conditions it is thrown in.
+ */
+export function drawSpits(
+  ctx: CanvasRenderingContext2D,
+  view: Projection,
+  spits: DrawableSpit[],
+): void {
+  if (spits.length === 0) return;
+  const tone = palette().spit;
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  for (const spit of spits) {
+    const x = view.x(spit.x);
+    const y = view.y(spit.y);
+    const r = Math.max(1.5, spit.radius * view.zoom);
+    const speed = Math.hypot(spit.dx, spit.dy) || 1;
+    // A tail proportional to the disc rather than to the speed: the speed is
+    // a constant per creature, and a trail that grew with it would be a
+    // second, quieter way of saying the same thing.
+    const tail = r * 3.4;
+    const bx = x - (spit.dx / speed) * tail;
+    const by = y - (spit.dy / speed) * tail;
+
+    const trail = ctx.createLinearGradient(bx, by, x, y);
+    trail.addColorStop(0, 'rgb(0 0 0 / 0)');
+    trail.addColorStop(1, tone);
+    ctx.globalAlpha = 0.5;
+    ctx.strokeStyle = trail;
+    ctx.lineWidth = r * 1.1;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(bx, by);
+    ctx.lineTo(x, y);
+    ctx.stroke();
+
+    // The head: a hot core inside a soft halo, so it reads at one pixel and
+    // still has a size at ten.
+    ctx.globalAlpha = 0.55;
+    const glow = ctx.createRadialGradient(x, y, 0, x, y, r * 2.2);
+    glow.addColorStop(0, tone);
+    glow.addColorStop(1, 'rgb(0 0 0 / 0)');
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(x, y, r * 2.2, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = tone;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+  ctx.globalAlpha = 1;
+}
+
 export function drawTextFloats(
   ctx: CanvasRenderingContext2D,
   effects: Effects,

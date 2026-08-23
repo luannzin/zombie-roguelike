@@ -126,6 +126,7 @@ from .config import (
     BOSS_TURN_DEGREES,
     TILE_SIZE,
 )
+from . import projectiles
 from .world import TileMap
 
 #: The art's own copy of the clock. Read once, at import, exactly the way
@@ -352,25 +353,29 @@ DEATH_LENGTH, _DEATH_EVENTS = _clip("death")
 
 
 @dataclass
-class Crescent:
+class Crescent(projectiles.Projectile):
     """What leaves the bar on `rip`. A disc that travels and expires.
 
-    It is not a bullet and it does not use `combat.raycast`: a raycast is a
-    line that arrives instantly, and the entire point of this attack is that
-    the thing is SLOW ENOUGH TO WALK AWAY FROM. It moves a fixed distance per
-    tick and tests a circle, so a player who keeps moving is never hit by it
-    and a player standing still plinking always is.
+    IT IS A `projectiles.Projectile` AND NOTHING ELSE, plus the wire shape the
+    client happens to draw it with. The arithmetic — slow enough to walk away
+    from, passes through a party, bills each body once, dies on a wall — was
+    written here first because this was the only thing in the game that flew,
+    and it moved to `projectiles.py` the moment a creature wanted the same
+    object. Re-deriving "slow enough to outwalk" beside the original would have
+    produced two of it, and they would have drifted the first time either was
+    tuned.
+
+    What stays here is `to_payload`, because the client draws this off
+    `boss.crest` and rewriting that wire buys nothing — and the two numbers
+    that are the CRESCENT's rather than the mechanic's, as defaults, so that
+    nothing constructing one has to restate the boss's own constants.
     """
 
-    id: int
-    x: float
-    y: float
-    dx: float
-    dy: float
-    life: float
-    #: Everybody it has already hit. It passes THROUGH a party rather than
-    #: stopping on the first body — but it only ever bills each of them once.
-    struck: set[str] = field(default_factory=set)
+    #: Both of these were loose constants inside the old flight loop. They are
+    #: facts about a crescent, not about flying, so they live on the crescent —
+    #: which is exactly what lets one loop move two very different things.
+    radius: float = TILE_SIZE * BOSS_CREST_RADIUS_TILES
+    damage: int = BOSS_CREST_DAMAGE
 
     def to_payload(self) -> dict:
         return {
@@ -1059,26 +1064,19 @@ def _slide(boss: Boss, dx: float, dy: float, world: TileMap) -> None:
 
 def _step_crescents(boss: Boss, living: list, world: TileMap, dt: float,
                     out: Outcome) -> None:
-    keep: list[Crescent] = []
-    radius = TILE_SIZE * BOSS_CREST_RADIUS_TILES
-    for crest in boss.crescents:
-        crest.life -= dt
-        crest.x += crest.dx * dt
-        crest.y += crest.dy * dt
-        if crest.life <= 0.0 or world.box_blocked(crest.x, crest.y, 2.0, 2.0):
-            out.events.append({
-                "kind": "crestBurst", "x": round(crest.x, 1), "y": round(crest.y, 1),
-            })
-            continue
-        for player in living:
-            if player.id in crest.struck:
-                continue
-            if math.hypot(player.x - crest.x, player.y - crest.y) > radius + player.radius:
-                continue
-            crest.struck.add(player.id)
-            out.hits.append((player, BOSS_CREST_DAMAGE, crest.x, crest.y))
-        keep.append(crest)
-    boss.crescents = keep
+    """Fly them, and translate what came back into the boss's own vocabulary.
+
+    The flight is `projectiles.advance`; what is left here is the BURST, which
+    is boss-specific presentation — `crestBurst` is a client effect keyed to
+    this fight's art, and the shared module deliberately names no effect.
+    """
+    keep, impact = projectiles.advance(boss.crescents, living, world, dt)
+    boss.crescents = [c for c in keep if isinstance(c, Crescent)]
+    out.hits.extend(impact.hits)
+    for bx, by in impact.bursts:
+        out.events.append({
+            "kind": "crestBurst", "x": round(bx, 1), "y": round(by, 1),
+        })
 
 
 def wake(boss: Boss) -> None:

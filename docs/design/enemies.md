@@ -66,6 +66,71 @@ reading as a switch — face the pad, hold for a beat scaled by distance, then
 walk. Awareness is pinned, so the diamond is already lit. See
 [`extraction.md`](extraction.md).
 
+## The thing that reaches
+
+Position was never a decision. A zombie is slower than you and a wolf has to
+touch you, so **backing away is the correct answer to the entire bestiary** —
+which quietly meant cover was scenery, worn armour was a number that rarely
+mattered, and the shield was a boss-fight item. One creature that hurts you
+from where it is standing makes all three mean something everywhere, and it
+costs no new systems to do it.
+
+### The band is the mechanic
+
+The bloater cannot fire inside `ranged_min`. **Closing is the answer to it** —
+the exact inversion of every other threat in the game, where retreating works.
+A player who backs away from one is doing the single thing that keeps them in
+its band, and learning that is the whole encounter.
+
+A ranged attacker with no minimum would be strictly better the closer it gets,
+which leaves the player nothing to do but retreat: the posture this creature
+was added to break.
+
+### Slow and fragile, and both are load-bearing
+
+A durable ranged attacker becomes the only thing on screen the player is
+allowed to think about — every other creature turns into an obstacle between
+them and it. Two pistol rounds and a walking pace means it is always
+answerable; what it costs you is the seconds and the ground you spend
+answering it.
+
+### It telegraphs, and the windup is what it PAYS
+
+It plants its feet and swells for most of a second before anything leaves it.
+On a permanent run an attack that arrives out of the dark with nothing to react
+to is a deleted run rather than a threat.
+
+The windup is not a courtesy: the creature stops closing, stops dodging, and is
+the easiest thing on the map to shoot while it runs. And it aims where the
+target **is**, never where it will be — so a player who changed direction
+during the telegraph has already won the exchange. That trade is what makes the
+attack a skill check instead of a dice roll.
+
+### The disc is slow enough to outwalk
+
+`projectiles.py`'s whole argument. A projectile you cannot outrun is a number
+the game subtracts, not an attack you answer; the asymmetry between a player
+who keeps moving (essentially never hit) and one who stands still (always hit)
+is the only mechanic in the game that punishes standing still.
+
+It passes **through** a party and bills each body once. Stopping on the first
+body would make the person at the back safe behind their friends, which is the
+opposite of what a ranged attack should do to a formation.
+
+### The silhouette
+
+A pear: widest at the belly, with a head half the size of anything else on the
+sheet. Every other build in `make_zombie.py` is widest at the shoulders, so the
+inverted contour is what makes it identifiable as a black shape at the edge of
+a lantern — which is the only distance that matters for something you are meant
+to react to before it fires.
+
+The first cut kept the brute's proportions and only pulled the shoulders in,
+and `test_creature_sheets.py` correctly called it a recolour: both were simply
+*wide*. What separates them now is **height** as well as width.
+
+---
+
 ## Change surface
 
 | intent | touch |
@@ -78,7 +143,8 @@ walk. Awareness is pinned, so the diamond is already lit. See
 | the yard: its size, its fires, what is lying in it | `server/app/arena.py` |
 | how the fight FEELS — shake, blood, sound, the grade | `client/src/game/boss.ts` (`punchFor` is the whole table), `client/src/render/post/looks.ts` (`arenaLook` / `enrageLook`) |
 | his health bar and his name | `client/src/components/hud/BossBar.tsx` |
-| what a creature LOOKS like | `server/tools/make_zombie.py` — three anatomies (`Build.kind`), one derived ramp each, then `process_sprites.py --exact` for the sheet AND its `-death` |
+| what a creature LOOKS like | `server/tools/make_zombie.py` — FOUR anatomies (`Build.kind`), one derived ramp each, then `process_sprites.py --exact` for the sheet AND its `-death` |
+| a creature that attacks at RANGE | `EnemyType.ranged_*` + `shot_*` — **fields, never a key comparison**. The flight is `server/app/projectiles.py` and is shared with the boss's crescent; `ai.py` must stay ignorant of every creature's name |
 | what a WOLF looks like, or how many heads it has | `server/tools/make_wolf.py` — one animal, `Build.heads` is a tuple of offsets. It writes the raw art AND processes it |
 | what a creature SOUNDS like | `EnemyType.voice` + three recipes in `server/tools/make_audio.py` (`<voice>-idle` / `-alert` / `-death`) |
 | the pack: speed, bite, give-up, the howl's reach | `server/app/config.py` (`WOLF_*`) |

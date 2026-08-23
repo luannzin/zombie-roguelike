@@ -385,6 +385,9 @@ def snapshot(
     heals: list[dict] | None = None,
     events: list[dict] | None = None,
     dark: float | None = None,
+    spits: list[dict] | None = None,
+    spit_events: list[dict] | None = None,
+    spit_bursts: list[dict] | None = None,
 ) -> dict:
     payload = {
         "type": MSG_SNAPSHOT,
@@ -508,4 +511,24 @@ def snapshot(
     # (`0.0` is the lift), and omitted on every tick between.
     if dark is not None:
         payload["dark"] = dark
+    # WHAT IS IN THE AIR — creature projectiles, NOT the hitscan `shots`
+    # above, which are gunfire and arrive on the frame they were fired.
+    #
+    # STATE, not an event, and it is the one thing here
+    # that has to be: a disc takes three seconds to cross a clearing, so a
+    # client that dropped the launch packet must still be able to draw the
+    # thing about to hit it. Sent whole every tick it is non-empty, which is
+    # almost never — the array costs nothing on a quiet forest and a delta
+    # scheme for at most a handful of rows would cost more than it saved.
+    if spits:
+        payload["spits"] = spits
+    # It LEFT something. An EVENT — the wet cough, the muzzle-of-a-mouth burst
+    # — and never replayed: a client that missed it gets the disc without the
+    # sound, which is worse than hearing it and far better than hearing a
+    # throw that already landed.
+    if spit_events:
+        payload["spitFired"] = spit_events
+    # And where one ENDED. Also an event, for the splash.
+    if spit_bursts:
+        payload["spitBurst"] = spit_bursts
     return payload

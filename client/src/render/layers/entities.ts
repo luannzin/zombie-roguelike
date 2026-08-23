@@ -257,6 +257,57 @@ export function drawEntity(entity: EntityContext, target: DrawableEntity): void 
     // beat the decision to fight or leave is actually made.
     drawHealthBar(entity, target, view.rawX(px), spriteTop);
   }
+  // THE TELEGRAPH, over everything, on whatever is about to throw. Last so it
+  // is never behind a health bar — it is the one thing on a creature the
+  // player still has time to act on.
+  if (target.windup > 0) drawWindup(entity, target, view.rawX(px), spriteTop);
+  ctx.globalAlpha = 1;
+}
+
+/**
+ * A creature filling up before it throws.
+ *
+ * A SWELL, NOT A METER, and the shape is the argument. Everything else the HUD
+ * says about a creature is a widget read by looking AT it — a health bar, a
+ * hunt diamond. A telegraph has to work out of the CORNER of the eye, while
+ * the player is looking at something else entirely, because the whole point of
+ * it is that they get to react. A shape changing size does that; a four-pixel
+ * bar over a head does not.
+ *
+ * It grows from the body's own middle and brightens as it goes, so the last
+ * frames before the throw are both the biggest and the loudest — which is what
+ * makes "now" readable without a countdown.
+ *
+ * Drawn with `lighter` so it reads through the darkness pass. A telegraph that
+ * dimmed with the rest of the forest would be invisible in exactly the
+ * conditions this creature is dangerous in.
+ */
+function drawWindup(
+  { ctx, view, config }: EntityContext,
+  target: DrawableEntity,
+  centerX: number,
+  spriteTop: number,
+): void {
+  const swell = clamp01(target.windup);
+  const ts = config.tileSize;
+  const cx = Math.round(centerX);
+  // On the body rather than over the head: this is the creature inflating,
+  // not a label about it.
+  const cy = Math.round(view.y(spriteTop + ts * 0.45));
+  const radius = ts * (0.22 + 0.34 * swell) * view.zoom;
+
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.globalAlpha = (0.22 + 0.5 * swell) * target.visibility;
+  const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.max(1, radius));
+  const tone = palette().spit;
+  glow.addColorStop(0, tone);
+  glow.addColorStop(1, 'rgb(0 0 0 / 0)');
+  ctx.fillStyle = glow;
+  ctx.beginPath();
+  ctx.arc(cx, cy, Math.max(1, radius), 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
   ctx.globalAlpha = 1;
 }
 
@@ -434,6 +485,7 @@ function corpseAsTarget(body: DrawableCorpse): DrawableEntity {
     // A corpse is not healing, and never will be.
     healing: 0,
     forcing: false,
+    windup: 0,
     moving: false,
     animTime: 0,
     isLocal: false,

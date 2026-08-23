@@ -79,6 +79,19 @@
    * the bar happens to be saying at the time.
    */
   --heal: #5fe0b0;
+  /*
+   * BILE. The bloater's telegraph and the disc it throws, and it is the same
+   * colour for both on purpose: the swell and the thing that comes out of it
+   * have to read as one event, so a player who saw the first knows what the
+   * second is without being told.
+   *
+   * A sick yellow-green, deliberately off every other accent in the game. It
+   * is not the health ramp (that is a reading about YOU), not the heal (that
+   * is good news) and not a rarity. Nothing else on screen is this hue, which
+   * is the whole requirement for something the player has under a second to
+   * notice.
+   */
+  --spit: #b8d94a;
   --xp: #6ea8fe;
   /* Breath. YELLOW, and it is the one meter that never changes colour with its
      own number: green-amber-red is a life reading, and a run bar that ramped

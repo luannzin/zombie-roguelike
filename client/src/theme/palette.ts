@@ -120,6 +120,14 @@ export interface Palette {
    * same colour as the bar underneath it whatever the bar is currently saying.
    */
   heal: string;
+  /**
+   * BILE: the ranged creature's telegraph and its projectile, in one colour.
+   *
+   * The swell and the disc that comes out of it must read as ONE event — a
+   * player who saw the first should know what the second is without being
+   * told — so they share a hue and nothing else in the game uses it.
+   */
+  spit: string;
   /** Breath, and breath that has been spent. Off the HP ramp on purpose. */
   stamina: { ready: string; spent: string };
   progress: { xp: string; neutral: string };
@@ -287,6 +295,7 @@ function resolve(): Palette {
 
     hp: { high: v('--hp-high'), mid: v('--hp-mid'), low: v('--hp-low') },
     heal: v('--heal'),
+    spit: v('--spit'),
     stamina: { ready: v('--stamina'), spent: v('--stamina-spent') },
     progress: { xp: v('--xp'), neutral: v('--neutral') },
     minimap: {

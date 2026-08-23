@@ -121,6 +121,17 @@ export interface DrawableEntity {
    * is topping up is a teammate you do not walk over to cover.
    */
   forcing: boolean;
+  /**
+   * 0..1 through a ranged windup, or 0. Creatures only.
+   *
+   * DRAWN AS A SWELL ON THE BODY rather than as a meter beside it. Everything
+   * else the HUD tells you about a creature is a widget — a health bar, a hunt
+   * diamond — and those are read by looking AT the thing. A telegraph has to
+   * be read while looking somewhere else, out of the corner of the eye, which
+   * is what a shape changing size does and what a small bar over a head does
+   * not. See `drawWindup`.
+   */
+  windup: number;
   moving: boolean;
   animTime: number;
   isLocal: boolean;
@@ -305,6 +316,17 @@ export interface DrawableCorpse {
   halfHeight: number;
 }
 
+/** One creature projectile, mid-flight. `dx`/`dy` point it; it does not move here. */
+export interface DrawableSpit {
+  id: number;
+  x: number;
+  y: number;
+  dx: number;
+  dy: number;
+  /** World px. The disc's own half-width, off the thrower's stat block. */
+  radius: number;
+}
+
 export interface RenderState {
   world: TileMap;
   camera: Camera;
@@ -314,6 +336,15 @@ export interface RenderState {
   coins: DrawableCoin[];
   loot: DrawableLoot[];
   corpses: DrawableCorpse[];
+  /**
+   * Creature projectiles in the air, straight off the snapshot.
+   *
+   * NOT depth-sorted with the bodies, and deliberately: a disc is the one
+   * thing on screen the player must never lose behind a tree or a shoulder,
+   * because losing it is taking the hit. It is drawn over everything for the
+   * same reason a health bar is.
+   */
+  spits: DrawableSpit[];
   /** Night coat. Drives rain/fog in the atmosphere pass. */
   weather: string;
   /**

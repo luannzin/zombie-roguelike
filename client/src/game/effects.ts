@@ -1084,6 +1084,39 @@ export class Effects {
    * damage number is one of many and is allowed to be glanced at; there are
    * two kits in a run, and the number one of them gave back is worth reading.
    */
+  /**
+   * A projectile ending: a splash of bile, thrown outward and DOWN.
+   *
+   * A MISS HAS TO BE AS LEGIBLE AS A HIT. Without this, a dodged disc simply
+   * stops existing — and a player who dodged correctly learns nothing, because
+   * nothing happened where they were standing a moment ago. The splash is what
+   * turns "it vanished" into "it landed there and I was not there", which is
+   * the only way the dodge teaches itself.
+   *
+   * Gravity POSITIVE, unlike `spawnHeal`'s rising motes: this is something wet
+   * hitting the ground, and it belongs with the dust and the blood.
+   */
+  spawnSpitBurst(x: number, y: number): void {
+    const tone = palette().spit;
+    for (let i = 0; i < 10; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 18 + Math.random() * 34;
+      this.particles.push({
+        x,
+        y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed * 0.55 - 8,
+        size: 0.9 + Math.random() * 1.5,
+        color: tone,
+        age: 0,
+        life: 0.28 + Math.random() * 0.24,
+        gy: 90,
+      });
+    }
+    // A short wash, so the landing is visible in the dark it happens in.
+    this.spawnLight(x, y, 22, 0.4, tone, 0.12);
+  }
+
   spawnHeal(x: number, y: number, amount: number): void {
     this.pushFloat(x, y - 6, `+${Math.round(amount)}`, 'heal', 0.9);
     const heal = palette().heal;

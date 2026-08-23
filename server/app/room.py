@@ -62,7 +62,8 @@ import uuid
 
 from . import (
     ai, ammo, arena, armor, boss, camp, coins, combat, crates, entrance, events, loot,
-    mapgen, medical, protocol, quests, rift, skills, store, weapons, zones,
+    mapgen, medical, projectiles, protocol, quests, rift, skills, store, weapons,
+    zones,
 )
 from . import machine
 from .ai import EnemyDirector
@@ -353,6 +354,18 @@ class Room:
         self.events = events.EventDirector(self.day)
         #: Rows fired this tick, drained into the snapshot.
         self.event_rows: list[dict] = []
+        #: EVERY CREATURE PROJECTILE IN THE AIR, and the id counter that names
+        #: them. On the ROOM rather than on the creature that threw it, because
+        #: a spit outlives its thrower — shooting a bloater mid-flight must not
+        #: delete the thing already coming at you, or killing it would be a way
+        #: to un-fire a shot.
+        self.shots: list[projectiles.Projectile] = []
+        self._shot_id = 0
+        #: Shots that LEFT something this tick — the launch, for the sound and
+        #: the burst of bile. An event; the live rows carry the flight.
+        self.shot_events: list[dict] = []
+        #: Where shots ENDED this tick. Also an event.
+        self.shot_bursts: list[dict] = []
         #: Seconds left of an event dark, or 0. Suppresses every lantern on the
         #: map through the SAME branch the extraction blackout uses — see
         #: `begin_dark` for why there is deliberately only one such branch.
@@ -2337,6 +2350,11 @@ class Room:
         # mean anything at all.
         self.events = events.EventDirector(self.day)
         self.event_rows = []
+        # Nothing crosses an entrance. A disc still in the air when the party
+        # walks out would arrive on a forest it was never thrown in.
+        self.shots = []
+        self.shot_events = []
+        self.shot_bursts = []
         self.dark_left = 0.0
         self._dark_dirty = True
         self.boss = None
@@ -2472,6 +2490,11 @@ class Room:
         self.step_seal(dt)
         self.step_quests()
         self.step_enemies(dt)
+        # AFTER the pack, because that is the tick something is thrown ON: a
+        # disc launched this frame should not also move this frame, or the
+        # first thing a player sees of it is a body-length down its own flight
+        # path — which is exactly the beat the windup bought them.
+        self.step_shots(dt)
         self.step_boss(dt)
         self.step_coins(dt)
         self.step_rift(dt)
@@ -3522,6 +3545,13 @@ class Room:
         """
         enemy = attack.enemy
         target = attack.target
+        # A THROW IS NOT A BLOW, and it leaves before any of the melee rules
+        # below apply: there is no victim yet to have i-frames, no stagger to
+        # apply, and nothing to broadcast as a landed hit. The damage arrives
+        # later, from wherever the disc gets to, through the same one door.
+        if attack.ranged:
+            self._throw(enemy, target)
+            return
         blocked = not target.alive or target.hurt_immunity > 0.0
         damage = 0 if blocked else enemy.type.damage
 
@@ -3547,6 +3577,72 @@ class Room:
                 "blocked": blocked,
             }
         )
+
+    def _throw(self, enemy: Enemy, target: Player) -> None:
+        """One projectile leaves a creature. Nothing is resolved on this frame.
+
+        AIMED WHERE THE TARGET IS, NOT WHERE IT WILL BE. No lead, deliberately:
+        a shot that predicted the walk would be a shot you cannot dodge by
+        walking, and outwalking it is the entire mechanic (`projectiles.py`).
+        What the creature gets instead is the WINDUP — it has already committed
+        to this direction three quarters of a second ago, so a player who
+        changed direction during the telegraph has already won the exchange.
+        That is the trade, and it is the one that makes the attack a skill
+        check rather than a dice roll.
+        """
+        kind = enemy.type
+        dx = target.x - enemy.x
+        dy = target.y - enemy.y
+        length = math.hypot(dx, dy)
+        if length <= 1e-6:
+            return
+        ux, uy = dx / length, dy / length
+        self._shot_id += 1
+        self.shots.append(
+            projectiles.Projectile(
+                id=self._shot_id,
+                # Launched clear of its own body, or it bursts on the tile the
+                # creature is standing in when that tile happens to be solid.
+                x=enemy.x + ux * kind.hit_radius,
+                y=enemy.y + uy * kind.hit_radius,
+                dx=ux * kind.shot_speed,
+                dy=uy * kind.shot_speed,
+                life=kind.shot_life,
+                radius=kind.shot_radius,
+                damage=kind.ranged_damage,
+            )
+        )
+        self.shot_events.append(
+            {
+                "id": self._shot_id,
+                "by": enemy.id,
+                "x": round(enemy.x, 1),
+                "y": round(enemy.y, 1),
+                "dx": round(ux, 3),
+                "dy": round(uy, 3),
+            }
+        )
+
+    def step_shots(self, dt: float) -> None:
+        """Fly every creature projectile one tick.
+
+        THE SAME DOOR AS EVERYTHING ELSE. `projectiles.advance` returns the
+        hits and `damage_player` applies them, so a spit goes through the
+        shield, the worn plate and `Mods.armor` in exactly the order a claw
+        does — which is the whole reason `damage_player` is one method.
+        """
+        if not self.shots:
+            return
+        living = [p for p in self.players.values() if p.alive and not p.downed]
+        self.shots, impact = projectiles.advance(self.shots, living, self.world, dt)
+        for player, damage, sx, sy in impact.hits:
+            # THE DRAG GOES ON, for the same reason a claw's does: something
+            # hit you, and a player who could stand in a firing line at full
+            # walking speed would have no reason to leave it.
+            player.stagger = HIT_STAGGER_TIME
+            self.damage_player(player, damage, None, sx, sy)
+        for bx, by in impact.bursts:
+            self.shot_bursts.append({"x": round(bx, 1), "y": round(by, 1)})
 
     def sync_block(self, player: Player, cmd: InputCmd) -> None:
         """Decide whether the shield is up, BEFORE anything reads it.
@@ -4391,6 +4487,19 @@ class Room:
                 heals=self.heal_events or None,
                 events=self.event_rows or None,
                 dark=dark_row,
+                spits=[
+                    {
+                        "id": shot.id,
+                        "x": round(shot.x, 1),
+                        "y": round(shot.y, 1),
+                        "dx": round(shot.dx, 1),
+                        "dy": round(shot.dy, 1),
+                    }
+                    for shot in self.shots
+                ]
+                or None,
+                spit_events=self.shot_events or None,
+                spit_bursts=self.shot_bursts or None,
             )
         )
 
@@ -4436,6 +4545,8 @@ class Room:
                 self.horde_events = []
                 self.heal_events = []
                 self.event_rows = []
+                self.shot_events = []
+                self.shot_bursts = []
                 self.spin_events = []
                 self.boss_events = []
             delay = next_time - time.perf_counter()

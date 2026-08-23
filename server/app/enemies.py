@@ -44,6 +44,7 @@ from dataclasses import dataclass
 
 from .config import (
     ALPHA_AGGRO_TILES,
+    BLOATER_SPAWN_WEIGHT,
     ALPHA_ATTACK_COOLDOWN,
     ALPHA_CALL_TILES,
     ALPHA_DAMAGE,
@@ -190,6 +191,47 @@ class EnemyType:
     #: walked to its den yet would leave the den empty for the whole night.
     persists: bool = False
 
+    # --- ATTACKING FROM A DISTANCE ------------------------------------------
+    #
+    # A FIELD, NOT A KEY COMPARISON. `ai.py` does not know the name of a single
+    # creature in this game and must not learn one here: everything below is
+    # read as data, so the SECOND ranged creature is a stat block and a sprite
+    # folder exactly like the second melee one was.
+    #
+    # WHY THE GAME NEEDED ONE AT ALL. Position has never been a decision,
+    # because walking backwards answers every threat in the bestiary — a zombie
+    # is slower than you and a wolf is faster but has to reach you. Something
+    # that hurts you at a distance is what makes standing still cost anything,
+    # and therefore what makes cover, the shield and worn armour mean something
+    # outside the boss fight.
+
+    #: Damage per projectile, and the SWITCH: zero means melee only, which is
+    #: every creature but one. Nothing else here is read when this is zero.
+    ranged_damage: int = 0
+    #: THE BAND it will fire in, in tiles. Both ends matter and the near one is
+    #: the mechanic: inside `ranged_min_tiles` it cannot shoot at all, so
+    #: CLOSING is the answer to it. A ranged attacker with no minimum is a
+    #: creature that is strictly better the closer it gets, which leaves the
+    #: player with nothing to do but retreat — the exact posture this row was
+    #: added to break.
+    ranged_min_tiles: float = 0.0
+    ranged_max_tiles: float = 0.0
+    #: Seconds between its own shots.
+    ranged_cooldown: float = 0.0
+    #: THE TELEGRAPH, in seconds. It plants its feet and winds up before
+    #: anything leaves it, and the client draws that. A ranged attack with no
+    #: windup is damage that arrives out of the dark with nothing to react to,
+    #: which on a permanent run is a deleted run rather than a threat.
+    ranged_windup: float = 0.0
+    #: How fast the projectile travels, in tiles/second. DELIBERATELY SLOWER
+    #: THAN THE PLAYER WALKS — see `projectiles.py`. A shot you cannot outwalk
+    #: is a number the game subtracts rather than an attack you answer.
+    shot_speed_tiles: float = 0.0
+    #: Seconds before it expires, which with the speed above is its real reach.
+    shot_life: float = 0.0
+    #: The disc's own half-width, in tiles.
+    shot_radius_tiles: float = 0.5
+
     hit_tiles_r: float = PLAYER_HIT_TILES_R
     sprite_tiles_h: float = SPRITE_TILES_H
     box_tiles_w: float = PLAYER_BOX_TILES_W
@@ -223,6 +265,22 @@ class EnemyType:
     @property
     def half_height(self) -> float:
         return TILE_SIZE * self.box_tiles_h / 2
+
+    @property
+    def ranged_min(self) -> float:
+        return TILE_SIZE * self.ranged_min_tiles
+
+    @property
+    def ranged_max(self) -> float:
+        return TILE_SIZE * self.ranged_max_tiles
+
+    @property
+    def shot_speed(self) -> float:
+        return TILE_SIZE * self.shot_speed_tiles
+
+    @property
+    def shot_radius(self) -> float:
+        return TILE_SIZE * self.shot_radius_tiles
 
     @property
     def view_range(self) -> float:
@@ -277,6 +335,14 @@ class EnemyType:
             "variants": list(self.variants),
             "hats": list(self.hats),
             "clothes": list(self.clothes),
+            # WHETHER IT REACHES, and how far. The client needs both: the swell
+            # is only drawn on a creature that can throw, and the band is what
+            # a future range indicator would read. A boolean would have been
+            # enough today and would have had to be replaced by this the first
+            # time anything wanted to show the player where "inside it" is.
+            "shotRadius": self.shot_radius,
+            "rangedMin": self.ranged_min,
+            "rangedMax": self.ranged_max,
             # What KIND of thing this is, and the sheet to draw it with while
             # it is still asleep. Both are presentation: the crown, the
             # always-on health bar and the curled pose are decided off these
@@ -432,8 +498,78 @@ WOLF_ALPHA = EnemyType(
     box_tiles_h=0.6,
 )
 
+#: THE THIRD SILHOUETTE, AND THE FIRST THING IN THE GAME THAT CAN HURT YOU
+#: FROM WHERE IT IS STANDING.
+#:
+#: WHY IT EXISTS. Position has never been a decision. A zombie is slower than
+#: you and a wolf has to reach you, so walking backwards is the correct answer
+#: to the entire bestiary — which means cover is scenery, worn armour is a
+#: number that rarely matters, and the shield is a boss-fight item. One
+#: creature that reaches makes all three of those mean something, everywhere,
+#: and it costs no new systems to do it.
+#:
+#: IT IS SLOW AND IT IS FRAGILE, and both are load-bearing. A ranged attacker
+#: that is also durable becomes the only thing on screen the player is allowed
+#: to think about — every other creature turns into an obstacle between them
+#: and it. Two pistol rounds and a walking pace means it is always answerable;
+#: what it costs you is the seconds and the ground you spend answering it,
+#: which is the point.
+#:
+#: THE BAND IS THE MECHANIC. It cannot fire inside `ranged_min_tiles`, so
+#: CLOSING is the answer rather than retreating — the exact inversion of every
+#: other threat here. A player who backs away from a bloater is doing the one
+#: thing that keeps them in its band, and learning that is the whole encounter.
+#:
+#: AND IT TELEGRAPHS. It plants its feet and swells for most of a second
+#: before anything leaves it. On a permanent run an attack that arrives out of
+#: the dark with nothing to react to is a deleted run rather than a threat, and
+#: the windup is what makes stepping out of the way a SKILL instead of luck.
+BLOATER = EnemyType(
+    key="bloater",
+    sprite="zombie-bloater",
+    voice="zombie",
+    # FRAGILE: two pistol rounds. See the header — a durable ranged attacker
+    # takes over the screen.
+    max_hp=16,
+    # Its melee is feeble on purpose. It is not a thing you fight in close, it
+    # is a thing you WALK INTO to stop it shooting, and a bloater that punished
+    # that would be a creature with no answer at all.
+    damage=4,
+    attack_range_tiles=0.85,
+    attack_cooldown=1.4,
+    xp=20,
+    gold=5,
+    # SLOWER THAN A ZOMBIE. It never catches anybody; it makes them move.
+    speed_tiles=1.9,
+    aggro_tiles=20.0,
+    # A WIDE CONE. Its whole job is noticing you at a distance, and a narrow
+    # one would make it a melee creature that occasionally spat.
+    view_degrees=100.0,
+    ranged_damage=14,
+    # The near end is a bit further than a wolf's bite, so "get inside it" is a
+    # real distance the player can feel rather than a pixel.
+    ranged_min_tiles=3.2,
+    # The far end sits inside a lit lantern's reach, so a bloater that can see
+    # you is a bloater you can see.
+    ranged_max_tiles=9.5,
+    ranged_cooldown=2.6,
+    ranged_windup=0.75,
+    # SLOWER THAN THE PLAYER WALKS (4.4). Outwalkable by definition, which is
+    # what makes it an attack you answer rather than a number you take.
+    shot_speed_tiles=3.4,
+    shot_life=3.0,
+    shot_radius_tiles=0.55,
+    # WIDER AND EASIER TO HIT than anything else the director spawns, which is
+    # the other half of "fragile": a creature you have to stop shooting at to
+    # dodge its own attack should not also be hard to land a round on. The
+    # sprite is nearly the full cell (see `make_zombie.BUILDS`), so this is the
+    # box catching up with the art rather than a favour.
+    hit_tiles_r=0.62,
+    box_tiles_w=0.9,
+)
+
 ENEMY_TYPES: dict[str, EnemyType] = {
-    kind.key: kind for kind in (ZOMBIE, WOLF, WOLF_ALPHA)
+    kind.key: kind for kind in (ZOMBIE, WOLF, WOLF_ALPHA, BLOATER)
 }
 
 #: Weighted spawn table used by the director. Add creatures here.
@@ -443,7 +579,16 @@ ENEMY_TYPES: dict[str, EnemyType] = {
 #: because the director must never roll one: he is placed by the map, once, in
 #: his own den (`mapgen.DEN_SCENES`). A miniboss that could also wander out of
 #: a spawn ring would stop being a place and become a random event.
-SPAWN_TABLE: list[tuple[EnemyType, float]] = [(ZOMBIE, 1.0), (WOLF, WOLF_SPAWN_WEIGHT)]
+#: THE BLOATER IS RARE. One in a clearing changes how the clearing is fought;
+#: three is a firing line, and a firing line in a dark forest is not a decision
+#: it is a wall. Weighted well under the wolf for the same reason the wolf is
+#: weighted under the zombie — the common creature has to stay common or the
+#: bestiary stops having a baseline to be surprising against.
+SPAWN_TABLE: list[tuple[EnemyType, float]] = [
+    (ZOMBIE, 1.0),
+    (WOLF, WOLF_SPAWN_WEIGHT),
+    (BLOATER, BLOATER_SPAWN_WEIGHT),
+]
 
 
 def enemy_types_payload() -> dict:
@@ -479,6 +624,19 @@ class Enemy:
 
     # server bookkeeping (never sent verbatim)
     attack_cooldown: float = 0.0
+    #: Seconds left of a ranged WINDUP, or 0. Only ever non-zero on a creature
+    #: with `ranged_damage`; it is the telegraph, and it is on the snapshot
+    #: (`wind`) because the whole value of a telegraph is that it is drawn.
+    #:
+    #: THE CREATURE IS PLANTED FOR IT. That is what makes the windup a real
+    #: cost to the creature rather than a free courtesy — it stops closing, it
+    #: stops dodging, and it is the easiest thing in the game to shoot for
+    #: three quarters of a second.
+    windup: float = 0.0
+    #: Its own rate limit on shots, separate from `attack_cooldown` so that
+    #: walking into a bloater's face does not also hand you a free melee beat
+    #: it had been saving.
+    shot_cooldown: float = 0.0
     #: 0..1 walk slow from stacked gun hits. At ENEMY_STAGGER_STOP they plant.
     #: Decays after stagger_left; never on the snapshot — vx/vy already slow.
     stagger: float = 0.0
@@ -618,6 +776,21 @@ class Enemy:
         # Omitted while awake, so it costs a bare zombie nothing.
         if self.asleep:
             row["sl"] = 1
+        # THE TELEGRAPH, as 0..1 through the windup rather than as seconds.
+        #
+        # A fraction because the client draws a SWELL — the creature filling up
+        # before it spits — and a swell wants a proportion, not a duration it
+        # would have to divide by a stat block it holds. Omitted while nothing
+        # is winding up, which is every creature almost always.
+        #
+        # It is the single most important field on this row for a player who is
+        # about to be hit by something they cannot see coming. Everything else
+        # here says what a creature IS; this says what it is ABOUT TO DO, which
+        # is the only thing they can still act on.
+        if self.windup > 0.0 and self.type.ranged_windup > 0.0:
+            row["wu"] = round(
+                1.0 - max(0.0, self.windup) / self.type.ranged_windup, 2
+            )
         return row
 
     @property

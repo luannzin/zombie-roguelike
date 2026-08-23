@@ -207,6 +207,18 @@ export interface GameConfig {
   bossMoves: Record<string, BossMove>;
   /** The thrown crescent's geometry. Sizes the throw's trail. */
   bossCrescent: BossCrescentSpec;
+  /**
+   * His hit capsule, in world px — the three numbers `game/combat.ts` wants.
+   *
+   * Shipped for ONE reason and it is worth writing down: `predictShot` draws
+   * the local player's tracer the frame the trigger goes down, against a
+   * target list it builds itself, and the boss was not in it. The server had
+   * him in `targets` from the day he shipped, so the damage always landed —
+   * but the round visibly flew THROUGH the biggest body in the game, with no
+   * stop, no marker and no number, and a shot that looks like a miss is a
+   * miss as far as the player is concerned.
+   */
+  bossHit: BossHitSpec;
   /** The fire plus the seat ring, in tiles: nothing grows inside it. */
   hearthTiles: number;
   /** Seat ring radii, in tiles. Elliptical — see server/app/camp.py. */
@@ -1792,7 +1804,14 @@ export interface BossRow {
   s: BossState;
   /** Seconds into `s`. The clip's playhead. */
   t: number;
-  /** Which move is being performed: a clip name (`chop` / `sweep` / `rip` / `rev`). */
+  /**
+   * Which move is being performed: `chop` / `sweep` / `rip` / `charge` / `rev`.
+   *
+   * A MOVE NAME, NOT A SHEET NAME. They were the same string until the charge,
+   * which plays three clips; resolve the sheet through
+   * `welcome.config.bossMoves[m].clip` / `.after` rather than using this
+   * directly. `render/boss.ts`'s `clipFor` is where that happens.
+   */
   m?: string | null;
   /** Past half health: he is faster and he waits less. */
   rage?: boolean;
@@ -1803,12 +1822,30 @@ export interface BossRow {
 /** One attack's clock and reach. See `boss.Move.client_payload`. */
 export interface BossMove {
   key: string;
+  /**
+   * The SHEET the windup (and, for a swing, the strike) plays.
+   *
+   * A move is no longer guaranteed to be a clip. Every swing sets `key`,
+   * `clip` and `after` to the same string, but the charge telegraphs on `rev`,
+   * runs on `walk` and pulls up on `idle` — one move, three animations —
+   * because it is the one attack that is not a pose.
+   */
+  clip: string;
+  /** The sheet the RECOVERY plays. Equal to `clip` for every swing. */
+  after: string;
   /** Seconds from the start of the clip to the frame the blow lands. */
   windup: number;
   /** Seconds the hitbox is open. */
   active: number;
   /** World px, centre to the nose of the bar. Zero for a move that throws. */
   reach: number;
+}
+
+/** His capsule, in world px. Mirrors `Boss.radius` / `half_height` / `sprite_height`. */
+export interface BossHitSpec {
+  radius: number;
+  halfHeight: number;
+  spriteHeight: number;
 }
 
 export interface BossCrescentSpec {
@@ -1824,7 +1861,9 @@ export interface BossCrescentSpec {
 
 export type BossState =
   | 'sleep' | 'arrive' | 'idle' | 'walk'
-  | 'windup' | 'strike' | 'recover' | 'dead';
+  // `charge` is the run: the ONE state in which his hitbox is moving, and the
+  // only one whose clip is not the move's own (`walk`, not `rev`).
+  | 'windup' | 'strike' | 'charge' | 'recover' | 'dead';
 
 /** One thrown crescent, mid-flight. */
 export interface BossCrescent {
@@ -1849,7 +1888,9 @@ export interface BossEvent {
     | 'engage'    // the cinematic is over, the fight is on
     | 'windup'    // he has committed to a move — `move` names it
     | 'impact'    // a melee blow landed (or missed): `hits` is how many bodies
-    | 'rip'       // a crescent left the bar
+    | 'rip'       // crescents left the bar: `hits` is how many (3 when enraged)
+    | 'charge'    // the roar landed and he is running: `dx`/`dy` is the heading
+    | 'slam'      // the run ended in the treeline — the fight's biggest window
     | 'crestBurst'// a crescent hit something and came apart
     | 'roar'      // the rev's own beat
     | 'enrage'    // half health
@@ -1865,6 +1906,8 @@ export interface BossEvent {
   dmg?: number;
   hp?: number;
   target?: string;
+  /** A windup that skipped its cooldown: the enraged double chop. */
+  encore?: boolean;
 }
 
 /** The live half of an extraction pad. */

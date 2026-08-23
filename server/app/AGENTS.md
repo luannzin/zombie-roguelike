@@ -66,6 +66,13 @@ game's scale.
   learns the fight from, so a hard-coded windup that disagrees with the
   animation makes the fight unfair in a way nobody can see. Re-time a clip in
   `make_sawyer.py` and the fight re-times itself.
+- **`m` ON THE WIRE IS A MOVE, NOT A SHEET.** They were the same string until
+  the charge, because until then every move was one animation. The charge is
+  three — `rev` to telegraph, `walk` to run, `idle` to pull up — so `Move`
+  carries `clip` / `after`, both ship in `welcome.config.bossMoves`, and the
+  client resolves the animation through them. `Move.one_clip` is also what
+  tells `_enter` whether to keep the playhead running across the phases: a
+  swing keeps it (one animation), the charge resets it (three).
 - **`t` ON THE WIRE IS THE CLIP'S PLAYHEAD, NOT THE STATE'S CLOCK**
   (`Boss.clip_t`). A move is three states and one animation, so the playhead
   runs across all three and the client draws frame `t * fps` with no
@@ -79,6 +86,14 @@ game's scale.
   between the forest and the shop, so the night's takings ride across it as
   `Room._night_takes` — a receipt, not a payment. Do not bank anything in
   `enter_arena`; the global rule (one place, once) has not moved.
+- **HIS CAPSULE SHIPS, BECAUSE THE CLIENT SHOOTS AT HIM BEFORE ASKING.**
+  `predictShot` draws the local player's tracer on the frame the trigger goes
+  down, against a target list it builds itself, and he was missing from it —
+  so every round flew through him while landing perfectly. `client_config`
+  sends `bossHit` (radius, half height, sprite height, in world px) rather
+  than letting the client mirror `BOSS_HIT_TILES_R`: a predicted hitbox that
+  disagrees with the authoritative one is worse than no prediction, because it
+  stops rounds that did not land and passes rounds that did.
 - **NO DIRECTOR IN THE ARENA.** The zone is `hostile` — weapons fire, players
   die — but `step_enemies` returns before the top-up. Adding pressure there
   would remove tension (every telegraph would happen in a crowd) and would

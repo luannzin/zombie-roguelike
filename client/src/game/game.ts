@@ -90,6 +90,7 @@ import type { Connection, ConnectionStatus, Unsubscribe } from '../net/connectio
 import type {
   BossEvent,
   BossRow,
+  BossState,
   AttackEvent,
   BuyEvent,
   EnemyTypeConfig,
@@ -281,6 +282,20 @@ const PAYOUT_LAND_TRAUMA = 0.09;
  * what he dropped. See `Game.hudBoss`.
  */
 const BOSS_BAR_LINGER = 3.4;
+
+/**
+ * The states in which a round can hit him. Mirrors `Boss.vulnerable`.
+ *
+ * Duplicated here for the same reason `interaction.ts` re-derives what a
+ * pickup does: the local tracer is drawn on the frame the trigger goes down
+ * and cannot wait for the server to say whether it connected. Kept as the
+ * INVERSE list — the three states he cannot be hurt in — because that is how
+ * `boss.py` writes it, and a positive list would have to be edited every time
+ * he grows a state (he just grew `charge`).
+ */
+const BOSS_SHOOTABLE: ReadonlySet<BossState> = new Set<BossState>([
+  'idle', 'walk', 'windup', 'strike', 'charge', 'recover',
+]);
 
 /** Seconds between the exit's distant signal pings. See `stepBeacon`. */
 const BEACON_PING_INTERVAL = 3.4;
@@ -1528,6 +1543,16 @@ export class Game {
       case 'crestBurst':
         this.effects.spawnImpact(event.x, event.y, dx, dy, true, 1.2);
         break;
+      case 'slam': {
+        // He put forty pixels of chain into a tree. A RING, the same shape a
+        // landing throws, because what the player has to read is "he is stuck
+        // here for a second and a half" and the mark on the ground is where
+        // that second and a half is happening.
+        for (const [ax, ay] of [[dx, dy], [-dx, -dy], [-dy, dx], [dy, -dx]] as const) {
+          this.effects.spawnImpact(event.x, event.y, ax, ay, true, 2.0);
+        }
+        break;
+      }
       case 'hurt':
         // A player taking one of his blows bleeds like a player, not like a
         // hit marker: this is the same call their own death throws.
@@ -1669,10 +1694,15 @@ export class Game {
       // On the BODY, not projected down the aim: the finisher opens up to
       // three of them and a single spray at arm's length would put all the
       // blood in one place regardless of who it came out of.
+      const boss = hit.id === this.bossFeel.row?.id ? this.bossFeel.row : null;
       const body =
         msg.enemies.find((e) => e.id === hit.id) ?? msg.players.find((p) => p.id === hit.id);
-      const hx = body?.x ?? swing.x + swing.dx * step.reach * 0.6;
-      const hy = body?.y ?? swing.y + swing.dy * step.reach * 0.6;
+      const hx = boss?.x ?? body?.x ?? swing.x + swing.dx * step.reach * 0.6;
+      // ON HIS CHEST, not on his feet. Every other body in this game is a tile
+      // tall and its row `y` is close enough to where a blade meets it; he is
+      // three and a half, and blood at the anchor point is blood on the floor.
+      const hy = (boss ? boss.y - this.chestOffset() : body?.y)
+        ?? swing.y + swing.dy * step.reach * 0.6;
       this.feelVictim(hit.id, swing.dx, swing.dy, hit.dmg);
       // A blade opens rather than passes through, so the spray is smaller
       // than a round of the same damage — and the cut still throws more than
@@ -2784,6 +2814,34 @@ export class Game {
       targets.push(
         capsule(enemy.id, enemy.x, enemy.y, type.halfHeight, type.spriteHeight, type.hitRadius, true),
       );
+    }
+    // AND SO IS THE BOSS, which he was not, and it was the worst-feeling bug
+    // in the fight.
+    //
+    // `Room.fire` has had him in its target list since the day he shipped, so
+    // every round always did its damage — but this list is what the player
+    // actually SEES, and he was missing from it. The tracer drew straight
+    // through a body three and a half tiles tall, nothing stopped, no number
+    // floated, no marker, no hit sound, no camera bump. The one piece of
+    // feedback that did arrive was the server's own `hit` event a round trip
+    // later, which spends itself on a flash and some blood — easy to miss on
+    // the darkest sprite in the game while a chainsaw is coming at you.
+    //
+    // A shot that looks like a miss IS a miss as far as the player is
+    // concerned, and a player who believes their gun does nothing to a boss
+    // stops shooting him. He goes in the list.
+    const bossRow = this.bossFeel.row;
+    const bossHit = config.bossHit;
+    if (bossRow && bossHit && BOSS_SHOOTABLE.has(bossRow.s)) {
+      targets.push(capsule(
+        bossRow.id,
+        bossRow.x,
+        bossRow.y,
+        bossHit.halfHeight,
+        bossHit.spriteHeight,
+        bossHit.radius,
+        true,
+      ));
     }
 
     // ONE LOOP FOR ONE RAY OR SIX. A pistol runs it once; a shell runs it
@@ -4365,8 +4423,18 @@ export class Game {
    * Body that just ate a round. Enemies take the knockback/tilt/freeze;
    * a player only flashes and stains — shoving a teammate would fight
    * their prediction.
+   *
+   * AND THE BOSS IS ITS OWN THIRD CASE, because he is not in `entity-visuals`
+   * at all — he has no `EntityState`, no stains and no recoil, and calling
+   * `takeHit` on his id silently minted a visual state for a body nothing
+   * draws off. His reaction lives on `bossFeel`, which is the one thing that
+   * paints him.
    */
   private feelVictim(id: string, dx: number, dy: number, damage: number): void {
+    if (id === this.bossFeel.row?.id) {
+      this.feelBossHit(dx, dy, damage);
+      return;
+    }
     if (id === this.localId || this.roster.has(id)) {
       this.visuals.pulseHitFlash(id);
       this.visuals.splatter(id, dx, dy);
@@ -4375,6 +4443,43 @@ export class Game {
     const power = hitPower(damage);
     this.visuals.takeHit(id, dx, dy, power);
     if (power > 1.6) this.camera.addTrauma(0.06 + (power - 1.6) * 0.05);
+  }
+
+  /**
+   * A round or a blade landing on HIM, felt immediately.
+   *
+   * THIS IS THE HALF THE FIGHT WAS MISSING. The server has always broadcast a
+   * `hit` boss event and `feelEvent` has always flashed on it — but that
+   * arrives a round trip after the trigger, on the darkest sprite in the game,
+   * while a chainsaw is coming at you. What a player reads as "I hit it" is
+   * the frame they PULLED, and nothing happened on that frame: the tracer went
+   * through him, no number, no spark, no sound.
+   *
+   * So the same three channels every other body gets, at the same instant:
+   * the silhouette lights (scaled by the size of the hit, so a slug reads
+   * heavier than a pistol round), a spark comes off the contact, and the
+   * camera gives the smallest of nudges. The server's event still arrives and
+   * still does its half — the blood, and the authoritative confirmation — the
+   * way it does for a zombie.
+   */
+  private feelBossHit(dx: number, dy: number, damage: number): void {
+    const row = this.bossFeel.row;
+    if (!row) return;
+    const power = hitPower(damage);
+    // Stacked, not assigned. Rapid fire on a 2400-health body is the whole
+    // experience of shooting him, and a flash that overwrites itself at 0.11s
+    // apart is a flash that never gets above its own decay.
+    this.bossFeel.flash = Math.min(1, this.bossFeel.flash + 0.55 + power * 0.3);
+    this.bossFeel.jolt = Math.max(this.bossFeel.jolt, Math.min(0.5, 0.12 + power * 0.1));
+    // Chest height rather than his feet: the row's `y` is the ground he
+    // stands on, and sparks at his ankles read as shooting the floor.
+    this.effects.spawnImpact(row.x, row.y - this.chestOffset(), dx, dy, true, 0.7 + power * 0.5);
+  }
+
+  /** How far above his contact point the middle of his mass is, in world px. */
+  private chestOffset(): number {
+    const hit = this.config?.bossHit;
+    return hit ? hit.spriteHeight * 0.45 : 24;
   }
 
   /**

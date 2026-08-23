@@ -33,7 +33,7 @@
  */
 
 import { loadImage, loadJson } from '../lib/image';
-import type { BossRow } from '../net/protocol';
+import type { BossRow, GameConfig } from '../net/protocol';
 
 export type BossFacing = 'down' | 'left' | 'right' | 'up';
 
@@ -206,15 +206,27 @@ async function fetchBoss(): Promise<BossAtlas | null> {
 /**
  * Which clip a state plays.
  *
- * `windup`, `strike` and `recover` are three states of ONE clip: the server
- * splits them because the hitbox opens between them, and the art does not
- * because a swing is a swing. So the three share `m` (the move's name) and
- * the playhead is the sum of however far through the move he is — which is
- * why `clipTime` below adds the earlier phases back on rather than using `t`
- * raw. Getting that wrong restarts the animation on the frame the bar lands,
- * which is the single most visible bug this file could have.
+ * `windup`, `strike` and `recover` are three states of ONE clip FOR A SWING:
+ * the server splits them because the hitbox opens between them, and the art
+ * does not because a swing is a swing. So the three share `m` (the move's
+ * name) and the playhead runs straight through them — which is why `clipTime`
+ * below uses `t` raw rather than reconstructing it. Getting that wrong
+ * restarts the animation on the frame the bar lands, which is the single most
+ * visible bug this file could have. `tests/boss-clock.ts` is what found it.
+ *
+ * THE CHARGE IS THE EXCEPTION AND IT IS AN EXCEPTION ABOUT THE ART. It is one
+ * move played on three sheets — `rev` for the cord and the roar, `walk` for
+ * the run, `idle` for the pull-up — because it is the only attack that is not
+ * a pose. So `m` names a MOVE and not necessarily a clip, and the mapping
+ * comes off `welcome.config.bossMoves` rather than being assumed. The server
+ * resets his playhead on each of those phases for exactly the same reason it
+ * does NOT reset it inside a swing: the clip changed.
+ *
+ * `config` is optional so the frame picker still works before the welcome has
+ * landed, and so the swings — whose move name IS their sheet name — resolve
+ * with or without it.
  */
-export function clipFor(row: BossRow): string {
+export function clipFor(row: BossRow, config: GameConfig | null = null): string {
   switch (row.s) {
     case 'arrive':
       return 'arrive';
@@ -222,13 +234,23 @@ export function clipFor(row: BossRow): string {
       return 'death';
     case 'walk':
       return 'walk';
+    // THE RUN DRAWS AS A WALK, and it is the one state whose clip is not the
+    // move's at all: he is crossing the yard, and the sheet for crossing
+    // ground is the one every other body uses to do it.
+    case 'charge':
+      return 'walk';
     case 'windup':
     case 'strike':
+      return moveOf(row, config)?.clip ?? row.m ?? 'chop';
     case 'recover':
-      return row.m ?? 'chop';
+      return moveOf(row, config)?.after ?? row.m ?? 'chop';
     default:
       return 'idle';
   }
+}
+
+function moveOf(row: BossRow, config: GameConfig | null) {
+  return row.m ? config?.bossMoves?.[row.m] : undefined;
 }
 
 /**
@@ -248,8 +270,9 @@ export function clipFor(row: BossRow): string {
  * would if the arithmetic ever came back, and so this note has somewhere to
  * live.
  */
-export function clipTime(row: BossRow, atlas: BossAtlas): number {
-  const clip = atlas.clips[clipFor(row)];
+export function clipTime(row: BossRow, atlas: BossAtlas,
+                         config: GameConfig | null = null): number {
+  const clip = atlas.clips[clipFor(row, config)];
   if (!clip) return row.t;
   // Clamped for a non-looping clip: a recovery that outlasts its own animation
   // holds the last frame rather than wrapping to the first.
@@ -274,14 +297,15 @@ export function bossFacing(ax: number, ay: number): BossFacing {
 export function bossFrame(
   row: BossRow,
   atlas: BossAtlas,
+  config: GameConfig | null = null,
 ): { image: HTMLImageElement; sx: number } | null {
-  const name = clipFor(row);
+  const name = clipFor(row, config);
   const clip = atlas.clips[name] ?? atlas.clips.idle;
   if (!clip) return null;
   const image = clip.single ?? clip.images[bossFacing(row.ax, row.ay)]
     ?? clip.images.down ?? null;
   if (!image) return null;
-  const t = clipTime(row, atlas);
+  const t = clipTime(row, atlas, config);
   const step = Math.floor(t * clip.fps);
   const index = clip.loop
     ? ((step % clip.frames) + clip.frames) % clip.frames

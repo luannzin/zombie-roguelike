@@ -186,6 +186,8 @@ These bind every subtree. Subsystem-specific rules live in the docs above.
   - `make_player.py`'s `HOLD_ARM_X` <-> `client/src/render/guns.ts`'s `GUN_GRIP_SIDE` and `arms.ts`'s `WRIST_OUT` / `SHOULDER_OUT` — WHICH HAND the weapon is in. The sheet draws a holding pose with the weapon arm raised on one side; the client places the grip, and starts the drawn forearm, off the same side. Move one alone and the weapon floats beside a body whose arm is out the other way
   - `make_platform.py`'s deck <-> `client/src/game/pad-cargo.ts` — where a poured item comes to rest. Fractions of the sprite, re-derived rather than shipped; a skid re-proportioned without them stacks loot on the grass
   - `make_sawyer.py`'s `CHOP_ARC` / `RIP_ARC` <-> `client/src/render/layers/boss-vfx.ts`'s `SWING` — WHERE THE BAR IS. The trail is drawn on the nose of a weapon whose pose only the SPRITE knows, so the client re-derives it: the swing's clock is shipped (`welcome.config.bossMoves`) and its arc is mirrored. They agree because both run off the same playhead. Re-author a clip's arc in the generator and `SWING` is the other half that has to move, or the ribbon comes off nothing
+  - `boss.Move.clip` / `.after` <-> `client/src/render/boss.ts`'s `clipFor` — WHICH SHEET A MOVE PLAYS. `row.m` used to be both the move's name and its clip's, because every move was one animation. The CHARGE is three (`rev` to telegraph, `walk` to run, `idle` to pull up), so `m` now names a MOVE and the sheet is resolved through `welcome.config.bossMoves`. Assume the two are the same string and he crosses the yard standing still, shaking a chainsaw, on the frame the player has to pick a direction. `bun tests/boss-clock.ts` pins all three
+  - `server/app/config.py`'s `bossHit` <-> `client/src/game/game.ts`'s `predictShot` — WHETHER A ROUND STOPS ON HIM. The client draws the local player's own shot before the server answers, off a target list it builds itself; the boss was missing from it for the whole of his first release, so every bullet flew visibly THROUGH the biggest body in the game while landing perfectly. The damage was never the bug — a shot with no stop, no number and no marker simply reads as a miss
   - `assets/processed/sawyer/manifest.json` <-> `server/app/boss.py` <-> `client/src/render/boss.ts` — WHEN THE BAR LANDS. The manifest's event frames are the boss's windups and recoveries: the server reads them at import and derives its hitbox timings, and the client draws frame `t * fps` off the playhead the server sends. Nobody holds a copy of anybody's number. Type a duration into `boss.py` and the fight becomes unfair in a way no screenshot shows — the blow lands before the animation says it does. `bun tests/boss-clock.ts` pins it
 - **Sizes, speeds and distances are authored in tiles/seconds** and multiplied by `TILE_SIZE`. No raw pixel numbers.
 - **All colours and type live in `client/src/styles/index.css`**, read by the canvas through `client/src/theme/`.
@@ -249,6 +251,13 @@ the cinematic's length, blows landing, the crescent expiring, the enrage, the
 exit his death carves, the crossing, and the night's takings surviving the
 detour to reach the shop. Every one of those is a join where the fight can
 silently stop, and none of them has a symptom you would see in a screenshot.
+
+It also pins the three things about HIS MOVE SET that no screenshot shows:
+that the picker still has more than one answer at every range and never plays
+three of anything running; that the charge is still a RUN rather than a pose,
+and still tells the client all three of the sheets it plays; and that the
+enrage still changes the MOVES — a fan of crescents, a chop that comes
+straight back — rather than only the clock.
 
 Run `test_gear.py` after touching `armor.py`, the blade cell in `weapons.Hotbar`,
 `Room.damage_player` / `wear_armor` / `swap_blade` / `sync_block`, or the shop's

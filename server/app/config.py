@@ -818,6 +818,83 @@ BOSS_CREST_RADIUS_TILES = 0.85
 #: How far out he will still choose to throw one.
 BOSS_RIP_RANGE_TILES = 11.0
 
+#: THE FAN — what the throw becomes once he is enraged. THREE crescents on a
+#: spread instead of one, and that is the whole variant: same clip, same
+#: windup, same tell, a different thing leaving the bar. A single crescent is
+#: dodged by taking one step sideways, which is correct while he still has
+#: half his health and is exactly why a player who never closes the distance
+#: cannot lose the second half of the fight. Three of them make the sidestep a
+#: DIRECTION rather than a reflex — you have to go somewhere the fan is not.
+BOSS_FAN_CRESCENTS = 3
+BOSS_FAN_SPREAD_DEGREES = 25.0
+
+#: THE ROVING SWEEP — the spin, enraged, walks. Rooted, the answer to it is to
+#: back off one tile and wait a second and a half; walking, backing off has to
+#: be a retreat. It moves at a FRACTION of his walk because a spin that
+#: tracked at full speed would be unloseable, and this move is already the one
+#: with no blind side.
+BOSS_SWEEP_DRIFT = 0.62
+
+#: THE DOUBLE CHOP — enraged, the chop has this chance of coming straight back
+#: with no cooldown between them. The chop's recovery is the longest window in
+#: the fight and the whole fight is built on it being reliable; taking it away
+#: half the time is the variant, because a punish window you have to CHECK is
+#: a different window from one you can count on.
+BOSS_DOUBLE_CHOP_CHANCE = 0.5
+
+#: THE CHARGE — the answer to a gun, and the one move that is not a swing.
+#:
+#: Everything else he does is authored around a player who came close: the
+#: chop punishes standing in the line, the sweep punishes crowding him, and
+#: the crescent punishes standing STILL at range — which a player with a
+#: rifle simply does not do. Kiting a body that walks slower than you run has
+#: no counter in a move list made entirely of swings, so the counter is a move
+#: that closes the distance instead of reaching across it.
+#:
+#: HE IS STILL FAIR, and the fairness is the same fairness the chop has: he
+#: commits. The heading is locked when the roar lands and he cannot steer
+#: after it, so the charge is beaten by moving SIDEWAYS — the same lesson the
+#: chop teaches, asked at a range where the player thought they were safe.
+BOSS_CHARGE_SPEED_TILES = 10.5
+#: Seconds of run before he pulls up on his own. Times the speed, this is how
+#: far he crosses: a little over the arena's radius, so nowhere in the yard is
+#: out of his reach and no single charge crosses the whole of it.
+BOSS_CHARGE_TIME = 1.05
+BOSS_CHARGE_DAMAGE = 30
+#: Half-width of the body that is running, in tiles. Wider than his hit
+#: capsule: it is a shoulder, not a blade, and a charge that missed by a pixel
+#: would read as a bug rather than as a dodge.
+BOSS_CHARGE_WIDTH_TILES = 1.5
+#: The band he will pick it from. It starts inside the chop's range because a
+#: charge from four tiles is a legitimate surprise, and it reaches most of the
+#: yard because that is the distance it exists to punish.
+BOSS_CHARGE_MIN_TILES = 4.0
+BOSS_CHARGE_MAX_TILES = 16.0
+#: Seconds rooted after a clean run. His shortest recovery — he pulled up on
+#: his own feet.
+BOSS_CHARGE_RECOVER = 0.7
+#: …and after he buries the bar in the treeline, which is the biggest free
+#: window in the fight and the reward for dodging correctly.
+BOSS_SLAM_RECOVER = 1.55
+
+#: HOW MUCH THE PICKER IS ALLOWED TO REPEAT ITSELF.
+#:
+#: `boss._choose` used to be a hard alternation: never the same move twice
+#: running, uniform among whatever else the range allowed. At close quarters
+#: that is chop, sweep, chop, sweep forever, and past four tiles the crescent
+#: was the ONLY legal move, so the second half of every fight was one attack
+#: on a metronome. Both halves read as a script because both halves were one.
+#:
+#: A repeat is now cheap rather than forbidden, and three in a row is the only
+#: thing actually banned — one that never repeats is as legible as one that
+#: always does, just in the other direction.
+BOSS_REPEAT_PENALTY = 0.34
+#: Weight a move keeps at the very edge of its band, as a fraction of the
+#: weight it has in the middle. Above zero so the bands genuinely OVERLAP: at
+#: four tiles the chop, the throw and the charge are all on the table and
+#: which one arrives is not something the player can read off a tape measure.
+BOSS_BAND_EDGE = 0.3
+
 #: His own melee i-frames, per victim. Longer than `MELEE_IMMUNITY` because
 #: his sweep's hitbox is open for a second and a half and would otherwise bill
 #: the same body every tick of it.
@@ -1010,6 +1087,22 @@ def client_config() -> dict:
         "bossMoves": _boss_moves(),
         # The crescent's travel, for the lane `rip` telegraphs.
         "bossCrescent": _boss_crescent(),
+        # HIS CAPSULE, so the client's own tracer stops on him.
+        #
+        # `predictShot` builds the local player's shot against players and
+        # enemies and draws it the frame the trigger goes down; the boss was
+        # missing from that list, so every round a player fired at the biggest
+        # body in the game flew visibly THROUGH it. The damage was always
+        # landing — the server had him in `targets` from the day he shipped —
+        # but a shot with no hit marker, no number and no stop reads as a shot
+        # that missed, and a player who thinks their gun does nothing to a
+        # boss stops shooting him. These are the three numbers `combat.py`'s
+        # capsule wants, in world px, exactly as `Boss` computes them.
+        "bossHit": {
+            "radius": round(TILE_SIZE * BOSS_HIT_TILES_R, 2),
+            "halfHeight": round(TILE_SIZE * 0.5, 2),
+            "spriteHeight": round(TILE_SIZE * BOSS_SPRITE_TILES_H, 2),
+        },
         "hearthTiles": CAMP_HEARTH_TILES,
         "ringTilesX": CAMP_RING_TILES_X,
         "ringTilesY": CAMP_RING_TILES_Y,

@@ -52,7 +52,7 @@ export function drawBoss(
   // into the yard and find him waiting in it — the shadow is the reveal.
   if (row.s === 'sleep') return;
 
-  const frame = bossFrame(row, atlas);
+  const frame = bossFrame(row, atlas, config);
   if (!frame) return;
 
   const zoom = view.zoom;
@@ -82,14 +82,26 @@ export function drawBoss(
                 dx, dy, w, h);
 
   if (boss.hitFlash > 0.002) {
-    // Silhouette-only wash: the sprite is redrawn as a solid white stencil and
-    // composited over itself. `source-atop` rather than a rectangle, or the
-    // flash is a glowing box round a body rather than the body glowing.
+    // Silhouette-only wash: the sprite is re-blitted over itself additively,
+    // the same way `layers/entities` flashes a zombie. Additive rather than a
+    // rectangle, or the flash is a glowing box round a body rather than the
+    // body glowing.
+    //
+    // TWICE, ON A HARD HIT, AND THAT IS NOT A TWEAK. `lighter` adds the
+    // sprite's own values to itself, so how bright a body flashes depends on
+    // how bright the body already was — and he is the darkest thing in the
+    // game, a mass of soot and rust lit by four fires. At 0.85 alpha a zombie
+    // visibly blinks and he barely moved, which is how a boss ends up looking
+    // like bullets are passing through him. A second pass is what makes the
+    // brightest frame actually read as white.
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
-    ctx.globalAlpha = Math.min(0.85, boss.hitFlash);
-    ctx.drawImage(frame.image, frame.sx, 0, atlas.frameWidth, atlas.frameHeight,
-                  dx, dy, w, h);
+    const passes = boss.hitFlash > 0.45 ? 2 : 1;
+    for (let pass = 0; pass < passes; pass++) {
+      ctx.globalAlpha = Math.min(0.9, boss.hitFlash);
+      ctx.drawImage(frame.image, frame.sx, 0, atlas.frameWidth, atlas.frameHeight,
+                    dx, dy, w, h);
+    }
     ctx.restore();
   }
 

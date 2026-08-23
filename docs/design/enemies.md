@@ -239,15 +239,97 @@ one place. What follows is why it is shaped the way it is.
   carries `hit` / `release` / `roar` / `impact` as frame indices, and it is the
   art telling the simulation when the blow lands rather than the simulation
   guessing.
-- **FOUR ATTACKS THAT ARE FOUR SHAPES, NOT FOUR DAMAGE NUMBERS.** `chop` is
+- **FIVE ATTACKS THAT ARE FIVE SHAPES, NOT FIVE DAMAGE NUMBERS.** `chop` is
   vertical and lands on a point; `sweep` is a circle and lands on everything;
   `rip` is horizontal and lands at range, as a crescent that outlives the
-  animation; `rev` lands on nothing at all. Two attacks that swing in the same
+  animation; `charge` is not a swing at all and lands as a BODY; `rev` lands
+  on nothing. Two attacks that swing in the same
   plane are one attack the player cannot tell apart until it has hit them,
   which is why the chop and the throw are authored on perpendicular arcs and
   why the throw's arc is written down per facing rather than derived — a
   horizontal swing does not project the same way face-on as it does in
   profile.
+- **`charge` IS THE ANSWER TO A GUN, AND WITHOUT IT THERE WASN'T ONE.** Every
+  other move on the sheet is authored around a player who came close. The
+  crescent nominally covers range, and it is DELIBERATELY slow enough to walk
+  out of — which is right, because it is the move that teaches "keep moving",
+  and which is also why it is no answer at all to somebody who was already
+  moving. A body that walks at 2.9 tiles a second cannot reach a body that
+  runs at 4.4, so a player with a rifle and any patience won the fight by
+  walking backwards, and the entire move list was decoration.
+
+  A fifth swing would not have fixed it. **The counter to reaching across a
+  gap has to be closing it**, so the charge is the one attack whose hitbox
+  MOVES: he roars, locks a heading, and crosses the yard at 10.5 tiles a
+  second — faster than a sprint, so it cannot be outrun, only sidestepped.
+  That is the same lesson the chop teaches, asked again at a range where the
+  player believed the answer was "stand here".
+
+  **AND HE LEADS THE TARGET, WHICH IS THE PART WORTH ARGUING ABOUT.** The
+  first cut locked the heading onto the player's CURRENT tile, on the
+  principle that total commitment is what makes a fast move fair. It landed
+  nought out of sixteen against a player orbiting him at walking pace, because
+  a charge that takes a second to cross eight tiles cannot touch anybody
+  moving at all, in any direction, ever. A move that punishes nothing is not a
+  counter to kiting; it is a cutscene the player strolls around. Leading turns
+  it into the question it was supposed to ask: he has committed to where you
+  were HEADED, so the answer is to stop doing what you were doing. Autopilot
+  loses, reacting wins, and the commitment is still absolute — nothing steers
+  him once he is running, and a charge dodged into the treeline buries the bar
+  in a trunk for the longest free window in the fight (`slam`).
+
+  **IT COSTS NO ART, AND THAT IS WHY IT IS THREE CLIPS.** `rev` is the cord
+  and the roar (already the fight's "something is coming" beat), `walk` is the
+  run, `idle` is him pulling up. It is the only move that is not one
+  animation, which is why `Move` grew `clip` / `after` and why `row.m` now
+  names a MOVE rather than a sheet — the client resolves the animation through
+  `welcome.config.bossMoves` instead of assuming the two strings are the same.
+- **THE PICKER WAS A LOOKUP TABLE WITH A COIN FLIP ON TOP.** Bands abutted
+  rather than overlapping — chop to 4.4 tiles, rip from 4.0 and alone for the
+  rest of the arena — and the rule was "never the last move again", uniform
+  over whatever was legal. Under four tiles that is chop, sweep, chop, sweep
+  forever; past four and a half it is one attack on a metronome. Both halves
+  are learned in about fifteen seconds and the rest of the fight is executing
+  a known loop. Three changes, each removing a different kind of
+  predictability:
+  - **THE BANDS OVERLAP.** Four tiles is now chop, throw and charge. A player
+    cannot read the next move off their own distance.
+  - **EACH BAND TAPERS** (`BOSS_BAND_EDGE`), so the overlap is a blend rather
+    than a cliff: a move is likeliest in the middle of what it is FOR and
+    merely possible at the fringe. The fight still teaches a shape — close is
+    heavy, far is thrown — without being a rule.
+  - **A REPEAT IS EXPENSIVE, NOT ILLEGAL** (`BOSS_REPEAT_PENALTY`). Two chops
+    running is a thing that happens to you now; three never is, and even that
+    ban yields when the range leaves him nothing else to do — out past the
+    throw's reach the charge is the only legal move, and refusing to repeat
+    there does not vary the fight, it removes it. **A boss forbidden to repeat
+    is exactly as readable as one that always does**, in the other direction,
+    and the strict alternation was the single biggest reason he read as a
+    script.
+- **THE ENRAGE CHANGES THE MOVES, NOT JUST THE CLOCK.** It used to be three
+  multipliers — faster walk, shorter wait, one extra crescent roll — which is
+  the same fight on a shorter timer, fought with knowledge the player already
+  has. Each swing now has a variant, and every one of them costs zero frames
+  of art because it changes **what leaves the weapon rather than how the
+  weapon is posed**:
+  - **`rip` throws a FAN** (`BOSS_FAN_CRESCENTS`). One crescent is beaten by a
+    step sideways, which is the right answer in the first half — it is the
+    move that teaches "keep moving", and it is also why a player who learned
+    that lesson could not lose the second half. Three make the sidestep a
+    DIRECTION: there is still somewhere to be, and now you have to pick it.
+  - **`sweep` WALKS** (`BOSS_SWEEP_DRIFT`). Rooted, the answer is to back off
+    one tile and wait a second and a half out. Drifting, backing off has to be
+    a retreat. At a fraction of his walk, never his full speed — the one move
+    with no blind side must not also be unloseable.
+  - **`chop` COMES BACK** (`BOSS_DOUBLE_CHOP_CHANCE`). This is the variant
+    that changes the most while adding the least: no new clip, no new hitbox,
+    no new number. What it takes away is a CERTAINTY. The chop's recovery is
+    the longest window in the fight and every safe thing a player does —
+    reload, heal, walk in and swing — is scheduled off it. Half the time it is
+    now a window you have to look at first.
+
+  Same clips, same telegraphs, same lengths. **The player's knowledge is not
+  invalidated, it is made insufficient**, which is what a phase change is for.
 - **`rev` EXISTS BECAUSE A FIGHT NEEDS A BEAT THAT IS NOT AN ATTACK.** It is
   the only clip in which nothing moves toward the player: he pulls the cord,
   the engine catches, and he roars two frames after it peaks — so the sound in
@@ -327,11 +409,37 @@ one place. What follows is why it is shaped the way it is.
   would remove tension rather than add it — every telegraph would happen in a
   crowd — and it would break the health arithmetic, because guns pointed at a
   zombie are guns he does not have to survive.
-- **WHAT IS STILL OPEN.** A second phase with a different move set; whether he
-  should drop something other than coins and xp (a weapon? the art has an
-  obvious one); and whether a party that WIPES in the yard should lose the
-  night's takings — at the moment they respawn and the receipt survives,
-  which is the forgiving reading.
+- **HITTING HIM HAS TO FEEL LIKE HITTING HIM, AND FOR A WHILE IT DID NOT.**
+  `Room.fire` and `Room.melee` have had him in their target lists since the
+  day he shipped, so every round always did its damage. But the client draws
+  the local player's own shot the frame the trigger goes down, off a target
+  list `predictShot` builds itself — and **he was not in it**. The tracer flew
+  visibly through the biggest body in the game: nothing stopped, no number
+  floated, no marker, no hit sound, no camera bump. The only feedback that
+  arrived was the server's `hit` event a round trip later, spent on a flash
+  and some blood, on the darkest sprite in the game, while a chainsaw was
+  coming at you.
+
+  **A SHOT THAT LOOKS LIKE A MISS IS A MISS**, as far as the player is
+  concerned, and a player who believes their gun does nothing to a boss stops
+  shooting him. The fix is the same split every other body already uses: the
+  prediction owns the INSTANT (the tracer stopping, the number, the spark, the
+  bump, the sound), the server's event owns the CONFIRMATION (the blood, and
+  the health bar, which is state). His capsule ships as `welcome.config.bossHit`
+  rather than being mirrored, because a hitbox the client guesses at is a
+  hitbox that disagrees with the one deciding damage.
+
+  Two related things were wrong for the same reason and are fixed with it.
+  `feelVictim` routed his id into `entity-visuals`, which knows nothing about
+  him — it minted a visual state for a body nothing draws off, so the reaction
+  went nowhere. And his flash is `lighter` compositing the sprite over itself,
+  which brightens a body **in proportion to how bright it already was**: a
+  zombie visibly blinks at 0.85 alpha and he barely moved. It takes two passes
+  on a hard hit.
+- **WHAT IS STILL OPEN.** Whether he should drop something other than coins
+  and xp (a weapon? the art has an obvious one); and whether a party that
+  WIPES in the yard should lose the night's takings — at the moment they
+  respawn and the receipt survives, which is the forgiving reading.
 
 ---
 

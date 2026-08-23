@@ -23,8 +23,16 @@
 import type { BossEvent, BossRow, GameConfig } from '../net/protocol';
 import { TRAIL_LENGTH, tipAt, type TrailPoint } from '../render/layers/boss-vfx';
 
-/** How long a hit flash lasts. Short — it is a punch, not a glow. */
-const FLASH_LIFE = 0.11;
+/**
+ * How long a hit flash lasts. Short — it is a punch, not a glow.
+ *
+ * Nudged up from 0.11 when the flash became the local player's PRIMARY signal
+ * that a round connected (see `Game.feelBossHit`). At 0.11 a hit landing on
+ * the frame before a snapshot could be most of the way decayed by the time
+ * the eye found it, on a sprite that starts nearly black; at 0.15 it survives
+ * a frame drop and still reads as a blink rather than a glow.
+ */
+const FLASH_LIFE = 0.15;
 /** …and how long the one on his death lasts, which is not the same beat. */
 const SLAIN_FLASH = 0.9;
 
@@ -156,8 +164,27 @@ export function punchFor(event: BossEvent): BossPunch {
       };
     }
     case 'rip':
+      // A FAN IS LOUDER THAN A THROW. `hits` is how many crescents left the
+      // bar — one before the enrage, three after — and the beat has to say
+      // which, because the answer to them is a different answer.
       return {
-        ...NOTHING, trauma: 0.2, sound: 'knife-swing', gain: 1.1, at,
+        ...NOTHING,
+        trauma: (event.hits ?? 1) > 1 ? 0.34 : 0.2,
+        sound: 'knife-swing',
+        gain: (event.hits ?? 1) > 1 ? 1.35 : 1.1,
+        at,
+      };
+    case 'charge':
+      // The moment he stops being a thing you are circling. Trauma, not a
+      // kick: nothing has been hit yet — this is the launch, and the whole
+      // job of it is to make the player look up.
+      return { ...NOTHING, trauma: 0.4, sound: 'zombie-alert', gain: 1.4, at };
+    case 'slam':
+      // A charge that went into the treeline. The biggest free window in the
+      // fight, and it has to SOUND like a mistake he made.
+      return {
+        trauma: 0.75, kick: 18, kx: event.dx ?? 0, ky: event.dy ?? 0,
+        sound: 'crate-break', gain: 1.1, at, delay: 0,
       };
     case 'crestBurst':
       return { ...NOTHING, trauma: 0.16, sound: 'knife-hit', gain: 0.9, at };
@@ -167,6 +194,15 @@ export function punchFor(event: BossEvent): BossPunch {
       return { ...NOTHING, trauma: 0.3, sound: 'siren', gain: 0.7, at };
     case 'hit':
       return { ...NOTHING, trauma: 0.03, sound: 'zombie-hit', gain: 0.6, at };
+    case 'windup':
+      // Silent and still by default — the ANIMATION is the telegraph and a
+      // sound on every windup would bury the two that matter. The exception
+      // is the enraged double chop: it arrives inside the window the player
+      // has spent the whole fight learning is free, so it gets the one thing
+      // a windup is normally denied, a noise that says "again".
+      return event.encore
+        ? { ...NOTHING, trauma: 0.22, sound: 'zombie-alert', gain: 0.9, at }
+        : NOTHING;
     case 'hurt':
       return { ...NOTHING, trauma: 0.45, kick: 10, kx: event.dx ?? 0, ky: event.dy ?? 0 };
     case 'slain':
@@ -180,7 +216,11 @@ export function punchFor(event: BossEvent): BossPunch {
 export function feelEvent(feel: BossFeel, event: BossEvent): void {
   switch (event.kind) {
     case 'hit':
-      feel.flash = 1;
+      // STACKED, not assigned. Two clients watch the same fight and both of
+      // them see a body being shot several times a second; a flash that
+      // overwrites itself cannot get brighter under sustained fire, which is
+      // exactly when the player most needs it to.
+      feel.flash = Math.min(1, Math.max(feel.flash, 0.75) + 0.25);
       break;
     case 'slain':
       feel.flash = 1;
@@ -212,6 +252,17 @@ export function feelEvent(feel: BossFeel, event: BossEvent): void {
     case 'enrage':
       feel.jolt = Math.max(feel.jolt, 0.8);
       feel.announce += 1;
+      break;
+    case 'charge':
+      feel.jolt = Math.max(feel.jolt, 0.9);
+      break;
+    case 'slam':
+      feel.jolt = Math.max(feel.jolt, 1.3);
+      feel.hits.push({
+        x: event.x, y: event.y,
+        dx: event.dx ?? 0, dy: event.dy ?? 1,
+        age: 0, life: 0.3, power: 1.6,
+      });
       break;
     default:
       break;
@@ -267,7 +318,11 @@ export function stepBossFeel(
     feel.shakeY = 0;
     return;
   }
-  const hard = row.s === 'windup' ? 1 : row.s === 'strike' ? 0.7 : 0.4;
+  // The engine is loudest while he is fighting the thing, and a running boss
+  // is a boss with the throttle wide open — `charge` sits with the windup
+  // rather than with the walk.
+  const hard = row.s === 'windup' || row.s === 'charge' ? 1
+    : row.s === 'strike' ? 0.7 : 0.4;
   const rage = row.rage ? 1.4 : 1;
   const amount = (0.5 * hard * rage) + feel.jolt * 2.2;
   feel.shakeX = Math.sin(time * 41.3) * amount;

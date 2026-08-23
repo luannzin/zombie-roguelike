@@ -124,15 +124,37 @@ ceremony.
   end of `BOSS_DAY` (**2**, in `config.py` — one constant, read in one place).
   The staging: a normal night, and the exit corridor opens onto
   a round yard instead of onto the shop, whose own way out opens straight
-  across from the way in, and only once he is down. Four moves on four range
-  bands, an animated telegraph on every one, an enrage at half health, and a
-  thrown crescent. His timings come out of the art's own manifest — see the mirrors list in [`AGENTS.md`](AGENTS.md).
+  across from the way in, and only once he is down. FIVE moves on overlapping
+  range bands, an animated telegraph on every one, an enrage at half health
+  that changes the moves rather than only the clock, and a thrown crescent.
+  His timings come out of the art's own manifest — see the mirrors list in [`AGENTS.md`](AGENTS.md).
   **Verified headlessly, not in a live browser**: `test_boss_fight.py` drives a
   whole boss night and `bun tests/boss-clock.ts` pins the animation contract,
   but nobody has yet stood in the yard and fought him. First playthrough should
   watch for: whether 900 HP solo is the right length, whether the chop's 0.64s
   windup is readable, and whether the ring at 21 tiles is too big to corner him
   in or too small to kite in.
+- **THE FIGHT'S SECOND PASS (this is the newest thing in the repo).** Three
+  problems, all of them found by playing him rather than by any test:
+  - **Rounds flew through him.** `predictShot` builds its own target list and
+    he was not on it, so the local tracer never stopped, never floated a
+    number and never made a sound — the damage landed the whole time. His
+    capsule now ships as `welcome.config.bossHit`, `feelVictim` has a boss
+    branch (he is not in `entity-visuals` and never was), and his flash takes
+    two additive passes on a hard hit because `lighter` brightens a body in
+    proportion to how dark it already is.
+  - **The picker was a metronome.** Bands abutted and a repeat was banned
+    outright, so close range alternated chop/sweep forever and long range was
+    the crescent alone. Bands overlap and taper now, a repeat is expensive
+    rather than illegal, and only a third in a row is banned.
+  - **A gun beat him.** He walks at 2.9 tiles/s and a player runs at 4.4, so
+    kiting had no counter. `charge` is the fifth move: a telegraphed, LED,
+    committed run at 10.5 tiles/s that ends in the treeline if you dodge it.
+    It is the one move whose hitbox moves and the one move that is three clips
+    (`rev` / `walk` / `idle`) — which is why `row.m` now names a move and not
+    a sheet.
+  Still unplayed: whether the charge's 0.43s roar is enough warning, and
+  whether the enraged double chop is too much on top of the fan.
   The HUD bar is a struck gold plate with five segments, and the yard is LIT —
   a ring of drums, four burning heaps and a real ambient floor. That floor is
   the second exception in the game to "ambient is zero where you can die"; the

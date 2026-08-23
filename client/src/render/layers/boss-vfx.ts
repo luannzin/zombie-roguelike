@@ -58,6 +58,10 @@ const SWING: Record<string, { from: number; to: number; radius: number }> = {
   rip: { from: -105, to: 95, radius: 0.72 },
   // The rev does not swing. It shakes, and `tipAt` gives it a jitter instead.
   rev: { from: -60, to: -48, radius: 0.55 },
+  // Neither does the charge's windup, which IS the rev clip: he holds the bar
+  // at his hip and revs it. Same jitter, keyed by the MOVE's name rather than
+  // the clip's, because `row.m` carries the move (see `render/boss.ts`).
+  charge: { from: -60, to: -48, radius: 0.55 },
 };
 
 /** How many turns the sweep makes. Mirrors `make_sawyer.TURNS`. */
@@ -111,7 +115,7 @@ export function tipAt(row: BossRow, config: GameConfig): { x: number; y: number 
   const eased = raw * raw * (3 - 2 * raw);
   const deg = arc.from + (arc.to - arc.from) * eased;
   const angle = aim + (deg * Math.PI) / 180;
-  const shake = name === 'rev' ? Math.sin(row.t * 70) * 3 : 0;
+  const shake = name === 'rev' || name === 'charge' ? Math.sin(row.t * 70) * 3 : 0;
   const r = reach * arc.radius + shake;
   return {
     x: row.x + Math.cos(angle) * r,

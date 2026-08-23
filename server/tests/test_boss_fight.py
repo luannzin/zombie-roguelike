@@ -16,6 +16,7 @@ happens.
 from __future__ import annotations
 
 import math
+import random
 import sys
 from pathlib import Path
 
@@ -26,6 +27,7 @@ from app.config import (  # noqa: E402
     ARENA_RADIUS_TILES,
     ARENA_TRIGGER_TILES,
     BOSS_DAY,
+    BOSS_FAN_CRESCENTS,
     DT,
     TILE_SIZE,
 )
@@ -120,6 +122,120 @@ def main() -> None:
     check(f"he lands blows on somebody standing still ({hits_taken})", hits_taken > 0)
     check("he telegraphs before every one", "windup" in seen)
     check("he uses more than one move", len({m for m in seen} & {"impact", "rip"}) >= 1)
+
+    print("the picker")
+    # WHAT THIS IS FOR: he used to be a lookup table with a coin flip on top.
+    # Bands abutted, so under four tiles the only legal pair was chop and
+    # sweep and over four and a half the crescent was the ONLY legal move; the
+    # no-repeat rule then made both halves a strict alternation. Nothing about
+    # that is visible in a screenshot and nothing about it fails a test — you
+    # notice it by playing him twice and knowing what comes next.
+    picker = boss.Boss(id="p", x=0.0, y=0.0, max_hp=100)
+    picker._rng = random.Random(4)
+    for tiles, expect in ((2.0, 2), (4.2, 3), (8.0, 2), (13.0, 1)):
+        picked = set()
+        picker._last, picker._repeats = "", 0
+        for _ in range(400):
+            move = boss._choose(picker, tiles)
+            if move is not None:
+                picked.add(move.key)
+        check(f"at {tiles} tiles he has {len(picked)} answers ({sorted(picked)})",
+              len(picked) >= expect)
+    # …and the bands still MEAN something: the sweep is a close-quarters move
+    # and must never be rolled from across the yard.
+    picker._last, picker._repeats = "", 0
+    far = {boss._choose(picker, 9.0).key for _ in range(400)}
+    check(f"but the far bands are still far ({sorted(far)})",
+          "sweep" not in far and "chop" not in far)
+    # Never three of anything running, which is the one hard rule left.
+    picker._last, picker._repeats = "", 0
+    seq = [boss._choose(picker, 2.0).key for _ in range(2000)]
+    run = best = 1
+    for index in range(1, len(seq)):
+        run = run + 1 if seq[index] == seq[index - 1] else 1
+        best = max(best, run)
+    check(f"and never three of one in a row (longest {best})", best <= 2)
+
+    print("the charge")
+    # THE ANSWER TO A GUN, and the reason it is pinned: every other move is a
+    # swing thrown by a rooted body, so the charge is the only one whose
+    # hitbox MOVES and the only one that spans three animations. Nothing at
+    # runtime notices if it stops running — he simply stands there, and a
+    # player with a rifle wins the fight by walking backwards.
+    room2, walker = make_room()
+    room2.boss.state = boss.IDLE
+    cx2, cy2 = arena.centre(room2.world)
+    room2.boss.x, room2.boss.y = cx2, cy2
+    # Standing off, well outside every swing's reach.
+    walker.x, walker.y = cx2, cy2 + TILE_SIZE * 8.0
+    walker.vx = walker.vy = 0.0
+    walker.hp = walker.max_hp
+    room2.boss.move = boss.RUSH
+    room2.boss.target_id = walker.id
+    boss._enter(room2.boss, boss.WINDUP)
+    saw_charge = False
+    hit_by_run = 0
+    for _ in range(200):
+        room2.step_boss(DT)
+        if room2.boss.state == boss.CHARGE:
+            saw_charge = True
+        for event in room2.boss_events:
+            if event["kind"] == "hurt":
+                hit_by_run += 1
+        room2.boss_events = []
+        if room2.boss.state == boss.RECOVER:
+            break
+    check("the roar becomes a run", saw_charge)
+    check(f"and it runs over somebody standing in it ({hit_by_run})", hit_by_run > 0)
+    check("then it ends in a punish window", room2.boss.state == boss.RECOVER)
+    check(f"whose length is written down ({room2.boss.recover_for:.2f}s)",
+          room2.boss.recover_for > 0.0)
+    # THE THREE SHEETS. The client resolves the run's animation off this
+    # payload, and a move that forgot to say which sheet it plays draws a boss
+    # crossing the yard standing still.
+    payload = boss.moves_payload()["charge"]
+    check(f"and the client is told all three sheets "
+          f"({payload['clip']} -> walk -> {payload['after']})",
+          payload["clip"] == "rev" and payload["after"] == "idle")
+
+    print("the enrage changes the moves, not just the clock")
+    # SPEED ALONE IS THE SAME FIGHT ON A SHORTER TIMER, and the player already
+    # learned it. Each variant takes away one specific certainty, and none of
+    # them costs a frame of art — which is exactly why nothing would notice if
+    # they silently stopped happening.
+    raged = boss.Boss(id="r", x=0.0, y=0.0, max_hp=100)
+    raged._rng = random.Random(11)
+    raged.aim_x, raged.aim_y = 0.0, 1.0
+    out = boss.Outcome()
+    boss._land(raged, boss.RIP, [], out)
+    check(f"calm, the throw is one crescent ({len(raged.crescents)})",
+          len(raged.crescents) == 1)
+    raged.crescents.clear()
+    raged.enraged = True
+    boss._land(raged, boss.RIP, [], out)
+    check(f"enraged, it is a fan ({len(raged.crescents)})",
+          len(raged.crescents) == BOSS_FAN_CRESCENTS)
+    # A FAN, not a shotgun: they have to leave on DIFFERENT headings or it is
+    # one crescent drawn three times and the sidestep still beats it.
+    headings = {round(math.atan2(c.dy, c.dx), 3) for c in raged.crescents}
+    check(f"on {len(headings)} different headings", len(headings) == BOSS_FAN_CRESCENTS)
+
+    doubles = 0
+    for _ in range(200):
+        raged.encore = None
+        boss._land(raged, boss.CHOP, [], boss.Outcome())
+        if raged.encore is not None:
+            doubles += 1
+    check(f"and the chop sometimes comes straight back ({doubles} of 200)",
+          0 < doubles < 200)
+    calm = boss.Boss(id="c", x=0.0, y=0.0, max_hp=100)
+    calm._rng = random.Random(11)
+    for _ in range(60):
+        calm.encore = None
+        boss._land(calm, boss.CHOP, [], boss.Outcome())
+        if calm.encore is not None:
+            break
+    check("never before the enrage", calm.encore is None)
 
     print("the crescent")
     crest = boss.Crescent(id=1, x=player.x - 200.0, y=player.y, dx=200.0, dy=0.0,

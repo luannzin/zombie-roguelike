@@ -30,20 +30,53 @@ follows is the important one:
 Change a clip's length in the generator and the fight re-times itself. That is
 the whole reason the manifest is read at import instead of copied.
 
-FOUR MOVES, FOUR SHAPES, ONE RANGE BAND EACH.
+FIVE MOVES, FIVE SHAPES, ONE RANGE BAND EACH.
     CHOP    close, a point, the heaviest. Lands where he is looking.
     SWEEP   close, a circle, hits everything. The answer to crowding him.
     RIP     far, a crescent that leaves the bar and keeps going. The answer to
-            standing off and plinking.
+            standing still at range.
+    CHARGE  far, a body. The answer to a GUN — see below.
     REV     nothing. It is the enrage and the free window in one.
 Two attacks that punish the same mistake are one attack, so the picker
 (`_choose`) is a RANGE decision first and a dice roll second.
 
+THE CHARGE IS THE ANSWER TO A RIFLE, and it is the move this fight was missing.
+Everything else on the list is authored around a player who came close; the
+crescent is the only thing that reaches, and it is DELIBERATELY slow enough to
+walk out of, so a player who never stops moving and never closes could not be
+touched. Kiting a body that walks slower than you run has no counter in a move
+list made entirely of swings. The counter has to be a move that closes the
+distance instead of reaching across it, and the fairness has to be the same
+fairness the chop already has: HE COMMITS. The heading locks on the roar and
+he cannot steer after it, so the charge is beaten by moving sideways — the
+lesson the chop teaches, asked again at a range where the player thought the
+answer was "stand here".
+
+THE PICKER IS WEIGHTED, NOT ALTERNATING. It used to ban the last move outright
+and roll uniformly over whatever else the range allowed, which at close
+quarters is chop / sweep / chop / sweep forever and past four tiles was the
+crescent alone. Bands now OVERLAP and taper (`BOSS_BAND_EDGE`), a repeat is
+merely expensive (`BOSS_REPEAT_PENALTY`) rather than forbidden, and only three
+of the same in a row is actually banned. A boss that never repeats is exactly
+as readable as one that always does.
+
+ENRAGED, THE MOVES CHANGE SHAPE — THEY ARE NOT JUST FASTER. Speed alone is the
+same fight on a shorter clock, and the player already learned it. Each of the
+three swings gets a variant that costs no art, because it changes what leaves
+the weapon rather than how the weapon is posed:
+    RIP     throws `BOSS_FAN_CRESCENTS` on a spread instead of one. A sidestep
+            was the answer; now the sidestep has to have a DIRECTION.
+    SWEEP   walks while it spins (`BOSS_SWEEP_DRIFT`). Backing off one tile
+            was the answer; now backing off is a retreat.
+    CHOP    comes straight back with no cooldown, half the time. The longest
+            punish window in the fight becomes one you have to CHECK.
+Same clips, same telegraphs, same lengths. The player's knowledge is not
+invalidated — it is made insufficient, which is what a phase change is for.
+
 HE IS FAIR BECAUSE HE IS SLOW AND COMMITTED. He walks slower than a player
-runs, every move roots him for its whole length, and the recovery on the chop
-is the longest window in the fight. Everything that makes him dangerous is
-positional: the sweep punishes standing next to him, the crescent punishes
-standing still far away, and the roar means the next one comes faster.
+runs, every move roots him for its whole length (the roving sweep drifts, it
+does not chase), and the recovery on the chop is the longest window in the
+fight. Everything that makes him dangerous is positional.
 """
 
 from __future__ import annotations
@@ -56,25 +89,39 @@ from pathlib import Path
 
 from .config import (
     BOSS_ATTACK_COOLDOWN,
+    BOSS_BAND_EDGE,
+    BOSS_CHARGE_DAMAGE,
+    BOSS_CHARGE_MAX_TILES,
+    BOSS_CHARGE_MIN_TILES,
+    BOSS_CHARGE_RECOVER,
+    BOSS_CHARGE_SPEED_TILES,
+    BOSS_CHARGE_TIME,
+    BOSS_CHARGE_WIDTH_TILES,
     BOSS_CHOP_DAMAGE,
     BOSS_CHOP_REACH_TILES,
     BOSS_CREST_DAMAGE,
     BOSS_CREST_LIFE,
     BOSS_CREST_RADIUS_TILES,
     BOSS_CREST_SPEED_TILES,
+    BOSS_DOUBLE_CHOP_CHANCE,
     BOSS_ENRAGE_AT,
     BOSS_ENRAGE_RATE,
     BOSS_ENRAGE_SPEED,
+    BOSS_FAN_CRESCENTS,
+    BOSS_FAN_SPREAD_DEGREES,
     BOSS_HIT_TILES_R,
     BOSS_HP_BASE,
     BOSS_HP_PER_EXTRA,
     BOSS_MELEE_IMMUNITY,
+    BOSS_REPEAT_PENALTY,
     BOSS_RIP_RANGE_TILES,
+    BOSS_SLAM_RECOVER,
     BOSS_SPEED_TILES,
     BOSS_SPRITE_TILES_H,
     BOSS_STOMP_DAMAGE,
     BOSS_STOMP_REACH_TILES,
     BOSS_SWEEP_DAMAGE,
+    BOSS_SWEEP_DRIFT,
     BOSS_SWEEP_REACH_TILES,
     BOSS_TURN_DEGREES,
     TILE_SIZE,
@@ -104,6 +151,7 @@ IDLE = "idle"
 WALK = "walk"
 WINDUP = "windup"      # the telegraph. He is rooted and the clip is playing.
 STRIKE = "strike"      # the frames that hurt.
+CHARGE = "charge"      # the run. The ONE state in which the hitbox is moving.
 RECOVER = "recover"    # the punish window. Rooted, and the longest of the three.
 DEAD = "dead"
 
@@ -128,6 +176,22 @@ class Move:
     """
 
     key: str
+    #: The sheet the WINDUP (and, for a swing, the strike) plays.
+    #:
+    #: Separate from `key` because of the charge, which is the one move whose
+    #: animation is not a swing: it telegraphs on `rev` (he pulls the cord and
+    #: roars), runs on `walk`, and comes down on `idle`. Every other move is
+    #: one clip and sets all three to its own name, which is why this used to
+    #: be `key` doing double duty. `row.m` still carries the MOVE's name, so
+    #: the client resolves the sheet through `welcome.config.bossMoves` rather
+    #: than assuming the two are the same string.
+    clip: str
+    #: The sheet the RECOVERY plays. Equal to `clip` for a swing — a swing is
+    #: one animation and splitting it would restart the sprite mid-blow.
+    after: str
+    #: How often the picker reaches for it, before the range weighting. Not a
+    #: probability: `_choose` normalises whatever is legal.
+    weight: float
     #: Seconds from the start of the clip to the frame the blow lands.
     windup: float
     #: Seconds the hitbox is live. Short: a boss whose swing lingers is a boss
@@ -154,6 +218,17 @@ class Move:
     def reach(self) -> float:
         return TILE_SIZE * self.reach_tiles
 
+    @property
+    def one_clip(self) -> bool:
+        """True when the whole move is one animation — every swing.
+
+        `_enter` keeps the playhead running across windup / strike / recover
+        for these, because the art does not split a swing. The charge is the
+        exception and it resets on every phase, because each phase of it is a
+        different sheet.
+        """
+        return self.clip == self.after
+
     def client_payload(self) -> dict:
         """What the client needs to draw the bar's PATH through this move.
 
@@ -170,6 +245,12 @@ class Move:
         """
         return {
             "key": self.key,
+            # WHICH SHEET, because `row.m` is a move and a move is no longer
+            # guaranteed to be a clip. The charge telegraphs on `rev` and
+            # recovers on `idle`; letting the client assume `m` names a sheet
+            # would draw the run as a boss standing still shaking a chainsaw.
+            "clip": self.clip,
+            "after": self.after,
             "windup": round(self.windup, 4),
             "active": round(self.active, 4),
             "reach": round(self.reach, 2),
@@ -198,14 +279,20 @@ def crescent_payload() -> dict:
 
 
 def _move(clip: str, event: str, *, damage: int, reach: float, arc: float,
-          min_tiles: float, max_tiles: float, active: float = 0.14) -> Move:
+          min_tiles: float, max_tiles: float, active: float = 0.14,
+          key: str | None = None, after: str | None = None,
+          weight: float = 1.0, recover: float | None = None) -> Move:
+    """One move, timed off `clip`'s own event frame. Nothing here is typed."""
     length, events = _clip(clip)
     windup = events.get(event, length * 0.5)
     return Move(
-        key=clip,
+        key=key or clip,
+        clip=clip,
+        after=after or clip,
+        weight=weight,
         windup=windup,
         active=active,
-        recover=max(0.12, length - windup - active),
+        recover=recover if recover is not None else max(0.12, length - windup - active),
         damage=damage,
         reach_tiles=reach,
         arc_degrees=arc,
@@ -214,23 +301,47 @@ def _move(clip: str, event: str, *, damage: int, reach: float, arc: float,
     )
 
 
-#: THE FOUR. Each one's band is what it is an answer to, and the bands overlap
-#: only where a real choice exists.
+#: THE FIVE. Each one's band is what it is an answer to, and THE BANDS OVERLAP
+#: — that is the change that made him stop reading as a script.
+#:
+#: They used to abut: chop to 4.4, rip from 4.0, and nothing else past that.
+#: So under four tiles the only legal pair was chop and sweep, which with a
+#: no-repeat rule is a metronome, and over 4.4 the crescent was the sole legal
+#: move for the rest of the arena. Overlapping them means four tiles is a place
+#: where three different things can happen, and `_choose` tapers each move's
+#: weight toward the edges of its own band so the overlap is a blend rather
+#: than a cliff.
 #:
 #: `sweep`'s arc is 180: it is the only move that cannot be dodged by standing
 #: behind him, and that is deliberately the answer to a party surrounding a
 #: rooted boss. `chop`'s is narrow and long — step out of the line and it
 #: misses, which is the move the fight is meant to teach first.
 CHOP = _move("chop", "hit", damage=BOSS_CHOP_DAMAGE, reach=BOSS_CHOP_REACH_TILES,
-             arc=55.0, min_tiles=0.0, max_tiles=4.4)
+             arc=55.0, min_tiles=0.0, max_tiles=4.6, weight=1.0)
 SWEEP = _move("sweep", "spin", damage=BOSS_SWEEP_DAMAGE, reach=BOSS_SWEEP_REACH_TILES,
-              arc=180.0, min_tiles=0.0, max_tiles=3.6, active=1.5)
+              arc=180.0, min_tiles=0.0, max_tiles=3.8, active=1.5, weight=0.85)
 RIP = _move("rip", "release", damage=BOSS_CREST_DAMAGE, reach=0.0, arc=0.0,
-            min_tiles=4.0, max_tiles=BOSS_RIP_RANGE_TILES)
+            min_tiles=3.2, max_tiles=BOSS_RIP_RANGE_TILES, weight=1.0)
+#: THE CHARGE. Three sheets, because it is the one move that is not a swing:
+#: `rev` is the cord and the roar (the telegraph), `walk` is the run, `idle`
+#: is him pulling up. Its damage is dealt in `_step_charge`, not `_land`, and
+#: its `recover` is decided at the end of the run — a clean pull-up and a bar
+#: buried in the treeline are not the same window.
+#: NAMED `RUSH`, NOT `CHARGE`, because `CHARGE` is already the STATE above and
+#: one of them silently shadowed the other — the boss's `state` field ended up
+#: holding a `Move` object, which is invisible until it reaches the wire.
+RUSH = _move("rev", "roar", key="charge", after="idle",
+             damage=BOSS_CHARGE_DAMAGE, reach=0.0, arc=0.0,
+             min_tiles=BOSS_CHARGE_MIN_TILES, max_tiles=BOSS_CHARGE_MAX_TILES,
+             weight=0.95, recover=BOSS_CHARGE_RECOVER)
 REV = _move("rev", "roar", damage=0, reach=0.0, arc=0.0,
             min_tiles=0.0, max_tiles=99.0)
 
-MOVES: dict[str, Move] = {m.key: m for m in (CHOP, SWEEP, RIP, REV)}
+MOVES: dict[str, Move] = {m.key: m for m in (CHOP, SWEEP, RIP, RUSH, REV)}
+
+#: What the picker will actually roll. `rev` is not in it: the roar is the
+#: enrage answering itself (see `hurt`), never something he decides to do.
+ATTACKS: tuple[Move, ...] = (CHOP, SWEEP, RIP, RUSH)
 
 #: The arrival cinematic's length and the frame he lands on. Both the server's
 #: (it holds input for exactly this long) and the client's (it plays the clip),
@@ -332,11 +443,28 @@ class Boss:
     #: `MELEE_IMMUNITY`: a sweep that ticks for 1.5 seconds would otherwise
     #: bill the same body forty-five times.
     _immune: dict[str, float] = field(default_factory=dict)
+    #: Seconds the current RECOVER lasts. Set on the way in rather than read
+    #: off the move, because one move has two of them: a charge that pulled up
+    #: on its own feet and a charge that went into the treeline are the same
+    #: animation and very different windows.
+    recover_for: float = 0.0
+    #: THE RUN. The heading is locked when the roar lands and nothing changes
+    #: it — the commitment IS the counterplay — and `hit` names everybody it
+    #: has already shouldered so a 1.05-second run bills each body once.
+    charge_dx: float = 0.0
+    charge_dy: float = 0.0
+    charge_hit: set[str] = field(default_factory=set)
+    #: A move owed with no cooldown in front of it: the enraged double chop.
+    #: Cleared the moment it is spent, so it can never queue on itself.
+    encore: Move | None = None
     #: Rolled per move so the same two do not alternate forever.
     _rng: random.Random = field(default_factory=random.Random)
-    #: What he did last. The picker refuses to repeat it twice running unless
-    #: it is the only move the range allows.
+    #: What he did last, and how many times running INCLUDING that last one.
+    #: The picker makes a repeat EXPENSIVE rather than illegal (see `_choose`)
+    #: and bans only a third, and even that ban yields when the range leaves
+    #: him nothing else to do.
     _last: str = ""
+    _repeats: int = 0
 
     def __post_init__(self) -> None:
         if self.hp <= 0:
@@ -453,8 +581,15 @@ def update(boss: Boss, living: list, world: TileMap, dt: float) -> Outcome:
         if target is not None and move.key != REV.key:
             _turn(boss, target, dt, BOSS_TURN_DEGREES * 0.55)
         if boss.timer >= move.windup:
-            _enter(boss, STRIKE)
-            _land(boss, move, living, out)
+            if move.key == RUSH.key:
+                _launch(boss, target, out)
+            else:
+                _enter(boss, STRIKE)
+                _land(boss, move, living, out)
+        return out
+
+    if boss.state == CHARGE:
+        _step_charge(boss, living, world, dt, out)
         return out
 
     if boss.state == STRIKE:
@@ -463,12 +598,30 @@ def update(boss: Boss, living: list, world: TileMap, dt: float) -> Outcome:
         # chainsaw for a second and a half cost you.
         if move.key == SWEEP.key:
             _land(boss, move, living, out)
+            # AND ENRAGED IT WALKS. Rooted, the answer to the spin is to back
+            # off one tile and wait it out; drifting, backing off has to be a
+            # retreat. A fraction of his walk, never his full speed — the one
+            # move with no blind side must not also be unloseable.
+            if boss.enraged and target is not None:
+                _drift(boss, target, world, dt)
         if boss.timer >= move.active:
-            _enter(boss, RECOVER)
+            _recover(boss, move.recover)
         return out
 
     if boss.state == RECOVER:
-        if boss.timer >= move.recover:
+        if boss.timer >= boss.recover_for:
+            # AN ENCORE SKIPS THE WAIT. That is the whole of the enraged
+            # double chop: the same clip, the same telegraph, arriving in the
+            # window the player had learned was free.
+            encore, boss.encore = boss.encore, None
+            if encore is not None:
+                boss.move = encore
+                _enter(boss, WINDUP)
+                out.events.append({
+                    "kind": "windup", "move": encore.key, "encore": True,
+                    "x": round(boss.x, 1), "y": round(boss.y, 1),
+                })
+                return out
             boss.cooldown = _wait(boss)
             _enter(boss, IDLE)
         return out
@@ -476,16 +629,159 @@ def update(boss: Boss, living: list, world: TileMap, dt: float) -> Outcome:
     return out
 
 
+def _recover(boss: Boss, seconds: float) -> None:
+    """Into the punish window, with the length of THIS one written down."""
+    boss.recover_for = max(0.12, seconds)
+    _enter(boss, RECOVER)
+
+
+def _launch(boss: Boss, target, out: Outcome) -> None:
+    """The roar landed. Lock the heading and go.
+
+    LOCKED, and that is the entire counterplay. He tracks through the windup
+    like every other move — the telegraph has to read as "he is coming for
+    YOU" — and then stops tracking completely, so the charge is beaten by
+    being somewhere else when it arrives rather than by out-running it. He
+    runs faster than a player does; if he steered there would be no answer.
+
+    AND HE AIMS WHERE YOU ARE GOING, not where you are. That is not a
+    concession, it is the whole move: aimed at the player's CURRENT tile, a
+    charge that takes a second to cross eight tiles cannot touch anybody
+    moving at all, in any direction, ever — the first version was tested
+    against a player orbiting him at walking pace and landed nought out of
+    sixteen. A move that punishes nothing is not a counter to kiting; it is a
+    cutscene the player walks around. Leading turns it into the question it is
+    supposed to ask: he has committed to where you were HEADED, so the answer
+    is to stop doing what you were doing. Autopilot loses, reacting wins, and
+    the commitment is still total — he cannot correct once he is running.
+    """
+    ux, uy = _lead(boss, target)
+    boss.charge_dx = ux
+    boss.charge_dy = uy
+    # The sprite runs the way the body runs.
+    boss.aim_x, boss.aim_y = ux, uy
+    boss.charge_hit.clear()
+    _enter(boss, CHARGE)
+    out.events.append({
+        "kind": "charge",
+        "x": round(boss.x, 1), "y": round(boss.y, 1),
+        "dx": round(boss.charge_dx, 3), "dy": round(boss.charge_dy, 3),
+    })
+
+
+def _lead(boss: Boss, target) -> tuple[float, float]:
+    """Unit heading at where the target will be, if they keep doing this.
+
+    Three passes of the standard fixed-point intercept: guess the flight time
+    from the present distance, move the target along its own velocity by that
+    much, re-measure. It converges immediately at these speeds and needs no
+    quadratic — and the quadratic's failure case (a target faster than the
+    chaser, which has no solution) would need this fallback anyway.
+    """
+    if target is None:
+        return boss.aim_x, boss.aim_y
+    speed = TILE_SIZE * BOSS_CHARGE_SPEED_TILES * (BOSS_ENRAGE_SPEED if boss.enraged else 1.0)
+    px, py = target.x, target.y
+    flight = math.hypot(px - boss.x, py - boss.y) / max(1.0, speed)
+    for _ in range(3):
+        # Never past the end of the run: aiming at a point he will not reach
+        # bends the whole charge away from the only part of it that can hit.
+        flight = min(flight, BOSS_CHARGE_TIME)
+        px = target.x + getattr(target, "vx", 0.0) * flight
+        py = target.y + getattr(target, "vy", 0.0) * flight
+        flight = math.hypot(px - boss.x, py - boss.y) / max(1.0, speed)
+    dx = px - boss.x
+    dy = py - boss.y
+    dist = math.hypot(dx, dy)
+    if dist < 0.001:
+        return boss.aim_x, boss.aim_y
+    return dx / dist, dy / dist
+
+
+def _step_charge(boss: Boss, living: list, world: TileMap, dt: float,
+                 out: Outcome) -> None:
+    """One tick of the run: move, shoulder whoever is in the way, or stop.
+
+    THE HITBOX IS THE BODY, which is why this does not go through `_land`.
+    Every other move tests an arc in front of a rooted boss at one instant;
+    this one is a moving circle that bills each body once, the way the thrown
+    crescent does. Same door out — `out.hits` — so `Room.damage_player` is
+    still the only place a player loses health.
+    """
+    speed = TILE_SIZE * BOSS_CHARGE_SPEED_TILES * (BOSS_ENRAGE_SPEED if boss.enraged else 1.0)
+    before_x, before_y = boss.x, boss.y
+    _slide(boss, boss.charge_dx * speed * dt, boss.charge_dy * speed * dt, world)
+    moved = math.hypot(boss.x - before_x, boss.y - before_y)
+
+    width = TILE_SIZE * BOSS_CHARGE_WIDTH_TILES
+    for player in living:
+        if player.id in boss.charge_hit:
+            continue
+        # HIS OWN I-FRAMES STILL APPLY. A body he chopped a third of a second
+        # ago is not also run over by the same boss: `_immune` is the one
+        # window every one of his attacks shares, and the charge is an attack
+        # like the rest of them.
+        if boss._immune.get(player.id, 0.0) > 0.0:
+            continue
+        if math.hypot(player.x - boss.x, player.y - boss.y) > width + player.radius:
+            continue
+        boss.charge_hit.add(player.id)
+        boss._immune[player.id] = BOSS_MELEE_IMMUNITY
+        out.hits.append((player, BOSS_CHARGE_DAMAGE, boss.x, boss.y))
+        out.events.append({
+            "kind": "impact", "move": RUSH.key,
+            "x": round(boss.x, 1), "y": round(boss.y, 1),
+            "dx": round(boss.charge_dx, 3), "dy": round(boss.charge_dy, 3),
+            "hits": 1,
+        })
+
+    # THE TREELINE STOPS HIM, and it is the biggest free window in the fight.
+    # A charge dodged into the rim buries the bar in a trunk; one that runs
+    # its course ends with him on his feet. Rewarding the better dodge more is
+    # the only reason the two recoveries are different numbers.
+    if moved < speed * dt * 0.4:
+        out.events.append({
+            "kind": "slam",
+            "x": round(boss.x + boss.charge_dx * TILE_SIZE, 1),
+            "y": round(boss.y + boss.charge_dy * TILE_SIZE, 1),
+            "dx": round(boss.charge_dx, 3), "dy": round(boss.charge_dy, 3),
+        })
+        _recover(boss, BOSS_SLAM_RECOVER)
+        return
+    if boss.timer >= BOSS_CHARGE_TIME:
+        _recover(boss, BOSS_CHARGE_RECOVER)
+
+
+def _drift(boss: Boss, target, world: TileMap, dt: float) -> None:
+    """The enraged sweep's walk. Toward the target, at a fraction of a walk."""
+    dx = target.x - boss.x
+    dy = target.y - boss.y
+    dist = math.hypot(dx, dy)
+    if dist < 0.001:
+        return
+    step = TILE_SIZE * BOSS_SPEED_TILES * BOSS_SWEEP_DRIFT * dt
+    _slide(boss, dx / dist * step, dy / dist * step, world)
+
+
 def _enter(boss: Boss, state: str) -> None:
     boss.state = state
     boss.timer = 0.0
     # The playhead restarts only when the CLIP does. Crossing from windup into
-    # strike into recover is the same animation continuing, so those three
-    # deliberately do not reset it.
-    if state not in (STRIKE, RECOVER):
+    # strike into recover is the same animation continuing, so for a SWING
+    # those three deliberately do not reset it — see `client/tests/boss-clock.ts`
+    # for what happens when they do.
+    #
+    # The charge is the exception and it is an exception about the ART, not
+    # about the timing: its three phases are three different sheets (`rev`,
+    # `walk`, `idle`), so each of them starts its own clip at zero. `Move.one_clip`
+    # is what tells the two apart, and the client resolves the same split off
+    # `bossMoves[key].clip` / `.after`.
+    swing = boss.move is not None and boss.move.one_clip
+    if state not in (STRIKE, RECOVER) or not swing:
         boss.clip_t = 0.0
     if state in (IDLE, WALK):
         boss.move = None
+        boss.encore = None
 
 
 def _target(boss: Boss, living: list):
@@ -545,24 +841,90 @@ def _step_free(boss: Boss, target, world: TileMap, dt: float, out: Outcome) -> N
 def _choose(boss: Boss, tiles: float) -> Move | None:
     """Which move, given the range. A RANGE DECISION FIRST, a roll second.
 
-    The band test is the whole design: every move is an answer to a specific
-    mistake, so rolling one whose band the player is not standing in would
-    punish them for something they are not doing. What the roll is for is
-    stopping the fight from being a lookup table — inside a band there are
-    usually two legal answers and he does not always pick the same one.
+    The band test is still the whole design: every move is an answer to a
+    specific mistake, so rolling one whose band the player is not standing in
+    would punish them for something they are not doing. What changed is
+    everything about how the roll inside the bands works, and it changed
+    because the old one produced a metronome.
+
+    IT WAS A LOOKUP TABLE WITH A COIN FLIP ON TOP. Bands abutted rather than
+    overlapped — chop to 4.4, rip from 4.0 and alone all the way out — and the
+    rule was "never the last move again", uniformly, over whatever was legal.
+    Under four tiles that is chop, sweep, chop, sweep, forever; over four and a
+    half it is the crescent on a timer. A player learns both in about fifteen
+    seconds and the rest of the fight is executing a known loop.
+
+    THREE CHANGES, AND EACH ONE REMOVES A DIFFERENT KIND OF PREDICTABILITY:
+
+      OVERLAPPING BANDS mean a range is rarely a single answer. Four tiles is
+      now chop, throw and charge; the player cannot read the next move off
+      their own distance.
+
+      A TAPER (`BOSS_BAND_EDGE`) inside each band means the overlap is a blend
+      rather than a cliff. A move is likeliest in the middle of what it is FOR
+      and merely possible at the fringe, so the fight still teaches a shape —
+      close is heavy, far is thrown — without being a rule.
+
+      A REPEAT IS EXPENSIVE, NOT ILLEGAL (`BOSS_REPEAT_PENALTY`). Two chops in
+      a row is a thing that happens to you now; three never is. A boss that is
+      forbidden to repeat is exactly as readable as one that always does, and
+      the strict alternation was the single biggest reason he read as a script.
     """
-    if boss.enraged and boss._last != REV.key and tiles > 6.0 and boss._rng.random() < 0.14:
-        return _pick(boss, RIP)
-    options = [m for m in (CHOP, SWEEP, RIP) if m.min_tiles <= tiles <= m.max_tiles]
-    if not options:
+    weights = _legal(boss, tiles, repeats_banned=True)
+    if not weights:
+        # THE BAN YIELDS WHEN IT IS THE ONLY ANSWER. Out past the throw's
+        # range the charge is the sole legal move, and a no-repeat rule with
+        # nothing to switch to does not vary the fight — it removes it, and he
+        # spends the far half of the yard walking. Refusing to repeat is worth
+        # having only while there is something else to do instead.
+        weights = _legal(boss, tiles, repeats_banned=False)
+    if not weights:
         return None
-    # Never the same move twice running while a second one is legal. Two chops
-    # in a row is the pattern that makes a boss feel like a script.
-    fresh = [m for m in options if m.key != boss._last]
-    return _pick(boss, boss._rng.choice(fresh or options))
+    total = sum(weight for _, weight in weights)
+    roll = boss._rng.random() * total
+    for move, weight in weights:
+        roll -= weight
+        if roll <= 0.0:
+            return _pick(boss, move)
+    return _pick(boss, weights[-1][0])
+
+
+def _legal(boss: Boss, tiles: float, *, repeats_banned: bool) -> list[tuple[Move, float]]:
+    rows: list[tuple[Move, float]] = []
+    for move in ATTACKS:
+        weight = _weigh(boss, move, tiles, repeats_banned=repeats_banned)
+        if weight > 0.0:
+            rows.append((move, weight))
+    return rows
+
+
+def _weigh(boss: Boss, move: Move, tiles: float, *, repeats_banned: bool) -> float:
+    """How likely this move is at this range, right now. Zero means illegal."""
+    if not (move.min_tiles <= tiles <= move.max_tiles):
+        return 0.0
+    if repeats_banned and move.key == boss._last and boss._repeats >= 2:
+        # The one hard ban left. A THIRD of anything in a row is a pattern —
+        # `_repeats` counts consecutive picks including the one that set it.
+        return 0.0
+    span = max(0.001, move.max_tiles - move.min_tiles)
+    where = (tiles - move.min_tiles) / span
+    # A smooth hump: full weight in the middle of the band, `BOSS_BAND_EDGE`
+    # of it at either lip. Never zero at the lip, or the bands would abut
+    # again with extra arithmetic in front of them.
+    fit = BOSS_BAND_EDGE + (1.0 - BOSS_BAND_EDGE) * math.sin(where * math.pi)
+    weight = move.weight * fit
+    if move.key == boss._last:
+        weight *= BOSS_REPEAT_PENALTY
+    # ENRAGED, HE REACHES FOR THE RUN. It is the move that answers a gun, and
+    # a party that has taken him to half health from across the yard is
+    # exactly the party it exists for.
+    if boss.enraged and move.key == RUSH.key:
+        weight *= 1.5
+    return weight
 
 
 def _pick(boss: Boss, move: Move) -> Move:
+    boss._repeats = boss._repeats + 1 if move.key == boss._last else 1
     boss._last = move.key
     return move
 
@@ -579,19 +941,38 @@ def _land(boss: Boss, move: Move, living: list, out: Outcome) -> None:
         return
 
     if move.key == RIP.key:
-        boss._crest_id += 1
+        # ONE CRESCENT, OR A FAN OF THREE ONCE HE IS ENRAGED.
+        #
+        # The variant is the whole of what the enrage does to this move: same
+        # clip, same windup, same tell, a different thing leaving the bar. One
+        # crescent is dodged by taking a step sideways, which is right for the
+        # first half of the fight — it is the move that teaches "keep moving".
+        # It is also why a player who learned that lesson could not lose the
+        # second half. A fan makes the sidestep a DIRECTION: there is still
+        # somewhere to be, and now you have to pick it.
+        count = BOSS_FAN_CRESCENTS if boss.enraged else 1
         speed = TILE_SIZE * BOSS_CREST_SPEED_TILES
-        boss.crescents.append(Crescent(
-            id=boss._crest_id,
-            x=boss.x + boss.aim_x * TILE_SIZE * 1.6,
-            y=boss.y + boss.aim_y * TILE_SIZE * 1.6,
-            dx=boss.aim_x * speed,
-            dy=boss.aim_y * speed,
-            life=BOSS_CREST_LIFE,
-        ))
+        spread = math.radians(BOSS_FAN_SPREAD_DEGREES)
+        centre = (count - 1) / 2.0
+        for index in range(count):
+            angle = (index - centre) * spread
+            cos = math.cos(angle)
+            sin = math.sin(angle)
+            ux = boss.aim_x * cos - boss.aim_y * sin
+            uy = boss.aim_y * cos + boss.aim_x * sin
+            boss._crest_id += 1
+            boss.crescents.append(Crescent(
+                id=boss._crest_id,
+                x=boss.x + ux * TILE_SIZE * 1.6,
+                y=boss.y + uy * TILE_SIZE * 1.6,
+                dx=ux * speed,
+                dy=uy * speed,
+                life=BOSS_CREST_LIFE,
+            ))
         out.events.append({
             "kind": "rip", "x": round(boss.x, 1), "y": round(boss.y, 1),
             "dx": round(boss.aim_x, 3), "dy": round(boss.aim_y, 3),
+            "hits": count,
         })
         return
 
@@ -614,6 +995,19 @@ def _land(boss: Boss, move: Move, living: list, out: Outcome) -> None:
         "dy": round(boss.aim_y, 3),
         "hits": landed,
     })
+
+    # THE DOUBLE CHOP. Enraged, the chop sometimes comes straight back out of
+    # its own recovery with no wait in front of it.
+    #
+    # This is the variant that changes the most while adding the least: no new
+    # clip, no new hitbox, no new number. What it takes away is a CERTAINTY.
+    # The chop's recovery is the longest window in the fight and every safe
+    # thing a player does — reload, heal, walk in and swing — is scheduled off
+    # it. Half the time it is now a window you have to look at first, which is
+    # a different fight fought with the same knowledge.
+    if (move.key == CHOP.key and boss.enraged and boss.encore is None
+            and boss._rng.random() < BOSS_DOUBLE_CHOP_CHANCE):
+        boss.encore = CHOP
 
 
 def _in_arc(boss: Boss, player, move: Move) -> bool:
@@ -712,6 +1106,10 @@ def hurt(boss: Boss, amount: int) -> bool:
         boss.just_enraged = True
         # He answers the enrage immediately, with the one move that is not an
         # attack: the roar IS the phase change and the player gets to watch it.
+        # It interrupts whatever he was doing, including a run — the encore
+        # goes with it, or the roar would chain into a chop nobody was told
+        # about.
+        boss.encore = None
         boss.move = REV
         boss.cooldown = 0.0
         _enter(boss, WINDUP)

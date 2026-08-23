@@ -28,7 +28,7 @@
 import { readFileSync } from 'node:fs';
 import { clipFor, clipTime, bossFacing } from '../src/render/boss';
 import type { BossAtlas, BossClip } from '../src/render/boss';
-import type { BossRow, BossState } from '../src/net/protocol';
+import type { BossRow, BossState, GameConfig } from '../src/net/protocol';
 
 let checks = 0;
 
@@ -141,6 +141,60 @@ assert(
 
 // --- a move with no name does not crash the frame picker ---------------------
 assert(clipFor(rowOf('windup', 0)) === 'chop', 'an unnamed move falls back to the chop');
+
+// --- the charge: ONE move, THREE clips ---------------------------------------
+// Every other move is a swing, and a swing is one animation the server splits
+// into three states. The charge is the exception in the other direction: three
+// animations under one move, because a run is not a pose. `row.m` therefore
+// names a MOVE and not a sheet, and the mapping has to come off the config —
+// which is the whole reason `bossMoves` grew `clip` and `after`.
+//
+// This is the pairing that has no symptom until somebody watches it: get it
+// wrong and he crosses the yard standing still, shaking a chainsaw, at the
+// exact moment the player has to decide which way to dodge.
+const config = {
+  bossMoves: {
+    chop: { key: 'chop', clip: 'chop', after: 'chop', windup: 0.64, active: 0.14, reach: 57 },
+    charge: { key: 'charge', clip: 'rev', after: 'idle', windup: 0.43, active: 0.14, reach: 0 },
+  },
+} as unknown as GameConfig;
+
+assert(
+  clipFor(rowOf('windup', 0, 'charge'), config) === 'rev',
+  'the charge telegraphs on the rev — he pulls the cord and roars',
+);
+assert(
+  clipFor(rowOf('charge', 0, 'charge'), config) === 'walk',
+  'the RUN draws as a walk, not as the clip the move is named after',
+);
+assert(
+  clipFor(rowOf('recover', 0, 'charge'), config) === 'idle',
+  'and he pulls up on the idle sheet',
+);
+// The run's clip does not depend on the config at all: `charge` is a state,
+// and a state that is its own clip resolves with or without a welcome.
+assert(
+  clipFor(rowOf('charge', 0, 'charge')) === 'walk',
+  'the run resolves before the welcome lands',
+);
+// A SWING IS UNAFFECTED BY ANY OF IT. The three states still share one sheet,
+// which is the contract the top of this file exists to defend.
+for (const state of ['windup', 'strike', 'recover'] as const) {
+  assert(
+    clipFor(rowOf(state, 0, 'chop'), config) === 'chop',
+    `a swing's ${state} still plays its own clip with a config present`,
+  );
+  assert(
+    clipFor(rowOf(state, 0, 'chop')) === 'chop',
+    `…and without one`,
+  );
+}
+// And the run's playhead is clamped against the sheet it is actually on: the
+// walk loops, so a 1.05s run wraps rather than running off a 14-frame rev.
+assert(
+  clipTime(rowOf('charge', 1.05, 'charge'), atlas, config) === 1.05,
+  'the run uses its time raw — the walk loops',
+);
 
 // --- facings, and the bias toward the side rows -----------------------------
 assert(bossFacing(1, 0) === 'right', 'east is right');

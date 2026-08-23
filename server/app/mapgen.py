@@ -136,29 +136,51 @@ HAUNT_SCENES: dict[str, tuple[int, int]] = {
     "busstop": (1, 1),
 }
 
+#: Scenes that come with something SPECIFIC standing in them, by type key.
+#:
+#: THE THIRD KIND OF NEST, and the difference from the other two is that this
+#: one is about WHAT rather than how many. A haunt keeps whatever the director
+#: is already spawning, because the story it tells is "the people who died
+#: here are still here" and the people who died here were people. A den is not
+#: about people at all: it is a place an ANIMAL lives, and the animal is the
+#: reason the place exists.
+#:
+#: One creature, once, and `enemies.WOLF_ALPHA.persists` is what keeps it
+#: there — a miniboss recycled by the abandonment timer before anybody walked
+#: to its den would leave a den with a story and nothing in it.
+DEN_SCENES: dict[str, tuple[str, int]] = {"den": ("wolf-alpha", 1)}
 
-def _nests(population, rng: random.Random) -> list[tuple[float, float, int]]:
-    """Where creatures are STANDING when the map is built, and how many.
 
-    Two kinds and one list. The sanctuary gets a pack, because the whole
+def _nests(population, rng: random.Random) -> list[tuple[float, float, int, str]]:
+    """Where creatures are STANDING when the map is built, how many, and what.
+
+    Three kinds and one list. The sanctuary gets a pack, because the whole
     bargain it offers is guarded loot; the scenes in `HAUNT_SCENES` get one or
-    two, because the story they tell has bodies in it. Everything else on the
+    two, because the story they tell has bodies in it; a `DEN_SCENES` scene
+    gets the one specific creature that LIVES there. Everything else on the
     map gets nobody, and that emptiness is load-bearing — see `HAUNT_SCENES`.
 
     Zero is returned for the sanctuary's count rather than a number, because
     the pack size for a shrine is `room.NEST_PACK` and belongs to the room: how
     big a landmark's guard is is a tuning decision about the fight, not about
     where the fight is.
+
+    The fourth column is a type KEY or "" for "whatever the director spawns".
+    A den is the only thing that names one, and it names one because the whole
+    scene is about that animal.
     """
-    out: list[tuple[float, float, int]] = []
+    out: list[tuple[float, float, int, str]] = []
     for scene in population.scenes:
-        if scene.kind in NEST_SCENES:
+        kind = ""
+        if scene.kind in DEN_SCENES:
+            kind, count = DEN_SCENES[scene.kind]
+        elif scene.kind in NEST_SCENES:
             count = 0
         elif scene.kind in HAUNT_SCENES:
             count = rng.randint(*HAUNT_SCENES[scene.kind])
         else:
             continue
-        out.append((scene.x * TILE_SIZE, scene.y * TILE_SIZE, count))
+        out.append((scene.x * TILE_SIZE, scene.y * TILE_SIZE, count, kind))
     return out
 
 
@@ -476,7 +498,7 @@ def populate_forest(
         tiles,
         random.Random(seed ^ 0x5CE7E),
         count=(max(3, round(low * share)), max(4, round(high * share))),
-        landmark=scenery.LANDMARK,
+        landmark=scenery.LANDMARKS,
         # One thread linking the scenes into a single route outward from the
         # mouth the party walked out of. The camp does not get one: it is four
         # scenes of firewood around a fire, and a blood trail through it would

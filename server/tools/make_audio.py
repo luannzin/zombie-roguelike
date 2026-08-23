@@ -1678,6 +1678,164 @@ def sfx_zombie_death(rng: random.Random, variant: int) -> tuple[Buf, int]:
     return normalize(softclip(out, 1.4), 0.82), rate
 
 
+# --- the pack --------------------------------------------------------------
+# A SECOND VOICE ON THE SAME INSTRUMENT. Every sound above is `_throat` — a
+# pulse train through formants, torn by `rough` and `sub` — and so is every
+# sound below, because the wolves are the same sickness in a different animal
+# and a creature synthesised on a different engine would sound like it came
+# from a different game.
+#
+# WHAT MAKES IT A DOG AND NOT A MAN IS THE TUBE. A muzzle is long, narrow and
+# closed at one end: the first formant sits far lower than a human vowel's and
+# the second sits far higher, with almost nothing in between. That gap is the
+# whole difference, and it is two numbers rather than a new instrument.
+
+
+def sfx_wolf_idle(rng: random.Random, variant: int) -> tuple[Buf, int]:
+    """The growl in the dark, and it is TIGHTER than the zombie's.
+
+    Same job as `sfx_zombie_idle` — a direction and a distance, arriving
+    before anything is visible — and deliberately the opposite shape. The dead
+    are LOW and LONG and wet; this is higher, shorter, drier and it stops
+    rather than trailing off, because what the player has to learn to tell
+    apart is the thing that shambles from the thing that is about to be very
+    fast. Two growls that differ only in pitch are one growl.
+    """
+    rate = SFX_RATE
+    length = 0.52 + rng.random() * 0.22
+    n = dur(length, rate)
+    f0 = 118.0 + rng.random() * 30.0
+
+    def contour(t: float) -> float:
+        # Almost flat, and what movement there is goes UP. A sagging growl is
+        # a body making noise; a level one is a body deciding.
+        return f0 * (1.0 + 0.07 * t)
+
+    body = _throat(
+        n,
+        rate,
+        rng,
+        contour,
+        # Drier than the dead. Breath is what makes a zombie sound wet, and
+        # wet is the one adjective these must not share.
+        breath=0.34,
+        formants=((190.0, 3.0, 1.0), (1650.0, 2.2, 0.70), (3100.0, 2.4, 0.42)),
+        width=0.09,
+        rough=0.26,
+        sub=0.16,
+    )
+    shape = mul(
+        env_from(n, [(0.0, 0.0), (0.13, 0.9), (0.62, 1.0), (0.88, 0.7), (1.0, 0.0)]),
+        _grind(n, rate, rng, 0.38),
+    )
+    return normalize(softclip(mul(body, shape), 1.9), 0.78), rate
+
+
+#: How far the howl bends, up and down, as a fraction of its own pitch. A real
+#: howl WAVERS, and the waver is regular — which is the one place in this
+#: whole file a clean LFO is the honest answer rather than the lazy one.
+#: Everything else here is a body making an involuntary noise and gets
+#: `_wander`; a howl is a held note, and holding a note is exactly what
+#: produces regular modulation.
+HOWL_VIBRATO = 0.022
+HOWL_VIBRATO_HZ = 5.4
+
+
+def sfx_wolf_alert(rng: random.Random, variant: int) -> tuple[Buf, int]:
+    """THE HOWL. One wolf finding you is the whole clearing finding you.
+
+    It is the only CLEAN voice in this game and that is the entire design.
+    Everything else in the mix is torn — the growls, the snarl, the boss's
+    engine, the siren — because everything else is either a body that has
+    stopped working properly or a machine. A howl is a healthy sound made on
+    purpose, and against a night built out of rasp it is unmistakable at any
+    distance and through any amount of other noise. Which is what it has to
+    be: it is not a reaction, it is a MESSAGE, and the player has to know they
+    have been reported before the pack arrives.
+
+    So `rough` is a fraction of the growl's, `sub` is gone entirely, breath is
+    low, and the pitch is carried by a slow regular vibrato instead of by
+    instability. Three sections and no attack transient at all: it swells in
+    over a fifth of a second, holds, and falls away — a shape that has no
+    beginning is a shape that could have started anywhere, which is how a
+    sound reads as coming from far off.
+    """
+    rate = SFX_RATE
+    length = 1.75 + rng.random() * 0.5
+    n = dur(length, rate)
+    f0 = 300.0 + rng.random() * 70.0
+
+    def contour(t: float) -> float:
+        # Up onto the note fast, hold, then let go. The plateau is most of the
+        # clip: a howl that is all glide is a siren.
+        if t < 0.16:
+            climb = 0.62 + 0.38 * (t / 0.16)
+        elif t < 0.72:
+            climb = 1.0
+        else:
+            climb = 1.0 - 0.34 * ((t - 0.72) / 0.28) ** 1.6
+        waver = 1.0 + HOWL_VIBRATO * math.sin(math.tau * HOWL_VIBRATO_HZ * t * length)
+        return f0 * climb * waver
+
+    body = _throat(
+        n,
+        rate,
+        rng,
+        contour,
+        breath=0.16,
+        # THE MUZZLE. A low first formant and a high second with a hole
+        # between them — see the banner. A human vowel would put the second
+        # around 1100 and the sound would immediately become a person.
+        formants=((320.0, 3.4, 1.0), (1900.0, 2.6, 0.58), (3400.0, 2.6, 0.30)),
+        width=0.22,
+        rough=0.05,
+        sub=0.0,
+    )
+    shape = env_from(
+        n, [(0.0, 0.0), (0.14, 0.85), (0.34, 1.0), (0.7, 0.95), (0.9, 0.5), (1.0, 0.0)]
+    )
+    return normalize(softclip(mul(body, shape), 1.25), 0.9), rate
+
+
+def sfx_wolf_death(rng: random.Random, variant: int) -> tuple[Buf, int]:
+    """A YELP, and then nothing. Short where the zombie's death is long.
+
+    The dead come apart on the way down — `sfx_zombie_death` spends a second
+    on a voice failing and lands a body on the floor. An animal does not: it
+    makes one sharp sound and stops, and the STOP is the part that lands.
+    Cutting it dead at a third of a second is the whole effect; a yelp with a
+    tail on it is a whimper, which is a different and much worse feeling to
+    put in a game about killing things.
+    """
+    rate = SFX_RATE
+    n = dur(0.34, rate)
+    f0 = 430.0 + rng.random() * 90.0
+    body = _throat(
+        n,
+        rate,
+        rng,
+        # Straight up onto the cry and straight off it. The peak is at the
+        # very front, which is what makes it read as pain rather than as a
+        # call.
+        lambda t: f0 * (1.0 + 0.30 * min(1.0, t * 7.0) - 0.55 * t**1.3),
+        breath=0.24,
+        formants=((360.0, 3.0, 1.0), (2000.0, 2.4, 0.66), (3600.0, 2.4, 0.34)),
+        width=0.18,
+        # It tears at the end, not at the start — the voice holds for the cry
+        # and gives out under it.
+        rough=0.20,
+        sub=0.12,
+    )
+    body = mul(body, env_from(n, [(0.0, 0.0), (0.03, 1.0), (0.4, 0.6), (0.75, 0.16), (1.0, 0.0)]))
+    # The body dropping, right under the tail of the cry rather than after it.
+    thump_n = dur(0.18, rate)
+    thump = biquad(white(thump_n, rng), rate, "lowpass", lambda t: 800 - 560 * t)
+    thump = mul(thump, env_perc(thump_n, rate, 0.002, 0.15, 2.6))
+    out = at(silence(n), body, 0)
+    out = at(out, gain(thump, 0.55), int(0.14 * rate))
+    return normalize(softclip(out, 1.5), 0.84), rate
+
+
 # --- loot, crates, pockets -------------------------------------------------
 
 
@@ -2232,6 +2390,25 @@ CATALOG: dict[str, tuple[object, int, float, str, bool]] = {
     "zombie-attack": (sfx_zombie_attack, 3, -4.0, "sfx", False),
     "zombie-hit": (sfx_zombie_hit, 3, -6.0, "sfx", False),
     "zombie-death": (sfx_zombie_death, 3, -5.0, "sfx", False),
+    # THE PACK, and the howl is the only one that is not at the zombies' own
+    # level. `wolf-idle` and `wolf-death` sit exactly where their equivalents
+    # do, because they are the same event happening to a different animal and
+    # a creature that was quieter than a zombie would read as further away.
+    "wolf-idle": (sfx_wolf_idle, 3, -9.0, "sfx", False),
+    "wolf-death": (sfx_wolf_death, 3, -5.0, "sfx", False),
+    # THE HOWL IS FOUR DECIBELS OVER THE SNARL, and it is the loudest creature
+    # sound in the game. Not for drama: it is a MESSAGE rather than a
+    # reaction — one wolf reporting you to every wolf in the clearing — and
+    # the player has to receive it at the same moment the pack does. A howl
+    # the party can barely hear while the map acts on it is information the
+    # game took and did not give back. It stays in `sfx` with the rest of the
+    # creatures, so somebody who turned combat down still turns this down.
+    #
+    # KEYED `-alert` AND NOT `-howl` BECAUSE THE CLIENT RESOLVES BY PREFIX.
+    # `EnemyType.voice` names the voice and the client asks for
+    # `<voice>-idle` / `-alert` / `-death`, so a creature's whole vocabulary
+    # is one field on its stat block. The good name lives on the function.
+    "wolf-alert": (sfx_wolf_alert, 2, -1.0, "sfx", False),
     # The knife, and its place on the ladder IS the weapon. Three variants,
     # because the caller forces one per combo step: 0 and 1 are the slashes,
     # 2 is the cut. Both rows sit far below the gun — a blade that read as

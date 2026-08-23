@@ -8,7 +8,8 @@ output the game actually loads.
 ## Ownership
 
 - `raw/` — source art (`player.png`, `zombie.png`, `zombie-husk.png`,
-  `zombie-brute.png`, `backpack.png`, `zhat-*.png`, `zcloth-*.png`,
+  `zombie-brute.png`, `wolf.png`, `wolf-twin.png`, `wolf-alpha.png`,
+  `wolf-alpha-sleep.png`, `backpack.png`, `zhat-*.png`, `zcloth-*.png`,
   `armor-*.png`, and `<name>-death.png` collapse timelines for exact creatures
   and overlays)
   and font sources (`fonts/DepartureMono-Regular.otf`). **Never served.**
@@ -17,7 +18,14 @@ output the game actually loads.
   stick for a synthesized sound, not a fallback for one: nothing in `client/`
   or `server/app/` may read this folder.
 - `processed/` — production art: `player/`, `zombie/`, `zombie-husk/`,
-  `zombie-brute/`, `zhat-*/`, `zcloth-*/`, `*-death/` (collapse timelines),
+  `zombie-brute/`, `wolf/`, `wolf-twin/`, `wolf-alpha/` (THE PACK — quadrupeds,
+  so the first creatures here whose frames are not 16x16: 22x16 for the pack
+  and 32x22 for the miniboss. The renderer takes every frame size off the
+  manifest, so a creature is not obliged to be person-shaped),
+  `wolf-alpha-sleep/` (the miniboss CURLED UP: a loop rather than a timeline,
+  and the only creature sheet in the game with no lit socket on it — see
+  [`docs/design/enemies.md`](../docs/design/enemies.md) § The miniboss),
+  `zhat-*/`, `zcloth-*/`, `*-death/` (collapse timelines),
   `coin/`, `backpack/`
   (`sheet.png` + `manifest.json`), `terrain/`, `scenery/`, `vfx/` (greyscale,
   tinted per player), `weapon-vfx/` (muzzle, blast, impact — oriented and

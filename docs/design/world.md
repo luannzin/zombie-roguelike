@@ -49,6 +49,8 @@ means something is a scene.
 | --- | --- |
 | forest shape, size, connectivity | `server/app/mapgen.py`, `server/app/config.py` |
 | a new scene / scene layout | `server/app/scenery.py` (+ art in `server/tools/make_scenery.py`) — containers are thinned by `_thin_containers`, so a scene may author more than survive |
+| a new LANDMARK (one per map, placed first) | `server/app/scenery.py` `LANDMARKS` — a tuple, in order; the first one that lands is what the thread routes to |
+| which scenes come with creatures standing in them | `server/app/mapgen.py` (`NEST_SCENES` / `HAUNT_SCENES` / `DEN_SCENES`) |
 | a new interactive object | `server/app/crates.py` (`TYPES`) + `server/tools/make_objects.py` |
 | a new zone | `server/app/zones.py` + whatever builds its map — **no client change** |
 | camp layout | `server/app/camp.py` |
@@ -189,6 +191,11 @@ catalog, or the wire protocol pair.
   deadfall is a tree that came down, and putting a creature in it would say the
   map is a list of encounters. The stretches with nothing in them are what make
   the ones with something in them land.
+- **TWO LANDMARKS, AND THEY ARE THE TWO KINDS OF PLACE THIS FOREST HAS.**
+  Both are one per map, both are placed first and alone (see *Server
+  contracts*), and between them they say the only two things about this wood
+  that are not "somebody died here": somebody BUILT something, and something
+  LIVES here.
 - **ONE LANDMARK, AND IT IS THE ONE THING SOMEBODY BUILT.** The `sanctuary`:
   carved stone in a ring — totems, idols, a robed figure, a skull post, a
   monolith — with bones on the floor inside it and an ALTAR in the middle
@@ -198,6 +205,24 @@ catalog, or the wire protocol pair.
   off the best rarity table in the game, and a pack of creatures already
   standing on it. A landmark that was worth more AND safer would be an errand,
   not a decision.
+- **AND ONE THAT NOBODY MADE.** The `den`: trunks dragged into a lee, a floor
+  of bones denser toward the middle, clothes and blood running OUT along a
+  drag mark, and the miniboss asleep in the hollow (`mapgen.DEN_SCENES` →
+  `Room._seed_nests`). It is the first scene on this map that is not about
+  people at all, and everything in it is aimed at that being readable before
+  the shape in the middle resolves: nobody made it, nobody left it, the trail
+  points at where the thing hunts rather than at where somebody was going.
+  - **IT IS THE ONE PLACE THAT POINTEDLY GETS NO LIGHT.** A `SceneLight` makes
+    a place a destination you choose from across the dark, which is exactly
+    right for the shrine and exactly wrong here. The whole encounter is that
+    **your lantern reaches further than the animal's ears do** — so the lamp
+    is what finds the den, and finding it is what carrying the lamp lit was
+    for. A den with an ember on it would have done the player's reading for
+    them and handed them the decision already made.
+  - It pays the second-best scatter in the game and always pays, because the
+    bargain has to be worth the animal — but not the best, because the shrine
+    is where a run is ROUTED and the den is a thing it walks past. See
+    [`enemies.md`](enemies.md) § The miniboss for what is asleep in it.
 
 - **A forest night has a coat.** `night_clock()` rolls the hour; weather
   (`clear` / `rain` / `fog`) rolls with it so day 2 can feel like somewhere
@@ -263,10 +288,14 @@ catalog, or the wire protocol pair.
   not walked into. `FOOTPRINTS` depth is 1 and `_cells` sits on the contact
   point; growing the box up the sprite is how a signboard becomes a wall.
   TREE is the same contract: the trunk tile only.
-- The LANDMARK (the tribal `sanctuary`) is placed first, alone, with a much
-  larger attempt budget, and there is at most one per map. Rolled in with the
-  weighted pool it loses every anchor race to a 4x3 woodpile; a second one
-  turns the first from a place into a prop. It is the one thing out here
+- The LANDMARKS (`scenery.LANDMARKS` — the tribal `sanctuary`, then the wolf
+  `den`) are placed first, in order, alone, with a much larger attempt budget,
+  and there is at most one of each per map. Rolled in with the weighted pool
+  they lose every anchor race to a 4x3 woodpile; a second one of either turns
+  the first from a place into a prop. **The FIRST one that lands is what the
+  thread routes to** (`landmark_at`), which is why the shrine is listed first:
+  a run has one place it is walking toward, and the den must not be able to
+  take over the shape of a night. It is the one thing out here
   somebody BUILT rather than abandoned, the only scene made of vertical carved
   shapes in a forest of low horizontal wrecks, and the only one that states
   its bargain in props before the player commits: guaranteed loot on an altar
@@ -274,6 +303,16 @@ catalog, or the wire protocol pair.
   on it (`mapgen.NEST_SCENES` → `Room._seed_nests`). Nests are the only
   creatures placed rather than spawned by the director, because a place has to
   be dangerous whether or not anybody has walked to it yet.
+- **A NEST ROW NAMES A COUNT, AND MAY NAME A TYPE.** Three kinds:
+  `NEST_SCENES` (0 = "the landmark's guard", sized by `room.NEST_PACK`),
+  `HAUNT_SCENES` (one or two of whatever the director spawns, standing in the
+  wreck that killed them), and `DEN_SCENES`, which is the only one that says
+  WHAT. The first two are about people and people are interchangeable; a den
+  exists BECAUSE of the animal in it, so it names a type key and
+  `_seed_nests` spawns a creature the spawn table has never heard of. It also
+  places it dead centre rather than scattering — the bones are laid denser
+  toward the spot it is lying on, and a miniboss rolled two tiles into the
+  treeline is a hollow with nothing in it.
 - **`populate` returns a `Population`, and half of it is not on the wire.**
   `props` and `lights` ship; `scenes` (now `PlacedScene` with a kind) and
   `route` are where things ended up in tiles and the order the thread walks

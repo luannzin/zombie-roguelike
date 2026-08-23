@@ -620,6 +620,47 @@ ENEMY_ALERT_SHARE_DIST = TILE_SIZE * ENEMY_ALERT_SHARE_TILES
 ENEMY_GLARE_DIST = VISION_LANTERN_DIST * ENEMY_GLARE_REACH
 SHOT_NOISE_DIST = TILE_SIZE * SHOT_NOISE_TILES
 
+# --- the pack (authored in tiles/seconds) ------------------------------------
+# THE SECOND CREATURE, and every number here is set AGAINST the zombie rather
+# than picked. `enemies.ZOMBIE` is the unit this whole game is balanced in —
+# `weapons.py` derives eleven guns off its health — so a creature that is not
+# expressed as a difference from it is a creature nobody can reason about.
+#
+# The difference, in one line: a zombie is a wall that never stops, a wolf is a
+# knife that leaves. Everything below is that sentence as arithmetic.
+
+#: THREE PISTOL ROUNDS, where a zombie takes four. It is the only creature in
+#: the game that dies faster than the unit the guns were balanced against, and
+#: that is what pays for the speed — a pack you cannot thin as fast as it
+#: closes is a pack with no counterplay at all.
+WOLF_HP = 18
+#: Half a zombie's bite. Per HIT, which is the half a player feels.
+WOLF_DAMAGE = 5
+#: TWICE THE RATE, which is the other half and the one that matters. 5 every
+#: 0.55s is 9.1 dps against a zombie's 8.2 — barely more per animal, and the
+#: pack is where it stops being comparable. Being bitten constantly for a
+#: little is a completely different thing to being hit occasionally for a lot:
+#: you can watch a zombie's swing coming and you cannot watch a pack's.
+WOLF_ATTACK_COOLDOWN = 0.55
+#: Faster than the player WALKS (4.4) and far short of a sprint (6.8). You
+#: cannot stroll away from one and you can always run from one, which is the
+#: shape of every good chase in this game.
+WOLF_SPEED_TILES = 3.6
+#: And it gives up at less than half the zombie's twenty-four. Running works,
+#: and it works quickly — the pack is a burst of pressure you spend stamina to
+#: leave, not a thing that follows you across the map.
+WOLF_AGGRO_TILES = 10.0
+#: THE HOWL. Four times the ordinary neighbour shout, and it reaches only
+#: other wolves. One of them finding you is the whole clearing finding you,
+#: which is what makes a pack a pack rather than four animals in a field.
+WOLF_CALL_TILES = 30.0
+#: The director never sends fewer than two. See `enemies.WOLF`.
+WOLF_PACK_MIN = 2
+#: How often a wave is wolves rather than zombies. Deliberately the minority:
+#: the horde is what the night IS, and a second creature that turned up as
+#: often as the first would make both of them ordinary.
+WOLF_SPAWN_WEIGHT = 0.34
+
 # --- progression -------------------------------------------------------------
 # Levels are derived from total xp by the server and sent already split into
 # (level, xp into level, xp needed) so the client never re-implements the curve.
@@ -774,12 +815,41 @@ SHOT_DAMAGE = 8
 #: It is a DAY NUMBER rather than a flag because the fight is a milestone in a
 #: run, and a run's shape is measured in nights. `Room` tests it once, on the
 #: crossing, so changing it mid-session takes effect on the next night.
-BOSS_DAY: int | None = 2
+BOSS_DAY: int | None = 1
 
 #: His health, and how much a second, third and fourth gun add. See
 #: `boss.hp_for` — the first player is worth more than the rest.
 BOSS_HP_BASE = 900
 BOSS_HP_PER_EXTRA = 520
+
+# --- the miniboss ------------------------------------------------------------
+#: A THIRD OF THE BOSS, WRITTEN AS THAT FRACTION. See `enemies.WOLF_ALPHA`:
+#: the Sawyer's health is the number this game's damage is already balanced
+#: around, so a miniboss expressed as a portion of it retunes when he does.
+MINIBOSS_HP = BOSS_HP_BASE // 3
+#: The alpha's bite, and it is the WOLF'S rhythm rather than a boss's. Three
+#: heads at 13 every 0.45s is 29 dps — the highest melee in the game by a wide
+#: margin, and the reason the fight is a chase rather than a trade.
+ALPHA_DAMAGE = 13
+ALPHA_ATTACK_COOLDOWN = 0.45
+#: Faster than a walk, slower than a sprint, and faster than his own pack:
+#: what he takes away is the option of leaving casually.
+ALPHA_SPEED_TILES = 4.15
+#: He chases further than a wolf and still nothing like a zombie. Twenty tiles
+#: is most of a screen — long enough that escaping is a run rather than a step
+#: back, short enough that the run always ends.
+ALPHA_AGGRO_TILES = 20.0
+ALPHA_CALL_TILES = 34.0
+#: HOW CLOSE YOU HAVE TO GET, and it is the single most important number in
+#: the encounter. It is deliberately shorter than the lantern's reach, so a
+#: party with the lamp on sees the den — and the shape breathing in it —
+#: before anything can hear them. That gap is the decision.
+ALPHA_WAKE_TILES = 5.5
+#: The beat between his eyes opening and his first step: he stands, he howls,
+#: and only then does he come. Nothing else in this game gets a free second
+#: like this and nothing else needs one — it is the difference between waking
+#: something and being ambushed by it.
+ALPHA_WAKE_DELAY = 1.35
 
 #: Slower than a player runs (4.4 t/s), and that is the contract the whole
 #: fight rests on: he is always outrunnable, so every hit he lands is a hit

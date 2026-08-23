@@ -27,6 +27,13 @@ Adding a creature:
     3. add an EnemyType to ENEMY_TYPES and a weight to SPAWN_TABLE
     Visual variants and accessories are lists on that type; spawn rolls them
     and the snapshot carries the indices. Same stats, different sheets.
+
+    Its VOICE is `voice`, a prefix into the audio library; its RANK is `rank`,
+    which is all the HUD is told. A MINIBOSS adds `sleep_sprite` (which is
+    also what makes it spawn asleep), `wake_tiles` and `persists`, plus a
+    scene of its own — and stays OFF `SPAWN_TABLE`, because a placed encounter
+    the director could also roll is a random event rather than a place.
+    See docs/design/enemies.md.
 """
 
 from __future__ import annotations
@@ -36,6 +43,21 @@ import random
 from dataclasses import dataclass
 
 from .config import (
+    ALPHA_AGGRO_TILES,
+    ALPHA_ATTACK_COOLDOWN,
+    ALPHA_CALL_TILES,
+    ALPHA_DAMAGE,
+    ALPHA_SPEED_TILES,
+    ALPHA_WAKE_TILES,
+    MINIBOSS_HP,
+    WOLF_AGGRO_TILES,
+    WOLF_ATTACK_COOLDOWN,
+    WOLF_CALL_TILES,
+    WOLF_DAMAGE,
+    WOLF_HP,
+    WOLF_PACK_MIN,
+    WOLF_SPAWN_WEIGHT,
+    WOLF_SPEED_TILES,
     ENEMY_STAGGER_DECAY,
     ENEMY_STAGGER_HOLD,
     ENEMY_STAGGER_HOLD_MAX,
@@ -51,6 +73,19 @@ from .config import (
     SPRITE_TILES_H,
     TILE_SIZE,
 )
+
+
+#: WHAT KIND OF THING A CREATURE IS, as far as the HUD is concerned. Two
+#: values and no more until there is a third kind of encounter: `""` is
+#: everything the director spawns, and a miniboss is a placed, sleeping,
+#: crowned one. See `EnemyType.rank`.
+RANK_COMMON = ""
+RANK_MINIBOSS = "miniboss"
+
+#: Social groups — who answers whose call. See `EnemyType.pack`. The dead have
+#: none: a zombie's shout is a nudge to whatever is standing next to it,
+#: which is a fact about proximity rather than about kinship.
+PACK_WOLVES = "wolves"
 
 
 @dataclass(frozen=True)
@@ -103,6 +138,58 @@ class EnemyType:
     #: Clothes overlay sheets. Spawn may pick one, or none. Snapshot `cloth`.
     clothes: tuple[str, ...] = ()
 
+    # --- WHAT KIND OF THING THIS IS -----------------------------------------
+    #: `RANK_COMMON` or `RANK_MINIBOSS`, and it is DATA rather than a name the
+    #: client special-cases. A miniboss wears a crown over its head and its
+    #: health bar is drawn even when it is untouched; both of those read this
+    #: field, so the SECOND miniboss costs no client change — which is the
+    #: same promise `EnemyType` already makes about ordinary creatures.
+    #:
+    #: A rank is not a stat block. Nothing in `ai.py` branches on it: what
+    #: makes a miniboss a miniboss is `sleep_sprite`, `persists`, its numbers
+    #: and its own scene. This is only how the HUD is told.
+    rank: str = ""
+    #: WHAT IT SOUNDS LIKE, as a prefix. The client asks the audio library for
+    #: `<voice>-idle`, `<voice>-alert` and `<voice>-death`, so a creature's
+    #: whole vocabulary is this one string — the same promise `sprite` makes
+    #: about its art. Everything defaults to the dead, because the dead are
+    #: what this game is made of and a new creature with no recipes of its own
+    #: should sound like one rather than be silent.
+    voice: str = "zombie"
+    #: The processed folder for the CURLED-UP pose, or "" for a creature that
+    #: is never asleep. Its presence is also what makes the creature spawn
+    #: asleep — see `ai.MODE_SLEEP`. One field, because a sleeping creature
+    #: the client cannot draw asleep is worse than one that never sleeps.
+    sleep_sprite: str = ""
+    #: How close a player has to come before a sleeper wakes on its own. It is
+    #: a HEARING radius, not a sight cone: a sleeping animal has its eyes shut,
+    #: so the cone is off and this is the only thing that can find you.
+    wake_tiles: float = 0.0
+    #: THE HOWL. How far a commit is shared with the rest of this creature's
+    #: OWN PACK, in tiles. Zero means the ordinary neighbour shout
+    #: (`ENEMY_ALERT_SHARE_DIST`, everything nearby, one hop). A wolf that has
+    #: found you calls its pack across most of a clearing and calls nothing
+    #: else, because a howl is a wolf talking to wolves.
+    pack_call_tiles: float = 0.0
+    #: WHO ANSWERS IT. A group name shared by every type in one pack, so the
+    #: alpha's howl brings WOLVES rather than other alphas — there is only
+    #: ever one of him, and a leader whose call nothing can answer is not a
+    #: leader.
+    #:
+    #: A FIELD OF ITS OWN rather than reusing `key` or `voice`. `key` was the
+    #: first cut and it made the miniboss's howl reach exactly nobody; `voice`
+    #: is nearly right and is the footgun version — a creature given a wolf's
+    #: growl for flavour would silently join the pack. Who answers a call is a
+    #: fact about the AI, so it is written down as one.
+    pack: str = ""
+    #: The director never sends fewer than this many together. A pack of one
+    #: is a stray dog.
+    group_min: int = 1
+    #: Never recycled by the abandonment timer. For anything the MAP placed
+    #: rather than the director: a miniboss that despawned because nobody had
+    #: walked to its den yet would leave the den empty for the whole night.
+    persists: bool = False
+
     hit_tiles_r: float = PLAYER_HIT_TILES_R
     sprite_tiles_h: float = SPRITE_TILES_H
     box_tiles_w: float = PLAYER_BOX_TILES_W
@@ -152,6 +239,19 @@ class EnemyType:
         """Cosine of the cone's HALF angle — the alignment test's threshold."""
         return math.cos(math.radians(self.view_degrees) / 2)
 
+    @property
+    def wake_range(self) -> float:
+        return TILE_SIZE * self.wake_tiles
+
+    @property
+    def pack_call_range(self) -> float:
+        """The howl's reach, or 0 for a creature that only nudges neighbours."""
+        return TILE_SIZE * self.pack_call_tiles
+
+    @property
+    def sleeps(self) -> bool:
+        return bool(self.sleep_sprite)
+
     def client_payload(self) -> dict:
         """What the client needs: art, hit geometry, and numbers it displays."""
         return {
@@ -177,6 +277,22 @@ class EnemyType:
             "variants": list(self.variants),
             "hats": list(self.hats),
             "clothes": list(self.clothes),
+            # What KIND of thing this is, and the sheet to draw it with while
+            # it is still asleep. Both are presentation: the crown, the
+            # always-on health bar and the curled pose are decided off these
+            # two strings, so a second miniboss is a stat block and nothing
+            # else. Empty strings mean "an ordinary creature that never
+            # sleeps", which is every zombie in the game.
+            "rank": self.rank,
+            "sleepSprite": self.sleep_sprite,
+            # The audio library prefix. See `voice` — three sound keys, one
+            # field, and the client never learns a creature's name.
+            "voice": self.voice,
+            # `pack`, `wake_tiles`, `pack_call_tiles`, `group_min` and
+            # `persists` deliberately do NOT ship. They are facts about how
+            # the simulation behaves, and the client neither draws nor
+            # predicts any of them — a constant on this payload is a constant
+            # `test_config_parity.py` then has to keep in step for no reason.
         }
 
 
@@ -205,10 +321,129 @@ ZOMBIE = EnemyType(
     view_degrees=75.0,
 )
 
-ENEMY_TYPES: dict[str, EnemyType] = {ZOMBIE.key: ZOMBIE}
+#: THE SECOND SILHOUETTE, and it was the thing this module owed the game.
+#:
+#: `ENEMY_TYPES` held exactly one row for the whole of the game's life: the
+#: three "variants" are sprites over identical stats, so a run's entire
+#: bestiary was learned in the first sixty seconds and nothing new walked out
+#: of the dark until the Sawyer. Population scaling buys pressure; it does not
+#: buy surprise.
+#:
+#: A WOLF IS THE OPPOSITE OF A ZOMBIE ON EVERY AXIS THE PLAYER CAN FEEL, which
+#: is the point — a second creature that is a zombie with different numbers is
+#: a zombie. It is faster than you walk, it bites more than twice as often for
+#: half as much, it dies in three pistol rounds instead of four, and it gives
+#: up at less than half the distance. So the answer to a zombie (back away and
+#: shoot) is the wrong answer to a pack, and the answer to a pack (break the
+#: line and keep moving) does not work on a horde that never stops coming.
+#:
+#: AND IT NEVER ARRIVES ALONE. `group_min` is what makes it a pack rather
+#: than a fast zombie, and the howl (`pack_call_tiles`) is what makes the pack
+#: a THREAT: one wolf finding you is every wolf in the clearing finding you,
+#: at four times the reach a shout carries and only to its own kind.
+WOLF = EnemyType(
+    key="wolf",
+    sprite="wolf",
+    # Two heads is the same animal further gone, not a second creature: same
+    # stats, one more skull. The alpha below is where the stats change.
+    variants=("wolf", "wolf-twin"),
+    voice="wolf",
+    max_hp=WOLF_HP,
+    damage=WOLF_DAMAGE,
+    xp=9,
+    gold=2,
+    speed_tiles=WOLF_SPEED_TILES,
+    # THE ESCAPE VALVE, and it is the whole reason a creature this fast is
+    # fair. A zombie chases for twenty-four tiles; a wolf loses interest at
+    # ten. Outrunning one is not a matter of stamina, it is a matter of
+    # committing to leave — which is the decision the pack exists to ask.
+    aggro_tiles=WOLF_AGGRO_TILES,
+    attack_range_tiles=0.9,
+    attack_cooldown=WOLF_ATTACK_COOLDOWN,
+    # A wider cone than a zombie's and the same reach. It notices you sooner
+    # and forgets you faster, which is the same trade the numbers above make.
+    view_degrees=100.0,
+    pack_call_tiles=WOLF_CALL_TILES,
+    pack=PACK_WOLVES,
+    group_min=WOLF_PACK_MIN,
+    hit_tiles_r=0.32,
+    # A quadruped is LONG AND LOW. The box is what the player collides with
+    # and the sprite height is what the hit capsule reaches to; both are read
+    # off the sheet `make_wolf.py` writes rather than left at the player's.
+    sprite_tiles_h=0.8125,
+    box_tiles_w=0.85,
+    box_tiles_h=0.4,
+)
+
+#: THE ALPHA — the first MINIBOSS, and the class is new.
+#:
+#: A boss (`boss.py`) is a body with a state machine, a cinematic, an arena
+#: and a health bar across the top of the screen; it is a milestone the run is
+#: built around and it costs a whole module. A miniboss is none of that. It is
+#: an ENEMY — `ai.py` steers it, the same cone notices you, the same flow
+#: field routes it — with four differences, all of them data:
+#:
+#:   it is ASLEEP    until somebody gets close enough. Nothing else in this
+#:                   game is switched off when you find it, and that is the
+#:                   whole encounter: the player sees it before it sees them
+#:                   and gets to decide.
+#:   it PERSISTS     the map placed it, so the abandonment timer must not
+#:                   recycle it before anybody has walked to its den.
+#:   it is RANKED    which is how the HUD knows to crown it and to draw its
+#:                   health bar before the first shot lands.
+#:   it has a PLACE  `scenery._den`, the way the Sawyer has an arena.
+#:
+#: HIS HEALTH IS A THIRD OF THE BOSS'S AND IT IS WRITTEN AS THAT FRACTION.
+#: Typing a number here would make him a creature somebody balanced once; as a
+#: fraction he is a stated portion of the fight the run is already built
+#: around, and retuning that fight retunes him in the same motion.
+WOLF_ALPHA = EnemyType(
+    key="wolf-alpha",
+    sprite="wolf-alpha",
+    rank=RANK_MINIBOSS,
+    voice="wolf",
+    sleep_sprite="wolf-alpha-sleep",
+    persists=True,
+    max_hp=MINIBOSS_HP,
+    # THREE HEADS BITE LIKE THREE HEADS. He is not a big wolf with a big
+    # number on his swing — he is the wolf's own rhythm, faster, so standing
+    # in front of him costs more per second than anything else in the game.
+    # That is what makes leaving the correct answer as often as fighting is.
+    damage=ALPHA_DAMAGE,
+    attack_cooldown=ALPHA_ATTACK_COOLDOWN,
+    xp=110,
+    gold=34,
+    # Faster than a walk and slower than a sprint, so breaking away costs
+    # stamina and a decision. Anything faster than a sprint would be the
+    # boss's charge, and the charge is a move — this is a chase.
+    speed_tiles=ALPHA_SPEED_TILES,
+    aggro_tiles=ALPHA_AGGRO_TILES,
+    attack_range_tiles=1.4,
+    view_degrees=110.0,
+    pack_call_tiles=ALPHA_CALL_TILES,
+    # THE SAME PACK AS THE ORDINARY WOLVES, which is the whole point of him
+    # having a call at all: he brings the animals that are already out there,
+    # not more of himself.
+    pack=PACK_WOLVES,
+    wake_tiles=ALPHA_WAKE_TILES,
+    hit_tiles_r=0.55,
+    sprite_tiles_h=1.25,
+    box_tiles_w=1.35,
+    box_tiles_h=0.6,
+)
+
+ENEMY_TYPES: dict[str, EnemyType] = {
+    kind.key: kind for kind in (ZOMBIE, WOLF, WOLF_ALPHA)
+}
 
 #: Weighted spawn table used by the director. Add creatures here.
-SPAWN_TABLE: list[tuple[EnemyType, float]] = [(ZOMBIE, 1.0)]
+#:
+#: THE ALPHA IS DELIBERATELY NOT ON IT. He is in `ENEMY_TYPES` because the
+#: client resolves his stat block out of that catalog, and out of this list
+#: because the director must never roll one: he is placed by the map, once, in
+#: his own den (`mapgen.DEN_SCENES`). A miniboss that could also wander out of
+#: a spawn ring would stop being a place and become a random event.
+SPAWN_TABLE: list[tuple[EnemyType, float]] = [(ZOMBIE, 1.0), (WOLF, WOLF_SPAWN_WEIGHT)]
 
 
 def enemy_types_payload() -> dict:
@@ -258,7 +493,18 @@ class Enemy:
     #: What it is doing: one of ai.MODE_*. Never sent — `awareness` is the only
     #: thing the client needs, and a patrolling enemy and one walking home look
     #: exactly alike.
+    #:
+    #: `ai.MODE_SLEEP` IS THE ONE EXCEPTION, and it is why `sl` rides the
+    #: snapshot below: a sleeping creature and a standing one do not look
+    #: alike, they are drawn from different sheets. Everything else about the
+    #: mode stays private.
     mode: str = "idle"
+    #: Seconds left in the beat between a sleeper's eyes opening and its first
+    #: step — it stands, it howls, and only then does it come. It is the same
+    #: shape as `startle` and deliberately a different field: startle is the
+    #: extraction alarm reaching a body that was already awake, and mixing the
+    #: two would mean a pad called next to a den skipped the wake entirely.
+    waking: float = 0.0
     #: Where it spawned. It patrols around this and comes back to it, so the
     #: map keeps the shape the director gave it instead of draining toward
     #: whoever fired last.
@@ -366,7 +612,18 @@ class Enemy:
             row["hat"] = self.hat
         if self.cloth >= 0:
             row["cloth"] = self.cloth
+        # THE ONLY PIECE OF `mode` ON THE WIRE, and it is here because it is
+        # the only one that changes what is DRAWN: asleep is a different sheet
+        # and a dark socket where every other creature carries an ember.
+        # Omitted while awake, so it costs a bare zombie nothing.
+        if self.asleep:
+            row["sl"] = 1
         return row
+
+    @property
+    def asleep(self) -> bool:
+        """Curled up in its den, eyes shut. See `ai.MODE_SLEEP`."""
+        return self.mode == "sleep"
 
 
 def dress(enemy: Enemy) -> None:

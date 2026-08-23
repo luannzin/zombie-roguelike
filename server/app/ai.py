@@ -18,11 +18,22 @@ NOTICING
 An enemy does not chase anything it has not noticed, and noticing is a thing
 that takes time and can be watched happening.
 
-Three modes, and every enemy is in exactly one:
+Four modes, and every enemy is in exactly one:
 
     idle      patrol a short leash around the tile it spawned on
     hunt      go to the target; keep going to where it last was
-    return    walk home, then go back to idle
+    return    walk home, then go back to idle — or back to sleep
+    sleep     switched off. No cone, no patrol, no despawn, no diamond.
+
+`sleep` is the odd one and it exists for the MINIBOSS. Everything else in this
+game is already looking for you when you find it; the alpha is curled up in
+its own den, and the encounter is the decision a party gets to make before
+anything has been decided for them. Only three things reach it: a body inside
+`EnemyType.wake_range` (it hears you — its eyes are shut), a noise, and being
+shot. Not a lantern, and NOT the extraction siren: a pickup called across a
+forest waking a den nobody has found is the fight happening TO the party.
+Waking is a commit with a beat on the front (`wake`) — it stands, it howls,
+and only then does it come.
 
 `Enemy.awareness` is the meter between the first two. It fills while a living
 player stands inside the SIGHT CONE — a wedge of `view_tiles` and
@@ -48,7 +59,10 @@ Four things fill the meter without the enemy seeing anybody itself:
     a shout   an enemy that just committed wakes everyone within
               ENEMY_ALERT_SHARE_DIST. One hop only — a chain reaction from one
               careless step would wake the map and there would be nothing left
-              to disengage from.
+              to disengage from. A creature with `pack_call_tiles` HOWLS
+              instead: four times the reach, and only to its own PACK
+              (`EnemyType.pack`, not its type — the alpha calls wolves). See
+              `shout`.
     a noise   see `Noise`. A gunshot is the only one so far; the shape is
               generic because footsteps and thrown objects are the same event
               with a different radius.
@@ -101,6 +115,7 @@ from typing import Iterable, Sequence
 
 from . import combat
 from .config import (
+    ALPHA_WAKE_DELAY,
     BUSH_CONCEAL_SCALE,
     ENEMY_ALERT_SHARE_DIST,
     ENEMY_ARRIVE_DIST,
@@ -162,6 +177,15 @@ FIELD_SEPARATION_WEIGHT = 0.25
 MODE_IDLE = "idle"
 MODE_HUNT = "hunt"
 MODE_RETURN = "return"
+#: CURLED UP WITH ITS EYES SHUT, and it is the only mode in which a creature
+#: is switched off. It does not look, does not patrol, does not despawn and
+#: does not fill a diamond; the only things that can reach it are a body close
+#: enough to hear (`EnemyType.wake_range`), a noise, and being shot.
+#:
+#: It is a MODE rather than a flag because everything the other three modes do
+#: is wrong for it, and a boolean checked at four sites is four sites that
+#: will one day forget. `Enemy.asleep` is the read-only view the snapshot uses.
+MODE_SLEEP = "sleep"
 
 #: Patrol waypoint placement attempts before just standing still this leg.
 WANDER_ATTEMPTS = 8
@@ -259,13 +283,31 @@ def update(
 
         nearest, nearest_dist = nearest_player(enemy, living)
 
+        # ASLEEP IS THE FIRST QUESTION AND IT SHORT-CIRCUITS EVERYTHING.
+        # A sleeping creature has no cone, no patrol and no abandonment clock:
+        # it was placed by the map and it is part of the map until somebody
+        # comes close enough to hear. The extraction alarm does not reach it
+        # either — a siren across a whole forest waking a miniboss in a den
+        # nobody has found is the encounter happening to a party that never
+        # chose it.
+        if enemy.mode == MODE_SLEEP:
+            enemy.vx = enemy.vy = 0.0
+            if nearest is not None and nearest_dist <= enemy.type.wake_range:
+                wake(enemy, nearest)
+                shouted.append((enemy, nearest))
+            continue
+
         # Abandonment is measured against the nearest player at ANY distance,
         # not the aggro range: an enemy idling just outside aggro is still part
         # of the fight, one on the far side of the map is not. A hunter is never
         # recycled — it is on its way to somebody, however far that is.
         if nearest is None or nearest_dist > ENEMY_DESPAWN_DIST:
             enemy.abandoned += dt
-            if enemy.abandoned >= ENEMY_DESPAWN_DELAY and enemy.mode != MODE_HUNT:
+            if (
+                enemy.abandoned >= ENEMY_DESPAWN_DELAY
+                and enemy.mode != MODE_HUNT
+                and not enemy.type.persists
+            ):
                 despawned.append(enemy)
         else:
             enemy.abandoned = 0.0
@@ -316,6 +358,19 @@ def update(
                 continue
 
         # --- hunting ---------------------------------------------------------
+        # GETTING UP. The beat between a sleeper's eyes opening and its first
+        # step: it stands, it howls, and only then does it come. It runs
+        # before the startle for the same reason the startle runs before the
+        # target lookup — a body that is not moving does not need a path — and
+        # ahead of it because a pickup called next to a den must not be able
+        # to skip the wake and have the thing simply be on its feet.
+        if enemy.waking > 0.0:
+            enemy.waking = max(0.0, enemy.waking - dt)
+            enemy.vx = enemy.vy = 0.0
+            if nearest is not None:
+                face(enemy, nearest.x, nearest.y)
+            continue
+
         # THE HELD BEAT. Committed, diamond lit, facing the noise, not walking.
         # It runs before the target lookup on purpose: a creature standing and
         # staring does not need a path, and stepping the chase for a body that
@@ -511,6 +566,24 @@ def startle(enemy: Enemy, x: float, y: float, distance: float, tile: float) -> N
     face(enemy, x, y)
 
 
+def wake(enemy: Enemy, target: Player) -> None:
+    """Open a sleeper's eyes. It commits, and then it stands there.
+
+    THE PAUSE IS THE POINT, and it is the only free second this game gives
+    anybody. The whole miniboss encounter is a decision the player gets to
+    make BEFORE anything is decided for them: they find a den, they see a
+    shape breathing in it, and they choose. Waking it has to be the last beat
+    of that decision rather than the end of it — so it gets up, it calls its
+    pack, and a party that has already turned round is already leaving.
+
+    It is a commit, not a notice: nothing about a sleeping animal noticing you
+    should be gradual, and the diamond is full on the frame its eyes open.
+    """
+    if enemy.mode == MODE_SLEEP:
+        enemy.waking = ALPHA_WAKE_DELAY
+    commit(enemy, target)
+
+
 def commit(enemy: Enemy, target: Player) -> None:
     """Stop patrolling and start hunting this player."""
     enemy.mode = MODE_HUNT
@@ -524,21 +597,65 @@ def commit(enemy: Enemy, target: Player) -> None:
 
 
 def give_up(enemy: Enemy) -> None:
-    """End a hunt: head home, and let the diamond empty."""
+    """End a hunt: head home, and let the diamond empty.
+
+    A sleeper goes home and goes BACK TO SLEEP (see `patrol`), which is what
+    makes escaping a miniboss a real outcome rather than a delay. The den is
+    still there, it is still occupied, and the party has to decide about it
+    all over again — that is the encounter working, not the encounter being
+    skipped.
+    """
     enemy.mode = MODE_RETURN
     enemy.target_id = None
     enemy.awareness = 0.0
     enemy.lost = 0.0
+    enemy.waking = 0.0
     enemy.vx = enemy.vy = 0.0
     enemy.wander_x = enemy.wander_y = None
     enemy.wander_wait = 0.0
 
 
 def shout(spotter: Enemy, target: Player, pack: Sequence[Enemy]) -> None:
-    """One enemy spotting a player is every enemy near it spotting them."""
-    reach2 = ENEMY_ALERT_SHARE_DIST * ENEMY_ALERT_SHARE_DIST
+    """One enemy spotting a player is every enemy near it spotting them.
+
+    TWO SHAPES, AND THE SECOND ONE IS A HOWL. The default is a nudge: whatever
+    is within `ENEMY_ALERT_SHARE_DIST`, one hop, regardless of what it is. A
+    creature with `pack_call_tiles` instead CALLS ITS OWN PACK, four times as
+    far — which is the entire difference between four animals that happen to
+    be in the same field and a pack.
+
+    Restricting it to the pack is the half worth arguing about. A howl that
+    woke the zombies too would be strictly better than a shout at every range,
+    and the wolf's whole design is that it is not a better zombie: it is fast,
+    fragile, and it fights with the other wolves. One creature's social range
+    must not become a general-purpose alarm, or every future creature
+    inherits it by accident.
+
+    IT IS `EnemyType.pack` AND NOT THE TYPE KEY, which is the correction worth
+    keeping. Keyed on the type, the alpha's howl reached exactly nobody —
+    there is only ever one of him — so the loudest call in the game was the
+    one attached to the creature with nothing to call. A leader brings the
+    animals that are already out there.
+
+    **A SLEEPER NEVER ANSWERS**, and this is the one that cost something worth
+    naming. A wolf howling next to a den waking its alpha is a good scene, and
+    it is also the encounter happening to a party that never found the den: a
+    call carries thirty tiles, well past the lantern, so somebody shooting at
+    a pack across a clearing would wake a miniboss they cannot see and have no
+    reason to expect. What reaches a sleeper stays the three things that are
+    about IT — a body close enough to hear, a noise, a bullet — because those
+    are the three a player can choose not to do.
+    """
+    reach = spotter.type.pack_call_range
+    group = spotter.type.pack
+    calling = reach > 0.0 and bool(group)
+    if not calling:
+        reach = ENEMY_ALERT_SHARE_DIST
+    reach2 = reach * reach
     for other in pack:
-        if other is spotter or other.mode == MODE_HUNT:
+        if other is spotter or other.mode in (MODE_HUNT, MODE_SLEEP):
+            continue
+        if calling and other.type.pack != group:
             continue
         if (other.x - spotter.x) ** 2 + (other.y - spotter.y) ** 2 > reach2:
             continue
@@ -562,6 +679,15 @@ def hear(pack: Sequence[Enemy], noise: Noise, by_id: dict[str, Player]) -> None:
         distance = math.hypot(noise.x - enemy.x, noise.y - enemy.y)
         if distance > noise.radius:
             continue
+        # A SLEEPER EITHER WAKES OR HEARS NOTHING. Awareness is what the hunt
+        # diamond is drawn from, and a curled body with a half-full meter over
+        # it would tell the player something is deciding about them when the
+        # thing is still asleep. So the taper does not apply: inside the
+        # radius it gets up, outside it the sound never happened.
+        if enemy.mode == MODE_SLEEP:
+            if source is not None:
+                wake(enemy, source)
+            continue
         face(enemy, noise.x, noise.y)
         enemy.awareness = min(
             1.0, enemy.awareness + NOISE_ALERT_GAIN * (1.0 - distance / noise.radius)
@@ -579,7 +705,10 @@ def alarm(enemy: Enemy, source: Player | None) -> None:
     """
     if source is None or not source.alive or enemy.mode == MODE_HUNT:
         return
-    commit(enemy, source)
+    # Shooting a sleeping animal wakes it — with the same beat, because the
+    # beat is the telegraph and a player who opened with a rifle round has
+    # earned the same second of warning as one who walked too close.
+    wake(enemy, source)
 
 
 def glare(pack: Sequence[Enemy], living: Sequence[Player], world: TileMap, dt: float) -> None:
@@ -607,7 +736,14 @@ def glare(pack: Sequence[Enemy], living: Sequence[Player], world: TileMap, dt: f
         if not player.last_input.lantern:
             continue
         for enemy in pack:
-            if enemy.mode == MODE_HUNT or enemy.awareness >= ENEMY_GLARE_CAP:
+            # A BEAM DOES NOT WAKE ANYTHING. `glare` turns heads and makes
+            # bodies uneasy, which are both things a creature with its eyes
+            # shut cannot do — and a lantern that woke a den from across a
+            # clearing would take the decision away from the party holding it.
+            if (
+                enemy.mode in (MODE_HUNT, MODE_SLEEP)
+                or enemy.awareness >= ENEMY_GLARE_CAP
+            ):
                 continue
             dx = enemy.x - player.x
             dy = enemy.y - player.y
@@ -691,11 +827,21 @@ def patrol(enemy: Enemy, world: TileMap, dt: float) -> None:
         dx = enemy.home_x - enemy.x
         dy = enemy.home_y - enemy.y
         if math.hypot(dx, dy) <= ENEMY_ARRIVE_DIST:
-            enemy.mode = MODE_IDLE
+            enemy.mode = MODE_SLEEP if enemy.type.sleeps else MODE_IDLE
             enemy.wander_wait = random.uniform(ENEMY_WANDER_PAUSE_MIN, ENEMY_WANDER_PAUSE_MAX)
             enemy.vx = enemy.vy = 0.0
             return
         if enemy.stuck >= RESETTLE_DELAY:
+            # A SLEEPER NEVER RESETTLES. Accepting wherever it got wedged as
+            # its new home is the right answer for a zombie — one patch of
+            # forest is as good as another — and the wrong one for something
+            # whose whole encounter is a PLACE. A miniboss that gave up
+            # halfway back and curled up in a thicket would leave its den
+            # empty and put itself somewhere with no story in it.
+            if enemy.type.sleeps:
+                enemy.stuck = 0.0
+                walk(enemy, dx, dy, speed, world, dt)
+                return
             enemy.home_x = enemy.x
             enemy.home_y = enemy.y
             enemy.mode = MODE_IDLE
@@ -990,10 +1136,15 @@ class EnemyDirector:
         if spot is None:
             return []
 
+        # THE TYPE IS ROLLED BEFORE THE SIZE, because some creatures do not
+        # come alone. A pack of one is a stray dog: `EnemyType.group_min` is
+        # the floor, and it is on the stat block rather than in the weights
+        # table so a second social creature costs nothing here.
+        kind = self.pick_type()
         # A group clipped by the cap is still a group: three of four is better
         # than skipping the wave and leaving the map empty for another interval.
-        size = min(self.pick_size(), room)
-        return [(self.pick_type(), *place) for place in self.scatter(spot, size)]
+        size = min(max(self.pick_size(), kind.group_min), room)
+        return [(kind, *place) for place in self.scatter(spot, size)]
 
     def pick_size(self) -> int:
         """How many arrive together, tilted toward the big end by the night.

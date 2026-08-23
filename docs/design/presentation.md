@@ -33,6 +33,7 @@ Nearest contracts: [`client/AGENTS.md`](../../client/AGENTS.md),
 | intent | touch |
 | --- | --- |
 | add a sound | a recipe in `server/tools/make_audio.py` + one call site in `client/src/audio/sfx.ts` |
+| what a CREATURE sounds like | `EnemyType.voice` names a prefix and the client asks for `<voice>-idle` / `-alert` / `-death`, so a creature's whole vocabulary is three recipes in `make_audio.py` and one field on its stat block. No call site learns a creature's name |
 | add/retune an effect sheet | the matching `server/tools/make_*.py`, then rerun and commit script + output |
 | how an effect plays | `client/src/game/effects.ts`, `client/src/render/layers/effects.ts` |
 | muzzle / impact art | `server/tools/make_weapon_vfx.py`, `client/src/render/weapon-vfx.ts` |

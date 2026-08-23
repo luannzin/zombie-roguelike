@@ -38,7 +38,7 @@ import {
   drawShadow,
   type EntityContext,
 } from './layers/entities';
-import { drawAlertMarks } from './layers/vision';
+import { drawAlertMarks, drawRankMarks } from './layers/vision';
 import { DisturbanceField } from './disturbance';
 import { AtmosphereLayer } from './layers/atmosphere';
 import { DarknessLayer } from './layers/darkness';
@@ -618,6 +618,10 @@ export class Renderer {
     // Hunt tell sits ON the night: a hunter you cannot see still wears the
     // diamond, so killing the lamp does not hide that it has you.
     drawAlertMarks(entity, state.entities, state.time);
+    // And WHAT it is, over the top of what it is doing. A miniboss wears its
+    // crown asleep as well as awake — unlit until its eyes open — because the
+    // whole encounter is that the player gets to see it before it sees them.
+    drawRankMarks(entity, state.entities, state.time);
 
     // Screen space: labels, numbers, then the full-screen vignette.
     this.useScreenSpace();

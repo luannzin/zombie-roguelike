@@ -133,6 +133,12 @@ Snapshot arrays:
             are not drawn. `v` is the body-variant index into
             `enemyTypes[t].variants`. `hat` / `cloth` are optional indices
             into those overlay pools — omitted when the zombie wears none.
+            `sl` is set only while a creature is ASLEEP, and it is the one
+            piece of the AI's mode that ships: a sleeper is drawn from a
+            different sheet entirely (`enemyTypes[t].sleepSprite`), so unlike
+            patrolling-versus-walking-home it is not something the client can
+            be left to guess. Omitted for everything awake, which is
+            everything except a miniboss nobody has found yet.
   coins     live gold pickups (one per gold point dropped)
   shots     hitscan tracers fired since the last snapshot; `k` is the
             weapon key, `dmg` the damage dealt (0 on a miss / crate)

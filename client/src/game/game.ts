@@ -447,6 +447,16 @@ const GROWL_INTERVAL = 3.4;
 /** How far out in front of the body the lamp is carried, in tiles. */
 const LAMP_HELD_TILES = 0.45;
 
+/**
+ * The voice a creature falls back to when its stat block names none.
+ *
+ * THE DEAD ARE THE DEFAULT, on both sides (`EnemyType.voice`), because a
+ * creature that shipped without recipes of its own should sound like the
+ * thing this game is made of rather than be silent — a body walking out of
+ * the dark making no noise at all is a worse bug than one that groans wrong.
+ */
+const DEFAULT_VOICE = 'zombie';
+
 /** How far a growl can still reach the ear, in tiles. Past the lantern's throw. */
 const GROWL_TILES = 17;
 /** Minimum seconds between two growls anywhere. Stops a pack stacking. */
@@ -837,7 +847,7 @@ export class Game {
   /** Enemies already heard alerting, so one hunt makes one snarl. */
   private alertHeard = new Set<string>();
   /** Snarls waiting to be heard, nearest first. See `drainAlertQueue`. */
-  private alertQueue: Array<{ x: number; y: number }> = [];
+  private alertQueue: Array<{ x: number; y: number; voice: string }> = [];
   /** Seconds until the next queued snarl may play. */
   private alertGap = 0;
 
@@ -906,6 +916,13 @@ export class Game {
       'zombie-attack',
       'zombie-hit',
       'zombie-death',
+      // The pack's own three. Primed rather than left to decode on first use
+      // like the rest: the howl is the sound that TELLS you a pack has found
+      // you, and one arriving half a second after the wolves start moving is
+      // the one piece of information this game gives that must not be late.
+      'wolf-idle',
+      'wolf-alert',
+      'wolf-death',
       'wind',
       'night',
       'rain',
@@ -1122,9 +1139,18 @@ export class Game {
       ...(t.hats ?? []),
       ...(t.clothes ?? []),
     ]);
+    // THE SLEEP POSE IS LISTED SEPARATELY BECAUSE IT HAS NO CORPSE. Every
+    // name above gets a `-death` sheet appended below; a creature never dies
+    // in its sleep (waking is what being shot does), so asking for
+    // `wolf-alpha-sleep-death` would be one 404 per run for a sheet that must
+    // not exist.
+    const sleeping = Object.values(msg.config.enemyTypes)
+      .map((t) => t.sleepSprite ?? '')
+      .filter((name) => name.length > 0);
     const sheets = [
       ...names,
       ...names.map((name) => `${name}-death`),
+      ...sleeping,
       msg.config.coinSprite || COIN_SHEET,
       msg.config.backpackSprite || BACKPACK_SHEET,
       // EVERY PIECE OF ARMOUR IN THE GAME, not the ones this player is
@@ -1741,7 +1767,7 @@ export class Game {
     const dy = kill.dy ?? 0;
     this.effects.spawnDeath(kill.x, kill.y, dx, dy);
     this.effects.spawnDeathBurst(kill.x, kill.y + 2, DEATH_TIME);
-    playSfxAt('zombie-death', kill.x, kill.y);
+    playSfxAt(`${this.enemyType(kill.t ?? '')?.voice || DEFAULT_VOICE}-death`, kill.x, kill.y);
     this.camera.addTrauma(DEATH_TRAUMA);
     this.upsertCorpse(kill, this.visuals.stainsOf(kill.victim).map(cloneStain), 0);
     // It stops growling the moment it dies, and re-arms if the id ever returns.
@@ -2389,7 +2415,13 @@ export class Game {
         Math.hypot(b.x - this.smoothX, b.y - this.smoothY),
     );
     const next = this.alertQueue.shift();
-    if (next) playSfxAt('zombie-alert', next.x, next.y);
+    // THE SAME QUEUE CARRIES A SNARL AND A HOWL, and it has to: a wolf is
+    // usually noticing you in the same second as the zombies around it, and
+    // two drains racing each other would stack exactly the wall of noise this
+    // queue exists to prevent. What changes per creature is the sound, which
+    // is why the row carries its voice rather than a type key — by the time
+    // it drains, the body that queued it may be dead.
+    if (next) playSfxAt(`${next.voice}-alert`, next.x, next.y);
     this.alertGap = ALERT_SNARL_GAP;
   }
 
@@ -3169,7 +3201,11 @@ export class Game {
           // queue nearest-first at a fixed gap turns the same event into heads
           // turning one after another around you — which is the beat, and it
           // is the sound of the pack noticing rather than of a switch flipping.
-          this.alertQueue.push({ x: entity.x, y: entity.y });
+          this.alertQueue.push({
+            x: entity.x,
+            y: entity.y,
+            voice: entity.voice || DEFAULT_VOICE,
+          });
         }
       }
     }
@@ -3192,7 +3228,7 @@ export class Game {
 
     if (!throttled('growl', GROWL_SPACING, this.time)) return;
     const speaker = near[(Math.random() * near.length) | 0];
-    playSfxAt('zombie-idle', speaker.x, speaker.y, { gain: 0.9 });
+    playSfxAt(`${speaker.voice || DEFAULT_VOICE}-idle`, speaker.x, speaker.y, { gain: 0.9 });
   }
 
   // --- rendering -----------------------------------------------------------
@@ -3654,6 +3690,9 @@ export class Game {
       alertKnown: false,
       viewRange: 0,
       viewDegrees: 0,
+      rank: '',
+      asleep: false,
+      voice: '',
       hitFlash: this.visuals.hitFlashAmount(id),
       stains: this.visuals.stainsOf(id),
       recoilX: recoil.x,
@@ -3743,13 +3782,19 @@ export class Game {
 
     const { id, x, y, vx, vy, moving } = enemy;
     const planted = this.visuals.planted(id);
+    // ASLEEP IS A DIFFERENT SHEET, not a still frame of the walk. A creature
+    // paused on its idle column reads as a bug or as lag; a curled body with
+    // its heads tucked reads as a thing you have found rather than a thing
+    // that has found you, which is the entire miniboss encounter.
+    const asleep = (enemy.sl ?? 0) > 0;
+    const sleepSheet = asleep ? type.sleepSprite || '' : '';
     this.visuals.emitFootsteps(
       id,
       x,
       y,
       vx,
       vy,
-      moving && !planted,
+      moving && !planted && !asleep,
       this.effects,
       type.halfHeight,
       this.config!.moveSpeed,
@@ -3759,7 +3804,7 @@ export class Game {
     return {
       id,
       kind: 'enemy',
-      sheet: type.variants?.[enemy.v ?? 0] ?? type.sprite,
+      sheet: sleepSheet || type.variants?.[enemy.v ?? 0] || type.sprite,
       // The art carries its own palette; tinting it would flatten the pixels.
       tint: null,
       gear: enemyGear(type, enemy),
@@ -3777,8 +3822,13 @@ export class Game {
       staminaMax: 0,
       winded: false,
       alive: true,
-      moving: moving && !planted,
-      animTime: this.visuals.advanceAnim(id, moving && !planted, dt),
+      // THE SLEEP SHEET IS A BREATH, so it has to be told it is animating.
+      // Every other loop in the game is driven by the body actually going
+      // somewhere; this is the one pose whose whole job is to move while the
+      // creature does not, and a sleeper frozen on its idle column is
+      // indistinguishable from a corpse.
+      moving: asleep || (moving && !planted),
+      animTime: this.visuals.advanceAnim(id, asleep || (moving && !planted), dt),
       isLocal: false,
       // Overwritten by applyVisibility once the light field is current.
       visibility: 0,
@@ -3789,6 +3839,9 @@ export class Game {
       alertKnown: false,
       viewRange: this.sightReach(type),
       viewDegrees: type.viewDegrees ?? 0,
+      rank: type.rank ?? '',
+      asleep,
+      voice: type.voice || DEFAULT_VOICE,
       hitFlash: this.visuals.hitFlashAmount(id),
       stains: this.visuals.stainsOf(id),
       recoilX: recoil.x,

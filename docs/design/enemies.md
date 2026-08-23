@@ -4,13 +4,13 @@ Nearest contract: [`server/app/AGENTS.md`](../../server/app/AGENTS.md).
 
 | | |
 | --- | --- |
-| **Owns** | enemy stat blocks, senses, patrol/hunt/return, steering + attack, the spawn director, the extraction chase, corpses |
+| **Owns** | enemy stat blocks, senses, patrol/hunt/return/sleep, steering + attack, the spawn director, the pack call, the extraction chase, corpses |
 | **Inputs** | player positions and lantern switches, `ai.Noise` (gunshots, objects), `ai.alarm` (damage), `hunt_all` / `alarm_point` from extraction, nests from `mapgen` |
-| **Outputs** | enemy tick rows (`aw` awareness, `v`/`hat`/`cloth` identity), `ai.Attack`, kill events, corpse rows |
+| **Outputs** | enemy tick rows (`aw` awareness, `v`/`hat`/`cloth` identity, `sl` asleep), `ai.Attack`, kill events, corpse rows |
 | **Depends on** | `pathing.py` (one BFS flow field per player), `world.py` (occlusion), `config.py` (every reach/rate), `enemies.py` (`EnemyType`) |
 | **Consumers** | `Room.step_enemies` / `resolve_attack`, `coins.py` (the drop roll), `corpses.py`, the client's hunt diamond |
 | **Authoritative** | mode, awareness, facing, position, damage, death |
-| **Presentation** | the diamond, the bang, snarl queueing, the collapse timeline, wounds, blood pools |
+| **Presentation** | the diamond, the bang, the miniboss crown, snarl/howl queueing, the collapse timeline, wounds, blood pools |
 
 ## Invariants
 
@@ -51,7 +51,8 @@ Nearest contract: [`server/app/AGENTS.md`](../../server/app/AGENTS.md).
   stays server-side, because the client never asks.
 - **Nothing snaps its head.** Every facing change outside a hunt goes through `ai.turn_towards` at a bounded rate.
 - **`ai.glare` never commits.** The beam turns heads and caps awareness below the commit line; being spotted stays the cone's job.
-- **Every non-eye awareness source goes through `ai.commit`** — a neighbour's shout (one hop), an `ai.Noise`, `ai.alarm` on damage. Do not add a damage path that skips `alarm`.
+- **Every non-eye awareness source goes through `ai.commit`** — a neighbour's shout (one hop), an `ai.Noise`, `ai.alarm` on damage. Do not add a damage path that skips `alarm`. A SLEEPER goes through `ai.wake`, which is `commit` with the getting-up beat on the front; nothing may commit one directly.
+- **A SLEEPING CREATURE IS SWITCHED OFF, and the list of things that reach it is closed.** A body inside `EnemyType.wake_range`, a noise, and damage. Not the sight cone (its eyes are shut), not the lantern, and — the one worth writing down — **not `hunt_all`**. The extraction siren commits every other creature on the map; a den it also woke would be the encounter happening TO a party that never found it. See *The miniboss* below.
 - **`ai.Noise` is the only shape sound has**, and the list is cleared every tick.
 - **Melee damage is rate-limited per victim** (`MELEE_IMMUNITY`), not per attacker.
 - **Stagger is not on the wire** — the slowed velocity is enough.
@@ -78,13 +79,23 @@ walk. Awareness is pinned, so the diamond is already lit. See
 | how the fight FEELS — shake, blood, sound, the grade | `client/src/game/boss.ts` (`punchFor` is the whole table), `client/src/render/post/looks.ts` (`arenaLook` / `enrageLook`) |
 | his health bar and his name | `client/src/components/hud/BossBar.tsx` |
 | what a creature LOOKS like | `server/tools/make_zombie.py` — three anatomies (`Build.kind`), one derived ramp each, then `process_sprites.py --exact` for the sheet AND its `-death` |
+| what a WOLF looks like, or how many heads it has | `server/tools/make_wolf.py` — one animal, `Build.heads` is a tuple of offsets. It writes the raw art AND processes it |
+| what a creature SOUNDS like | `EnemyType.voice` + three recipes in `server/tools/make_audio.py` (`<voice>-idle` / `-alert` / `-death`) |
+| the pack: speed, bite, give-up, the howl's reach | `server/app/config.py` (`WOLF_*`) |
+| the miniboss: health, bite, the wake radius, the beat | `server/app/config.py` (`MINIBOSS_HP`, `ALPHA_*`) |
+| where the den is and what is in it | `server/app/scenery.py` (`_den`, `LANDMARKS`) + `server/app/mapgen.py` (`DEN_SCENES`) |
+| the crown and the always-on health bar | `client/src/render/layers/vision.ts` (`drawRankMarks`), `client/src/render/layers/entities.ts` |
 | tuning (reach, rates, group sizes, `BUSH_CONCEAL_SCALE`) | `server/app/config.py` |
 | where undergrowth is, on both sides | `world.tile_hash` / `TileMap.bush_at` + `client/src/render/layers/terrain.ts` |
 | where creatures start standing | `server/app/mapgen.py` (`NEST_SCENES` / `HAUNT_SCENES`), `Room._seed_nests` |
 | the diamond, snarls, wounds | `client/src/render/layers/vision.ts`, `client/src/game/entity-visuals.ts`, `Game.updateGrowls` |
 
 **Adding a creature** = one `EnemyType`, a `SPAWN_TABLE` weight, and a processed
-sprite folder. It must require **no client change**.
+sprite folder. It must require **no client change**. A creature with its own
+VOICE adds `voice` plus three recipes in `make_audio.py`; a MINIBOSS adds
+`rank`, `sleep_sprite`, `persists`, a scene in `scenery.py` and a row in
+`mapgen.DEN_SCENES` — and stays OFF `SPAWN_TABLE`, because a miniboss the
+director could also roll is a random event rather than a place.
 
 **Do not touch from here:** extraction pad state, the economy, loot tables, or
 the wire protocol pair.
@@ -136,6 +147,136 @@ the wire protocol pair.
     is deliberate: one message, two deliveries, and a player with the sound off
     still gets it.
 
+## The pack
+
+- **A SECOND CREATURE THAT IS A ZOMBIE WITH DIFFERENT NUMBERS IS A ZOMBIE.**
+  That is the whole brief the wolf was written against, and it is why every
+  number on it is set as a DIFFERENCE from `ZOMBIE` rather than picked:
+  `enemies.ZOMBIE` is the unit this game is balanced in — `weapons.py` derives
+  eleven guns off its health — so a creature not expressed against it is a
+  creature nobody can reason about.
+
+  The difference in one line: **a zombie is a wall that never stops, a wolf is
+  a knife that leaves.** It is faster than you walk (3.6 tiles against your
+  4.4, so strolling away does not work and sprinting always does), it bites
+  every 0.55s for 5 instead of every 1.1s for 9, it dies in three pistol
+  rounds instead of four, and it gives up at ten tiles instead of
+  twenty-four. So the answer to a zombie — back off and shoot — is the wrong
+  answer to a pack, and the answer to a pack — break the line and commit to
+  leaving — does not work on a horde that never stops coming.
+- **BEING BITTEN CONSTANTLY FOR A LITTLE IS NOT THE SAME EVENT AS BEING HIT
+  OCCASIONALLY FOR A LOT**, even at the same dps, and the arithmetic hides
+  that. 5 every 0.55s is 9.1 dps against the zombie's 8.2 — a rounding error
+  per animal. What changes is that you can watch a zombie's swing coming and
+  you cannot watch a pack's: the damage arrives as a texture rather than as
+  events, so the decision it asks for is "am I still going to be here in three
+  seconds" instead of "can I take this one".
+- **THE HOWL IS WHAT MAKES IT A PACK RATHER THAN FOUR ANIMALS IN A FIELD.**
+  An ordinary commit nudges whatever is within `ENEMY_ALERT_SHARE_DIST` — one
+  hop, anything, eight tiles. A creature with `pack_call_tiles` instead calls
+  **its own kind, at four times that reach**. One wolf finding you is the
+  whole clearing finding you, and the sound arrives before they do.
+  - **IT IS RESTRICTED TO ITS PACK, and that is the half worth arguing
+    about.** A howl that also woke the dead would be strictly better than a
+    shout at every range, and the wolf's entire design is that it is not a
+    better zombie. It would also mean the next social creature inherited a
+    general-purpose alarm by accident. `tests/test_pack.py` pins both
+    directions, because nothing at runtime can tell.
+  - **THE GROUP IS `EnemyType.pack`, NOT THE TYPE KEY**, and the difference is
+    the whole reason the alpha has a call at all. Keyed on the type, the
+    loudest call in the game belonged to the one creature there is only ever
+    one of — his howl reached nobody. A leader brings the animals that are
+    already out there. It is also not `voice`, which is nearly right and is
+    the footgun version: a creature given a wolf's growl for flavour would
+    silently join the pack.
+  - **AND IT DOES NOT REACH INTO A DEN.** A sleeper never answers a call, and
+    that cost a good scene: a wolf howling beside the den waking its alpha is
+    exactly the picture you want. It is also thirty tiles — well past the
+    lantern — so a player shooting at a pack across a clearing would wake a
+    miniboss they cannot see and had no reason to expect. What reaches a
+    sleeper stays the three things that are about IT, because those are the
+    three a player can choose not to do.
+  - **AND THE SOUND IS THE ONLY CLEAN VOICE IN THE GAME.** Everything else in
+    the mix is torn — the growls, the snarl, the engine, the siren — because
+    everything else is either a body that has stopped working or a machine. A
+    howl is a healthy sound made on purpose, and against a night built out of
+    rasp it is unmistakable through any amount of other noise. It has to be:
+    it is not a reaction, it is a MESSAGE, and the player has to know they have
+    been reported at the same moment the map does.
+- **`group_min` IS ON THE STAT BLOCK, NOT IN THE WEIGHTS TABLE.** The
+  director rolls the type first and clamps the size to it. A pack of one is a
+  stray dog, and putting the floor in `ENEMY_GROUP_WEIGHTS` would have meant
+  one table describing two creatures.
+
+## The miniboss
+
+**A new class, and the argument for it is that the boss could not be one.**
+`boss.py` is a body with a state machine, a cinematic, an arena, a health bar
+across the screen and a module of its own; it is the milestone a run is built
+around and it costs what it costs. THE ALPHA IS AN `Enemy`. `ai.py` steers it,
+the same cone notices you, the same flow field routes it around a rock, the
+same `Room.damage_player` resolves its bite. Four things separate it from a
+zombie and **all four are data**:
+
+    it is ASLEEP    `sleep_sprite` — until somebody comes close enough
+    it PERSISTS     `persists` — the map placed it; the recycler must not
+    it is RANKED    `rank` — how the HUD is told to crown it
+    it has a PLACE  `scenery._den`, the way the Sawyer has an arena
+
+So the SECOND miniboss is a stat block, a scene and a sprite folder. Nothing
+in this module or in the client learns its name.
+
+- **THE ENCOUNTER IS THE DECISION, AND THE DECISION NEEDS THE PLAYER TO SEE IT
+  FIRST.** Every other creature in this game is already looking for you when
+  you find it. This one is curled up in its own den with its eyes shut, and
+  `ALPHA_WAKE_TILES` is deliberately **shorter than the lantern's reach** —
+  which is the whole mechanism. Your own light finds the den before the thing
+  in it can hear you, and what you do next is yours. That gap IS the feature;
+  anything that closes it (a longer wake radius, a lit scene, a siren that
+  reaches it) deletes the encounter and leaves a big fast zombie.
+- **IT IS DRAWN ASLEEP RATHER THAN PAUSED.** A creature frozen on its idle
+  column reads as lag or as a corpse. `wolf-alpha-sleep` is a real pose — a
+  curl, heads tucked, three frames of breath, and **a dark socket where every
+  other creature in the game carries a lit one**. That absence is the
+  telegraph: the accent hue is this game's word for "it has noticed you", so
+  the one creature that has not is the only art in the game wearing an empty
+  socket. It lights on the frame its eyes open.
+- **AND IT STANDS UP BEFORE IT COMES.** `ALPHA_WAKE_DELAY` is a free beat
+  — it gets to its feet, it howls, and only then does it walk. Nothing else in
+  this game gets one and nothing else needs one: it is the difference between
+  waking something and being ambushed by it, and it is the last beat of a
+  decision the player has already been given time to make.
+- **YOU CAN LEAVE, AND LEAVING PUTS IT BACK.** Run past `ALPHA_AGGRO_TILES` or
+  past the leash and it gives up, walks home, and **goes back to sleep**. That
+  last clause is the one that matters: the den is still there, still occupied,
+  still a decision. A miniboss that idled in the treeline afterwards would
+  have turned a PLACE into a wandering monster the first time anybody escaped
+  one — and escaping is supposed to be an outcome, not a delay.
+  - It is also why a sleeper never RESETTLES. An ordinary creature that gets
+    wedged on the way home accepts where it is standing as its new home, which
+    is right when one patch of forest is as good as another and wrong for
+    something whose whole encounter is a place.
+- **THREE HEADS BITE LIKE THREE HEADS.** He is not a big wolf with a big
+  number on his swing — he is the wolf's own rhythm, faster: 13 every 0.45s,
+  29 dps, the highest melee in the game by a wide margin. That is deliberate
+  and it is what makes leaving as correct an answer as fighting. You cannot
+  trade with him; you kite him or you go.
+- **HIS HEALTH IS A THIRD OF THE BOSS'S AND IT IS WRITTEN AS THAT FRACTION**
+  (`MINIBOSS_HP = BOSS_HP_BASE // 3`). Typed, he would be a creature somebody
+  balanced once. As a fraction he is a stated portion of the fight the run is
+  already built around, and retuning that fight retunes him in the same
+  motion. Unlike the boss it does NOT scale with the party — the client
+  resolves health bars against `welcome.config.enemyTypes`, and a per-room
+  number would mean a per-room catalog.
+- **HE WEARS A CROWN, AND THE CROWN IS THE CONFIRMATION RATHER THAN THE
+  WARNING.** The warning is the art: every creature in this game carries one
+  lit socket per eye, and a wolf carries one per HEAD, so **three embers
+  moving together in the dark** is a thing the player has never seen and the
+  only thing in the forest that looks like it. The HUD mark sits above the
+  hunt diamond, does not fill, and is drawn UNLIT while the thing is still
+  asleep — the same sentence the sprite is telling with its shut eyes, said
+  again in the one channel that survives the distance.
+
 ## The night gets bigger
 
 - **THE FOREST USED TO GET EMPTIER AS THE RUN WENT ON**, and nothing in this
@@ -161,12 +302,13 @@ the wire protocol pair.
     any peace. By night five a wave lands every 1.7s rather than every 2.5, so
     standing and fighting stops being a way to make ground safe and starts
     being a way to be surrounded.
-  - **WHAT IS STILL MISSING IS A SECOND SILHOUETTE.** `ENEMY_TYPES` holds
-    exactly one row; the three "variants" are sprites over identical stats. So
-    a run's whole bestiary is learned in the first sixty seconds and nothing
-    new ever walks out of the dark until the Sawyer. Population scaling buys
-    pressure, not surprise, and surprise is the next thing this subsystem owes
-    the game.
+  - **THE SECOND SILHOUETTE IS THE PACK, AND IT IS WHY POPULATION WAS NEVER
+    ENOUGH.** For most of this game's life `ENEMY_TYPES` held exactly one row
+    and the three "variants" were sprites over identical stats, so a run's
+    whole bestiary was learned in the first sixty seconds and nothing new
+    walked out of the dark until the Sawyer. Population scaling buys pressure;
+    it cannot buy surprise, because surprise is a thing you have not seen
+    before and there was only ever one thing. See *The pack* below.
 
 ## Design law
 

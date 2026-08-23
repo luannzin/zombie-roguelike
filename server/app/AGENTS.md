@@ -16,8 +16,8 @@ game's scale.
 | `simulation.py` | movement + tile collision — mirrored by the client |
 | `combat.py` | hitscan raycast and melee arc sweep, both entity-agnostic |
 | `entities.py` | `Player`, `Pour` (a body emptying its pocket into a platform), `InputCmd` (includes the lantern switch, relayed not simulated) |
-| `enemies.py` | `EnemyType` stat blocks (incl. the sight cone, visual variants and accessory pools), live `Enemy`, `dress` |
-| `ai.py` | enemy senses, patrol/hunt/return, steering/attack, the director; `hunt_all` is the extraction chase and `startle` is the beat where it visibly spreads outward from the pad |
+| `enemies.py` | `EnemyType` stat blocks (incl. the sight cone, visual variants and accessory pools, the VOICE, the pack call, `group_min`, and the four fields that make a MINIBOSS: `rank`, `sleep_sprite`, `wake_tiles`, `persists`), live `Enemy`, `dress` |
+| `ai.py` | enemy senses, patrol/hunt/return/**sleep**, steering/attack, the director; `shout` is both the neighbour nudge and the wolves' HOWL, and `wake` is the beat a sleeper spends getting to its feet; `hunt_all` is the extraction chase and `startle` is the beat where it visibly spreads outward from the pad |
 | `boss.py` | THE SAWYER: his stat block, his state machine, the four moves, the thrown crescent. NOT an `EnemyType` and not `ai.py` — see its header. Every TIMING he has is read out of `assets/processed/sawyer/manifest.json` at import, so the telegraph on screen and the telegraph in the simulation are one number |
 | `arena.py` | the boss yard: a disc of floor, a corridor in, a ring of `FIRE` tiles for light, and the crew's leavings. No way out until he is down |
 | `pathing.py` | BFS flow field, one per player |
@@ -120,6 +120,11 @@ to the design docs indexed below.
   `client/src/net/protocol.ts` mirrors it.
 - Per-creature stats never enter a snapshot. The wire carries a type key and
   the client resolves it against `welcome.config.enemyTypes`.
+- **`sl` IS THE ONLY PIECE OF THE AI'S MODE ON THE WIRE.** Patrolling and
+  walking home look identical, so neither ships; ASLEEP does not — a sleeper
+  is drawn from `enemyTypes[t].sleepSprite`, a whole other sheet. Anything
+  else about a creature's mode that ever wants to ship should be asked the
+  same question first: does the client draw it differently?
 - **MELEE IS RATE-LIMITED BY THE ATTACKER, NEVER BY THE VICTIM.**
   `Room.resolve_attack` reads `Player.hurt_immunity` and must not set it: a
   swing blocked by a shared window has already spent the swinger's cooldown up
@@ -217,6 +222,18 @@ table and the gameplay state machine.
   and the snapshot carries `v` / `hat` / `cloth`. Same stats, different
   sheets. A new overlay is a `GEAR` entry processed `--exact`, then a name
   on the pool.
+  - **ITS VOICE IS ONE FIELD TOO.** `voice` names an audio PREFIX and the
+    client asks for `<voice>-idle` / `-alert` / `-death`. Defaulting to the
+    dead is deliberate: a creature that shipped without recipes of its own
+    should sound like the thing this game is made of rather than be silent.
+  - **AND SO IS BEING A MINIBOSS.** `rank` (the crown and the always-on
+    health bar), `sleep_sprite` (which is also what makes it spawn asleep),
+    `wake_tiles` and `persists` — plus a scene in `scenery.py` and a row in
+    `mapgen.DEN_SCENES`. It stays OFF `SPAWN_TABLE`: it is in `ENEMY_TYPES`
+    so the client can resolve its stat block, and out of the roll so the
+    director can never produce one. A miniboss that could also wander out of
+    a spawn ring is a random event rather than a place. See
+    [`docs/design/enemies.md`](../../docs/design/enemies.md) § The miniboss.
 - Adding a gun = one `WeaponDef` in `weapons.py`, the same key on `loot.py`
   with `pocket="hotbar"`, a held frame in `make_guns.py` and a 16x16 icon
   in `make_loot.py`. Combat, weight and the hotbar HUD all read the
@@ -296,5 +313,12 @@ table and the gameplay state machine.
 - `python tests/test_scenery_containers.py` after adding a container kind or a
   scene that places one: two openables on a tile is a sprite inside a sprite on
   ground that can only be claimed once.
+- `python tests/test_pack.py` after touching the wolves, the howl (`ai.shout`),
+  `MODE_SLEEP` / `ai.wake`, `EnemyType.group_min` / `persists`, `_seed_nests`
+  or `mapgen.DEN_SCENES`. It drives the whole miniboss encounter with nobody
+  watching — the den landing, the thing asleep in the middle of it, the siren
+  and the recycler both failing to reach it, the wake radius, the free beat
+  before it moves, and the escape that puts it back to sleep. Every one of
+  those is a way the encounter silently stops being an encounter.
 - Beyond that, run the server and confirm at least two clients move, shoot and
   take damage without desync.

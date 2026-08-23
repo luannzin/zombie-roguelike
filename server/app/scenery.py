@@ -21,10 +21,16 @@ bytes.
 
 THE SCENES
 
-    sanctuary   THE LANDMARK, one per map. Carved stone in a ring, bones on
+    sanctuary   A LANDMARK, one per map. Carved stone in a ring, bones on
                 the floor, an altar in the middle that always pays — and a
                 nest of creatures standing on it. The only place anybody
                 BUILT, and the only bargain the map states in advance.
+    den         A LANDMARK, one per map, and the only scene about an ANIMAL
+                rather than about people: trunks dragged into a lee, a floor
+                of bones, a drag mark going out. The MINIBOSS is asleep in
+                the middle of it (`mapgen.DEN_SCENES`), which makes it the
+                only place in the game whose danger you can see before it can
+                see you — and therefore the only one you get to decline.
     roadside    one vehicle, an oil slick, and whichever way somebody walked.
     convoy      three or four vehicles nose to tail, still queued. People were
                 being moved out and did not get out.
@@ -1049,6 +1055,96 @@ def _sanctuary(rng: random.Random) -> Layout:
     return Layout(width, height, tuple(pieces))
 
 
+def _den(rng: random.Random) -> Layout:
+    """THE DEN. Where the alpha sleeps, and the only scene about an ANIMAL.
+
+    Every other place on this map is about people: a car that stopped, a fence
+    that failed, a shrine somebody built, a wreck somebody died in. The den is
+    the first one that is not — nobody made it, nobody left it, something
+    LIVES here — and every decision below is aimed at that being readable
+    before the shape in the middle of it resolves.
+
+      * IT IS A HOLLOW, NOT A CLEARING. The scene is walled on one side by
+        felled trunks lying the same way, which is the one arrangement in this
+        forest that is neither a crash nor a construction: it is where a big
+        animal dragged its cover into a heap.
+      * THE FLOOR IS BONES, and there are more of them here than anywhere
+        except the shrine. The shrine's bones say "standing here has cost
+        other people something"; these say "this is where it eats", which is
+        the same sentence about a different subject.
+      * THE KILLS CAME FROM SOMEWHERE. Clothes, dropped packs and blood run
+        OUT of the hollow along a drag mark rather than sitting in it — the
+        trail is the scene's only piece of narration and it points at where
+        the thing hunts.
+      * IT PAYS. `loot.SCENE_COUNTS` gives it the second-best scatter in the
+        game and the stashes are what its victims were carrying, because the
+        bargain has to be worth the animal: a den with nothing in it is a
+        thing you walk around, and walking around it is the outcome the
+        encounter is supposed to make you EARN.
+
+    NO LIGHT, deliberately, and it is the one place that pointedly does not
+    get one. A scene light makes a place a destination you choose from across
+    the dark (see `SceneLight`), which is exactly right for a shrine and
+    exactly wrong here: the whole encounter is that your own lantern reaches
+    further than the thing's ears do, so the lamp is what finds the den and
+    the finding is the reward for carrying it lit.
+    """
+    width, height = 12, 10
+    cx, cy = width / 2, height / 2
+    # The lee: trunks piled along one side, all lying the same way.
+    lee = rng.uniform(0, math.tau)
+    pieces: list[Piece] = []
+    for index in range(rng.randint(3, 5)):
+        offset = (index - 1) * 1.6
+        pieces.append(
+            Piece(
+                "logs",
+                STANDING,
+                cx + math.cos(lee) * 3.2 - math.sin(lee) * offset,
+                cy + math.sin(lee) * 2.4 + math.cos(lee) * offset * 0.7,
+                rng.randrange(4),
+                rng.random() < 0.5,
+            )
+        )
+    # The floor of the hollow. Denser toward the middle, which is where it lies.
+    for _ in range(rng.randint(9, 14)):
+        angle = rng.uniform(0, math.tau)
+        radius = rng.uniform(0.3, 3.4) ** 0.7
+        pieces.append(
+            Piece("bones", DECAL, cx + math.cos(angle) * radius,
+                  cy + math.sin(angle) * radius * 0.7, rng.randrange(6))
+        )
+    for _ in range(rng.randint(3, 6)):
+        angle = rng.uniform(0, math.tau)
+        radius = rng.uniform(0.4, 3.0)
+        pieces.append(
+            Piece("blood", DECAL, cx + math.cos(angle) * radius,
+                  cy + math.sin(angle) * radius * 0.7, rng.randrange(6))
+        )
+    # The drag mark, out of the hollow and away. One direction only: it is
+    # where the kills come FROM, and a trail with two ends is a path.
+    drag = lee + math.pi + rng.uniform(-0.6, 0.6)
+    pieces += _trail(cx + math.cos(drag) * 1.0, cy + math.sin(drag) * 0.8,
+                     cx + math.cos(drag) * 4.6, cy + math.sin(drag) * 3.6,
+                     rng, step=0.9, wander=0.45)
+    for _ in range(rng.randint(1, 3)):
+        angle = rng.uniform(0, math.tau)
+        radius = rng.uniform(1.2, 3.6)
+        pieces.append(
+            Piece("clothes", DECAL, cx + math.cos(angle) * radius,
+                  cy + math.sin(angle) * radius * 0.7, rng.randrange(5))
+        )
+    # What they were carrying, at the edge of the hollow rather than under the
+    # animal — a container you cannot reach without waking it is not a choice.
+    for _ in range(rng.randint(1, 2)):
+        angle = rng.uniform(0, math.tau)
+        pieces.append(
+            _from_pool(rng, STASH_POOL, cx + math.cos(angle) * 3.6,
+                       cy + math.sin(angle) * 2.8 + 0.5)
+        )
+    return Layout(width, height, tuple(pieces))
+
+
 #: (kind, builder, weight). Weights are the pacing.
 #:
 #: `deadfall` is still the most common thing on the map and that is not an
@@ -1106,12 +1202,22 @@ CAMP_POOL = (
     ("deadfall", _deadfall, 4),
 )
 
-#: The one LANDMARK. Attempted first and on its own, before the weighted pool,
-#: because it is the largest layout by a wide margin: rolled in with everything
-#: else it loses every anchor race to a 4x3 woodpile and a player can go three
-#: expeditions without seeing one. One per map, never two — a second shrine
-#: turns the first one from a place into a prop.
-LANDMARK = ("sanctuary", _sanctuary)
+#: THE LANDMARKS. Attempted first, in order, on their own and before the
+#: weighted pool — because they are the two largest layouts by a wide margin
+#: and both are ONE PER MAP. Rolled in with everything else they lose every
+#: anchor race to a 4x3 woodpile and a player can go three expeditions without
+#: seeing either; and a second shrine turns the first one from a place into a
+#: prop, which is just as true of a second den.
+#:
+#: THE SHRINE IS FIRST BECAUSE IT IS BIGGER (13x13 against 12x10) and because
+#: the thread is routed through it (`populate` keeps the first landmark that
+#: lands as the route's far end). A run has one place it is walking TOWARD;
+#: the den is a thing it walks PAST, and it should not be able to take over
+#: the shape of the night.
+LANDMARKS = (
+    ("sanctuary", _sanctuary),
+    ("den", _den),
+)
 
 #: Scenes per map, before rejections. A map that rolls badly gets fewer, which
 #: is fine — an empty stretch of woods is a legitimate outcome.
@@ -1419,12 +1525,15 @@ def populate(
             return True
         return False
 
-    # The landmark goes down first, on an empty map and with a much bigger
-    # budget: it is the only layout that needs a large box of open ground, and
-    # every scene already standing is one more thing for it to collide with.
-    if landmark is not None:
-        kind, builder = landmark
-        if attempt(builder(rng), tries * 6, kind):
+    # The landmarks go down first, on an empty map and with a much bigger
+    # budget: they are the only layouts that need a large box of open ground,
+    # and every scene already standing is one more thing to collide with.
+    #
+    # `landmark_at` is the FIRST one that lands and the thread is routed
+    # through it (see `_route`). A run has one place it is walking toward; the
+    # rest are places it walks past.
+    for kind, builder in landmark or ():
+        if attempt(builder(rng), tries * 6, kind) and landmark_at is None:
             landmark_at = (placed[-1].x, placed[-1].y)
 
     for _ in range(rng.randint(*count)):

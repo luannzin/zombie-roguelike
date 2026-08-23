@@ -24,7 +24,7 @@ import { gunMuzzle, gunPose, gunSupport } from '../guns';
 import type { Projection } from '../projection';
 import { groundShadow } from '../shadows';
 import { facingFromAim, frameIndex, poseRow, timelineFrame, type SpriteBook } from '../sprites';
-import type { DrawableCoin, DrawableCorpse, DrawableEntity } from '../types';
+import { RANK_MINIBOSS, type DrawableCoin, type DrawableCorpse, type DrawableEntity } from '../types';
 
 /** Player name label size, in screen px. One step of the font's pixel grid. */
 const NAME_LABEL_PX = HUD_GRID;
@@ -230,7 +230,12 @@ export function drawEntity(entity: EntityContext, target: DrawableEntity): void 
     // which had every weapon in the game held across its owner's face.
     drawWeapon(entity, target, px, py, spriteTop, col);
     drawHealthBar(entity, target, view.rawX(px), spriteTop);
-  } else if (target.hp < target.maxHp) {
+  } else if (target.hp < target.maxHp || target.rank === RANK_MINIBOSS) {
+    // AN ARENA OF FULL GREEN BARS IS NOISE — which is why a zombie only gets
+    // one once it is hurt — but a miniboss is exactly one body, and the whole
+    // question a party is asking about it is "how far into this are we". A
+    // bar that only appeared after the first hit would be missing on the one
+    // beat the decision to fight or leave is actually made.
     drawHealthBar(entity, target, view.rawX(px), spriteTop);
   }
   ctx.globalAlpha = 1;
@@ -362,6 +367,14 @@ function corpseAsTarget(body: DrawableCorpse): DrawableEntity {
     alertKnown: false,
     viewRange: 0,
     viewDegrees: 0,
+    // A CORPSE HAS NO RANK AND IS NOT ASLEEP. Both marks are for the living:
+    // the crown says "this one is not like the others" and the dark socket
+    // says "it has not noticed you yet", and a body on the floor is past
+    // being either. What is left of a miniboss is a shape with three heads
+    // on it, which is enough.
+    rank: '',
+    asleep: false,
+    voice: '',
     recoilX: 0,
     recoilY: 0,
     hitSpin: 0,

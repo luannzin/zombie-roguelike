@@ -39,7 +39,7 @@ mutation, no React.
 | `wind.ts` | the shared gust field every bending thing reads |
 | `shadows.ts` | the shared LIGHT field and the one routine that grounds a standing thing: an ambient contact pool plus a cast thrown away from whatever is lighting it |
 | `disturbance.ts` | what bodies do to the plants they walk through |
-| `layers/vision.ts` | the ENEMY's hunt diamond — fill meter and bang over the head |
+| `layers/vision.ts` | what an enemy wears over its head: the hunt diamond (fill meter + bang, WHAT IT IS DOING) and the miniboss crown (`drawRankMarks`, WHAT IT IS — off `EnemyTypeConfig.rank`, drawn unlit while the thing is still asleep) |
 | `layers/scenery.ts` | placed scenes: flat decals into the ground bake, standing props into the depth sort; live boot prints (including a blood tint) |
 | `layers/corpses.ts` | blood pools under dead enemies — scenery `blood.png`, growing, world space |
 | `minimap.ts` | the minimap canvas |

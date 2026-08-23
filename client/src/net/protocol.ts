@@ -721,6 +721,30 @@ export interface EnemyTypeConfig {
   hats?: string[];
   /** Clothes overlay sheets. `EnemyState.cloth` indexes this. */
   clothes?: string[];
+  /**
+   * What KIND of thing this is, for the HUD only: `''` for everything the
+   * director spawns, `'miniboss'` for a placed one. It drives the crown over
+   * the head and the always-visible health bar, and nothing else — the
+   * simulation has no concept of a rank.
+   *
+   * DATA RATHER THAN A KEY THE CLIENT KNOWS. The whole point is that the
+   * second miniboss is a stat block in `enemies.py` and no change here.
+   */
+  rank?: string;
+  /**
+   * The sheet to draw this creature with while `EnemyState.sl` is set —
+   * curled up, breathing, eyes shut. Empty for everything that never sleeps,
+   * which is every zombie in the game.
+   */
+  sleepSprite?: string;
+  /**
+   * WHAT IT SOUNDS LIKE, as a library prefix: this side asks for
+   * `<voice>-idle`, `<voice>-alert` and `<voice>-death`. A creature's whole
+   * vocabulary is one string on its stat block, exactly the way `sprite` is
+   * its whole art — so a new creature that sounds like something else is a
+   * server change and nothing here.
+   */
+  voice?: string;
 }
 
 /**
@@ -1445,6 +1469,14 @@ export interface EnemyState {
   hat?: number;
   /** Clothes overlay index into `enemyTypes[t].clothes`. Absent means none. */
   cloth?: number;
+  /**
+   * 1 while this creature is ASLEEP. The only piece of the server's AI mode
+   * that ships, and it ships because it is the only one that changes what is
+   * drawn: a sleeper uses `enemyTypes[t].sleepSprite` instead of its body
+   * sheet, wears no hunt diamond, and — if it is a miniboss — wears an unlit
+   * crown rather than a lit one. Absent means awake.
+   */
+  sl?: number;
 }
 
 /**

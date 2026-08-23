@@ -187,6 +187,16 @@ cd server
 ./.venv/bin/python tools/process_sprites.py --name zombie --tile 16 --exact --side-facing right
 ```
 
+Two generators skip the second command because they run it themselves —
+`make_armor.py` (twelve overlays) and `make_wolf.py` (seven wolf sheets). A
+list of paired commands is a list nobody keeps in step, so those write raw art
+and process it in one go:
+
+```bash
+cd server
+./.venv/bin/python tools/make_wolf.py    # wolf, wolf-twin, wolf-alpha, deaths, the sleep pose
+```
+
 Terrain, effects and HUD icons have no raw stage — they are generated straight
 into `assets/processed/`, deterministically:
 

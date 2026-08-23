@@ -9,7 +9,7 @@ recently changed system, when something looks like a regression, before
 modifying anything under *Do not touch*, or when the task asks what to work on
 next. Skip it for a self-contained change to a stable system.
 
-_Last verified: 2026-08-23 against `main` @ `844686a` + the DIFFICULTY pass below._
+_Last verified: 2026-08-23 against `main` @ `fd8f1b3` + the DIFFICULTY pass below and THE PACK below that._
 
 ## Current phase
 
@@ -20,6 +20,47 @@ knife got a real swing, the shotgun got its own dynamics, the machine got its
 ceremony.
 
 ## Currently working on
+
+- **THE PACK JUST LANDED — the second creature, and the first MINIBOSS.**
+  `ENEMY_TYPES` had held exactly one row for the whole of the game's life, so
+  a run's bestiary was learned in the first sixty seconds and nothing new
+  walked out of the dark until the Sawyer. Population scaling had bought
+  pressure and could not buy surprise. Written up in
+  [`docs/design/enemies.md`](docs/design/enemies.md) § The pack / The miniboss.
+  - **THE WOLF IS THE OPPOSITE OF A ZOMBIE ON EVERY AXIS A PLAYER CAN FEEL,**
+    which is the whole brief: faster than you walk, biting twice as often for
+    half as much, dying in three pistol rounds instead of four, and giving up
+    at ten tiles instead of twenty-four. Two visual variants (one head, two)
+    over one stat block, minimum two per wave (`group_min`), and a HOWL —
+    `ai.shout` now has two shapes, and a creature with `pack_call_tiles`
+    calls **its own kind at four times a shout's range**.
+  - **THE MINIBOSS IS A NEW CLASS AND IT COST NO NEW MODULE.** The alpha is an
+    ordinary `Enemy` — same steering, same cone, same `damage_player` — plus
+    four fields of DATA: `rank` (the crown and the always-on health bar),
+    `sleep_sprite`, `wake_tiles` and `persists`. The second one is a stat
+    block, a scene and a sprite folder; nothing in `ai.py` or the client
+    learns its name.
+  - **IT IS ASLEEP WHEN YOU FIND IT, AND THAT IS THE ENCOUNTER.** `MODE_SLEEP`
+    is the first mode in this game in which a creature is switched off. Its
+    wake radius is deliberately SHORTER than the lantern's reach, so your own
+    light finds the den before the thing in it hears you — the gap is the
+    decision, and closing it in any direction (a longer radius, a lit scene, a
+    siren that reaches it) deletes the encounter. It stands up and howls
+    before it walks, and running away puts it back to sleep in its own den.
+  - **NEW ART AND A NEW VOICE.** `tools/make_wolf.py` — one quadruped,
+    `Build.heads` a tuple of offsets, so one head is a wolf and three is the
+    miniboss and there is only ever one drawing. First creatures in the game
+    whose frames are not 16x16 (22x16, and 32x22 for the alpha), plus a
+    looping CURLED sleep sheet with no lit socket on it. `EnemyType.voice`
+    resolves audio by prefix; the howl is the only clean-pitched sound in a
+    mix built entirely out of rasp, which is why it carries.
+  - **NOT YET PLAYED IN A BROWSER.** The pane could not composite in the
+    session it was built in, so every check is a test rather than a look:
+    `test_pack.py` drives the whole encounter, `test_creature_sheets.py`
+    counts the heads. What wants eyes on it: whether a pack at 3.6 tiles/s
+    actually reads as escapable at the moment it is on you, whether the den is
+    findable often enough to matter without a light of its own, and whether
+    29 dps in melee makes the alpha a chase or just a death.
 
 - **THE DIFFICULTY PASS JUST LANDED. The loop was complete and had no
   pressure in it; this is the pass that gave it some.** Five changes, all with
@@ -168,6 +209,7 @@ ceremony.
 | **the belt lost its knife and kept its promise** | `KNIFE_SLOT` is `BLADE_SLOT`, `Hotbar.add` routes on `is_blade`, and `Room.swap_blade` is the one way steel changes hands. Every rule about that cell follows from it having no empty state, which is the one shape the rest of the belt does not have |
 | **the shop sells AMMUNITION** | a row of open crates against the south wall, one per calibre somebody in the room is carrying — so a party of knives sees an empty wall, and buying the first shotgun DROPS a crate of shells in (a fall, a hard landing, two bounces, on the client's own clock off a row it has not drawn before). A crate never sells out, and a box costs its own share of a full reserve at half the price of the cheapest gun that eats it — derived, no price list. New art: `make_store.make_ammobox`, five frames, the only boxes in the room drawn OPEN. **Not yet played in a browser** — worth watching whether the crates read as buyable next to the six tables, and whether pistol rounds at 4 gold are too close to free |
 | **eighteen more skills, and armour** | the catalog is 36 rows (9/8/8/6/5) because a ten-day run was seeing the same three commons; legendary odds doubled (2 -> 4 in `PULL_WEIGHTS`) because at one in fifty most runs never saw the colour the machine dramatises. `Mods.armor` is the one new axis — damage TAKEN, applied in `Room.damage_player`, floored at 0.35 so a stacked run cannot reach zero. `make_skills._check_order` now fails the build if the icon sheet and the catalog disagree, which nothing at runtime would notice |
+| **the forest got a second creature** | wolves — one head, two heads, and the three-headed alpha asleep in its own den. See *Currently working on* |
 | **the dead were redrawn** | three creatures, three ANATOMIES: the walker keeps the player's build, the husk became a real skeleton (skull, a gap of neck, ribs with gaps you can see through), the brute became a mass with fungus growing out of it. Every ramp is derived through `material_ramp` instead of typed hex, and every creature carries an EYE — one saturated pixel in a dark socket, the sheet's single accent. The S15 test (all three in solid black) is in `make_zombie.py`'s header and passes |
 | **the player has a HOLDING pose** | the sheet grew a second block of rows (`hold-down` / `hold-left` / `hold-right` / `hold-up`, APPENDED — walk rows keep their indices) with the weapon arm raised on the right-handed side and the off hand tucked. `process_sprites.py` now carries a second pose block generically (`POSE_PREFIXES`), mirroring each block on its own. `render/guns.ts`'s `GUN_GRIP_SIDE` and `arms.ts`'s `WRIST_OUT` are the client half of that pose and move with it |
 | **held weapons are drawn at 3/4** | `make_guns.DRAW_SCALE` — the art is authored at one pixel scale so it can say "AK", and drawn smaller so it stops out-measuring the body. In the manifest, so sprite / muzzle / port / support hand all shrink together |
@@ -262,6 +304,9 @@ ceremony.
    `armor.HITS_BASE`, `CEILING_SHARE` and `SHIELD_HITS` against what actually
    happened rather than against the arithmetic.
 5. The three missing gear sounds, and the shield's block spark.
+6. Play a night with the pack in it. The numbers are set against the zombie's
+   and the encounter is pinned by tests, but "is it escapable" and "is the den
+   findable" are questions only a browser answers.
 
 ## Do not touch
 

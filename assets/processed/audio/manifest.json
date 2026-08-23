@@ -152,6 +152,32 @@
       "bus": "sfx",
       "gain": 0.375
     },
+    "wolf-idle": {
+      "files": [
+        "wolf-idle-0.wav",
+        "wolf-idle-1.wav",
+        "wolf-idle-2.wav"
+      ],
+      "bus": "sfx",
+      "gain": 0.2244
+    },
+    "wolf-death": {
+      "files": [
+        "wolf-death-0.wav",
+        "wolf-death-1.wav",
+        "wolf-death-2.wav"
+      ],
+      "bus": "sfx",
+      "gain": 0.2669
+    },
+    "wolf-alert": {
+      "files": [
+        "wolf-alert-0.wav",
+        "wolf-alert-1.wav"
+      ],
+      "bus": "sfx",
+      "gain": 0.3151
+    },
     "gun-cycle": {
       "files": [
         "gun-cycle-0.wav",

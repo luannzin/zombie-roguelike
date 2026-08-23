@@ -26,6 +26,14 @@ import type { TrailPoint } from './layers/boss-vfx';
 export type EntityKind = 'player' | 'enemy';
 
 /** One overlay sheet on a body, and whether it wears that body's colour. */
+/**
+ * `EnemyTypeConfig.rank` for a placed, crowned creature. The string is the
+ * server's (`enemies.RANK_MINIBOSS`) and is mirrored here rather than
+ * inferred, because the rank is a thing the catalog says and not a thing this
+ * side works out from the numbers.
+ */
+export const RANK_MINIBOSS = 'miniboss';
+
 export interface GearLayer {
   sheet: string;
   /** Multiply the wearer's `tint` through it. False for baked material art. */
@@ -120,6 +128,30 @@ export interface DrawableEntity {
    */
   viewRange: number;
   viewDegrees: number;
+  /**
+   * What kind of thing this is, straight off `EnemyTypeConfig.rank`. `''` for
+   * players and for everything the director spawns; `'miniboss'` puts a crown
+   * over the head and keeps the health bar on at full.
+   *
+   * A STRING RATHER THAN A BOOLEAN because the rank belongs to the server's
+   * catalog, and a `isMiniboss` flag here would be this side deciding what
+   * the ranks are.
+   */
+  rank: string;
+  /**
+   * This creature is curled up with its eyes shut. It is drawn from another
+   * sheet entirely (`EnemyTypeConfig.sleepSprite`), it wears no hunt diamond,
+   * and its crown is unlit. Always false for players.
+   */
+  asleep: boolean;
+  /**
+   * Audio library prefix for this creature's own voice — the growl it makes
+   * in the dark and the call it makes on finding you. Carried on the drawable
+   * rather than looked up per sound, because the growl loop already has the
+   * body in hand and re-resolving a type key per frame per creature is a
+   * dictionary lookup a horde does not need. Empty for players.
+   */
+  voice: string;
   /** Visual kick (world px). Recoil for players, attack lunge / hit shove for enemies. */
   recoilX: number;
   recoilY: number;

@@ -374,6 +374,11 @@ BY_RARITY: dict[str, tuple[ItemDef, ...]] = {
 # `sanctuary` is the one place somebody built rather than abandoned.
 SCENE_TAGS: dict[str, tuple[str, ...]] = {
     "sanctuary": ("relics", "valuables", "nature"),
+    # A DEN'S LOOT IS ITS VICTIMS' POCKETS. Nothing was stored here and
+    # nothing was left as an offering — what is on this floor is what people
+    # were carrying when they were dragged in, which is why the tags are the
+    # walking-around ones and not a single military or supply row.
+    "den": ("dropped", "living", "valuables", "travel"),
     "roadside": ("travel", "dropped", "living"),
     "convoy": ("travel", "supplies", "military"),
     "medevac": ("medical", "supplies", "electronics"),
@@ -400,6 +405,13 @@ SCENE_TAGS: dict[str, tuple[str, ...]] = {
 SCENE_COUNTS: dict[str, tuple[float, int, int]] = {
     # (chance of at least one, min, max)
     "sanctuary": (1.0, 2, 3),
+    # THE SECOND-BEST SCATTER IN THE GAME, and it always pays, because the
+    # bargain has to be worth the animal. The shrine keeps the top of the
+    # ladder: its bargain is stated in props from across a clearing and taken
+    # by walking in, and it is the place a run is routed toward. A den is a
+    # thing you walk PAST — the loot has to be enough that stopping is a
+    # decision, and not so much that declining it feels like a loss.
+    "den": (1.0, 2, 2),
     "flight": (0.95, 1, 2),
     "medevac": (0.90, 1, 2),
     "checkpoint": (0.90, 1, 2),

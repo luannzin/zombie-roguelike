@@ -1,0 +1,27 @@
+{
+  "name": "wolf-alpha-death",
+  "sheet": "sheet.png",
+  "frameWidth": 32,
+  "frameHeight": 22,
+  "frames": 5,
+  "rows": {
+    "down": 0,
+    "left": 1,
+    "right": 2,
+    "up": 3
+  },
+  "idleFrame": 4,
+  "walkFrameOrder": [
+    0,
+    1,
+    2,
+    3,
+    4
+  ],
+  "fps": 12,
+  "loop": false,
+  "anchor": {
+    "x": 0.5,
+    "y": 1.0
+  }
+}

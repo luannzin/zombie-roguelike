@@ -66,6 +66,7 @@ never all of them.
 | **levels, upgrades, the cabinet** | **skills** | `docs/design/skills.md` |
 | the **look of the picture** — grade, bloom, fog, the lens, camera feel | **presentation** | `client/src/render/post/` + `docs/design/presentation.md` |
 | how **creatures notice, chase or react** | **enemies** | `docs/design/enemies.md` |
+| a **pack, a howl, or the thing asleep in the den** | **enemies** | `docs/design/enemies.md` § The pack / The miniboss |
 | **maps, scenes, props, objects, weather, zones** | **world** | `docs/design/world.md` |
 | the **boss fight** — his moves, the arena, the bar, which night | **enemies** | `docs/design/enemies.md` § THE SAWYER |
 | **moving, carrying, shooting, the bag or the belt** | **player** | `docs/design/player.md` |
@@ -203,13 +204,14 @@ These bind every subtree. Subsystem-specific rules live in the docs above.
 
 | scope | command |
 | --- | --- |
-| server | `python tests/test_snapshot_shape.py`, `test_pour.py`, `test_store_walk.py`, `test_config_parity.py`, `test_loot_frames.py`, `test_bush_cover.py`, `test_scenery_containers.py`, `test_creature_sheets.py`, `test_map_scale.py`, `test_boss_fight.py`, `test_gear.py` from `server/` — plain scripts, each prints `ok` |
+| server | `python tests/test_snapshot_shape.py`, `test_pour.py`, `test_store_walk.py`, `test_config_parity.py`, `test_loot_frames.py`, `test_bush_cover.py`, `test_scenery_containers.py`, `test_creature_sheets.py`, `test_map_scale.py`, `test_boss_fight.py`, `test_gear.py`, `test_pack.py` from `server/` — plain scripts, each prints `ok` |
 | client | `bun run typecheck` from `client/` — required after any change there |
 | client | `bun tests/grade.ts` from `client/` after touching `render/post/grade.ts` — plain script, prints `ok` |
 | client | `bun tests/exit-path.ts` from `client/` after touching `game/exit-path.ts` — plain script, prints `ok` |
 | client | `bun tests/weapon-pose.ts` from `client/` after touching `render/guns.ts`, `game/weapon-feel.ts` or `make_guns.py` — plain script, prints `ok`. It reads the REAL atlas manifest, so it fails if the generator stops appending action frames |
 | client | `bun tests/boss-clock.ts` from `client/` after touching `render/boss.ts`, `app/boss.py` or `make_sawyer.py` — plain script, prints `ok`. It reads the REAL sawyer manifest and pins the one thing nothing at runtime notices: that the frame on screen when a blow lands is the frame the art says it lands on |
 | assets | `python tools/make_armor.py` from `server/` after touching a worn overlay — it writes the raw art AND processes it, and it fails the build if any piece leaves the 16x16 player grid, which is the one way an overlay goes wrong invisibly |
+| assets | `python tools/make_wolf.py` from `server/` after touching the pack rig — it writes the raw art AND processes all seven sheets, and it fails the build if any pixel reaches a frame unshaded (which is what a part painted outside the mask pass looks like). Follow it with `test_creature_sheets.py`, which counts the heads |
 | assets | `python tools/make_sawyer.py` from `server/` after touching the boss rig — it is its own test: it fails the build if a one-shot does not start and end on the resting pose, or if any frame's art reaches the frame border |
 | both | run the server, open two browser tabs, confirm both players move, shoot and light the world without rubber-banding |
 
@@ -238,12 +240,28 @@ the muzzle, the ejection port and the off hand are the same pose, mirrored
 together — and that every firearm still has an action frame, APPENDED after
 the closed ones rather than interleaved.
 
-Run `test_creature_sheets.py` after touching `make_zombie.py` or reprocessing
-a creature: it checks that every creature and every accessory still has a
-`-death` timeline, that the grids are what the renderer assumes, and — the one
-worth having — that the three variants are still three SHAPES. S15's silhouette
-test as arithmetic: mask them, count the pixels and the top-contour columns
-that differ, and fail if a variant has become a recolour of another.
+Run `test_creature_sheets.py` after touching `make_zombie.py`, `make_wolf.py`
+or reprocessing a creature: it checks that every creature and every accessory
+still has a `-death` timeline, that the grids are what the renderer assumes
+(READ off each manifest — a quadruped is not 16x16), and — the two worth
+having — that the variants in a family are still different SHAPES, and that
+each wolf still has the right number of HEADS. S15's silhouette test as
+arithmetic: mask them, count the pixels and the top-contour columns that
+differ, and fail if a variant has become a recolour of another. The head count
+is the same trick one level up: every creature carries one lit accent pixel
+per socket, so counting embers on the face-on frame counts heads, and a fan
+that silently clipped one off the frame is invisible to everything else here.
+
+Run `test_pack.py` after touching the wolves, `ai.shout` / `ai.wake` /
+`MODE_SLEEP`, `EnemyType.group_min` / `persists`, `Room._seed_nests` or
+`mapgen.DEN_SCENES`. It drives the whole miniboss encounter with nobody
+watching: the den landing on the map, the thing asleep in the middle of it,
+the extraction siren and the abandonment timer both failing to reach it, the
+wake radius, the free beat it spends standing up, and the escape that walks it
+home and puts it back to sleep. It also pins the one thing about the HOWL that
+has no symptom — that it reaches its own kind at four times a shout's range
+and does not wake the dead, which would otherwise make it a strictly better
+shout that every future creature inherited by accident.
 
 Run `test_boss_fight.py` after touching `boss.py`, `arena.py`, or the transit
 in `room.py`: it drives a whole boss night with nobody watching — waking him,

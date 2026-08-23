@@ -110,7 +110,7 @@ from .rift import Rift
 from .store import Stand
 from .loot import Drop
 from .quests import Quest
-from .enemies import Enemy, EnemyType, dress
+from .enemies import ENEMY_TYPES, Enemy, EnemyType, dress
 from .world import FLOOR, VOID
 from .entities import (
     POUR_DUMP, POUR_LIFT, POUR_STOW, POUR_WALK,
@@ -964,6 +964,14 @@ class Room:
         standing in it (see `mapgen.HAUNT_SCENES`). Those are not a difficulty
         change — they are the answer to "why is this wreck dangerous", and the
         loot inside it stops being a chore the moment there is one.
+
+        AND A FOURTH COLUMN SAYS WHAT. Everything above takes whatever the
+        director is already spawning, because the story those scenes tell is
+        about people and the people are interchangeable. A DEN is not: the
+        scene exists because of the animal in it, so `mapgen.DEN_SCENES` names
+        the type key and this is the only place in the game that spawns a
+        creature the spawn table has never heard of. It arrives ASLEEP — see
+        `spawn_enemy`.
         """
         nests = getattr(self.world, "nests", None)
         if not nests or not self.zone.hostile:
@@ -975,11 +983,21 @@ class Room:
         for row in nests:
             x, y = row[0], row[1]
             asked = row[2] if len(row) > 2 else 0
+            named = ENEMY_TYPES.get(row[3]) if len(row) > 3 and row[3] else None
             count = rng.randint(*NEST_PACK) if asked <= 0 else asked
             # A pair standing in a wreck belongs IN the wreck; a shrine's guard
             # has to stay off the altar. Same two numbers, scaled to the group.
             spread = NEST_SPREAD if asked <= 0 else NEST_SPREAD * 0.55
             inner = NEST_INNER if asked <= 0 else 0.6
+            if named is not None:
+                # A DEN'S OCCUPANT IS THE MIDDLE OF ITS OWN SCENE. Everything
+                # else here is scattered because a group standing on one tile
+                # is a stack of sprites; there is one of these, the bones are
+                # laid denser toward the spot it is lying on, and a miniboss
+                # rolled two tiles off centre would be a miniboss asleep in
+                # the treeline next to a hollow with nothing in it.
+                spread = inner = 0.0
+
             for _ in range(count):
                 angle = rng.uniform(0, math.tau)
                 radius = rng.uniform(inner, spread) * TILE_SIZE
@@ -992,7 +1010,7 @@ class Room:
                 )
                 if spot is None:
                     continue
-                self.spawn_enemy(rng.choice(types), spot[0], spot[1])
+                self.spawn_enemy(named or rng.choice(types), spot[0], spot[1])
 
     def _ambush(self, crate: Crate, victim: Player) -> bool:
         """Put one creature on the tile the object was standing on.
@@ -2659,8 +2677,16 @@ class Room:
         # stacked frame of noise.
         enemy.attack_cooldown = random.uniform(0.0, enemy_type.attack_cooldown)
         dress(enemy)
+        # A CREATURE THAT SLEEPS ALWAYS ARRIVES ASLEEP, and it is decided here
+        # rather than at the one call site that places one. There is exactly
+        # one such creature today and it is only ever placed by `_seed_nests`,
+        # but "sometimes it spawns awake" is a state nothing in `ai.py` is
+        # written for — its whole encounter is the beat before it stands up —
+        # so the stat block is what decides, once, for every path in.
+        if enemy_type.sleeps:
+            enemy.mode = ai.MODE_SLEEP
         self.enemies[enemy.id] = enemy
-        if self.panic:
+        if self.panic and not enemy.asleep:
             living = [p for p in self.players.values() if p.alive]
             if living:
                 target = min(

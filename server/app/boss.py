@@ -155,28 +155,24 @@ class Move:
         return TILE_SIZE * self.reach_tiles
 
     def client_payload(self) -> dict:
-        """What the client needs to DRAW this move before it happens.
+        """What the client needs to draw the bar's PATH through this move.
 
-        THE TELEGRAPH IS THE HITBOX OR IT IS A LIE. A ground marker that
-        promises a 3.6-tile wedge in front of a boss whose chop actually
-        reaches 4.0 teaches the player a rule the simulation does not keep,
-        and they learn it by stepping to the edge of the mark and dying there.
-        So the shape on the floor is drawn from these numbers, which are the
-        same numbers `_in_arc` tests against — not from a constant somebody
-        matched by eye.
+        Three numbers and no more. The client's `boss-vfx.tipAt` puts a trail
+        on the nose of the bar, and to do that it has to know where in the
+        swing the bar is: `windup` and `active` bracket the fast part, and
+        `reach` is how far out the nose rides.
 
-        The TIMINGS come too, because the mark has to fill up in step with the
-        windup, and the windup is the art's number (see `_clip`). A marker
-        that finishes early is a marker that cried wolf.
+        It used to carry the hitbox as well — `arcDegrees`, `damage` — for a
+        ground telegraph that has since been cut (see the client module's
+        header for why). Those went with it rather than being left on the
+        payload: a field nothing reads is a field the next person has to work
+        out whether they are allowed to change.
         """
         return {
             "key": self.key,
             "windup": round(self.windup, 4),
             "active": round(self.active, 4),
-            "recover": round(self.recover, 4),
-            "damage": self.damage,
             "reach": round(self.reach, 2),
-            "arcDegrees": self.arc_degrees,
         }
 
 
@@ -186,13 +182,12 @@ def moves_payload() -> dict:
 
 
 def crescent_payload() -> dict:
-    """The thrown crescent's reach, for the lane the client draws under `rip`.
+    """The thrown crescent's own geometry.
 
-    `rip`'s own `reach` is zero — nothing leaves his hands that touches
-    anybody, the crescent does — so the lane it telegraphs is the crescent's
-    travel, which is speed times life. Derived here rather than in the client
-    for the same reason the arcs are: it is the distance the simulation will
-    actually carry the thing.
+    `rip`'s `reach` is zero — nothing leaves his hands that touches anybody,
+    the crescent does — so the client sizes the throw's trail off this
+    instead. `reach` is speed times life: how far the simulation will actually
+    carry the thing.
     """
     return {
         "speed": round(TILE_SIZE * BOSS_CREST_SPEED_TILES, 2),

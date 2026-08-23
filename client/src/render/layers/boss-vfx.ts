@@ -1,31 +1,24 @@
 /**
- * What his attacks LOOK like before, during and after they land.
+ * What his attacks look like while they happen. Two jobs, both after the fact.
  *
- * Three separate jobs, and they are separate because they answer three
- * different questions the player is asking at three different moments:
+ *   THE TRAIL   "what just moved?" — a white-hot ribbon through the path the
+ *               bar took, plus the wind circling him through a spin.
+ *   THE IMPACT  "what did it hit?" — a crescent thrown across the contact
+ *               point, shaped like the swing rather than round.
  *
- *   THE TELEGRAPH   "where is this going to hit?" — a mark on the ground,
- *                   during the windup, in the exact shape the server will
- *                   test. Drawn UNDER the bodies.
- *   THE TRAIL       "what just moved?" — a white-hot ribbon through the path
- *                   the bar took. Drawn OVER the bodies.
- *   THE RING        "he is spinning" — wind circling him for the length of
- *                   the sweep, which is the one attack whose danger is a
- *                   circle rather than a direction.
+ * THERE ARE NO GROUND TELEGRAPHS AND THAT IS A DECISION, not an omission.
+ * This module used to paint the hitbox on the floor during every windup — a
+ * wedge for the chop, a closing ring for the sweep, a lane for the throw —
+ * drawn from `welcome.config.bossMoves` so the mark could not lie about the
+ * reach. It read as a different genre. This is a dark forest where the tell
+ * is a lantern finding a shape, and a boss who announces himself in tidy
+ * orange geometry is a boss from an arena game standing in it. The telegraph
+ * is still there; it is just the ANIMATION doing it, which is what the windup
+ * frames were authored for in the first place (see `make_sawyer.py`, and the
+ * length of every recovery in `boss.py`).
  *
- * THE TELEGRAPH IS THE HITBOX. Its radius and its arc come off
- * `welcome.config.bossMoves`, which `boss.Move.client_payload` builds from
- * the same numbers `_in_arc` tests against, and it fills over exactly the
- * windup the art authored. Nothing here is a shape somebody matched by eye —
- * a marker that promises a smaller wedge than the swing delivers teaches the
- * player a rule the simulation does not keep, and they learn it by standing
- * at the edge of the mark and dying there.
- *
- * GROUND MARKS ARE SQUASHED BY THE CAMERA, not by taste. `GROUND_SQUASH` is
- * the cosine of S1's pitch: a circle painted on the floor of a world seen
- * from 57 degrees above the horizon is an ellipse a little over half as tall
- * as it is wide. Drawing it round would read as a disc standing upright in
- * front of him.
+ * What the move table is still needed for is TIMING: `tipAt` reads each
+ * move's windup and active window to know where in its arc the bar is.
  *
  * THE TRAIL IS PRESENTATION AND LIVES ENTIRELY ON THIS SIDE. The bar's tip is
  * not on the wire and should not be: it is sixty samples a second of
@@ -34,6 +27,11 @@
  * poses the sprite on — see `SWING`. They agree because both are driven by
  * the same `t`; re-time a clip's arc in the generator and this table is the
  * other half that has to move.
+ *
+ * `GROUND_SQUASH` is the cosine of S1's pitch. The bar sweeps in a vertical
+ * plane and the ribbon is that sweep seen from 57 degrees above the horizon,
+ * so it is a little over half as tall as it is wide. Drawn round it would
+ * read as a hoop standing up in front of him.
  */
 
 import type { Projection } from '../projection';
@@ -123,152 +121,6 @@ export function tipAt(row: BossRow, config: GameConfig): { x: number; y: number 
 
 function clamp01(value: number): number {
   return value < 0 ? 0 : value > 1 ? 1 : value;
-}
-
-/**
- * The mark on the floor. Drawn BEFORE the bodies, so a player standing in it
- * is standing in it rather than behind it.
- *
- * It exists during the windup and for the frames the hitbox is open, and it
- * does two things over that time: it FILLS (the wedge sweeps out from his
- * facing) and it HEATS (his gold runs to red as the blow gets closer). Two
- * channels rather than one, because a mark that only fills is a mark you have
- * to be looking at to read, and a mark that only heats does not tell you how
- * long you have.
- */
-export function drawBossTelegraph(
-  ctx: CanvasRenderingContext2D,
-  view: Projection,
-  row: BossRow,
-  config: GameConfig,
-): void {
-  if (row.s !== 'windup' && row.s !== 'strike') return;
-  const name = row.m;
-  const move = name ? config.bossMoves?.[name] : undefined;
-  if (!move) return;
-
-  const striking = row.s === 'strike';
-  // 0 at the start of the windup, 1 on the frame it lands.
-  const charge = striking ? 1 : clamp01(row.t / Math.max(0.001, move.windup));
-  const aim = Math.atan2(row.ay, row.ax);
-  const zoom = view.zoom;
-  const cx = view.x(row.x);
-  const cy = view.y(row.y);
-
-  ctx.save();
-  ctx.globalCompositeOperation = 'lighter';
-
-  if (name === 'rip') {
-    drawLane(ctx, cx, cy, aim, zoom, charge, striking, config);
-  } else if (move.arcDegrees >= 179) {
-    drawRing(ctx, cx, cy, move.reach * zoom, charge, striking);
-  } else if (move.reach > 0) {
-    drawWedge(ctx, cx, cy, aim, move.reach * zoom, move.arcDegrees, charge, striking);
-  }
-
-  ctx.restore();
-}
-
-/** Colour of the mark at a given charge: his gold, running to red. */
-function heat(charge: number, alpha: number): string {
-  const r = Math.round(242 + (230 - 242) * charge);
-  const g = Math.round(165 + (72 - 165) * charge);
-  const b = Math.round(65 + (79 - 65) * charge);
-  return `rgba(${r},${g},${b},${alpha})`;
-}
-
-/** The chop: a pie slice out of his facing, sweeping open as it charges. */
-function drawWedge(
-  ctx: CanvasRenderingContext2D,
-  cx: number,
-  cy: number,
-  aim: number,
-  reach: number,
-  arcDegrees: number,
-  charge: number,
-  striking: boolean,
-): void {
-  const half = ((arcDegrees / 2) * Math.PI) / 180;
-  const grown = half * (0.3 + 0.7 * charge);
-  ctx.save();
-  ctx.translate(cx, cy);
-  ctx.scale(1, GROUND_SQUASH);
-
-  // The FILL is faint and the EDGE is not. A solid wedge under a boss is a
-  // wedge you cannot see anything else through, and what the player is
-  // reading in that half second is where their own feet are.
-  ctx.beginPath();
-  ctx.moveTo(0, 0);
-  ctx.arc(0, 0, reach, aim - grown, aim + grown);
-  ctx.closePath();
-  ctx.fillStyle = heat(charge, striking ? 0.30 : 0.10 + 0.14 * charge);
-  ctx.fill();
-
-  ctx.lineWidth = (striking ? 2.4 : 1.4) / GROUND_SQUASH * 0.6;
-  ctx.strokeStyle = heat(charge, striking ? 0.85 : 0.35 + 0.45 * charge);
-  ctx.stroke();
-  ctx.restore();
-}
-
-/** The sweep: a ring, because the danger is every direction at once. */
-function drawRing(
-  ctx: CanvasRenderingContext2D,
-  cx: number,
-  cy: number,
-  reach: number,
-  charge: number,
-  striking: boolean,
-): void {
-  ctx.save();
-  ctx.translate(cx, cy);
-  ctx.scale(1, GROUND_SQUASH);
-
-  // An ANNULUS that closes inward, not a disc that fills. The ring shrinking
-  // onto him is the thing that reads as "this is about to go off", and it is
-  // the same language a fuse has.
-  const inner = reach * (1 - charge) * 0.92;
-  ctx.beginPath();
-  ctx.arc(0, 0, reach, 0, Math.PI * 2);
-  ctx.arc(0, 0, inner, 0, Math.PI * 2, true);
-  ctx.fillStyle = heat(charge, striking ? 0.26 : 0.08 + 0.16 * charge);
-  ctx.fill('evenodd');
-
-  ctx.beginPath();
-  ctx.arc(0, 0, reach, 0, Math.PI * 2);
-  ctx.lineWidth = striking ? 2.6 : 1.6;
-  ctx.strokeStyle = heat(charge, striking ? 0.9 : 0.4 + 0.45 * charge);
-  ctx.stroke();
-  ctx.restore();
-}
-
-/** The throw: a lane the length the crescent will actually travel. */
-function drawLane(
-  ctx: CanvasRenderingContext2D,
-  cx: number,
-  cy: number,
-  aim: number,
-  zoom: number,
-  charge: number,
-  striking: boolean,
-  config: GameConfig,
-): void {
-  const spec = config.bossCrescent;
-  if (!spec) return;
-  const length = spec.reach * zoom * (0.35 + 0.65 * charge);
-  const half = spec.radius * zoom;
-  ctx.save();
-  ctx.translate(cx, cy);
-  ctx.rotate(aim);
-  ctx.scale(1, GROUND_SQUASH);
-
-  ctx.beginPath();
-  ctx.rect(0, -half, length, half * 2);
-  ctx.fillStyle = heat(charge, striking ? 0.26 : 0.08 + 0.14 * charge);
-  ctx.fill();
-  ctx.lineWidth = striking ? 2.4 : 1.4;
-  ctx.strokeStyle = heat(charge, striking ? 0.85 : 0.32 + 0.45 * charge);
-  ctx.stroke();
-  ctx.restore();
 }
 
 /**

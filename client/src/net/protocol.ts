@@ -189,16 +189,16 @@ export interface GameConfig {
   bossName: string;
   bossTitle: string;
   /**
-   * Every move's SHAPE and CLOCK, keyed by clip name.
+   * Every move's CLOCK and reach, keyed by clip name.
    *
-   * The client draws the ground telegraph from these, and that is the whole
-   * reason they are on the wire rather than in a constant here: the mark on
-   * the floor is the hitbox `boss._in_arc` will test, drawn at the reach and
-   * arc it will test at, filling over the windup the art authored. A marker
-   * matched by eye is a marker that lies the first time anybody tunes a reach.
+   * The client puts a trail on the nose of the bar and needs to know where in
+   * its swing the bar is; these are the server's own timings, which are in
+   * turn the art's (see `boss._clip`). Shipped rather than copied because a
+   * trail timed off a second opinion drifts off the sprite it is supposed to
+   * be leaving.
    */
   bossMoves: Record<string, BossMove>;
-  /** How far the thrown crescent travels, for the lane `rip` telegraphs. */
+  /** The thrown crescent's geometry. Sizes the throw's trail. */
   bossCrescent: BossCrescentSpec;
   /** The fire plus the seat ring, in tiles: nothing grows inside it. */
   hearthTiles: number;
@@ -1526,20 +1526,15 @@ export interface BossRow {
   crest?: BossCrescent[];
 }
 
-/** One attack's shape and clock. See `boss.Move.client_payload`. */
+/** One attack's clock and reach. See `boss.Move.client_payload`. */
 export interface BossMove {
   key: string;
   /** Seconds from the start of the clip to the frame the blow lands. */
   windup: number;
   /** Seconds the hitbox is open. */
   active: number;
-  /** Seconds rooted afterwards — the punish window. */
-  recover: number;
-  damage: number;
-  /** World px, centre to the edge of the swing. Zero for a move that throws. */
+  /** World px, centre to the nose of the bar. Zero for a move that throws. */
   reach: number;
-  /** Full angle of the arc it covers. 180 is everything around him. */
-  arcDegrees: number;
 }
 
 export interface BossCrescentSpec {

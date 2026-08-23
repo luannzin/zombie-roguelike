@@ -23,6 +23,31 @@ and nowhere near the frame loop.
 - `ui/` — coss primitives (Base UI + shadcn-style copy-in). **Generated. Do not
   hand-edit.**
 
+### The boss bar
+
+`hud/BossBar.tsx` is the only panel in the game that names an enemy. Two rules
+it keeps and neither is cosmetic:
+
+- **NO NUMBER ON IT.** `ProgressBar` shows "62 / 100" because the player's own
+  health is a resource they budget with. His is a DISTANCE — the question it
+  answers is "am I getting anywhere", and 1840 / 2460 answers that worse than
+  a line does.
+- **TWO FILLS, NOT ONE.** A lead that tracks his health instantly and a paler
+  chase that lags a quarter of a second behind it, so every hit leaves a
+  bright wound on the bar that closes up after it. A body with 2460 health
+  moves a bar about a pixel a shot, and a pixel is not feedback; the gap
+  between the two fills is what a player actually reads as "that landed". It
+  is a CSS transition duration — no timer, and it degrades honestly under
+  `prefers-reduced-motion`.
+
+It is also the one panel NOT inside the `chrome` fade. Every other corner goes
+away for a cinematic because the screen stops being yours; the bar has the
+opposite job — it comes UP as the cinematic ends, and it is what says the
+screen is yours again and what it is now for. It holds itself up for a beat
+after he dies (`slain`), because the payoff of a two-minute fight is watching
+the bar reach zero and a panel that unmounts at zero takes that away on the
+frame it is worth something.
+
 ## Route
 
 A HUD element is the **face** of a subsystem, never its owner. What it shows is

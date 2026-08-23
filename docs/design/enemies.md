@@ -62,6 +62,11 @@ walk. Awareness is pinned, so the diamond is already lit. See
 | senses, hunt, steering, the director | `server/app/ai.py` |
 | stat blocks, variants, accessories | `server/app/enemies.py` + a processed sprite folder of the same name |
 | what the BOSS looks like, or a new clip of his | `server/tools/make_sawyer.py` — one rig, one shader, poses as angles. Read its header before adding a clip |
+| how the boss FIGHTS — a move, a range band, a timing | `server/app/boss.py` + `server/app/config.py` (`BOSS_*`). Timings come off the art; never type one |
+| which night the fight happens on | `server/app/config.py` (`BOSS_DAY`), and nothing else |
+| the yard: its size, its fires, what is lying in it | `server/app/arena.py` |
+| how the fight FEELS — shake, blood, sound, the grade | `client/src/game/boss.ts` (`punchFor` is the whole table), `client/src/render/post/looks.ts` (`arenaLook` / `enrageLook`) |
+| his health bar and his name | `client/src/components/hud/BossBar.tsx` |
 | what a creature LOOKS like | `server/tools/make_zombie.py` — three anatomies (`Build.kind`), one derived ramp each, then `process_sprites.py --exact` for the sheet AND its `-death` |
 | tuning (reach, rates, group sizes, `BUSH_CONCEAL_SCALE`) | `server/app/config.py` |
 | where undergrowth is, on both sides | `world.tile_hash` / `TileMap.bush_at` + `client/src/render/layers/terrain.ts` |
@@ -120,10 +125,11 @@ the wire protocol pair.
 
 ## THE SAWYER — the first boss
 
-**Art only, so far.** `assets/processed/sawyer/` and `server/tools/make_sawyer.py`
-exist and are finished; nothing in `server/app/` knows about him yet. What
-follows is the reasoning the art was made under, so that the mechanics, when
-they are written, are written against it rather than around it.
+**Shipped.** `server/app/boss.py` (the fight), `server/app/arena.py` (the
+yard), `client/src/game/boss.ts` (how it feels), `client/src/render/boss.ts`
+(how it is drawn) and `client/src/components/hud/BossBar.tsx` (his name and
+his health). Which night it happens on is `config.BOSS_DAY`, read in exactly
+one place. What follows is why it is shaped the way it is.
 
 - **HE IS ONE OF THE DEAD, DRAWN BIGGER.** Every material on him is a ramp
   another creature is already made of — the brute's `HIDE` at a boss's value,
@@ -180,14 +186,45 @@ they are written, are written against it rather than around it.
   `rev` runs to zero across the collapse, which takes the ember out, stops the
   shake and stops the chain. He is the only thing in the game with lights to
   lose, and losing them is the last event on the sheet.
-- **WHAT IS STILL OPEN.** Where he is fought and what starts him (a quest
-  completion? entering a place? see [`extraction.md`](extraction.md)); his
-  stat block and whether he is an `EnemyType` at all or his own entity; whether
-  the crescent is a projectile the existing damage path can carry; and what he
-  drops. None of that is decided, and the art deliberately does not assume it —
-  the manifest carries his `footprint` and `height` in TILES precisely so a
-  hitbox is never taken off `frameWidth`, which is sized by his swing and is
-  seven tiles across.
+- **HE IS AT THE END OF THE WAY OUT, AND THAT IS THE WHOLE STAGING.** The
+  party does a normal night — find the pads, feed them, call the pickup, walk
+  to the exit — and the exit corridor opens onto a yard instead of onto the
+  shop. Nothing announces it. They are not sent to fight him; they are leaving,
+  and he is what is between them and leaving. Every other framing considered
+  (a quest row, a door, a choice at the console) makes the fight a thing the
+  party opted into, and the one this game can afford to say is "you were
+  already going this way".
+- **THE YARD IS A CIRCLE BECAUSE EXPLORING IS OVER.** `mapgen` builds forests
+  out of noise, which is right for a place whose game is not being able to see
+  across it. A boss fight wants the opposite: one legible space, no dead ends
+  to be cornered in, no rock to lose a 41-pixel chainsaw behind, and a rim you
+  can put your back to without being safe. So `arena.py` is authored — a disc,
+  a corridor in, a ring of fires — and the dressing stays on the outer band so
+  nothing is ever between the camera and the fight.
+- **THE LIGHT IS NINE BURNING DRUMS AND THE FLOOR IS STILL BLACK.** The zone
+  keeps `ambient` at zero like every other place a player can die. The rule
+  was never "hostile places are dark", it is that light must come from
+  something you can point at — and a ring of `world.FIRE` tiles gives the yard
+  its light, its shadows, its rim and a boss silhouetted from behind wherever
+  he stands, with no new asset and no new client code.
+- **THE EXIT IS SHUT BY NOT EXISTING.** `build_arena` carves the way IN and
+  nothing else; `Room._boss_down` calls `entrance.open_exit` on the frame he
+  falls. A door that is drawn and locked invites a party to stand in it. A
+  treeline with no gap in it is a treeline.
+- **HIS HEALTH SCALES WITH THE GUNS POINTED AT HIM** (`boss.hp_for`), and the
+  first player is worth more than the rest — a party also brings more ways to
+  be revived and more bodies for him to have to choose between. The fight is
+  authored around its LENGTH: long enough to learn the telegraphs, short
+  enough that learning them pays off.
+- **NOTHING ELSE IS INVITED.** The director does not run in the arena. It
+  would remove tension rather than add it — every telegraph would happen in a
+  crowd — and it would break the health arithmetic, because guns pointed at a
+  zombie are guns he does not have to survive.
+- **WHAT IS STILL OPEN.** A second phase with a different move set; whether he
+  should drop something other than coins and xp (a weapon? the art has an
+  obvious one); and whether a party that WIPES in the yard should lose the
+  night's takings — at the moment they respawn and the receipt survives,
+  which is the forgiving reading.
 
 ---
 

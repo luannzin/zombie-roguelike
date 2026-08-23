@@ -19,6 +19,8 @@ mutation, no React.
 | `scenery.ts` | scenery atlas loading: standing props and flat decals of what people left |
 | `vfx.ts` | effect atlas loading: one-shot sheets (summon — a lobby arrival AND a level-up — kindle, wind, death) and the looping loot `aura`. GREYSCALE, tinted per player |
 | `weapon-vfx.ts` | the fire at a barrel: muzzle, the shotgun's cone, impacts. ORIENTED (rotated onto the aim about `anchorX`) and un-tinted — fire is not anybody's colour |
+| `boss.ts` | the Sawyer's atlas — facing clips, the facing-less spin, the crescent's eight baked headings — and the frame picker. THE THIRD KIND OF ANIMATED THING here: clips like the merchant, authoritative like a body. `t` off the wire is the CLIP's playhead and this file does no arithmetic on it (see `client/tests/boss-clock.ts`) |
+| `layers/boss.ts` | him, painted: the frame, his contact pool sized off his FOOTPRINT (never the frame), the silhouette flash on every landed hit, and the crescents |
 | `rift.ts` | threshold atlas: the console prop with its four STATES, the torch prop and its fire, the paid console's band, the exit's paving |
 | `platform.ts` | extraction atlas: the cargo skid (cold / green standby / red alarm) and lift drone (hover / cruise) props, rotor / strobe / standby / siren / downwash / burst effect sheets, the imprint decal, and the `layout` block the ropes and lamps are drawn from |
 | `layers/rift.ts` | extraction pads: the whole rig's timing (`riftPhase`) plus its four passes — floor, depth sort, the air, additive light — and the deck's LOAD, both the pile at rest and what is still falling into it |

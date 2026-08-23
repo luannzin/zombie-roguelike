@@ -630,6 +630,123 @@ SHOT_RANGE = TILE_SIZE * SHOT_RANGE_TILES       # 128 px @ TILE_SIZE=16
 MUZZLE_OFFSET = TILE_SIZE * MUZZLE_OFFSET_TILES # 4 px
 SHOT_DAMAGE = 8
 
+# --- the boss (authored in tiles/seconds) ------------------------------------
+# THE SAWYER. One night in a run ends in a fight instead of a walk, and which
+# night that is lives here — the only knob anybody should need to move it.
+#
+# EVERY TIMING HE HAS IS SOMEWHERE ELSE ON PURPOSE. His windups, his recoveries
+# and the length of his arrival are read out of
+# `assets/processed/sawyer/manifest.json` by `boss.py`, because the telegraph a
+# player learns the fight from is the animation, and a duration typed here
+# would be a second opinion about it. What lives in this file is what the ART
+# cannot know: how hard he hits, how far he reaches, how long he waits.
+
+#: The day the arena replaces the walk to the shop. Set to 1 to test it on the
+#: first night. `None` disables the fight entirely.
+#:
+#: It is a DAY NUMBER rather than a flag because the fight is a milestone in a
+#: run, and a run's shape is measured in nights. `Room` tests it once, on the
+#: crossing, so changing it mid-session takes effect on the next night.
+BOSS_DAY: int | None = 1
+
+#: His health, and how much a second, third and fourth gun add. See
+#: `boss.hp_for` — the first player is worth more than the rest.
+BOSS_HP_BASE = 900
+BOSS_HP_PER_EXTRA = 520
+
+#: Slower than a player runs (4.4 t/s), and that is the contract the whole
+#: fight rests on: he is always outrunnable, so every hit he lands is a hit
+#: somebody chose to stand still for.
+BOSS_SPEED_TILES = 2.9
+#: Degrees per second he may turn while free. Low enough that circling him
+#: WORKS, which is the fight's answer to the chop.
+BOSS_TURN_DEGREES = 190.0
+
+#: Seconds between moves, before the roll in `boss._wait` spreads it.
+BOSS_ATTACK_COOLDOWN = 1.35
+
+#: Under this fraction of his health he roars and speeds up.
+BOSS_ENRAGE_AT = 0.5
+#: What the enrage multiplies. Under one for the wait, over one for the walk.
+BOSS_ENRAGE_RATE = 0.62
+BOSS_ENRAGE_SPEED = 1.18
+
+#: The overhead chop: narrow, long, and the biggest number in the fight.
+BOSS_CHOP_DAMAGE = 34
+BOSS_CHOP_REACH_TILES = 3.6
+#: The spin: everything within reach, for a second and a half.
+BOSS_SWEEP_DAMAGE = 26
+BOSS_SWEEP_REACH_TILES = 3.4
+#: The landing, in the cinematic and on nothing else.
+BOSS_STOMP_DAMAGE = 22
+BOSS_STOMP_REACH_TILES = 4.0
+
+#: The thrown crescent. Slow enough to walk out of BY DESIGN — it is the
+#: answer to standing still at range, so a moving player must never be hit by
+#: one they saw leave the bar.
+BOSS_CREST_DAMAGE = 22
+BOSS_CREST_SPEED_TILES = 7.2
+BOSS_CREST_LIFE = 1.9
+BOSS_CREST_RADIUS_TILES = 0.85
+#: How far out he will still choose to throw one.
+BOSS_RIP_RANGE_TILES = 11.0
+
+#: His own melee i-frames, per victim. Longer than `MELEE_IMMUNITY` because
+#: his sweep's hitbox is open for a second and a half and would otherwise bill
+#: the same body every tick of it.
+BOSS_MELEE_IMMUNITY = 0.85
+
+#: Hit capsule and sprite height, in tiles. He is three and a half tiles tall
+#: and his capsule is over two wide — a body this size wants a hitbox that
+#: matches what the player can see, or shots that visibly connect will miss.
+BOSS_HIT_TILES_R = 1.05
+BOSS_SPRITE_TILES_H = 3.44
+
+#: What he is worth. Coins hit the FLOOR like any other kill — after two
+#: minutes of dodging a chainsaw, walking round picking up his takings is the
+#: exhale the beat wants, and a number that appeared in the bank would have
+#: nothing to do with the fight that earned it.
+BOSS_COINS = 34
+#: xp, and it is paid to EVERYBODY. He is not a kill somebody stole; a party
+#: that stood in that ring together levels together.
+BOSS_XP = 420
+
+# --- the arena (authored in tiles) -------------------------------------------
+#: The ring they fight in, and it is sized against the VIEWPORT rather than
+#: against a feeling.
+#:
+#: The camera sits at `ARENA_ZOOM` = 4, so a 1280x720 canvas shows twenty
+#: tiles across and eleven down. A ring wider than that is a ring the player
+#: is fighting inside without being able to see — they lose the boss off the
+#: edge of the screen while kiting him, which turns the one fight in the game
+#: built around reading a telegraph into a fight about guessing where he went.
+#: Thirty tiles across is half again the view: enough to run, never enough to
+#: lose him.
+#:
+#: The first cut was 21 (forty-two across) on the argument that a boss arena
+#: should feel big. It felt empty, and at that size the ring of fires — which
+#: is the whole light and the whole edge of the place — was never on screen
+#: with him.
+ARENA_RADIUS_TILES = 15.0
+#: Burning fuel drums around the rim. THE ARENA'S ONLY LIGHT: this zone keeps
+#: `ambient` at zero like every other place a player can die, and what makes
+#: it legible is a ring of fires you can see the boss silhouetted against.
+ARENA_FIRES = 9
+ARENA_FIRE_LIGHT_TILES = 7.5
+#: How far into the ring the party has to walk before he comes down.
+ARENA_TRIGGER_TILES = 7.0
+#: How far IN FRONT of whoever tripped it he lands, in tiles.
+#:
+#: He does not land where he was standing. The camera follows the player and
+#: shows five and a half tiles above them; his entrance starts seven and a
+#: half tiles up and falls, so unless the landing point is close, the whole
+#: cinematic — the shadow, the drop, the impact — happens off the top of
+#: somebody's screen. Landing him a fixed distance ahead of the trigger, along
+#: the line they are already walking, puts it in the middle of the frame every
+#: time and reads as the better story anyway: he comes down in front of you,
+#: not somewhere over there.
+ARENA_LAND_AHEAD_TILES = 4.5
+
 # --- networking -------------------------------------------------------------
 SNAPSHOT_EVERY_N_TICKS = 1   # broadcast rate = TICK_RATE / this
 # A snapshot row carries only what MOVES. Names, colours and the score board
@@ -660,6 +777,18 @@ def level_progress(xp: int) -> tuple[int, int, int]:
 def _finite(value: float) -> float | None:
     """`None` for an infinite deadline, so the payload stays valid JSON."""
     return value if math.isfinite(value) else None
+
+
+def _boss_name() -> str:
+    """His name, from the module that owns him. Imported late — `boss.py`
+    reads TILE_SIZE out of this one, so a module-scope import is a cycle."""
+    from .boss import NAME
+    return NAME
+
+
+def _boss_title() -> str:
+    from .boss import TITLE
+    return TITLE
 
 
 def client_config() -> dict:
@@ -710,6 +839,13 @@ def client_config() -> dict:
         # Camp geometry. The client needs it to keep undergrowth out of the
         # hearth and to light the fire it can already see in the tiles.
         "campfireLightTiles": CAMPFIRE_LIGHT_TILES,
+        # WHO THE PARTY IS FIGHTING, and it is shipped rather than hardcoded
+        # in the HUD for the reason every other string is: the client renders
+        # what the server says the world contains. A name kept in a React
+        # component is a name that drifts from `boss.py` in silence, on the
+        # one label an entire fight is announced with.
+        "bossName": _boss_name(),
+        "bossTitle": _boss_title(),
         "hearthTiles": CAMP_HEARTH_TILES,
         "ringTilesX": CAMP_RING_TILES_X,
         "ringTilesY": CAMP_RING_TILES_Y,

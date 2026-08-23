@@ -67,6 +67,7 @@ never all of them.
 | the **look of the picture** — grade, bloom, fog, the lens, camera feel | **presentation** | `client/src/render/post/` + `docs/design/presentation.md` |
 | how **creatures notice, chase or react** | **enemies** | `docs/design/enemies.md` |
 | **maps, scenes, props, objects, weather, zones** | **world** | `docs/design/world.md` |
+| the **boss fight** — his moves, the arena, the bar, which night | **enemies** | `docs/design/enemies.md` § THE SAWYER |
 | **moving, carrying, shooting, the bag or the belt** | **player** | `docs/design/player.md` |
 | a **pixel or a sound that must be regenerated** | **asset pipeline** | `assets/AGENTS.md` -> `server/tools/AGENTS.md` |
 
@@ -181,6 +182,7 @@ These bind every subtree. Subsystem-specific rules live in the docs above.
   - `world.tile_hash` <-> `client/src/render/terrain.ts`'s `tileHash` — where the undergrowth IS. The client draws bushes from it and `ai.look` now shortens a creature's reach over the same tiles, so the two must agree bit for bit (`Math.imul` is a 32-bit multiply; plain Python `*` drifts after a few thousand tiles). `tests/test_bush_cover.py` pins it against browser values
   - `make_player.py`'s `HOLD_ARM_X` <-> `client/src/render/guns.ts`'s `GUN_GRIP_SIDE` and `arms.ts`'s `WRIST_OUT` / `SHOULDER_OUT` — WHICH HAND the weapon is in. The sheet draws a holding pose with the weapon arm raised on one side; the client places the grip, and starts the drawn forearm, off the same side. Move one alone and the weapon floats beside a body whose arm is out the other way
   - `make_platform.py`'s deck <-> `client/src/game/pad-cargo.ts` — where a poured item comes to rest. Fractions of the sprite, re-derived rather than shipped; a skid re-proportioned without them stacks loot on the grass
+  - `assets/processed/sawyer/manifest.json` <-> `server/app/boss.py` <-> `client/src/render/boss.ts` — WHEN THE BAR LANDS. The manifest's event frames are the boss's windups and recoveries: the server reads them at import and derives its hitbox timings, and the client draws frame `t * fps` off the playhead the server sends. Nobody holds a copy of anybody's number. Type a duration into `boss.py` and the fight becomes unfair in a way no screenshot shows — the blow lands before the animation says it does. `bun tests/boss-clock.ts` pins it
 - **Sizes, speeds and distances are authored in tiles/seconds** and multiplied by `TILE_SIZE`. No raw pixel numbers.
 - **All colours and type live in `client/src/styles/index.css`**, read by the canvas through `client/src/theme/`.
 - **The WORLD is pixel art; the LIGHT, the AIR and the LENS are not.** Every `render/layers/` pass draws into an offscreen 2D surface at one pixel per pixel, and `render/post/` finishes that surface on the GPU with nothing nearest-filtered. Do not pixelate an effect to "match", and do not draw on the visible canvas from anywhere but the post chain.
@@ -193,11 +195,12 @@ These bind every subtree. Subsystem-specific rules live in the docs above.
 
 | scope | command |
 | --- | --- |
-| server | `python tests/test_snapshot_shape.py`, `test_pour.py`, `test_store_walk.py`, `test_config_parity.py`, `test_loot_frames.py`, `test_bush_cover.py`, `test_scenery_containers.py`, `test_creature_sheets.py`, `test_map_scale.py` from `server/` — plain scripts, each prints `ok` |
+| server | `python tests/test_snapshot_shape.py`, `test_pour.py`, `test_store_walk.py`, `test_config_parity.py`, `test_loot_frames.py`, `test_bush_cover.py`, `test_scenery_containers.py`, `test_creature_sheets.py`, `test_map_scale.py`, `test_boss_fight.py` from `server/` — plain scripts, each prints `ok` |
 | client | `bun run typecheck` from `client/` — required after any change there |
 | client | `bun tests/grade.ts` from `client/` after touching `render/post/grade.ts` — plain script, prints `ok` |
 | client | `bun tests/exit-path.ts` from `client/` after touching `game/exit-path.ts` — plain script, prints `ok` |
 | client | `bun tests/weapon-pose.ts` from `client/` after touching `render/guns.ts`, `game/weapon-feel.ts` or `make_guns.py` — plain script, prints `ok`. It reads the REAL atlas manifest, so it fails if the generator stops appending action frames |
+| client | `bun tests/boss-clock.ts` from `client/` after touching `render/boss.ts`, `app/boss.py` or `make_sawyer.py` — plain script, prints `ok`. It reads the REAL sawyer manifest and pins the one thing nothing at runtime notices: that the frame on screen when a blow lands is the frame the art says it lands on |
 | assets | `python tools/make_sawyer.py` from `server/` after touching the boss rig — it is its own test: it fails the build if a one-shot does not start and end on the resting pose, or if any frame's art reaches the frame border |
 | both | run the server, open two browser tabs, confirm both players move, shoot and light the world without rubber-banding |
 
@@ -232,6 +235,13 @@ a creature: it checks that every creature and every accessory still has a
 worth having — that the three variants are still three SHAPES. S15's silhouette
 test as arithmetic: mask them, count the pixels and the top-contour columns
 that differ, and fail if a variant has become a recolour of another.
+
+Run `test_boss_fight.py` after touching `boss.py`, `arena.py`, or the transit
+in `room.py`: it drives a whole boss night with nobody watching — waking him,
+the cinematic's length, blows landing, the crescent expiring, the enrage, the
+exit his death carves, the crossing, and the night's takings surviving the
+detour to reach the shop. Every one of those is a join where the fight can
+silently stop, and none of them has a symptom you would see in a screenshot.
 
 Run `test_config_parity.py` after touching `client_config()` or `GameConfig`:
 it fails if either side declares a key the other does not, in either

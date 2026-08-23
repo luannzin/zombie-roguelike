@@ -116,9 +116,55 @@ export function shopLook(): Grade {
 }
 
 /** Which place a zone kind is. Anything unrecognised is the forest. */
+/**
+ * THE LANDING, on a boss night. The forest grade with the temperature taken
+ * off it and the contrast pushed.
+ *
+ * It is deliberately a SMALL move from `forestLook`, and the small move is the
+ * whole point. The yard is the same woods at the same hour — the party walked
+ * there down a corridor — so a look that announced itself would say "a
+ * different game starts here", which is the thing a boss arena in a run like
+ * this must not say. What changes is what the FIRES change: nine burning drums
+ * is the most light this game has ever put in one place, so the cool cast the
+ * forest wears comes off, the shoulder opens to let those fires actually
+ * bloom, and the vignette closes a notch because the place is a RING and the
+ * frame should feel like one.
+ *
+ * Saturation goes DOWN, not up. Everything about to happen in this room is
+ * loud on its own; a grade that shouted with it would leave the enrage — the
+ * one moment that is supposed to change how the room looks — with nowhere
+ * left to go.
+ */
+export function arenaLook(): Grade {
+	return base({
+		exposure: 1.0,
+		shoulder: 0.62,
+		contrast: 1.2,
+		saturation: 0.88,
+		temperature: -0.04,
+		tint: 0.03,
+		lift: [-0.016, -0.008, 0.008],
+		gamma: [1.0, 0.99, 0.97],
+		gain: [1.06, 1.0, 0.93],
+		bloom: 0.68,
+		bloomThreshold: 0.66,
+		shafts: 0.42,
+		fog: 0.08,
+		fogTint: palette().grade.fogForest,
+		aberration: 0.55,
+		blur: 0,
+		focus: 0.75,
+		vignette: 0.38,
+		vignetteSoft: 0.58,
+		vignetteTint: palette().grade.vignette,
+		grain: 0.03,
+	});
+}
+
 export function lookFor(zone: string | undefined): Grade {
 	if (zone === "camp") return campLook();
 	if (zone === "store") return shopLook();
+	if (zone === "arena") return arenaLook();
 	return forestLook();
 }
 
@@ -192,6 +238,31 @@ export function extractionLook(intensity: number): GradeLayer {
 		fogTint: palette().scene.beacon,
 		aberration: 0.4 + 1.1 * t,
 		vignette: 0.3 - 0.08 * t,
+	};
+}
+
+/**
+ * PAST HALF. He roars, and the room goes with him.
+ *
+ * A held layer for the rest of the fight rather than a flash, because it is
+ * describing a STATE — the fight has changed and stays changed. Everything in
+ * it moves one way: hotter, harder, tighter. It is the only look in the game
+ * that pushes red gain past 1.1, and it can afford to because `arenaLook`
+ * deliberately left room for it (see there).
+ */
+export function enrageLook(intensity: number): GradeLayer {
+	const t = Math.max(0, Math.min(1, intensity));
+	return {
+		exposure: 1.0 + 0.03 * t,
+		contrast: 1.2 + 0.1 * t,
+		saturation: 0.88 + 0.16 * t,
+		temperature: -0.04 + 0.2 * t,
+		gain: [1.06 + 0.14 * t, 1.0 - 0.04 * t, 0.93 - 0.08 * t],
+		bloom: 0.68 + 0.16 * t,
+		bloomThreshold: 0.66 - 0.08 * t,
+		aberration: 0.55 + 0.9 * t,
+		vignette: 0.38 + 0.14 * t,
+		grain: 0.03 + 0.02 * t,
 	};
 }
 

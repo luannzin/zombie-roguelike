@@ -18,6 +18,8 @@ game's scale.
 | `entities.py` | `Player`, `Pour` (a body emptying its pocket into a platform), `InputCmd` (includes the lantern switch, relayed not simulated) |
 | `enemies.py` | `EnemyType` stat blocks (incl. the sight cone, visual variants and accessory pools), live `Enemy`, `dress` |
 | `ai.py` | enemy senses, patrol/hunt/return, steering/attack, the director; `hunt_all` is the extraction chase and `startle` is the beat where it visibly spreads outward from the pad |
+| `boss.py` | THE SAWYER: his stat block, his state machine, the four moves, the thrown crescent. NOT an `EnemyType` and not `ai.py` — see its header. Every TIMING he has is read out of `assets/processed/sawyer/manifest.json` at import, so the telegraph on screen and the telegraph in the simulation are one number |
+| `arena.py` | the boss yard: a disc of floor, a corridor in, a ring of `FIRE` tiles for light, and the crew's leavings. No way out until he is down |
 | `pathing.py` | BFS flow field, one per player |
 | `coins.py` | DARK GOLD, the player's purple coin: drop roll, burst, magnet, collection |
 | `loot.py` | world collectables: catalog, scene-context scatter, E-to-collect |
@@ -42,6 +44,45 @@ game's scale.
 | `config.py` | tuning constants + `client_config()`, whose keys are held equal to the client's `GameConfig` by `tests/test_config_parity.py` |
 
 ## Local Contracts — cross-cutting
+
+### The boss
+
+- **HE IS NOT AN ENEMY AND `ai.py` MUST NOT LEARN ABOUT HIM.** That module is
+  built for a CROWD: a hundred bodies that notice, walk, swing, and are rate
+  limited against each other. A boss is one body that is always aware and
+  whose entire design is the ORDER of what it does and how long each part
+  lasts. Folding him in would mean an `Enemy` with a mode field nothing else
+  uses and a special case in every function there.
+- **HE SHARES THE CAPSULE AND THAT IS THE WHOLE INTEGRATION.** `Boss` exposes
+  `radius` / `capsule_y0` / `capsule_y1` / `x` / `y` / `id` exactly the way
+  `Player` and `Enemy` do, so `combat.raycast` and `combat.sweep` hit him
+  without knowing he exists. Every gun and the knife worked on him on the day
+  he shipped and no weapon will ever need a boss branch. If you add a damage
+  source, add him to its target list — do not add a boss path to `combat.py`.
+- **THE ART OWNS THE CLOCK.** Windups, recoveries and the length of the
+  arrival are derived from the sheet's own frame counts and event frames
+  (`boss._clip`). Never type a duration here: the telegraph is what a player
+  learns the fight from, so a hard-coded windup that disagrees with the
+  animation makes the fight unfair in a way nobody can see. Re-time a clip in
+  `make_sawyer.py` and the fight re-times itself.
+- **`t` ON THE WIRE IS THE CLIP'S PLAYHEAD, NOT THE STATE'S CLOCK**
+  (`Boss.clip_t`). A move is three states and one animation, so the playhead
+  runs across all three and the client draws frame `t * fps` with no
+  arithmetic of its own. The version that reconstructed it client-side
+  restarted the animation on the exact frame the bar landed — see
+  `client/tests/boss-clock.ts`, which is the check that found it.
+- **`BOSS_DAY` IS READ IN EXACTLY ONE PLACE** (`Room.is_boss_night`). It is a
+  day number, not a flag, because the fight is a milestone in a run and a run
+  is measured in nights. `None` turns it off.
+- **THE MONEY IS STILL MADE IN `enter_store`.** A boss night puts a map
+  between the forest and the shop, so the night's takings ride across it as
+  `Room._night_takes` — a receipt, not a payment. Do not bank anything in
+  `enter_arena`; the global rule (one place, once) has not moved.
+- **NO DIRECTOR IN THE ARENA.** The zone is `hostile` — weapons fire, players
+  die — but `step_enemies` returns before the top-up. Adding pressure there
+  would remove tension (every telegraph would happen in a crowd) and would
+  quietly break the arithmetic, because his health is scaled to the guns
+  pointed at him.
 
 These bind everything in this directory. Subsystem-specific contracts moved
 to the design docs indexed below.

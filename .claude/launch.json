@@ -15,7 +15,7 @@
     },
     {
       "name": "server",
-      "runtimeExecutable": "server/.venv/bin/python",
+      "runtimeExecutable": "server/.venv/Scripts/python.exe",
       "runtimeArgs": [
         "-m",
         "uvicorn",

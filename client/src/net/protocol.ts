@@ -180,6 +180,14 @@ export interface GameConfig {
   bushChance: number;
   /** How far a bonfire throws light, in tiles. The camp's only light source. */
   campfireLightTiles: number;
+  /**
+   * The boss's name and what he was. Shipped rather than kept client-side:
+   * `server/app/boss.py` owns him, and the HUD renders what the world says it
+   * contains. Required (not optional) like every other key `client_config`
+   * always sends — see `test_config_parity.py`.
+   */
+  bossName: string;
+  bossTitle: string;
   /** The fire plus the seat ring, in tiles: nothing grows inside it. */
   hearthTiles: number;
   /** Seat ring radii, in tiles. Elliptical — see server/app/camp.py. */
@@ -475,7 +483,7 @@ export interface PourEvent {
 export interface ZoneInfo {
   /** Stable identity for one arrival. A change is what replays the intro. */
   key: string;
-  kind: 'camp' | 'forest' | string;
+  kind: 'camp' | 'forest' | 'store' | 'arena' | string;
   day: number;
   title: string;
   subtitle: string;
@@ -1463,6 +1471,92 @@ export interface SnapshotMessage {
   spins?: SpinEvent[];
   /** The party's balance. Present only when it changed. */
   balance?: number;
+  /**
+   * THE SAWYER. Present only on the boss map, and only on ticks he changed —
+   * which during a fight is all of them. Absent is not "he is gone": the
+   * client keeps the last row it saw until the zone changes, exactly the way
+   * it keeps the roster.
+   */
+  boss?: BossRow;
+  /** What he DID this tick: shake, dust, sound, gore. Never replayed. */
+  bossEvents?: BossEvent[];
+}
+
+/**
+ * The boss, as one row with his own PLAYHEAD on it.
+ *
+ * `s` is the state and `t` is how long he has been in it, and the client
+ * animates off those two rather than off a local clock. That is the one
+ * unusual thing about this row and it is deliberate: every other animated
+ * thing in the game is either locally timed (the merchant) or driven by
+ * velocity (a walk cycle), and neither works for a body whose windup IS the
+ * mechanic. A locally timed chop and a server-timed hitbox disagree about
+ * which frame the bar landed on, and that frame is the entire fight.
+ */
+export interface BossRow {
+  id: string;
+  x: number;
+  y: number;
+  /** Facing, as a unit vector. Picks the sprite row like any other body. */
+  ax: number;
+  ay: number;
+  hp: number;
+  max: number;
+  /** One of `sleep` | `arrive` | `idle` | `walk` | `windup` | `strike` | `recover` | `dead`. */
+  s: BossState;
+  /** Seconds into `s`. The clip's playhead. */
+  t: number;
+  /** Which move is being performed: a clip name (`chop` / `sweep` / `rip` / `rev`). */
+  m?: string | null;
+  /** Past half health: he is faster and he waits less. */
+  rage?: boolean;
+  /** Crescents in the air. Absent when there are none. */
+  crest?: BossCrescent[];
+}
+
+export type BossState =
+  | 'sleep' | 'arrive' | 'idle' | 'walk'
+  | 'windup' | 'strike' | 'recover' | 'dead';
+
+/** One thrown crescent, mid-flight. */
+export interface BossCrescent {
+  id: number;
+  x: number;
+  y: number;
+  /** Velocity, in world px/s. The heading the sheet is baked in comes off it. */
+  dx: number;
+  dy: number;
+  /** Seconds of life left. */
+  t: number;
+}
+
+/**
+ * Something he did. Each kind is a different piece of juice and they are
+ * deliberately not one "effect" event with a magnitude: the shake, the sound
+ * and the light for a chop landing are nothing like the ones for a roar.
+ */
+export interface BossEvent {
+  kind:
+    | 'arrive'    // the shadow starts growing; the cinematic has begun
+    | 'engage'    // the cinematic is over, the fight is on
+    | 'windup'    // he has committed to a move — `move` names it
+    | 'impact'    // a melee blow landed (or missed): `hits` is how many bodies
+    | 'rip'       // a crescent left the bar
+    | 'crestBurst'// a crescent hit something and came apart
+    | 'roar'      // the rev's own beat
+    | 'enrage'    // half health
+    | 'hit'       // HE was hurt: `dmg`, `hp`, and the direction it came from
+    | 'hurt'      // a PLAYER was hurt by him
+    | 'slain';    // he is going down
+  x: number;
+  y: number;
+  dx?: number;
+  dy?: number;
+  move?: string;
+  hits?: number;
+  dmg?: number;
+  hp?: number;
+  target?: string;
 }
 
 /** The live half of an extraction pad. */

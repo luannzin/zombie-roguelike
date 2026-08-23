@@ -50,6 +50,7 @@ import { CratePrompt } from './CratePrompt';
 import { RiftPrompt } from './RiftPrompt';
 import { LootPrompt } from './LootPrompt';
 import { ExitGuide } from './ExitGuide';
+import { BossBar } from './BossBar';
 
 /**
  * How many frames `/skills/sheet.png` holds.
@@ -104,6 +105,18 @@ export function Hud({ snapshot, minimapRef, error }: HudProps) {
       ) : null}
 
       <HudScreen unstable={snapshot.lantern?.failing ?? false}>
+        {/*
+          THE BOSS BAR IS NOT IN `chrome`, and that is the one deliberate
+          exception on this screen. Every other corner fades out for a
+          cinematic because the screen stops being yours; the bar has the
+          opposite job — it comes UP as the cinematic ends, and it is what
+          says the screen is yours again and what it is now for. It holds
+          itself (see `BossBar`), including through his collapse.
+        */}
+        <div className="hud-layer pixel-text inset-0">
+          <BossBar boss={snapshot.boss} />
+        </div>
+
         <div
           className={cn('hud-layer pixel-text top-2.5 left-3 text-[11px] leading-[17px]', chrome)}
         >

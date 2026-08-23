@@ -41,6 +41,8 @@ the line number. In order:
                         arrival / seal that puppet it
     quests              offering and ticking the run's objectives
     enemies             the director's slice of the tick
+    the boss            the Sawyer: waking him, his tick, hurting him, and the
+                        exit his death carves
     combat              attacks both ways, the swing, the shot, damage, death
     networking          broadcast, the snapshot assembly, the 30 Hz loop
 
@@ -59,13 +61,18 @@ import time
 import uuid
 
 from . import (
-    ai, ammo, camp, coins, combat, crates, entrance, loot, mapgen, protocol,
-    quests, rift, skills, store, weapons, zones,
+    ai, ammo, arena, boss, camp, coins, combat, crates, entrance, loot, mapgen,
+    protocol, quests, rift, skills, store, weapons, zones,
 )
 from . import machine
 from .ai import EnemyDirector
 from .coins import Coin
 from .config import (
+    ARENA_LAND_AHEAD_TILES,
+    ARENA_TRIGGER_TILES,
+    BOSS_COINS,
+    BOSS_DAY,
+    BOSS_XP,
     CRATE_BREAK_DIST,
     CRATE_NOISE_DIST,
     DT,
@@ -256,6 +263,25 @@ class Room:
         self._rift_dirty = False
         self._egress_dirty = False
         self._blackout_dirty = False
+        #: THE SAWYER, on the one night there is one. None everywhere else,
+        #: and that is the whole gate — every boss branch in this file is a
+        #: `self.boss is None` test rather than a zone check, so a room that
+        #: never builds one never pays for one.
+        self.boss: boss.Boss | None = None
+        #: What he did this tick, for the client's shake, dust, sound and
+        #: gore. Cleared every broadcast like `shot_events`.
+        self.boss_events: list[dict] = []
+        #: Set when he changes state, when his health moves, or when a
+        #: crescent is in the air. The row is small and the bar has to be
+        #: exact, so in practice this is on for the whole fight — it exists
+        #: so the row is absent on every OTHER map rather than absent between
+        #: his frames.
+        self._boss_dirty = False
+        #: The night's takings, carried across the arena. THE MONEY IS STILL
+        #: CREATED IN `enter_store` AND NOWHERE ELSE (see AGENTS.md) — this is
+        #: the receipt travelling with the party, because the pads that earned
+        #: it belong to a map they have already left.
+        self._night_takes: list[int] | None = None
         self._load_drops()
         self._load_crates()
         self._load_rifts()
@@ -1564,6 +1590,10 @@ class Room:
         walk.
 
         forest -> store   the night's takings become the party's balance
+        forest -> ARENA   on a boss night, and only on the way OUT. See
+                          `is_boss_night`: the fight is what was at the end of
+                          the exit corridor, not a place the party chose to go
+        arena  -> store   same crossing, same banking, one map later
         store  -> forest  the day rolls over and the next night starts
 
         THE LOOP DOES NOT COME BACK TO THE CAMP. `preparation` is where a run
@@ -1575,9 +1605,42 @@ class Room:
         just decided to do.
         """
         if self.zone.kind == zones.KIND_FOREST:
+            if self.is_boss_night():
+                await self.enter_arena()
+                return
+            await self.enter_store()
+            return
+        if self.zone.kind == zones.KIND_ARENA:
             await self.enter_store()
             return
         await self.depart_store()
+
+    def is_boss_night(self) -> bool:
+        """Does the way out of this forest lead into the yard?
+
+        `BOSS_DAY` is a DAY NUMBER in `config.py` and this is the only place
+        that reads it — set it to 5 and nothing else in the codebase changes.
+        `None` turns the fight off entirely.
+
+        The second half of the test is what stops a party fighting him twice:
+        `boss` survives on the room until the arena is swapped out, so the
+        check is "have I already built one", not a flag somebody has to
+        remember to clear.
+        """
+        return BOSS_DAY is not None and self.day == BOSS_DAY
+
+    async def enter_arena(self) -> None:
+        """They walked into the exit corridor and it opened onto the landing.
+
+        THE TAKINGS TRAVEL WITH THEM. `enter_store` is still the one place
+        money is created, so what happens here is the receipt being kept: the
+        pads that earned it are on a map that is about to stop existing, and
+        a party that dies in the arena has still earned it (they respawn; the
+        night is not lost). Reading `self.rifts` after the swap would bank
+        zero, which is the same bug as not banking at all.
+        """
+        self._night_takes = [max(0, row.fed) for row in self.rifts]
+        await self._swap_map(zones.arena(self.day), arena.build_arena(self.day))
 
     async def enter_store(self) -> None:
         """Out of the woods and into the shop. BANK THE NIGHT ON THE WAY IN.
@@ -1592,10 +1655,13 @@ class Room:
         The day does NOT increment here. This corridor is the end of the night
         they just survived, not the start of the next one — see `zones.store`.
         """
-        if self.zone.kind != zones.KIND_FOREST:
+        if self.zone.kind not in (zones.KIND_FOREST, zones.KIND_ARENA):
             self._pending_return = False
             return
-        takes = [max(0, row.fed) for row in self.rifts]
+        takes = self._night_takes
+        if takes is None:
+            takes = [max(0, row.fed) for row in self.rifts]
+        self._night_takes = None
         earned = sum(takes)
         self.balance += earned
         self._balance_dirty = True
@@ -1636,6 +1702,9 @@ class Room:
         self.crate_break_events = []
         self.pour_events = []
         self.spin_events = []
+        self.boss = None
+        self.boss_events = []
+        self._boss_dirty = False
         self._machine_busy = 0.0
         for player in self.players.values():
             player.pour = None
@@ -1647,6 +1716,7 @@ class Room:
         self._rebuild_spawns()
         self.director = EnemyDirector(self.spawn_points)
         self._seed_nests()
+        self._load_boss()
         self.begin_arrive()
         for player in self.players.values():
             player.ready = False
@@ -1737,6 +1807,7 @@ class Room:
         self.step_seal(dt)
         self.step_quests()
         self.step_enemies(dt)
+        self.step_boss(dt)
         self.step_coins(dt)
         self.step_rift(dt)
 
@@ -1864,6 +1935,25 @@ class Room:
             return
         if self.arriving:
             self.step_arrive(dt)
+            return
+        if self.boss is not None and self.boss.state == boss.ARRIVE:
+            # THE ARRIVAL IS ON RAILS, and the party is in it. Input is
+            # dropped rather than queued for exactly the same reason the
+            # walk-out drops it (`step_depart`): two seconds of buffered
+            # movement replayed the instant the cinematic ends would teleport
+            # everybody, and the one thing this beat must not do is take the
+            # party's footing away and then give it back somewhere else.
+            #
+            # Timers still run — i-frames, respawns, cooldowns — because the
+            # fight starts the frame this returns and a player who arrived
+            # mid-reload should not have the clock paused for them.
+            for player in self.players.values():
+                player.inputs.clear()
+                player.vx = player.vy = 0.0
+                if player.hurt_immunity > 0.0:
+                    player.hurt_immunity = max(0.0, player.hurt_immunity - dt)
+                if player.fire_cooldown > 0.0:
+                    player.fire_cooldown = max(0.0, player.fire_cooldown - dt)
             return
         for player in self.players.values():
             if player.fire_cooldown > 0.0:
@@ -2140,6 +2230,8 @@ class Room:
         """Tick progress. The exit is crossing the VOID; extract ticks on the console."""
         if self.quests:
             self._tick_exit_quest()
+        if self.zone.kind == zones.KIND_ARENA:
+            self._tick_arena_exit()
 
     def _tick_exit_quest(self) -> None:
         if self.egress is None or self._pending_return:
@@ -2209,6 +2301,18 @@ class Room:
 
         if not self.zone.hostile:
             return
+        # NOBODY ELSE IS INVITED TO THE BOSS FIGHT. The arena is `hostile` —
+        # weapons fire, players die — but the director does not run in it.
+        #
+        # It is the one place in the game where adding pressure would REMOVE
+        # tension: the whole fight is a conversation between a party and one
+        # readable body, and a stream of zombies walking into it turns every
+        # telegraph into something happening in a crowd. It would also quietly
+        # break the arithmetic — his health is scaled to the guns pointed at
+        # him, and guns pointed somewhere else are guns he does not have to
+        # survive.
+        if self.zone.kind == zones.KIND_ARENA:
+            return
         for enemy_type, x, y in self.director.update(dt, self.players.values(), len(self.enemies)):
             self.spawn_enemy(enemy_type, x, y)
 
@@ -2231,6 +2335,212 @@ class Room:
                 )
                 ai.commit(enemy, target)
         return enemy
+
+    # --- the boss -----------------------------------------------------------
+    def _load_boss(self) -> None:
+        """Stand him in the middle of the yard, asleep. Arena maps only.
+
+        He exists from the moment the map does — hitbox, health and all —
+        because the alternative is spawning him when the trigger fires, and a
+        body that appears on the frame its own cinematic starts is a body that
+        cannot cast the shadow the cinematic opens on.
+        """
+        if self.zone.kind != zones.KIND_ARENA:
+            return
+        x, y = arena.boss_spawn(self.world)
+        self.boss = boss.Boss(
+            id="sawyer",
+            x=x,
+            y=y,
+            max_hp=boss.hp_for(max(1, len(self.players))),
+        )
+        self._boss_dirty = True
+
+    def step_boss(self, dt: float) -> None:
+        """His whole slice of the tick. Everything he can do to a player.
+
+        Ordered after `step_enemies` on purpose: he is the last word in the
+        room, and a crescent that lands on the same frame as a zombie's swing
+        should be the thing that finished the job.
+        """
+        row = self.boss
+        if row is None:
+            return
+
+        if row.state == boss.SLEEP:
+            self._maybe_wake_boss()
+            return
+
+        living = [p for p in self.players.values() if p.alive]
+        outcome = boss.update(row, living, self.world, dt)
+
+        for player, damage, sx, sy in outcome.hits:
+            if not player.alive:
+                continue
+            # HIS OWN I-FRAMES, NOT THE ZOMBIES'. `MELEE_IMMUNITY` is a shared
+            # window sized for a crowd of 9-damage swings; a 34-damage chop
+            # that lands inside somebody else's window would be free. So the
+            # boss keeps his own per-victim clock (`boss.BOSS_MELEE_IMMUNITY`,
+            # already applied) and this path only refreshes the shared one so
+            # the party is not chopped and bitten on the same frame.
+            player.hurt_immunity = max(player.hurt_immunity, MELEE_IMMUNITY)
+            self.damage_player(player, damage, None)
+            self.boss_events.append({
+                "kind": "hurt",
+                "target": player.id,
+                "x": round(player.x, 1),
+                "y": round(player.y, 1),
+                "dmg": damage,
+            })
+
+        if outcome.events:
+            self.boss_events.extend(outcome.events)
+        if row.just_enraged:
+            row.just_enraged = False
+            self.boss_events.append({
+                "kind": "enrage", "x": round(row.x, 1), "y": round(row.y, 1),
+            })
+        if outcome.engaged:
+            self.boss_events.append({
+                "kind": "engage", "x": round(row.x, 1), "y": round(row.y, 1),
+            })
+        self._boss_dirty = True
+
+        if row.state == boss.DEAD and self.egress is None and row.timer >= 0.0:
+            self._boss_down()
+
+    def _maybe_wake_boss(self) -> None:
+        """Somebody has walked far enough into the ring. Drop him on them.
+
+        The trigger is DISTANCE TO THE MIDDLE rather than a tripwire across
+        the lane, because a party does not arrive together — one player runs
+        ahead, and a line drawn across the corridor would start the cinematic
+        while three of them were still in the dark. The middle is the one
+        place everybody is walking toward.
+        """
+        row = self.boss
+        if row is None or self.arriving:
+            return
+        cx, cy = arena.centre(self.world)
+        for player in self.players.values():
+            if not player.alive:
+                continue
+            if math.hypot(player.x - cx, player.y - cy) > TILE_SIZE * ARENA_TRIGGER_TILES:
+                continue
+            # HE LANDS IN FRONT OF WHOEVER WALKED IN, not on the spot he was
+            # parked on. See `ARENA_LAND_AHEAD_TILES`: the camera is the
+            # player's, and a cinematic that plays above the top edge of their
+            # screen is a cinematic nobody watched. Toward the middle of the
+            # ring rather than down their aim, because the middle is where
+            # they were already going and it keeps him off the rim.
+            dx = cx - player.x
+            dy = cy - player.y
+            length = math.hypot(dx, dy)
+            if length > 1.0:
+                reach = min(length, TILE_SIZE * ARENA_LAND_AHEAD_TILES)
+                row.x = player.x + dx / length * reach
+                row.y = player.y + dy / length * reach
+            else:
+                row.x, row.y = cx, cy
+            # And he faces the person he is landing on.
+            back = math.hypot(player.x - row.x, player.y - row.y)
+            if back > 1.0:
+                row.aim_x = (player.x - row.x) / back
+                row.aim_y = (player.y - row.y) / back
+            boss.wake(row)
+            self._boss_dirty = True
+            self.boss_events.append({
+                "kind": "arrive", "x": round(row.x, 1), "y": round(row.y, 1),
+            })
+            return
+
+    def damage_boss(
+        self,
+        amount: int,
+        source: Player | None,
+        dx: float = 0.0,
+        dy: float = 0.0,
+    ) -> None:
+        """A landed shot or a landed swing. The only way his health moves.
+
+        Every hit is broadcast even when it changes nothing, because a boss
+        with two thousand health is a boss the player cannot see themselves
+        hurting — the bar moves a pixel a shot. What sells it is the HIT: the
+        flash, the wound, the number, and the fact that all three arrive on
+        the frame the trigger was pulled.
+        """
+        row = self.boss
+        if row is None or not row.vulnerable:
+            return
+        died = boss.hurt(row, amount)
+        self._boss_dirty = True
+        self.boss_events.append({
+            "kind": "hit",
+            "x": round(row.x, 1),
+            "y": round(row.y, 1),
+            "dx": round(dx, 3),
+            "dy": round(dy, 3),
+            "dmg": amount,
+            "hp": row.hp,
+        })
+        if died:
+            self.boss_events.append({
+                "kind": "slain", "x": round(row.x, 1), "y": round(row.y, 1),
+            })
+            self._boss_down(source)
+
+    def _boss_down(self, source: Player | None = None) -> None:
+        """He fell. Pay the party, open the treeline, and stop hunting them.
+
+        THE EXIT IS CARVED HERE AND NOWHERE ELSE, which is what makes the
+        yard a fight rather than a room with a fight in it: until this runs
+        there is no gap in the rim, so the only way out of the arena is
+        through him.
+        """
+        row = self.boss
+        if row is None or self.egress is not None:
+            return
+        # Gold on the floor, not in the bank. Same contract as every other
+        # kill in the game — somebody has to walk over it — and after two
+        # minutes of dodging a chainsaw, walking around picking up his
+        # takings is the exhale the beat wants.
+        self.drop_coins(row.x, row.y, BOSS_COINS)
+        for player in self.players.values():
+            player.xp += BOSS_XP
+            self._sync_spins(player)
+        if source is not None:
+            source.kills += 1
+        self._open_egress()
+        # Whatever else is on the map stops caring. Nothing should be chewing
+        # on a player while they watch him go down.
+        for enemy in self.enemies.values():
+            ai.give_up(enemy)
+
+    def _tick_arena_exit(self) -> None:
+        """The crossing, for a map with no quest log to hang it on.
+
+        `_tick_exit_quest` is the forest's version and it is driven by the
+        EXIT objective; the arena has no quests, because a run's objectives
+        are what a night asks of a party and this map asks one thing that no
+        row of text improves. Same geometry, same `_pending_return`.
+        """
+        if self.egress is None or self._pending_return:
+            return
+        ts = TILE_SIZE
+        hh = PLAYER_HALF_HEIGHT
+        for player in self.players.values():
+            if not player.alive:
+                continue
+            feet_y = player.y + hh
+            tx = int(player.x // ts)
+            ty = int(feet_y // ts)
+            if ty < 0 or tx < 0 or ty >= self.world.height or tx >= self.world.width:
+                continue
+            if self.world.tiles[ty][tx] != VOID:
+                continue
+            if self.egress.into_corridor(player.x, feet_y, EXIT_CROSS_TILES):
+                self._pending_return = True
+                return
 
     # --- combat -------------------------------------------------------------
     def resolve_attack(self, attack: ai.Attack) -> None:
@@ -2386,6 +2696,8 @@ class Room:
         at nothing is not information anybody needs at 30 Hz.
         """
         targets = [*self.players.values(), *self.enemies.values()]
+        if self.boss is not None and self.boss.vulnerable:
+            targets.append(self.boss)
         hits = combat.sweep(
             self.world,
             attacker.x,
@@ -2440,7 +2752,9 @@ class Room:
 
         for hit in hits:
             victim = hit.target
-            if isinstance(victim, Enemy):
+            if isinstance(victim, boss.Boss):
+                self.damage_boss(damage, attacker, hit.dx, hit.dy)
+            elif isinstance(victim, Enemy):
                 self.damage_enemy(victim, damage, attacker, hit.dx, hit.dy)
             else:
                 self.damage_player(victim, damage, attacker)
@@ -2501,6 +2815,8 @@ class Room:
         # Players and enemies share one target list: the capsule contract is
         # identical, so the ray does not care which kind it hits.
         targets = [*self.players.values(), *self.enemies.values()]
+        if self.boss is not None and self.boss.vulnerable:
+            targets.append(self.boss)
         # The shooter's skills are folded in ONCE, here, so the number the
         # client draws over the body (`dmg` on the shot event) and the number
         # the body actually loses are the same number. Rolling it a second time
@@ -2583,7 +2899,9 @@ class Room:
         for crate in struck:
             self.smash_crate(crate, shooter)
         for victim, total, vx, vy in rows:
-            if isinstance(victim, Enemy):
+            if isinstance(victim, boss.Boss):
+                self.damage_boss(total, shooter, vx, vy)
+            elif isinstance(victim, Enemy):
                 self.damage_enemy(victim, total, shooter, vx, vy)
             else:
                 self.damage_player(victim, total, shooter)
@@ -2793,6 +3111,8 @@ class Room:
         self._stands_dirty = False
         balance_row = self.balance if self._balance_dirty else None
         self._balance_dirty = False
+        boss_row = self.boss.to_payload() if (self.boss and self._boss_dirty) else None
+        self._boss_dirty = False
         await self.broadcast(
             protocol.snapshot(
                 self.tick,
@@ -2824,6 +3144,8 @@ class Room:
                 buys=self.buy_events or None,
                 spins=self.spin_events or None,
                 balance=balance_row,
+                boss=boss_row,
+                boss_events=self.boss_events or None,
             )
         )
 
@@ -2858,6 +3180,7 @@ class Room:
                 self.crate_break_events = []
                 self.buy_events = []
                 self.spin_events = []
+                self.boss_events = []
             delay = next_time - time.perf_counter()
             if delay > 0:
                 await asyncio.sleep(delay)

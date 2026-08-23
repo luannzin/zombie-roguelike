@@ -19,6 +19,7 @@ import type { FovField } from './fov';
 import type { StoreScene } from './layers/store';
 import type { Payout } from '../game/payout';
 import type { Grade } from './post/grade';
+import type { BossRow } from '../net/protocol';
 
 export type EntityKind = 'player' | 'enemy';
 
@@ -287,4 +288,28 @@ export interface RenderState {
   time: number;
   /** Seconds since the previous frame — for effects that integrate motion. */
   dt: number;
+  /**
+   * THE SAWYER, or null on every map but one.
+   *
+   * He is not in `entities` and that is deliberate: everything in that list is
+   * a 16px body drawn out of one sheet by `drawEntity`, with a walk row picked
+   * off velocity, a gear overlay, a held gun and a name label. He shares none
+   * of it. What he does share is the DEPTH SORT — a player standing north of
+   * him has to be drawn behind him — so he joins that as a prop-shaped row
+   * rather than as an entity.
+   */
+  boss: DrawableBoss | null;
+}
+
+/** The boss, his crescents, and the one flash that says he was hit. */
+export interface DrawableBoss {
+  row: BossRow;
+  /** 0..1, decaying. Painted as a white wash over the whole sprite. */
+  hitFlash: number;
+  /**
+   * Screen-space wobble, in world px. He is a heavy thing and the only way a
+   * 128px sprite says so is by not being perfectly still.
+   */
+  shakeX: number;
+  shakeY: number;
 }

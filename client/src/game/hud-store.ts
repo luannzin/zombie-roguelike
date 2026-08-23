@@ -38,7 +38,30 @@ export interface HudHotbarSlot {
   ammo: number | null;
 }
 
-/** One run objective. The HUD mirrors the server list and never invents a row. */
+/** The named thing you are fighting. */
+export interface HudBoss {
+  name: string;
+  title: string;
+  /** 0..1. The bar's own fill; the number is deliberately never shown. */
+  fraction: number;
+  /** Past half health. The bar changes colour and the plate marks it. */
+  enraged: boolean;
+  /**
+   * He is going down. The bar holds, empty, for the length of the collapse
+   * rather than vanishing on the frame he dies — the payoff of a two-minute
+   * fight is watching that bar reach zero, and a panel that unmounts at zero
+   * takes it away at exactly the wrong moment.
+   */
+  slain: boolean;
+  /**
+   * Seconds since the fight became winnable, or negative during the
+   * cinematic. The panel slides in off this rather than off a mount
+   * transition, so a client that joins mid-fight gets the bar immediately
+   * instead of watching it introduce itself.
+   */
+  engaged: number;
+}
+
 export type HudQuest = QuestState;
 
 export interface HudHotbar {
@@ -281,6 +304,16 @@ export interface HudSnapshot {
    * is leaving and the HUD has nothing to say about it.
    */
   cinematic: boolean;
+  /**
+   * THE BOSS BAR, or null — which is every frame of every night but one.
+   *
+   * A whole object rather than a pile of loose fields, so the panel is a
+   * single presence test and so "no boss" cannot be half true. It is the only
+   * enemy in the game the HUD has ever been told about by name: everything
+   * else is a body in a world you look at, and a health bar with a name over
+   * it is the game saying THIS one is the subject.
+   */
+  boss: HudBoss | null;
   /** Living players ready / total, camp only. Null in the forest. */
   ready: { here: number; total: number } | null;
   /** Proximity prompt at the fire. Null when it should not be on screen. */
@@ -364,6 +397,7 @@ export const EMPTY_HUD: HudSnapshot = {
   announce: null,
   introducing: true,
   cinematic: false,
+  boss: null,
   ready: null,
   prompt: null,
   lootPrompt: null,

@@ -79,6 +79,8 @@ import { loadGuns, type GunAtlas } from './guns';
 import { loadLoot, type LootAtlas } from './loot';
 import { loadScenery, type SceneryAtlas } from './scenery';
 import { loadMerchant, type MerchantAtlas } from './merchant';
+import { loadBoss, type BossAtlas } from './boss';
+import { drawBoss } from './layers/boss';
 import { loadStore, type StoreAtlas } from './store';
 import { loadMachine, type MachineAtlas } from './machine';
 import {
@@ -151,6 +153,8 @@ export class Renderer {
     piece: SceneryPiece | null;
     rift: RiftStanding | null;
     store: StoreStanding | null;
+    /** The boss. One row at most, and only on his own map. */
+    boss: boolean;
   }[] = [];
   /**
    * What the bodies on screen are doing to the plants around them. Owned here
@@ -169,6 +173,7 @@ export class Renderer {
   private platformAtlas: PlatformAtlas | null = null;
   private storeAtlas: StoreAtlas | null = null;
   private merchantAtlas: MerchantAtlas | null = null;
+  private bossAtlas: BossAtlas | null = null;
   private machineAtlas: MachineAtlas | null = null;
 
   constructor(
@@ -224,6 +229,12 @@ export class Renderer {
     });
     void loadMerchant().then((atlas) => {
       this.merchantAtlas = atlas;
+    });
+    // Fetched on boot like every other atlas rather than on arrival at the
+    // yard: it is 700KB and the one moment it must not be missing is the
+    // frame the cinematic starts on.
+    void loadBoss().then((atlas) => {
+      this.bossAtlas = atlas;
     });
   }
 
@@ -388,21 +399,40 @@ export class Renderer {
     const depthProps = this.depthProps;
     depthProps.length = 0;
     for (const piece of state.world.scenery.standing) {
-      depthProps.push({ y: piece.y, anim: 0, hitFlash: 0, piece, rift: null, store: null });
+      depthProps.push({
+        y: piece.y, anim: 0, hitFlash: 0, piece, rift: null, store: null, boss: false,
+      });
+    }
+    // THE BOSS GOES IN THE SAME SORT AS A CABIN, for the same reason a cabin
+    // is in it: he is three and a half tiles tall and a player who walks north
+    // of him has to be behind him. Sorted on his CONTACT row rather than his
+    // centre — the anchor on his sheet is the ground he is standing on, which
+    // is what makes a 128px frame agree with a 16px body about who is nearer.
+    if (state.boss) {
+      depthProps.push({
+        y: state.boss.row.y, anim: 0, hitFlash: 0,
+        piece: null, rift: null, store: null, boss: true,
+      });
     }
     for (const { rift, phase } of riftPhases) {
       for (const piece of riftStanding(rift, phase)) {
-        depthProps.push({ y: piece.y, anim: 0, hitFlash: 0, piece: null, rift: piece, store: null });
+        depthProps.push({
+          y: piece.y, anim: 0, hitFlash: 0, piece: null, rift: piece, store: null, boss: false,
+        });
       }
     }
     for (const piece of egressTorches(state.world.egress)) {
-      depthProps.push({ y: piece.y, anim: 0, hitFlash: 0, piece: null, rift: piece, store: null });
+      depthProps.push({
+        y: piece.y, anim: 0, hitFlash: 0, piece: null, rift: piece, store: null, boss: false,
+      });
     }
     // The tables and the merchant. In the sort for the reason everything else
     // is: a player walking behind a stall has to disappear behind it, and the
     // merchant is a body standing on a floor like any other.
     for (const piece of storeStanding(store)) {
-      depthProps.push({ y: piece.y, anim: 0, hitFlash: 0, piece: null, rift: null, store: piece });
+      depthProps.push({
+        y: piece.y, anim: 0, hitFlash: 0, piece: null, rift: null, store: piece, boss: false,
+      });
     }
     // Live objects. `sheet` was resolved when the row was unpacked (see
     // `game/objects.ts`), so a bus and a barrel reach the same depth sort
@@ -420,6 +450,7 @@ export class Renderer {
         hitFlash: 0,
         rift: null,
         store: null,
+        boss: false,
         piece: {
           kind: crate.sheet,
           x: crate.x,
@@ -445,6 +476,7 @@ export class Renderer {
         hitFlash: flash,
         rift: null,
         store: null,
+        boss: false,
         piece: {
           kind: smash.sheet,
           x: smash.x,
@@ -478,7 +510,12 @@ export class Renderer {
           fire++;
         } else {
           const row = depthProps[prop];
-          if (row.rift) {
+          if (row.boss) {
+            if (state.boss) {
+              drawBoss(ctx, view, this.bossAtlas, state.boss, state.time,
+                       palette().entity.shadow);
+            }
+          } else if (row.rift) {
             drawRiftProp(
               ctx, view, this.riftAtlas, this.platformAtlas, row.rift,
               palette().entity.shadow, this.lootAtlas,

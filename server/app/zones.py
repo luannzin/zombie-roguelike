@@ -46,6 +46,12 @@ from dataclasses import dataclass
 KIND_CAMP = "camp"
 KIND_FOREST = "forest"
 KIND_STORE = "store"
+#: The boss yard. A forest night that ends in a fight instead of a walk — see
+#: `arena.py`. Hostile like a forest and entered the same way, but it is its
+#: own kind because the two answer differently to almost everything the room
+#: asks a zone: no director, no pads, no quests, and a way out that does not
+#: exist until something is dead.
+KIND_ARENA = "arena"
 
 WEATHER_CLEAR = "clear"
 WEATHER_RAIN = "rain"
@@ -199,6 +205,36 @@ def store(day: int) -> Zone:
         lantern=False,
         ambient=STORE_AMBIENT,
         weather=WEATHER_CLEAR,
+    )
+
+
+def arena(day: int, clock: str | None = None, weather: str | None = None) -> Zone:
+    """The landing, on a boss night. The last place before the shop.
+
+    IT IS ANNOUNCED AS THE SAME NIGHT, not as a new one. The title card says
+    "Dia N" exactly as the forest did, because this is not somewhere else the
+    party has travelled to — it is what was at the end of the way out. A card
+    that named the place would tell them what is about to happen before the
+    shadow does, and the shadow is the whole opening.
+
+    `ambient` is zero, like every hostile zone. The ring of burning drums is
+    the light and it is a thing in the world, which is the rule (see
+    `arena.py`): a floor value cannot be walked toward, put out, or stood
+    behind.
+
+    The lantern still works. It is nearly useless in a yard lit by nine fires,
+    and that is the point — the resource the whole night has been about stops
+    mattering at the end of it.
+    """
+    return Zone(
+        key=f"arena-{day}",
+        kind=KIND_ARENA,
+        day=day,
+        title=f"Dia {day}",
+        subtitle=clock if clock is not None else night_clock(),
+        hostile=True,
+        lantern=True,
+        weather=weather if weather is not None else WEATHER_CLEAR,
     )
 
 

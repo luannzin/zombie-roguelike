@@ -65,10 +65,20 @@ import {
   throttled,
 } from '../audio';
 import { clamp01, expDamp } from '../lib/math';
+import {
+  applyBossRow,
+  bossFraction,
+  feelEvent,
+  newBossFeel,
+  punchFor,
+  stepBossFeel,
+  type BossFeel,
+} from './boss';
 import { GradeStack } from '../render/post/grade';
 import {
   dangerLook,
   deathLook,
+  enrageLook,
   extractionLook,
   hitLook,
   lookFor,
@@ -77,6 +87,8 @@ import {
 } from '../render/post/looks';
 import type { Connection, ConnectionStatus, Unsubscribe } from '../net/connection';
 import type {
+  BossEvent,
+  BossRow,
   AttackEvent,
   BuyEvent,
   EnemyTypeConfig,
@@ -152,6 +164,7 @@ import {
   type HudInventory,
   type HudMachinePrompt,
   type HudSkill,
+  type HudBoss,
   type HudSnapshot,
   type HudStore,
 } from './hud-store';
@@ -629,6 +642,15 @@ export class Game {
    * been there since before they left the deck.
    */
   private balanceShown = 0;
+  /**
+   * THE SAWYER's local half: the last row, the flash, the wobble.
+   *
+   * A plain field rather than a null-when-absent object, because the fight
+   * is the only thing in the game whose absence is the normal case and whose
+   * presence has to be checked on every frame of the render loop. `row` being
+   * null is the "no boss" state and it costs one compare.
+   */
+  private bossFeel: BossFeel = newBossFeel();
   /** Seconds until the next spatial ping from the exit's mouth. */
   private beaconLeft = 0;
   /**
@@ -968,6 +990,13 @@ export class Game {
     // already looking at.
     this.grade.clear();
     this.grade.setBase(lookFor(msg.zone?.kind), 0);
+    // HE DOES NOT TRAVEL. A welcome is a new map, and the boss row is a fact
+    // about the old one — kept, his health bar would follow the party into
+    // the shop and hang there over the merchant. Cleared here rather than on
+    // his death for the same reason the grade is: this is the one place that
+    // knows the world has been replaced.
+    this.bossFeel = newBossFeel();
+    this.patchHud({ boss: null });
     // BEFORE the map, and that order is load-bearing: `TileMap` resolves each
     // object row's atlas sheet as it unpacks it, and it can only do that once
     // the catalog the server just sent is in place.
@@ -1366,6 +1395,156 @@ export class Game {
     for (const ev of msg.spins ?? []) this.onSpin(ev);
     if (msg.blackout) this.lantern.kill();
     if (msg.corpses) this.mergeCorpses(msg.corpses);
+    if (msg.boss) this.onBossRow(msg.boss);
+    for (const ev of msg.bossEvents ?? []) this.onBossEvent(ev);
+  }
+
+  /**
+   * His state. Replaces wholesale — there is no interpolation on him and that
+   * is deliberate.
+   *
+   * Every other body in this game is interpolated between snapshots
+   * (`interpolation.ts`) because a 30 Hz position drawn raw at 60 fps stutters.
+   * He is not, for two reasons that both matter more than the stutter: his
+   * PLAYHEAD is on the row, and interpolating a position without interpolating
+   * the animation would slide the sprite away from the frame the hitbox
+   * belongs to — and at 2.9 tiles a second across a 128px frame the stutter is
+   * a fraction of a pixel per tick, which is under the width of his own
+   * outline.
+   */
+  private onBossRow(row: BossRow): void {
+    const before = this.bossFeel.row;
+    applyBossRow(this.bossFeel, row);
+    if (before && before.s !== 'dead' && row.s === 'dead') {
+      // Nothing to do but let the bar be seen reaching zero: `hudBoss` keeps
+      // publishing it through the collapse (see `HudBoss.slain`), and the
+      // panel holds itself. A `patchHud` here would race the 5 Hz push.
+      this.patchHud({ boss: this.hudBoss() });
+    }
+  }
+
+  /**
+   * What the fight throws into the air.
+   *
+   * Scaled to the SIZE of what happened, and the scale is the point: a body
+   * that bleeds the same amount whether you shot it or buried a chainsaw in it
+   * is a body with no weight. His hits are worth four times a bullet's spray
+   * because they are worth four times a bullet.
+   *
+   * Blood on HIM uses the same `spawnBlood` a zombie's wound does — there is
+   * one blood in this game (`make_textures.BLOOD`, and the client's own
+   * particle colours), and giving the boss his own would say he is made of
+   * something else.
+   */
+  private bossParticles(event: BossEvent): void {
+    const dx = event.dx ?? 0;
+    const dy = event.dy ?? 1;
+    switch (event.kind) {
+      case 'hit':
+        // Every landed shot. Small, because it happens two hundred times.
+        this.effects.spawnBlood(event.x, event.y - 18, dx, dy, 0.55);
+        break;
+      case 'impact': {
+        // The bar going into the floor. Dust whether or not it caught
+        // anybody — a miss is still forty pixels of chain hitting dirt, and
+        // seeing where it landed is how a player learns to be somewhere else.
+        const landed = (event.hits ?? 0) > 0;
+        // A RING, not a spray. `spawnImpact` throws a cone back down the
+        // incoming direction, which is right for a bullet and wrong for a
+        // weight hitting the floor — four cones on the compass is dirt going
+        // OUT from a point, which is what a landing looks like.
+        const power = landed ? 2.4 : 1.6;
+        this.effects.spawnImpact(event.x, event.y, dx, dy, landed, power);
+        this.effects.spawnImpact(event.x, event.y, -dx, -dy, false, power * 0.7);
+        this.effects.spawnImpact(event.x, event.y, -dy, dx, false, power * 0.7);
+        this.effects.spawnImpact(event.x, event.y, dy, -dx, false, power * 0.7);
+        break;
+      }
+      case 'crestBurst':
+        this.effects.spawnImpact(event.x, event.y, dx, dy, true, 1.2);
+        break;
+      case 'hurt':
+        // A player taking one of his blows bleeds like a player, not like a
+        // hit marker: this is the same call their own death throws.
+        this.effects.spawnBlood(event.x, event.y, dx, dy, 1.3);
+        break;
+      case 'slain':
+        // The payoff. Everything at once, at the size of the thing that fell.
+        this.effects.spawnBlood(event.x, event.y - 20, 0, 1, 3);
+        for (const [ax, ay] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+          this.effects.spawnImpact(event.x, event.y, ax, ay, true, 2.4);
+        }
+        break;
+      default:
+        break;
+    }
+  }
+
+  /**
+   * The bar's row, or null.
+   *
+   * `sleep` reads as null on purpose. He is on the map from the moment it is
+   * built — the shadow needs a body to belong to — and a health bar that
+   * appears while the party is still walking down the corridor would announce
+   * the fight before the fight announces itself.
+   */
+  private hudBoss(): HudBoss | null {
+    const row = this.bossFeel.row;
+    if (!row || row.s === 'sleep') return null;
+    const fraction = bossFraction(this.bossFeel);
+    if (fraction === null) return null;
+    return {
+      // HIS NAME COMES OFF THE WIRE, like every other piece of content in
+      // this game. A string in a client constant is a string that has to be
+      // kept in step with `boss.py` by hand, on the one label the whole
+      // fight is announced with.
+      name: this.config?.bossName ?? '',
+      title: this.config?.bossTitle ?? '',
+      fraction,
+      enraged: row.rage === true,
+      slain: row.s === 'dead',
+      engaged: this.bossFeel.engaged,
+    };
+  }
+
+  /**
+   * What he did. Shake, kick, sound — and nothing that a player needs.
+   *
+   * `punchFor` decides the numbers (see `game/boss.ts`); this applies them to
+   * the camera and the mixer, which are `Game`'s to own. Split that way so the
+   * feel of the fight is one readable table instead of forty lines of
+   * `addTrauma` calls buried in a switch.
+   */
+  private onBossEvent(event: BossEvent): void {
+    feelEvent(this.bossFeel, event);
+    this.bossParticles(event);
+    const punch = punchFor(event);
+    if (punch.trauma > 0) this.camera.addTrauma(punch.trauma);
+    if (punch.kick > 0) this.camera.addImpulse(punch.kx, punch.ky, punch.kick);
+    if (punch.sound) {
+      if (punch.at) {
+        playSfxAt(punch.sound, punch.at.x, punch.at.y, {
+          gain: punch.gain, delay: punch.delay,
+        });
+      } else {
+        playSfx(punch.sound, { gain: punch.gain, delay: punch.delay });
+      }
+    }
+    if (event.kind === 'arrive') {
+      // The HUD goes away for the cinematic exactly as it does for the two
+      // corridor walks — same flag, same fade, because it is the same claim:
+      // the screen is not yours for a moment.
+      this.patchHud({ cinematic: true, prompt: null, cratePrompt: null });
+    }
+    if (event.kind === 'engage') {
+      this.patchHud({ cinematic: false });
+    }
+    if (event.kind === 'hurt' && event.target === this.localId) {
+      // His blows hit harder than anything else in the game, so they get the
+      // hurt beat a zombie's does not — the same one a death gets, one step
+      // down.
+      playSfx('hurt');
+    }
   }
 
   /**
@@ -2924,6 +3103,10 @@ export class Game {
       this.effects.spawnImpact(px, py, 0, -1, false, 0.55);
       this.camera.addTrauma(POUR_LAND_TRAUMA);
     });
+    // The boss's flash, wobble and jolt, on the render clock. Same rule as
+    // the two below it: decay stepped at the snapshot rate visibly stairsteps,
+    // and none of this is state anybody can act on.
+    stepBossFeel(this.bossFeel, dt, this.time);
     // The merchant's performance runs on the render clock for the same reason
     // the rift's ceremony does: it is pure presentation between snapshots, and
     // nothing about which frame he is on has ever been on the wire.
@@ -2967,6 +3150,15 @@ export class Game {
       grade: this.grade.resolve(),
       time: this.time,
       dt,
+      // Null on every map but one, which is the check the renderer makes.
+      boss: this.bossFeel.row
+        ? {
+            row: this.bossFeel.row,
+            hitFlash: this.bossFeel.flash,
+            shakeX: this.bossFeel.shakeX,
+            shakeY: this.bossFeel.shakeY,
+          }
+        : null,
     });
     this.minimap.draw(toMinimap(entities), this.localId, this.fov);
 
@@ -3484,6 +3676,7 @@ export class Game {
           : null,
       lantern: local ? this.lantern.reading() : null,
       cinematic: this.locked,
+      boss: this.hudBoss(),
       quests: this.quests,
       ready: this.readyCount(),
       prompt: readyPrompt(ix),
@@ -4677,6 +4870,14 @@ export class Game {
       this.grade.hold('death', deathLook(), { attack: 1.1, release: 0.5 });
     } else {
       this.grade.release('death', 0.5);
+    }
+
+    // PAST HALF, and it stays. A held layer rather than a pulse because the
+    // enrage is a state of the fight, not a moment in it — see `enrageLook`.
+    if (this.bossFeel.row?.rage && this.bossFeel.row.s !== 'dead') {
+      this.grade.hold('enrage', enrageLook(1), { attack: 0.9, release: 1.4 });
+    } else {
+      this.grade.release('enrage', 1.4);
     }
 
     if (this.scopeAmount > 0.01) {

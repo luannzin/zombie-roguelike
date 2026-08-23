@@ -23,6 +23,7 @@ seam React is allowed to read.
 | `weapon-feel.ts` | what a CLASS of weapon does in the hand: hands on it, what its action is, how long the action takes, how hot one pull leaves the barrel, how much it drifts. All of it derived from the catalog row's own `kind` and `fireCooldown` — never a per-weapon table, so a thirteenth gun arrives already behaving |
 | `effects.ts` | tracers, blade paths, dust, blood, floating text, event lights, boot prints, object one-shots, the loot pop, wind, death burst, gunsmoke, and brass held back until the action opens |
 | `entity-visuals.ts` | per-entity flash, recoil, hit-stun tilt, anim, worn wounds, and THE HELD WEAPON'S WHOLE POSE — the kick spring, the action clock, the draw, the breath, the walk under it, the brace and the barrel's heat, all summed into the six numbers of `GunFeel` so the renderer decides nothing; `HIT_FLASH_LIFE` is also the object one-shot blink |
+| `boss.ts` | THE SAWYER's local half: the last row off the wire, and what a fight FEELS like — the hit flash, the engine wobble, and `punchFor`, one table that gives every event its own shake, kick and sound. Owns nothing about the outcome; nothing here may ever be the reason a player knows something |
 | `lantern.ts` | four-cell battery, produces `output` 0..1 |
 | `hud-store.ts` | the only seam to React; `HUD_INTERVAL` = 0.2 s |
 | `tooltip-anchors.ts` | screen-space points for world `Tooltip`s, written every frame |

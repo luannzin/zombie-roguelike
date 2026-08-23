@@ -322,6 +322,8 @@ def snapshot(
     buys: list[dict] | None = None,
     balance: int | None = None,
     spins: list[dict] | None = None,
+    boss: dict | None = None,
+    boss_events: list[dict] | None = None,
 ) -> dict:
     payload = {
         "type": MSG_SNAPSHOT,
@@ -376,6 +378,20 @@ def snapshot(
         payload["buys"] = buys
     if spins:
         payload["spins"] = spins
+    # THE BOSS RIDES AS ONE ROW WITH HIS OWN PLAYHEAD ON IT. `s` is his state
+    # and `t` is how long he has been in it, and the client animates off those
+    # two rather than off a local clock — a 30 Hz position with a locally
+    # timed animation over it disagrees with the server about which frame the
+    # bar landed on, and that frame is the entire fight. Absent on every map
+    # that has no boss, which is all of them but one.
+    if boss is not None:
+        payload["boss"] = boss
+    # What he DID: the shake, the dust, the sound and the gore. Separate from
+    # the row for the same reason `kills` is separate from `enemies` — a state
+    # is a thing that is true, an event is a thing that happened, and a client
+    # that missed a packet must never replay the second.
+    if boss_events:
+        payload["bossEvents"] = boss_events
     # `is not None` rather than truthiness: spending down to nothing is the one
     # balance change a party most needs to see land.
     if balance is not None:

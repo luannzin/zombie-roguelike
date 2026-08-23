@@ -79,12 +79,12 @@ ceremony.
   kinds carry it (`BRICK` / `TILEFLOOR`), and `GROUNDS` / `CLEAR` in
   `world.py` + `world.ts` are the pair to keep in step.
 - **THE FIRST BOSS IS IN.** THE SAWYER — the logging crew's foreman — is the
-  end of `BOSS_DAY` (set to **1** in `config.py` for testing; move it to 5 when
-  you are done). The staging: a normal night, and the exit corridor opens onto
-  a round yard instead of onto the shop. Four moves on four range bands, a
-  telegraph on every one, an enrage at half health, a thrown crescent, and an
-  exit that does not exist until he is down. His timings come out of the art's
-  own manifest — see the mirrors list in [`AGENTS.md`](AGENTS.md).
+  end of `BOSS_DAY` (**2**, in `config.py` — one constant, read in one place).
+  The staging: a normal night, and the exit corridor opens onto
+  a round yard instead of onto the shop, whose own way out opens straight
+  across from the way in, and only once he is down. Four moves on four range
+  bands, an animated telegraph on every one, an enrage at half health, and a
+  thrown crescent. His timings come out of the art's own manifest — see the mirrors list in [`AGENTS.md`](AGENTS.md).
   **Verified headlessly, not in a live browser**: `test_boss_fight.py` drives a
   whole boss night and `bun tests/boss-clock.ts` pins the animation contract,
   but nobody has yet stood in the yard and fought him. First playthrough should

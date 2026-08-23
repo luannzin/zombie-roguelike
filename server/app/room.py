@@ -1445,7 +1445,13 @@ class Room:
         if self.egress is not None:
             return
         avoid = self.gate.side if self.gate is not None else None
-        opened = entrance.open_exit(self.world.tiles, self.world.seed, avoid)
+        if self.zone.kind == zones.KIND_ARENA:
+            # THE YARD'S WAY OUT IS OPPOSITE ITS WAY IN, and it has to be
+            # joined to the ring by hand — see `arena.open_far_exit`. Every
+            # other map is happy with a random edge.
+            opened = arena.open_far_exit(self.world, self.gate)
+        else:
+            opened = entrance.open_exit(self.world.tiles, self.world.seed, avoid)
         if opened is None:
             return
         gate, patches = opened

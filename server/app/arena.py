@@ -41,9 +41,13 @@ still has shape rather than being an evenly grey field with a boss on it.
 
 THE EXIT IS SHUT UNTIL HE IS DOWN, and it is shut by simply not existing:
 `build_arena` carves the arrival corridor and nothing else, and `Room` calls
-`entrance.open_exit` on the frame the boss dies. A door that is drawn and
-locked invites a party to stand in it; a treeline with no gap in it is a
-treeline.
+`open_far_exit` on the frame the boss dies. A door that is drawn and locked
+invites a party to stand in it; a treeline with no gap in it is a treeline.
+
+And it opens STRAIGHT ACROSS from the way in — see `open_far_exit`. One door
+at each end of a room is a room you cross; a way out beside the way in is a
+room you turn round in, and turning round is not what surviving that fight
+earned.
 """
 
 from __future__ import annotations
@@ -326,6 +330,49 @@ def build_arena(day: int, seed: int | None = None) -> TileMap:
         seed=used,
         scenery=payload,
         entrance=gate.geometry_payload(),
+    )
+
+
+def open_far_exit(world: TileMap, gate) -> tuple[object, list] | None:
+    """Cut the way out, STRAIGHT ACROSS from the way in. Called on his death.
+
+    Three things about it are the point:
+
+      IT IS OPPOSITE.  The party walks in at the south and the treeline opens
+                       at the north. `entrance.open_exit` normally picks a
+                       side at random — right for a forest, where coming out
+                       somewhere new is the better story — and wrong here.
+                       A yard with one door in and one door out, facing each
+                       other, is a room you cross; a yard whose exit appears
+                       beside the entrance is a room you turn round in, and
+                       turning round is not what surviving that fight earned.
+      IT IS CONNECTED. The ring is a disc inside a nine-tile margin, so a
+                       five-tile exit corridor lands in the treeline with rock
+                       between it and the floor. The `connect` hook carves the
+                       same kind of lane the arrival got — without it every
+                       side fails the connectivity check and the party is
+                       sealed in with a corpse.
+      IT DID NOT EXIST BEFORE NOW. `build_arena` cuts the way IN and nothing
+                       else. There is no door to stand in front of while he is
+                       alive, because a door that is drawn and locked is an
+                       invitation to try it.
+
+    Returns what `entrance.open_exit` returns — the gate and every changed
+    cell — or None if no side could be joined up, which the room treats the
+    same way it treats a forest that could not open one.
+    """
+    cx, cy = world.width / 2.0, world.height / 2.0
+
+    def join(tiles: list[list[int]], cut) -> None:
+        _lane(tiles, cut.mouth_x / TILE_SIZE, cut.mouth_y / TILE_SIZE, cx, cy)
+        _seal_islands(tiles)
+
+    return entrance.open_exit(
+        world.tiles,
+        world.seed,
+        avoid_side=gate.side if gate is not None else None,
+        prefer=entrance.OPPOSITE.get(gate.side) if gate is not None else None,
+        connect=join,
     )
 
 

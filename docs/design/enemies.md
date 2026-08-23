@@ -218,10 +218,19 @@ one place. What follows is why it is shaped the way it is.
   and the heaps are still the brightest things in the room and the room still
   has shape. The heaps are LIGHTS AND DECALS, never tiles: a solid tile in the
   middle of a boss arena is somewhere a two-tile body can wedge itself.
-- **THE EXIT IS SHUT BY NOT EXISTING.** `build_arena` carves the way IN and
-  nothing else; `Room._boss_down` calls `entrance.open_exit` on the frame he
-  falls. A door that is drawn and locked invites a party to stand in it. A
-  treeline with no gap in it is a treeline.
+- **THE EXIT IS SHUT BY NOT EXISTING, AND IT OPENS AT THE FAR END.**
+  `build_arena` carves the way IN and nothing else; `Room._boss_down` calls
+  `arena.open_far_exit` on the frame he falls, which cuts the treeline
+  straight across from the corridor the party walked in through. A door that
+  is drawn and locked invites a party to stand in it. And one door at each end
+  of a room is a room you CROSS — a way out beside the way in would send them
+  back the way they came, which is not what surviving that fight earned.
+
+  The yard is a disc inside a nine-tile margin, so the corridor lands in the
+  treeline with rock between it and the floor; `open_far_exit` carves the same
+  kind of lane the arrival got. Without it every side fails the connectivity
+  check and the party is sealed in with a corpse — which is why
+  `test_boss_fight.py` asserts both the side and the reachability.
 - **HIS HEALTH SCALES WITH THE GUNS POINTED AT HIM** (`boss.hp_for`), and the
   first player is worth more than the rest — a party also brings more ways to
   be revived and more bodies for him to have to choose between. The fight is

@@ -641,13 +641,14 @@ SHOT_DAMAGE = 8
 # would be a second opinion about it. What lives in this file is what the ART
 # cannot know: how hard he hits, how far he reaches, how long he waits.
 
-#: The day the arena replaces the walk to the shop. Set to 1 to test it on the
-#: first night. `None` disables the fight entirely.
+#: The day the arena replaces the walk to the shop. `None` disables the fight
+#: entirely; 1 puts it on the very first night, which is the quickest way to
+#: test it.
 #:
 #: It is a DAY NUMBER rather than a flag because the fight is a milestone in a
 #: run, and a run's shape is measured in nights. `Room` tests it once, on the
 #: crossing, so changing it mid-session takes effect on the next night.
-BOSS_DAY: int | None = 1
+BOSS_DAY: int | None = 2
 
 #: His health, and how much a second, third and fourth gun add. See
 #: `boss.hp_for` — the first player is worth more than the rest.

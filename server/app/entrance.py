@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import math
 import random
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from .config import (
@@ -286,11 +287,17 @@ def carve(
 
 _SIDE_SALT = {"e": 1, "w": 2, "n": 3, "s": 4}
 
+#: Straight across the map. What "the other end" means for a place that has
+#: two ends — see `arena.open_far_exit`.
+OPPOSITE = {"n": "s", "s": "n", "e": "w", "w": "e"}
+
 
 def open_exit(
     tiles: list[list[int]],
     seed: int,
     avoid_side: str | None = None,
+    prefer: str | None = None,
+    connect: Callable[[list[list[int]], "Entrance"], None] | None = None,
 ) -> tuple[Entrance, list[tuple[int, int, int]]] | None:
     """Carve a new VOID corridor after the arrival path has already sealed.
 
@@ -298,6 +305,20 @@ def open_exit(
     room can patch clients that already have the map. Tries every edge except
     the one the party walked in through, and rolls back a side that would
     disconnect the floor.
+
+    `prefer` puts one side at the head of the queue. It is still only a
+    preference — a side that cannot be connected is skipped like any other —
+    but it is how a map that has an OPINION about where its far end is gets
+    one. The forest has no opinion and passes nothing; the arena wants the
+    door straight across from the one the party came in through.
+
+    `connect` is called after the corridor is cut and BEFORE the connectivity
+    check, with the tiles and the gate. It is for a map whose floor does not
+    reach its own border: the arena is a disc inside a nine-tile margin, so a
+    five-tile exit corridor lands in the treeline with rock between it and the
+    ring, and every side would be rejected without something to join them up.
+    Called inside the retry loop on purpose, so a lane carved for a side that
+    is then rejected is rolled back with the rest of it.
 
     The mouth is FLOOR — the threshold the forest hands you. VOID toward the
     edge is the corridor you walk into, the same dark gap as the camp exit
@@ -315,6 +336,9 @@ def open_exit(
     sides = [side for side in SIDES if side != avoid_side]
     rng = random.Random(seed ^ 0xE072)
     rng.shuffle(sides)
+    if prefer in sides:
+        sides.remove(prefer)
+        sides.insert(0, prefer)
     # THE ARRIVAL'S SIDE IS A PREFERENCE, NOT A RULE. Coming out somewhere new
     # is the better story, but a night that cannot honour it on any of the
     # other three edges must not end with a party sealed in a forest with no
@@ -331,6 +355,8 @@ def open_exit(
         mouth_ty = int(gate.mouth_y // TILE_SIZE)
         if 0 <= mouth_ty < height and 0 <= mouth_tx < width:
             tiles[mouth_ty][mouth_tx] = FLOOR
+        if connect is not None:
+            connect(tiles, gate)
         if not _walkable_connected(tiles):
             continue
         gate.torches = _torches(tiles, gate)

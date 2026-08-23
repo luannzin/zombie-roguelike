@@ -30,6 +30,7 @@ from app.config import (  # noqa: E402
     TILE_SIZE,
 )
 from app.room import Room  # noqa: E402
+from app.maps import count_reachable  # noqa: E402
 from app.world import FLOOR, VOID  # noqa: E402
 
 
@@ -148,6 +149,17 @@ def main() -> None:
     check("he goes down", room.boss.state == boss.DEAD)
     check("the enrage fired on the way", room.boss.enraged)
     check("the treeline opens", room.egress is not None)
+    # OPPOSITE THE WAY IN, and joined to the ring. Both halves matter: a yard
+    # whose exit appears beside its entrance is a room you turn round in, and
+    # one whose exit is cut into the treeline without a lane back to the disc
+    # seals the party in with a corpse. Neither has a symptom until somebody
+    # is standing there looking for a way out.
+    check(f"straight across from the way in ({room.gate.side} -> {room.egress.side})",
+          room.egress.side == entrance.OPPOSITE[room.gate.side])
+    floor = sum(row.count(FLOOR) for row in room.world.tiles)
+    check(f"and the party can reach it ({floor} floor)",
+          count_reachable(room.world.tiles) == floor)
+    check("it is lit", len(room.egress.torches) > 0)
     check("the map itself changed", any(
         world_row.count(VOID) for world_row in room.world.tiles
     ))

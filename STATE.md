@@ -9,7 +9,7 @@ recently changed system, when something looks like a regression, before
 modifying anything under *Do not touch*, or when the task asks what to work on
 next. Skip it for a self-contained change to a stable system.
 
-_Last verified: 2026-08-23 against `main` @ `fd8f1b3` + the DIFFICULTY pass below and THE PACK below that._
+_Last verified: 2026-08-23 against `main` @ `91f0efa` — the T-01..T-10 pass below, then the DIFFICULTY pass and THE PACK under it._
 
 ## Current phase
 
@@ -20,6 +20,62 @@ knife got a real swing, the shotgun got its own dynamics, the machine got its
 ceremony.
 
 ## Currently working on
+
+- **T-01 THROUGH T-10 JUST LANDED. The loop was complete and had nothing at
+  stake in it; this is the pass that gave it stakes, moments and choices.**
+  Every one is written up in the design doc that owns it. The short version of
+  the diagnosis, in the order it was fixed:
+  - **DEATH COSTS THE RUN** (T-01, already in). Everything after this depends
+    on it: greed cannot exist without a loss vector, and every defensive
+    system was balancing a resource that refilled for free.
+  - **THE NIGHT FILLS UP, AND THE BILL IS A SHARE OF WHAT IS OUT THERE**
+    (T-02, T-03, already in).
+  - **MEDICINE LEFT THE BAG** ([`docs/design/player.md`](docs/design/player.md)).
+    It was loot with a price, and the intended trade — "58 gold, or being
+    alive" — stopped being a choice the moment a death ended the run. Now:
+    `value=0`, two cells on 4 and 5, and the greed trade is its WEIGHT. The
+    verb's whole cost is standing still. It also fixed a bug the docstrings
+    already claimed was closed: `damage_player` only cancelled a heal inside
+    the DEATH branch, so holding 4 while walking backwards was free.
+  - **THE NIGHT HAS A SCRIPT** ([`docs/design/events.md`](docs/design/events.md),
+    new). `events.py`: three trigger shapes and four rows — a wave, the lights
+    going out, a crate two clearings away, and the woods turning toward a body
+    that just fell. A slope has no moments in it.
+  - **ONE OBJECT YOU HAVE TO STAND STILL FOR** ([`docs/design/world.md`](docs/design/world.md)).
+    The vault, `open_time`, and a noise that goes out at the START so the risk
+    is committed before the payoff. It also surfaced `chest` and `strongbox`
+    as DEAD CONTENT — catalog rows with footprints and container-set entries
+    that no scene had ever placed.
+  - **SKILLS THAT CHANGE A RULE, AND SKILLS THAT COST SOMETHING**
+    ([`docs/design/skills.md`](docs/design/skills.md)). Thirty-six rows of
+    `(field, number)` build the same survivor with different dials; five new
+    rows do not.
+  - **SOMETHING THAT REACHES** ([`docs/design/enemies.md`](docs/design/enemies.md)
+    § The thing that reaches). The bloater, and `projectiles.py` lifted out of
+    the boss fight. Position was never a decision because walking backwards
+    answered the whole bestiary.
+  - **A SHELF YOU CAN GAMBLE AGAINST, AND WEATHER THAT DOES SOMETHING** (T-09,
+    T-10). See [`docs/design/store.md`](docs/design/store.md) § The reroll and
+    [`docs/design/world.md`](docs/design/world.md) § Weather with teeth.
+  - **NOT PLAYED IN A BROWSER.** Same limitation the pack was built under: the
+    pane could not composite in this session either (`document.hidden` is
+    permanently true, so `requestAnimationFrame` never runs and the arrival
+    hold never lifts). Everything is a test rather than a look. What was
+    verified from the browser: the client BUILDS, the arena mounts, snapshots
+    are processed with no console errors, and the server ships every new
+    config key. What wants eyes on it: whether the bloater's band reads as
+    "get closer" rather than as unfair; whether the vault's four seconds feel
+    like a decision or a chore; whether a fog night is atmospheric or just
+    annoying; and whether the reroll's ladder bites before or after it stops
+    being fun.
+  - **DEV MODE IS BROKEN AND IT IS NOT THIS PASS.** Creating a room in
+    `npm run dev` always shows "esta sala não existe mais": StrictMode
+    double-mounts `useRoomSession`, the first cleanup closes the only socket,
+    and `main.py` drops a room the moment its last socket leaves. A production
+    build works. Pre-existing — none of these commits touch the connection
+    lifecycle — and it hides a real bug: a player's brief network drop
+    destroys their room the same way.
+
 
 - **THE PACK JUST LANDED — the second creature, and the first MINIBOSS.**
   `ENEMY_TYPES` had held exactly one row for the whole of the game's life, so

@@ -2301,6 +2301,11 @@ export class Game {
       this.local.mods = meta.mods ? { speed: meta.mods.speed, carry: meta.mods.carry } : null;
     }
     this.lantern.setEndurance(meta.mods?.lamp ?? 1);
+    // `Filamento Frio`. Adopted here rather than at the `dark` packet because
+    // the skill can be bought MID-DARK — the shop is not the only place a
+    // canister lands — and a lamp that only learned about its own immunity on
+    // the next event would stay out for the rest of the one it was bought in.
+    this.lantern.setDarkImmune(meta.mods?.lampImmune ?? false);
   }
 
   /**

@@ -1521,6 +1521,16 @@ export interface PlayerMods {
   slots: number;
   /** How much longer the lantern lasts. The battery is client-local. */
   lamp: number;
+  /**
+   * `Filamento Frio`: an event dark does not take THIS body's lamp.
+   *
+   * The one RULE that ships, because the client runs the battery and predicts
+   * its own lamp — without it the owner would watch their light go out on the
+   * frame the dark landed and come back a packet later. The catalog's other
+   * rules resolve entirely server-side and are deliberately absent: shipping a
+   * rule nobody predicts is inviting somebody to re-implement it.
+   */
+  lampImmune: boolean;
 }
 
 /**

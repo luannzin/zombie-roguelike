@@ -208,7 +208,7 @@ These bind every subtree. Subsystem-specific rules live in the docs above.
 
 | scope | command |
 | --- | --- |
-| server | `python tests/test_snapshot_shape.py`, `test_pour.py`, `test_store_walk.py`, `test_config_parity.py`, `test_loot_frames.py`, `test_bush_cover.py`, `test_scenery_containers.py`, `test_creature_sheets.py`, `test_map_scale.py`, `test_boss_fight.py`, `test_gear.py`, `test_pack.py`, `test_medical.py`, `test_events.py`, `test_night_pressure.py`, `test_quota.py`, `test_containers.py` from `server/` — plain scripts, each prints `ok` |
+| server | `python tests/test_snapshot_shape.py`, `test_pour.py`, `test_store_walk.py`, `test_config_parity.py`, `test_loot_frames.py`, `test_bush_cover.py`, `test_scenery_containers.py`, `test_creature_sheets.py`, `test_map_scale.py`, `test_boss_fight.py`, `test_gear.py`, `test_pack.py`, `test_medical.py`, `test_events.py`, `test_night_pressure.py`, `test_quota.py`, `test_containers.py`, `test_skills.py` from `server/` — plain scripts, each prints `ok` |
 | client | `bun run typecheck` from `client/` — required after any change there |
 | client | `bun tests/grade.ts` from `client/` after touching `render/post/grade.ts` — plain script, prints `ok` |
 | client | `bun tests/exit-path.ts` from `client/` after touching `game/exit-path.ts` — plain script, prints `ok` |
@@ -350,6 +350,18 @@ which is the only way a measurement written down once stays honest. It has
 already earned its place: zeroing medicine's value in T-04 took two rows out of
 the findable pile and moved the fit by a tenth at every pad count, and nothing
 else anywhere would have noticed.
+
+Run `test_skills.py` after touching `skills.py`, a `Mods` consumer site, or
+`make_skills.ICONS`. Most of the catalog is `(field, number)` and needs no test;
+what this pins is the tier that is NOT. A rule is a boolean read at exactly one
+site, and a rule read nowhere looks identical to a skill the player has not
+found yet — the canister lands, the tray shows the tile, and nothing happens
+for the rest of the run. It drives each rule through the real code path it is
+meant to change, checks that `lamp_immune` is honoured by BOTH halves of the
+lantern suppression (one alone produces a lamp that lights for a single
+packet), and asserts the trade-off rows still cost what their blurbs say — a
+downside dropped in a rebalance is a strictly-better row, and nobody reports a
+skill that is too good.
 
 Run `test_config_parity.py` after touching `client_config()` or `GameConfig`:
 it fails if either side declares a key the other does not, in either

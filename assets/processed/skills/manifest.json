@@ -4,7 +4,7 @@
     "file": "sheet.png",
     "frameWidth": 16,
     "frameHeight": 16,
-    "frames": 36
+    "frames": 41
   },
   "frames": {
     "passo_leve": 0,
@@ -42,7 +42,12 @@
     "passo_de_sombra": 32,
     "pele_de_pedra": 33,
     "maos_do_armeiro": 34,
-    "bolsa_sem_fundo": 35
+    "bolsa_sem_fundo": 35,
+    "filamento_frio": 36,
+    "sangue_frio": 37,
+    "maos_de_veludo": 38,
+    "gatilho_nervoso": 39,
+    "mula_de_carga": 40
   },
   "can": {
     "file": "can.png",

@@ -133,6 +133,8 @@ export class Lantern {
    * off is when a cell recovers.
    */
   private suppressed = false;
+  /** `Filamento Frio`: an event dark does not reach this lamp. */
+  private darkImmune = false;
   /** Per-instance phase, so the waver is not in lockstep with anything else. */
   private readonly seed = Math.random() * 1000;
   /**
@@ -260,9 +262,27 @@ export class Lantern {
    * goes out on the frame the packet lands instead of a round trip later.
    */
   suppress(on: boolean): void {
-    if (this.suppressed === on) return;
-    this.suppressed = on;
-    if (on) this.cut();
+    // `Filamento Frio` — see `darkImmune`. Checked here rather than at the
+    // call site so that every route into a dark goes through one exemption.
+    const want = on && !this.darkImmune;
+    if (this.suppressed === want) return;
+    this.suppressed = want;
+    if (want) this.cut();
+  }
+
+  /**
+   * Whether an event dark applies to this lamp. `Filamento Frio`.
+   *
+   * Held rather than passed to `suppress`, because the skill can be bought
+   * mid-dark: a lamp that only learned about its own immunity at the next
+   * event would stay out for the rest of the one it was bought in. Setting it
+   * true lifts a suppression that is already running, which is exactly what
+   * the player who just opened that canister expects to see.
+   */
+  setDarkImmune(on: boolean): void {
+    if (this.darkImmune === on) return;
+    this.darkImmune = on;
+    if (on && this.suppressed) this.suppressed = false;
   }
 
   /** Back to a fresh lamp. Called on join and on dispose. */
@@ -275,6 +295,10 @@ export class Lantern {
     this.dark = false;
     this.blackout = false;
     this.suppressed = false;
+    // NOT `darkImmune`. It is a property of the PLAYER's build, not of the
+    // lamp's state, and `adoptMods` re-asserts it off every roster anyway —
+    // but clearing it here would blink the light off for one packet on every
+    // welcome for anybody carrying the skill.
   }
 
   /** Kill the light now, whatever it was in the middle of doing. */

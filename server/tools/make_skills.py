@@ -718,6 +718,106 @@ ICONS: list[tuple[str, Palette, Art]] = [
             "..cccc..",
         ],
     ),
+
+    # --- the third pass: the rows that are not numbers ----------------------
+    #
+    # THE RULE ICONS ARE DRAWN AS OBJECTS, not as symbols. Every icon above is
+    # the THING the row is about — a boot, an anvil, a bag — and a rule is no
+    # different: "your lamp does not go out" is a lit filament, not an
+    # abstraction of immunity. At eight pixels a metaphor is unreadable and an
+    # object is not.
+    #
+    # THE TWO TRADE-OFF ICONS CARRY THEIR COST IN THE ART. Both put BLOOD in
+    # the frame — the one ramp in this file that never appears on a row that is
+    # purely good — so the tray shows the player which of their tiles are the
+    # ones with teeth without them having to hover anything.
+    (
+        # Filamento Frio — a bulb still lit, with the dark closed around it.
+        "filamento_frio",
+        {"s": STEEL, "g": GOLD, "d": DARK},
+        [
+            "dd.ss.dd",
+            "d.ssss.d",
+            "..sggs..",
+            "..sggs..",
+            "..sggs..",
+            "...ss...",
+            "d..ss..d",
+            "dd.ss.dd",
+        ],
+    ),
+    (
+        # Sangue Frio — a dressing WRAPPED round a limb, seen side on.
+        #
+        # Not a cross. The first cut was a medical cross inside a disc and it
+        # came out as a red blob with a blue dot in it: at eight pixels a cross
+        # needs three clear pixels each way and there is no room for that
+        # inside a border. A limb with a band across it is two shapes instead
+        # of one and reads instantly — the diagonal is what says "wrapped"
+        # rather than "painted on".
+        "sangue_frio",
+        {"c": CLOTH, "b": BLOOD, "f": FROST},
+        [
+            ".ff..ff.",
+            ".ff..ff.",
+            "cccccccc",
+            "cffccffc",
+            "cffccffc",
+            "cccccccc",
+            ".ffbbff.",
+            ".ff..ff.",
+        ],
+    ),
+    (
+        # Mãos de Veludo — a hand on a lock, and nothing coming off it. The
+        # silence is drawn as ABSENCE: every other tool icon here throws a
+        # spark or a streak, and this one is the same shape with the spark
+        # taken out.
+        "maos_de_veludo",
+        {"h": HIDE, "s": STEEL, "d": DARK},
+        [
+            "..ssss..",
+            ".s....s.",
+            ".s....s.",
+            "ssssssss",
+            "sshhhhss",
+            "sshddhss",
+            "sshhhhss",
+            "ssssssss",
+        ],
+    ),
+    (
+        # Gatilho Nervoso — a round, and the hand around it already opening.
+        # The blood is the point: this is the row that costs you.
+        "gatilho_nervoso",
+        {"g": GOLD, "b": BLOOD, "s": STEEL},
+        [
+            "b..ss..b",
+            ".b.gg.b.",
+            "...gg...",
+            "..gggg..",
+            "..gggg..",
+            "..gssg..",
+            ".bssssb.",
+            "b.ssss.b",
+        ],
+    ),
+    (
+        # Mula de Carga — a pack bigger than the shoulders under it, and the
+        # straps biting. The two blood pixels are where they bite.
+        "mula_de_carga",
+        {"h": HIDE, "d": DARK, "c": CLOTH, "b": BLOOD},
+        [
+            "..hhhh..",
+            ".hddddh.",
+            "hbddddbh",
+            "hdddddddh"[:8],
+            "hdccccdh",
+            "hdccccdh",
+            "chddddhc",
+            ".cccccc.",
+        ],
+    ),
 ]
 
 

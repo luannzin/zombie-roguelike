@@ -952,11 +952,16 @@ class Room:
             total=crate.type.open_time,
         )
         player.vx = player.vy = 0.0
-        self.noises.append(
-            ai.Noise(
-                x=crate.x, y=crate.y, radius=crate.type.noise, source_id=player.id
+        # `Mãos de Veludo` (`skills.Mods.quiet_hands`) takes the whole stake
+        # away. Not a smaller radius — silence — because a quieter announcement
+        # is still an announcement, and what the row is buying is the ability to
+        # open the loudest object in the game without telling the forest.
+        if not player.skills.mods.quiet_hands:
+            self.noises.append(
+                ai.Noise(
+                    x=crate.x, y=crate.y, radius=crate.type.noise, source_id=player.id
+                )
             )
-        )
 
     def _finish_force(self, player: Player, crate_id: str) -> None:
         """The channel completed. Open it exactly as a keypress would have.
@@ -2437,7 +2442,15 @@ class Room:
         # different things that mean the same thing to a lamp, and giving them
         # separate suppression paths is how a light the player can see and the
         # server cannot eventually happens.
-        if self.blackout or self.dark_left > 0.0:
+        #
+        # AND ONE EXEMPTION, and only from the DARK. `Filamento Frio` is a rule
+        # about the night's script, not about the run home: the blackout is the
+        # last beat of a map and the whole party is meant to be running in it,
+        # so a skill that lit one of them would be rewriting the ending rather
+        # than the weather.
+        if self.blackout or (
+            self.dark_left > 0.0 and not player.skills.mods.lamp_immune
+        ):
             cmd.lantern = False
         # Ignore out-of-order / replayed inputs.
         if cmd.sequence <= player.last_processed_seq:
@@ -3116,6 +3129,11 @@ class Room:
         self.dark_left = seconds
         self._dark_dirty = True
         for player in self.players.values():
+            # `Filamento Frio` — see `skills.Mods.lamp_immune`. One of the two
+            # halves; the other is in `queue_input`, which is what stops the
+            # lamp being switched back off on the next packet.
+            if player.skills.mods.lamp_immune:
+                continue
             player.last_input.lantern = False
         # NO PLACE. The dark is everywhere, and a cue with a bearing on it
         # would send the party looking in a direction for something that is
@@ -3966,7 +3984,15 @@ class Room:
         # is fully absorbed still returns early, and a heal that survived
         # because a plate happened to eat the hit would make armour into
         # "keep healing through it", which is a rule nobody designed.
-        target.using = None
+        #
+        # `Sangue Frio` (`skills.Mods.steady`) is the one thing that survives
+        # it, and it survives ONLY a heal. A vault is a different bargain: its
+        # stake is the noise, and a force that could not be interrupted would
+        # make the loudest object in the game free to open. The skill that
+        # answers the vault is `Mãos de Veludo`, and it answers the noise.
+        if not (target.skills.mods.steady and target.using is not None
+                and target.using.kind == USE_HEAL):
+            target.using = None
 
         amount = self._block_with_shield(target, amount, from_x, from_y)
         if amount <= 0:

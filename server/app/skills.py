@@ -73,9 +73,36 @@ class SkillDef:
     #: `(field on Mods, how much ONE copy is worth)`. A tuple because the top
     #: of the ladder is allowed to do two things at once — that is most of why
     #: a legendary reads as a legendary rather than as a bigger common.
-    effects: tuple[tuple[str, float], ...]
+    #:
+    #: A NEGATIVE STEP IS A REAL DOWNSIDE and needs no new machinery: `armor`
+    #: has always been stored as the multiplier on damage TAKEN, so a row that
+    #: pushes it UP is a row that makes you softer. See the trade-off tier at
+    #: the bottom of the catalog for why that is worth having.
+    effects: tuple[tuple[str, float], ...] = ()
+    #: RULES THIS ROW FLIPS, by name. Booleans on `Mods`, not numbers.
+    #:
+    #: WHY THE CATALOG NEEDED THIS AT ALL. Every row above is `(field, number)`,
+    #: which means every build in the game is the same build with different
+    #: dials — you are always the same survivor, moving a bit faster or hitting
+    #: a bit harder. That is a difficulty slider wearing a skill tree's clothes,
+    #: and it is the single reason no archetype in this game has ever felt
+    #: different to play rather than merely better.
+    #:
+    #: A rule has no number, does not stack, and CHANGES WHAT YOU CAN DO. It is
+    #: the difference between "I take 12% less damage" and "a blow does not
+    #: interrupt my bandage" — the second one changes where you are willing to
+    #: stand, which is a decision rather than an amount.
+    #:
+    #: A row may carry both. A rule row with a small number attached is still a
+    #: rule row; what it must not be is a number row with a rule bolted on as a
+    #: sweetener, because then the rule is something the player got by accident.
+    rules: tuple[str, ...] = ()
     #: How many copies stack. Past it a duplicate still pays (see
     #: `Loadout.add`), it just stops moving the number.
+    #:
+    #: A PURE RULE ROW CAPS AT ONE. A boolean cannot be flipped twice, so a
+    #: second copy would be a canister that did nothing at all — which is a
+    #: worse outcome than a duplicate that merely does little.
     cap: int = 5
 
 
@@ -323,6 +350,104 @@ SKILLS: tuple[SkillDef, ...] = (
         (("slots", 2.0), ("carry", 3.0)),
         cap=2,
     ),
+
+    # --- the third pass: rows that are not numbers ---------------------------
+    #
+    # FIVE ROWS, NOT EIGHTEEN, AND THAT IS THE POINT OF THEM.
+    #
+    # Everything above this line is `(field, number)`. Thirty-six rows of it,
+    # and the honest description of what they build is: the same survivor, with
+    # different dials. You are always the same person moving a bit faster or
+    # hitting a bit harder, and no two runs ever PLAY differently — they only
+    # go better or worse. That is a difficulty slider wearing a skill tree's
+    # clothes, and it is the single reason no archetype in this game has ever
+    # felt like a character.
+    #
+    # These five are the other kind. Three of them flip a RULE — no number
+    # attached, no stacking, and what changes is what you are able to do rather
+    # than how much of it. Two of them COST something real, which is the other
+    # half of the same idea: a catalog where every row is an improvement is a
+    # catalog where every choice is "yes", and a choice with one answer is not
+    # a choice.
+    #
+    # They are appended, like every pass before them, because catalog order IS
+    # the icon atlas's frame order. See the note at the head of the second pass.
+    #
+    # DELIBERATELY FEW. Rule rows need PLAYING, not volume: each one removes a
+    # constraint the rest of the game is balanced against, and the only way to
+    # find out whether that is interesting or ruinous is to live with it for a
+    # few nights. Eighteen at once would be eighteen unknowns interacting.
+
+    # --- rules ---------------------------------------------------------------
+    SkillDef(
+        # PAIRS WITH THE NIGHT'S SCRIPT (`events.py`'s `dark`). The dark is the
+        # one event that SUBTRACTS — it takes away the lantern trade the player
+        # has been making all night — and this is the row that says it does not
+        # apply to you. Being the only lit thing in a black forest is not
+        # strictly an advantage either, which is what makes it interesting.
+        "filamento_frio", "Filamento Frio", "rare",
+        "sua lanterna não apaga quando a noite fecha",
+        rules=("lamp_immune",),
+        # A BOOLEAN CANNOT BE FLIPPED TWICE. A second copy would be a canister
+        # that did nothing at all, which is worse than one that does little.
+        cap=1,
+    ),
+    SkillDef(
+        # PAIRS WITH MEDICINE (`medical.py`). A heal's entire cost is standing
+        # still where something can reach you, and this does not remove the
+        # damage — only the interruption. What it buys is the ability to COMMIT
+        # to a heal somewhere you expect to be hit, which is a decision about
+        # position rather than a discount on being wrong.
+        "sangue_frio", "Sangue Frio", "epic",
+        "levar um golpe não interrompe seu curativo",
+        rules=("steady",),
+        cap=1,
+    ),
+    SkillDef(
+        # PAIRS WITH THE VAULT (`crates.open_time`). The strongest rule here
+        # and deliberately so: it removes the whole STAKE of forcing a
+        # container — the noise that goes out before you know whether it was
+        # worth it — rather than shortening the seconds. That is what a
+        # legendary should be allowed to be: not a bigger number, but a rule of
+        # the world that stops applying to you.
+        "maos_de_veludo", "Mãos de Veludo", "legendary",
+        "arrombar não faz barulho",
+        rules=("quiet_hands",),
+        cap=1,
+    ),
+
+    # --- rows that cost something -------------------------------------------
+    #
+    # NO NEW MACHINERY. `armor` has always been the multiplier on damage TAKEN,
+    # so a row that pushes it UP is a row that makes you softer, and `speed`
+    # going down is a row that makes you slower. The catalog could always have
+    # done this and simply never did.
+    #
+    # THE DOWNSIDE IS IN THE BLURB, first, before the upside. A cost the player
+    # discovers by dying is a bug report; a cost they read on the canister and
+    # took anyway is a build.
+    SkillDef(
+        # The classic trade, and it is here because it is the one that most
+        # obviously produces a DIFFERENT RUN rather than a better one: a party
+        # carrying this fights at a range they would not otherwise pick, and
+        # has to solve being hit some other way.
+        "gatilho_nervoso", "Gatilho Nervoso", "epic",
+        "+35% de dano de arma, mas +20% de dano sofrido",
+        (("gun", 0.35), ("armor", 0.20)),
+        # Capped LOW. Three copies is +60% damage taken, which stops being a
+        # trade and becomes a way to delete yourself with a skill.
+        cap=2,
+    ),
+    SkillDef(
+        # THE HAULER. Everything this game rewards is carried out on your back,
+        # and this is the row that says you may carry more of it if you accept
+        # being slower with it — which under permadeath is a real question,
+        # because the thing you cannot do with a full bag is run away.
+        "mula_de_carga", "Mula de Carga", "rare",
+        "+4 kg de carga e +1 espaço, mas -6% de velocidade",
+        (("carry", 4.0), ("slots", 1.0), ("speed", -0.06)),
+        cap=3,
+    ),
 )
 
 BY_KEY: dict[str, SkillDef] = {row.key: row for row in SKILLS}
@@ -358,6 +483,35 @@ class Mods:
     #: one with a floor under it, in `flatten`.
     armor: float = 1.0
 
+    # --- the rules ----------------------------------------------------------
+    #
+    # Booleans rather than numbers, and that is the whole point of them: every
+    # field above answers "how much", and these answer "can I". A build made
+    # only of the fields above is the same survivor with different dials; a
+    # build with one of these in it plays differently.
+    #
+    # They are read at exactly one site each, named in the comment, because a
+    # rule checked in two places is a rule that will be missing from the third.
+
+    #: An event dark does not take YOUR lamp. Read by `Room.begin_dark` and
+    #: `Room.queue_input` — the two halves of the suppression.
+    lamp_immune: bool = False
+    #: A blow does not interrupt your medical channel. Read by
+    #: `Room.damage_player`, right where the channel is cleared.
+    #:
+    #: It does NOT stop the damage. What it buys is the ability to commit to a
+    #: heal in a place where you expect to be hit, which is a decision about
+    #: position — the exact axis medicine was designed around — rather than a
+    #: discount on being wrong.
+    steady: bool = False
+    #: Forcing a container makes no noise. Read by `Room._begin_force`.
+    #:
+    #: The strongest rule in the catalog and deliberately so: it removes the
+    #: entire stake of the vault (see `crates.ObjectType.open_time`), which is
+    #: exactly what a legendary should be allowed to do — not a bigger number,
+    #: but a rule of the world that stops applying to you.
+    quiet_hands: bool = False
+
     def payload(self) -> dict:
         """What the owning client needs to predict its own body.
 
@@ -372,6 +526,13 @@ class Mods:
             "carry": round(self.carry, 2),
             "slots": self.slots,
             "lamp": round(self.lamp, 4),
+            # THE ONE RULE THE CLIENT HAS TO KNOW, because the client runs the
+            # battery and predicts its own lamp: without this the owner of the
+            # skill would watch their light go out on an event dark and come
+            # back a packet later. `steady` and `quiet_hands` are resolved
+            # entirely server-side and are deliberately NOT here — shipping a
+            # rule nobody predicts is inviting somebody to re-implement it.
+            "lampImmune": self.lamp_immune,
         }
 
 
@@ -396,6 +557,7 @@ _BASE: dict[str, float] = {
 def flatten(stacks: dict[str, int]) -> Mods:
     """Roll a `{key: copies}` dict up into one `Mods`."""
     totals = dict(_BASE)
+    rules: set[str] = set()
     for key, copies in stacks.items():
         row = BY_KEY.get(key)
         if row is None or copies <= 0:
@@ -404,6 +566,11 @@ def flatten(stacks: dict[str, int]) -> Mods:
         for field, step in row.effects:
             if field in totals:
                 totals[field] += step * effective
+        # A RULE IS A SET MEMBERSHIP AND NOT A SUM. Owning one copy and owning
+        # three are the same sentence, so `effective` is deliberately not
+        # consulted here — the cap on a rule row exists to stop the machine
+        # handing out a canister that does nothing, not to scale anything.
+        rules.update(row.rules)
     return Mods(
         speed=totals["speed"],
         max_hp=int(round(totals["max_hp"])),
@@ -422,6 +589,9 @@ def flatten(stacks: dict[str, int]) -> Mods:
         # being healed by zombies. A third of the hit still lands however lucky
         # the machine has been.
         armor=max(0.35, totals["armor"]),
+        lamp_immune="lamp_immune" in rules,
+        steady="steady" in rules,
+        quiet_hands="quiet_hands" in rules,
     )
 
 

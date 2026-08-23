@@ -31,13 +31,69 @@ Nearest contracts: [`server/app/AGENTS.md`](../../server/app/AGENTS.md),
   else's picture and nothing errors. `make_skills._check_order` fails the build
   on any disagreement — it is the only guard there is.
 
+## Rows that are not numbers
+
+Thirty-six of the catalog's rows are `(field, number)`, and the honest
+description of what they build is: **the same survivor with different dials.**
+You are always the same person moving a bit faster or hitting a bit harder. No
+two runs ever *play* differently — they only go better or worse. That is a
+difficulty slider wearing a skill tree's clothes, and it is the single reason
+no archetype in this game ever felt like a character.
+
+A **rule** has no number, does not stack, and changes *what you can do*. The
+difference between *"I take 12% less damage"* and *"a blow does not interrupt
+my bandage"* is that the second changes **where you are willing to stand** —
+a decision rather than an amount.
+
+| row | rule | what it pairs with |
+| --- | --- | --- |
+| Filamento Frio | your lamp survives an event dark | [`events.md`](events.md)'s `dark` |
+| Sangue Frio | a blow does not interrupt a heal | [`player.md`](player.md)'s medicine |
+| Mãos de Veludo | forcing a container is silent | [`world.md`](world.md)'s vault |
+
+Each pairs with a constraint some *other* subsystem introduced, and that is
+deliberate: a rule is only interesting if there is a rule to break. A catalog
+of rule-skills written before the rules existed would be a catalog of
+exemptions from nothing.
+
+**A pure rule row caps at one.** A boolean cannot be flipped twice, so a second
+copy would be a canister that did nothing at all — worse than one that does
+little.
+
+### And rows that cost something
+
+A catalog where every row is an improvement is a catalog where every choice is
+*"yes"*, and a choice with one answer is not a choice. Two rows charge for what
+they give: `Gatilho Nervoso` (+35% gun damage, +20% damage taken) and `Mula de
+Carga` (+4kg and a slot, −6% speed).
+
+They needed **no new machinery** — `armor` has always been the multiplier on
+damage *taken*, so a row that pushes it up is a row that makes you softer. The
+catalog could always have done this and simply never did.
+
+The downside goes in the blurb **first**, before the upside. A cost the player
+discovers by dying is a bug report; a cost they read on the canister and took
+anyway is a build.
+
+### Deliberately few
+
+Five rows, not a third pass of eighteen. Rule rows need **playing**, not
+volume: each one removes a constraint the rest of the game is balanced against,
+and the only way to find out whether that is interesting or ruinous is to live
+with it for a few nights. Eighteen at once would be eighteen unknowns
+interacting.
+
+---
+
 ## Change surface
 
 | intent | touch |
 | --- | --- |
 | the xp curve | `XP_BASE` / `XP_GROWTH` in `server/app/config.py`. What PAYS it is `Room.damage_enemy` and nothing else |
 | the price of a bought pull | `STORE_SPIN_PRICE` in `server/app/config.py` (the ladder itself is `Room.spin_price`) |
-| add/retune a skill | `server/app/skills.py` + every consumer site above + an icon in `server/tools/make_skills.py` |
+| add/retune a skill | `server/app/skills.py` + every consumer site above + an icon in `server/tools/make_skills.py` (**appended** — catalog order IS frame order) |
+| add a skill that flips a RULE | a `rules=(...)` row in `skills.py` + a `bool` on `Mods` + **exactly one** read site, named in the field's own comment. A rule checked in two places is a rule that will be missing from the third |
+| add a skill that COSTS something | nothing new — `armor` is the multiplier on damage TAKEN, so pushing it up is a downside, and a negative `speed` step already works. Put the cost in the blurb FIRST |
 | machine timing | `server/app/machine.py` AND `client/src/game/machine.ts` |
 | the ceremony drawn | `client/src/render/layers/store.ts`, `client/src/render/machine.ts` |
 | the payout tin | `server/tools/make_skills.py` (the art), `client/src/components/hud/SkillCanIcon.tsx` (the sprite), `Game.spawnSkillFly` / `landSkillFly` |

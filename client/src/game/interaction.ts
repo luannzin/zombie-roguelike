@@ -29,6 +29,7 @@
  * makes, which is what keeps "close enough" one fact rather than two.
  */
 
+import { gearCard } from './gear-card';
 import type { GameConfig, LootState, PlayerMeta } from '../net/protocol';
 import type { HudBuyPrompt, HudLootPrompt, HudRiftPrompt } from './hud-store';
 import { objectLabel, objectTilesW } from './objects';
@@ -240,26 +241,43 @@ export function nearAmmoBox(s: InteractionState): AmmoBox | null {
  * See the file header: this is a duplicate of a server rule on purpose, and
  * the two have to move together.
  */
+/**
+ * Why a box of rounds would be refused, or null if it would not be.
+ *
+ * AMMUNITION ANSWERS TO YOUR OWN BELT, and to nothing else. Mirrors
+ * `Room.collect_loot`: a calibre you are not carrying is refused (the rifle
+ * rounds belong to whoever brought the rifle) and a reserve already at its cap
+ * is refused too — the box stays on the ground and is still there on the way
+ * back, which is exactly what a player wants from ammunition they cannot use
+ * yet.
+ *
+ * IT RETURNS WHICH REFUSAL RATHER THAN A BOOLEAN, and that is the whole point
+ * of it being its own function. The three refusals in this game are three
+ * different sentences and only one of them is about space: a player standing
+ * over a box of rifle rounds with an empty bag was being told "Inventário
+ * Cheio", which is not true, does not explain anything, and teaches them that
+ * the prompt lies. What they need to know is that the box belongs to whoever
+ * brought the rifle.
+ */
+export function ammoRefusal(
+  s: InteractionState,
+  calibre: string | undefined,
+): 'calibre' | 'reserve' | null {
+  if (!calibre) return 'calibre';
+  const guns = s.meta?.guns;
+  const owns = (guns?.slots ?? []).some(
+    (cell) => cell !== null && s.config?.weapons?.[cell]?.ammo === calibre,
+  );
+  if (!owns) return 'calibre';
+  const cap = s.config?.ammo?.max?.[calibre];
+  if (cap !== undefined && (s.ammo[calibre] ?? 0) >= cap) return 'reserve';
+  return null;
+}
+
 export function canStow(s: InteractionState, key: string, hp?: number): boolean {
   const catalog = s.config?.loot ?? {};
   const def = catalog[key];
-  if (def?.pocket === 'ammo') {
-    // AMMUNITION ANSWERS TO YOUR OWN BELT, and to nothing else. Mirrors
-    // `Room.collect_loot`: a calibre you are not carrying is refused (the
-    // rifle rounds belong to whoever brought the rifle) and a reserve
-    // already at its cap is refused too — the box stays on the ground and
-    // is still there on the way back, which is exactly what a player wants
-    // from ammunition they cannot use yet.
-    const calibre = def.ammo;
-    if (!calibre) return false;
-    const guns = s.meta?.guns;
-    const owns = (guns?.slots ?? []).some(
-      (cell) => cell !== null && s.config?.weapons?.[cell]?.ammo === calibre,
-    );
-    if (!owns) return false;
-    const cap = s.config?.ammo?.max?.[calibre];
-    return cap === undefined || (s.ammo[calibre] ?? 0) < cap;
-  }
+  if (def?.pocket === 'ammo') return ammoRefusal(s, def.ammo) === null;
   if (def?.pocket === 'worn') {
     // ONE REFUSAL, AND IT IS THE ONLY ONE THIS CATEGORY NEEDS: the piece you
     // are already wearing, in the same or better condition. Everything else
@@ -464,6 +482,13 @@ export function buyPrompt(s: InteractionState): HudBuyPrompt | null {
     price: stand.price,
     afford: stand.price <= s.balance,
     full: !room && swap === null,
+    // WHAT IS ON THE TABLE, DESCRIBED, WITHOUT BEING ASKED FOR. Everywhere
+    // else in this game a card is something you hover; here it is something
+    // you walk into, because the shop is the one place a player spends a
+    // whole night's extraction and a name plus a price is not enough to spend
+    // it on. The catalog row rather than a worn one — nothing on a shelf has
+    // been used.
+    card: s.config ? gearCard(s.config, stand.key) : null,
     swap: swap ?? undefined,
   };
 }
@@ -536,6 +561,15 @@ export function lootPromptInfo(s: InteractionState): HudLootPrompt | null {
     name: def.name,
     rarity: def.rarity,
     full: trade === null,
+    // WHICH refusal, so the copy can be true. Only ammunition has more than
+    // one; everything else that gets this far is out of pocket space, which
+    // is what the word "cheio" has always meant here.
+    reason:
+      trade !== null
+        ? undefined
+        : def.pocket === 'ammo'
+          ? (ammoRefusal(s, def.ammo) ?? 'bag')
+          : 'bag',
     swap: trade ?? undefined,
   };
 }

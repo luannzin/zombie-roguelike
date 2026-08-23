@@ -7,6 +7,7 @@
  */
 
 import { Store } from '../lib/store';
+import type { HudGearCard } from './gear-card';
 import type { LanternReading } from './lantern';
 import type { ConnectionStatus } from '../net/connection';
 import type { LootRarity, QuestState, ZoneInfo } from '../net/protocol';
@@ -27,6 +28,12 @@ export interface HudHotbarSlot {
   rarity: LootRarity;
   frame: number;
   weight: number;
+  /**
+   * What this weapon IS, for the hover card. Built by `gearCard` off the
+   * catalog, so the belt, the armour panel and the shop describe the same
+   * object the same way.
+   */
+  card: HudGearCard | null;
   /**
    * Rounds left for this weapon's calibre, or null for the knife.
    *
@@ -89,10 +96,16 @@ export interface HudArmorSlot {
   rarity: LootRarity | null;
   /** `cloth` / `leather` / `steel` / `kevlar`. Null when the part is bare. */
   material: string | null;
-  /** Fraction of a blow landing here that the plate takes. 0 when bare. */
-  soak: number;
+  /** Damage taken off every blow that lands here. 0 when the part is bare. */
+  armor: number;
   hp: number;
   maxHp: number;
+  /**
+   * The hover card, carrying THIS piece's remaining durability rather than
+   * the catalog's ceiling. Null on a bare part — there is nothing to describe,
+   * and a card that said "nothing" would be a card you learn to dismiss.
+   */
+  card: HudGearCard | null;
 }
 
 /** The shield, when there is one on the belt. */
@@ -103,20 +116,22 @@ export interface HudShield {
   maxHp: number;
   /** It is up RIGHT NOW. Local, off the button — not a five-hertz value. */
   up: boolean;
+  card: HudGearCard | null;
 }
 
 export interface HudArmor {
   slots: HudArmorSlot[];
   shield: HudShield | null;
   /**
-   * What fraction of an average blow the whole set takes.
+   * DAMAGE the whole set takes off a blow.
    *
-   * The one piece of arithmetic worth doing for the player, and it is not the
-   * average of the three: a plate only soaks the blows that land on ITS part,
-   * and where a blow lands is weighted by how much of the sprite that part is
-   * (`config.armorCoverage`). Nobody is working that out from three bars.
+   * The one piece of arithmetic worth doing for the player: a plate only
+   * answers the blows that land on ITS part, so a full set of one material is
+   * exactly that material's rating and a partial set is less. It sits above a
+   * health bar counted in the same units, which is the point — `-5` beside
+   * `100` is a sentence.
    */
-  soak: number;
+  armor: number;
 }
 
 export interface HudInventory {
@@ -137,8 +152,21 @@ export interface HudLootPrompt {
   id: string;
   name: string;
   rarity: LootRarity;
-  /** No empty slot and no stack of this key. The tooltip turns red. */
+  /** E would refuse. The tooltip says why — see `reason`. */
   full: boolean;
+  /**
+   * WHY it is refused, because "Inventário Cheio" is a lie for two of the
+   * three cases and a player standing over a box of rifle rounds with an
+   * empty bag has no way to find that out.
+   *
+   *   bag       no free cell and no stack — the only case the old copy fit
+   *   calibre   AMMUNITION for a gun nobody in your hands can fire. Not a
+   *             refusal about space at all: the box is fine, it is not yours
+   *   reserve   ammunition you CAN fire and are already carrying the most of
+   *
+   * Absent when nothing is refused.
+   */
+  reason?: 'bag' | 'calibre' | 'reserve';
   /**
    * Set when the belt is full of guns but E would TRADE rather than refuse:
    * the name of the weapon currently in hand, which is what collecting this
@@ -187,6 +215,14 @@ export interface HudBuyPrompt {
   name: string;
   rarity: LootRarity;
   price: number;
+  /**
+   * What is on the table, described. Shown WITHOUT being asked for — a shop
+   * is where a player decides what to spend a night's extraction on, and
+   * deciding that from a name and a number is deciding blind. Null for the
+   * ammunition crates, whose whole offer is already the two numbers on the
+   * prompt line.
+   */
+  card?: HudGearCard | null;
   /** The party can cover it. False paints the price in the danger tone. */
   afford: boolean;
   /** Belt full AND no legal trade — holding the knife, or holstered. */

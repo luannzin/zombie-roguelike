@@ -28,11 +28,26 @@ export interface TooltipProps {
   start?: ReactNode;
   /** The same, after the copy. */
   end?: ReactNode;
+  /**
+   * A block stacked ON TOP of the prompt line, in its own card.
+   *
+   * Two cards rather than one tall one, and the split is what each is FOR: the
+   * line is the ACTION (a key, a verb, a price) and the block is the OBJECT.
+   * The action is what the player is here to read at a glance and it stays
+   * exactly where it has always been — pinned to the thing, one line, unwrapped
+   * — while the description sits above it and can be as tall as it needs.
+   *
+   * The wrapper is translated to `-100%` in Y, so the BOTTOM of the stack
+   * lands on the anchor: adding a block above moves nothing that was already
+   * there, which is the only reason this is a slot rather than a new
+   * component.
+   */
+  above?: ReactNode;
   children: ReactNode;
   className?: string;
 }
 
-export function Tooltip({ anchor, start, end, children, className }: TooltipProps) {
+export function Tooltip({ anchor, start, end, above, children, className }: TooltipProps) {
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -68,6 +83,13 @@ export function Tooltip({ anchor, start, end, children, className }: TooltipProp
       )}
       style={anchor ? { visibility: 'hidden' } : undefined}
     >
+      {above === undefined ? null : (
+        <div className="mb-1 flex justify-center">
+          <div className="world-tooltip world-tooltip-plain pixel-text text-ink w-max text-[11px] leading-[14px]">
+            {above}
+          </div>
+        </div>
+      )}
       {/* 14px leading is Departure Mono's own content box at 11px (11 up, 3
           down) — the same span the lobby measures its card off, so the copy
           sits on the card exactly the way a name does.

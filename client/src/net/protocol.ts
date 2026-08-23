@@ -327,10 +327,17 @@ export interface ArmorConfig {
   slot: string;
   /** `cloth` / `leather` / `steel` / `kevlar`. */
   material: string;
+  /** The material's Portuguese name — "pano", "couro", "aço", "kevlar". */
+  materialName: string;
   /** 1..4. The one number the rest is derived from. */
   tier: number;
-  /** Fraction of a blow landing on this part that the plate takes. */
-  soak: number;
+  /**
+   * DAMAGE POINTS taken off every blow that lands on this part. Flat, not a
+   * fraction — see `server/app/armor.py`: a proportional mitigation cannot be
+   * printed as a number without naming the blow it is a proportion of, and
+   * the moment a stat card names one it is anchored on one creature.
+   */
+  armor: number;
   /** Points of damage a fresh one absorbs before it comes apart. */
   maxHp: number;
   /** Kilos. On the WALK, never in the bag — see `Game.moveWeight`. */
@@ -400,6 +407,7 @@ export type WeaponKind =
   | 'rifle'
   | 'sniper'
   | 'melee'
+  | 'shield'
   | string;
 
 /** What a combo step reads as. `cut` is the finisher. */

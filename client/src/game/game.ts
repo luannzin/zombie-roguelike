@@ -74,6 +74,7 @@ import {
   stepBossFeel,
   type BossFeel,
 } from './boss';
+import { gearCard, setArmor } from './gear-card';
 import { GradeStack } from '../render/post/grade';
 import {
   dangerLook,
@@ -4073,28 +4074,30 @@ export class Game {
         key: piece?.k ?? null,
         name: def?.name ?? null,
         rarity: def?.rarity ?? null,
-        material: def?.material ?? null,
-        soak: def?.soak ?? 0,
+        // The MATERIAL'S OWN NAME, off the catalog. The panel used to print
+        // the key — a Portuguese HUD saying "steel" — because the key was the
+        // only string on the wire. It ships a name now (`materialName`).
+        material: def?.materialName ?? null,
+        armor: def?.armor ?? 0,
         hp: piece?.hp ?? 0,
         maxHp: piece?.max ?? 0,
+        card:
+          piece && def
+            ? gearCard(config, piece.k, { hp: piece.hp, max: piece.max })
+            : null,
       };
     });
-    // WHAT THE SET ACTUALLY STOPS, and it is not the average of the three.
-    // A plate only soaks the blows that land on ITS part, so the honest
-    // total is each plate's soak weighted by that part's share of the body
-    // (`config.armorCoverage`, which is the player sprite's own anatomy).
-    // A helmet alone on this sprite is worth nearly half a set; a pair of
-    // leggings alone is worth a fifth. Nobody works that out from three bars.
-    let soak = 0;
-    for (const row of slots) {
-      if (row.hp > 0) soak += row.soak * (config.armorCoverage[row.slot] ?? 0);
-    }
+    // WHAT THE SET TAKES OFF A BLOW, in damage. Not the sum of the three and
+    // not their average: a plate only answers the blows that land on ITS
+    // part, so the honest total weights each rating by that part's share of
+    // the body. See `setArmor`.
+    const armor = setArmor(config, slots);
 
     const shield = this.localMeta?.shield ?? null;
     const shieldDef = shield ? config.loot[shield.k] : undefined;
     return {
       slots,
-      soak,
+      armor,
       // The shield rides the same panel as the plates even though it lives on
       // the belt, because what the player is asking when they look here is
       // "how much is between me and the next hit" — and the answer includes
@@ -4106,6 +4109,7 @@ export class Game {
             hp: shield.hp,
             maxHp: shield.max,
             up: this.blocking(),
+            card: gearCard(config, shield.k, { hp: shield.hp, max: shield.max }),
           }
         : null,
     };
@@ -4129,6 +4133,18 @@ export class Game {
         frame: def.frame,
         weight: def.weight,
         ammo: this.roundsFor(key),
+        // The SHIELD's card carries what is left of it; a gun's has nothing
+        // to carry, because a gun does not wear out. Same function either
+        // way — see `gear-card.ts`.
+        card: gearCard(
+          config,
+          key,
+          index === config.bladeSlot || !this.localMeta?.shield
+            ? undefined
+            : this.localMeta.shield.k === key
+              ? { hp: this.localMeta.shield.hp, max: this.localMeta.shield.max }
+              : undefined,
+        ),
       };
     });
     return {

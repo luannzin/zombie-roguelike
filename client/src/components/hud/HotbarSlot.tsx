@@ -15,6 +15,8 @@ export interface HotbarSlotProps {
   index: number;
   item: HudHotbarSlot | null;
   selected: boolean;
+  onHover?: (item: HudHotbarSlot, anchor: { x: number; top: number; bottom: number }) => void;
+  onLeave?: () => void;
 }
 
 const RARITY_BORDER: Record<LootRarity, string> = {
@@ -25,7 +27,7 @@ const RARITY_BORDER: Record<LootRarity, string> = {
   legendary: 'border-rarity-legendary',
 };
 
-export function HotbarSlot({ index, item, selected }: HotbarSlotProps) {
+export function HotbarSlot({ index, item, selected, onHover, onLeave }: HotbarSlotProps) {
   const ref = useRef<HTMLDivElement>(null);
   const incoming = useSyncExternalStore(
     subscribeLootFlies,
@@ -65,7 +67,30 @@ export function HotbarSlot({ index, item, selected }: HotbarSlotProps) {
         shown ? RARITY_BORDER[shown.rarity] : 'border-track-border',
         selected && shown ? 'ring-1 ring-ink-accent' : null,
         selected ? 'animate-hotbar-pick' : null,
+        // POINTER ON A FULL CELL, exactly as a bag cell does. The cursor is
+        // the only affordance a hover card gets — there is no room on a 40px
+        // cell for a hint, and the bag already taught this gesture.
+        //
+        // THE MOUSE IS TAKEN BACK PER CELL, NOT PER PANEL. `hud-layer` hands
+        // every click to the canvas so the trigger works wherever the cursor
+        // is; a panel that opted back in wholesale would put a dead rectangle
+        // in the corner of the screen. An EMPTY cell stays transparent to the
+        // mouse for the same reason — there is nothing to hover, so there is
+        // no reason to eat a click.
+        shown ? 'pointer-events-auto cursor-pointer' : null,
       )}
+      onPointerEnter={() => {
+        if (!shown) return;
+        const el = ref.current;
+        if (!el) return;
+        const box = el.getBoundingClientRect();
+        onHover?.(shown, {
+          x: box.left + box.width / 2,
+          top: box.top,
+          bottom: box.bottom,
+        });
+      }}
+      onPointerLeave={() => onLeave?.()}
     >
       {shown ? (
         <LootIcon

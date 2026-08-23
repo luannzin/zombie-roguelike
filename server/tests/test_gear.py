@@ -8,7 +8,7 @@ in a screenshot:
     one shape the rest of the belt does not have — so every off-by-one here
     produces a run where the hand is suddenly empty, which the player finds
     out about in front of something.
-  * WORN ARMOUR. A plate that soaks nothing, a plate that never breaks and a
+  * WORN ARMOUR. A plate that takes nothing off, one that never breaks and a
     plate that breaks on the first hit all look identical while you are
     playing: the number on the HUD is small and the thing hitting you is not
     holding still. The only way to know is arithmetic.
@@ -155,7 +155,7 @@ ROLLS = 4000
 SEED = 20260823
 
 
-def test_armor_soak() -> None:
+def test_armor_rating() -> None:
     room, player = _room()
     armor._RNG.seed(SEED)
 
@@ -177,24 +177,40 @@ def test_armor_soak() -> None:
         "and the WALK carries them — the bag does not",
     )
 
-    soaked = 0
-    landed = 0
-    for _ in range(ROLLS):
-        for piece in player.armor.worn.values():
-            piece.hp = piece.max_hp  # keep the set whole; this measures SOAK
-        through, _, key, _ = player.armor.absorb(16)
-        check(key is not None, "a full set is never bare")
-        soaked += 16 - through
-        landed += 16
-    ratio = soaked / landed
-    expected = armor.soak_of(3)
+    # A FULL SET IS ITS MATERIAL'S RATING, whatever the blow. Flat means the
+    # take does not depend on the size of the hit — and it means the roll
+    # cannot change the answer either, because every part is covered by the
+    # same material.
+    rating = armor.armor_of(3)
+    for blow in (16, 9, 40):
+        for _ in range(64):
+            for piece in player.armor.worn.values():
+                piece.hp = piece.max_hp
+            through, _, key, _ = player.armor.absorb(blow)
+            check(key is not None, "a full set is never bare")
+            check(
+                blow - through == rating,
+                f"a steel set takes {rating} off any blow; off {blow} it took {blow - through}",
+            )
+    # AND A BLOW SMALLER THAN THE RATING IS STOPPED ENTIRELY, costing the
+    # plate only what it actually absorbed. Small hits wear armour slowly,
+    # which falls out of the model rather than being a rule on top of it.
+    for piece in player.armor.worn.values():
+        piece.hp = piece.max_hp
+    before = sum(p.hp for p in player.armor.worn.values())
+    through, _, _, _ = player.armor.absorb(2)
+    check(through == 0, f"a 2-point blow does not get through 5 of armour, got {through}")
     check(
-        abs(ratio - expected) < 0.02,
-        f"a full steel set soaks its material's share: {ratio:.3f} vs {expected}",
+        before - sum(p.hp for p in player.armor.worn.values()) == 2,
+        "and it costs the plate 2, not 5",
     )
 
     # A PARTIAL SET IS PARTIAL. The roll happens whether or not anything is
     # there, so a helmet is not quietly worn on the legs.
+    # RE-SEEDED, so this distribution does not depend on how many rolls the
+    # checks above happened to consume. A seeded test whose numbers move when
+    # an unrelated assertion is added is a seeded test in name only.
+    armor._RNG.seed(SEED)
     only_head = armor.Loadout()
     only_head.equip("head_kevlar")
     bare = 0
@@ -204,6 +220,14 @@ def test_armor_soak() -> None:
         if key is None:
             bare += 1
     check(bare > 0, "a body in one helmet still gets hit somewhere else")
+    # THE SHARES HAVE TO ADD UP TO A BODY, or `_roll_slot` renormalises and
+    # every number the HUD prints is quietly wrong. Nothing at runtime
+    # notices; `armor._check_coverage` fails the import, and this is the
+    # behavioural half of the same claim.
+    check(
+        abs(sum(armor.COVERAGE.values()) - 1.0) < 1e-9,
+        f"coverage sums to {sum(armor.COVERAGE.values())}, not 1",
+    )
     check(
         abs((1 - bare / ROLLS) - armor.COVERAGE["head"]) < 0.03,
         f"and the helmet only answers its own share of blows: {1 - bare / ROLLS:.3f}",
@@ -217,17 +241,20 @@ def test_armor_breaks() -> None:
     check(piece is not None and piece.hp == armor.hp_of(1), "a fresh plate is whole")
 
     # A piece survives `HITS_BASE * tier` blows LANDING ON IT and then goes,
-    # and the blow that finishes it is still soaked: the last thing a
-    # chestplate does is its job.
+    # and the blow that finishes it is still absorbed: the last thing a
+    # chestplate does is its job. EXACT, not approximate — a flat take out of
+    # a durability sized as a multiple of it divides evenly, which is the
+    # whole reason the HUD can promise a count.
+    blow = armor.armor_of(1) * 3
     hits = 0
     while player.armor.get("body") is not None:
-        through, _, _, broke = player.armor.absorb_at("body", armor.CLAW)
-        check(through < armor.CLAW, "the plate soaked something on every blow")
+        through, _, _, broke = player.armor.absorb_at("body", blow)
+        check(through == blow - armor.armor_of(1), "the plate took its rating off every blow")
         hits += 1
         check(hits < 50, "a cloth vest that will not break")
     check(
         hits == armor.HITS_BASE * 1,
-        f"cloth is {armor.HITS_BASE} claws, got {hits}",
+        f"cloth is {armor.HITS_BASE} blows, got {hits}",
     )
     check(player.armor.get("body") is None, "and then it is gone")
 
@@ -378,7 +405,7 @@ def test_shop_ladders() -> None:
 def main() -> None:
     test_blade_cell()
     test_blade_ladder()
-    test_armor_soak()
+    test_armor_rating()
     test_armor_breaks()
     test_armor_pickup()
     test_shield_blocks_what_it_faces()

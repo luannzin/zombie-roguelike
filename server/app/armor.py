@@ -15,15 +15,12 @@ off the same stat block. Everything below is a function of it plus three
 tables — the MATERIALS, the SLOTS and one exponent — and there is not a
 hand-picked durability number anywhere.
 
-  * SOAK is what the material is. Four tiers, each a quarter of the ceiling,
-    so the ladder is legible without a tooltip: cloth stops a fifth of a
-    blow and the top of the ladder stops three quarters. It never reaches
-    one — armour is attrition, and stopping a blow OUTRIGHT is the shield's
-    job (`weapons.ShieldDef`), which is why the shield costs a gun cell and
-    a helmet does not.
+  * ARMOUR is what the material is: a FLAT number of damage points taken off
+    every blow that lands on the part it covers. Four tiers, each a quarter
+    of the ceiling.
   * DURABILITY is what the material is, again: a piece survives
-    `ARMOR_HITS_BASE * tier` blows LANDING ON IT before it comes apart, so
-    the number on the HUD is honest in the only unit the player has.
+    `HITS_BASE * tier` blows LANDING ON IT before it comes apart, so the
+    number on the HUD is honest in the only unit the player has.
   * COVERAGE is what the SLOT is, and it decides nothing except where a
     blow lands. It is taken off the player sprite's own anatomy — see
     `COVERAGE` — so the part of the body the art spends the most pixels on
@@ -37,6 +34,22 @@ once is a stat that went away rather than an event. One blow lands on one
 part. The chest goes first because the chest is hit most, and it goes in the
 middle of a fight, and the player finds out by looking at the same three
 numbers they have been ignoring all night.
+
+FLAT, NOT A PERCENTAGE, AND THAT IS A DECISION ABOUT WHAT THE PLAYER READS
+This started as a fraction — steel took 56% of a blow — which is a clean rule
+and an unreadable stat. A percentage cannot be put on a card without naming
+the blow it is a percentage OF, and the moment the card names one ("a walker
+hits for 9, five of it stops here") the whole stat block is anchored on one
+creature and starts lying the day there is a second one. There is no honest
+way to print a proportional mitigation as a number.
+
+A flat value has no such problem: `ARMADURA 5` means five, against anything
+that ever gets added to this game. And the shape it gives the category is the
+better one anyway — armour is now STRONG against a crowd of small hits and
+WEAK against one big one, so plate is what you wear for the forest and not
+what saves you from the Sawyer's bar. A proportional mitigation is equally
+good against everything, which is another way of saying it never makes a
+decision interesting.
 
 WHAT IT IS NOT
 Not persisted — nothing in this game is. Not a `Mods` field: `Mods.armor` is
@@ -64,24 +77,41 @@ SLOTS: tuple[str, ...] = (SLOT_HEAD, SLOT_BODY, SLOT_LEGS)
 #: WHERE A BLOW LANDS, and it is the player sprite's own anatomy rather than
 #: a table of what feels fair.
 #:
-#: `make_player.py` builds the figure out of five numbers and spends its rows
-#: like this: head 1..8, body 8..12, legs 13..15 — seven rows, four and three
-#: of a fifteen-row figure. That is S17's proportion, a head just under half
-#: the person, and it is what makes sixteen pixels read as a character rather
-#: than as a small adult.
+#: The processed player sheet spends its fifteen occupied rows like this:
+#: head 1-8, torso 9-12, legs 13-15 — eight, four and three. That is S17's
+#: proportion, a head over half the person, and it is what makes sixteen
+#: pixels read as a character rather than as a small adult.
 #:
-#: So the helmet is the piece that matters most here, and that is not a
-#: balance decision anybody made — it is what the silhouette says. A player
-#: aiming at this sprite is aiming mostly at a head, and armour that did not
-#: agree with the picture would be a rule the game never shows you. It also
-#: gives the three slots genuinely different jobs: the chestplate is the one
-#: that breaks in the middle of a fight, and the helmet is the one worth
-#: finding.
+#: So the helmet answers more blows than the other two put together, and that
+#: is not a balance decision anybody made — it is what the silhouette says. A
+#: player aiming at this sprite is aiming mostly at a head, and armour that did
+#: not agree with the picture would be a rule the game never shows you. It also
+#: gives the three slots genuinely different jobs: the helmet is the one worth
+#: finding, and it is the one that wears out first.
+#: EIGHT, FOUR AND THREE OF FIFTEEN, and they sum to exactly one — which is
+#: not decoration, it is the check. This table was 7/4/3 for a while: fourteen
+#: fifteenths, so `_roll_slot` normalised by the total and every share the HUD
+#: printed was a fifteenth too small. Nothing at runtime notices a probability
+#: table that does not sum, which is why `_check_coverage` fails the import
+#: instead.
 COVERAGE: dict[str, float] = {
-    SLOT_HEAD: 7 / 15,
+    SLOT_HEAD: 8 / 15,
     SLOT_BODY: 4 / 15,
     SLOT_LEGS: 3 / 15,
 }
+
+
+def _check_coverage() -> None:
+    """The parts have to add up to a body. Run at import."""
+    total = sum(COVERAGE.values())
+    if abs(total - 1.0) > 1e-9:
+        raise ValueError(
+            f"COVERAGE sums to {total}, not 1 — every share the HUD prints "
+            f"would be off, and `_roll_slot` would silently renormalise"
+        )
+
+
+_check_coverage()
 
 #: Portuguese for the slot, for a HUD row and a tooltip line.
 SLOT_NAMES: dict[str, str] = {
@@ -97,12 +127,21 @@ SLOT_NAMES: dict[str, str] = {
 #: motion — the same contract `weapons.ZOMBIE_HP` has.
 CLAW = ZOMBIE.damage
 
-#: The most any material may stop. Deliberately short of one: a set that
-#: reached zero damage taken would end the night's tension for as long as it
-#: lasted, and the thing in this game that stops a blow COMPLETELY is the
-#: shield, which you have to be holding, facing the right way, in place of a
-#: gun.
-SOAK_CEILING = 0.75
+#: What the TOP of the ladder takes off a blow, as a share of one claw.
+#:
+#: The claw is the sizing anchor and it stays one — `weapons.py` sizes guns
+#: against the walker's health and this sizes plate against its hit, on the
+#: same argument that the weakest creature is the only honest unit. What
+#: changed is that it is a share of a claw HERE, once, at build time: what
+#: comes out the other side is a flat number of damage points, and nothing
+#: downstream — not the wire, not the HUD, not a tooltip — ever has to
+#: mention a zombie to explain it.
+#:
+#: Deliberately short of the whole claw. A set that reduced a walker's hit to
+#: nothing would end the night's tension for as long as it lasted, and the
+#: thing in this game that stops a blow COMPLETELY is the shield, which you
+#: have to be holding, facing the right way, in place of a gun.
+CEILING_SHARE = 0.75
 
 #: How many blows a TIER-ONE piece survives. Multiplied by the tier, so the
 #: ladder is 4 / 8 / 12 / 16 hits taken on that part.
@@ -169,26 +208,34 @@ MATERIAL_BY_KEY: dict[str, Material] = {m.key: m for m in MATERIALS}
 TIERS = len(MATERIALS)
 
 
-def soak_of(tier: int) -> float:
-    """Fraction of a landed blow this material takes onto itself.
+def armor_of(tier: int) -> int:
+    """DAMAGE POINTS this material takes off every blow that lands on it.
 
     A quarter of the ceiling per rung. Even steps because the player counts
-    in rungs, not in percentages: "one better" has to mean the same thing
-    everywhere on the ladder or the middle of it is dead weight.
+    in rungs: "one better" has to mean the same thing everywhere on the
+    ladder or the middle of it is dead weight.
+
+    The number that comes out is what the HUD prints and what
+    `Room.damage_player` subtracts — one value, no conversion, nothing to
+    resolve against an example. That is the whole reason this is not a
+    fraction.
     """
-    return round(SOAK_CEILING * tier / TIERS, 4)
+    return max(1, round(CLAW * CEILING_SHARE * tier / TIERS))
 
 
 def hp_of(tier: int) -> int:
     """Points of damage this piece will absorb before it comes apart.
 
-    Durability is measured in what it STOPS, not in blows, because that is
-    the only unit that stays honest when something other than a walker hits
-    you: the Sawyer's bar takes a chestplate apart in two swings and a husk
-    takes eight, and the bar on the HUD says so without being told about
-    either of them. `HITS_BASE * tier` claws is what sizes it.
+    Durability is measured in what it STOPS rather than in blows, because
+    that is the only unit that stays honest when something other than a
+    walker hits you: a plate meeting the Sawyer's bar spends its whole
+    allowance in a few swings and the bar on the HUD says so without being
+    told about him. `HITS_BASE * tier` blows-on-this-part is what sizes it,
+    and because the take is flat that arithmetic is exact — a tier-3 plate
+    stops 5 a hit and holds 60, which is twelve hits, and twelve is what the
+    table says.
     """
-    return max(1, round(HITS_BASE * tier * CLAW * soak_of(tier)))
+    return max(1, HITS_BASE * tier * armor_of(tier))
 
 
 def weight_of(tier: int) -> float:
@@ -204,6 +251,11 @@ def value_from_hp(points: int) -> int:
     it off a second curve would be the same mistake `store.price_of` exists
     to avoid — two opinions about one question, drifting apart the first time
     either is rebalanced.
+
+    It prices what a thing will absorb OVER ITS LIFE, which is why it takes
+    durability rather than the per-blow rating: two plates that take the same
+    five off a hit are not worth the same if one of them survives three times
+    as many.
     """
     floor = hp_of(1)
     if floor <= 0 or points <= 0:
@@ -235,6 +287,11 @@ def value_of(tier: int) -> int:
 #: works completely for as long as it lasts. That is a different promise, and
 #: a player who has one learns quickly that it is a resource to spend at a
 #: doorway rather than a wall to live behind.
+#:
+#: It is also the one thing in the game that is still good against a BIG hit,
+#: now that plate is flat: armour takes five off the Sawyer's thirty-four and
+#: a shield takes all of it. Two answers to two different problems, which is
+#: what stops the shield being a plate you have to hold.
 SHIELD_HITS = 14
 
 #: How wide the protected arc is, in degrees, centred on the aim.
@@ -293,8 +350,9 @@ class ArmorDef:
         return MATERIAL_BY_KEY[self.material].tier
 
     @property
-    def soak(self) -> float:
-        return soak_of(self.tier)
+    def armor(self) -> int:
+        """Damage taken off every blow that lands on this part."""
+        return armor_of(self.tier)
 
     @property
     def max_hp(self) -> int:
@@ -329,8 +387,14 @@ class ArmorDef:
             "name": self.name,
             "slot": self.slot,
             "material": self.material,
+            # The material's own NAME, and it ships rather than being mapped
+            # client-side. It is a catalog string like every other one on the
+            # wire (`name`, `SLOT_NAMES`), and a second table of Portuguese in
+            # the HUD is a second place for "steel" to leak out of when
+            # somebody adds a rung.
+            "materialName": MATERIAL_BY_KEY[self.material].name,
             "tier": self.tier,
-            "soak": self.soak,
+            "armor": self.armor,
             "maxHp": self.max_hp,
             "weight": self.weight,
             "value": self.value,
@@ -516,10 +580,12 @@ class Loadout:
         piece = self.worn.get(slot)
         if piece is None:
             return amount, slot, None, False
-        # Round the absorbed half up, so a blow small enough that the soak
-        # rounds to nothing still costs the plate something. Otherwise a
-        # swarm of one-damage sources is free wear-free chip damage.
-        soaked = piece.take(max(1, round(amount * BY_KEY[piece.key].soak)))
+        # FLAT, capped by the blow and by what is left of the plate. A hit
+        # smaller than the plate's rating is stopped entirely and costs the
+        # plate only what it actually absorbed — small hits wear armour
+        # slowly, which is the right way round and falls out of the model
+        # rather than being a rule on top of it.
+        soaked = piece.take(min(amount, BY_KEY[piece.key].armor))
         broke = piece.spent
         if broke:
             self.destroy(slot)

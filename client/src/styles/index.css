@@ -1304,6 +1304,22 @@
   min-width: 88px;
 }
 
+/*
+ * A card with NO POINTER. For a block stacked on top of a prompt that already
+ * has one — the shop's "what is on this table" over its "press E to buy".
+ * The pair points at the stall once, from the line that is actually pinned to
+ * it; a second staircase in the middle of the stack would be the description
+ * pointing at the sentence under it, which is a thing it is not doing.
+ */
+.world-tooltip-plain {
+  padding: 4px 6px;
+  min-width: 88px;
+}
+
+.world-tooltip-plain::after {
+  content: none;
+}
+
 .world-tooltip::after {
   content: '';
   position: absolute;

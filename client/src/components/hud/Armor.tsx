@@ -18,13 +18,22 @@
  * silhouette of how much is left rather than as a counter to do arithmetic
  * on. The one number that would matter, "how many more hits", is not knowable
  * anyway: it depends on what is hitting you.
+ *
+ * HOVERING A ROW SAYS WHAT IS ON THAT PART. The panel is deliberately terse —
+ * a slot, a material and a bar — and terse is only honest if the detail is one
+ * gesture away. It is the same card the belt hovers and the shop shows,
+ * because it is the same object: somebody can pick up a pair of steel greaves
+ * and never find out what they did, and that is the hole this closes.
  */
 
-import { useEffect, useRef } from 'react';
-import type { HudArmor, HudArmorSlot } from '../../game/hud-store';
+import { useEffect, useRef, useState } from 'react';
+import type { HudArmor, HudArmorSlot, HudShield } from '../../game/hud-store';
 import { writeInventoryAnchor, dropInventoryAnchor } from '../../game/inventory-anchors';
+import type { HudGearCard } from '../../game/gear-card';
 import type { LootRarity } from '../../net/protocol';
 import { cn } from '@/lib/utils';
+import { GearCardBody } from './GearCard';
+import { HoverCard, type HoverAnchor } from './HoverCard';
 import { Panel } from './Panel';
 
 export interface ArmorProps {
@@ -56,26 +65,41 @@ const MATERIAL_TEXT: Record<LootRarity, string> = {
   legendary: 'text-rarity-legendary',
 };
 
+interface HoverState {
+  card: HudGearCard;
+  frame?: number;
+  anchor: HoverAnchor;
+}
+
 export function Armor({ armor }: ArmorProps) {
+  const [hover, setHover] = useState<HoverState | null>(null);
+
   if (!armor) return null;
 
   return (
     <Panel className="w-40 px-2.5 py-2">
       <div className="mb-1.5 flex items-baseline justify-between gap-2 text-[11px] leading-[11px]">
-        <span className="text-ink-muted tracking-[0.06em]">PROTEÇÃO</span>
+        <span className="text-ink-muted tracking-[0.06em]">ARMADURA</span>
         {/*
-          The set's total soak, as one number. It is the only piece of
-          arithmetic worth doing for the player: three plates each taking a
-          share of the blows that land on their own part sum to exactly this
-          fraction of everything, and nobody is going to work that out from
-          three bars.
+          DAMAGE the set takes off a walker's claw, as one number. It is the
+          only arithmetic worth doing for the player — three plates each
+          answering the blows that land on their own part — and it is in
+          damage points rather than as a percentage because this sits directly
+          above a health bar counted in the same units. `-5` next to `100` is
+          a sentence; `56%` next to `100` is two unrelated numbers.
         */}
-        <span className="text-ink tabular-nums">{Math.round(armor.soak * 100)}%</span>
+        <span className="text-ink tabular-nums">{armor.armor}</span>
       </div>
 
       <div className="flex flex-col gap-1.5">
         {armor.slots.map((slot, index) => (
-          <ArmorRow key={slot.slot} slot={slot} index={index} />
+          <ArmorRow
+            key={slot.slot}
+            slot={slot}
+            index={index}
+            onHover={(card, anchor) => setHover({ card, anchor })}
+            onLeave={() => setHover(null)}
+          />
         ))}
       </div>
 
@@ -87,7 +111,61 @@ export function Armor({ armor }: ArmorProps) {
         never in the same list.
       */}
       {armor.shield ? (
-        <div className="mt-2 border-track-border border-t pt-2">
+        <ShieldRow
+          shield={armor.shield}
+          onHover={(card, anchor) => setHover({ card, anchor })}
+          onLeave={() => setHover(null)}
+        />
+      ) : null}
+
+      {/*
+        ONE CARD FOR THE WHOLE PANEL rather than one per row. Only one row can
+        be under the pointer, and four portals racing to place themselves at
+        the same corner of the screen is four measurements of the same
+        viewport.
+      */}
+      {hover ? (
+        <HoverCard anchor={hover.anchor} fitKey={hover.card.key}>
+          <GearCardBody card={hover.card} frame={hover.frame} />
+        </HoverCard>
+      ) : null}
+    </Panel>
+  );
+}
+
+/**
+ * The shield's row. Under the plates and separated by a rule, because it
+ * lives on the belt rather than on the body and does something categorically
+ * different — it stops a blow rather than taking a share of one. It is on
+ * this panel at all because the question a player asks here is "how much is
+ * between me and the next hit", and the answer includes the thing in their
+ * hand.
+ */
+function ShieldRow({
+  shield,
+  onHover,
+  onLeave,
+}: {
+  shield: HudShield;
+  onHover: (card: HudGearCard, anchor: HoverAnchor) => void;
+  onLeave: () => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  return (
+    <div
+      ref={ref}
+      className={cn(
+        'mt-2 border-track-border border-t pt-2',
+        shield.card ? 'pointer-events-auto cursor-pointer' : null,
+      )}
+      onPointerEnter={() => {
+        const el = ref.current;
+        if (!el || !shield.card) return;
+        const box = el.getBoundingClientRect();
+        onHover(shield.card, { x: box.left + box.width / 2, top: box.top, bottom: box.bottom });
+      }}
+      onPointerLeave={onLeave}
+    >
           <div className="mb-1 flex items-baseline justify-between gap-2 text-[11px] leading-[11px]">
             <span
               className={cn(
@@ -96,26 +174,34 @@ export function Armor({ armor }: ArmorProps) {
                 // that changes on a mouse button rather than over a night. The
                 // raised shield takes the accent; the lowered one is as quiet
                 // as a bare row.
-                armor.shield.up ? 'text-ink-accent' : 'text-ink-muted',
+                shield.up ? 'text-ink-accent' : 'text-ink-muted',
               )}
             >
-              {armor.shield.up ? 'ESCUDO ▲' : 'ESCUDO'}
+              {shield.up ? 'ESCUDO ▲' : 'ESCUDO'}
             </span>
             <span className="text-ink-muted shrink-0 tabular-nums">
-              {Math.max(0, Math.round((armor.shield.hp / Math.max(1, armor.shield.maxHp)) * 100))}%
+              {Math.max(0, Math.round((shield.hp / Math.max(1, shield.maxHp)) * 100))}%
             </span>
           </div>
-          <Bar
-            ratio={armor.shield.hp / Math.max(1, armor.shield.maxHp)}
-            fill={armor.shield.up ? 'bg-ink-accent' : 'bg-neutral'}
-          />
-        </div>
-      ) : null}
-    </Panel>
+      <Bar
+        ratio={shield.hp / Math.max(1, shield.maxHp)}
+        fill={shield.up ? 'bg-ink-accent' : 'bg-neutral'}
+      />
+    </div>
   );
 }
 
-function ArmorRow({ slot, index }: { slot: HudArmorSlot; index: number }) {
+function ArmorRow({
+  slot,
+  index,
+  onHover,
+  onLeave,
+}: {
+  slot: HudArmorSlot;
+  index: number;
+  onHover: (card: HudGearCard, anchor: HoverAnchor) => void;
+  onLeave: () => void;
+}) {
   const ref = useRef<HTMLDivElement>(null);
 
   // The fly target for a plate picked up or bought. Same contract as a bag
@@ -147,7 +233,22 @@ function ArmorRow({ slot, index }: { slot: HudArmorSlot; index: number }) {
   const ratio = slot.maxHp > 0 ? slot.hp / slot.maxHp : 0;
 
   return (
-    <div ref={ref} data-armor-slot={slot.slot}>
+    <div
+      ref={ref}
+      data-armor-slot={slot.slot}
+      // A BARE ROW IS NOT HOVERABLE. There is nothing to describe, and a card
+      // that said "nothing" is a card the player learns to dismiss. It also
+      // keeps the mouse with the canvas everywhere the panel has no answer —
+      // see `HotbarSlot`.
+      className={cn(slot.card ? 'pointer-events-auto cursor-pointer' : null)}
+      onPointerEnter={() => {
+        const el = ref.current;
+        if (!el || !slot.card) return;
+        const box = el.getBoundingClientRect();
+        onHover(slot.card, { x: box.left + box.width / 2, top: box.top, bottom: box.bottom });
+      }}
+      onPointerLeave={onLeave}
+    >
       <div className="mb-0.5 flex items-baseline justify-between gap-2 text-[11px] leading-[11px]">
         <span className="text-ink-muted shrink-0 tracking-[0.04em]">{slot.label}</span>
         {/*

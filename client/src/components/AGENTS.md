@@ -14,7 +14,7 @@ and nowhere near the frame loop.
   `ReadyCount`, `Balance`, `QuestLog`, `QuestRow`, `QuestAnnounce`, `QuestCount`, `InteractPrompt`, `LootPrompt`, `CratePrompt`, `RiftPrompt`, `BuyPrompt`, `MachinePrompt`, `ExitGuide`, `SkillTray`, `SkillIcon`, `SkillCanIcon`, `Inventory`, `InventorySlot`,
   `InventoryGold`, `WeightBar`, `LootIcon`, `CoinIcon`, `DarkCoinIcon`, `SlotValue`, `LootFly`, `LootCard`,
   `LootCardRow`, `TooltipCard`, `InventoryGhost`, `Tooltip`, `TooltipKey`,
-  `Hotbar`, `HotbarSlot`, `Armor`.
+  `Hotbar`, `HotbarSlot`, `Armor`, `GearCard`, `HoverCard`.
 - `lobby/` — `CampfireCanvas` (mounts `LobbyScene`; owns the rest-shot fire
   position via `campFireAnchor`, not via per-screen props), `RoomCode`,
   `PlayerRoster`.
@@ -32,6 +32,30 @@ and this component is never unmounted for the whole of a run, so an
 unscoped memory silently swallowed the extraction objective on every night
 after the first. Anything else in the HUD that keys off a quest id inherits
 the same rule.
+
+### One card describes a piece of gear, and three surfaces show it
+
+`GearCard` renders whatever `game/gear-card.ts` produced; the belt hovers it,
+the armour panel hovers it, and the shop shows it unprompted when you walk up
+to a table. The rows are NOT built here — a component that knew how a weapon
+works would be a fourth place to forget a weapon class in, and the store's
+would be the one nobody looked at. This file owns the layout and the wording
+of the labels' surroundings; the stats and their units come off the catalog.
+
+`HoverCard` is the portal, the flip and the edge clamp, lifted out of
+`LootCard` when the second and third card appeared. That arithmetic in three
+files is three subtly different answers at the corners of the screen, which is
+exactly where a HUD card is hardest to notice being wrong.
+
+### The mouse is taken back PER CELL, never per panel
+
+`hud-layer` hands every click to the canvas so the trigger works wherever the
+cursor is. `Inventory` opts the whole drawer back in because it is a drawer you
+open on purpose; the belt and the armour panel are always on screen in the
+corner the player is fighting toward, so `pointer-events-auto` goes on the
+individual cell or row and only when it holds something. An empty cell stays
+transparent to the mouse — there is nothing to hover, so there is no reason to
+eat a click.
 
 ### The boss bar
 

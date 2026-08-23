@@ -255,8 +255,9 @@ Run `test_gear.py` after touching `armor.py`, the blade cell in `weapons.Hotbar`
 stock ladders. It pins the three things about gear that have no symptom you
 would see while playing: that the blade cell is never empty and that the KNIFE
 is not an object (replacing it drops nothing, replacing anything else does);
-that a set soaks its material's share over the whole distribution of where
-blows land, and that a plate survives exactly `HITS_BASE * tier` of them; and
+that a set takes its material's flat rating off any blow and that a plate
+survives exactly `HITS_BASE * tier` of them — and that `COVERAGE` sums to a
+whole body, which nothing at runtime notices; and
 that the shield blocks only what it is FACING, spends itself on the blow that
 breaks it, and leaves the belt when it does. A shield that blocked from behind
 would be a strictly-better plate and nobody would ever notice — they would

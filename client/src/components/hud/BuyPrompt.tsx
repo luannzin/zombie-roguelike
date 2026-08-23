@@ -19,6 +19,15 @@
  * matters more here than on a world drop, because the gun being given up is
  * being exchanged for one that costs money.
  *
+ * WHAT IS ON THE TABLE IS DESCRIBED WITHOUT BEING ASKED FOR, and this is the
+ * one place in the game where that is true. Everywhere else a stat card is
+ * something you hover, because everywhere else the object is already yours or
+ * is lying in the grass costing nothing to pick up. A shop table is where a
+ * party spends a whole night's extraction, and choosing between an AK and a
+ * steel breastplate off two names and two numbers is choosing blind. The
+ * description sits ABOVE the action line so the line itself — key, verb,
+ * price — stays exactly where the player already knows to look.
+ *
  * THE AMMUNITION CRATE SHARES THIS CARD ON PURPOSE. It is the same key, at the
  * same reach, spending the same purse, so it is the same tooltip in the same
  * corner — a second prompt component would teach the player that the shop has
@@ -31,6 +40,7 @@
 import type { HudBuyPrompt } from '../../game/hud-store';
 import type { LootRarity } from '../../net/protocol';
 import { CoinIcon } from './CoinIcon';
+import { GearCardBody } from './GearCard';
 import { Tooltip, TooltipKey } from './Tooltip';
 
 export interface BuyPromptProps {
@@ -49,6 +59,9 @@ export function BuyPrompt({ prompt }: BuyPromptProps) {
   if (!prompt) return null;
 
   const name = <span className={RARITY_CLASS[prompt.rarity]}>{prompt.name}</span>;
+  // Absent on the crates: their whole offer is already the two numbers on the
+  // line below, and a stat block over a box of rounds would be ceremony.
+  const about = prompt.card ? <GearCardBody card={prompt.card} /> : undefined;
   const price = (
     <span className={prompt.afford ? 'text-ink' : 'text-hp-low'}>
       <CoinIcon className="mr-1 inline-block align-[-1px]" />
@@ -79,7 +92,7 @@ export function BuyPrompt({ prompt }: BuyPromptProps) {
 
   if (prompt.full) {
     return (
-      <Tooltip anchor="buy" end={price}>
+      <Tooltip anchor="buy" end={price} above={about}>
         <span className="text-hp-low">Cinto cheio</span>
       </Tooltip>
     );
@@ -87,7 +100,7 @@ export function BuyPrompt({ prompt }: BuyPromptProps) {
 
   if (prompt.swap) {
     return (
-      <Tooltip anchor="buy" end={price}>
+      <Tooltip anchor="buy" end={price} above={about}>
         <TooltipKey>E</TooltipKey>{' '}
         {/* Same read as the loot trade: what you give up is muted, what you
             get takes its rarity colour, so the direction is legible before
@@ -98,7 +111,7 @@ export function BuyPrompt({ prompt }: BuyPromptProps) {
   }
 
   return (
-    <Tooltip anchor="buy" end={price}>
+    <Tooltip anchor="buy" end={price} above={about}>
       <TooltipKey>E</TooltipKey> comprar {name}
     </Tooltip>
   );

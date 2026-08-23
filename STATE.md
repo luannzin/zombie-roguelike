@@ -36,8 +36,11 @@ ceremony.
     four materials, per-piece durability, visible on the body through the
     `gear` overlay system that already carried the backpack. Everything is
     derived from the zombie's CLAW the way the guns are derived from its
-    health. One blow lands on ONE part, rolled against coverage taken off the
-    player sprite's own row bands — so on this chibi figure the HELMET is the
+    health — once, at build time: the rating that comes out is FLAT damage
+    points, so nothing on a card or the wire has to name a creature to explain
+    it. The ladder is 2 / 3 / 5 / 7 armour over 8 / 24 / 60 / 112 durability,
+    which is 4 / 8 / 12 / 16 blows exactly. One blow lands on ONE part, rolled
+    against coverage taken off the player sprite's own row bands — so on this chibi figure the HELMET is the
     piece that matters most, which is what the silhouette says rather than a
     balance call.
   - **The riot shield** eats a gun cell, goes up on RIGHT MOUSE, blocks
@@ -192,7 +195,7 @@ ceremony.
 2. Something for dark gold to buy (per-player, never party-funded).
 3. Ammunition tuning once more guns are routinely owned by day 5+.
 4. Play a night in a full set and a night behind the shield, then tune
-   `armor.HITS_BASE`, `SOAK_CEILING` and `SHIELD_HITS` against what actually
+   `armor.HITS_BASE`, `CEILING_SHARE` and `SHIELD_HITS` against what actually
    happened rather than against the arithmetic.
 5. The three missing gear sounds, and the shield's block spark.
 

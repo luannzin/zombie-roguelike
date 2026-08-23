@@ -20,8 +20,9 @@ Nearest contracts: [`server/app/AGENTS.md`](../../server/app/AGENTS.md),
 - **A blade is a catalog row and no code.** `Room.handle_attack` dispatches on the weapon's `melee` block; a shield dispatches on its `shield` block. Neither dispatches on `kind`.
 - **Every blade is the knife's own chain through seven multipliers** (`BladeProfile`). The knife's profile is all ones, and `test_gear.py` checks that the generator reproduces the weapon it was derived from exactly.
 - **Damage arrives at one door.** Shield, then plate, then `Mods.armor`, in `Room.damage_player`. Nothing else mitigates anything.
-- **Material sets the numbers, slot sets where the hits land.** Soak, durability, weight and price are functions of the tier alone; coverage is the only thing a slot decides.
-- **Armour never reaches zero damage taken.** `SOAK_CEILING` is 0.75. The thing that stops a blow outright is the shield, and you have to be holding it, facing the right way, in place of a gun.
+- **Material sets the numbers, slot sets where the hits land.** Armour, durability, weight and price are functions of the tier alone; coverage is the only thing a slot decides, and it must sum to a whole body (`_check_coverage`).
+- **Armour is FLAT, in damage points.** A plate takes a fixed number off every blow that lands on its part — never a percentage, because a proportional mitigation cannot be printed as a number without naming the blow it is a proportion of.
+- **Armour never reaches zero damage taken.** `CEILING_SHARE` caps the top rung under one full claw, and `damage_player`'s `max(1, ...)` is the floor under everything. The thing that stops a blow outright is the shield, and you have to be holding it, facing the right way, in place of a gun.
 - **Worn armour is on the WALK, never in the bag.** `Player.carry_weight` sums it; `inv.w` never does.
 - **A shield is UP on the tick row (`blk`) and its LIFE is on the roster.** A pose at 5 Hz would let a player watch a blow land on a shield that had not come up yet.
 - **Never hardcode any of this client-side.** Twelve pieces, three slots, the coverage table and the belt's own split all arrive in `welcome.config`.
@@ -43,12 +44,15 @@ Nearest contracts: [`server/app/AGENTS.md`](../../server/app/AGENTS.md),
 | a blade's price | nothing: `blade_power` is throughput times ground covered, and `BLADE_VALUE_CURVE` is the only knob |
 | add an armour material | one row in `armor.MATERIALS` + a ramp letter in `make_loot._ARMOR_LETTERS` + one in `make_armor.MATERIALS`, then rerun both generators |
 | add an armour SLOT | `armor.SLOTS` + `COVERAGE` + `SLOT_NAMES` + `_NAMES` + a template in `make_armor.SHAPES` and `make_loot._ARMOR_FORMS` |
-| how much a plate stops or survives | `armor.SOAK_CEILING`, `HITS_BASE` — never a per-piece number |
+| how much a plate stops or survives | `armor.CEILING_SHARE`, `HITS_BASE` — never a per-piece number |
 | where a blow lands | `armor.COVERAGE`, and it is the player sprite's own row bands. Changing it is changing a fact about the art |
 | the shield's numbers | `armor.SHIELD_*` + `shield_hp` / `shield_value` / `shield_weight` |
 | what blocking costs the walk | `armor.SHIELD_SPEED` — and it lands on `Player.block_speed` / `MovableState.blockSpeed`, which is a MIRROR |
 | the block pose | `client/src/game/entity-visuals.ts` (`GUARD_*`, `guard()`), which is the brace's opposite on every axis |
 | the three bars and the shield row | `client/src/components/hud/Armor.tsx`, `Game.armorHud()` |
+| WHAT a card says about a piece | `client/src/game/gear-card.ts` — one function, used by the belt, the armour panel and the shop |
+| how a card LOOKS | `client/src/components/hud/GearCard.tsx` (rows) + `HoverCard.tsx` (the portal and the fit) |
+| why a pickup was refused | `client/src/game/interaction.ts` (`ammoRefusal`, `HudLootPrompt.reason`) + `LootPrompt.tsx` |
 | the overlay on the body | `server/tools/make_armor.py` + `Game.wornSheets` + `GearLayer` in `client/src/render/types.ts` |
 | what a table may sell | `server/app/store.py` (`SELLABLE`, `_category`) |
 
@@ -108,7 +112,25 @@ below).
   economy to protect, and a run that opens on the knife with no money needs a
   route to better steel that does not go through a shop it cannot afford. A
   hatchet in a logging camp is also simply what is there.
-- **ARMOUR: THE ZOMBIE'S CLAW IS THE UNIT.** `weapons.py` anchors every
+- **ARMOUR IS FLAT, AND THAT IS A DECISION ABOUT WHAT THE PLAYER READS.** It
+  began as a fraction — steel took 56% of a blow — which is a clean rule and
+  an unreadable stat. A percentage cannot go on a card without naming the blow
+  it is a percentage OF, and the moment the card names one the entire stat
+  block is anchored on one creature and starts lying the day there is a second
+  one worth comparing against. There is no honest way to print a proportional
+  mitigation as a number.
+  A flat rating has no such problem: `ARMADURA 5` means five, against anything
+  this game ever grows. And the shape it gives the category is the better one:
+  armour is STRONG against a crowd of small hits and WEAK against one big one,
+  so plate is what you wear for the forest and is not what saves you from the
+  Sawyer's bar — the shield is, and that is what stops the shield being a
+  plate you have to hold. A proportional mitigation is equally good against
+  everything, which is another way of saying it never makes a decision
+  interesting.
+  The ladder is 2 / 3 / 5 / 7 armour over 8 / 24 / 60 / 112 durability, which
+  divides evenly into 4 / 8 / 12 / 16 blows — the flat take is what makes that
+  arithmetic exact, and exact is what lets the HUD promise a count.
+- **THE CLAW IS STILL THE SIZING ANCHOR, ONCE, AT BUILD TIME.** `weapons.py` anchors every
   firearm on what a zombie can survive; this anchors every plate on what a
   zombie can do. Everything is a function of that one number plus the
   MATERIALS, the SLOTS and one exponent, and there is not a hand-picked
@@ -236,8 +258,62 @@ below).
   is an accident of concatenation. The gun ladder comes out of this
   byte-for-byte what it was before there was anything else on the shelf.
 
+- **A PIECE OF GEAR DESCRIBES ITSELF THE SAME WAY EVERYWHERE, AND IT SAYS
+  WHAT IT DOES.** A player meets the same object four times — on a shop table,
+  on the ground, on the belt, on the body — and it used to introduce itself
+  differently each time and never say anything useful: a name and a price at
+  the stall, a name in a prompt, a name and an ammo count on the belt, and the
+  raw key `steel` on the armour panel. You could pick up a pair of steel
+  greaves and not notice. So there is ONE function (`gear-card.ts`) that turns
+  a catalog key into rows, and one component that draws them.
+- **EVERY ROW IS A REAL NUMBER IN A REAL UNIT.** The first cut of the cards
+  led with `abate em 3 tiros`, `absorve 56%` and `aguenta 61/61` — three
+  INTERPRETATIONS of numbers the player never got to see. A stat block exists
+  to compare two objects and you cannot compare two interpretations: 56% of
+  what, measured against which blow? So the headline is `DANO 9`,
+  `ARMADURA 5`, `DURABILIDADE 61`, in the game's own units — damage points,
+  tiles, kilos, rounds a minute. Counts that a player would work out anyway
+  and get wrong stay as clearly labelled counts below the number they are
+  counting — `DANO/S` is the only one left, because damage and cadence are
+  both real and both meaningless alone.
+  **AND NOTHING ON A CARD IS ANCHORED ON A CREATURE.** `TIROS P/ ABATE` and
+  `GOLPE DE ZUMBI 9 → 4` were true and were still wrong: they described one
+  enemy, and this game is going to have more. If a stat needs an example to
+  make sense, the stat is wrong, not the example — which is what sent armour
+  back to `armor.py` to come out flat.
+  A ZERO IS NEVER PRINTED. `RUÍDO 0.0t` on a shield is not a stat, it is a
+  field that did not apply, and a card that lists what an object does not have
+  has stopped being a description.
+  The panel's own header is the same number for the whole set, which is why
+  it sits in damage points directly above a health bar counted in the same
+  ones: `-5` beside `100` is a sentence, `56%` beside `100` is two unrelated
+  numbers.
+  The ONE percentage left anywhere is the shield's walk multiplier, because a
+  multiplier has no other honest unit: the walk it scales is already the
+  product of a skill, a carry weight and a sprint.
+- **THE SHOP SHOWS ITS CARD WITHOUT BEING ASKED.** Everywhere else a card is a
+  hover, because everywhere else the object is already yours or is lying in the
+  grass costing nothing. A shop table is the one place a party spends a whole
+  night's extraction, and choosing between a rifle and a breastplate off two
+  names and two numbers is choosing blind. It stacks ABOVE the action line so
+  the line — key, verb, price — stays exactly where the player already knows to
+  look, and the pair points at the stall once, from the half that is pinned to
+  it.
+- **A REFUSAL SAYS WHY.** "Inventário Cheio" was printed over a box of rifle
+  rounds by a player with an empty bag: not true, explains nothing, and teaches
+  the player that the prompt lies. There are three refusals and only one is
+  about space — no cell (`Mochila cheia`), a calibre nobody in your hands can
+  fire (which is not a refusal about YOU at all: the rounds belong to whoever
+  brought the gun), and a reserve already full (muted, not red — nothing is
+  wrong, and the box will still be there on the walk back).
+
 ## Known gaps
 
+- **Cards are unplayed.** The four surfaces typecheck and the rows are derived
+  from the live catalog, but nobody has hovered one mid-fight. Worth watching:
+  whether the shop's unprompted block is welcome or is in the way when you
+  already know what you want, and whether the belt's hover fires by accident
+  when a player parks the cursor in that corner.
 - **No dedicated sound.** A plate soaking is silent (the blow it came with is
   not) and a piece breaking borrows `crate-break` pitched up. A steel tick, a
   leather scuff and a polycarbonate crack are three recipes in

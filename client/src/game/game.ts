@@ -269,6 +269,15 @@ const POUR_LAND_TRAUMA = 0.012;
  */
 const PAYOUT_LAND_TRAUMA = 0.09;
 
+/**
+ * Seconds the boss bar stays up after he goes down.
+ *
+ * Long enough to watch it reach zero — that is the payoff of the whole fight
+ * — and short enough that it is gone before the party has finished picking up
+ * what he dropped. See `Game.hudBoss`.
+ */
+const BOSS_BAR_LINGER = 3.4;
+
 /** Seconds between the exit's distant signal pings. See `stepBeacon`. */
 const BEACON_PING_INTERVAL = 3.4;
 /**
@@ -1496,6 +1505,17 @@ export class Game {
   private hudBoss(): HudBoss | null {
     const row = this.bossFeel.row;
     if (!row || row.s === 'sleep') return null;
+    // AND IT RETIRES WITH HIM. He stops sending rows the moment he is dead —
+    // there is nothing left to say — so the last row this client saw sits at
+    // `dead` until the next map replaces it. Left alone, that means an empty
+    // bar with his name on it stays on screen for the whole walk out of the
+    // yard and only clears when the shop loads.
+    //
+    // `slainAt` is the clock on the collapse, so the bar outlives him by
+    // exactly as long as it takes to watch it reach zero, and then goes.
+    if (this.bossFeel.slainAt !== null && this.bossFeel.slainAt > BOSS_BAR_LINGER) {
+      return null;
+    }
     const fraction = bossFraction(this.bossFeel);
     if (fraction === null) return null;
     return {
@@ -1535,15 +1555,19 @@ export class Game {
         playSfx(punch.sound, { gain: punch.gain, delay: punch.delay });
       }
     }
-    if (event.kind === 'arrive') {
-      // The HUD goes away for the cinematic exactly as it does for the two
-      // corridor walks — same flag, same fade, because it is the same claim:
-      // the screen is not yours for a moment.
-      this.patchHud({ cinematic: true, prompt: null, cratePrompt: null });
-    }
-    if (event.kind === 'engage') {
-      this.patchHud({ cinematic: false });
-    }
+    // NO LETTERBOX ON HIS ARRIVAL, and it is not an oversight. This used to
+    // patch `cinematic: true` here and `false` on `engage`, to borrow the
+    // black bars the two corridor walks use. It FLICKERED: `publishHud` runs
+    // five times a second and rebuilds that field from `this.locked`, which
+    // only knows about `departing` and `arriving` — so the bars came on for
+    // one patch and were wiped by the next publish, twice a second, for the
+    // whole landing.
+    //
+    // The fix is not to teach `locked` about him. The bars are for a walk the
+    // party is being PUPPETED through, where taking the screen away is honest
+    // because nothing they press matters. His arrival is two seconds long and
+    // ends with a fight; the useful thing on screen during it is their own
+    // health, not a frame around it.
     if (event.kind === 'hurt' && event.target === this.localId) {
       // His blows hit harder than anything else in the game, so they get the
       // hurt beat a zombie's does not — the same one a death gets, one step

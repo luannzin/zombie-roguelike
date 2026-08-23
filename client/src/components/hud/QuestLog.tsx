@@ -7,6 +7,14 @@
  * The store is a snapshot. This keeps departing copies until their leave
  * animation ends, and will not re-show a row it has already dismissed.
  *
+ * THAT MEMORY IS PER MAP, AND FORGETTING TO SAY SO WAS A REAL BUG. Quest ids
+ * are stable strings — `extract`, `feed`, `exit` — not per-run uniques, and
+ * this component is never unmounted for the whole of a run. So the `extract`
+ * row finishing on night one put `extract` in `dismissed` permanently, and
+ * the objective never appeared again on any later night: the server was
+ * sending it, the store had it, and this quietly filtered it out. `zoneKey`
+ * is what scopes the memory to the map the ids belong to.
+ *
  * The announce overlay is NOT dimmed with the rest of the chrome — it is the
  * moment the player is told what to do, and it has to play at full strength.
  */
@@ -22,17 +30,32 @@ export interface QuestLogProps {
   quests: HudQuest[];
   /** Hide the card with the rest of the HUD; the centre announce stays up. */
   dimmed: boolean;
+  /**
+   * The map these ids belong to (`welcome.zone.key`). Changing it forgets
+   * every dismissed row — see the note in the header.
+   */
+  zoneKey: string | null;
 }
 
 interface QuestRowState extends HudQuest {
   mode: QuestRowMode;
 }
 
-export function QuestLog({ quests, dimmed }: QuestLogProps) {
+export function QuestLog({ quests, dimmed, zoneKey }: QuestLogProps) {
   const [rows, setRows] = useState<QuestRowState[]>([]);
   const [announce, setAnnounce] = useState<HudQuest | null>(null);
   const [dock, setDock] = useState<HTMLElement | null>(null);
   const dismissed = useRef(new Set<string>());
+  const seenZone = useRef<string | null>(null);
+
+  // A new map is a new set of objectives that happen to reuse the same ids.
+  // Cleared during the render that first sees the new key rather than in an
+  // effect, so the merge below cannot run once against the previous map's
+  // memory and drop a row before the effect catches up.
+  if (seenZone.current !== zoneKey) {
+    seenZone.current = zoneKey;
+    dismissed.current.clear();
+  }
 
   useEffect(() => {
     setRows((prev) => mergeRows(prev, quests, dismissed.current));

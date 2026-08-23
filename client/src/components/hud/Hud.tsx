@@ -131,6 +131,7 @@ export function Hud({ snapshot, minimapRef, error }: HudProps) {
           <QuestLog
             quests={snapshot.quests}
             dimmed={snapshot.introducing || snapshot.cinematic}
+            zoneKey={snapshot.zone?.key ?? null}
           />
         </div>
 

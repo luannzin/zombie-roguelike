@@ -44,18 +44,28 @@
  * No timers, no rAF, nothing this component has to own, and it degrades to an
  * honest bar under `prefers-reduced-motion`.
  *
- * IT SURVIVES HIS DEATH. `slain` holds the panel up while the collapse plays:
- * the payoff of a two-minute fight is watching the bar reach zero, and a panel
- * that unmounts when hp hits 0 takes that away on the exact frame it is worth
- * something. It leaves on its own, afterwards.
+ * IT SURVIVES HIS DEATH, and `Game.hudBoss` decides for how long
+ * (`BOSS_BAR_LINGER`). The payoff of a two-minute fight is watching the bar
+ * reach zero, and a panel that unmounts when hp hits 0 takes that away on the
+ * exact frame it is worth something. What this file owns is only the fade.
  */
 
 import { useEffect, useState } from 'react';
 import type { HudBoss } from '../../game/hud-store';
 import { cn } from '@/lib/utils';
 
-/** How long the empty bar stays up after he goes down, in ms. */
-const SLAIN_HOLD = 2600;
+/**
+ * How long the panel outlives a null row, in ms. THE FADE, and nothing more.
+ *
+ * It used to be 2.6 seconds, on the theory that the panel should hold itself
+ * up through his collapse. It never did: the row does not go null when he
+ * dies — he simply stops sending rows, so the client keeps the dead one — so
+ * the hold only ever ran on the MAP CHANGE, which is the one moment the bar
+ * should be gone at once. A player walked out of the yard with an empty bar
+ * following them into the shop. The retirement moved upstream to
+ * `Game.hudBoss`, and this is now only long enough for the opacity to run.
+ */
+const SLAIN_HOLD = 600;
 /** How many divisions. Five is countable at a glance; ten is a ruler. */
 const SEGMENTS = 5;
 
@@ -65,7 +75,8 @@ export interface BossBarProps {
 }
 
 export function BossBar({ boss, className }: BossBarProps) {
-  // Held so the panel outlives the row by the length of the collapse.
+  // Held only so the fade can run after the row goes. `Game.hudBoss` is
+  // what decides that it should go — see SLAIN_HOLD.
   const [held, setHeld] = useState<HudBoss | null>(null);
 
   useEffect(() => {

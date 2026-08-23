@@ -23,6 +23,16 @@ and nowhere near the frame loop.
 - `ui/` — coss primitives (Base UI + shadcn-style copy-in). **Generated. Do not
   hand-edit.**
 
+### Quest ids are per MAP, not per run
+
+`hud/QuestLog.tsx` remembers which rows it has already animated away so the
+store re-sending the same list does not pop them back. That memory has to be
+scoped to `zoneKey`: quest ids are stable strings (`extract`, `feed`, `exit`)
+and this component is never unmounted for the whole of a run, so an
+unscoped memory silently swallowed the extraction objective on every night
+after the first. Anything else in the HUD that keys off a quest id inherits
+the same rule.
+
 ### The boss bar
 
 `hud/BossBar.tsx` is the only panel in the game that names an enemy. Two rules

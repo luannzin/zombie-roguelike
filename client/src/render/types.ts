@@ -327,6 +327,28 @@ export interface DrawableSpit {
   radius: number;
 }
 
+/**
+ * One thing an ultimate put in the air.
+ *
+ * THE SIBLING OF `DrawableSpit` AND NOT THE SAME TYPE, which is the whole
+ * point: they run on one mechanic server-side (`projectiles.py`) and they are
+ * two completely different pictures — a wet disc of bile coming at you, and an
+ * arc of steel you threw. Merging them would put one draw function in front of
+ * both and the first thing anybody would add to it is a branch on which kind
+ * it was.
+ */
+export interface DrawableVolley {
+  id: number;
+  /** Which picture. `Volley.look` server-side; today only `slash`. */
+  kind: string;
+  x: number;
+  y: number;
+  dx: number;
+  dy: number;
+  /** World px of SWEEP — the arc's half-width, straight off the catalog row. */
+  radius: number;
+}
+
 export interface RenderState {
   world: TileMap;
   camera: Camera;
@@ -345,6 +367,11 @@ export interface RenderState {
    * same reason a health bar is.
    */
   spits: DrawableSpit[];
+  /**
+   * What the party's ultimates put in the air. Same not-interpolated rule the
+   * spits keep, and for the same reason — see `spits` above.
+   */
+  volleys: DrawableVolley[];
   /** Night coat. Drives rain/fog in the atmosphere pass. */
   weather: string;
   /**

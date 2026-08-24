@@ -13,7 +13,7 @@
  */
 
 import type { Effects, WindPuff, DeathBurst, LevelUp } from '../../game/effects';
-import type { DrawableSpit } from '../types';
+import type { DrawableSpit, DrawableVolley } from '../types';
 import { fadeOf } from '../../lib/math';
 import { hudFont } from '../../theme/fonts';
 import { palette } from '../../theme/palette';
@@ -407,6 +407,93 @@ export function drawSpits(
     ctx.beginPath();
     ctx.arc(x, y, r, 0, Math.PI * 2);
     ctx.fill();
+  }
+  ctx.restore();
+  ctx.globalAlpha = 1;
+}
+
+/**
+ * WHAT AN ULTIMATE PUT IN THE AIR. The crescent, and whatever throws one next.
+ *
+ * DRAWN AS AN ARC AND NOT AS A DISC, which is the whole separation from
+ * `drawSpits` above. They are one mechanic on the server and they must never
+ * be one picture: a spit is a small wet ball coming at you and this is a
+ * BLADE'S WIDTH of steel crossing the clearing, and the thing the player has
+ * to read off it in a quarter of a second is HOW WIDE IT IS — because that is
+ * exactly the question "is it going to catch the thing next to me" asks.
+ *
+ * So the shape is the arc's own sweep, perpendicular to travel, at the radius
+ * the catalog row actually bills at. It is not decoration sized to look
+ * dramatic: draw it narrower than it hits and the player learns a lie about a
+ * weapon they only get to use once a fight.
+ *
+ * THREE PASSES, cheapest last:
+ *
+ *   1. the WAKE — a fan of the same arc, a few frames behind, fading. An arc
+ *      with no wake reads as a stationary crescent that teleports;
+ *   2. the EDGE — the arc itself, thick and hot;
+ *   3. the TIPS — a bright cap at each end, because an arc that fades out at
+ *      its ends has no length, and length is what says "this is wide".
+ *
+ * `lighter` for the same reason the spits use it: an ultimate that dimmed with
+ * the forest would be invisible in the dark it is thrown in.
+ */
+export function drawVolleys(
+  ctx: CanvasRenderingContext2D,
+  view: Projection,
+  volleys: DrawableVolley[],
+): void {
+  if (volleys.length === 0) return;
+  const tone = palette().ultimate.arc;
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.lineCap = 'round';
+  for (const shot of volleys) {
+    const speed = Math.hypot(shot.dx, shot.dy) || 1;
+    const ux = shot.dx / speed;
+    const uy = shot.dy / speed;
+    const heading = Math.atan2(uy, ux);
+    const r = Math.max(3, shot.radius * view.zoom);
+    // A HALF-DISC OPENING FORWARD. Ninety degrees each side of the heading is
+    // the widest an arc can be drawn and still read as pointing somewhere —
+    // past that it closes into a ring, and a ring is a shockwave.
+    const half = Math.PI * 0.46;
+
+    // 1. THE WAKE. Four ghosts along the travel line, each one a step back and
+    // a step dimmer. Spacing is in RADII rather than in pixels so a wider arc
+    // leaves a longer wake without a second number to tune.
+    for (let i = 4; i >= 1; i -= 1) {
+      const back = r * 0.55 * i;
+      const gx = view.x(shot.x) - ux * back;
+      const gy = view.y(shot.y) - uy * back;
+      ctx.globalAlpha = 0.09 * (5 - i);
+      ctx.strokeStyle = tone;
+      ctx.lineWidth = Math.max(1, r * 0.22);
+      ctx.beginPath();
+      ctx.arc(gx, gy, r, heading - half, heading + half);
+      ctx.stroke();
+    }
+
+    const x = view.x(shot.x);
+    const y = view.y(shot.y);
+
+    // 2. THE EDGE.
+    ctx.globalAlpha = 0.95;
+    ctx.strokeStyle = tone;
+    ctx.lineWidth = Math.max(2, r * 0.34);
+    ctx.beginPath();
+    ctx.arc(x, y, r, heading - half, heading + half);
+    ctx.stroke();
+
+    // 3. THE TIPS.
+    ctx.globalAlpha = 0.8;
+    ctx.fillStyle = tone;
+    for (const sign of [-1, 1]) {
+      const a = heading + half * sign;
+      ctx.beginPath();
+      ctx.arc(x + Math.cos(a) * r, y + Math.sin(a) * r, Math.max(1.5, r * 0.2), 0, Math.PI * 2);
+      ctx.fill();
+    }
   }
   ctx.restore();
   ctx.globalAlpha = 1;

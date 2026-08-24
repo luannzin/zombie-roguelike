@@ -654,8 +654,18 @@ def count_for_day(day: int) -> int:
 #: docstring says it should: the sanctuary is one per map whatever the map's
 #: size, so its vault is a far bigger share of a one-pad night than of a
 #: three-pad one.
-SUPPLY_BASE = 271.0
-SUPPLY_PER_PAD = 251.5
+#:
+#: AND THEN A THIRD TIME, when armour went from three slots to five. That
+#: looks like it should have made a forest RICHER — twenty catalog rows where
+#: there were twelve — and it made it about a fifth poorer, because the split
+#: is what forced `armor.value_of` to start reading `COVERAGE`. A plate is now
+#: priced by the share of the body it actually stands in front of, so four of
+#: every five pieces on the ground are worth a fraction of what the old
+#: three-way split charged for them. Nothing about the quota was edited: the
+#: line was re-fitted to what real generated forests measure, which is the
+#: whole reason `test_quota.py` exists.
+SUPPLY_BASE = 207.0
+SUPPLY_PER_PAD = 181.0
 
 #: What share of that low quarter night one asks for. A third: enough that the
 #: quota is roughly one full backpack and the party has to actually look for

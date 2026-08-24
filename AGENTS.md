@@ -72,6 +72,7 @@ never all of them.
 | **moving, carrying, shooting, the bag or the belt** | **player** | `docs/design/player.md` |
 | **what a body WEARS, what stops a blow, a lâmina or the shield** | **gear** | `docs/design/gear.md` |
 | **healing, a medkit, the cells on 4 and 5** | **player** | `server/app/medical.py` + `docs/design/player.md` |
+| **R, an ultimate, a synergy, a set that unlocks something** | **ultimates** | `docs/design/ultimates.md` |
 | **a thing that HAPPENS on a night — a wave, the lights, a crate** | **events** | `docs/design/events.md` |
 | a **pixel or a sound that must be regenerated** | **asset pipeline** | `assets/AGENTS.md` -> `server/tools/AGENTS.md` |
 
@@ -163,7 +164,8 @@ owns your task; skip the rest.
 | [`docs/design/store.md`](docs/design/store.md) | the merchant's clearing, stalls, prices, the payout, the balance |
 | [`docs/design/skills.md`](docs/design/skills.md) | levels, the upgrade machine, `Mods` |
 | [`docs/design/player.md`](docs/design/player.md) | movement, stamina, the belt, weapons, ammo, the pocket |
-| [`docs/design/gear.md`](docs/design/gear.md) | lâminas, worn armour and its materials, the shield |
+| [`docs/design/gear.md`](docs/design/gear.md) | lâminas, the five worn slots and their materials, the shield |
+| [`docs/design/ultimates.md`](docs/design/ultimates.md) | one ultimate per weapon, the tags that gate it, the bar that fills it |
 | [`docs/design/enemies.md`](docs/design/enemies.md) | senses, hunt, the director, corpses |
 | [`docs/design/world.md`](docs/design/world.md) | map generation, scenery, objects, zones, weather, the camp |
 | [`docs/design/presentation.md`](docs/design/presentation.md) | audio, VFX, gore, the light budget |
@@ -201,14 +203,16 @@ These bind every subtree. Subsystem-specific rules live in the docs above.
 - **Generated-asset lists are append-only.** Inserting a row moves every existing frame index.
 - **Money is created in exactly one place, once:** `Room.enter_store`. The client never settles.
 - **Damage arrives at exactly one place, once:** `Room.damage_player`. The shield, worn armour and `Mods.armor` are applied there and nowhere else, in that order — a mitigation written at three call sites is one that will be missing from the fourth. Anything that can hurt a player comes through this door, including the boss.
-- **A player has FIVE containers and `loot.ItemDef.pocket` is what decides between them:** the pocket (`bag`, slots and weight), the belt (`hotbar` — a gun into a gun cell, a lâmina into the blade cell), the reserve (`ammo`), the body (`worn`) and the medical cells (`med` — two of them, on keys 4 and 5). None of `ammo`, `worn` or `med` costs a pocket cell, because the bag's budget answers "how much loot can I still carry out" and none of rounds, a helmet or a bandage is cargo. Worn armour and medicine still cost SPEED.
-- **Health comes back in exactly one place, once:** `Room._step_use`, on the frame a medical channel completes. Medicine is the only source — there is no regeneration and no heal on extraction. It is not cargo: both kits have `value=0`, so they cannot be sold, poured, or counted toward a quota. The merchant sells them, and that trip is one-way.
+- **A player has FIVE containers and `loot.ItemDef.pocket` is what decides between them:** the pocket (`bag`, slots and weight), the belt (`hotbar` — a gun into a gun cell, a lâmina into the blade cell), the reserve (`ammo`), the body (`worn` — FIVE slots: head, arms, body, legs, feet) and the medical cells (`med` — two of them, on keys 4 and 5). None of `ammo`, `worn` or `med` costs a pocket cell, because the bag's budget answers "how much loot can I still carry out" and none of rounds, a helmet or a bandage is cargo. Worn armour and medicine still cost SPEED.
+- **Health comes back through exactly one door:** `Room.heal_player`. It used to be one PLACE because there was one caller; there are two sources now — a medical channel completing (`_step_use`) and the field gun's dart — so the rule is a method instead of a coincidence. What did not change is the important half: there is still no regeneration, no heal on extraction, and nothing that happens to a body on its own. Every point of health in this game is something a person spent something to give it, and a DOWNED body is never healed by anything.
+- **Medicine is not cargo.** Both kits have `value=0`, so they cannot be sold, poured, or counted toward a quota. The merchant sells them, and that trip is one-way.
+- **Every weapon owns at most one ULTIMATE, and nothing anywhere names a combination.** A weapon carries tags, a material carries tags, and an ultimate lists the tags it needs (`server/app/ultimates.py`). Adding one is a data row; a second weapon that satisfies an existing one is a tag on that weapon's row. `Room` never learns a weapon's name and neither does the HUD.
 
 ## Verification
 
 | scope | command |
 | --- | --- |
-| server | `python tests/test_snapshot_shape.py`, `test_pour.py`, `test_store_walk.py`, `test_config_parity.py`, `test_loot_frames.py`, `test_bush_cover.py`, `test_scenery_containers.py`, `test_creature_sheets.py`, `test_map_scale.py`, `test_boss_fight.py`, `test_gear.py`, `test_pack.py`, `test_medical.py`, `test_events.py`, `test_night_pressure.py`, `test_quota.py`, `test_containers.py`, `test_skills.py`, `test_ranged.py`, `test_reroll.py`, `test_weather.py` from `server/` — plain scripts, each prints `ok` |
+| server | `python tests/test_snapshot_shape.py`, `test_pour.py`, `test_store_walk.py`, `test_config_parity.py`, `test_loot_frames.py`, `test_bush_cover.py`, `test_scenery_containers.py`, `test_creature_sheets.py`, `test_map_scale.py`, `test_boss_fight.py`, `test_gear.py`, `test_pack.py`, `test_medical.py`, `test_events.py`, `test_night_pressure.py`, `test_quota.py`, `test_containers.py`, `test_skills.py`, `test_ranged.py`, `test_reroll.py`, `test_weather.py`, `test_ultimates.py` from `server/` — plain scripts, each prints `ok` |
 | client | `bun run typecheck` from `client/` — required after any change there |
 | client | `bun tests/grade.ts` from `client/` after touching `render/post/grade.ts` — plain script, prints `ok` |
 | client | `bun tests/exit-path.ts` from `client/` after touching `game/exit-path.ts` — plain script, prints `ok` |
@@ -216,6 +220,7 @@ These bind every subtree. Subsystem-specific rules live in the docs above.
 | client | `bun tests/events.ts` from `client/` after touching `server/app/events.py`'s catalog or `client/src/game/events.ts` — plain script, prints `ok`. It reads the REAL catalog out of the Python, so it fails if the two sides of the night's script drift |
 | client | `bun tests/boss-clock.ts` from `client/` after touching `render/boss.ts`, `app/boss.py` or `make_sawyer.py` — plain script, prints `ok`. It reads the REAL sawyer manifest and pins the one thing nothing at runtime notices: that the frame on screen when a blow lands is the frame the art says it lands on |
 | assets | `python tools/make_armor.py` from `server/` after touching a worn overlay — it writes the raw art AND processes it, and it fails the build if any piece leaves the 16x16 player grid, which is the one way an overlay goes wrong invisibly |
+| assets | `python tools/make_ultimates.py` from `server/` after adding an ultimate or editing a mark — it fails the build if the catalog and the sheet hold different keys, which is a HUD panel with a hole in it and the one failure a screenshot of the shop will not show |
 | assets | `python tools/make_wolf.py` from `server/` after touching the pack rig — it writes the raw art AND processes all seven sheets, and it fails the build if any pixel reaches a frame unshaded (which is what a part painted outside the mask pass looks like). Follow it with `test_creature_sheets.py`, which counts the heads |
 | assets | `python tools/make_sawyer.py` from `server/` after touching the boss rig — it is its own test: it fails the build if a one-shot does not start and end on the resting pose, or if any frame's art reaches the frame border |
 | both | run the server, open two browser tabs, confirm both players move, shoot and light the world without rubber-banding |
@@ -394,6 +399,21 @@ away than the wash they were shown said they could be. It also pins that a coat
 cuts BOTH reaches (applied to the naked eye alone, the lantern silently becomes
 a stealth item on foggy nights), and that the coats stay an INVERTED pair
 rather than a difficulty ladder.
+
+Run `test_ultimates.py` after touching `ultimates.py`, `Room.use_ultimate` /
+`_charge_ult` / `_empower` / `step_ult_shots`, a weapon's `tags`, or a
+material's. It pins the five things about synergy that have no symptom you
+would ever see while playing, and each of them would read as bad DESIGN rather
+than as a bug: a requirement that silently passes (every ultimate unlocks the
+moment its weapon is picked up, and the whole feature quietly does not exist);
+one that silently fails (identical, from inside the game, to an ultimate whose
+armour you have not found — the player buys the set, presses R, gets nothing,
+and concludes the key is broken); a bar that fills off the wrong weapon or the
+wrong action, which makes "charge with whatever is convenient and fire with
+whatever is strongest" the correct play; a window that follows its owner onto
+another weapon, whose only symptom is somebody having a very good night; and
+the architecture claim itself — it builds a fifth ultimate inside the test, for
+a weapon that has never had one, and drives it through the unmodified room.
 
 Run `test_config_parity.py` after touching `client_config()` or `GameConfig`:
 it fails if either side declares a key the other does not, in either

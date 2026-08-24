@@ -732,7 +732,7 @@ def _step_charge(boss: Boss, living: list, world: TileMap, dt: float,
             continue
         boss.charge_hit.add(player.id)
         boss._immune[player.id] = BOSS_MELEE_IMMUNITY
-        out.hits.append((player, BOSS_CHARGE_DAMAGE, boss.x, boss.y))
+        out.hits.append((player, BOSS_CHARGE_DAMAGE, boss.x, boss.y, ""))
         out.events.append({
             "kind": "impact", "move": RUSH.key,
             "x": round(boss.x, 1), "y": round(boss.y, 1),
@@ -988,7 +988,7 @@ def _land(boss: Boss, move: Move, living: list, out: Outcome) -> None:
         if boss._immune.get(player.id, 0.0) > 0.0:
             continue
         boss._immune[player.id] = BOSS_MELEE_IMMUNITY
-        out.hits.append((player, move.damage, boss.x, boss.y))
+        out.hits.append((player, move.damage, boss.x, boss.y, ""))
         landed += 1
 
     out.events.append({

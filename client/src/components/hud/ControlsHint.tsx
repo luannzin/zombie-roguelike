@@ -25,7 +25,12 @@ export function ControlsHint({ zone }: ControlsHintProps) {
   if (zone?.kind === 'camp') parts.push('E pronto');
   else if (zone?.kind === 'store') parts.push('E comprar');
   else if (zone?.hostile) parts.push('E coletar');
-  parts.push('TAB mochila');
+  parts.push('TAB mochila', 'C armadura');
+  // R IS OFFERED ONLY WHERE IT ANSWERS, unlike the belt and the bag. An
+  // ultimate is refused outright in the camp and the shop (`Room.use_ultimate`
+  // gates on `zone.hostile`), so listing it there would be teaching a key that
+  // does nothing — which is the one thing this component exists not to do.
+  if (zone?.hostile) parts.push('R ultimate');
   // Always listed, unlike the rest: mute is the one control that works
   // everywhere, and a player who wants the sound off needs to find it without
   // reading a settings screen that does not exist yet.

@@ -41,6 +41,8 @@ the line number. In order:
                         arrival / seal that puppet it
     quests              offering and ticking the run's objectives
     enemies             the director's slice of the tick
+    ultimates           R: whether the press is legal, what it does to the
+                        world, what fills the bar, and how long it lasts
     the boss            the Sawyer: waking him, his tick, hurting him, and the
                         exit his death carves
     combat              attacks both ways, the swing, the shot, damage, death
@@ -62,8 +64,8 @@ import uuid
 
 from . import (
     ai, ammo, arena, armor, boss, camp, coins, combat, crates, entrance, events, loot,
-    mapgen, medical, projectiles, protocol, quests, rift, skills, store, weapons,
-    zones,
+    mapgen, medical, projectiles, protocol, quests, rift, skills, store,
+    ultimates, weapons, zones,
 )
 from . import machine
 from .ai import EnemyDirector
@@ -122,7 +124,7 @@ from .entities import (
     USE_CRATE,
     USE_HEAL,
     POUR_DUMP, POUR_LIFT, POUR_STOW, POUR_WALK,
-    InputCmd, Player, Pour, clean_name, pick_color, random_name,
+    InputCmd, Player, Pour, UltState, clean_name, pick_color, random_name,
     Use,
 )
 from .pathing import Navigator
@@ -374,6 +376,21 @@ class Room:
         self.shot_events: list[dict] = []
         #: Where shots ENDED this tick. Also an event.
         self.shot_bursts: list[dict] = []
+        #: EVERYTHING A PLAYER'S ULTIMATE PUT IN THE AIR, and its own id
+        #: counter. A separate list from `self.shots` rather than a `team`
+        #: field on the projectile, and the split is about what they are
+        #: tested AGAINST: a creature's spit bills players and a crescent
+        #: bills creatures, so one list would mean a per-projectile branch
+        #: inside `projectiles.advance` — which is the one function in that
+        #: module that must stay a loop over one body list.
+        self.ult_shots: list[projectiles.Projectile] = []
+        self._ult_shot_id = 0
+        #: Ultimates that FIRED this tick. The one-shot every client draws the
+        #: burst, the shake and the sound off — an event, never state, so a
+        #: dropped packet cannot replay somebody's ultimate.
+        self.ult_events: list[dict] = []
+        #: Where an ultimate projectile ended. Same contract as `shot_bursts`.
+        self.ult_bursts: list[dict] = []
         #: Seconds left of an event dark, or 0. Suppresses every lantern on the
         #: map through the SAME branch the extraction blackout uses — see
         #: `begin_dark` for why there is deliberately only one such branch.
@@ -1383,6 +1400,65 @@ class Room:
         player.using = Use(kind=USE_HEAL, slot=slot, left=kit.use_time, total=kit.use_time)
         player.vx = player.vy = 0.0
 
+    def heal_player(
+        self,
+        target: Player,
+        amount: int,
+        source: Player | None = None,
+        key: str | None = None,
+    ) -> int:
+        """Put health back into a body. THE ONE DOOR, exactly as damage has one.
+
+        There used to be no door because there was only one caller: a medical
+        channel finishing, in `_step_use`, which wrote `player.hp` directly.
+        `AGENTS.md` recorded that as a rule — *health comes back in exactly one
+        place, once* — and the rule was always about the DOOR rather than about
+        medicine. There are two sources now (a kit, and the field gun) and
+        there will be a third the moment somebody adds a shrine, so the door is
+        a method instead of a coincidence.
+
+        WHAT DID NOT CHANGE, and it is the important half: there is still no
+        regeneration, still no heal on extraction, and still nothing that
+        happens to a body on its own. Every point of health in this game is
+        something a person spent something to give it.
+
+        A DOWNED BODY IS NOT HEALED. Nothing brings one back but the party
+        reaching the next zone (`_check_wipe` is built on that), and a heal
+        that stood somebody up would quietly delete permadeath — which is the
+        thing every other system in this game is balanced against.
+
+        Returns what actually landed, which is what the charge is billed on:
+        topping somebody up from 99 must not be worth the same as catching
+        them at 10.
+        """
+        if amount <= 0 or not target.alive or target.downed:
+            return 0
+        before = target.hp
+        target.hp = min(target.max_hp, target.hp + amount)
+        healed = target.hp - before
+        if healed <= 0:
+            return 0
+        self._roster_dirty = True
+        # THE JUICE, and it is an event rather than a state for the same reason
+        # every other ceremony here is: the bar moving is a fact anybody can
+        # read off the roster, and the flash, the sound and the number floating
+        # off the body are a thing that HAPPENED and must never be replayed by
+        # a client that missed a packet.
+        self.heal_events.append(
+            {
+                "id": target.id,
+                "k": key,
+                "hp": healed,
+                "x": round(target.x, 1),
+                "y": round(target.y, 1),
+            }
+        )
+        if source is not None:
+            held = source.hotbar.equipped()
+            if held is not None:
+                self._charge_ult(source, held, ultimates.CHARGE_HEAL, healed)
+        return healed
+
     def _step_use(self, player: Player, dt: float) -> None:
         """Run the clock, and spend the cell on the LAST frame and only there.
 
@@ -1416,23 +1492,11 @@ class Room:
         kit = medical.BY_KEY.get(key or "")
         if kit is None:
             return
-        before = player.hp
-        player.hp = min(player.max_hp, player.hp + kit.heal)
-        self._roster_dirty = True
-        # THE JUICE, and it is an event rather than a state for the same reason
-        # every other ceremony here is: the bar moving is a fact anybody can
-        # read off the roster, and the flash, the sound and the number floating
-        # off the body are a thing that HAPPENED and must never be replayed by
-        # a client that missed a packet.
-        self.heal_events.append(
-            {
-                "id": player.id,
-                "k": key,
-                "hp": player.hp - before,
-                "x": round(player.x, 1),
-                "y": round(player.y, 1),
-            }
-        )
+        # THROUGH THE ONE DOOR. A kit does not get to write `hp` itself any
+        # more — see `heal_player` — because it is no longer the only source.
+        # `source` is None: healing yourself must not charge anybody's
+        # ultimate, or the medic build would be "stand still and press 4".
+        self.heal_player(player, kit.heal, source=None, key=key)
 
     def _pour_inputs(self, player: Player) -> None:
         """Ack everything, obey nothing.
@@ -2449,6 +2513,9 @@ class Room:
         self.shots = []
         self.shot_events = []
         self.shot_bursts = []
+        self.ult_shots = []
+        self.ult_events = []
+        self.ult_bursts = []
         self.dark_left = 0.0
         self._dark_dirty = True
         self.boss = None
@@ -2589,6 +2656,7 @@ class Room:
         # first thing a player sees of it is a body-length down its own flight
         # path — which is exactly the beat the windup bought them.
         self.step_shots(dt)
+        self.step_ult_shots(dt)
         self.step_boss(dt)
         self.step_coins(dt)
         self.step_rift(dt)
@@ -2761,6 +2829,16 @@ class Room:
         for player in self.players.values():
             if player.fire_cooldown > 0.0:
                 player.fire_cooldown = max(0.0, player.fire_cooldown - dt)
+            # AN ULTIMATE'S WINDOW BURNS IN REAL TIME. Ticked up here with the
+            # other clocks rather than inside `handle_attack`, because it has
+            # to run out for somebody who stopped shooting — which is exactly
+            # the frame that handler does nothing — and because a window that
+            # only advanced while the trigger was down would be a window you
+            # could pause by letting go.
+            if player.ult is not None:
+                player.ult.left -= dt
+                if player.ult.left <= 0.0:
+                    player.ult = None
             # The chain closes on its own. Ticked here rather than in
             # `handle_melee`, because it has to run out for a player who
             # stopped swinging — which is exactly the frame that handler is
@@ -3444,7 +3522,7 @@ class Room:
         living = [p for p in self.players.values() if p.alive]
         outcome = boss.update(row, living, self.world, dt)
 
-        for player, damage, sx, sy in outcome.hits:
+        for player, damage, sx, sy, _owner in outcome.hits:
             if not player.alive:
                 continue
             # HIS OWN I-FRAMES, NOT THE ZOMBIES'. `MELEE_IMMUNITY` is a shared
@@ -3617,6 +3695,231 @@ class Room:
                 self._pending_return = True
                 return
 
+    # --- ultimates: what a BUILD can do that a weapon cannot ----------------
+    #
+    # The catalog, the requirements and the effect blocks are `ultimates.py`.
+    # What lives here is the four things only a room can answer: whether the
+    # press is legal, what the effect does to the world, what the bar is billed
+    # for, and how long the window lasts. Nothing below names an ultimate, a
+    # weapon or a material — the dispatch is on which effect BLOCK the row
+    # carries, exactly as `handle_attack` dispatches on `melee` / `shield`.
+
+    def ultimate_for(self, player: Player):
+        """The ultimate the weapon in this player's hands owns, or None.
+
+        THE PANEL FOLLOWS THE HAND. There is no "selected ultimate" and no
+        second belt: an ultimate belongs to a weapon, so what R does is
+        entirely decided by what 1/2/3 last chose. That is the one rule the
+        whole HUD rests on and it is stated here rather than in four callers.
+        """
+        weapon = player.hotbar.equipped()
+        if weapon is None:
+            return None
+        return ultimates.BY_WEAPON.get(weapon.key)
+
+    def _empower(self, player: Player, weapon: weapons.WeaponDef):
+        """The `Empower` running on `weapon` right now, or None.
+
+        IT CHECKS THE WEAPON, not just the window. Holstering the minigun
+        mid-storm and drawing a pistol must not hand the pistol six seconds of
+        free ammunition — the window belongs to the weapon that opened it, and
+        the seconds keep burning while it is put away. Swapping back inside
+        the window gets the rest of it, which is correct: what was spent was
+        time, and the player spent it.
+        """
+        state = player.ult
+        if state is None:
+            return None
+        row = ultimates.BY_KEY.get(state.key)
+        if row is None or row.weapon != weapon.key:
+            return None
+        return row.empower
+
+    def _charge_ult(
+        self, player: Player, weapon: weapons.WeaponDef, source: str, amount: float
+    ) -> None:
+        """Bill the bar for something the player just did with this weapon.
+
+        THREE GUARDS AND EACH ONE IS A RULE:
+
+          * the weapon has to OWN the ultimate being charged, so a night spent
+            shooting cannot fill a katana's bar;
+          * the SOURCE has to match the row's — a medic's bar fills on healing
+            and cannot be filled by shooting something, which is what stops
+            "carry the support gun and play normally";
+          * the ultimate has to be UNLOCKED. A locked bar does not fill at
+            all, which is what makes the state machine the player is shown —
+            locked, then charging, then ready — the state machine the server
+            actually runs. A full bar behind a padlock would be a HUD saying
+            two things at once.
+        """
+        row = ultimates.BY_WEAPON.get(weapon.key)
+        if row is None or row.charge_on != source or amount <= 0:
+            return
+        if ultimates.missing_tags(row, weapon.tags, player.armor.tag_pieces()):
+            return
+        have = player.ult_charge.get(row.key, 0.0)
+        if have >= row.charge_full:
+            return
+        player.ult_charge[row.key] = min(row.charge_full, have + amount)
+        self._roster_dirty = True
+
+    def use_ultimate(self, pid: str) -> None:
+        """R. Spend a full bar, if there is one and it is allowed to be spent.
+
+        SILENT ON EVERY REFUSAL, like the shield's button and unlike a
+        purchase. The HUD panel is on screen the whole time saying which of
+        these is true — locked, charging, ready — so a buzzer here would be
+        the game telling the player something they are already looking at.
+        """
+        player = self.players.get(pid)
+        if player is None or not player.alive or player.downed:
+            return
+        # Not while the body is a puppet, and not in a zone where weapons do
+        # not work. The camp is a place, not a firing range.
+        if player.pour is not None or player.using is not None:
+            return
+        if not self.zone.hostile or self.arriving or self.departing:
+            return
+        if player.ult is not None:
+            return
+        weapon = player.hotbar.equipped()
+        if weapon is None:
+            return
+        row = ultimates.BY_WEAPON.get(weapon.key)
+        if row is None:
+            return
+        if ultimates.missing_tags(row, weapon.tags, player.armor.tag_pieces()):
+            return
+        if player.ult_charge.get(row.key, 0.0) < row.charge_full:
+            return
+
+        # SPENT FIRST. Everything below can fail to find a target and none of
+        # it may leave the bar full — an ultimate that did nothing because
+        # nobody was standing near it is still an ultimate that was fired.
+        player.ult_charge[row.key] = 0.0
+        self._roster_dirty = True
+
+        if row.volley is not None:
+            self._ult_volley(player, row)
+        if row.empower is not None:
+            player.ult = UltState(
+                key=row.key,
+                left=row.empower.duration,
+                shots=row.empower.shots if row.empower.shots > 0 else -1,
+            )
+        if row.aura is not None:
+            self._ult_aura(player, row)
+
+        # THE ANNOUNCEMENT, and it is one event for every ultimate in the
+        # catalog rather than one per effect. What a client does with it —
+        # the flash, the ring, the shake, the sound — is chosen off `k`, and
+        # the ROOM has no opinion about any of it.
+        self.ult_events.append(
+            {
+                "by": player.id,
+                "k": row.key,
+                "x": round(player.x, 2),
+                "y": round(player.y, 2),
+                "dx": round(player.aim_x, 3),
+                "dy": round(player.aim_y, 3),
+            }
+        )
+
+    def _ult_volley(self, player: Player, row) -> None:
+        """Put `row.volley` in the air, laid across the aim.
+
+        AIMED, AND THEREFORE MISSABLE. Every projectile in this game is
+        something a body can walk out of (`projectiles.py`) and an ultimate is
+        not exempt: a crescent that homed would be a button that deletes what
+        you point it at, which is a cutscene rather than a weapon.
+        """
+        volley = row.volley
+        base = math.atan2(player.aim_y, player.aim_x)
+        spread = math.radians(volley.spread_degrees)
+        step = spread / max(1, volley.count - 1) if volley.count > 1 else 0.0
+        centre = (volley.count - 1) / 2.0
+        speed = volley.speed_tiles * TILE_SIZE
+        for index in range(volley.count):
+            angle = base + (index - centre) * step
+            ux, uy = math.cos(angle), math.sin(angle)
+            self._ult_shot_id += 1
+            self.ult_shots.append(
+                projectiles.Projectile(
+                    id=self._ult_shot_id,
+                    # Clear of the thrower's own tile, or it bursts on the wall
+                    # they happen to be standing against.
+                    x=player.x + ux * player.radius,
+                    y=player.y + uy * player.radius,
+                    dx=ux * speed,
+                    dy=uy * speed,
+                    life=volley.life,
+                    radius=volley.radius_tiles * TILE_SIZE,
+                    damage=volley.damage,
+                    owner=player.id,
+                    look=volley.look,
+                )
+            )
+
+    def _ult_aura(self, player: Player, row) -> None:
+        """One pulse centred on the body: heal the party, hurt the crowd.
+
+        BOTH HALVES GO THROUGH THEIR OWN ONE DOOR — `heal_player` and
+        `damage_enemy` — so an aura cannot become the one thing in the game
+        that skips a plate or forgets to pay xp.
+        """
+        aura = row.aura
+        reach = aura.radius_tiles * TILE_SIZE
+        if aura.heal > 0:
+            for other in list(self.players.values()):
+                if math.hypot(other.x - player.x, other.y - player.y) > reach:
+                    continue
+                # `source=None`: an ultimate must not charge the bar that paid
+                # for it, or a medic could hold R open forever.
+                self.heal_player(other, aura.heal, source=None, key=row.key)
+        if aura.damage > 0:
+            for enemy in list(self.enemies.values()):
+                if math.hypot(enemy.x - player.x, enemy.y - player.y) > reach:
+                    continue
+                self.damage_enemy(enemy, aura.damage, player, enemy.x - player.x, enemy.y - player.y)
+
+    def _spend_ult_shot(self, player: Player) -> None:
+        """One round out of a window budgeted in SHOTS. Closes it at zero."""
+        state = player.ult
+        if state is None or state.shots < 0:
+            return
+        state.shots -= 1
+        if state.shots <= 0:
+            player.ult = None
+
+    def step_ult_shots(self, dt: float) -> None:
+        """Fly every ultimate projectile one tick.
+
+        THE MIRROR OF `step_shots`, against the other side of the room: a
+        creature's spit is tested against players and this is tested against
+        creatures. Same module, same order — moved, then the wall, then the
+        bodies — so an ultimate cannot cut through a tree any more than a
+        bloater's bile can.
+        """
+        if not self.ult_shots:
+            return
+        bodies = [e for e in self.enemies.values() if e.alive]
+        if self.boss is not None and self.boss.vulnerable:
+            bodies.append(self.boss)
+        self.ult_shots, impact = projectiles.advance(self.ult_shots, bodies, self.world, dt)
+        for body, damage, sx, sy, owner_id in impact.hits:
+            # THE KILL IS CREDITED TO WHOEVER PRESSED R. Without the owner
+            # column an ultimate would be the one way to clear a pack for no
+            # xp and no level — a button that makes the run worse, which is
+            # the exact opposite of what it is for.
+            owner = self.players.get(owner_id)
+            if isinstance(body, boss.Boss):
+                self.damage_boss(damage, owner, sx - body.x, sy - body.y)
+            else:
+                self.damage_enemy(body, damage, owner, body.x - sx, body.y - sy)
+        for bx, by in impact.bursts:
+            self.ult_bursts.append({"x": round(bx, 1), "y": round(by, 1)})
+
     # --- combat -------------------------------------------------------------
     def resolve_attack(self, attack: ai.Attack) -> None:
         """Apply one melee swing, honouring the victim's i-frames.
@@ -3740,7 +4043,7 @@ class Room:
             return
         living = [p for p in self.players.values() if p.alive and not p.downed]
         self.shots, impact = projectiles.advance(self.shots, living, self.world, dt)
-        for player, damage, sx, sy in impact.hits:
+        for player, damage, sx, sy, _owner in impact.hits:
             # THE DRAG GOES ON, for the same reason a claw's does: something
             # hit you, and a player who could stand in a firing line at full
             # walking speed would have no reason to leave it.
@@ -3857,12 +4160,22 @@ class Room:
         #
         # ONE ROUND PER TRIGGER PULL, not per ray: a shotgun spends a SHELL
         # and gets six pellets out of it. See `fire`.
-        if not player.ammo.spend(ammo.calibre_of(weapon.key)):
-            player.fire_cooldown = weapon.fire_cooldown
-            return
-        player.fire_cooldown = weapon.fire_cooldown
+        # AN OPEN WINDOW PAYS FOR THE CADENCE AND, IF IT SAYS SO, FOR THE
+        # ROUNDS. Read once, here, above both — a free-ammo window that still
+        # spent the reserve would be an ultimate whose whole promise was
+        # broken in a branch nobody would think to look at.
+        boost = self._empower(player, weapon)
+        cooldown = weapon.fire_cooldown * (boost.cadence_scale if boost is not None else 1.0)
+        if boost is None or not boost.free_ammo:
+            if not player.ammo.spend(ammo.calibre_of(weapon.key)):
+                player.fire_cooldown = cooldown
+                return
+        player.fire_cooldown = cooldown
         self._roster_dirty = True
         self.fire(player, cmd.aim_x, cmd.aim_y, weapon)
+        # AFTER the shot, so a one-shot window is spent by the round that used
+        # it rather than by the press that opened it.
+        self._spend_ult_shot(player)
 
     def handle_melee(self, player: Player, cmd: InputCmd, weapon: weapons.WeaponDef) -> None:
         """Advance the chain by one beat, if the trigger is down and the arm is free.
@@ -3966,6 +4279,12 @@ class Room:
             self.smash_crate(crate, attacker)
             return
 
+        # Same billing rule the trigger keeps: what the arc actually opened,
+        # once, so a whiff is worth nothing and a finisher through three
+        # bodies is worth three.
+        if hits:
+            self._charge_ult(attacker, weapon, ultimates.CHARGE_DAMAGE, damage * len(hits))
+
         for hit in hits:
             victim = hit.target
             if isinstance(victim, boss.Boss):
@@ -4037,7 +4356,29 @@ class Room:
         # client draws over the body (`dmg` on the shot event) and the number
         # the body actually loses are the same number. Rolling it a second time
         # at the damage call is how a hit marker starts lying.
-        damage = max(1, round(weapon.damage * shooter.skills.mods.gun))
+        # THE WINDOW IS FOLDED IN HERE, with the skills, for the reason the
+        # comment above gives: the number the client floats over the body and
+        # the number the body loses have to be the same number, and rolling a
+        # multiplier a second time at the damage call is how a hit marker
+        # starts lying.
+        boost = self._empower(shooter, weapon)
+        # A HEALING WEAPON DEALS NOTHING, and it is a zero rather than a
+        # `max(1, ...)` floor: the floor exists so a shot always costs the
+        # thing it hits SOMETHING, and a dart that took a point off the ally it
+        # was aimed at would be the single funniest bug in this game.
+        damage = (
+            0
+            if weapon.heal > 0
+            else max(
+                1,
+                round(
+                    weapon.damage
+                    * shooter.skills.mods.gun
+                    * (boost.damage_scale if boost is not None else 1.0)
+                ),
+            )
+        )
+        reach = weapon.range * (boost.range_scale if boost is not None else 1.0)
 
         # Insertion order is the pattern's order, which is what lets the
         # client draw the cone in the shape it was actually cast.
@@ -4054,7 +4395,7 @@ class Room:
 
         for px, py in rays:
             hit = combat.raycast(
-                self.world, ox, oy, px, py, weapon.range, targets, ignore_id=shooter.id
+                self.world, ox, oy, px, py, reach, targets, ignore_id=shooter.id
             )
             # The foot tile is only the contact. Aiming at the barrel has to
             # count, so the sprite box is tested against the same ray — closer
@@ -4100,27 +4441,52 @@ class Room:
             # tracer that covers the pattern instead of stopping at whatever
             # the centre happened to meet.
             "dist": round(longest, 2),
-            "hit": primary[0].id if primary is not None else None,
-            "dmg": primary[1] if primary is not None else 0,
+            # A HEALING SHOT NAMES NOBODY AND CARRIES NO NUMBER. The tracer
+            # still flies its full distance so the player can see where the
+            # dart went, and the green float over the body it reached is
+            # `heal_events`' job — a `hit` here would put an impact spark and a
+            # spray of blood on a team-mate.
+            "hit": None if weapon.heal > 0 else (primary[0].id if primary is not None else None),
+            "dmg": 0 if weapon.heal > 0 else (primary[1] if primary is not None else 0),
         }
         # Both extras are omitted on a one-ray weapon rather than sent empty:
         # every pistol shot in a 30 Hz snapshot would otherwise carry two
         # fields that only the shotgun has ever filled.
         if pellets:
             event["p"] = pellets
-        if len(rows) > 1:
+        if len(rows) > 1 and weapon.heal <= 0:
             event["hits"] = [{"id": row[0].id, "dmg": row[1]} for row in rows]
         self.shot_events.append(event)
 
         for crate in struck:
             self.smash_crate(crate, shooter)
+
+        # THE FIELD GUN LEAVES HERE. Its ray was cast against the same target
+        # list as everybody else's — which is the rule, not an oversight: a
+        # dart stops on the zombie standing between you and the person you
+        # were aiming at, and that is what makes a support weapon a question
+        # about POSITION rather than a button that heals whoever is lowest.
+        if weapon.heal > 0:
+            for victim, _total, _vx, _vy in rows:
+                if isinstance(victim, Player):
+                    self.heal_player(victim, weapon.heal, source=shooter, key=weapon.key)
+            return
+
+        dealt = 0
         for victim, total, vx, vy in rows:
+            dealt += total
             if isinstance(victim, boss.Boss):
                 self.damage_boss(total, shooter, vx, vy)
             elif isinstance(victim, Enemy):
                 self.damage_enemy(victim, total, shooter, vx, vy)
             else:
                 self.damage_player(victim, total, shooter, ox, oy)
+        # BILLED ON WHAT THE PULL ACTUALLY DID, once, after the fact — so a
+        # shell that opened three bodies is worth three bodies and a miss is
+        # worth nothing. Charging on the press would make the bar a rate of
+        # fire, which would hand the fastest trigger in the game the fastest
+        # ultimate as well.
+        self._charge_ult(shooter, weapon, ultimates.CHARGE_DAMAGE, dealt)
 
     def damage_player(
         self,
@@ -4372,6 +4738,14 @@ class Room:
             paid_xp = max(1, round(reward.xp * source.skills.mods.xp))
             source.xp += paid_xp
             self._sync_spins(source)
+            # A BODY IS A CHARGE SOURCE IN ITS OWN RIGHT, one unit per corpse.
+            # No row in the catalog uses it today and the constant exists
+            # anyway, because the alternative is a `CHARGE_KILL` that is real
+            # in `ultimates.py` and imaginary here — which is a trap for
+            # whoever writes the fifth ultimate.
+            held = source.hotbar.equipped()
+            if held is not None:
+                self._charge_ult(source, held, ultimates.CHARGE_KILL, 1)
         # xp is what the kill is worth and never varies; coins are what fell
         # out of this particular corpse, which does.
         dropped = coins.roll_drop(
@@ -4609,6 +4983,25 @@ class Room:
                 or None,
                 spit_events=self.shot_events or None,
                 spit_bursts=self.shot_bursts or None,
+                ults=self.ult_events or None,
+                volleys=[
+                    {
+                        "id": shot.id,
+                        "k": shot.look,
+                        "x": round(shot.x, 1),
+                        "y": round(shot.y, 1),
+                        "dx": round(shot.dx, 1),
+                        "dy": round(shot.dy, 1),
+                        # The SWEEP, in world pixels. A crescent is drawn at
+                        # its own width rather than at a constant, so a second
+                        # volley with a different radius arrives already the
+                        # right size on screen — the client has no table.
+                        "r": round(shot.radius, 1),
+                    }
+                    for shot in self.ult_shots
+                ]
+                or None,
+                ult_bursts=self.ult_bursts or None,
             )
         )
 
@@ -4642,6 +5035,8 @@ class Room:
             if self.tick % SNAPSHOT_EVERY_N_TICKS == 0:
                 await self.broadcast_snapshot()
                 self.shot_events = []
+                self.ult_events = []
+                self.ult_bursts = []
                 self.swing_events = []
                 self.attack_events = []
                 self.kill_events = []

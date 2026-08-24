@@ -128,6 +128,12 @@ export interface Palette {
    * told — so they share a hue and nothing else in the game uses it.
    */
   spit: string;
+  /**
+   * THE ULTIMATE'S TWO COLOURS. `arc` is what a thrown one is made of; `flash`
+   * is the ring every activation shares. See the note in `index.css` for why
+   * they are not one colour.
+   */
+  ultimate: { arc: string; flash: string };
   /** Breath, and breath that has been spent. Off the HP ramp on purpose. */
   stamina: { ready: string; spent: string };
   progress: { xp: string; neutral: string };
@@ -296,6 +302,7 @@ function resolve(): Palette {
     hp: { high: v('--hp-high'), mid: v('--hp-mid'), low: v('--hp-low') },
     heal: v('--heal'),
     spit: v('--spit'),
+    ultimate: { arc: v('--ult-arc'), flash: v('--ult-flash') },
     stamina: { ready: v('--stamina'), spent: v('--stamina-spent') },
     progress: { xp: v('--xp'), neutral: v('--neutral') },
     minimap: {

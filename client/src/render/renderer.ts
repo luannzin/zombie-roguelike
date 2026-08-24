@@ -24,6 +24,7 @@ import { createSurface, get2d, type OffscreenSurface } from '../lib/canvas';
 import {
   drawCombatEffects,
   drawSpits,
+  drawVolleys,
   drawDeathBursts,
   drawDust,
   drawLevelUps,
@@ -588,6 +589,10 @@ export class Renderer {
     // OVER the bodies and the scenery — see `drawSpits`. A disc lost behind a
     // shoulder is a hit taken.
     drawSpits(ctx, view, state.spits);
+    // Over the spits, and that ordering is a statement: the party's own
+    // ultimate is the most important thing on the screen for the second it
+    // is crossing it.
+    drawVolleys(ctx, view, state.volleys);
     this.darkness.drawLights(ctx, state.effects.lights);
     drawLootAuras(ctx, state.loot, state.time);
     drawLootMotes(ctx, state.loot, state.time, state.config.tileSize);

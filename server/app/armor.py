@@ -21,10 +21,24 @@ hand-picked durability number anywhere.
   * DURABILITY is what the material is, again: a piece survives
     `HITS_BASE * tier` blows LANDING ON IT before it comes apart, so the
     number on the HUD is honest in the only unit the player has.
-  * COVERAGE is what the SLOT is, and it decides nothing except where a
-    blow lands. It is taken off the player sprite's own anatomy — see
-    `COVERAGE` — so the part of the body the art spends the most pixels on
-    is the part that gets hit.
+  * COVERAGE is what the SLOT is. It decides where a blow lands and — since
+    there were five slots rather than three — what a piece is WORTH, and
+    nothing else. It is taken off the player sprite's own anatomy (see
+    `COVERAGE`), so the part of the body the art spends the most pixels on is
+    the part that gets hit and the part worth paying for.
+
+FIVE PIECES, BECAUSE ARMOUR IS SOMETHING YOU ARE WEARING
+========================================================
+It was three: head, body, legs. Three is what you write when armour is a
+STAT — a rating, a durability, a bar. It is not what a player is doing when
+they put a helmet on, and the HUD that grew out of it said so: three labelled
+lines with thin meters beside them, which is a spreadsheet of a costume.
+
+There are five now — a helmet, bracers, a breastplate, trousers and boots —
+and the panel draws them as a BODY (`BODY_LAYOUT`) rather than as a list. The
+rule underneath did not change and did not need to: material still sets the
+numbers, slot still sets where the hits land. What changed is that the slots
+are now enough of a person that the picture can be one.
 
 WHY A ROLL AND NOT A SUM
 Every worn piece could soak its coverage-weighted share of every blow. That
@@ -67,42 +81,71 @@ from dataclasses import dataclass, field
 
 from .enemies import ZOMBIE
 
-#: The three places a blow can land, in the order the HUD reads them: top
-#: to bottom, the way you look at a person.
+#: THE FIVE PLACES A BLOW CAN LAND, in the order the HUD reads them: top to
+#: bottom, the way you look at a person — and, now, the way the panel DRAWS
+#: one. The mannequin in the armour HUD is this tuple laid out as a body, so
+#: the order is a contract with the picture and not only with the wire.
+#:
+#: It was three (head / body / legs) for the whole of this system's first
+#: life, and three is what you write when armour is a STAT with a bar over it.
+#: A player wearing armour is wearing OBJECTS — a helmet, bracers, a
+#: breastplate, trousers, boots — and five is the smallest set that reads as a
+#: person kitted out rather than as three sliders. The cost is real and it is
+#: paid once: twenty catalog rows instead of twelve, five icon shapes instead
+#: of three, five overlays instead of three. Nothing downstream counts them.
 SLOT_HEAD = "head"
+SLOT_ARMS = "arms"
 SLOT_BODY = "body"
 SLOT_LEGS = "legs"
-SLOTS: tuple[str, ...] = (SLOT_HEAD, SLOT_BODY, SLOT_LEGS)
+SLOT_FEET = "feet"
+SLOTS: tuple[str, ...] = (SLOT_HEAD, SLOT_ARMS, SLOT_BODY, SLOT_LEGS, SLOT_FEET)
 
-#: WHERE A BLOW LANDS, and it is the player sprite's own anatomy rather than
-#: a table of what feels fair.
+#: WHERE A BLOW LANDS, and it is the player sprite's own anatomy rather than a
+#: table of what feels fair — MEASURED IN PIXELS now, not in rows.
 #:
-#: The processed player sheet spends its fifteen occupied rows like this:
-#: head 1-8, torso 9-12, legs 13-15 — eight, four and three. That is S17's
-#: proportion, a head over half the person, and it is what makes sixteen
-#: pixels read as a character rather than as a small adult.
+#: With three slots, rows were enough: head 1-8, torso 9-12, legs 13-15, and
+#: the shares fell straight out of the row counts. Five slots do not fit in
+#: one dimension. The arms are not a BAND of the figure, they are the outer
+#: columns of the band the chest is in the middle of, and boots are one row of
+#: a band the shins share. So the table below is the area each part actually
+#: occupies on `assets/processed/player/sheet.png`, read the same way
+#: `make_armor.py` reads it:
 #:
-#: So the helmet answers more blows than the other two put together, and that
-#: is not a balance decision anybody made — it is what the silhouette says. A
-#: player aiming at this sprite is aiming mostly at a head, and armour that did
-#: not agree with the picture would be a rule the game never shows you. It also
-#: gives the three slots genuinely different jobs: the helmet is the one worth
-#: finding, and it is the one that wears out first.
-#: EIGHT, FOUR AND THREE OF FIFTEEN, and they sum to exactly one — which is
-#: not decoration, it is the check. This table was 7/4/3 for a while: fourteen
-#: fifteenths, so `_roll_slot` normalised by the total and every share the HUD
-#: printed was a fifteenth too small. Nothing at runtime notices a probability
-#: table that does not sum, which is why `_check_coverage` fails the import
-#: instead.
+#:     head    rows 1-8    cols 3-12     8 x 10
+#:     arms    rows 9-12   cols 3-4, 11-12   4 x 4
+#:     body    rows 9-12   cols 5-10     4 x 6
+#:     legs    rows 13-14  cols 5-10     2 x 6
+#:     feet    row  15     cols 5-10     1 x 6
+#:
+#: THE HELMET IS STILL MOST OF THE BODY, and that is still not a balance
+#: decision anybody made: it is what S17's proportion says. A player aiming at
+#: this sprite is aiming mostly at a head. What the split adds is the OTHER
+#: end — boots answer about one blow in twenty-three, which is why they are
+#: also the cheapest thing on the ladder (see `value_of`, which is the one
+#: number coverage is allowed to move).
+_AREA: dict[str, int] = {
+    SLOT_HEAD: 8 * 10,
+    SLOT_ARMS: 4 * 4,
+    SLOT_BODY: 4 * 6,
+    SLOT_LEGS: 2 * 6,
+    SLOT_FEET: 1 * 6,
+}
+
+#: THE SHARES, normalised, and they sum to exactly one — which is not
+#: decoration, it is the check. An earlier table was 7/4/3 of fifteen:
+#: fourteen fifteenths, so `_roll_slot` renormalised silently and every share
+#: the HUD printed was a fifteenth too small. Nothing at runtime notices a
+#: probability table that does not sum, which is why `_check_coverage` fails
+#: the import instead.
 COVERAGE: dict[str, float] = {
-    SLOT_HEAD: 8 / 15,
-    SLOT_BODY: 4 / 15,
-    SLOT_LEGS: 3 / 15,
+    slot: _AREA[slot] / sum(_AREA.values()) for slot in SLOTS
 }
 
 
 def _check_coverage() -> None:
     """The parts have to add up to a body. Run at import."""
+    if set(COVERAGE) != set(SLOTS):
+        raise ValueError("COVERAGE and SLOTS disagree about what a body has")
     total = sum(COVERAGE.values())
     if abs(total - 1.0) > 1e-9:
         raise ValueError(
@@ -116,9 +159,28 @@ _check_coverage()
 #: Portuguese for the slot, for a HUD row and a tooltip line.
 SLOT_NAMES: dict[str, str] = {
     SLOT_HEAD: "Cabeça",
+    SLOT_ARMS: "Braços",
     SLOT_BODY: "Tronco",
     SLOT_LEGS: "Pernas",
+    SLOT_FEET: "Pés",
 }
+
+#: WHERE EACH SLOT SITS ON THE MANNEQUIN, in a three-column body grid. The HUD
+#: draws a figure rather than a list — a helmet above a row of arm/chest/arm,
+#: trousers under it and boots at the bottom — and this is that figure, shipped
+#: rather than hardcoded in a React component for the same reason every other
+#: catalog string is: adding a slot must not be a client change.
+#:
+#: `cells` is how many boxes the slot occupies on its row. Two, for the arms,
+#: the legs and the feet: those are PAIRS on a body, and drawing one box for a
+#: pair is the one place this picture would stop looking like a person.
+BODY_LAYOUT: tuple[dict, ...] = (
+    {"slot": SLOT_HEAD, "row": 0, "cells": 1},
+    {"slot": SLOT_ARMS, "row": 1, "cells": 2},
+    {"slot": SLOT_BODY, "row": 1, "cells": 1},
+    {"slot": SLOT_LEGS, "row": 2, "cells": 2},
+    {"slot": SLOT_FEET, "row": 3, "cells": 2},
+)
 
 # --- the ladder --------------------------------------------------------------
 
@@ -152,7 +214,17 @@ CEILING_SHARE = 0.75
 #: would make the whole category a stat rather than a supply.
 HITS_BASE = 4
 
-#: kg per tier, per piece. A full set is `KG_BASE * tier * 3`.
+#: WHAT A WHOLE TOP-TIER SET COSTS THE WALK, in kilos. The per-piece number
+#: is derived from it (`KG_BASE`) rather than the other way round, and that is
+#: the whole reason it is written this way: the thing that has to stay true
+#: through a change to how many SLOTS a body has is what a full suit costs.
+#: Splitting three pieces into five with a fixed per-piece weight would have
+#: quietly made the top of the ladder two thirds heavier than the number this
+#: system was tuned against, and nothing would have failed — the player would
+#: simply have been slower for a night and nobody would have known why.
+SET_KG_AT_TOP = 3.6
+
+#: kg per tier, per piece. A full set is `KG_BASE * tier * len(SLOTS)`.
 #:
 #: NOT scaled by coverage, even though it is tempting: coverage is how much
 #: of the SPRITE a slot is, and on this sprite that would make a helmet
@@ -167,7 +239,7 @@ HITS_BASE = 4
 #: thing steel costs you is speed. A full set of the top material is over the
 #: soft carry threshold on its own, which is the trade the category is FOR:
 #: you are slower, and you were going to die at that corner anyway.
-KG_BASE = 0.3
+KG_BASE = round(SET_KG_AT_TOP / (4 * 5), 3)
 
 #: What a point of absorbed damage is worth on the loot catalog, and the
 #: exponent that stops the ladder being linear.
@@ -182,7 +254,17 @@ VALUE_CURVE = 1.35
 
 @dataclass(frozen=True)
 class Material:
-    """One rung of the ladder. Four columns and nothing else."""
+    """One rung of the ladder — and, since the synergy system, one IDENTITY.
+
+    THE LADDER AND THE IDENTITY ARE THE SAME COLUMN, AND THAT IS THE DESIGN.
+    A set of armour could have had a second axis: a tier for the numbers and a
+    "kind" for the flavour, cross-multiplied. That is a catalog four times the
+    size and, much worse, a catalog with a strictly correct answer in it —
+    whatever the top tier of your preferred kind happens to be. Folding the
+    two together means the best plate in the game is also the plate that
+    unlocks exactly ONE ultimate, and the player who wants a different one has
+    to give up armour to get it. That trade is the whole feature.
+    """
 
     key: str
     #: Portuguese, as it appears in the item's name.
@@ -195,13 +277,47 @@ class Material:
     #: one pickup and then never has to read the number again, and the whole
     #: point of a material ladder is that the material is the information.
     rarity: str
+    #: WHAT THE SET IS CALLED. Not the material's name: `aço` is what a plate
+    #: is made of and `Muralha` is what wearing five of them makes you. The
+    #: armour panel headlines this, because "what am I dressed as" is the
+    #: question a player asks of a loadout and "what is my chestplate made of"
+    #: is not.
+    set_name: str
+    #: WHAT WEARING IT MEANS, as tags. Read by `ultimates.py` and by nothing
+    #: else in this module: armour does not know what an ultimate is, it only
+    #: knows what it IS. That is the whole reason the synergy system can grow
+    #: a new requirement without this file changing.
+    tags: tuple[str, ...] = ()
 
 
+#: FOUR RUNGS, FOUR IDENTITIES, AND NO RUNG IS STRICTLY BEST.
+#:
+#: The numbers are still a straight ladder — kevlar stops more than steel
+#: stops more than leather. What is NOT a ladder is the tag on each rung, and
+#: that is what stops "wear the most expensive thing you can afford" from
+#: being the whole of the decision: the katana's ultimate wants `ninja` and
+#: only LEATHER has it, so a party's swordsman walks past the kevlar.
+#:
+#: `light` / `heavy` are the shared axis and exist so a future ultimate can
+#: ask for a WEIGHT CLASS without naming a rung — "requires light" is a
+#: sentence about two materials, and it stays a sentence about two materials
+#: when a fifth is added.
 MATERIALS: tuple[Material, ...] = (
-    Material("cloth", "pano", 1, "common"),
-    Material("leather", "couro", 2, "uncommon"),
-    Material("steel", "aço", 3, "rare"),
-    Material("kevlar", "kevlar", 4, "epic"),
+    # THE MEDIC. Canvas, webbing and a red cross — the cheapest thing on the
+    # ladder, and deliberately the one that unlocks the SUPPORT ultimate. A
+    # party's healer should not have to be the richest person in it.
+    Material("cloth", "pano", 1, "common", "Campo", ("light", "medic")),
+    # THE ASSASSIN. Leather, and the only rung with `ninja` on it: the
+    # katana's ultimate lives behind the SECOND-cheapest set in the game,
+    # which is what makes a blade build a real alternative to a gun build
+    # rather than a late-run luxury.
+    Material("leather", "couro", 2, "uncommon", "Sombra", ("light", "ninja")),
+    # THE WALL. Plate steel, `riot`, and the minigun's ultimate behind it.
+    Material("steel", "aço", 3, "rare", "Muralha", ("heavy", "riot")),
+    # THE OPERATOR. The best numbers in the game AND the marksman's tag, so
+    # the one build that wants the top of the ladder is the one that gives up
+    # the crowd answer to get it.
+    Material("kevlar", "kevlar", 4, "epic", "Tático", ("heavy", "tactical")),
 )
 
 MATERIAL_BY_KEY: dict[str, Material] = {m.key: m for m in MATERIALS}
@@ -263,9 +379,40 @@ def value_from_hp(points: int) -> int:
     return max(1, round(floor * (points / floor) ** VALUE_CURVE))
 
 
-def value_of(tier: int) -> int:
-    """What one plate is worth on the loot catalog. See `VALUE_CURVE`."""
-    return value_from_hp(hp_of(tier))
+def value_of(tier: int, slot: str) -> int:
+    """What one plate is worth on the loot catalog. See `VALUE_CURVE`.
+
+    THE ONE NUMBER COVERAGE IS ALLOWED TO MOVE, and it had to start moving
+    the day there were five slots. With three parts of roughly comparable
+    size, pricing every plate off its material alone was close enough to
+    honest. It is not close enough at five: a helmet stands in front of more
+    than half the blows this sprite will ever take and a pair of boots stands
+    in front of about one in twenty-three. Charging the same for both would
+    put a piece on the merchant's shelf that no informed party would ever buy,
+    which is dead content with a price tag on it.
+
+    SO A PIECE IS PRICED BY WHAT IT WILL ACTUALLY ABSORB BEFORE THE SET IS
+    FINISHED. A set fails when its busiest part does — the helmet, always,
+    because that is what `COVERAGE` says — and every other piece spends only
+    its own share of that same span. Scaling durability by
+    `COVERAGE[slot] / max(COVERAGE)` is exactly that span, and running it
+    through the same curve gives the helmet the whole of the old number
+    (nothing about the top of the ladder moved) while the rest come out at
+    what they are worth beside it.
+
+    It is worth reading the result once, because it is the clearest statement
+    this system makes about itself: at the top of the ladder the helmet is
+    two-thirds of the price of the whole suit. That IS the game — a party's
+    first armour purchase should be a helmet, and now the shelf says so
+    without a tutorial line.
+
+    It stays `value_from_hp`, the one curve everything that stops a blow is
+    priced off. A second curve for "small pieces" would be a second opinion
+    about one question, drifting apart the first time either was rebalanced.
+    """
+    busiest = max(COVERAGE.values())
+    span = COVERAGE[slot] / busiest if busiest > 0 else 1.0
+    return value_from_hp(max(1, round(hp_of(tier) * span)))
 
 
 # --- the shield --------------------------------------------------------------
@@ -364,7 +511,17 @@ class ArmorDef:
 
     @property
     def value(self) -> int:
-        return value_of(self.tier)
+        return value_of(self.tier, self.slot)
+
+    @property
+    def set_name(self) -> str:
+        """What wearing a body of this is called. See `Material.set_name`."""
+        return MATERIAL_BY_KEY[self.material].set_name
+
+    @property
+    def tags(self) -> tuple[str, ...]:
+        """What this piece contributes to a build. See `Material.tags`."""
+        return MATERIAL_BY_KEY[self.material].tags
 
     @property
     def rarity(self) -> str:
@@ -393,6 +550,14 @@ class ArmorDef:
             # the HUD is a second place for "steel" to leak out of when
             # somebody adds a rung.
             "materialName": MATERIAL_BY_KEY[self.material].name,
+            # THE SET, and it ships for the same reason the material's name
+            # does: the panel headlines it, and a second table of Portuguese
+            # in the HUD is a second place for a rung to be renamed out of
+            # step. The TAGS ride along because the ultimate panel has to be
+            # able to say why a requirement is not met while the player is
+            # standing over the piece that would meet it.
+            "setName": self.set_name,
+            "tags": list(self.tags),
             "tier": self.tier,
             "armor": self.armor,
             "maxHp": self.max_hp,
@@ -406,12 +571,24 @@ class ArmorDef:
 #: What each piece is CALLED, per slot, per material. The one table here that
 #: is not arithmetic — a helmet of cloth is a hood and a helmet of kevlar is
 #: not, and no formula knows that.
+#:
+#: TWENTY ROWS, AND EVERY ONE OF THEM NAMES A REAL OBJECT. That is the point
+#: of the split: `head_cloth` used to be a bar with the word "pano" beside it,
+#: and it is a `Capuz de pano` now — a thing you can picture on somebody. Read
+#: down a column and you get one person's whole kit; read across a row and you
+#: get the ladder for one part of the body.
 _NAMES: dict[str, dict[str, str]] = {
     SLOT_HEAD: {
         "cloth": "Capuz de pano",
         "leather": "Capacete de couro",
         "steel": "Elmo de aço",
         "kevlar": "Capacete tático",
+    },
+    SLOT_ARMS: {
+        "cloth": "Manguitos de pano",
+        "leather": "Braçadeiras de couro",
+        "steel": "Braçadeiras de aço",
+        "kevlar": "Cotoveleiras táticas",
     },
     SLOT_BODY: {
         "cloth": "Colete de pano",
@@ -420,16 +597,22 @@ _NAMES: dict[str, dict[str, str]] = {
         "kevlar": "Colete balístico",
     },
     SLOT_LEGS: {
-        "cloth": "Perneiras de pano",
-        "leather": "Perneiras de couro",
+        "cloth": "Calças de pano",
+        "leather": "Calças de couro",
         "steel": "Grevas de aço",
         "kevlar": "Calças táticas",
+    },
+    SLOT_FEET: {
+        "cloth": "Sapatos de pano",
+        "leather": "Botas de couro",
+        "steel": "Botas de aço",
+        "kevlar": "Coturnos táticos",
     },
 }
 
 
 def _catalog() -> tuple[ArmorDef, ...]:
-    """Twelve rows, slot-major: every head, then every torso, then every leg.
+    """Twenty rows, slot-major: every helmet, then every bracer, and so on.
 
     Slot-major rather than material-major because that is the order the
     generator paints them in and the order the HUD stacks them, and a list
@@ -455,7 +638,7 @@ BY_KEY: dict[str, ArmorDef] = {piece.key: piece for piece in PIECES}
 
 
 def catalog_payload() -> dict:
-    """Every piece the client has to be able to name, draw and price."""
+    """Every piece the client has to be able to name, draw, price and TAG."""
     return {piece.key: piece.client_payload() for piece in PIECES}
 
 
@@ -507,7 +690,7 @@ _RNG = random.Random()
 
 @dataclass
 class Loadout:
-    """What one player is wearing. Three slots, any of them empty.
+    """What one player is wearing. One cell per `SLOTS` entry, any of them empty.
 
     NOTHING HERE STACKS AND NOTHING HERE IS OPTIONAL-BUT-BETTER. One piece
     per slot, and putting a piece on takes off whatever was there — the
@@ -547,6 +730,53 @@ class Loadout:
     def weight(self) -> float:
         """Kilos of worn steel. On the WALK, never in the bag."""
         return round(sum(BY_KEY[p.key].weight for p in self.worn.values()), 2)
+
+    # --- what this body IS, as opposed to what it stops --------------------
+    #
+    # THREE READ-ONLY QUESTIONS AND NO OPINIONS. `ultimates.py` asks the first
+    # one and the HUD asks the other two; neither this class nor this module
+    # knows what an ultimate is. That is deliberate and it is the whole reason
+    # a new synergy is a data row: armour answers "what am I wearing", the
+    # ultimate catalog answers "what does that unlock", and the only thing
+    # travelling between them is a string.
+
+    def tag_pieces(self) -> dict[str, int]:
+        """How many worn pieces carry each tag.
+
+        COUNTED IN PIECES RATHER THAN IN COVERAGE, and the difference matters
+        enough to be the first thing said about it. Weighting by `COVERAGE`
+        would be the more elegant sum and it would make ONE HELMET most of a
+        set — the head is over half this sprite — so a player in a leather cap
+        and four steel plates would be an assassin. Pieces are what the player
+        can see themselves collecting, they are what the mannequin draws, and
+        "three of five" is a sentence a HUD can print.
+        """
+        counts: dict[str, int] = {}
+        for piece in self.worn.values():
+            if piece.hp <= 0:
+                continue
+            for tag in BY_KEY[piece.key].tags:
+                counts[tag] = counts.get(tag, 0) + 1
+        return counts
+
+    def set_summary(self) -> tuple[str | None, int]:
+        """The dominant material and how many pieces of it are on, or (None, 0).
+
+        THE PANEL'S HEADLINE. Ties break toward the HIGHER TIER, because a
+        two-and-two body is showing off the better half of itself — and
+        because a headline that flickered between two names as pieces broke
+        would be the one line on this panel nobody could read.
+        """
+        counts: dict[str, int] = {}
+        for piece in self.worn.values():
+            if piece.hp <= 0:
+                continue
+            key = BY_KEY[piece.key].material
+            counts[key] = counts.get(key, 0) + 1
+        if not counts:
+            return None, 0
+        best = max(counts.items(), key=lambda row: (row[1], MATERIAL_BY_KEY[row[0]].tier))
+        return best[0], best[1]
 
     def absorb(self, amount: int) -> tuple[int, str, str | None, bool]:
         """Take one blow. Returns `(through, slot hit, piece key or None, broke)`.

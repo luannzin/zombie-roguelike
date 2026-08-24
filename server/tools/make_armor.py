@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Asset pipeline: WHAT A BODY IS WEARING — twelve overlays on the player grid.
+"""Asset pipeline: WHAT A BODY IS WEARING — twenty overlays on the player grid.
 
     assets/raw/armor-<slot>-<material>.png       3x3, magenta-keyed
     assets/processed/armor-<slot>-<material>/    sheet.png + manifest.json
 
-Twelve sheets, three shapes, four materials, and one command: this script
+Twenty sheets, five shapes, four materials, and one command: this script
 writes the raw art AND runs it through `process_sprites` itself, because
-twelve pairs of commands in `AGENTS.md` is a list nobody keeps in step.
+twenty pairs of commands in `AGENTS.md` is a list nobody keeps in step.
 
 WHY THIS IS AN OVERLAY AND NOT A SECOND PLAYER SHEET
 ====================================================
@@ -33,7 +33,17 @@ and are drawn off the walk block in both. That is correct rather than lazy:
 the hold pose moves ARMS, and nothing here is on an arm. A helmet, a
 breastplate over the coat's centre and a pair of greaves sit on the three
 parts of this figure that are identical between the two blocks, so a second
-block would be twelve more sheets that are pixel-for-pixel the first twelve.
+block would be twenty more sheets that are pixel-for-pixel the first twenty.
+
+THE ONE PLACE THAT ARGUMENT BENDS IS THE BRACERS, and it bends honestly. A
+hold pose DOES move the arms, so an arm guard is the one overlay whose
+pixels are not identical between the two blocks. It is drawn off the walk
+block like everything else here — two columns either side of the chest —
+and what that costs is a guard that stays put on the frames the weapon arm
+is raised. Two pixels not tracking a raised forearm is a far cheaper error
+than a second twenty-sheet pose block that has to be kept in step with the
+player rig forever, and at this size the arm is where the guard is drawn in
+both poses anyway.
 
 SLOT SETS THE SHAPE, MATERIAL SETS THE COLOUR
 The same split `server/app/armor.py` makes about the numbers and
@@ -221,8 +231,8 @@ BODY: dict[str, Art] = {
         "................",
         "................",
         "...@@@@@@@@@@...",
-        "....###-####....",
-        "....--------....",
+        ".....##-##......",
+        ".....------.....",
         "................",
         "................",
         "................",
@@ -239,8 +249,8 @@ BODY: dict[str, Art] = {
         "................",
         "................",
         "....@@@@@@@@@...",
-        ".....####-##....",
-        ".....-------....",
+        ".......##-##....",
+        ".......-----....",
         "................",
         "................",
         "................",
@@ -257,8 +267,8 @@ BODY: dict[str, Art] = {
         "................",
         "................",
         "...@@@@@@@@@@...",
-        "....########....",
-        "....--------....",
+        ".....#####......",
+        ".....------.....",
         "................",
         "................",
         "................",
@@ -266,34 +276,128 @@ BODY: dict[str, Art] = {
     ],
 }
 
-#: The greaves: two rows down the shin, and THE BOOT IS LEFT ALONE.
+#: BRACERS: TWO PIXELS WIDE, EITHER SIDE OF THE CHEST, AND THAT IS ALL AN ARM
+#: IS ON THIS FIGURE.
 #:
-#: Row 15 is what the contact shadow is drawn under and what the walk lands
-#: on. A plate over it is armour standing on the floor rather than a person
-#: wearing armour — and the boots are one of the three things on this sprite
-#: that make it a character. Crest, then a dark cuff.
-LEGS: dict[str, Art] = {
+#: The torso band is rows 9-12 and it is ten columns wide; the chest occupies
+#: the middle six of them and the arms are the two columns at each end. There
+#: is no third option at this size — an arm guard drawn three columns wide is
+#: an arm guard drawn over the chest.
+#:
+#: WHICH IS WHY THE BREASTPLATE BELOW GOT NARROWER. The two overlays share the
+#: same four rows and they cannot both have the outer columns. The pauldron row
+#: still spans the whole torso (a shoulder IS over the arm), and everything
+#: under it is inset, so a player wearing bracers and no cuirass has something
+#: visible where the arms are.
+#:
+#: In PROFILE only the near arm shows, and it hangs a column in front of the
+#: body rather than at its edge — an arm seen side-on is between you and the
+#: torso, and drawing it at the silhouette's edge would read as a stripe down
+#: the coat.
+ARMS: dict[str, Art] = {
     "down": [
-        *["................" for _ in range(13)],
-        ".....@@@@@@.....",
-        ".....------.....",
+        *["................" for _ in range(10)],
+        "...@@......@@...",
+        "...--......--...",
+        "................",
+        "................",
+        "................",
         "................",
     ],
     "side": [
-        *["................" for _ in range(13)],
-        "......@@@@......",
-        "......----......",
+        *["................" for _ in range(10)],
+        ".....@@.........",
+        ".....--.........",
+        "................",
+        "................",
+        "................",
         "................",
     ],
     "up": [
-        *["................" for _ in range(13)],
-        ".....@@@@@@.....",
-        ".....------.....",
+        *["................" for _ in range(10)],
+        "...@@......@@...",
+        "...--......--...",
+        "................",
+        "................",
+        "................",
         "................",
     ],
 }
 
-SHAPES: dict[str, dict[str, Art]] = {"head": HEAD, "body": BODY, "legs": LEGS}
+#: The trousers: TWO ROWS DOWN THE THIGH, and the boot row is left alone.
+#:
+#: Rows 13-15 are the legs. This takes the top two of them and stops. Row 15 is
+#: what the contact shadow is drawn under, what the walk lands on, and — now
+#: that there is a boots slot — what the boots overlay owns. Two pieces of
+#: armour that painted the same row would be two pieces of armour you could
+#: never see at the same time.
+LEGS: dict[str, Art] = {
+    "down": [
+        *["................" for _ in range(12)],
+        ".....@@@@@@.....",
+        ".....------.....",
+        "................",
+        "................",
+    ],
+    "side": [
+        *["................" for _ in range(12)],
+        "......@@@@......",
+        "......----......",
+        "................",
+        "................",
+    ],
+    "up": [
+        *["................" for _ in range(12)],
+        ".....@@@@@@.....",
+        ".....------.....",
+        "................",
+        "................",
+    ],
+}
+
+#: BOOTS: ONE ROW, AND WIDER THAN THE LEG ABOVE IT.
+#:
+#: Row 15 is the whole budget — it is the last occupied row of the figure, the
+#: row the walk lands on and the row the contact shadow sits under. One row
+#: cannot carry a crest and a shade, so it carries neither: it is a single lit
+#: band, and the ONLY thing distinguishing it from the trouser cuff two pixels
+#: above is that it is two columns WIDER on each side.
+#:
+#: That is not a compromise, it is the read. A boot is the part of a person
+#: that sticks out past the leg; flaring the band is the same statement the
+#: icon on the ground makes by turning a corner, said in the one row this grid
+#: has left. Narrower or equal, and the player would simply see their trousers
+#: get longer.
+FEET: dict[str, Art] = {
+    "down": [
+        *["................" for _ in range(14)],
+        "....@@@@@@@@....",
+        "................",
+    ],
+    "side": [
+        *["................" for _ in range(14)],
+        ".....@@@@@@@....",
+        "................",
+    ],
+    "up": [
+        *["................" for _ in range(14)],
+        "....@@@@@@@@....",
+        "................",
+    ],
+}
+
+#: KEYED AND ORDERED TO MATCH `server/app/armor.SLOTS`. Nothing here imports
+#: that module — this is an art pipeline and it has to build with the game
+#: server absent — but a slot the server can produce and this cannot draw is a
+#: piece of armour that is invisible on the body, which is exactly the class of
+#: failure a screenshot does not show.
+SHAPES: dict[str, dict[str, Art]] = {
+    "head": HEAD,
+    "arms": ARMS,
+    "body": BODY,
+    "legs": LEGS,
+    "feet": FEET,
+}
 
 
 def _check(key: str, art: dict[str, Art]) -> None:

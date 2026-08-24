@@ -92,6 +92,21 @@
    * notice.
    */
   --spit: #b8d94a;
+  /* THE ULTIMATE'S TWO COLOURS, and they are two because they answer two
+     different questions.
+
+     `--ult-arc` is what a thrown ultimate is MADE OF. Violet, matching the
+     Corte Sombrio mark on the panel, and deliberately a hue nothing in the
+     forest wears: a crescent crossing a clearing has to be identifiable as
+     the player's own in a frame that also contains bile, blood and fire.
+
+     `--ult-flash` is the ACTIVATION — the ring that leaves a body on the
+     frame R is pressed. It is neutral hot gold rather than the ultimate's own
+     hue on purpose: four ultimates share this one burst, and a ring that
+     changed colour per ability would make the moment of activation four
+     different events instead of one recognisable one. */
+  --ult-arc: #c69bff;
+  --ult-flash: #ffe6b0;
   --xp: #6ea8fe;
   /* Breath. YELLOW, and it is the one meter that never changes colour with its
      own number: green-amber-red is a life reading, and a run bar that ramped

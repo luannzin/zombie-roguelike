@@ -28,6 +28,28 @@ const LANTERN_KEY = 'KeyF';
 const READY_KEY = 'KeyE';
 /** Expand the pocket. Tab is the key, not a code under a letter. */
 const INVENTORY_KEY = 'Tab';
+/**
+ * Expand the armour mannequin. C, for "character".
+ *
+ * A SECOND DRAWER KEY AND NOT A SECOND TAB. The bag and the body are two
+ * different questions — what am I carrying out, and what is keeping me alive —
+ * and folding them into one toggle would mean a player checking their helmet
+ * had to look at their loot as well, in a corner of the screen they are
+ * fighting toward. It is a physical code like every other one here, so it
+ * lands on C under any layout.
+ */
+const ARMOR_KEY = 'KeyC';
+/**
+ * THE ULTIMATE. R, and it is the only key in the game bound to a verb the
+ * client does not predict at all.
+ *
+ * An EDGE, filtered against auto-repeat like the lantern's: holding R must
+ * not spray the socket with activations that the server will refuse thirty
+ * times a second. What happens is decided entirely server-side off what is in
+ * the player's hands — see `protocol.MSG_ULT` — so there is nothing local to
+ * latch and nothing to hold.
+ */
+const ULTIMATE_KEY = 'KeyR';
 /** Two gun slots, then the blade on 3. See `server/app/weapons.py`. */
 const HOTBAR_KEYS: Record<string, number> = {
   Digit1: 0,
@@ -95,6 +117,10 @@ export class InputController {
   onInteract: (() => void) | null = null;
   /** Expand the pocket. Tab is the key, not a code under a letter. */
   onToggleInventory: (() => void) | null = null;
+  /** Expand the armour mannequin. See `ARMOR_KEY`. */
+  onToggleArmor: (() => void) | null = null;
+  /** Fire the ultimate of the weapon in hand. See `ULTIMATE_KEY`. */
+  onUltimate: (() => void) | null = null;
   /** Fired once per 1/2/3. `slot` is 0..2 — 2 is the knife. Edge, not held. */
   onHotbar: ((slot: number) => void) | null = null;
   /** A medical cell was pressed. See `MEDICAL_KEYS` for why it is its own. */
@@ -153,6 +179,16 @@ export class InputController {
     }
     if (e.code === INVENTORY_KEY && !e.repeat) {
       this.onToggleInventory?.();
+      e.preventDefault();
+      return;
+    }
+    if (e.code === ARMOR_KEY && !e.repeat) {
+      this.onToggleArmor?.();
+      e.preventDefault();
+      return;
+    }
+    if (e.code === ULTIMATE_KEY && !e.repeat) {
+      this.onUltimate?.();
       e.preventDefault();
       return;
     }

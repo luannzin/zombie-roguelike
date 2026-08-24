@@ -2,7 +2,7 @@
   "tile": 16,
   "frameWidth": 20,
   "frameHeight": 9,
-  "frames": 26,
+  "frames": 30,
   "items": {
     "glock18": {
       "frame": 0,
@@ -12,7 +12,7 @@
       "muzzleY": 2,
       "hold": 3.0,
       "scale": 0.75,
-      "cycleFrame": 15,
+      "cycleFrame": 17,
       "portX": 11,
       "portY": 2
     },
@@ -24,7 +24,7 @@
       "muzzleY": 2,
       "hold": 3.0,
       "scale": 0.75,
-      "cycleFrame": 16,
+      "cycleFrame": 18,
       "portX": 10,
       "portY": 2
     },
@@ -36,7 +36,7 @@
       "muzzleY": 2,
       "hold": 3.0,
       "scale": 0.75,
-      "cycleFrame": 17,
+      "cycleFrame": 19,
       "portX": 11,
       "portY": 2
     },
@@ -48,7 +48,7 @@
       "muzzleY": 2,
       "hold": 3.0,
       "scale": 0.75,
-      "cycleFrame": 18,
+      "cycleFrame": 20,
       "portX": 11,
       "portY": 2
     },
@@ -60,7 +60,7 @@
       "muzzleY": 2,
       "hold": 3.0,
       "scale": 0.75,
-      "cycleFrame": 19,
+      "cycleFrame": 21,
       "portX": 11,
       "portY": 2
     },
@@ -72,7 +72,7 @@
       "muzzleY": 2,
       "hold": 3.0,
       "scale": 0.75,
-      "cycleFrame": 20,
+      "cycleFrame": 22,
       "portX": 10,
       "portY": 2
     },
@@ -84,7 +84,7 @@
       "muzzleY": 2,
       "hold": 3.0,
       "scale": 0.75,
-      "cycleFrame": 21,
+      "cycleFrame": 23,
       "portX": 9,
       "portY": 2
     },
@@ -96,7 +96,7 @@
       "muzzleY": 2,
       "hold": 3.0,
       "scale": 0.75,
-      "cycleFrame": 22,
+      "cycleFrame": 24,
       "portX": 9,
       "portY": 2
     },
@@ -108,7 +108,7 @@
       "muzzleY": 2,
       "hold": 3.0,
       "scale": 0.75,
-      "cycleFrame": 23,
+      "cycleFrame": 25,
       "portX": 9,
       "portY": 2
     },
@@ -120,7 +120,7 @@
       "muzzleY": 2,
       "hold": 3.0,
       "scale": 0.75,
-      "cycleFrame": 24,
+      "cycleFrame": 26,
       "portX": 8,
       "portY": 2
     },
@@ -132,12 +132,36 @@
       "muzzleY": 2,
       "hold": 3.0,
       "scale": 0.75,
-      "cycleFrame": 25,
+      "cycleFrame": 27,
       "portX": 7,
       "portY": 2
     },
-    "knife": {
+    "minigun": {
       "frame": 11,
+      "gripX": 4,
+      "gripY": 5,
+      "muzzleX": 15,
+      "muzzleY": 2,
+      "hold": 3.0,
+      "scale": 0.88,
+      "cycleFrame": 28,
+      "portX": 7,
+      "portY": 2
+    },
+    "medgun": {
+      "frame": 12,
+      "gripX": 5,
+      "gripY": 5,
+      "muzzleX": 14,
+      "muzzleY": 2,
+      "hold": 3.0,
+      "scale": 0.75,
+      "cycleFrame": 29,
+      "portX": 9,
+      "portY": 2
+    },
+    "knife": {
+      "frame": 13,
       "gripX": 6,
       "gripY": 2,
       "muzzleX": 13,
@@ -146,7 +170,7 @@
       "scale": 0.65
     },
     "axe": {
-      "frame": 12,
+      "frame": 14,
       "gripX": 4,
       "gripY": 2,
       "muzzleX": 15,
@@ -155,7 +179,7 @@
       "scale": 0.75
     },
     "katana": {
-      "frame": 13,
+      "frame": 15,
       "gripX": 4,
       "gripY": 2,
       "muzzleX": 17,
@@ -164,7 +188,7 @@
       "scale": 0.75
     },
     "riot_shield": {
-      "frame": 14,
+      "frame": 16,
       "gripX": 6,
       "gripY": 2,
       "muzzleX": 11,

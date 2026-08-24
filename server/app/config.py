@@ -1346,6 +1346,7 @@ def client_config() -> dict:
     from .loot import catalog_payload
     from . import armor
     from . import medical
+    from . import ultimates
     from . import zones
     from .weapons import (
         BLADE_SLOT,
@@ -1499,11 +1500,16 @@ def client_config() -> dict:
         # Guns also have a combat block in `weapons`.
         "loot": catalog_payload(),
         "weapons": weapons_payload(),
-        # WHAT A BODY CAN WEAR: twelve pieces, three slots, four materials,
-        # and every number on them derived from one claw. The client draws
-        # the durability bars, the overlay sheets and the tooltip off this and
-        # has no table of its own — adding a material is a row in
-        # `armor.MATERIALS` and a ramp in `make_armor.py`.
+        # WHAT A BODY CAN WEAR: twenty pieces, five slots, four materials, and
+        # every number on them derived from one claw. The client draws the
+        # mannequin, the overlay sheets and the tooltip off this and has no
+        # table of its own — adding a material is a row in `armor.MATERIALS`
+        # and a ramp in `make_armor.py`.
+        #
+        # Each row also carries its SET NAME and its TAGS, which is what the
+        # armour panel headlines and what `ultimates.py` reads a requirement
+        # against. Neither is derivable client-side: a set is a name somebody
+        # chose and a tag is a claim about what wearing it means.
         "armor": armor.catalog_payload(),
         # MEDICINE. Heal, duration and weight per kit — the client needs all
         # three: the duration drives the ring that fills over the body, the
@@ -1534,6 +1540,33 @@ def client_config() -> dict:
         # indexes it, so the order is a contract rather than a convenience.
         "armorSlots": list(armor.SLOTS),
         "armorSlotNames": dict(armor.SLOT_NAMES),
+        # WHERE EACH SLOT SITS ON THE FIGURE. The armour panel draws a BODY
+        # rather than a list of rows — a helmet over arm/chest/arm, trousers
+        # under it, boots at the bottom — and this is that figure.
+        #
+        # It ships for the same reason `armorSlots` does: the layout is a fact
+        # about the catalog, not about the HUD. A sixth slot has to be able to
+        # arrive as a row in `armor.py` plus a shape in two generators, and a
+        # mannequin hardcoded in a React component would make it a client
+        # change as well — which is exactly the kind of change that gets made
+        # in one of the two places.
+        "armorBodyLayout": [dict(row) for row in armor.BODY_LAYOUT],
+        # ULTIMATES, AND THE VOCABULARY THEY ARE WRITTEN IN.
+        #
+        # The catalog is what R does, what fills the bar and what the bar has
+        # to reach; `ultimateTags` is the dictionary that turns a requirement
+        # into a line a player can read. Both ship for the same reason the
+        # weapon catalog does: the HUD has to be able to say WHY an ultimate
+        # is locked while the player is standing in the shop deciding what to
+        # buy, and it cannot ask the server that question at hover rate.
+        #
+        # `ultimateSetPieces` is the one number that decides whether a partial
+        # set counts. It is here rather than mirrored because the panel prints
+        # it — "Conjunto Sombra 2/3" — and a client with its own copy would
+        # promise a threshold the server does not keep.
+        "ultimates": ultimates.catalog_payload(),
+        "ultimateTags": ultimates.tags_payload(),
+        "ultimateSetPieces": ultimates.SET_PIECES,
         # WHERE A BLOW LANDS, per slot. The client needs it for one honest
         # number — what a whole set actually stops, which is the
         # coverage-weighted sum of what each plate stops on its own part — and

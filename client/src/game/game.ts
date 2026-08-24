@@ -146,6 +146,7 @@ import { DEATH_TIME, POOL_GROW, poolRadius, poolWetness } from '../render/layers
 import { soilAt } from '../render/layers/terrain';
 import { setClimate } from '../render/wind';
 import { Minimap, type MinimapPlayer } from '../render/minimap';
+import { loadUltimateFrames, type UltimateFrames } from '../render/ultimates';
 import { Renderer } from '../render/renderer';
 import { SpriteBook } from '../render/sprites';
 import { NOTICE_AT } from '../render/layers/vision';
@@ -154,6 +155,7 @@ import type {
   DrawableCoin,
   DrawableCorpse,
   DrawableSpit,
+  DrawableVolley,
   DrawableEntity,
   GearLayer,
   DrawableLoot,
@@ -168,6 +170,9 @@ import {
   EMPTY_HUD,
   HUD_INTERVAL,
   type HudArmor,
+  type HudArmorSlot,
+  type HudUltimate,
+  type HudUltimateRequirement,
   type HudHotbar,
   type HudInventory,
   type HudMachinePrompt,
@@ -523,6 +528,26 @@ const RARITY_CHIME: Record<LootRarity, number> = {
  */
 const HORDE_TRAUMA = 0.22;
 
+/**
+ * THE ULTIMATE'S KICK, and it is the second biggest in the game.
+ *
+ * Only `HURT_TRAUMA` is larger, which is the right order: being hit is the
+ * worst thing that happens to a player and spending an ultimate is the best,
+ * and a shake that matched a horde's would say "something is coming" rather
+ * than "you did that". It is also only ever applied to the person who pressed
+ * R — see `playUltimate`.
+ */
+const ULT_TRAUMA = 0.38;
+/**
+ * How long the column under an ultimate burns.
+ *
+ * Longer than a level-up's, because a level-up is news about somebody and this
+ * is a thing they are DOING — the light has to still be there while the
+ * crescent is crossing the clearing, or the ultimate reads as two unrelated
+ * events a beat apart.
+ */
+const ULT_COLUMN_LIFE = 0.9;
+
 const PLAYER_SHEET = 'player';
 /**
  * The collapse. A one-shot timeline that holds its last frame, loaded up front
@@ -793,11 +818,32 @@ export class Game {
    */
   private spits: DrawableSpit[] = [];
   /**
+   * What the party's ultimates put in the air. Same not-interpolated rule the
+   * spits keep, and for the same reason — see the note above.
+   */
+  private volleys: DrawableVolley[] = [];
+  /**
+   * Ultimates the LOCAL player has fired. A count, not a flag: the panel
+   * replays its own flash off the number changing, and at 5 Hz a boolean
+   * would be set and cleared between two publishes.
+   */
+  private ultFires = 0;
+  /**
    * The merchant's clip player, and the sheets it drives. He is not an entity
    * and the server has never had an opinion about which frame he is on, so
    * this lives entirely client-side — see `render/merchant.ts`.
    */
   private merchantAtlas: MerchantAtlas | null = null;
+  /**
+   * Frame index per ultimate key, for the panel above the belt.
+   *
+   * Empty until the manifest lands, and an empty map is not a failure
+   * state: every ultimate reads frame 0, which is a wrong picture beside a
+   * correct name, a correct bar and a correct requirement list. The panel
+   * is a DOM element and the sheet is a CSS background, so there is no
+   * image to hold here — see `render/ultimates.ts`.
+   */
+  private ultimateFrames: UltimateFrames = new Map();
   private merchantPose: MerchantPose = newMerchantPose(null);
   private localId = '';
   private local: LocalPlayer | null = null;
@@ -904,6 +950,11 @@ export class Game {
   private readonly bloodWet = new Map<string, number>();
   /** TAB. Client-local — the bag itself is authoritative, the drawer is not. */
   private inventoryOpen = false;
+  /**
+   * C. Client-local, exactly as the bag's drawer is: what the body is wearing
+   * is authoritative and whether its owner is currently LOOKING at it is not.
+   */
+  private armorOpen = false;
   /** Flies that have landed. HUD reads the count so a bump cannot collapse. */
   private bagCatches = 0;
   /** E on a full bag. Same counter contract as a refused lantern. */
@@ -986,6 +1037,8 @@ export class Game {
     };
     this.input.onInteract = () => this.sendInteract();
     this.input.onToggleInventory = () => this.toggleInventory();
+    this.input.onToggleArmor = () => this.toggleArmor();
+    this.input.onUltimate = () => this.sendUltimate();
     this.input.onHotbar = (slot) => this.selectHotbar(slot);
     this.input.onMedical = (cell) => this.useMedical(cell);
     bindInventoryDrop((slot) => this.requestDrop(slot));
@@ -995,6 +1048,13 @@ export class Game {
     void loadMerchant().then((atlas) => {
       this.merchantAtlas = atlas;
       this.merchantPose = newMerchantPose(atlas);
+    });
+    // Same fire-and-forget contract: until it lands every ultimate draws frame
+    // zero, which is a wrong mark rather than a missing panel.
+    void loadUltimateFrames().then((frames) => {
+      this.ultimateFrames = frames;
+      const ultimate = this.ultimateHud();
+      if (ultimate) this.patchHud({ ultimate });
     });
   }
 
@@ -1125,6 +1185,7 @@ export class Game {
     clearPadCargo();
     bindInventoryDrop(null);
     this.inventoryOpen = false;
+    this.armorOpen = false;
     this.bagCatches = 0;
     this.bagRefusals = 0;
     this.world = null;
@@ -1396,6 +1457,7 @@ export class Game {
       inventory: this.inventoryHud(),
       hotbar: this.hotbarHud(),
       armor: this.armorHud(),
+      ultimate: this.ultimateHud(),
       medical: this.medicalHud(),
     });
     this.replaceLoot(msg.loot ?? []);
@@ -1488,6 +1550,34 @@ export class Game {
       // catalog rather than paid for per row, thirty times a second.
       radius: this.spitRadius(),
     }));
+
+    // WHAT AN ULTIMATE PUT IN THE AIR. Replaced wholesale on the same
+    // contract the spits use: the array arrives whole on every tick it is
+    // non-empty and is omitted otherwise, so an absent field has to CLEAR the
+    // list rather than leave a crescent hanging in the forest for ever.
+    this.volleys = (msg.volleys ?? []).map((row) => ({
+      id: row.id,
+      kind: row.k,
+      x: row.x,
+      y: row.y,
+      dx: row.dx,
+      dy: row.dy,
+      // The sweep rides the row rather than being resolved through a catalog
+      // the way a spit's is, because an ultimate's radius is per ULTIMATE and
+      // the row does not name one. It also means a second volley with a
+      // different width arrives already the right size on screen.
+      radius: row.r,
+    }));
+
+    // SOMEBODY PRESSED R.
+    for (const fired of msg.ults ?? []) this.playUltimate(fired);
+    // And where one ENDED. The same argument the spit burst makes: without it
+    // a crescent that ran out of life simply vanishes, and the player never
+    // learns that its range was the thing that saved them.
+    for (const burst of msg.ultBursts ?? []) {
+      this.effects.spawnImpact(burst.x, burst.y, 0, -1, false, 1.4);
+      this.effects.spawnLight(burst.x, burst.y, 46, 0.7, palette().ultimate.arc, 0.18);
+    }
 
     // IT LEFT SOMETHING. The wet cough, at the mouth it came out of.
     for (const fired of msg.spitFired ?? []) {
@@ -3709,6 +3799,7 @@ export class Game {
       loot,
       corpses,
       spits: this.spits,
+      volleys: this.volleys,
       weather: this.zone?.weather ?? 'clear',
       // How much light this PLACE has of its own. Zero everywhere but the
       // shop; see `server/app/zones.py`.
@@ -4579,6 +4670,78 @@ export class Game {
     if (inventory) this.patchHud({ inventory });
   }
 
+  /**
+   * C. Open or close the armour mannequin.
+   *
+   * SILENT, unlike the bag. The pocket's drawer gets a leather creak because
+   * it is a BAG being opened; nothing physically happens when a player looks
+   * down at what they are wearing, and a sound here would be the HUD narrating
+   * a glance.
+   */
+  private toggleArmor(): void {
+    if (this.locked || this.introLeft > 0) return;
+    this.armorOpen = !this.armorOpen;
+    const armor = this.armorHud();
+    if (armor) this.patchHud({ armor });
+  }
+
+  /**
+   * R. Ask the server to fire whatever the weapon in hand can do.
+   *
+   * NOTHING IS DRAWN HERE, and that is the one deliberate difference between
+   * this key and every other one in the game. A shot is predicted, a swing is
+   * predicted, a shield goes up on the frame the button is pressed — because
+   * all three are cheap to be wrong about. An ultimate is a night's charge:
+   * flashing the screen and then not having fired would be the worst frame in
+   * this game, so the burst, the shake and the sound all wait for the server's
+   * own `ults` row (`playUltimate`), which is also what makes a teammate's
+   * ultimate and your own the same event.
+   *
+   * The one thing that DOES answer locally is a refusal, and only when the
+   * panel already says so — a bar that is not full is a press that was never
+   * going to work, and a key that does nothing at all with no explanation
+   * reads as a dropped input.
+   */
+  private sendUltimate(): void {
+    if (this.locked || this.introLeft > 0) return;
+    const ultimate = this.ultimateHud();
+    if (!ultimate) return;
+    if (!ultimate.ready || ultimate.active > 0) {
+      playSfx('ui-error');
+      return;
+    }
+    this.connection.send({ type: 'ult' });
+  }
+
+  /**
+   * ONE ULTIMATE FIRING, off the server's own event. Everybody's, including
+   * yours.
+   *
+   * THE COLUMN IS THE LEVEL-UP'S, reused, and that is not laziness — it is the
+   * same sentence. Both are "something happened to this body that the whole
+   * party should look at", both are drawn on the ground under somebody rather
+   * than in the air, and a second column sheet would be the first one drawn
+   * again in a different file. What separates them is everything around it:
+   * the burst, the shake, the pitch.
+   *
+   * THE SHAKE IS ONLY YOURS. A teammate's ultimate across the clearing is a
+   * thing you SEE; shaking the camera for it would make the screen lurch for
+   * an event the player had no part in, which is the difference between
+   * impact and noise.
+   */
+  private playUltimate(fired: { by: string; k: string; x: number; y: number; dx: number; dy: number }): void {
+    this.effects.spawnUltimate(fired.x, fired.y, fired.dx, fired.dy);
+    this.effects.spawnLevelUp(fired.x, fired.y, ULT_COLUMN_LIFE);
+    const mine = fired.by === this.localId;
+    playSfxAt('summon', fired.x, fired.y, { gain: mine ? 1 : 0.7, rate: 0.82 });
+    if (mine) {
+      this.camera.addTrauma(ULT_TRAUMA);
+      this.ultFires += 1;
+      const ultimate = this.ultimateHud();
+      if (ultimate) this.patchHud({ ultimate });
+    }
+  }
+
   private selectHotbar(slot: number): void {
     if (this.locked || this.introLeft > 0) return;
     const guns = this.localMeta?.guns;
@@ -4799,13 +4962,29 @@ export class Game {
     };
   }
 
+  /**
+   * THE MANNEQUIN: every worn slot, whether it is filled or not.
+   *
+   * ALWAYS EVERY SLOT, including the bare ones, and that has survived the
+   * redesign because it was the right rule for a list and it is an even
+   * better one for a body. An empty box in the shape of a helmet is not
+   * missing information — it IS the information: that is a part the next blow
+   * can land on with nothing in the way, and it is a hole in a picture of a
+   * person, which is a far louder sentence than an empty row was.
+   *
+   * The row and cell counts come off `config.armorBodyLayout` rather than
+   * being decided here, so a sixth slot arrives as a server row and the panel
+   * lays it out without a client change.
+   */
   private armorHud(): HudArmor | null {
     const config = this.config;
     if (!config) return null;
     const worn = this.localMeta?.armor;
-    const slots = config.armorSlots.map((slot) => {
+    const layout = new Map(config.armorBodyLayout.map((row) => [row.slot, row]));
+    const slots: HudArmorSlot[] = config.armorSlots.map((slot) => {
       const piece = worn?.[slot];
       const def = piece ? config.armor[piece.k] : undefined;
+      const place = layout.get(slot);
       return {
         slot,
         label: config.armorSlotNames[slot] ?? slot,
@@ -4816,6 +4995,14 @@ export class Game {
         // the key — a Portuguese HUD saying "steel" — because the key was the
         // only string on the wire. It ships a name now (`materialName`).
         material: def?.materialName ?? null,
+        // THE SPRITE. The same frame that was lying in the grass, drawn in the
+        // place on the body it goes — which is the whole redesign in one
+        // field. A player who picked up a pair of steel greaves can now see
+        // that they are wearing greaves, made of steel, on their legs, without
+        // reading a word.
+        frame: piece ? (config.loot[piece.k]?.frame ?? null) : null,
+        row: place?.row ?? 0,
+        cells: place?.cells ?? 1,
         armor: def?.armor ?? 0,
         hp: piece?.hp ?? 0,
         maxHp: piece?.max ?? 0,
@@ -4825,17 +5012,64 @@ export class Game {
             : null,
       };
     });
-    // WHAT THE SET TAKES OFF A BLOW, in damage. Not the sum of the three and
+    // WHAT THE SET TAKES OFF A BLOW, in damage. Not the sum of the pieces and
     // not their average: a plate only answers the blows that land on ITS
     // part, so the honest total weights each rating by that part's share of
     // the body. See `setArmor`.
     const armor = setArmor(config, slots);
 
+    // THE SET, and it is the DOMINANT material rather than a requirement that
+    // every piece match. A body in three leather and two steel is wearing
+    // Sombra with two better plates on it, which is exactly what the ultimate
+    // panel will tell them as well — the two surfaces count the same way
+    // because they are answering the same question.
+    //
+    // Ties break toward the HIGHER TIER, so a two-and-two body shows the
+    // better half of itself and the header does not flicker between two names
+    // as pieces come apart.
+    const counts = new Map<string, number>();
+    for (const slot of slots) {
+      if (!slot.key || slot.hp <= 0) continue;
+      const material = config.armor[slot.key]?.material;
+      if (material) counts.set(material, (counts.get(material) ?? 0) + 1);
+    }
+    let bestMaterial: string | null = null;
+    let bestCount = 0;
+    let bestTier = -1;
+    for (const [material, count] of counts) {
+      const tier = this.materialTier(material);
+      if (count > bestCount || (count === bestCount && tier > bestTier)) {
+        bestMaterial = material;
+        bestCount = count;
+        bestTier = tier;
+      }
+    }
+    const sample = bestMaterial
+      ? slots.find((slot) => slot.key && config.armor[slot.key]?.material === bestMaterial)
+      : undefined;
+    const sampleDef = sample?.key ? config.armor[sample.key] : undefined;
+
+    let hp = 0;
+    let maxHp = 0;
+    for (const slot of slots) {
+      hp += slot.hp;
+      maxHp += slot.maxHp;
+    }
+
     const shield = this.localMeta?.shield ?? null;
     const shieldDef = shield ? config.loot[shield.k] : undefined;
     return {
+      open: this.armorOpen,
       slots,
       armor,
+      set: {
+        name: sampleDef?.setName ?? null,
+        rarity: sampleDef?.rarity ?? null,
+        pieces: bestCount,
+        total: config.armorSlots.length,
+      },
+      hp,
+      maxHp,
       // The shield rides the same panel as the plates even though it lives on
       // the belt, because what the player is asking when they look here is
       // "how much is between me and the next hit" — and the answer includes
@@ -4851,6 +5085,121 @@ export class Game {
           }
         : null,
     };
+  }
+
+  /**
+   * A material's rung, resolved through any piece that is made of it.
+   *
+   * There is no material catalog on the wire and there does not need to be:
+   * every ARMOUR row carries its own `tier`, and twenty rows is a cheap scan
+   * that happens five times a second at most. A `materials` payload would be
+   * a third table saying what two already say.
+   */
+  private materialTier(material: string): number {
+    const config = this.config;
+    if (!config) return 0;
+    for (const piece of Object.values(config.armor)) {
+      if (piece.material === material) return piece.tier;
+    }
+    return 0;
+  }
+
+  /**
+   * WHAT R DOES WITH THE WEAPON IN HAND, or null when it does nothing.
+   *
+   * THE PANEL FOLLOWS THE BELT, which is the one rule this whole feature
+   * rests on: there is no selected ultimate, no second belt and nothing to
+   * bind — 1/2/3 decides what this panel is about, and a weapon with no
+   * ultimate simply has no panel. That is why this resolves off `heldSlot`
+   * rather than off anything the server sends: the player who just pressed 2
+   * has to see the Deagle's ultimate on the frame they pressed it, not a
+   * fifth of a second later.
+   *
+   * EVERY REFUSAL IS NAMED. `requirements` is built even when the ultimate is
+   * unlocked, because the panel's hover shows the list either way — "what did
+   * I have to do to get this" is a question players ask AFTER unlocking one,
+   * and a list that disappeared on success would never teach the system to
+   * the second player in the party.
+   */
+  private ultimateHud(): HudUltimate | null {
+    const config = this.config;
+    if (!config) return null;
+    // Off `heldSlot` and not off the roster's `held`: the panel has to change
+    // on the frame 1/2/3 is pressed, and the roster is a fifth of a second
+    // behind the key that caused it.
+    const held = this.weaponKeyOf(this.localId, this.heldSlot);
+    if (!held) return null;
+    const weapon = config.weapons[held];
+    if (!weapon) return null;
+    let row: (typeof config.ultimates)[string] | undefined;
+    let key = '';
+    for (const [candidate, definition] of Object.entries(config.ultimates)) {
+      if (definition.weapon === held) {
+        row = definition;
+        key = candidate;
+        break;
+      }
+    }
+    if (!row) return null;
+
+    // How many worn pieces carry each tag. The client half of
+    // `armor.Loadout.tag_pieces`, and it counts the same way for the same
+    // reason: weighting by coverage would make one leather cap into a full
+    // ninja set, because the head is over half of this sprite.
+    const worn = this.localMeta?.armor;
+    const pieces = new Map<string, number>();
+    for (const slot of config.armorSlots) {
+      const cell = worn?.[slot];
+      const def = cell ? config.armor[cell.k] : undefined;
+      if (!def || (cell?.hp ?? 0) <= 0) continue;
+      for (const tag of def.tags) pieces.set(tag, (pieces.get(tag) ?? 0) + 1);
+    }
+    const carried = new Set(weapon.tags);
+
+    const requirements: HudUltimateRequirement[] = row.requires.map((tag) => {
+      const definition = config.ultimateTags[tag];
+      const label = definition?.name ?? tag;
+      if (definition?.source === 'weapon') {
+        return { tag, label, met: carried.has(tag) };
+      }
+      const have = pieces.get(tag) ?? 0;
+      return { tag, label, met: have >= row.pieces, have, need: row.pieces };
+    });
+    const locked = requirements.some((entry) => !entry.met);
+
+    const charged = this.localMeta?.ult?.[key] ?? 0;
+    const active = this.localMeta ? this.activeUltimate(key) : 0;
+    return {
+      key,
+      name: row.name,
+      blurb: row.blurb,
+      frame: this.ultimateFrames.get(key) ?? 0,
+      weapon: weapon.name,
+      locked,
+      requirements,
+      // ZERO WHILE LOCKED, and it is zero on the server too — a locked bar
+      // does not fill at all (`Room._charge_ult`). The client does not clamp
+      // it here so much as state the same fact twice, because a panel showing
+      // a padlock over a half-full bar would be saying two things at once.
+      charge: locked ? 0 : clamp01(charged / Math.max(1, row.chargeFull)),
+      ready: !locked && charged >= row.chargeFull,
+      active,
+      duration: row.duration,
+      fires: this.ultFires,
+    };
+  }
+
+  /**
+   * Seconds left of the LOCAL player's open ultimate window, or 0.
+   *
+   * Read off the tick row rather than off the roster, because the window is a
+   * POSE — it is what draws the charge burning off a body — and at roster rate
+   * a six-second bar would visibly start and end late.
+   */
+  private activeUltimate(key: string): number {
+    const row = this.snapshots.latest?.players.get(this.localId ?? '');
+    if (!row?.ult || row.ult.k !== key) return 0;
+    return Math.max(0, row.ult.t);
   }
 
   private hotbarHud(): HudHotbar | null {
@@ -4871,9 +5220,11 @@ export class Game {
         frame: def.frame,
         weight: def.weight,
         ammo: this.roundsFor(key),
-        // The SHIELD's card carries what is left of it; a gun's has nothing
-        // to carry, because a gun does not wear out. Same function either
-        // way — see `gear-card.ts`.
+        // The SHIELD's card carries what is left of it; a gun's carries what
+        // is left in the RESERVE. Same function either way — see
+        // `gear-card.ts` — and the ammunition is the live local mirror rather
+        // than the roster's, so the number on the hovered card and the number
+        // on the cell under it are the same number on the same frame.
         card: gearCard(
           config,
           key,
@@ -4882,6 +5233,7 @@ export class Game {
             : this.localMeta.shield.k === key
               ? { hp: this.localMeta.shield.hp, max: this.localMeta.shield.max }
               : undefined,
+          this.reserveFor(key),
         ),
       };
     });
@@ -4902,6 +5254,23 @@ export class Game {
    * on the frame the shot is predicted and overwritten by every roster that
    * lands, exactly like position reconciliation.
    */
+  /**
+   * The reserve behind `key` — what is in it and what it holds — or undefined
+   * for anything that never runs dry.
+   *
+   * The card's version of `roundsFor`. It exists separately because a CARD
+   * states a ceiling and a CELL does not: the cell is a live counter the
+   * player watches fall, and printing `28 / 240` on a forty-pixel box would be
+   * two numbers where one is being read.
+   */
+  private reserveFor(key: string | null | undefined): { have: number; max: number } | undefined {
+    const have = this.roundsFor(key);
+    if (have === null || !key) return undefined;
+    const calibre = this.config?.weapons?.[key]?.ammo;
+    const max = calibre ? this.config?.ammo?.max?.[calibre] : undefined;
+    return max ? { have, max } : undefined;
+  }
+
   private roundsFor(key: string | null | undefined): number | null {
     if (!key) return null;
     const calibre = this.config?.weapons?.[key]?.ammo;

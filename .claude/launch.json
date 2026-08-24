@@ -27,6 +27,20 @@
         "8000"
       ],
       "port": 8000
+    },
+    {
+      "name": "client-prod",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "--prefix",
+        "client",
+        "run",
+        "preview",
+        "--",
+        "--port",
+        "4173"
+      ],
+      "port": 4173
     }
   ]
 }

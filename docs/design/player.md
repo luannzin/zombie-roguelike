@@ -82,6 +82,8 @@ Nearest contracts: [`server/app/AGENTS.md`](../../server/app/AGENTS.md),
 | movement / stamina | `server/app/simulation.py` **and** `client/src/game/simulation.ts`, `config.py` |
 | ammunition | `server/app/ammo.py` (mechanics) / `weapons.py` (sizing) |
 | medicine, healing, the two cells | `server/app/medical.py` (the catalog and the container) + `Room.use_medical` / `_step_use` (the channel) + `client/src/components/hud/Medical.tsx` — and the ring over the body, `render/layers/entities.ts`'s `drawHealRing` |
+| health coming BACK, whatever put it there | `Room.heal_player`. THE ONE DOOR, and it is a method rather than a coincidence now that there are two sources: a medical channel completing, and the field gun's dart. Nothing regenerates, nothing heals on extraction, and a DOWNED body is never healed by anything |
+| the field gun, and support as a build | `weapons.medgun` (the one trigger in the game that cannot hurt anything) + [`ultimates.md`](ultimates.md) |
 | pocket rules | `server/app/inventory.py`, `Room.collect_loot` / `drop_loot` — and the client's mirror of what a collect refuses, `client/src/game/interaction.ts` (`canStow`, `swapTargetFor`) |
 | shot feel | `client/src/game/combat.ts`, `effects.ts`, `entity-visuals.ts` |
 | how a weapon is HELD, cycled, drawn, swung | `client/src/render/guns.ts` (the pose), `render/arms.ts` (the limbs), `render/layers/entities.ts` (the draw), `game/entity-visuals.ts` (the clocks) |

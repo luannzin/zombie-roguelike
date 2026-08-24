@@ -139,7 +139,7 @@ export interface HudHotbar {
  * would go quiet at exactly the moment the player most needs to look at it.
  */
 export interface HudArmorSlot {
-  /** `head` / `body` / `legs`. */
+  /** `head` / `arms` / `body` / `legs` / `feet`. */
   slot: string;
   /** Portuguese, off `config.armorSlotNames`. */
   label: string;
@@ -148,6 +148,24 @@ export interface HudArmorSlot {
   rarity: LootRarity | null;
   /** `cloth` / `leather` / `steel` / `kevlar`. Null when the part is bare. */
   material: string | null;
+  /**
+   * The loot atlas frame for this piece, or null when the part is bare.
+   *
+   * THE CELL DRAWS THE OBJECT, which is the whole of what changed about this
+   * panel. It used to draw a label and a thin meter — three rows of a
+   * spreadsheet about a costume — and a player could pick up a pair of steel
+   * greaves and never see what they had. The same sprite that was lying in
+   * the grass is now sitting on the body, in the place on the body it goes.
+   */
+  frame: number | null;
+  /** Which row of the mannequin, top to bottom. Off `config.armorBodyLayout`. */
+  row: number;
+  /**
+   * How many boxes this slot draws on its row. TWO means a PAIR — the arms,
+   * the legs and the boots — and both boxes show the same piece, because both
+   * boxes ARE the same piece. A person has two arms and one set of bracers.
+   */
+  cells: number;
   /** Damage taken off every blow that lands here. 0 when the part is bare. */
   armor: number;
   hp: number;
@@ -171,7 +189,37 @@ export interface HudShield {
   card: HudGearCard | null;
 }
 
+/**
+ * WHAT THE BODY IS DRESSED AS, as opposed to what it is protected by.
+ *
+ * The panel headlines this rather than a material, because "what am I wearing"
+ * is a question about an IDENTITY once armour carries tags — a set of leather
+ * is not just worse steel, it is the thing that unlocks a blade's ultimate.
+ * `pieces` over `total` is what the ultimate panel's requirement row is
+ * counting, so the two surfaces are reading the same number.
+ */
+export interface HudArmorSet {
+  /** "Sombra", "Muralha"… or null with nothing on. */
+  name: string | null;
+  /** The dominant material's colour, so the header reads as its rung. */
+  rarity: LootRarity | null;
+  /** Pieces of that set actually worn. */
+  pieces: number;
+  /** Pieces there are to wear. `config.armorSlots.length`. */
+  total: number;
+}
+
 export interface HudArmor {
+  /**
+   * The mannequin is expanded. Client-local, like the bag's — the server has
+   * no opinion about whether somebody is looking at their own kit.
+   *
+   * COLLAPSED IS THE DEFAULT AND IT IS NOT EMPTY: collapsed still says the
+   * set, the rating and how much of the body is covered, because "am I still
+   * protected" has to be answerable without a keypress. What expanding buys is
+   * WHICH piece and WHAT it is, which is a question you ask between fights.
+   */
+  open: boolean;
   slots: HudArmorSlot[];
   shield: HudShield | null;
   /**
@@ -184,6 +232,71 @@ export interface HudArmor {
    * `100` is a sentence.
    */
   armor: number;
+  /** The set's identity. See `HudArmorSet`. */
+  set: HudArmorSet;
+  /** Durability left across every worn piece, and the ceiling on it. */
+  hp: number;
+  maxHp: number;
+}
+
+/**
+ * ONE REQUIREMENT ROW ON THE ULTIMATE PANEL.
+ *
+ * Built from `config.ultimateTags`, never from a table here: a requirement is
+ * a tag, a tag has a name and a source on the wire, and a HUD that kept its
+ * own Portuguese for them would be a second place for "Conjunto Sombra" to be
+ * renamed out of step.
+ */
+export interface HudUltimateRequirement {
+  tag: string;
+  /** Portuguese. For an armour tag this is the SET's name. */
+  label: string;
+  met: boolean;
+  /**
+   * ARMOUR REQUIREMENTS COUNT AND WEAPON REQUIREMENTS DO NOT, which is the
+   * whole reason `source` rides the wire. Holding a katana is true or false;
+   * wearing Sombra is two of three, and a row that could only say "no" would
+   * hide the fact that the player is one helmet away.
+   */
+  have?: number;
+  need?: number;
+}
+
+/**
+ * THE ULTIMATE OF THE WEAPON IN HAND, or null when it has none.
+ *
+ * It follows the belt: 1/2/3 changes what this panel is about, which is the
+ * one rule the whole feature rests on. There is no selected ultimate and no
+ * second belt to learn.
+ */
+export interface HudUltimate {
+  key: string;
+  name: string;
+  blurb: string;
+  /** Indexes the ultimate icon atlas (`/ultimates/sheet.png`). */
+  frame: number;
+  /** The weapon that owns it, by name. */
+  weapon: string;
+  /** Something in `requirements` is not met. The bar does not fill either. */
+  locked: boolean;
+  requirements: HudUltimateRequirement[];
+  /** 0..1 of the way to a full bar. Always 0 while locked. */
+  charge: number;
+  /** The bar is full and R would fire. */
+  ready: boolean;
+  /**
+   * Seconds left of an OPEN window, or 0. Only the empower ultimates ever
+   * have one — a crescent and a pulse are over on the frame they are pressed.
+   */
+  active: number;
+  /** The window's full length, so the panel can draw it draining. */
+  duration: number;
+  /**
+   * Bumps every time THIS player fires one. A count and not a flag, for the
+   * reason every other one-shot on this store is: the panel replays its own
+   * flash off the number changing, and at 5 Hz a boolean would be missed.
+   */
+  fires: number;
 }
 
 export interface HudInventory {
@@ -611,6 +724,14 @@ export interface HudSnapshot {
    */
   armor: HudArmor | null;
   /**
+   * What R does with the weapon in hand, or null when it does nothing.
+   *
+   * ABOVE the belt rather than beside the vitals, because it is a statement
+   * about the thing in your hands and not about your body — and because it
+   * changes when the belt changes, so the two want to be read in one glance.
+   */
+  ultimate: HudUltimate | null;
+  /**
    * Run objectives. Empty until the forest entrance seals; the HUD is a
    * mirror — progress as numbers, a done flag, optional risk, and dropping
    * a row is how a task leaves the screen.
@@ -650,6 +771,7 @@ export const EMPTY_HUD: HudSnapshot = {
   inventory: null,
   hotbar: null,
   armor: null,
+  ultimate: null,
   quests: [],
 };
 

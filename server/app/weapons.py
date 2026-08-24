@@ -262,6 +262,14 @@ AMMO_AWP = "awp"
 #: A blade eats nothing, and saying so is cheaper than a null check.
 AMMO_NONE = "none"
 
+#: THE MINIGUN AND THE FIELD GUN ARE THEIR OWN CLASSES, and neither is
+#: cosmetic. `kind` is what `client/src/game/weapon-feel.ts` reads to decide
+#: how many hands are on a weapon and what its mechanism looks like doing —
+#: a rotary cannon does not have a bolt and a dart injector does not have a
+#: slide, and calling either one "rifle" would draw it cycling something it
+#: has not got.
+KIND_MINIGUN = "minigun"
+KIND_SUPPORT = "support"
 KIND_MELEE = "melee"
 #: The one thing on the belt that does not attack. See `ShieldDef`.
 KIND_SHIELD = "shield"
@@ -474,6 +482,26 @@ class WeaponDef:
     #: The block. Set on shields and None on everything else. A row with this
     #: has no trigger at all: it is held up, not fired.
     shield: ShieldDef | None = None
+    #: WHAT THIS WEAPON PUTS BACK, per shot, into a player it hits. Zero on
+    #: everything that kills.
+    #:
+    #: It is a field on the ordinary weapon row rather than a `HealDef` block
+    #: because, unlike a swing or a block, healing does not change how the
+    #: weapon is USED: it is aimed, it has a cadence, it has a reach, it makes
+    #: a noise, and `Room.fire` casts exactly the same ray for it. The only
+    #: branch is what the ray does when it arrives, which is one line at the
+    #: end of the tally rather than a parallel firing path.
+    heal: int = 0
+    #: WHAT THIS WEAPON IS, for the synergy system. Read by `ultimates.py` and
+    #: by nothing else here — a weapon does not know what an ultimate is, it
+    #: only knows what it is.
+    #:
+    #: They are claims a player could make about the object out loud
+    #: ("automatic", "precision", "a blade") rather than a private key, which
+    #: is the test for whether a tag is worth having: a requirement row in the
+    #: HUD prints these, so a tag nobody would say is a requirement nobody can
+    #: read.
+    tags: tuple[str, ...] = ()
 
     @property
     def range(self) -> float:
@@ -559,6 +587,8 @@ class WeaponDef:
             "casings": self.casings,
             "lightRadius": self.light_radius,
             "lightLife": self.light_life,
+            "heal": self.heal,
+            "tags": list(self.tags),
         }
         # Omitted rather than nulled: every gun would otherwise carry a field
         # that only one weapon in the catalog has ever used.
@@ -808,6 +838,12 @@ def _blade_rows() -> tuple[WeaponDef, ...]:
                 key=profile.key,
                 name=profile.name,
                 kind=KIND_MELEE,
+                # EVERY LÂMINA IS A BLADE AND THE FAST ONES ARE ALSO SWIFT,
+                # derived off the profile rather than written per row — the
+                # whole category is generated from `_CHAIN` and a hand-written
+                # tag list beside it would be the one column that did not
+                # arrive with a new blade.
+                tags=("melee", "blade") + (("swift",) if profile.tempo < 1.0 else ()),
                 ammo=AMMO_NONE,
                 # What an un-comboed hit is worth, for anything that reads
                 # `damage` off the catalog without knowing about steps.
@@ -841,6 +877,7 @@ WEAPONS: tuple[WeaponDef, ...] = (
     # cheapest thing in the shop: this is what a party's first night buys.
     WeaponDef(
         key="glock18",
+        tags=("ballistic", "swift"),
         name="Glock 18",
         kind="pistol",
         ammo=AMMO_PISTOL,
@@ -861,6 +898,7 @@ WEAPONS: tuple[WeaponDef, ...] = (
     # buy to not have to.
     WeaponDef(
         key="usp_s",
+        tags=("ballistic", "swift"),
         name="USP-S",
         kind="pistol",
         ammo=AMMO_PISTOL,
@@ -879,6 +917,7 @@ WEAPONS: tuple[WeaponDef, ...] = (
     # the shortest sidearm reach, which is exactly the trade the pair makes.
     WeaponDef(
         key="dual_berettas",
+        tags=("ballistic", "swift"),
         name="Berettas Duplas",
         kind="pistol",
         ammo=AMMO_PISTOL,
@@ -899,6 +938,7 @@ WEAPONS: tuple[WeaponDef, ...] = (
     # and sixty on the Glock.
     WeaponDef(
         key="deagle",
+        tags=("ballistic", "precision"),
         name="Desert Eagle",
         kind="pistol",
         ammo=AMMO_PISTOL,
@@ -919,6 +959,7 @@ WEAPONS: tuple[WeaponDef, ...] = (
     # calibre — an SMG that shared the pistol reserve would drain a sidearm.
     WeaponDef(
         key="mp7",
+        tags=("ballistic", "automatic", "swift"),
         name="MP7",
         kind="smg",
         ammo=AMMO_SMG,
@@ -937,6 +978,7 @@ WEAPONS: tuple[WeaponDef, ...] = (
     # A P90 answers a pack standing on top of you and nothing else.
     WeaponDef(
         key="p90",
+        tags=("ballistic", "automatic", "swift"),
         name="P90",
         kind="smg",
         ammo=AMMO_SMG,
@@ -966,6 +1008,7 @@ WEAPONS: tuple[WeaponDef, ...] = (
     # is already touching me", and no answer at all to anything further off.
     WeaponDef(
         key="xm1014",
+        tags=("ballistic", "bulk"),
         name="XM1014",
         kind="shotgun",
         ammo=AMMO_SHELL,
@@ -988,6 +1031,7 @@ WEAPONS: tuple[WeaponDef, ...] = (
     # hundred and sixty a minute. What the price buys is the CADENCE.
     WeaponDef(
         key="famas",
+        tags=("ballistic", "automatic"),
         name="FAMAS",
         kind="rifle",
         ammo=AMMO_RIFLE,
@@ -1006,6 +1050,7 @@ WEAPONS: tuple[WeaponDef, ...] = (
     # The AK is the line where a party stops rationing and starts fighting.
     WeaponDef(
         key="ak47",
+        tags=("ballistic", "automatic"),
         name="AK-47",
         kind="rifle",
         ammo=AMMO_RIFLE,
@@ -1026,6 +1071,7 @@ WEAPONS: tuple[WeaponDef, ...] = (
     # slept through.
     WeaponDef(
         key="m4a1s",
+        tags=("ballistic", "automatic", "precision"),
         name="M4A1-S",
         kind="rifle",
         ammo=AMMO_RIFLE,
@@ -1048,6 +1094,7 @@ WEAPONS: tuple[WeaponDef, ...] = (
     # visible wind-up instead of a Deagle that reaches across the map.
     WeaponDef(
         key="awp",
+        tags=("ballistic", "precision"),
         name="AWP",
         kind="sniper",
         ammo=AMMO_AWP,
@@ -1065,6 +1112,85 @@ WEAPONS: tuple[WeaponDef, ...] = (
         shot_pitch=0.68,
         casings=1,
         **feel(dmg(AWP_CHEST), punch=1.12),
+    ),
+    # --- the rotary -----------------------------------------------------------
+    # $5200, the most expensive thing the merchant will ever put on a table,
+    # and the only weapon in the catalog whose problem is its own RESERVE.
+    #
+    # Its round is the FAMAS's — four to a zombie, deliberately, because
+    # `_reserve_cap` sizes a calibre against the hungriest weapon that eats it
+    # and a minigun with a weaker round would have quietly handed every rifle
+    # in the game a bigger magazine pouch. What the price buys is CADENCE:
+    # eleven hundred a minute, which is the highest damage per second in the
+    # game and thirteen seconds of held trigger before a full rifle reserve is
+    # gone.
+    #
+    # Everything else about it is the cost of that. It reaches barely further
+    # than a shotgun, it is seven kilos on the walk, and it is the loudest
+    # sustained noise a party can make. It is a weapon you buy to hold a
+    # doorway with, and it is the reason `bullet_storm` is six seconds of free
+    # ammunition rather than six seconds of bigger numbers.
+    WeaponDef(
+        key="minigun",
+        name="Minigun",
+        kind=KIND_MINIGUN,
+        tags=("ballistic", "automatic", "bulk"),
+        ammo=AMMO_RIFLE,
+        cs_price=5200,
+        cs_speed=190,
+        damage=dmg(25),
+        fire_cooldown=cadence(1100),
+        range_tiles=reach(12.0),
+        muzzle_tiles=1.18,
+        noise_tiles=loudness(dmg(25)),
+        shot_pitch=0.8,
+        # Two cases a frame out of a gun that is chewing through the belt.
+        casings=2,
+        # Light for its damage: a minigun's recoil is a rattle rather than a
+        # shove, and a per-round kick sized off dmg(25) would throw the body
+        # across the clearing eighteen times a second.
+        **feel(dmg(25), punch=0.72),
+    ),
+    # --- the field gun --------------------------------------------------------
+    # $1600, AND IT CANNOT HURT ANYTHING. The first weapon in this game whose
+    # trigger is not a way to kill something: a dart of coagulant that puts
+    # four points back into whoever it lands on and does nothing at all to a
+    # zombie.
+    #
+    # WHY IT EATS NO AMMUNITION. Every other gun is on the reserve economy
+    # because a round is what you spend to fill the bag; nothing this fires
+    # ever filled a bag. What it costs instead is the whole of what the riot
+    # shield costs and for the same reason — a GUN CELL, and a party member
+    # behind one is a party member who is not shooting. In a party of four
+    # that is a quarter of the damage, permanently, which is a far heavier
+    # price than a box of rounds.
+    #
+    # AND IT IS NOT A REPLACEMENT FOR MEDICINE. Four a shot at 400 rpm is
+    # about ten points a second, on somebody ELSE, in line of sight, while
+    # they are being hit for nine at a time. It is sustain between fights. A
+    # kit is thirty-five in one press and it is what answers an emergency —
+    # which is the split `medical.py` argues for and this deliberately does
+    # not close.
+    #
+    # It is nearly silent (a gas dart, not a cartridge), which is the other
+    # half of why a party might want one out in the dark.
+    WeaponDef(
+        key="medgun",
+        name="Pistola de Campo",
+        kind=KIND_SUPPORT,
+        tags=("support",),
+        ammo=AMMO_NONE,
+        cs_price=1600,
+        cs_speed=235,
+        damage=0,
+        heal=4,
+        fire_cooldown=cadence(150),
+        range_tiles=reach(10.0),
+        muzzle_tiles=0.78,
+        noise_tiles=2.5,
+        shot_pitch=1.42,
+        casings=0,
+        **feel(0, punch=0.8),
     ),
 )
 

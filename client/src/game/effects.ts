@@ -1117,6 +1117,77 @@ export class Effects {
     this.spawnLight(x, y, 22, 0.4, tone, 0.12);
   }
 
+  /**
+   * SOMEBODY PRESSED R. The one burst every ultimate in the game shares.
+   *
+   * ONE EFFECT FOR FOUR ABILITIES, deliberately, and it is the same argument
+   * `--ult-flash` makes about its colour: what this beat has to communicate is
+   * not *which* ultimate fired, it is *that one did* — a party of four needs to
+   * read "somebody just spent theirs" across a dark clearing in a fifth of a
+   * second, and four different bursts would be four things to learn instead of
+   * one. Which ultimate it was is on the panel, on the sound, and about to be
+   * extremely obvious anyway.
+   *
+   * THREE THINGS, AND EACH ONE IS DOING A DIFFERENT JOB:
+   *
+   *   * a hard WASH at the body, brighter and shorter than anything else in
+   *     this file, because the frame R lands on has to be the brightest frame
+   *     of the fight;
+   *   * a RING of motes thrown outward on the flat, which is what makes it
+   *     read as pressure leaving a person rather than as a light switching on;
+   *   * a LANCE of them along the aim, so an aimed ultimate points at what it
+   *     is about to do and an aura (whose `dx`/`dy` is just a facing) still
+   *     reads as centred.
+   *
+   * It reuses the summon column from the level-up on top of all that — see
+   * `Game.playUltimate` — because both are "a thing happened to this body that
+   * the whole party should look at", and a second column sheet would be the
+   * same drawing twice.
+   */
+  spawnUltimate(x: number, y: number, dx: number, dy: number): void {
+    const tone = palette().ultimate.flash;
+    // Bright, wide and SHORT. Half the life of a muzzle wash at four times the
+    // radius: an ultimate is an event rather than a light source.
+    this.spawnLight(x, y, 190, 1.35, tone, 0.42);
+    const speed = Math.hypot(dx, dy) || 1;
+    const ux = dx / speed;
+    const uy = dy / speed;
+    for (let i = 0; i < 26; i++) {
+      const angle = (i / 26) * Math.PI * 2;
+      const push = 96 + Math.random() * 88;
+      this.particles.push({
+        x,
+        y,
+        vx: Math.cos(angle) * push,
+        // Flattened, because the ring is on the GROUND — a spherical burst on
+        // a top-down sprite reads as a firework rather than as a shockwave.
+        vy: Math.sin(angle) * push * 0.5,
+        size: 1.1 + Math.random() * 1.8,
+        color: tone,
+        age: 0,
+        life: 0.34 + Math.random() * 0.3,
+        gy: -16,
+      });
+    }
+    for (let i = 0; i < 14; i++) {
+      const spread = (Math.random() - 0.5) * 0.5;
+      const cos = Math.cos(spread);
+      const sin = Math.sin(spread);
+      const push = 150 + Math.random() * 190;
+      this.particles.push({
+        x,
+        y,
+        vx: (ux * cos - uy * sin) * push,
+        vy: (uy * cos + ux * sin) * push * 0.6,
+        size: 1.3 + Math.random() * 1.6,
+        color: tone,
+        age: 0,
+        life: 0.28 + Math.random() * 0.26,
+        gy: -10,
+      });
+    }
+  }
+
   spawnHeal(x: number, y: number, amount: number): void {
     this.pushFloat(x, y - 6, `+${Math.round(amount)}`, 'heal', 0.9);
     const heal = palette().heal;

@@ -255,6 +255,18 @@ MSG_REROLL = "reroll"
 #: key, because two cells may hold the same kit and the server has to empty the
 #: one the player pressed.
 MSG_USE = "use"
+#: R. `{type:"ult"}` — NO PAYLOAD, and that is the contract: which ultimate
+#: fires is decided entirely by what is in the player's hands, on the server,
+#: on the frame the message lands. A client that named one would be a client
+#: that could fire the katana's while holding the minigun, one dropped hotbar
+#: packet later.
+#:
+#: A MESSAGE AND NOT A FIELD ON THE INPUT PACKET, unlike the lantern and the
+#: belt. Those two are STATES the client predicts; this is a one-shot with no
+#: local half at all — nothing about it is drawn before the server answers,
+#: because an ultimate that flashed and then did not happen would be the
+#: worst-feeling frame in the game.
+MSG_ULT = "ult"
 
 MSG_HELLO = "hello"
 MSG_LOBBY = "lobby"
@@ -393,6 +405,9 @@ def snapshot(
     spits: list[dict] | None = None,
     spit_events: list[dict] | None = None,
     spit_bursts: list[dict] | None = None,
+    ults: list[dict] | None = None,
+    volleys: list[dict] | None = None,
+    ult_bursts: list[dict] | None = None,
 ) -> dict:
     payload = {
         "type": MSG_SNAPSHOT,
@@ -410,6 +425,24 @@ def snapshot(
     }
     # Absent on most ticks: a swing that connected is rarer than a shot, and
     # the empty list would ride every tick of a run nobody is knifing through.
+    # ULTIMATES. Three lists and they are three different KINDS of thing,
+    # which is why they are not one:
+    #
+    #   ults        somebody PRESSED R. A one-shot: the burst, the shake, the
+    #               sound, the name across the screen. Never replayed.
+    #   volleys     what is in the air right now, every tick, like `spits`.
+    #               State, because a client that missed a packet still has to
+    #               draw the crescent that is halfway across the clearing.
+    #   ultBursts   where one ENDED. A one-shot again.
+    #
+    # All three absent on almost every tick of almost every night, which is
+    # the point of sending them this way rather than as fields on a row.
+    if ults:
+        payload["ults"] = ults
+    if volleys:
+        payload["volleys"] = volleys
+    if ult_bursts:
+        payload["ultBursts"] = ult_bursts
     if swings:
         payload["swings"] = swings
     # Absent on most ticks — see ROSTER_EVERY_N_TICKS.

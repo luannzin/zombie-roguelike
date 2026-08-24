@@ -126,6 +126,8 @@ async def game_socket(ws: WebSocket, code: str, name: str | None = None):
                 slot = msg.get("slot")
                 if isinstance(slot, int) and not isinstance(slot, bool):
                     room.use_medical(player.id, slot)
+            elif kind == protocol.MSG_ULT:
+                room.use_ultimate(player.id)
             elif kind == protocol.MSG_DROP:
                 slot = msg.get("slot")
                 if isinstance(slot, int) and not isinstance(slot, bool):

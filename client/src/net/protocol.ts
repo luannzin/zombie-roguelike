@@ -134,6 +134,19 @@ export interface UsePacket {
 }
 
 /**
+ * R. Fire the ultimate of whatever is in this player's hands.
+ *
+ * NO PAYLOAD, AND THAT IS THE CONTRACT. Which ultimate fires is decided
+ * entirely by what the SERVER thinks is on the belt on the frame this lands.
+ * A client that named one could fire the katana's while holding the minigun,
+ * one dropped hotbar packet later — and unlike a mis-aimed shot, an ultimate
+ * is the most expensive press in a fight.
+ */
+export interface UltPacket {
+  type: 'ult';
+}
+
+/**
  * Buy a new shelf at the merchant.
  *
  * NO PAYLOAD. What is rerolled is every UNSOLD table — there has never been a
@@ -159,6 +172,7 @@ export type ClientMessage =
   | BuyPacket
   | SpinPacket
   | UsePacket
+  | UltPacket
   | RerollPacket
   | DropPacket;
 
@@ -363,11 +377,51 @@ export interface GameConfig {
   /** Portuguese for each slot, for a HUD row and a tooltip line. */
   armorSlotNames: Record<string, string>;
   /**
+   * WHERE EACH SLOT SITS ON THE FIGURE the armour panel draws.
+   *
+   * The panel is a BODY rather than a list of rows — a helmet over
+   * arm/chest/arm, trousers under it, boots at the bottom — and this is that
+   * body, in a three-column grid. `cells` is how many boxes the slot occupies
+   * on its row: two for the arms, the legs and the feet, because those are
+   * PAIRS on a person and drawing one box for a pair is the single place this
+   * picture would stop looking like anybody.
+   *
+   * It ships for the same reason `armorSlots` does. A sixth slot has to be
+   * able to arrive as a row in `armor.py` plus a shape in two generators; a
+   * mannequin hardcoded in a React component would make it a client change as
+   * well, which is exactly the kind of change that gets made in one place and
+   * not the other.
+   */
+  armorBodyLayout: ArmorBodyRow[];
+  /**
    * What share of blows land on each slot. The player sprite's own anatomy —
    * see `armor.COVERAGE` — so it is a fact about the art rather than a tuning
    * knob. The HUD needs it to say what a whole set actually stops.
    */
   armorCoverage: Record<string, number>;
+  /**
+   * ULTIMATES: one per weapon, locked behind a set of armour.
+   *
+   * Keyed by ultimate key. `weapon` is what decides which one the HUD panel
+   * shows — the panel follows the hand, so there is no selection and no
+   * second belt.
+   */
+  ultimates: Record<string, UltimateConfig>;
+  /**
+   * The vocabulary a requirement is written in. Keyed by tag.
+   *
+   * `source` is what the panel branches on rather than decoration: an ARMOUR
+   * tag is met by wearing enough of a set and is drawn as progress ("2/3"),
+   * and a WEAPON tag is met by holding one thing and is drawn as a plain
+   * tick.
+   */
+  ultimateTags: Record<string, UltimateTagConfig>;
+  /**
+   * How many pieces of a set count as wearing it. The panel PRINTS this, so a
+   * client with its own copy would promise a threshold the server does not
+   * keep.
+   */
+  ultimateSetPieces: number;
   /** Starting bag size. A later upgrade grows it. */
   inventorySlots: number;
   /** Gun belt size. */
@@ -434,7 +488,7 @@ export type LootRarity = 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary';
  */
 export interface ArmorConfig {
   name: string;
-  /** `head` / `body` / `legs`. Indexes `GameConfig.armorSlots`. */
+  /** `head` / `arms` / `body` / `legs` / `feet`. Indexes `GameConfig.armorSlots`. */
   slot: string;
   /** `cloth` / `leather` / `steel` / `kevlar`. */
   material: string;
@@ -456,12 +510,73 @@ export interface ArmorConfig {
   value: number;
   rarity: LootRarity;
   /**
+   * What a body dressed in this is CALLED — "Sombra", "Muralha", "Tático".
+   *
+   * Not the material's name and not derivable from it: `aço` is what a plate
+   * is made of and `Muralha` is what wearing five of them makes you. The
+   * armour panel headlines this, because "what am I dressed as" is the
+   * question a player asks of a loadout.
+   */
+  setName: string;
+  /**
+   * What wearing it MEANS, as tags — the vocabulary `ultimateTags` names and
+   * an ultimate's `requires` is written in.
+   *
+   * On the piece rather than looked up per material, so the HUD can answer
+   * "would this unlock anything" about a plate lying in the grass without
+   * knowing what a material is.
+   */
+  tags: string[];
+  /**
    * The overlay sheet drawn on the body. Registered to the player's own
    * 16x16 grid and drawn by the same `blitGear` that draws the backpack and
    * a zombie's hat — armour is visible through the system that was already
    * there.
    */
   sheet: string;
+}
+
+/** One row of the armour panel's mannequin. See `GameConfig.armorBodyLayout`. */
+export interface ArmorBodyRow {
+  slot: string;
+  /** Which row of the figure, top to bottom, zero-based. */
+  row: number;
+  /** How many boxes this slot occupies on that row. Two means a PAIR. */
+  cells: number;
+}
+
+/** One tag in the synergy vocabulary. Mirrors `server/app/ultimates.TagDef`. */
+export interface UltimateTagConfig {
+  /** Portuguese. For an armour tag this is the SET name, not the material's. */
+  name: string;
+  /** `weapon` — hold one thing. `armor` — wear `ultimateSetPieces` of a set. */
+  source: 'weapon' | 'armor';
+}
+
+/**
+ * One ultimate. Mirrors `server/app/ultimates.UltimateDef`.
+ *
+ * WHAT IS DELIBERATELY NOT HERE: the effect. `Volley`, `Empower` and `Aura`
+ * stay server-side, because the client never simulates one — an ultimate is
+ * the one action in this game with no predicted half at all. What it needs is
+ * enough to draw the panel and explain a refusal, and that is exactly this.
+ */
+export interface UltimateConfig {
+  name: string;
+  /** The weapon that owns it. Exactly one ultimate per weapon. */
+  weapon: string;
+  /** One line, present tense, saying what pressing R does. */
+  blurb: string;
+  /** Every tag that has to be satisfied, in the order the panel lists them. */
+  requires: string[];
+  /** `damage` / `heal` / `kill` — what fills the bar. */
+  chargeOn: string;
+  /** Units of `chargeOn` a full bar is worth. */
+  chargeFull: number;
+  /** Seconds the window lasts, or 0 for anything that resolves at once. */
+  duration: number;
+  /** Pieces of a set this one's armour requirements want. */
+  pieces: number;
 }
 
 export interface LootItemConfig {
@@ -529,6 +644,12 @@ export type WeaponKind =
   | 'sniper'
   | 'melee'
   | 'shield'
+  // A rotary cannon has no bolt and a dart injector has no slide. `kind` is
+  // what `weapon-feel.ts` reads to decide how many hands are on a weapon and
+  // what its mechanism does, so calling either of these a rifle would draw it
+  // cycling something it has not got.
+  | 'minigun'
+  | 'support'
   | string;
 
 /** What a combo step reads as. `cut` is the finisher. */
@@ -631,6 +752,21 @@ export interface WeaponConfig {
    * this has no trigger at all.
    */
   shield?: ShieldConfig;
+  /**
+   * WHAT THIS WEAPON PUTS BACK, per shot, into a player it hits. Zero on
+   * everything that kills.
+   *
+   * It is a plain field rather than a block like `melee` and `shield` because
+   * healing does not change how the weapon is USED: it is aimed, it has a
+   * cadence, it has a reach, and the same ray is cast for it. The only branch
+   * is what the ray does when it arrives.
+   */
+  heal: number;
+  /**
+   * WHAT THIS WEAPON IS, in the synergy vocabulary — the tags an ultimate's
+   * `requires` is written against. Named by `GameConfig.ultimateTags`.
+   */
+  tags: string[];
 }
 
 /** Mirrors `server/app/weapons.ShieldDef`. */
@@ -1416,6 +1552,20 @@ export interface PlayerState {
    * up is a teammate you do not walk over to cover.
    */
   uk?: string;
+  /**
+   * AN ULTIMATE IS RUNNING ON THIS BODY. Absent the rest of the time, which
+   * is almost always.
+   *
+   * On the TICK row rather than on the roster for the shield's reason: it is
+   * a POSE. Every client draws the charge burning off somebody who has one
+   * up, and at roster rate a six-second window would visibly start and end
+   * late on everybody else's screen.
+   *
+   * `k` is the ultimate's key and `t` is seconds LEFT — seconds rather than a
+   * fraction, unlike `use`, because what this drives is a countdown ring on
+   * the body and the total is already in `config.ultimates[k].duration`.
+   */
+  ult?: { k: string; t: number };
   /** Camp only: standing at the fire and confirmed. */
   ready?: boolean;
   /** Hotbar index in hand. -1 is holstered. */
@@ -1474,6 +1624,17 @@ export interface PlayerMeta {
   level: number;
   xpInLevel: number;
   xpToLevel: number;
+  /**
+   * THE ULTIMATE BARS, keyed by ultimate key. Absent keys are locked-or-empty
+   * — which are the same state, because a locked bar does not fill at all
+   * (see `server/app/room.Room._charge_ult`).
+   *
+   * On the ROSTER and not the tick row, unlike the window above: this is a
+   * METER only its owner reads, drawn as a fill rather than as an event, and
+   * five times a second is already faster than a bar that takes a night to
+   * fill needs.
+   */
+  ult?: Record<string, number>;
   /** The pocket. Slots, contents and current weight. */
   inv?: InventoryState;
   /** The gun belt. Slots and which one is in hand. */
@@ -1680,6 +1841,41 @@ export interface SpitState {
   /** World px/s. The client uses it to point the sprite, not to move it. */
   dx: number;
   dy: number;
+}
+
+/**
+ * One ultimate FIRING. `k` keys into `GameConfig.ultimates`.
+ *
+ * The direction rides along even for the ultimates that have none — an aura
+ * is not aimed — because the client draws the ACTIVATION off this row and
+ * every activation has a facing to throw its light along. What it does not
+ * carry is any description of the effect: the projectiles arrive as
+ * `volleys`, the damage as ordinary health changes, and the window as `ult`
+ * on the tick row.
+ */
+export interface UltFired {
+  /** The player who pressed R. */
+  by: string;
+  k: string;
+  x: number;
+  y: number;
+  dx: number;
+  dy: number;
+}
+
+/** One thing an ultimate put in the air. See `SnapshotMessage.volleys`. */
+export interface VolleyState {
+  id: number;
+  /** Which sprite to draw it as — `Volley.look` server-side, never the key. */
+  k: string;
+  x: number;
+  y: number;
+  /** World px/s. Points the sprite; the client does not move it. */
+  dx: number;
+  dy: number;
+  /** The SWEEP, in world px. Drawn at its own width so a second volley with a
+   *  different radius arrives already the right size — the client has no table. */
+  r: number;
 }
 
 /** One projectile LEAVING a creature. An event: the cough and the muzzle burst. */
@@ -2089,6 +2285,30 @@ export interface SnapshotMessage {
   spitFired?: SpitFired[];
   /** Where projectiles ENDED this tick, for the splash. Also an event. */
   spitBurst?: { x: number; y: number }[];
+  /**
+   * SOMEBODY PRESSED R. One row per activation this tick.
+   *
+   * An EVENT and never replayed — this is the burst, the shake, the sound and
+   * the name across the screen, and a client that dropped the packet gets the
+   * effect without the fanfare, which is the right way round for a miss.
+   *
+   * ONE ARRAY FOR THE WHOLE CATALOG, exactly as `events` is: a fifth ultimate
+   * must not be a fifth wire field, or "adding one is a data row" stops being
+   * true the first time somebody tries it.
+   */
+  ults?: UltFired[];
+  /**
+   * What an ultimate put IN THE AIR, whole every tick it is non-empty.
+   *
+   * STATE and not an event, for `SpitState`'s reason: a client that missed a
+   * packet still has to draw the crescent that is halfway across the clearing.
+   * Separate from `spits` because they are tested against opposite halves of
+   * the room and drawn as completely different things — bile and a thrown arc
+   * of steel are one mechanic and must never be one picture.
+   */
+  volleys?: VolleyState[];
+  /** Where an ultimate projectile ENDED. An event, like `spitBurst`. */
+  ultBursts?: { x: number; y: number }[];
   /**
    * Seconds left of an event dark, or 0 on the frame one lifts.
    *

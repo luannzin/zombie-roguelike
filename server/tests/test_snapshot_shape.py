@@ -51,10 +51,17 @@ MOVING = {
 # is omitted from the row unless a heal is actually running, like `wind` and
 # `blk`, so listing it would fail this check for every player who is not
 # currently bandaging.
+# `ult` — the ultimate BARS, keyed by ultimate — is here on the same argument
+# `ammo` is: it is a meter only its owner reads, drawn as a fill rather than as
+# an event, and five times a second is already faster than a bar that takes a
+# night to fill needs. Its companion on the tick row is ALSO called `ult` and
+# is a different thing entirely — the active WINDOW, which is a pose every
+# client draws — and that one is omitted unless an ultimate is actually
+# running, like `wind` and `blk`, so it must not be listed in MOVING.
 IDENTITY = {
     "name", "color", "kills", "deaths", "xp", "gold", "level", "xpInLevel",
     "xpToLevel", "inv", "guns", "ammo", "armor", "med", "skills", "spins",
-    "mods",
+    "mods", "ult",
 }
 
 

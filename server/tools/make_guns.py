@@ -699,6 +699,64 @@ GUNS: list[tuple[str, Palette, Art]] = [
     # hand, and deliberately the SHORTEST thing on the sheet: length is what
     # this sheet uses to say range, and the weapon you have to walk up to
     # somebody with has to read as short.
+    # --- the rotary -----------------------------------------------------------
+    # THE ONLY THING ON THIS SHEET WITH MASS ABOVE AND BELOW THE LINE, and
+    # that is the whole silhouette. Every firearm here breaks its outline
+    # DOWNWARD at the grip and is otherwise a long thin object; this one has a
+    # shroud sitting on top of the bore and a drum hanging under the middle of
+    # it, so it reads as a machine being carried rather than as a gun being
+    # aimed — which is exactly what it is.
+    #
+    # The barrels are CHROME against a STEEL receiver. That is the one detail
+    # that has to survive the 0.75 draw scale: a rotary cannon is a CLUSTER,
+    # and value is the only way to say cluster in seven pixels of length. The
+    # `x` between the receiver and the barrels is the gap the assembly turns
+    # in, and it is the same recess a port is everywhere else on the sheet.
+    #
+    # The drum is MAG steel, three rows deep, and it is the reason this weapon
+    # is legible from across a dark clearing with the lantern off: nothing
+    # else in the game has a round mass under the trigger hand.
+    (
+        "minigun",
+        {"r": STEEL, "b": CHROME, "k": POLY, "g": GRIP, "n": MAG, "m": CHROME},
+        [
+            ".....kkkkkkk.",
+            "..rrrbbbbbbbm",
+            "..rrrxbbbbbb.",
+            ".ggrnnnnnn...",
+            "gggnnnnnnn...",
+            "...nnnnnn....",
+            "....nnn......",
+        ],
+    ),
+    # --- the field gun --------------------------------------------------------
+    # THE ONE WEAPON ON THE SHEET WITH AN ACCENT ON TOP, and it is doing the
+    # same job the USP-S's can does: the reason to be holding this instead of
+    # something that kills is a thing the player has to be able to SEE in
+    # somebody's hand from the other side of a clearing.
+    #
+    # A pistol frame in CHROME — the brightest body on the sheet, because
+    # clinical is a VALUE before it is a hue — a glass emitter where the
+    # barrel should be, and a LENS vial standing proud of the slide. Two
+    # pixels of the sheet's one saturated accent (S12), spent on the only
+    # object in the game that puts health back.
+    #
+    # No brass, because there is no case: what leaves this is a gas dart, and
+    # `casings=0` on the catalog row is the same statement made in the
+    # simulation.
+    (
+        "medgun",
+        {"r": CHROME, "c": GLASS, "l": LENS, "f": CHROME, "g": GRIP, "n": MAG, "m": GLASS},
+        [
+            "...lll.....",
+            "..rrrRccccm",
+            "..rxrrccccc",
+            ".ffffx.ccc.",
+            ".ggg.......",
+            "ggn........",
+            "...........",
+        ],
+    ),
     (
         "knife",
         {"b": CHROME, "k": STEEL, "g": GRIP, "m": CHROME},
@@ -830,6 +888,14 @@ DRAW_SCALE = 0.75
 #: how a 16px sprite says "sidearm".
 SCALE: dict[str, float] = {
     "knife": 0.65,
+    # A LITTLE BIGGER THAN EVERY OTHER FIREARM, and for the shield's reason
+    # rather than the knife's. Three quarters is where a rifle stops
+    # out-measuring its owner, and a minigun is SUPPOSED to out-measure its
+    # owner — a rotary cannon drawn to the same rule as a FAMAS is a FAMAS
+    # with a drum on it. Not the shield's full size either: this is still
+    # being aimed, and past about 0.9 the barrel cluster reaches further in
+    # front of the body than the muzzle flash is anchored.
+    "minigun": 0.88,
     # THE ONE THING ON THIS SHEET DRAWN AT FULL SIZE. Everything else is
     # shrunk so it stops out-measuring the body carrying it; a shield is
     # SUPPOSED to out-measure the body — that is what it is for — and one

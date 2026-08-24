@@ -33,6 +33,7 @@ import { DeathScreen } from './DeathScreen';
 import { Armor } from './Armor';
 import { BatteryGauge } from './BatteryGauge';
 import { Hotbar } from './Hotbar';
+import { Ultimate } from './Ultimate';
 import { Medical } from './Medical';
 import { RerollPrompt } from './RerollPrompt';
 import { ControlsHint } from './ControlsHint';
@@ -145,16 +146,27 @@ export function Hud({ snapshot, minimapRef, error }: HudProps) {
             chrome,
           )}
         >
+          {/* DIRECTLY ABOVE THE BELT, because it is the belt's own
+              statement: what R does is decided entirely by what 1/2/3 last
+              chose, so the two panels change together and have to be read
+              together. It draws nothing at all for a weapon with no ultimate
+              — see `Ultimate`. */}
+          <Ultimate ultimate={snapshot.ultimate} />
           <Hotbar hotbar={snapshot.hotbar} />
           <Medical medical={snapshot.medical} />
           <BatteryGauge lantern={snapshot.lantern} />
           {/* DIRECTLY ABOVE THE VITALS, because it answers the same question
               the health bar answers one layer further out — what is between
               this body and the next blow — and the two are read together or
-              not at all. Always drawn, even with nothing on: the three empty
-              rows are the parts a blow can land on with nothing in the way,
-              and a region that appeared for the first time at the first plate
-              would be one more thing to learn mid-run. */}
+              not at all. Always drawn, even with nothing on: an empty box in
+              the shape of a helmet is a part a blow can land on with nothing
+              in the way, and a region that appeared for the first time at the
+              first plate would be one more thing to learn mid-run.
+
+              It is COLLAPSED by default and C expands it, like the bag. What
+              stays visible either way is the header — the set, the rating —
+              because "am I still covered" has to be answerable without a
+              keypress. */}
           <Armor armor={snapshot.armor} />
           <Vitals vitals={snapshot.vitals} />
         </div>

@@ -74,6 +74,24 @@ export function GearCardBody({ card, frame, className }: GearCardBodyProps) {
         </p>
       ) : null}
 
+      {/*
+        THE ULTIMATE, BY NAME. It is not a stat and it is not in the row list —
+        it is a line of its own, in the accent, under the numbers.
+
+        It earns the space at a SHOP TABLE more than anywhere else. Everything
+        above this line is comparable — damage against damage, rate against
+        rate — and this is the one thing on the card that is not a number at
+        all: it is the sentence "this weapon can do something the others
+        cannot, if you dress for it". A player choosing between a katana and an
+        axe with four hundred gold has no other way to find that out before
+        paying.
+      */}
+      {card.ultimate ? (
+        <p className="border-track-border text-ink-accent mt-0.5 border-t pt-1">
+          ⚡ {card.ultimate}
+        </p>
+      ) : null}
+
       {rest.length ? (
         <div className={cn('flex flex-col', lead ? null : 'border-track-border mt-0.5 border-t pt-1')}>
           {rest.map((stat) => (

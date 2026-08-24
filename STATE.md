@@ -9,7 +9,7 @@ recently changed system, when something looks like a regression, before
 modifying anything under *Do not touch*, or when the task asks what to work on
 next. Skip it for a self-contained change to a stable system.
 
-_Last verified: 2026-08-23 against `main` @ `91f0efa` — the T-01..T-10 pass below, then the DIFFICULTY pass and THE PACK under it._
+_Last verified: 2026-08-23 — THE BUILD PASS below (five armour slots + ultimates), then the T-01..T-10 pass, the DIFFICULTY pass and THE PACK under it._
 
 ## Current phase
 
@@ -20,6 +20,84 @@ knife got a real swing, the shotgun got its own dynamics, the machine got its
 ceremony.
 
 ## Currently working on
+
+- **THE BUILD PASS JUST LANDED. Two systems, and the second is the point of
+  the first: a player's gear was two independent dials and it is now a
+  CHARACTER.**
+
+  - **ARMOUR IS FIVE SLOTS AND IT IS DRAWN AS A BODY**
+    ([`docs/design/gear.md`](docs/design/gear.md)). It was three — head, body,
+    legs — which is what you write when armour is a stat, and the HUD that grew
+    out of it was three labelled rows with thin meters: a spreadsheet of a
+    costume. Now: a helmet, bracers, a breastplate, trousers and boots, drawn
+    as a figure (one box, three, two, two) with the piece's own sprite in each
+    box. Collapsed by default, C expands it, and the header — the SET and what
+    a blow costs — survives the collapse.
+    Two numbers moved as a consequence and both are derivations rather than
+    taste. `COVERAGE` is measured in PIXELS now (`_AREA`), because the arms are
+    the outer columns of the band the chest is in the middle of and five parts
+    do not fit in one dimension. And PRICE started reading coverage, because
+    charging the same for a helmet and a pair of boots would have put dead
+    content on the merchant's shelf — a piece is priced by what it will absorb
+    before the SET is finished, which makes the kevlar helmet two thirds of the
+    price of the whole suit. `test_quota.py` caught the knock-on immediately
+    and the supply line was re-fitted against real forests, as designed.
+  - **THE TOOLTIPS LOST TWO THIRDS OF THEIR ROWS.** Five kinds of row exist in
+    `gear-card.ts` now and no others — `DANO`, `TIROS/S`, `ARMADURA`,
+    `DURABILIDADE`, `MUNIÇÃO`. Everything cut was true and none of it ever
+    changed a decision in the half second before something reaches you.
+  - **EVERY WEAPON OWNS ONE ULTIMATE, AND ARMOUR IS WHAT UNLOCKS IT**
+    ([`docs/design/ultimates.md`](docs/design/ultimates.md), new). R. Four
+    rows, four verbs: Corte Sombrio opens a lane through a pack, Tiro Extremo
+    is one round that deletes what it touches, Tempestade de Balas is six
+    seconds of not counting ammunition, Protocolo de Emergência is a pulse that
+    puts the party back up.
+    **Nothing anywhere names a combination.** A weapon carries tags, a material
+    carries tags, an ultimate lists what it needs, and `test_ultimates.py`
+    builds a fifth ultimate inside the test for a weapon that has never had one
+    and drives it through the unmodified room.
+    The balance claim it rests on: NO RUNG OF THE ARMOUR LADDER UNLOCKS TWO.
+    Cloth is the medic's, leather the assassin's, steel the gunner's, kevlar
+    the marksman's — so the best plate in the game locks three ultimates as
+    surely as it unlocks the fourth, and "buy the most expensive thing you can
+    afford" stopped being the whole of the armour decision.
+  - **TWO NEW WEAPONS, and one of them cannot hurt anything.** The MINIGUN
+    (the most expensive thing on the shelf, the highest dps in the game,
+    thirteen seconds of held trigger before a full rifle pouch is gone — which
+    is why its ultimate is free ammunition rather than bigger numbers) and the
+    PISTOLA DE CAMPO, a dart gun that puts four points back into a team-mate
+    and does nothing at all to a zombie. It costs a GUN CELL, which is the riot
+    shield's price and the same argument.
+  - **HEALING HAS A DOOR NOW.** `Room.heal_player`. It used to be one PLACE
+    because there was one caller; `AGENTS.md` recorded that as a rule and the
+    rule was always about the door. Nothing about the ban changed: no
+    regeneration, no heal on extraction, and a downed body is never healed by
+    anything.
+  - **NOT PLAYED, AND THE PANE STILL WILL NOT COMPOSITE.** Third pass running
+    into this: `document.hidden` is permanently true, `requestAnimationFrame`
+    never fires, and no screenshot is possible. What WAS verified from a
+    browser against a live server, further than the last two passes managed:
+    the production build runs (a shimmed rAF gets the loop to 54 fps), a room
+    is created and entered, every new asset serves, the whole config contract
+    lands on the wire (five slots, the mannequin layout, the ultimate catalog,
+    the tag vocabulary), the armour mannequin lays out at exactly the intended
+    geometry, C expands the panel upward to 185px leaving the vitals where they
+    are, and the ultimate panel renders above the belt in its LOCKED state with
+    the icon greyscaled and the track hollow. Zero console errors.
+    What wants eyes on it: whether `charge_full` brings an ultimate round too
+    often or never; whether six seconds of Tempestade de Balas reads as an
+    event or as a stat; whether a locked panel over the belt is a goal or is
+    nagging; whether the bracers (two pixels either side of the chest) and the
+    boots (one row, flared) read on a moving body; and whether the medic build
+    is playable with three people or needs a fourth.
+  - **NO DEDICATED AUDIO.** An activation borrows the level-up's summon column
+    and its sample, pitched down. Four recipes in `make_audio.py` and one call
+    site each is the largest remaining hole in this pass.
+  - **`Room.shot_events` IS DECLARED TWICE** — once for gunfire (~line 241),
+    once for creature projectiles (~line 374) — so the two share one list and
+    each is broadcast as the other kind of event. Pre-existing, found while
+    adding the ultimate volley's own lists (which are deliberately separate for
+    exactly this reason), and left alone: it is not this pass.
 
 - **T-01 THROUGH T-10 JUST LANDED. The loop was complete and had nothing at
   stake in it; this is the pass that gave it stakes, moments and choices.**

@@ -169,8 +169,8 @@ def test_armor_rating() -> None:
     for slot in armor.SLOTS:
         player.armor.equip(f"{slot}_steel")
     check(
-        abs(player.armor.weight - 3 * armor.weight_of(3)) < 1e-6,
-        "a set weighs its three plates",
+        abs(player.armor.weight - len(armor.SLOTS) * armor.weight_of(3)) < 1e-6,
+        "a set weighs one plate per slot",
     )
     check(
         abs(player.carry_weight - (player.armor.weight + player.hotbar.held_weight)) < 1e-6,

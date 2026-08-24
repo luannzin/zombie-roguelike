@@ -14,7 +14,7 @@ and nowhere near the frame loop.
   `ReadyCount`, `Balance`, `QuestLog`, `QuestRow`, `QuestAnnounce`, `QuestCount`, `InteractPrompt`, `LootPrompt`, `CratePrompt`, `RiftPrompt`, `BuyPrompt`, `MachinePrompt`, `ExitGuide`, `SkillTray`, `SkillIcon`, `SkillCanIcon`, `Inventory`, `InventorySlot`,
   `InventoryGold`, `WeightBar`, `LootIcon`, `CoinIcon`, `DarkCoinIcon`, `SlotValue`, `LootFly`, `LootCard`,
   `LootCardRow`, `TooltipCard`, `InventoryGhost`, `Tooltip`, `TooltipKey`,
-  `Hotbar`, `HotbarSlot`, `Armor`, `GearCard`, `HoverCard`.
+  `Hotbar`, `HotbarSlot`, `Armor`, `Ultimate`, `UltimateIcon`, `GearCard`, `HoverCard`.
 - `lobby/` — `CampfireCanvas` (mounts `LobbyScene`; owns the rest-shot fire
   position via `campFireAnchor`, not via per-screen props), `RoomCode`,
   `PlayerRoster`.
@@ -32,6 +32,53 @@ and this component is never unmounted for the whole of a run, so an
 unscoped memory silently swallowed the extraction objective on every night
 after the first. Anything else in the HUD that keys off a quest id inherits
 the same rule.
+
+### The armour panel is a BODY, and it is collapsed by default
+
+`hud/Armor.tsx` draws a figure rather than a list: one box, then three, then
+two, then two. The counts ARE the silhouette — a helmet over arm/chest/arm,
+trousers, boots — and a hole in it is a part of the player a blow can land on
+with nothing in the way, which is a louder sentence than an empty labelled row
+was. A PAIR is two boxes showing one piece, because the arms, the legs and the
+boots are pairs on a body and one object in the catalog; both boxes hover the
+same card, and only the first publishes the fly anchor.
+
+The shape is NOT decided here. `config.armorBodyLayout` ships the row and cell
+counts, so a sixth slot is a row in `armor.py` plus a shape in two generators
+and this file does not change. The one arrangement decision this component
+does make is that a PAIR is split around a SINGLE on a shared row — a torso is
+arm / chest / arm — because that is a drawing decision rather than a data one.
+
+C expands it, TAB expands the bag, and the two are deliberately separate keys:
+one answers "what am I carrying out" and the other "what is keeping me alive".
+COLLAPSED IS NOT EMPTY — the header still says the set, the rating and how much
+of the body is covered, because "am I still protected" has to be answerable
+without a keypress. The header also does not move when the drawer opens: the
+panel grows UPWARD, since the column is bottom-anchored and the vitals under it
+are where the player's eye already is.
+
+### The ultimate panel is the belt's own statement
+
+`hud/Ultimate.tsx` sits directly above `Hotbar` and draws nothing at all for a
+weapon with no ultimate. That is the opposite call to the armour panel's empty
+boxes and the skill tray's "nenhuma", and the difference is what the absence
+MEANS: a bare armour slot is a hole in you, and a knife having no ultimate is
+simply what a knife is.
+
+Five states on one line — locked, charging, ready, active, and back to charging
+— and no cooldown state, because there is no cooldown (see
+[`docs/design/ultimates.md`](../../../docs/design/ultimates.md)). The bar
+DRAINS while a window is open and fills the rest of the time, and it is the
+same bar: one meter running both ways is what makes the window read as the
+ultimate being spent rather than as a second timer appearing. The lock explains
+itself on hover and nowhere else, and the requirement list is shown even when
+every row is met — a list that vanished on success would teach the system to
+exactly one player.
+
+`UltimateIcon` is the third CSS-window icon component (`LootIcon`, `SkillIcon`)
+and deliberately not a generalisation of either: the three sheets have
+different cells, roots and reasons to change. State is a FILTER on one image,
+never a different frame, so a player learns one mark per weapon.
 
 ### One card describes a piece of gear, and three surfaces show it
 

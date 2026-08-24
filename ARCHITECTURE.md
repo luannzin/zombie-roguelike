@@ -115,6 +115,8 @@ rather than read off the wire.
 | extraction | `rift.py`, `entrance.py`, `quests.py` | `render/layers/rift.ts`, `game/pad-cargo.ts`, `exit-guide.ts` | [`extraction.md`](docs/design/extraction.md) |
 | loot / inventory / currency | `loot.py`, `inventory.py`, `coins.py` | `components/hud/Inventory.tsx`, `game/loot-flies.ts` | [`player.md`](docs/design/player.md) |
 | store / economy | `store.py` | `render/layers/store.ts`, `layers/payout.ts`, `game/payout.ts` | [`store.md`](docs/design/store.md) |
+| gear / armour | `armor.py`, `weapons.py` (the belt) | `components/hud/Armor.tsx`, `game/gear-card.ts` | [`gear.md`](docs/design/gear.md) |
+| ultimates / synergy | `ultimates.py`, `projectiles.py` | `components/hud/Ultimate.tsx`, `render/ultimates.ts` | [`ultimates.md`](docs/design/ultimates.md) |
 | skills / machine | `skills.py`, `machine.py` | `game/machine.ts`, `render/machine.ts`, `skills.ts` | [`skills.md`](docs/design/skills.md) |
 | rendering | — | `render/` (+ `render/layers/`) | `client/src/render/AGENTS.md` |
 | audio | `tools/make_audio.py` (generation) | `audio/` | [`presentation.md`](docs/design/presentation.md) |

@@ -184,6 +184,28 @@ class Use:
 
 
 @dataclass
+class UltState:
+    """An ultimate that is still HAPPENING. Absent the rest of the time.
+
+    Only `Empower` rows ever produce one — a volley and an aura resolve on the
+    frame they are pressed and have nothing left to tick. So this is not "the
+    ultimate", it is the WINDOW: the seconds during which the weapon in hand
+    is a different weapon.
+
+    IT CARRIES BOTH BUDGETS AND ENDS ON WHICHEVER RUNS OUT FIRST. Seconds
+    alone cannot express "the next round"; shots alone would be a buff you
+    could carry into the next fight, and an ultimate you can bank is an
+    ultimate that stops being a decision about timing.
+    """
+
+    key: str
+    #: Seconds left.
+    left: float
+    #: Shots left, or -1 when the window is not budgeted in shots.
+    shots: int = -1
+
+
+@dataclass
 class Player:
     id: str
     name: str
@@ -255,6 +277,24 @@ class Player:
     #: Seconds left to keep the chain. Runs out and the next swing is a first
     #: slash again.
     combo_left: float = 0.0
+    #: THE ULTIMATE BAR, PER ULTIMATE. Keyed by `ultimates.UltimateDef.key`
+    #: and never by weapon slot, so a katana's charge sits on the katana while
+    #: its owner spends a night shooting a Deagle and is still there when they
+    #: draw it again.
+    #:
+    #: One meter shared across the belt would have been a third of the code
+    #: and a completely different game: it would mean the correct play is to
+    #: charge with whatever is most convenient and fire with whatever is most
+    #: powerful, which is the opposite of the thing this system exists to make
+    #: people do.
+    #:
+    #: Only ever written for an ultimate that is UNLOCKED — see
+    #: `Room._charge_ult`. A locked bar stays absent, so "locked" and "empty"
+    #: are the same state on the wire and the HUD cannot show a full bar under
+    #: a padlock.
+    ult_charge: dict[str, float] = field(default_factory=dict)
+    #: The window an ultimate opened, or None. See `UltState`.
+    ult: "UltState | None" = None
     #: THE SHIELD IS UP. Latched here rather than read off the input at every
     #: reader, because three things ask the question on different clocks —
     #: the walk (`simulation.step_player`), the blow
@@ -355,6 +395,11 @@ class Player:
         self.aim_hold = 0.0
         self.combo_step = 0
         self.combo_left = 0.0
+        # THE BAR IS A NIGHT'S WORK AND IT GOES WITH THE NIGHT. It was earned
+        # with a weapon the wipe just took away, so keeping it would hand the
+        # next run a full ultimate the moment it bought the gun back.
+        self.ult_charge = {}
+        self.ult = None
         self.blocking = False
         self.block_speed = 1.0
         self.stagger = 0.0
@@ -475,6 +520,13 @@ class Player:
         # the moment it describes.
         if self.winded:
             row["wind"] = True
+        # AN ULTIMATE IS RUNNING. On the TICK row rather than the roster for
+        # the shield's reason: it is a POSE — every client draws the charge
+        # burning off a body that has one up, and at five hertz a six-second
+        # window would start and end visibly late on everybody else's screen.
+        # Omitted the rest of the time, which is almost always.
+        if self.ult is not None:
+            row["ult"] = {"k": self.ult.key, "t": round(max(0.0, self.ult.left), 2)}
         # Omitted for everybody who is not pouring, which is everybody almost
         # all of the time — this is a per-tick row and a field that is null for
         # eight players costs more than the one it describes.
@@ -546,6 +598,13 @@ class Player:
             # teammate's helmet is a thing you can see from across a clearing.
             # Worn slots only — an empty slot is an absent key.
             "armor": self.armor.to_payload(),
+            # THE ULTIMATE BARS. On the ROSTER and not the tick row, because
+            # this is a METER and not a pose: only its owner reads it, it is
+            # drawn as a fill rather than as an event, and five times a second
+            # is already faster than a bar that takes a night to fill needs.
+            # Absent keys are locked-or-empty, which are the same thing here —
+            # see `Player.ult_charge`.
+            "ult": {key: round(value, 1) for key, value in self.ult_charge.items() if value > 0},
             # THE TWO MEDICAL CELLS. On the ROSTER and not the tick row: they
             # change when somebody picks a kit up or spends one, which is a
             # handful of times a night, and two strings thirty times a second

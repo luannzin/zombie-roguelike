@@ -1,0 +1,18 @@
+{
+  "cell": 20,
+  "frames": 4,
+  "items": {
+    "shadow_slash": {
+      "frame": 0
+    },
+    "extreme_shot": {
+      "frame": 1
+    },
+    "bullet_storm": {
+      "frame": 2
+    },
+    "emergency_protocol": {
+      "frame": 3
+    }
+  }
+}

@@ -5,13 +5,14 @@ Nearest contracts: [`server/app/AGENTS.md`](../../server/app/AGENTS.md),
 
 | | |
 | --- | --- |
-| **Owns** | the blade catalog and the cell it lives in, the twelve worn pieces and their four materials, the shield, and everything that stands between a blow and a player's health |
+| **Owns** | the blade catalog and the cell it lives in, the twenty worn pieces over five slots and four materials, what a SET is called and what wearing it means, the shield, and everything that stands between a blow and a player's health |
 | **Inputs** | `InputPacket.block` (right mouse), `{type:"collect"}`, `{type:"buy"}` |
-| **Outputs** | roster `armor` / `shield`, player tick `blk`, `snapshot.armorHits`, `welcome.config.armor` / `armorSlots` / `armorCoverage` / `gunSlots` / `bladeSlot` / `startingBlade` |
+| **Outputs** | roster `armor` / `shield`, player tick `blk`, `snapshot.armorHits`, `welcome.config.armor` / `armorSlots` / `armorSlotNames` / `armorBodyLayout` / `armorCoverage` / `gunSlots` / `bladeSlot` / `startingBlade` |
 | **Depends on** | `enemies.ZOMBIE` (the unit, twice over), `weapons.py` (the belt), `loot.py` (catalog rows), `store.py` (one of two sources), `skills.Mods.armor` (toughness, which is not this) |
+| **Feeds** | [`ultimates.md`](ultimates.md) — a material's `tags` and `Loadout.tag_pieces` are half of every synergy requirement. This module does not know what an ultimate is |
 | **Consumers** | `Room.damage_player`, `simulation.py` (the walk), `client/src/render/layers/entities.ts` (`gear`), `client/src/components/hud/Armor.tsx` |
 | **Authoritative** | every durability, where a blow lands, whether the shield caught it, what a pickup displaces |
-| **Presentation** | the overlay on the body, the raised-shield pose, the three bars, the break |
+| **Presentation** | the overlay on the body, the raised-shield pose, the mannequin, the break |
 
 ## Invariants
 
@@ -20,12 +21,13 @@ Nearest contracts: [`server/app/AGENTS.md`](../../server/app/AGENTS.md),
 - **A blade is a catalog row and no code.** `Room.handle_attack` dispatches on the weapon's `melee` block; a shield dispatches on its `shield` block. Neither dispatches on `kind`.
 - **Every blade is the knife's own chain through seven multipliers** (`BladeProfile`). The knife's profile is all ones, and `test_gear.py` checks that the generator reproduces the weapon it was derived from exactly.
 - **Damage arrives at one door.** Shield, then plate, then `Mods.armor`, in `Room.damage_player`. Nothing else mitigates anything.
-- **Material sets the numbers, slot sets where the hits land.** Armour, durability, weight and price are functions of the tier alone; coverage is the only thing a slot decides, and it must sum to a whole body (`_check_coverage`).
+- **Material sets the numbers, slot sets where the hits land.** Armour, durability and weight are functions of the tier alone. Coverage is what a slot decides, it must sum to a whole body (`_check_coverage`), and since there were five slots it also decides PRICE — see `value_of`.
+- **A material is a rung AND an identity.** One tier, one set name, one tag set, all on the same row — see [`ultimates.md`](ultimates.md) for why the two axes are deliberately not separable.
 - **Armour is FLAT, in damage points.** A plate takes a fixed number off every blow that lands on its part — never a percentage, because a proportional mitigation cannot be printed as a number without naming the blow it is a proportion of.
 - **Armour never reaches zero damage taken.** `CEILING_SHARE` caps the top rung under one full claw, and `damage_player`'s `max(1, ...)` is the floor under everything. The thing that stops a blow outright is the shield, and you have to be holding it, facing the right way, in place of a gun.
 - **Worn armour is on the WALK, never in the bag.** `Player.carry_weight` sums it; `inv.w` never does.
 - **A shield is UP on the tick row (`blk`) and its LIFE is on the roster.** A pose at 5 Hz would let a player watch a blow land on a shield that had not come up yet.
-- **Never hardcode any of this client-side.** Twelve pieces, three slots, the coverage table and the belt's own split all arrive in `welcome.config`.
+- **Never hardcode any of this client-side.** Twenty pieces, five slots, their names, the coverage table, the FIGURE they are drawn as (`BODY_LAYOUT`) and the belt's own split all arrive in `welcome.config`.
 
 ## Danger zones
 
@@ -42,14 +44,15 @@ Nearest contracts: [`server/app/AGENTS.md`](../../server/app/AGENTS.md),
 | add a lâmina | one `BladeProfile` in `server/app/weapons.py` + tags in `loot._BLADE_TAGS` + an art map in `server/tools/make_guns.py` (appended) |
 | retune every blade at once | `weapons._CHAIN` — the knife's own beats, which every blade is a multiple of |
 | a blade's price | nothing: `blade_power` is throughput times ground covered, and `BLADE_VALUE_CURVE` is the only knob |
-| add an armour material | one row in `armor.MATERIALS` + a ramp letter in `make_loot._ARMOR_LETTERS` + one in `make_armor.MATERIALS`, then rerun both generators |
-| add an armour SLOT | `armor.SLOTS` + `COVERAGE` + `SLOT_NAMES` + `_NAMES` + a template in `make_armor.SHAPES` and `make_loot._ARMOR_FORMS` |
+| add an armour material | one row in `armor.MATERIALS` (tier, set name, tags) + a ramp letter in `make_loot._ARMOR_LETTERS` + one in `make_armor.MATERIALS`, then rerun both generators |
+| add an armour SLOT | `armor.SLOTS` + `_AREA` + `SLOT_NAMES` + `BODY_LAYOUT` + `_NAMES` + a template in `make_armor.SHAPES` and `make_loot._ARMOR_FORMS`. The HUD does not change |
 | how much a plate stops or survives | `armor.CEILING_SHARE`, `HITS_BASE` — never a per-piece number |
-| where a blow lands | `armor.COVERAGE`, and it is the player sprite's own row bands. Changing it is changing a fact about the art |
+| where a blow lands | `armor._AREA`, and it is the pixels the player sprite actually spends. Changing it is changing a fact about the art |
 | the shield's numbers | `armor.SHIELD_*` + `shield_hp` / `shield_value` / `shield_weight` |
 | what blocking costs the walk | `armor.SHIELD_SPEED` — and it lands on `Player.block_speed` / `MovableState.blockSpeed`, which is a MIRROR |
 | the block pose | `client/src/game/entity-visuals.ts` (`GUARD_*`, `guard()`), which is the brace's opposite on every axis |
-| the three bars and the shield row | `client/src/components/hud/Armor.tsx`, `Game.armorHud()` |
+| the mannequin and the shield row | `client/src/components/hud/Armor.tsx`, `Game.armorHud()` |
+| where a slot sits on the FIGURE | `armor.BODY_LAYOUT` — shipped, so a sixth slot is not a client change |
 | WHAT a card says about a piece | `client/src/game/gear-card.ts` — one function, used by the belt, the armour panel and the shop |
 | how a card LOOKS | `client/src/components/hud/GearCard.tsx` (rows) + `HoverCard.tsx` (the portal and the fit) |
 | why a pickup was refused | `client/src/game/interaction.ts` (`ammoRefusal`, `HudLootPrompt.reason`) + `LootPrompt.tsx` |
@@ -112,6 +115,88 @@ below).
   economy to protect, and a run that opens on the knife with no money needs a
   route to better steel that does not go through a shop it cannot afford. A
   hatchet in a logging camp is also simply what is there.
+- **FIVE PIECES, BECAUSE ARMOUR IS SOMETHING YOU ARE WEARING.** It was three
+  — head, body, legs — and three is what you write when armour is a STAT: a
+  rating, a durability, a bar. It is not what a player is doing when they put a
+  helmet on, and the HUD that grew out of it said so plainly. Three labelled
+  rows with thin meters beside them is a spreadsheet of a costume, and a player
+  could pick up a pair of steel greaves, wear them all night and never once see
+  greaves.
+  There are five now — a helmet, bracers, a breastplate, trousers and boots —
+  and the panel draws them as a BODY rather than as a list: one box, then
+  three, then two, then two, which is a person seen from the front. The rule
+  underneath did not change and did not need to. What changed is that the slots
+  are finally enough of a person that the picture can be one, and that a hole
+  in the picture is a part of you the next blow can land on with nothing in the
+  way — which is a far louder sentence than an empty row was.
+  The cost was paid once and is bounded: twenty catalog rows instead of twelve,
+  five icon shapes, five overlays. Nothing downstream counts them, and
+  `BODY_LAYOUT` ships so a sixth is not a client change.
+- **COVERAGE IS MEASURED IN PIXELS NOW, NOT IN ROWS, AND THAT IS FORCED BY THE
+  SPLIT.** With three slots the sprite's row bands were enough — head 1-8,
+  torso 9-12, legs 13-15 — and the shares fell straight out of the row counts.
+  Five slots do not fit in one dimension: the arms are not a BAND of the
+  figure, they are the outer columns of the band the chest is in the middle of,
+  and boots are one row of a band the shins share. So `_AREA` is the area each
+  part actually occupies on the player sheet, read the same way
+  `make_armor.py` reads it, and `COVERAGE` is that normalised.
+  The helmet is still most of the body (58%), which is still not a balance
+  decision anybody made — it is what S17's proportion says. What the split adds
+  is the OTHER end: boots answer about one blow in twenty-three.
+- **WHICH IS WHY PRICE STARTED READING COVERAGE, AND IT IS THE ONLY NUMBER
+  ALLOWED TO.** With three parts of roughly comparable size, pricing every
+  plate off its material alone was close enough to honest. It is not close
+  enough at five — charging the same for a helmet and a pair of boots would put
+  a piece on the merchant's shelf that no informed party would ever buy, which
+  is dead content with a price tag on it.
+  So a piece is priced by what it will actually absorb BEFORE THE SET IS
+  FINISHED. A set fails when its busiest part does — the helmet, always — and
+  every other piece spends only its own share of that same span. The helmet
+  therefore keeps exactly the number the old three-way ladder gave it and the
+  rest come out at what they are worth beside it. Read the result once, because
+  it is the clearest statement this system makes about itself: at the top of
+  the ladder the helmet is two thirds of the price of the whole suit. That IS
+  the game — a party's first armour purchase should be a helmet, and the shelf
+  now says so without a tutorial line.
+  It is still `value_from_hp`, the one curve everything that stops a blow is
+  priced off. A second curve for "small pieces" would be a second opinion about
+  one question.
+- **AND WEIGHT IS AUTHORED PER SET, NOT PER PIECE.** `SET_KG_AT_TOP` is the
+  number that was tuned and `KG_BASE` is derived from it. Splitting three
+  pieces into five at a fixed per-piece weight would have quietly made a full
+  suit two thirds heavier than the figure this system was balanced against, and
+  nothing would have failed — the player would simply have been slower for a
+  night and nobody would have known why.
+- **THE PANEL IS COLLAPSED BY DEFAULT AND C EXPANDS IT, AND COLLAPSED IS NOT
+  EMPTY.** The bag and the body are two different questions — what am I
+  carrying out, and what is keeping me alive — so they are two keys; folding
+  them into one toggle would make a player checking their helmet look at their
+  loot as well, in the corner of the screen they are fighting toward.
+  What survives the collapse is the header: the SET, and what a blow costs. The
+  old panel's one genuine virtue was that "am I still covered" was answerable
+  without a keypress, and losing it would have been a bad trade. What expanding
+  buys is WHICH piece and WHAT it is, which is a question you ask between
+  fights. The header also does not move a pixel when the drawer opens — the
+  panel grows upward, because the column is bottom-anchored and the vitals
+  under it must stay where the player's eye already is.
+- **THE CARDS PRINT FIVE KINDS OF ROW AND NO OTHERS.** `DANO`, `TIROS/S`,
+  `ARMADURA`, `DURABILIDADE`, `MUNIÇÃO`. The first cut of these cards printed
+  everything that was true — a rifle came with damage, cadence, damage per
+  second, range, noise, calibre and weight — and every one of those numbers was
+  real and the card was still wrong: a hover card is read in the half second
+  before something reaches you, and a seven-row table is not read at all. It is
+  dismissed, then the player stops hovering, then the whole system may as well
+  not exist.
+  Everything cut was cut on one test — would a player ever choose differently
+  because of it, in the moment they are looking at this card. Range and noise
+  are real and are learned by SHOOTING. Weight is real and is already a bar on
+  the bag. A material is already in the object's own name. "Acertos aqui" was
+  an interesting fact about anatomy and never once a decision.
+  Two rows that are not numbers survive, and both earn it: a shield's ÂNGULO,
+  because its durability is a lie by omission without the rule that it only
+  answers what it is facing; and a weapon's ULTIMATE, because that is the
+  single largest thing a player is choosing between at a shop table and it is
+  invisible everywhere else until they already own the weapon.
 - **ARMOUR IS FLAT, AND THAT IS A DECISION ABOUT WHAT THE PLAYER READS.** It
   began as a fraction — steel took 56% of a blow — which is a clean rule and
   an unreadable stat. A percentage cannot go on a card without naming the blow
@@ -135,21 +220,21 @@ below).
   zombie can do. Everything is a function of that one number plus the
   MATERIALS, the SLOTS and one exponent, and there is not a hand-picked
   durability figure anywhere.
-- **MATERIAL SETS THE NUMBERS, SLOT SETS WHERE THE HITS LAND.** Twelve rows
+- **MATERIAL SETS THE NUMBERS, SLOT SETS WHERE THE HITS LAND.** Twenty rows
   stay readable because a player who has learnt what leather does has learnt
-  it for all three slots, and the only question left about a piece is whether
+  it for all five slots, and the only question left about a piece is whether
   they are already wearing something better THERE. Soak is a quarter of the
   ceiling per rung, so "one better" means the same thing everywhere on the
   ladder; durability is `HITS_BASE * tier` blows landing on that part; weight
   and price come off the tier too.
-  It is also why the ICONS are three shapes in four colours — which is the
+  It is also why the ICONS are five shapes in four colours — which is the
   exact opposite of the creature rule, where three variants must be three
   silhouettes. There the question is "what is that"; here the player already
   knows it is a helmet and the question is "is it better than mine". A ladder
   whose rungs are four different shapes cannot be ordered at a glance.
-- **WHERE A BLOW LANDS IS THE SPRITE'S OWN ANATOMY.** `COVERAGE` is head 7,
-  torso 4, legs 3 — the rows `make_player.py` actually spends on a fifteen-row
-  figure, which is S17's proportion. So the HELMET is the piece that matters
+- **WHERE A BLOW LANDS IS THE SPRITE'S OWN ANATOMY.** `COVERAGE` is derived
+  from `_AREA` — the pixels `make_player.py` actually spends on each part of a
+  fifteen-row figure, which is S17's proportion. So the HELMET is the piece that matters
   most on this character, and that is not a balance decision anybody made: it
   is what the silhouette says. A player aiming at this sprite is aiming mostly
   at a head, and a rule the game never shows you is a rule nobody learns.
@@ -172,6 +257,19 @@ below).
   tough about — which is also why the plate is applied first. Putting them in
   one field would make "you found a chestplate" and "you rolled an armour
   skill" the same event, and they are not.
+- **A PIECE OF ARMOUR IS NOW ALSO A CLAIM ABOUT WHAT YOU ARE.** Every
+  material carries a SET NAME and a set of TAGS, and an ultimate's
+  requirements are written against them — see [`ultimates.md`](ultimates.md).
+  Nothing in this module knows what an ultimate is: armour answers "what am I
+  wearing", the ultimate catalog answers "what does that unlock", and the only
+  thing travelling between them is a string. That separation is what lets the
+  synergy system grow without this file changing, and it is why the tags are
+  on `Material` rather than in a table somewhere that knows about both.
+  The consequence for THIS system is real and deliberate: the best plate in
+  the game carries exactly one identity, so wearing it locks three ultimates
+  as surely as it unlocks the fourth. "Buy the most expensive thing you can
+  afford" stopped being the whole of the armour decision on the day that
+  became true.
 - **ARMOUR IS FOUND AND BOUGHT BOTH, AND IT IS THE FIRST THING IN THE GAME
   THAT IS.** A firearm can only be bought, because the merchant being the only
   source is what makes ammunition mean anything. A lâmina can be found,
@@ -232,7 +330,7 @@ below).
 ## Server contracts
 
 - **`loot.ItemDef.pocket` is the only thing that decides where something
-  lands**, and there are four answers because a player has four containers.
+  lands**, and there are five answers because a player has five containers.
   `Room.take_gear` is the one door both a pickup and a purchase go through, so
   a table selling a helmet and a cabin dropping one cannot disagree about what
   happens when you already have one.
@@ -322,6 +420,15 @@ below).
   registered on measured bands and `make_armor._check` fails the build if one
   leaves the grid, but nobody has watched a body in a full steel set walk
   across a clearing to see whether the plate reads as worn or as painted on.
+  The BRACERS are the piece to watch: they are two columns either side of the
+  chest and they are the one overlay drawn off the walk block that the HOLD
+  pose actually moves, so they stay put on the frames the weapon arm is
+  raised.
+- **The boots are one row.** Row 15 is the whole budget — it is what the
+  contact shadow sits under and what the walk lands on — so the overlay is a
+  single lit band, two columns wider on each side than the trouser cuff above
+  it. That flare is the entire read, and whether it survives a body walking
+  away from the camera is unknown.
 - **The shield has no impact art.** A blow stopping dead on it currently looks
   the same as a blow missing. The spark belongs in `weapon-vfx` and wants the
   hit point, which `armorHits` already carries.

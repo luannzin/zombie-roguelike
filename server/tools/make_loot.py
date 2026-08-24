@@ -1360,38 +1360,107 @@ _ARMOR_FORMS: dict[str, Art] = {
         ".##..##",
         "..#...#",
     ],
-    # SHOULDERS. The two raised pauldrons are the top contour and they are what
-    # separate this from the leggings below at a glance — one shape opens
-    # upward and the other closes. The seam runs down the left of centre
-    # rather than through it, which is both how a real cuirass is laced and
-    # what keeps the icon off its own axis of symmetry.
+    # BRAÇADEIRAS: A PAIR, AND THE PAIR IS THE WHOLE READ.
+    #
+    # Every other icon on this sheet is one object. This one has to say "two of
+    # something you strap on", and there is no way to say that with a single
+    # shape — a lone vambrace at 16px is a cuff, which is a bracelet, which is
+    # treasure. So: two identical guards, STAGGERED rather than side by side.
+    # Side by side is a bilateral figure and reads as a UI glyph (the same
+    # reason nothing else here is symmetric); staggered is how a pair of
+    # anything is laid on a table.
+    #
+    # THE STRAP IS THE OBJECT, AND THERE IS EXACTLY ONE OF THEM. The first cut
+    # pinched each guard at the wrist to make an hourglass, on the theory that
+    # an outline which goes in and comes back out is unlike anything else on
+    # the armour sheet. It is — it is a capital T. The second cut put two
+    # recessed bands across a plain cuff, which is what a buckle looks like and
+    # also, with two enclosed counters stacked in a four-wide box, what a
+    # capital B looks like. One band, off centre, and the cuff tapering under
+    # it: a counter and a taper is a strapped tube, and the eye has no letter
+    # to fall back on.
+    "arms": [
+        ".@@@.....",
+        "####.....",
+        "#xx#.....",
+        "####.@@@.",
+        "####.####",
+        ".###.#xx#",
+        ".##..####",
+        ".....####",
+        "......###",
+        "......##.",
+    ],
+    # A CUIRASS: SHOULDERS, A NECK CUT OUT OF THEM, AND A TAPER TO THE WAIST.
+    #
+    # The two raised pauldrons are the top contour and the notch between them
+    # is what makes them pauldrons rather than a flat top edge — a torso icon
+    # without a neck is a slab. Under that it is broad and then narrows, which
+    # is the one direction none of its neighbours on this sheet go: the
+    # trousers fork, the bracers stack, and this closes.
+    #
+    # The lacing seam runs down the left of centre rather than through it,
+    # which is both how a real cuirass is laced and what keeps the icon off its
+    # own axis of symmetry.
     "body": [
-        ".@@..@@.",
-        "@######@",
+        "@@@..@@@",
+        "########",
+        "###xx###",
+        "########",
         "########",
         "###x####",
-        "###x####",
-        ".##x####",
-        ".#######",
+        "########",
         ".######.",
-        "..#####.",
-        "..###.#.",
+        ".######.",
+        "..####..",
     ],
-    # A BELT AND TWO LEGS. The band across the top is the read — greaves
-    # without one are two vertical bars and could be anything — and the legs
-    # are deliberately unequal, the right one a row longer, so the shape leans
-    # the way everything else on this sheet does.
+    # CALÇAS: A WAISTBAND AND TWO LEGS THAT END ABOVE THE FLOOR.
+    #
+    # The band across the top is the read — two vertical bars without one could
+    # be anything — and the FORK is what separates this from the cuirass: a
+    # breastplate is one closed mass and trousers are one mass that splits. The
+    # gap between the legs is two columns rather than one, because a
+    # single-column gap at this size is closed by the outline pass and what
+    # comes back is an arch.
+    #
+    # THEY STOP SHORT, and that is a change the boots forced. When legs were
+    # the bottom of the body this shape ran to the floor; it cannot now, or the
+    # two icons say the same thing about the same part of a person. The right
+    # leg still runs two rows longer than the left, which is the lean
+    # everything on this sheet has.
     "legs": [
         ".@@@@@@.",
         "########",
         "########",
-        ".###x###",
-        ".###x###",
-        ".###x###",
-        ".###x###",
-        "..##x###",
-        "..##..##",
+        "###xx###",
+        "###..###",
+        "###..###",
+        "###..###",
+        "###..###",
+        "###...##",
         "..#...##",
+    ],
+    # BOTAS: TWO SHAPES THAT TURN A CORNER.
+    #
+    # An L is the cheapest unmistakable silhouette in this whole catalog — a
+    # shaft going up and a foot going forward — and nothing else on the armour
+    # sheet has a horizontal run at the bottom of it. That is the entire design
+    # of this icon: the trousers fork downward, the bracers stack, and these
+    # turn.
+    #
+    # They are drawn BIG for their frame, which is the fix the first cut needed:
+    # a boot small enough to leave margin on all four sides loses its sole to
+    # the contact band and comes back as a block. The foot has to be two rows
+    # deep and reach past the shaft, or the corner is not a corner.
+    "feet": [
+        "@@@..........",
+        "###..........",
+        "###...@@@....",
+        "#xx...###....",
+        "######.###...",
+        "######.#xx...",
+        ".......######",
+        ".......######",
     ],
 }
 
@@ -1410,7 +1479,7 @@ _ARMOR_LETTERS: dict[str, str] = {
 
 
 def _armor_icons() -> list[tuple[str, Art]]:
-    """Twelve icons out of three templates and four letters.
+    """Twenty icons out of five templates and four letters.
 
     Keyed to match `server/app/armor.ArmorDef.key` — `{slot}_{material}` —
     which is the same string the loot catalog, the wire and the HUD use. There

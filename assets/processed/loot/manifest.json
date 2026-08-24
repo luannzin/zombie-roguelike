@@ -2,7 +2,7 @@
   "tile": 16,
   "frameWidth": 16,
   "frameHeight": 16,
-  "frames": 73,
+  "frames": 83,
   "items": {
     "old_tools": {
       "frame": 0
@@ -154,74 +154,104 @@
     "head_kevlar": {
       "frame": 49
     },
-    "body_cloth": {
+    "arms_cloth": {
       "frame": 50
     },
-    "body_leather": {
+    "arms_leather": {
       "frame": 51
     },
-    "body_steel": {
+    "arms_steel": {
       "frame": 52
     },
-    "body_kevlar": {
+    "arms_kevlar": {
       "frame": 53
     },
-    "legs_cloth": {
+    "body_cloth": {
       "frame": 54
     },
-    "legs_leather": {
+    "body_leather": {
       "frame": 55
     },
-    "legs_steel": {
+    "body_steel": {
       "frame": 56
     },
-    "legs_kevlar": {
+    "body_kevlar": {
       "frame": 57
     },
-    "glock18": {
+    "legs_cloth": {
       "frame": 58
     },
-    "usp_s": {
+    "legs_leather": {
       "frame": 59
     },
-    "dual_berettas": {
+    "legs_steel": {
       "frame": 60
     },
-    "deagle": {
+    "legs_kevlar": {
       "frame": 61
     },
-    "mp7": {
+    "feet_cloth": {
       "frame": 62
     },
-    "p90": {
+    "feet_leather": {
       "frame": 63
     },
-    "xm1014": {
+    "feet_steel": {
       "frame": 64
     },
-    "famas": {
+    "feet_kevlar": {
       "frame": 65
     },
-    "ak47": {
+    "glock18": {
       "frame": 66
     },
-    "m4a1s": {
+    "usp_s": {
       "frame": 67
     },
-    "awp": {
+    "dual_berettas": {
       "frame": 68
     },
-    "knife": {
+    "deagle": {
       "frame": 69
     },
-    "axe": {
+    "mp7": {
       "frame": 70
     },
-    "katana": {
+    "p90": {
       "frame": 71
     },
-    "riot_shield": {
+    "xm1014": {
       "frame": 72
+    },
+    "famas": {
+      "frame": 73
+    },
+    "ak47": {
+      "frame": 74
+    },
+    "m4a1s": {
+      "frame": 75
+    },
+    "awp": {
+      "frame": 76
+    },
+    "minigun": {
+      "frame": 77
+    },
+    "medgun": {
+      "frame": 78
+    },
+    "knife": {
+      "frame": 79
+    },
+    "axe": {
+      "frame": 80
+    },
+    "katana": {
+      "frame": 81
+    },
+    "riot_shield": {
+      "frame": 82
     }
   }
 }

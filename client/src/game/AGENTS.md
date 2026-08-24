@@ -26,6 +26,7 @@ seam React is allowed to read.
 | `boss.ts` | THE SAWYER's local half: the last row off the wire, and what a fight FEELS like — the hit flash, the engine wobble, and `punchFor`, one table that gives every event its own shake, kick and sound. Owns nothing about the outcome; nothing here may ever be the reason a player knows something |
 | `lantern.ts` | four-cell battery, produces `output` 0..1 |
 | `hud-store.ts` | the only seam to React; `HUD_INTERVAL` = 0.2 s |
+| `gear-card.ts` | WHAT A PIECE OF GEAR IS, as three or four rows. Five kinds of row exist in the whole file and no others — `DANO`, `TIROS/S`, `ARMADURA`, `DURABILIDADE`, `MUNIÇÃO` — because a hover card is read in the half second before something reaches you and a seven-row table is not read at all |
 | `tooltip-anchors.ts` | screen-space points for world `Tooltip`s, written every frame |
 | `exit-guide.ts` | the way-out chevron: where on screen it belongs, and the smoothing between the raw target and what is drawn. It BLINKS — see the exit contract below |
 | `exit-path.ts` | WHICH WAY to walk to the exit, as opposed to which way it lies: one flood from the corridor mouth, and the waypoint the chevron aims at. A field, not a path — it answers every player with two lookups and returns null where it cannot reach, which is when the straight bearing takes over |
@@ -85,6 +86,19 @@ The server half of each of these lives in [`docs/design/`](../../../docs/design/
   server still decides; these only decide what the tooltip PROMISES. A change
   to what a collect refuses is a change in both files, and getting it wrong
   shows up as a green prompt the server then ignores.
+- **R IS THE ONE KEY WITH NO PREDICTED HALF.** A shot is predicted, a swing is
+  predicted, the shield goes up on the frame the button is pressed — all three
+  are cheap to be wrong about. An ultimate is a night's charge, and flashing
+  the screen and then not having fired would be the worst frame in this game.
+  So `sendUltimate` puts the message on the socket and draws NOTHING; the
+  burst, the shake, the column and the sound all wait for the server's own
+  `ults` row (`playUltimate`), which is also what makes a teammate's ultimate
+  and your own the same event drawn by the same code. The only thing that
+  answers locally is a refusal, and only when the panel already says so.
+- **The ultimate panel resolves off `heldSlot`, not off the roster.** The panel
+  follows the hand and has to change on the frame 1/2/3 is pressed; the roster
+  is a fifth of a second behind the key that caused it. Same reason
+  `moveWeight` is rebuilt client-side.
 - `hud-store.ts` is the only channel to the UI for state. World tooltip
   positions travel through `tooltip-anchors.ts` (written every frame, never
   subscribed). The exit arrow pose travels through `exit-guide.ts` the same

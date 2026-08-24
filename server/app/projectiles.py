@@ -65,14 +65,35 @@ class Projectile:
     damage: int
     #: Everybody it has already billed. See the module header.
     struck: set[str] = field(default_factory=set)
+    #: WHO PUT IT IN THE AIR, or "". Bookkeeping for the caller and nothing
+    #: else — `advance` never reads it. It is on the projectile rather than in
+    #: a table beside the list because a disc outlives whoever threw it, and a
+    #: parallel dict keyed by id would be one more thing to remember to clean
+    #: up on the tick the disc bursts.
+    owner: str = ""
+    #: WHICH SPRITE THE CLIENT DRAWS. Presentation stays with the caller (see
+    #: the module header) and this is the whole of what the wire says about
+    #: how a projectile looks: a string the room copies onto the row and never
+    #: interprets. Bile and a thrown crescent are the same mechanic and must
+    #: never be the same picture.
+    look: str = "spit"
 
 
 @dataclass
 class Impact:
     """What one tick of flight produced. The caller applies all of it."""
 
-    #: `(player, damage, source_x, source_y)` — the same tuple `boss.Outcome`
-    #: uses, so `Room` applies both through the one door (`damage_player`).
+    #: `(body, damage, source_x, source_y, owner)`.
+    #:
+    #: THE OWNER IS THE FIFTH COLUMN AND IT IS THE ONE THAT IS NOT ABOUT THE
+    #: BLOW. The other four are what happened and where; this is whose it was,
+    #: copied straight off the projectile because the projectile is the only
+    #: thing that still knows — by the time a caller reads a hit the disc may
+    #: already have burst on the next wall.
+    #:
+    #: The boss's moves append to this same list with an empty owner, which is
+    #: honest rather than a placeholder: a chainsaw swing has no player behind
+    #: it, and `Room` reads the column to decide who gets the xp.
     hits: list = field(default_factory=list)
     #: `(x, y)` where a projectile ended. The caller turns these into whatever
     #: burst it draws — this module names no effect.
@@ -113,6 +134,6 @@ def advance(
             if math.hypot(player.x - shot.x, player.y - shot.y) > reach:
                 continue
             shot.struck.add(player.id)
-            out.hits.append((player, shot.damage, shot.x, shot.y))
+            out.hits.append((player, shot.damage, shot.x, shot.y, shot.owner))
         keep.append(shot)
     return keep, out

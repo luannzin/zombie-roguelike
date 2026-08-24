@@ -14,8 +14,8 @@ pocket cells, which makes surviving a decision against extracting — a tax on
 playing rather than a trade-off.
 
 So medicine came out of the pocket entirely. It has no value, it cannot be
-poured into a platform, it cannot be sold, and it lives in TWO CELLS OF ITS OWN
-on keys 4 and 5. What that buys is a better question than the one it replaced:
+poured into a platform, it cannot be sold, and it lives in CELLS OF ITS OWN
+on the keys straight after the belt (`MEDICAL_SLOTS`). What that buys is a better question than the one it replaced:
 two is a hard ceiling, so the decision is never "should I own this", it is
 **"do I spend my second-to-last one here, or push one more clearing?"** That is
 the survival-horror question, and it is asked several times a night instead of
@@ -53,10 +53,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-#: How many cells. TWO, and the number is the mechanic — see the header. Three
-#: would make the question "which do I carry" instead of "when do I spend", and
-#: one removes the question altogether.
-MEDICAL_SLOTS = 2
+#: How many cells. The number is the mechanic — see the header: one cell
+#: removes the question altogether, and more of them turns "when do I spend"
+#: into "which do I carry". Three is the current answer; the client reads it
+#: off `welcome.config` and the hotkeys are derived from the belt's length, so
+#: moving it moves the panel and the keys with it.
+MEDICAL_SLOTS = 3
 
 
 @dataclass(frozen=True)
@@ -113,14 +115,14 @@ def catalog_payload() -> dict:
 
 @dataclass
 class Medical:
-    """The two cells. A cell holds a catalog KEY or nothing."""
+    """The cells. A cell holds a catalog KEY or nothing."""
 
     slots: list[str | None] = field(default_factory=lambda: [None] * MEDICAL_SLOTS)
 
     def __post_init__(self) -> None:
         # Defensive: a hydrated or hand-built loadout must still be exactly
-        # `MEDICAL_SLOTS` long, or the client's two cells and the server's
-        # list disagree about which key is bound to which.
+        # `MEDICAL_SLOTS` long, or the client's cells and the server's list
+        # disagree about which key is bound to which.
         if len(self.slots) < MEDICAL_SLOTS:
             self.slots += [None] * (MEDICAL_SLOTS - len(self.slots))
         elif len(self.slots) > MEDICAL_SLOTS:

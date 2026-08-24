@@ -61,7 +61,7 @@ const HOTBAR_KEYS: Record<string, number> = {
 };
 
 /**
- * The two medical cells, on the keys straight after the belt's.
+ * The medical cells, on the keys straight after the belt's.
  *
  * A SEPARATE MAP AND A SEPARATE CALLBACK, not three more entries in
  * `HOTBAR_KEYS`, because they are not the same verb. A belt key SWAPS what is
@@ -70,14 +70,18 @@ const HOTBAR_KEYS: Record<string, number> = {
  * two feel like neighbours on a strip, which is exactly the mistake that would
  * get a kit burned by somebody reaching for the knife.
  *
- * They are physical codes like everything else here, so they land on 4 and 5
- * under any layout.
+ * They are physical codes like everything else here, so they land on 4, 5 and
+ * 6 under any layout. The COUNT lives on the server (`medical.MEDICAL_SLOTS`,
+ * shipped as `config.medicalSlots`); a cell the loadout does not have is a key
+ * the room refuses, which is cheaper than plumbing the config down here.
  */
 const MEDICAL_KEYS: Record<string, number> = {
   Digit4: 0,
   Digit5: 1,
+  Digit6: 2,
   Numpad4: 0,
   Numpad5: 1,
+  Numpad6: 2,
 };
 
 export class InputController {
@@ -115,6 +119,13 @@ export class InputController {
    * lantern key.
    */
   onInteract: (() => void) | null = null;
+  /**
+   * E COMING BACK UP, and on losing focus. One object in the game is a HOLD
+   * rather than a press (the vault — see `Room.cancel_force`), and this is the
+   * edge that lets go of it. Fired unconditionally: whether a channel was
+   * running is the game's question, not the keyboard's.
+   */
+  onInteractEnd: (() => void) | null = null;
   /** Expand the pocket. Tab is the key, not a code under a letter. */
   onToggleInventory: (() => void) | null = null;
   /** Expand the armour mannequin. See `ARMOR_KEY`. */
@@ -213,6 +224,7 @@ export class InputController {
       return;
     }
     if (SPRINT_KEYS.includes(e.code)) this.sprinting = false;
+    if (e.code === READY_KEY) this.onInteractEnd?.();
   };
 
   private onBlur = () => {
@@ -224,6 +236,10 @@ export class InputController {
     // would be slow for no reason the player can see.
     this.sprinting = false;
     this.blocking = false;
+    // A window that lost focus mid-hold never sees the keyup either, and a
+    // vault that kept opening off a finger nobody has on the key is the same
+    // bug as the sprint above with a payout attached.
+    this.onInteractEnd?.();
   };
 
   private onMouseMove = (e: MouseEvent) => {

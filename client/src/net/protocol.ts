@@ -79,10 +79,22 @@ export interface DropPacket {
   slot: number;
 }
 
-/** Smash a crate. Server ignores it unless you are close enough. */
+/**
+ * Smash a crate. Server ignores it unless you are close enough.
+ *
+ * `cancel` is E COMING BACK UP on a timed object (the vault). Its open is a
+ * HOLD, not a press — the seconds are the stake and letting go is how a player
+ * changes their mind when something walks into the clearing — so the release
+ * is a packet of its own rather than a flag on the input stream: it happens
+ * once, and putting it on 30 Hz of input would be sending a bit that is false
+ * for the whole of every run. A dropped one costs nothing worse than the
+ * channel finishing, which is what pressing E asked for.
+ */
 export interface BreakPacket {
   type: 'break';
-  id: string;
+  /** The object under E. Absent on a `cancel` — a body works one at a time. */
+  id?: string;
+  cancel?: boolean;
 }
 
 /**
@@ -819,9 +831,10 @@ export interface LootPickupEvent {
    * Where it landed. `hotbar` is a weapon; `ammo` is rounds that went into a
    * reserve — `slot` then names the belt cell holding the weapon they feed,
    * so the sprite flies onto the gun it topped up; `worn` is a piece of
-   * armour and `slot` indexes `config.armorSlots`. Omitted for the pocket.
+   * armour and `slot` indexes `config.armorSlots`; `med` is a kit and `slot`
+   * indexes the medical cells. Omitted for the pocket.
    */
-  dest?: 'bag' | 'hotbar' | 'ammo' | 'worn';
+  dest?: 'bag' | 'hotbar' | 'ammo' | 'worn' | 'med';
 }
 
 /**
@@ -1354,9 +1367,10 @@ export interface BuyEvent {
    * Where the sprite is going. Absent (a weapon off a table) means the belt
    * cell in `slot`; `"ammo"` is a crate-load, which flies at the GUN it just
    * fed — `slot` is that weapon's cell and no cell was spent; `"worn"` is a
-   * piece of armour off a table, and `slot` indexes `config.armorSlots`.
+   * piece of armour off a table, and `slot` indexes `config.armorSlots`;
+   * `"med"` is a kit, and `slot` indexes the medical cells.
    */
-  dest?: 'hotbar' | 'ammo' | 'worn';
+  dest?: 'hotbar' | 'ammo' | 'worn' | 'med';
   /** Rounds handed over. Ammunition only. */
   n?: number;
   x: number;

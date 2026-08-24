@@ -63,7 +63,7 @@ export interface HudMedicalSlot {
   /** Seconds it plants you for. The other half of the decision. */
   useTime: number;
   weight: number;
-  /** Which key spends it — `4`, `5`. Rendered on the cell. */
+  /** Which key spends it — the keys straight after the belt's. On the cell. */
   hotkey: string;
 }
 
@@ -75,7 +75,7 @@ export interface HudMedical {
    */
   progress: number;
   /**
-   * The cell being spent, or -1. The panel highlights it — with two cells that
+   * The cell being spent, or -1. The panel highlights it — with cells that
    * look alike, "which one am I burning" is a question worth answering.
    */
   using: number;

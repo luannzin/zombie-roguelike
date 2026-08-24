@@ -865,8 +865,12 @@ def _process(name: str) -> None:
     `make_armor.py` and `make_wolf.py` already process what they write, and for
     the same reason: a generator that only emits RAW leaves a second manual
     step nobody remembers, and the first symptom is a sheet in `processed/`
-    that is one revision behind the art. The side row faces LEFT on this
-    sprite — `process_sprites` mirrors it into the fourth output row.
+    that is one revision behind the art. The side row faces RIGHT on this
+    sprite (see `_face`) — `process_sprites` mirrors it into the LEFT row.
+    It said "left" here for one release, which swapped both side rows: a body
+    walking left was drawn with the sheet for right, and the armour overlays
+    (`make_armor.py`, which always said "right") faced the other way on top
+    of it.
     """
     process_sprites.process(
         SimpleNamespace(
@@ -876,7 +880,7 @@ def _process(name: str) -> None:
             height=0,
             tolerance=40,
             no_hue_key=False,
-            side_facing="left",
+            side_facing="right",
             filter="auto",
             exact=True,
             uniform=False,

@@ -9,7 +9,7 @@ recently changed system, when something looks like a regression, before
 modifying anything under *Do not touch*, or when the task asks what to work on
 next. Skip it for a self-contained change to a stable system.
 
-_Last verified: 2026-08-23 — THE BUILD PASS below (five armour slots + ultimates), then the T-01..T-10 pass, the DIFFICULTY pass and THE PACK under it._
+_Last verified: 2026-08-24 — THE FIX PASS below, then THE BUILD PASS (five armour slots + ultimates), the T-01..T-10 pass, the DIFFICULTY pass and THE PACK under it._
 
 ## Current phase
 
@@ -20,6 +20,38 @@ knife got a real swing, the shotgun got its own dynamics, the machine got its
 ceremony.
 
 ## Currently working on
+
+- **A FIX PASS JUST LANDED. Five reports, and two of them were the same kind of
+  bug: a name that was quietly shared by two things.**
+
+  - **THE SPIT CRASHED THE TAB.** `Room.__init__` assigned `self.shot_events`
+    TWICE — once for gunfire tracers, once for creature launches — so a
+    bloater's throw was appended to the hitscan list and rode out under
+    `shots`, with no `dist`, no `dmg` and no `hit`. The client built a muzzle
+    flash out of `NaN` and died on the first throw of the night, twice over
+    (an `AudioParam` and a `createRadialGradient`). The projectile list is
+    `spit_events` now, and `test_ranged.py` checks the two are not the same
+    object — nothing else can see it.
+  - **THE PLAYER FACED THE WRONG WAY.** `make_player.py` passed
+    `side_facing="left"` to `process_sprites` for art authored facing RIGHT
+    (its own `_face` says so, and `make_armor.py` had always said "right"), so
+    both side rows were swapped and every worn overlay faced the other way on
+    top of the body. One word, then regenerate.
+  - **MEDICINE IS THREE CELLS AND LOOKS LIKE THE BELT.** `MEDICAL_SLOTS = 3`,
+    keys 4/5/6 (derived, not typed), and the panel now draws the belt's own
+    40px cells. Found on the way: `Room.take_gear` routed armour by `pocket`
+    and fell through to the WEAPON belt for everything else, so the merchant
+    sold a first-aid kit into a gun cell.
+  - **A PLATE OPENS THE MANNEQUIN.** The `worn` fly already aimed at
+    `armor-N`; nothing opened the drawer it lives in, so the animation played
+    inside a collapsed panel. Same for a bought one. `med` flies were aiming
+    at a BAG cell — the dest existed on the wire and had no case in
+    `anchorFor`.
+  - **THE VAULT IS A HOLD.** `Mantenha E pressionado para abrir` — the verb is
+    `abrir` like every other lid now, because the sentence and the seconds
+    beside it already say which one this is. Releasing E cancels
+    (`Room.cancel_force`); the seconds and the noise are still spent, which is
+    the trade an interrupted force always made.
 
 - **THE BUILD PASS JUST LANDED. Two systems, and the second is the point of
   the first: a player's gear was two independent dials and it is now a
@@ -111,7 +143,8 @@ ceremony.
   - **MEDICINE LEFT THE BAG** ([`docs/design/player.md`](docs/design/player.md)).
     It was loot with a price, and the intended trade — "58 gold, or being
     alive" — stopped being a choice the moment a death ended the run. Now:
-    `value=0`, two cells on 4 and 5, and the greed trade is its WEIGHT. The
+    `value=0`, its own cells on the keys after the belt, and the greed trade
+    is its WEIGHT. The
     verb's whole cost is standing still. It also fixed a bug the docstrings
     already claimed was closed: `damage_player` only cancelled a heal inside
     the DEATH branch, so holding 4 while walking backwards was free.

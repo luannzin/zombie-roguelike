@@ -107,6 +107,12 @@ async def game_socket(ws: WebSocket, code: str, name: str | None = None):
                 if isinstance(drop_id, str):
                     room.collect_loot(player.id, drop_id)
             elif kind == protocol.MSG_BREAK:
+                # E COMING BACK UP. The vault's open is a hold — see
+                # `Room.cancel_force` — and the release carries no id because
+                # a body can only be working on one object.
+                if msg.get("cancel"):
+                    room.cancel_force(player.id)
+                    continue
                 crate_id = msg.get("id")
                 if isinstance(crate_id, str):
                     room.break_crate(player.id, crate_id)

@@ -1,19 +1,26 @@
 /**
- * THE MEDICAL BELT: two cells, on 4 and 5, and the only way health comes back.
+ * THE MEDICAL BELT: the cells on the keys straight after the weapons, and the
+ * only way health comes back.
  *
  * It sits beside the weapon belt and is deliberately NOT part of it. The two
  * strips answer different questions and reward different reflexes: a belt key
  * swaps what is in your hands, costs nothing and is instant; a medical key
  * SPENDS something and plants the body for seconds. Rendering them as one row
- * of five would make 3 and 4 neighbours on a strip, which is exactly how a kit
- * gets burned by somebody reaching for the knife.
+ * would make the last weapon and the first kit neighbours on a strip, which is
+ * exactly how a kit gets burned by somebody reaching for the knife.
+ *
+ * THE CELLS ARE THE BELT'S CELLS. Same box, same size, same key number in the
+ * same corner — because they ARE the same gesture, a number key that puts
+ * something in play, and two panels stacked in one corner drawing the same
+ * gesture at two different sizes reads as two unrelated systems. What keeps
+ * them apart is the gap and the label, not the geometry.
  *
  * EMPTY CELLS ARE DRAWN, AND THAT IS THE WHOLE PANEL.
  *
  * The bag renders gaps because a gap there means "there is room". An empty
  * medical cell means something else entirely — "you have one left" — and with
  * a run that does not come back, that is the most important number on the
- * glass after the health bar. So both cells are always there, an empty one is
+ * glass after the health bar. So every cell is always there, an empty one is
  * a visibly empty socket rather than an absence, and the count is legible
  * without anybody having to add up what is present.
  *
@@ -21,16 +28,19 @@
  * runs on, so the two cannot disagree, and it fills from the bottom like
  * something draining into you. It is the cell rather than a separate bar
  * because what the player wants to know mid-heal is not "how long" — they can
- * see that on their own body — it is WHICH ONE IS GOING, and with two cells
- * that look alike that question needs answering where the cells are.
+ * see that on their own body — it is WHICH ONE IS GOING, and with cells that
+ * look alike that question needs answering where the cells are.
  *
- * No hover card. The two kits are described by two numbers each — what they
- * heal and how long they take — and both are printed on the cell, because they
- * are the entire decision and re-reading them is something the player does
- * mid-fight rather than at leisure.
+ * WHAT IT HEALS IS ON THE CELL, where a gun's rounds are. The duration is not:
+ * it is drawn, once per use, as the fill — and the two numbers competing for
+ * the same 40px box is what made the old cells twice the size of everything
+ * else in the corner.
  */
 
+import { useEffect, useRef, useSyncExternalStore } from 'react';
 import type { HudMedical, HudMedicalSlot } from '../../game/hud-store';
+import { writeInventoryAnchor, dropInventoryAnchor } from '../../game/inventory-anchors';
+import { incomingCount, subscribeLootFlies } from '../../game/loot-flies';
 import { Panel } from './Panel';
 import { LootIcon } from './LootIcon';
 import { cn } from '@/lib/utils';
@@ -50,10 +60,11 @@ export function Medical({ medical }: MedicalProps) {
           {medical.slots.map((slot) => slot.hotkey).join(' ')}
         </span>
       </div>
-      <div className="flex items-stretch gap-1.5">
+      <div className="flex items-center gap-1.5">
         {medical.slots.map((slot, index) => (
           <MedicalCell
             key={index}
+            index={index}
             slot={slot}
             progress={medical.using === index ? medical.progress : 0}
           />
@@ -63,15 +74,54 @@ export function Medical({ medical }: MedicalProps) {
   );
 }
 
-function MedicalCell({ slot, progress }: { slot: HudMedicalSlot; progress: number }) {
-  const filled = slot.key !== null;
+function MedicalCell({
+  index,
+  slot,
+  progress,
+}: {
+  index: number;
+  slot: HudMedicalSlot;
+  progress: number;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  // A kit in the air IS the sprite: the cell stays empty until the fly lands,
+  // exactly as a belt cell does. See `loot-flies.anchorFor`.
+  const incoming = useSyncExternalStore(
+    subscribeLootFlies,
+    () => incomingCount(index, 'med'),
+    () => 0,
+  );
+  const filled = slot.key !== null && incoming <= 0;
   const spending = progress > 0;
+
+  useEffect(() => {
+    const el = ref.current;
+    const id = `medical-${index}`;
+    if (!el) {
+      dropInventoryAnchor(id);
+      return;
+    }
+    let raf = 0;
+    const tick = () => {
+      const box = el.getBoundingClientRect();
+      if (box.width >= 8 && box.height >= 8) {
+        writeInventoryAnchor(id, box.left + box.width / 2, box.top + box.height / 2);
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => {
+      cancelAnimationFrame(raf);
+      dropInventoryAnchor(id);
+    };
+  }, [index]);
 
   return (
     <div
+      ref={ref}
       className={cn(
-        'relative flex min-w-0 flex-1 flex-col items-center gap-0.5 overflow-hidden border px-1 py-1',
-        filled ? 'border-rarity-uncommon/70 bg-panel-inset' : 'border-track-border bg-track',
+        'relative size-10 overflow-hidden border bg-panel-inset shadow-[inset_0_0_0_1px_var(--surface)]',
+        filled ? 'border-rarity-uncommon/70' : 'border-track-border',
       )}
     >
       {/*
@@ -87,28 +137,31 @@ function MedicalCell({ slot, progress }: { slot: HudMedicalSlot; progress: numbe
         />
       ) : null}
 
-      <span className="relative flex h-7 w-7 items-center justify-center">
-        {filled ? (
-          <LootIcon frame={slot.frame} zoom={1.6} />
-        ) : (
-          // An empty socket, not a blank. A cross with nothing in it reads as
-          // "this held medicine and does not", which is the sentence that
-          // matters; an empty box reads as decoration.
-          <span aria-hidden className="text-ink-muted/40 text-[18px] leading-none">+</span>
-        )}
-      </span>
+      {filled ? (
+        <LootIcon
+          frame={slot.frame}
+          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2"
+        />
+      ) : (
+        // An empty socket, not a blank. A cross with nothing in it reads as
+        // "this held medicine and does not", which is the sentence that
+        // matters; an empty box reads as decoration.
+        <span
+          aria-hidden
+          className="text-ink-muted/40 absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-[18px] leading-none"
+        >
+          +
+        </span>
+      )}
 
-      <span
-        className={cn(
-          'relative text-[10px] leading-[10px] tabular-nums',
-          filled ? 'text-ink' : 'text-ink-muted/50',
-        )}
-      >
-        {filled ? `+${slot.heal}` : '—'}
+      <span className="text-ink-muted absolute top-px left-0.5 text-[11px] leading-[11px] tabular-nums">
+        {slot.hotkey}
       </span>
-      <span className="text-ink-muted relative text-[9px] leading-[9px] tabular-nums">
-        {filled ? `${slot.useTime.toFixed(1)}s` : slot.hotkey}
-      </span>
+      {filled ? (
+        <span className="text-ink-muted absolute right-0.5 bottom-px text-[11px] leading-[11px] tabular-nums">
+          +{slot.heal}
+        </span>
+      ) : null}
     </div>
   );
 }

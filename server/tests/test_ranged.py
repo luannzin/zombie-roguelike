@@ -223,11 +223,17 @@ for key in enemies.ENEMY_TYPES:
 
 # TOO CLOSE: it must not fire, however long it stands there.
 #
-# COUNTED IN LAUNCHES (`shot_events`) AND NOT IN LIVE DISCS. A disc that was
+# COUNTED IN LAUNCHES (`spit_events`) AND NOT IN LIVE DISCS. A disc that was
 # thrown and then expired leaves `room.shots` empty, so asserting on that would
 # pass while the rule under test was completely broken — which is exactly what
 # it did on the first cut of this file, and the mutation check is what found
-# it. `shot_events` accumulates until a broadcast, so it is the honest count.
+# it. `spit_events` accumulates until a broadcast, so it is the honest count.
+#
+# IT IS ALSO NOT THE LIST GUNFIRE USES, and that is checked below rather than
+# assumed: the two were literally the same attribute for a release — a spit
+# launch was appended to `shot_events`, which is the hitscan tracer list — so
+# every creature throw arrived at the client as a malformed GUNSHOT row and
+# took the whole tab down on the first one.
 room, pid = forest_room()
 beast, ux, uy = place(room, pid, BLOATER.ranged_min_tiles - 1.0)
 # PINNED THERE. Left alone it would close to melee and walk out of the case
@@ -238,7 +244,7 @@ for _ in range(int(6.0 / DT)):
     beast.y = room.players[pid].y + uy * (BLOATER.ranged_min_tiles - 1.0) * TILE_SIZE
     room.step_enemies(DT)
     room.step_shots(DT)
-check("inside its band it never throws", not room.shot_events)
+check("inside its band it never throws", not room.spit_events)
 check("and never even winds up", beast.windup == 0.0)
 
 # TOO FAR: same, and held at range for the same reason.
@@ -249,7 +255,7 @@ for _ in range(int(6.0 / DT)):
     beast.y = room.players[pid].y + uy * (BLOATER.ranged_max_tiles + 4.0) * TILE_SIZE
     room.step_enemies(DT)
     room.step_shots(DT)
-check("beyond its band it never throws", not room.shot_events)
+check("beyond its band it never throws", not room.spit_events)
 
 # INSIDE THE BAND: it winds up, holds, then throws.
 room, pid = forest_room()
@@ -280,9 +286,9 @@ for _ in range(int((BLOATER.ranged_windup + 0.2) / DT)):
     beast.y = room.players[pid].y + uy * mid * TILE_SIZE
     room.step_enemies(DT)
     room.step_shots(DT)
-check("the throw happens at the end of the windup", len(room.shot_events) == 1)
+check("the throw happens at the end of the windup", len(room.spit_events) == 1)
 check("and the windup is spent", beast.windup == 0.0)
-check("the launch reached the wire", len(room.shot_events) == 1)
+check("the launch reached the wire", len(room.spit_events) == 1)
 
 # A resting creature carries no telegraph — it is a per-tick field on a row
 # every creature in the forest pays for.
@@ -292,9 +298,9 @@ check("a creature that is not winding up carries no field", "wu" not in quiet.to
 # AND IT RATE-LIMITS ITSELF. Counted in LAUNCHES rather than live discs: a
 # disc that expired or hit a tree would make the live count fall, which is not
 # what this is asking about.
-before = len(room.shot_events)
+before = len(room.spit_events)
 tick(room, 0.5)
-check("it does not throw again immediately", len(room.shot_events) == before)
+check("it does not throw again immediately", len(room.spit_events) == before)
 
 
 # --- the disc ----------------------------------------------------------------
@@ -420,6 +426,29 @@ check("a spit hurts", player.hp < player.max_hp)
 # The drag goes on, for the same reason a claw's does — a player who could
 # stand in a firing line at full walking speed has no reason to leave it.
 check("and staggers", player.stagger > 0.0)
+
+
+# --- a throw is not a gunshot ------------------------------------------------
+#
+# TWO LISTS, AND NOTHING AT RUNTIME NOTICES WHEN THEY ARE ONE. They were the
+# same attribute for a release — a second `self.shot_events = []` in `__init__`
+# quietly rebound the gunfire list, and `_throw` appended a launch row to it —
+# so every creature throw rode out under `shots`, the hitscan tracer key, with
+# no `dist`, no `dmg` and no `hit`. The client drew a muzzle flash off `NaN`
+# and the tab died on the first spit of the night. The server was, from its own
+# point of view, working perfectly.
+
+room, pid = forest_room()
+mid = (BLOATER.ranged_min_tiles + BLOATER.ranged_max_tiles) / 2
+beast, ux, uy = place(room, pid, mid)
+for _ in range(int((BLOATER.ranged_windup + 0.4) / DT)):
+    beast.x = room.players[pid].x + ux * mid * TILE_SIZE
+    beast.y = room.players[pid].y + uy * mid * TILE_SIZE
+    room.step_enemies(DT)
+    room.step_shots(DT)
+check("a throw reaches the spit list", len(room.spit_events) == 1)
+check("and NOT the gunfire list", not room.shot_events)
+check("they are not the same object", room.spit_events is not room.shot_events)
 
 
 # --- the wire ----------------------------------------------------------------

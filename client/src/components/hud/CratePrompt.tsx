@@ -15,6 +15,14 @@
  * finds out they are committed once they are standing still has been trapped
  * rather than asked, so the seconds are on the prompt, in the same line, and
  * nowhere else in the HUD needs to know.
+ *
+ * A COSTED OBJECT ASKS FOR A HOLD, AND THE PROMPT SAYS SO IN THE VERB. Every
+ * other press in this game resolves on the frame it happens; this one runs
+ * while the key is down and stops when it comes up (`Room.cancel_force`). The
+ * sentence is the only place a player can learn that before trying it, so the
+ * two prompts are different sentences rather than the same one with a number
+ * on the end — `seconds` is what picks between them, so an object that grows
+ * an `open_time` gets the right instruction without anybody editing this file.
  */
 
 import { Tooltip, TooltipKey } from './Tooltip';
@@ -30,14 +38,22 @@ export function CratePrompt({ prompt }: CratePromptProps) {
 
   return (
     <Tooltip anchor="crate">
-      Aperte <TooltipKey>E</TooltipKey> para {prompt.label}
       {prompt.seconds > 0 ? (
-        // Its own muted span rather than part of the sentence: the verb is
-        // what the player reads at a glance and the cost is what they read
-        // when they stop to think, and running the two together makes the
-        // fast read slower for every object that has no cost at all.
-        <span className="text-ink-muted"> ({prompt.seconds.toFixed(1)}s parado)</span>
-      ) : null}
+        <>
+          Mantenha <TooltipKey>E</TooltipKey> pressionado para {prompt.label}
+          {/*
+            Its own muted span rather than part of the sentence: the verb is
+            what the player reads at a glance and the cost is what they read
+            when they stop to think, and running the two together makes the
+            fast read slower for every object that has no cost at all.
+          */}
+          <span className="text-ink-muted"> ({prompt.seconds.toFixed(1)}s parado)</span>
+        </>
+      ) : (
+        <>
+          Aperte <TooltipKey>E</TooltipKey> para {prompt.label}
+        </>
+      )}
     </Tooltip>
   );
 }

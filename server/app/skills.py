@@ -411,7 +411,7 @@ SKILLS: tuple[SkillDef, ...] = (
         # legendary should be allowed to be: not a bigger number, but a rule of
         # the world that stops applying to you.
         "maos_de_veludo", "Mãos de Veludo", "legendary",
-        "arrombar não faz barulho",
+        "forçar um cofre não faz barulho",
         rules=("quiet_hands",),
         cap=1,
     ),

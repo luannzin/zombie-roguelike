@@ -99,7 +99,7 @@ adds.
 | a new LANDMARK (one per map, placed first) | `server/app/scenery.py` `LANDMARKS` — a tuple, in order; the first one that lands is what the thread routes to |
 | which scenes come with creatures standing in them | `server/app/mapgen.py` (`NEST_SCENES` / `HAUNT_SCENES` / `DEN_SCENES`) |
 | a new interactive object | `server/app/crates.py` (`TYPES`) + `server/tools/make_objects.py` — **and a scene in `scenery.py` that actually places one.** A catalog row nothing places is dead content nothing at runtime notices; `chest` and `strongbox` sat unplaced for months with full footprint and container-set entries. `tests/test_containers.py` fails if the top tier stops spawning |
-| an object that takes TIME to open | `crates.ObjectType.open_time` + `Room._begin_force` / `_finish_force`. The noise fires at the START — that is the mechanic, not a detail: a slow open whose noise came at the end would be a gamble whose stake is paid after the payoff is known |
+| an object that takes TIME to open | `crates.ObjectType.open_time` + `Room._begin_force` / `_finish_force` / `cancel_force`. The noise fires at the START — that is the mechanic, not a detail: a slow open whose noise came at the end would be a gamble whose stake is paid after the payoff is known. It is a HOLD: the key going up cancels it (the seconds and the noise are still spent), so leaving is something the player DOES rather than waits for, and the prompt says `Mantenha E pressionado` off `openTime` alone |
 | a new zone | `server/app/zones.py` + whatever builds its map — **no client change** |
 | camp layout | `server/app/camp.py` |
 | terrain scatter, prop drawing | `client/src/render/layers/terrain.ts`, `layers/scenery.ts`, `client/src/render/terrain.ts` |

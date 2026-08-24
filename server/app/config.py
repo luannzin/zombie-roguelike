@@ -1061,7 +1061,7 @@ SHOT_DAMAGE = 8
 #: owned a firearm, and losing there costs the whole run. Five is also where
 #: the shop's last rung unlocks, so he arrives on the first night a party can
 #: be carrying the best thing the merchant sells.
-BOSS_DAY: int | None = 1
+BOSS_DAY: int | None = 5
 
 #: His health, and how much a second, third and fourth gun add. See
 #: `boss.hp_for` — the first player is worth more than the rest.

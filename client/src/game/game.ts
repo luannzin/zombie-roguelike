@@ -955,6 +955,12 @@ export class Game {
    * is authoritative and whether its owner is currently LOOKING at it is not.
    */
   private armorOpen = false;
+  /**
+   * E went down on an object and has not come back up. The half of the vault's
+   * hold that the server cannot see — see `onInteractEnd` for why the
+   * confirmed channel is the wrong thing to read.
+   */
+  private forcePressed = false;
   /** Flies that have landed. HUD reads the count so a bump cannot collapse. */
   private bagCatches = 0;
   /** E on a full bag. Same counter contract as a refused lantern. */
@@ -1036,6 +1042,20 @@ export class Game {
       else if (after.refusals !== before.refusals) playSfx('ui-error');
     };
     this.input.onInteract = () => this.sendInteract();
+    // LETTING GO OF E.
+    //
+    // OFF A LOCAL FLAG, NOT OFF THE CHANNEL THE SERVER HAS CONFIRMED. A tap is
+    // the case that matters: press and release inside one round trip, and
+    // `healing` is still 0 here because the snapshot that opens the channel has
+    // not landed yet. Guarding on it would let a tapped vault run its whole
+    // four seconds after the key was already back up, which is the exact
+    // opposite of what a hold promises. The packet is harmless when no channel
+    // is running — `Room.cancel_force` ignores it.
+    this.input.onInteractEnd = () => {
+      if (!this.forcePressed) return;
+      this.forcePressed = false;
+      this.connection.send({ type: 'break', cancel: true });
+    };
     this.input.onToggleInventory = () => this.toggleInventory();
     this.input.onToggleArmor = () => this.toggleArmor();
     this.input.onUltimate = () => this.sendUltimate();
@@ -2331,6 +2351,12 @@ export class Game {
       // and it must not open the pack, because nothing went in there.
       const dest = ev.dest ?? 'bag';
       if (dest === 'bag') this.inventoryOpen = true;
+      // A PLATE OPENS THE MANNEQUIN, for the bag's reason and no other: the
+      // sprite is flying at a cell inside a drawer, and a fly that lands in a
+      // collapsed panel is an animation nobody sees. The piece went ON the
+      // body, so the drawer that shows the body is the one that has to be
+      // looking back at the player when it arrives.
+      else if (dest === 'worn') this.armorOpen = true;
       else if (ev.dest === 'hotbar' && this.heldSlot < 0) this.heldSlot = ev.slot;
       spawnLootFly({
         id: ev.id,
@@ -2345,6 +2371,8 @@ export class Game {
       this.patchHud({
         inventory: inventory ?? undefined,
         hotbar: hotbar ?? undefined,
+        armor: this.armorHud() ?? undefined,
+        medical: this.medicalHud() ?? undefined,
       });
     }
     this.camera.addTrauma(PICKUP_TRAUMA);
@@ -2427,6 +2455,9 @@ export class Game {
       // slot on the event is the gun it TOPPED UP, and arming it because
       // somebody bought rounds would swap the weapon out from under them.
       if (dest === 'hotbar' && this.heldSlot < 0) this.heldSlot = ev.slot;
+      // A PLATE OPENS THE MANNEQUIN, exactly as a plate found in the forest
+      // does — the cell it is flying at lives inside a drawer.
+      if (dest === 'worn') this.armorOpen = true;
       spawnLootFly({
         id: dest === 'ammo' ? `buy-${ev.id}-${this.time.toFixed(3)}` : `buy-${ev.id}`,
         key: ev.k,
@@ -2436,7 +2467,12 @@ export class Game {
         dest,
       });
       const hotbar = this.hotbarHud();
-      this.patchHud({ hotbar: hotbar ?? undefined, balance: this.balance });
+      this.patchHud({
+        hotbar: hotbar ?? undefined,
+        balance: this.balance,
+        armor: this.armorHud() ?? undefined,
+        medical: this.medicalHud() ?? undefined,
+      });
     }
     this.camera.addTrauma(PICKUP_TRAUMA);
   }
@@ -4650,6 +4686,11 @@ export class Game {
     }
     const crate = nearCrate(ix);
     if (crate) {
+      // The press. A timed object turns this into a HOLD — see
+      // `onInteractEnd` — and the flag is set for every object rather than
+      // only the slow ones, because the prompt's `seconds` is not in reach
+      // here and a cancel with nothing to cancel costs one packet.
+      this.forcePressed = true;
       this.connection.send({ type: 'break', id: crate.id });
       return;
     }

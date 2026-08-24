@@ -107,9 +107,17 @@ check(
 # for. A vault on ordinary odds would be a slow chest, which is a tax.
 check("the vault pays off SHRINE_ODDS", vault.rarity is crates.SHRINE_ODDS)
 check("and it always pays something", vault.drops.get(crates.DROP_ITEM) == 100)
-# A DIFFERENT VERB ON THE PROMPT. It is the player's first warning that this
-# press is not free, and it arrives before they press it.
-check("the prompt says something else", vault.label != crates.OPEN_LABEL)
+# THE WARNING IS THE COST ON THE PROMPT, NOT A RARER WORD FOR THE SAME ACT.
+# The label used to be "arrombar" so the sentence would look different; what
+# actually tells the player this press is not free is `openTime` reaching the
+# client, because the HUD swaps the whole sentence off it — a press becomes a
+# HOLD (`Room.cancel_force`) and the seconds are printed beside it. A vault
+# whose duration stopped shipping would be a trap: same words, and the body
+# plants itself.
+check(
+    "an ordinary lid ships no cost, so its prompt stays a press",
+    crates.type_of("chest").client_payload()["openTime"] == 0.0,
+)
 # LOUDER THAN ANYTHING ELSE THAT OPENS — the noise is the stake.
 opens = [t for t in crates.TYPES if t.verb == crates.VERB_OPEN and t.key != "vault"]
 check(
@@ -187,6 +195,49 @@ check("and nothing fell out", len(room.drops) == before_drops)
 # what it cost was the seconds and the attention of everything in earshot.
 room.break_crate(pid, crate.id)
 check("it can be forced again", room.players[pid].using is not None)
+
+
+# --- letting go of the key ---------------------------------------------------
+#
+# THE OPEN IS A HOLD. Releasing E stops it, and the seconds already spent are
+# gone — the same trade an interrupted force has always made, except the player
+# chose it. Two things have no symptom if they break: a release that did NOT
+# stop the channel (the vault opens four seconds after the key came up, which
+# reads as the game ignoring you), and a release that reached a HEAL (holding 4
+# would become free, and standing still in the open is the entire cost of
+# medicine).
+
+room, ids = forest_room()
+pid = ids[0]
+crate = plant(room, "vault")
+room.break_crate(pid, crate.id)
+force(room, pid, vault.open_time * 0.5)
+room.cancel_force(pid)
+check("letting go ends the force", room.players[pid].using is None)
+check("and the vault is still shut", not crate.opened)
+# The seconds are spent: what comes next is a fresh channel, not a resumed one.
+room.break_crate(pid, crate.id)
+check("a second press starts from the top", room.players[pid].using is not None)
+assert room.players[pid].using is not None
+check(
+    "with the whole duration to run again",
+    room.players[pid].using.left == vault.open_time,
+)
+# A RELEASE WITH NOTHING TO CANCEL IS A NO-OP, which is what lets the client
+# send one on every E release rather than tracking the object's cost.
+room.cancel_force(pid)
+room.cancel_force(pid)
+check("cancelling twice is harmless", room.players[pid].using is None)
+
+# AND IT NEVER REACHES A HEAL.
+healer, hids = forest_room()
+hplayer = healer.players[hids[0]]
+hplayer.hp = 10
+hplayer.medical.add("first_aid")
+healer.use_medical(hids[0], 0)
+check("the heal opened", hplayer.using is not None)
+healer.cancel_force(hids[0])
+check("E does not abort a heal", hplayer.using is not None)
 
 
 # --- one pair of hands per object -------------------------------------------

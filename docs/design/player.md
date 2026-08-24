@@ -81,7 +81,7 @@ Nearest contracts: [`server/app/AGENTS.md`](../../server/app/AGENTS.md),
 | armour, the shield, what stops a blow | [`docs/design/gear.md`](gear.md) |
 | movement / stamina | `server/app/simulation.py` **and** `client/src/game/simulation.ts`, `config.py` |
 | ammunition | `server/app/ammo.py` (mechanics) / `weapons.py` (sizing) |
-| medicine, healing, the two cells | `server/app/medical.py` (the catalog and the container) + `Room.use_medical` / `_step_use` (the channel) + `client/src/components/hud/Medical.tsx` — and the ring over the body, `render/layers/entities.ts`'s `drawHealRing` |
+| medicine, healing, the cells (`medical.MEDICAL_SLOTS`, keys after the belt) | `server/app/medical.py` (the catalog and the container) + `Room.use_medical` / `_step_use` (the channel) + `client/src/components/hud/Medical.tsx` — and the ring over the body, `render/layers/entities.ts`'s `drawHealRing` |
 | health coming BACK, whatever put it there | `Room.heal_player`. THE ONE DOOR, and it is a method rather than a coincidence now that there are two sources: a medical channel completing, and the field gun's dart. Nothing regenerates, nothing heals on extraction, and a DOWNED body is never healed by anything |
 | the field gun, and support as a build | `weapons.medgun` (the one trigger in the game that cannot hurt anything) + [`ultimates.md`](ultimates.md) |
 | pocket rules | `server/app/inventory.py`, `Room.collect_loot` / `drop_loot` — and the client's mirror of what a collect refuses, `client/src/game/interaction.ts` (`canStow`, `swapTargetFor`) |

@@ -373,7 +373,7 @@ class Room:
         self._shot_id = 0
         #: Shots that LEFT something this tick — the launch, for the sound and
         #: the burst of bile. An event; the live rows carry the flight.
-        self.shot_events: list[dict] = []
+        self.spit_events: list[dict] = []
         #: Where shots ENDED this tick. Also an event.
         self.shot_bursts: list[dict] = []
         #: EVERYTHING A PLAYER'S ULTIMATE PUT IN THE AIR, and its own id
@@ -796,6 +796,19 @@ class Room:
         item = loot.BY_KEY.get(key)
         if item is not None and item.pocket == "worn":
             return self.wear_armor(player, key), "worn"
+        if item is not None and item.pocket == medical.POCKET:
+            # THE SAME REFUSAL THE FOREST GIVES: a full belt does not swap a
+            # kit away, so `add` returning False is `None` here and `buy`
+            # refuses the trade before the balance moves. Without this branch
+            # medicine fell through to the belt and the merchant sold a
+            # bandage into a GUN CELL — the one route where "the shop is the
+            # same rules with a price on them" was not true.
+            if not player.medical.add(key):
+                return None, medical.POCKET
+            slot = next(
+                (i for i, held in enumerate(player.medical.slots) if held == key), 0
+            )
+            return slot, medical.POCKET
         return self.take_weapon(player, key), "hotbar"
 
     def take_weapon(self, player: Player, key: str, hp: int | None = None) -> int | None:
@@ -1000,6 +1013,28 @@ class Room:
                     x=crate.x, y=crate.y, radius=crate.type.noise, source_id=player.id
                 )
             )
+
+    def cancel_force(self, pid: str) -> None:
+        """E CAME BACK UP. The vault shuts, and the seconds are spent.
+
+        THE HOLD IS THE POINT. A timed open used to be a press: you committed
+        the noise and the seconds and then watched, unable to change your mind
+        about a decision the forest had already answered. Holding the key means
+        the player can let go the moment something walks into the clearing —
+        the stake is still paid (the noise went out at the start, which is the
+        whole gamble; see `_begin_force`) and the object is still shut, so
+        nothing about the cost changed. What changed is that leaving is now
+        something they DO rather than something they wait for.
+
+        ONLY A CRATE. A heal is not a hold — see `_step_use` — and being able
+        to abort one on the key that started it would make holding 4 free.
+        """
+        player = self.players.get(pid)
+        if player is None or player.using is None:
+            return
+        if player.using.kind != USE_CRATE:
+            return
+        player.using = None
 
     def _finish_force(self, player: Player, crate_id: str) -> None:
         """The channel completed. Open it exactly as a keypress would have.
@@ -1374,9 +1409,9 @@ class Room:
         medkit resolved on the keypress would be a second health bar, and a
         player would top up mid-fight and never think about it again.
 
-        REFUSED AT FULL HEALTH. Not out of tidiness: with only two cells, a
-        kit spent for nothing is a quarter of the night's medicine gone to a
-        mis-key, and on a permanent run that is a real loss to hand somebody
+        REFUSED AT FULL HEALTH. Not out of tidiness: with a handful of cells,
+        a kit spent for nothing is a large slice of the night's medicine gone
+        to a mis-key, and on a permanent run that is a real loss to hand somebody
         for pressing 4 while distracted.
         """
         player = self.players.get(pid)
@@ -2511,7 +2546,7 @@ class Room:
         # Nothing crosses an entrance. A disc still in the air when the party
         # walks out would arrive on a forest it was never thrown in.
         self.shots = []
-        self.shot_events = []
+        self.spit_events = []
         self.shot_bursts = []
         self.ult_shots = []
         self.ult_events = []
@@ -4020,7 +4055,7 @@ class Room:
                 damage=kind.ranged_damage,
             )
         )
-        self.shot_events.append(
+        self.spit_events.append(
             {
                 "id": self._shot_id,
                 "by": enemy.id,
@@ -4981,7 +5016,7 @@ class Room:
                     for shot in self.shots
                 ]
                 or None,
-                spit_events=self.shot_events or None,
+                spit_events=self.spit_events or None,
                 spit_bursts=self.shot_bursts or None,
                 ults=self.ult_events or None,
                 volleys=[
@@ -5050,7 +5085,7 @@ class Room:
                 self.heal_events = []
                 self.event_rows = []
                 self.reroll_events = []
-                self.shot_events = []
+                self.spit_events = []
                 self.shot_bursts = []
                 self.spin_events = []
                 self.boss_events = []

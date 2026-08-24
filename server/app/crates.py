@@ -175,10 +175,13 @@ JUNK_ODDS: dict[str, float] = {
 OPEN_LABEL = "abrir"
 BREAK_LABEL = "destruir"
 SEARCH_LABEL = "vasculhar"
-#: The vault's, and it is a different word on purpose. `abrir` is what you do
-#: to a lid; this is the one container that does not simply open, and the verb
-#: on the prompt is the player's first warning that this press is not free.
-FORCE_LABEL = "arrombar"
+#: The vault's. THE SAME VERB AS A LID, and that is the change: the prompt no
+#: longer leans on a rarer word to say "this one is different", because the
+#: sentence around it already does — the vault is the only object you HOLD the
+#: key for, and the seconds are printed beside it. A second vocabulary for the
+#: same act was the HUD warning the player twice and telling them nothing about
+#: the part that actually differs, which is the gesture.
+FORCE_LABEL = "abrir"
 
 TYPES: tuple[ObjectType, ...] = (
     # --- BREAK ---------------------------------------------------------

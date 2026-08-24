@@ -255,20 +255,52 @@ def test_the_body_is_a_puppet() -> None:
     check(player.vx == 0.0 and player.vy == 0.0, "a healing body does not move")
 
 
-# --- the two cells -----------------------------------------------------------
+# --- the cells ---------------------------------------------------------------
 
 
 def test_cells_refuse_rather_than_swap() -> None:
+    # DRIVEN OFF `MEDICAL_SLOTS`, not off the number it happens to be. The
+    # count is a tuning knob (it has already moved once, 2 -> 3); the RULE is
+    # that a full belt refuses rather than swapping, and a test that hardcoded
+    # the width would fail on the tuning and say nothing about the rule.
     belt = medical.Medical()
-    check(belt.add("first_aid"), "first cell takes one")
-    check(belt.add("morphine"), "second cell takes one")
-    check(belt.full(), "both cells are full")
-    check(not belt.add("first_aid"), "a third kit is REFUSED, not swapped in")
+    filled = ["first_aid" if i % 2 == 0 else "morphine" for i in range(medical.MEDICAL_SLOTS)]
+    for index, key in enumerate(filled):
+        check(belt.add(key), f"cell {index} takes one")
+    check(belt.full(), "every cell is full")
+    check(not belt.add("first_aid"), "one kit too many is REFUSED, not swapped in")
     check(
-        belt.slots == ["first_aid", "morphine"],
+        belt.slots == filled,
         "and the refusal did not disturb what was already there",
     )
     check(not belt.add("gold_ring"), "a non-kit never enters the medical belt")
+
+
+def test_the_shop_hands_medicine_to_the_belt() -> None:
+    """A BOUGHT kit lands in a medical cell, not in a gun cell.
+
+    `Room.take_gear` is the one door the shop and the forest share, and it
+    routed on `pocket` for armour and then fell through to the BELT for
+    everything else — so the merchant sold a bandage into a firearm slot, and
+    the player walked out with a first-aid kit bound to 1 that no key could
+    spend. Nothing anywhere failed; it just quietly was not medicine any more.
+    """
+    _room_unused, player = _room()
+    room = _room_unused
+    slot, dest = room.take_gear(player, "first_aid")
+    check(dest == medical.POCKET, "a kit routes to the medical belt")
+    check(slot == 0, "into the first free cell")
+    check(player.medical.slots[0] == "first_aid", "and it is actually in it")
+    check(
+        "first_aid" not in player.hotbar.slots,
+        "and nowhere near the weapon belt",
+    )
+    # A FULL BELT REFUSES THE SALE, which is `buy`'s own guard: it tests the
+    # slot before the balance moves, so a refused kit is never charged for.
+    for _ in range(medical.MEDICAL_SLOTS):
+        player.medical.add("morphine")
+    refused, _dest = room.take_gear(player, "first_aid")
+    check(refused is None, "a full belt refuses the purchase rather than swapping")
 
 
 def test_weight_costs_the_walk() -> None:
@@ -314,7 +346,11 @@ def test_config_ships_what_the_client_draws() -> None:
 def test_roster_and_tick_rows() -> None:
     _unused, player = _room()
     player.medical.add("morphine")
-    check(player.to_payload()["med"] == ["morphine", None], "the cells ride the roster")
+    check(
+        player.to_payload()["med"]
+        == ["morphine"] + [None] * (medical.MEDICAL_SLOTS - 1),
+        "the cells ride the roster, every one of them",
+    )
     # `use` is omitted unless a heal is actually running — it is a per-tick
     # field on a row every player pays for thirty times a second.
     check("use" not in player.snapshot_payload(), "a resting body carries no heal field")
@@ -332,6 +368,7 @@ def main() -> None:
     test_a_blow_costs_the_seconds_and_keeps_the_kit()
     test_the_body_is_a_puppet()
     test_cells_refuse_rather_than_swap()
+    test_the_shop_hands_medicine_to_the_belt()
     test_weight_costs_the_walk()
     test_config_ships_what_the_client_draws()
     test_roster_and_tick_rows()

@@ -171,15 +171,23 @@ SLOT_NAMES: dict[str, str] = {
 #: rather than hardcoded in a React component for the same reason every other
 #: catalog string is: adding a slot must not be a client change.
 #:
-#: `cells` is how many boxes the slot occupies on its row. Two, for the arms,
-#: the legs and the feet: those are PAIRS on a body, and drawing one box for a
-#: pair is the one place this picture would stop looking like a person.
+#: `cells` is how many boxes the slot occupies on its row. Only the ARMS take
+#: two, and that is what draws the figure: a box, then arm/chest/arm, then two
+#: single boxes under it.
+#:
+#: THE LEGS AND THE BOOTS USED TO BE PAIRS TOO, on the argument that they are
+#: pairs on a body. What that actually produced was a four-row block where
+#: three of the rows were doubled and the widest row was not the shoulders —
+#: a bottom half as broad as the chest reads as a stack of bars rather than as
+#: a person. One box each is the simpler picture AND the truer silhouette: the
+#: arms are the only part of this that sticks out sideways, so they should be
+#: the only part that is two boxes wide.
 BODY_LAYOUT: tuple[dict, ...] = (
     {"slot": SLOT_HEAD, "row": 0, "cells": 1},
     {"slot": SLOT_ARMS, "row": 1, "cells": 2},
     {"slot": SLOT_BODY, "row": 1, "cells": 1},
-    {"slot": SLOT_LEGS, "row": 2, "cells": 2},
-    {"slot": SLOT_FEET, "row": 3, "cells": 2},
+    {"slot": SLOT_LEGS, "row": 2, "cells": 1},
+    {"slot": SLOT_FEET, "row": 3, "cells": 1},
 )
 
 # --- the ladder --------------------------------------------------------------

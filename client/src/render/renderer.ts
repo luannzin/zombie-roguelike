@@ -74,7 +74,7 @@ import { TerrainLayer, type DecorationMask } from './layers/terrain';
 import { drawVignette } from './layers/vignette';
 import { PostChain, type ShaftLight } from './post/chain';
 import { MAX_SHAFTS } from './post/chain';
-import { projectionFor, type Projection } from './projection';
+import { WORLD_SPACE, projectionFor, type Projection } from './projection';
 import { palette } from '../theme/palette';
 import { loadGore, type GoreAtlas } from './gore';
 import { loadGuns, type GunAtlas } from './guns';
@@ -588,11 +588,19 @@ export class Renderer {
     drawCombatEffects(ctx, state.effects, state.config.tileSize, this.weaponVfx);
     // OVER the bodies and the scenery — see `drawSpits`. A disc lost behind a
     // shoulder is a hit taken.
-    drawSpits(ctx, view, state.spits);
+    //
+    // `WORLD_SPACE`, NOT `view`, AND THAT IS NOT A DETAIL. This whole block
+    // runs under `useWorldSpace`, so the canvas transform already carries the
+    // zoom and the camera offset; handing these two a real projection applies
+    // both a SECOND time — the disc lands at `zoom * (zoom * x + off) + off`,
+    // which is somewhere off the edge of the screen, at a radius scaled twice.
+    // That is exactly what it did: a huge blob outside the world, while the
+    // hit it belonged to landed correctly in it.
+    drawSpits(ctx, WORLD_SPACE, state.spits);
     // Over the spits, and that ordering is a statement: the party's own
     // ultimate is the most important thing on the screen for the second it
     // is crossing it.
-    drawVolleys(ctx, view, state.volleys);
+    drawVolleys(ctx, WORLD_SPACE, state.volleys);
     this.darkness.drawLights(ctx, state.effects.lights);
     drawLootAuras(ctx, state.loot, state.time);
     drawLootMotes(ctx, state.loot, state.time, state.config.tileSize);

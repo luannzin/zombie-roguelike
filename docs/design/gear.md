@@ -124,7 +124,10 @@ below).
   greaves.
   There are five now — a helmet, bracers, a breastplate, trousers and boots —
   and the panel draws them as a BODY rather than as a list: one box, then
-  three, then two, then two, which is a person seen from the front. The rule
+  three, then one, then one, which is a person seen from the front. Only the
+  ARMS are two boxes — the legs and the boots were drawn as pairs at first, on
+  the argument that they are pairs on a body, and four rows of doubles made the
+  widest part of the figure something other than the shoulders. The rule
   underneath did not change and did not need to. What changed is that the slots
   are finally enough of a person that the picture can be one, and that a hole
   in the picture is a part of you the next blow can land on with nothing in the

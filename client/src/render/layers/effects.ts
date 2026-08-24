@@ -339,9 +339,15 @@ function drawSlashes(
   ctx.globalAlpha = 1;
 }
 
-/** Screen space, over everything except the vignette. */
 /**
  * Creature projectiles in the air.
+ *
+ * DRAWN UNDER THE WORLD TRANSFORM. The renderer calls this from inside its
+ * `useWorldSpace` block and hands it `WORLD_SPACE`, so the coordinates here
+ * ARE world coordinates and `view.zoom` is 1 — the canvas is already carrying
+ * the camera. Passing the real projection instead applies the zoom and the
+ * offset twice and throws the disc off the edge of the screen at several times
+ * its size, which is what it did for the whole of the bloater's first release.
  *
  * OVER EVERYTHING, and that is the one decision here. A disc is the only thing
  * on screen the player must never lose behind a tree or a shoulder, because

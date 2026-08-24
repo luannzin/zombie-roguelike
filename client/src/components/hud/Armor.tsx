@@ -12,20 +12,22 @@
  *
  *        [ ]        the helmet
  *     [ ][ ][ ]     a bracer, the breastplate, the other bracer
- *      [ ][ ]       the trousers
- *      [ ][ ]       the boots
+ *        [ ]        the trousers
+ *        [ ]        the boots
  *
- * The counts are the silhouette. One box, then three, then two, then two, is
- * a person seen from the front — and a hole in it is a part of you that the
- * next blow can land on with nothing in the way, which is a far louder
- * sentence than an empty row was. The shape is not decided here: it comes off
+ * The counts are the silhouette. One box, then three, then one, then one, is a
+ * person seen from the front — and a hole in it is a part of you that the next
+ * blow can land on with nothing in the way, which is a far louder sentence
+ * than an empty row was. The shape is not decided here: it comes off
  * `config.armorBodyLayout`, so a sixth slot is a row in `armor.py` and a shape
  * in two generators, and this file does not change.
  *
- * A PAIR IS TWO BOXES SHOWING ONE PIECE. The arms, the legs and the boots are
- * pairs on a body and one object in the catalog, and drawing one box for each
- * pair is the single thing that would stop this picture looking like anybody.
- * Both boxes hover the same card, because they are the same object.
+ * ONLY THE ARMS ARE A PAIR. The legs and the boots were drawn as two boxes as
+ * well, on the argument that they are pairs on a body — and what that produced
+ * was four rows of doubles where the widest part of the figure was not the
+ * shoulders. The arms are the only part of a person that sticks out sideways,
+ * so they are the only part that is two boxes wide. Both of their boxes hover
+ * the same card, because they are the same object.
  *
  * IT IS COLLAPSED BY DEFAULT, LIKE THE BAG, AND C EXPANDS IT
  * ==========================================================

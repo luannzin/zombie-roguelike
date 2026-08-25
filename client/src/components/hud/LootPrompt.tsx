@@ -42,6 +42,10 @@
  *             it did not print a refusal at all, it offered to trade the GUN
  *             in your hands for a knife you were already holding
  *   shield    one is the limit
+ *   nopack    THE BAG IS NOT ON THIS BODY. It is lying somewhere on the map,
+ *             because this player put it down to pick a teammate up. The one
+ *             refusal here the player fixes by GOING somewhere rather than by
+ *             giving something up, which is why it reads as a state
  *
  * MOST OF THEM NAME THE OBJECT FIRST, because the name is usually most of the
  * answer: "Machado — você já carrega esta lâmina" needs no second sentence to
@@ -93,6 +97,11 @@ const REFUSAL_COPY: Record<string, string> = {
  */
 const REFUSAL_LINE: Record<string, string> = {
   worn: 'Você já tem este item equipado',
+  // A STATE, NOT A "NO". The bag is on the ground where a teammate was picked
+  // up, and the sentence has to be the kind a player acts on rather than the
+  // kind they stop reading — "sem mochila" alone would send somebody hunting
+  // for a bug. Naming the thing that is missing is what points them back to it.
+  nopack: 'Você está sem mochila equipada',
 };
 
 export function LootPrompt({ prompt }: LootPromptProps) {

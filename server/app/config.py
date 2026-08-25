@@ -1005,6 +1005,35 @@ CRATE_HIT_H_TILES = 2.0
 CRATE_HIT_W = TILE_SIZE * CRATE_HIT_W_TILES
 CRATE_HIT_H = TILE_SIZE * CRATE_HIT_H_TILES
 
+# --- carrying a body --------------------------------------------------------
+# How close the feet have to be to pick a downed teammate up, or to put one
+# down. TIGHTER THAN A LOOT REACH ON PURPOSE: everything else E offers is
+# something you take from a distance, and this one is you getting your hands
+# under somebody. It has to be a place you walked to, not a thing you were
+# near.
+CARRY_REACH_TILES = 1.5
+CARRY_REACH_DIST = TILE_SIZE * CARRY_REACH_TILES
+
+# What carrying a body multiplies the walk by, under everything else.
+#
+# HEAVIER THAN A FULL BAG AND IT IS NOT A WEIGHT. It could have been one — a
+# body is heavy, put it on `carry_weight` and the existing curve does the rest
+# — and that would have been wrong twice over: the bag has already been DROPPED
+# to make room for this, so the weight curve is at its lightest exactly when
+# the player is at their slowest, and a number that lands somewhere on a curve
+# is a number that can be optimised away by carrying less. This is a flat
+# multiplier for the same reason the shield's is: it is the price of a
+# DECISION, not of an amount.
+#
+# The number is set so a carrier is slower than a walker and faster than
+# nothing: fast enough that the trip to a platform is a plan, slow enough that
+# the escort is the reason the rest of the party stays with them.
+CARRY_BODY_SCALE = 0.62
+
+# What a body revived on a platform comes back with, as a share of its own
+# ceiling. NOT FULL, and not a token either — see `Room.revive_player`.
+REVIVE_HP_SHARE = 0.5
+
 # --- inventory / carry ------------------------------------------------------
 # Starting pocket. A later upgrade grows the slot count; weight is independent
 # of that and can go PAST the max — the bag never refuses for being heavy.
@@ -1431,6 +1460,13 @@ def client_config() -> dict:
         "lootCollectTiles": LOOT_COLLECT_TILES,
         # How close to a crate E will smash, in tiles.
         "crateBreakTiles": CRATE_BREAK_TILES,
+        # How close to a downed teammate, or to your own dropped pack, E
+        # answers. One reach for both because they are the same gesture: you
+        # walked over and put your hands on something.
+        "carryReachTiles": CARRY_REACH_TILES,
+        # What carrying a body does to the walk. The client mirrors it in
+        # `simulation.ts` — see `Player.carrying`.
+        "carryBodyScale": CARRY_BODY_SCALE,
         # How close to the extraction console E will activate, in tiles.
         "riftActivateTiles": RIFT_ACTIVATE_TILES,
         # The shop. How close to a table E will buy, and how far the weapon on

@@ -58,10 +58,19 @@ MOVING = {
 # is a different thing entirely — the active WINDOW, which is a pose every
 # client draws — and that one is omitted unless an ultimate is actually
 # running, like `wind` and `blk`, so it must not be listed in MOVING.
+# `pack` — whether the backpack is even ON this body — is here beside the
+# pocket it describes, and it has to be: an empty bag and NO bag look identical
+# in `inv` and refuse completely different things (`Room.collect_loot`). It
+# changes twice a night at most, when somebody picks a teammate up and when
+# they walk back for the bag. Its companions on the TICK row are `carry` and
+# `held_by` (who is in whose arms) and `out` (crossed the exit and waiting);
+# all three are POSES every client draws over every body, and all three are
+# omitted unless true, like `wind` and `blk`, so none of them may be listed in
+# MOVING.
 IDENTITY = {
     "name", "color", "kills", "deaths", "xp", "gold", "level", "xpInLevel",
-    "xpToLevel", "inv", "guns", "ammo", "armor", "med", "skills", "spins",
-    "mods", "ult",
+    "xpToLevel", "inv", "pack", "guns", "ammo", "armor", "med", "skills",
+    "spins", "mods", "ult",
 }
 
 

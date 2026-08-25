@@ -311,6 +311,23 @@ class Player:
     #: same place — the frame the button is read — and the movement code just
     #: multiplies.
     block_speed: float = 1.0
+    #: What the walk is multiplied by right now because there is a body in
+    #: these arms. 1.0 whenever there is not.
+    #:
+    #: A RESOLVED MULTIPLIER BESIDE `block_speed` AND FOR THE SAME REASON:
+    #: `simulation.py` is a line-for-line mirror of `simulation.ts`, and the
+    #: client cannot reach into a roster row from inside its movement code.
+    #: Both sides decide it in the same place - the frame before the walk runs
+    #: - and the movement code just multiplies.
+    #:
+    #: IT IS NOT A WEIGHT, and that was a real decision: a body is heavy, so
+    #: `carry_weight` was the obvious home for it, and it would have been wrong
+    #: twice. The bag has just been DROPPED to make room for the body, so the
+    #: weight curve is at its lightest exactly when the player is at their
+    #: slowest; and a number that lands somewhere on a curve is a number that
+    #: can be optimised down by carrying less. This is the price of a DECISION,
+    #: so it is flat, like the shield's.
+    carry_speed: float = 1.0
     #: Seconds of drag left from the last blow that connected. While it is
     #: above zero the walk is multiplied by `HIT_STAGGER_SCALE`.
     #:
@@ -349,6 +366,37 @@ class Player:
     #: early — by a blow, and only by a blow — and ending it costs nothing but
     #: the time already spent.
     using: "Use | None" = None
+    #: THE BODY IN THIS ONE'S ARMS, by id, or None.
+    #:
+    #: A downed teammate is the only thing in this game a player can pick up
+    #: that is not an object, and it is deliberately not modelled as one: it
+    #: stays a `Player` in `Room.players` with its own row, its own downed
+    #: flag and its own place in the wipe count. What changes is who moves it.
+    #: `Room._step_carried` glues it to the carrier every tick, so the body a
+    #: party is trying to save is visibly in somebody's arms rather than
+    #: teleporting between two states.
+    carrying: str | None = None
+    #: The inverse, so neither side has to scan. A body may be in at most one
+    #: pair of arms — two players carrying one teammate would be two players
+    #: writing one position.
+    carried_by: str | None = None
+    #: THE PACK IS ON THE BACK. False from the moment it is put down to make
+    #: room for a body.
+    #:
+    #: A BOOLEAN AND NOT AN EMPTY INVENTORY, because "no bag" and "an empty
+    #: bag" are different sentences and only one of them refuses a pickup. The
+    #: pocket itself is swapped out for a fresh empty one when the pack goes
+    #: down — what was in it is in the `Pack` on the ground, which is the whole
+    #: point of the trade.
+    has_pack: bool = True
+    #: CROSSED THE EXIT AND WAITING FOR THE REST OF THE PARTY.
+    #:
+    #: The body stops being in the night: it takes no damage, nothing hunts
+    #: it, its input is dropped, and its owner watches the others through the
+    #: same spectator camera a downed player gets. The zone does not turn over
+    #: until everybody still standing has one of these set — see
+    #: `Room._tick_exit_quest`.
+    exited: bool = False
 
     @property
     def max_hp(self) -> int:
@@ -392,6 +440,14 @@ class Player:
         self.skills = Loadout()
         self.pour = None
         self.medical = Medical()
+        # THE PACK COMES BACK. A run that ended with somebody's bag on the
+        # floor of a forest that no longer exists must not open the next one
+        # unable to pick anything up — and the body in their arms is not a
+        # thing a new run has ever heard of.
+        self.has_pack = True
+        self.carrying = None
+        self.carried_by = None
+        self.exited = False
         self.aim_hold = 0.0
         self.combo_step = 0
         self.combo_left = 0.0
@@ -402,6 +458,7 @@ class Player:
         self.ult = None
         self.blocking = False
         self.block_speed = 1.0
+        self.carry_speed = 1.0
         self.stagger = 0.0
         self.respawn_timer = 0.0
         self.hurt_immunity = 0.0
@@ -502,6 +559,22 @@ class Player:
             # under the health bar over every body — not only its own.
             "st": round(self.stamina, 1),
         }
+        # IN SOMEBODY'S ARMS, or carrying somebody. Both on the TICK row and
+        # not the roster, because both are POSES that every client draws over
+        # every body — a teammate crossing a clearing with a body over their
+        # shoulder is the loudest thing on the map — and a five-hertz pose
+        # would show the pick-up half a second after the two sprites met.
+        # Omitted the rest of the time, which is almost always.
+        if self.carrying is not None:
+            row["carry"] = self.carrying
+        if self.carried_by is not None:
+            row["held_by"] = self.carried_by
+        # OUT OF THE NIGHT AND WAITING. On the tick row for the same reason
+        # `down` is: the client stops drawing a body the forest can no longer
+        # touch, and the owner's screen becomes a spectator camera on the
+        # frame it lands.
+        if self.exited:
+            row["out"] = True
         # THE DRAG, and it is on the tick row for the same two reasons the
         # breath is: it moves every tick it exists, and every client draws it —
         # a staggered body lurches whoever is looking at it. Omitted when zero,
@@ -587,6 +660,17 @@ class Player:
             # rather than being sent a second field that would be stale for
             # the frames its own hotbar selection is ahead of the server's.
             "inv": self.inventory.to_payload(),
+            # WHETHER THE PACK IS EVEN ON. It rides beside the pocket it
+            # describes, and the pocket is not enough on its own: an empty bag
+            # and NO bag look identical in `inv` and refuse completely
+            # different things. The client mirrors `Room.collect_loot`'s
+            # refusal off this — see `interaction.canStow`.
+            #
+            # ON THE ROSTER rather than the tick row, unlike `carry` beside it,
+            # and the split is what each is FOR: the pack going down is a POSE
+            # everybody watches happen, and whether it is on is a RULE only its
+            # owner's prompts read. It changes twice a night at most.
+            "pack": self.has_pack,
             "guns": self.hotbar.to_payload(),
             # Rounds by calibre. On the ROSTER rather than the snapshot: the
             # client predicts its own trigger off this the same way it

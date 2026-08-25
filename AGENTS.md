@@ -72,6 +72,8 @@ never all of them.
 | **moving, carrying, shooting, the bag or the belt** | **player** | `docs/design/player.md` |
 | **what a body WEARS, what stops a blow, a lâmina or the shield** | **gear** | `docs/design/gear.md` |
 | **healing, a medkit, the cells on 4 and 5** | **player** | `server/app/medical.py` + `docs/design/player.md` |
+| **carrying a body, the dropped pack, reviving somebody** | **player** + **extraction** | `docs/design/player.md` (the trade) + `docs/design/extraction.md` (the platform, the corridor) |
+| **watching a teammate after you go down or leave** | **HUD** | `client/src/game/spectate.ts` + `client/src/components/AGENTS.md` |
 | **R, an ultimate, a synergy, a set that unlocks something** | **ultimates** | `docs/design/ultimates.md` |
 | **a thing that HAPPENS on a night — a wave, the lights, a crate** | **events** | `docs/design/events.md` |
 | a **pixel or a sound that must be regenerated** | **asset pipeline** | `assets/AGENTS.md` -> `server/tools/AGENTS.md` |
@@ -181,7 +183,7 @@ These bind every subtree. Subsystem-specific rules live in the docs above.
 - **Nothing is persisted server-side.** The only durable client datum is the player's name, in `localStorage`.
 - **Every gameplay constant lives in `server/app/config.py`** and reaches the client in `welcome.config`. Never hardcode one client-side — and never hedge one either. Fields `client_config()` always sends are **required** on `GameConfig`, so `config.x ?? 100` does not compile past a type error; `test_config_parity.py` keeps the two key sets equal in both directions. The client used to hedge, and two constants had silently drifted (`INVENTORY_SLOTS` 3 vs 5, `CARRY_MAX_WEIGHT` 10 vs 14) with nothing failing.
 - **These pairs are mirrors and change together.** Three are line-for-line; five are rules re-derived on the other side and are just as breakable:
-  - `server/app/simulation.py` <-> `client/src/game/simulation.ts` — movement, stamina
+  - `server/app/simulation.py` <-> `client/src/game/simulation.ts` — movement, stamina. TWO RESOLVED MULTIPLIERS ride in from outside it and neither side may compute one inside movement code: `block_speed` / `blockSpeed` (`Room.sync_block` / `Game.syncBlock`) and `carry_speed` / `carrySpeed` (`Room.sync_carry` / `Game.syncCarry`). Both are decided the frame BEFORE the walk, because the walk is the first thing that asks how fast a body is
   - `server/app/protocol.py` <-> `client/src/net/protocol.ts` — every wire shape
   - `server/app/machine.py` <-> `client/src/game/machine.ts` — the pull's clock
   - `server/app/world.py` <-> `client/src/game/world.ts` — the tile alphabet, the `GROUNDS` / `CLEAR` sets, and `move_axis` / `blocks_sight` / `box_blocked` / `raycast_tiles`. Prediction runs on it; a tile kind added on one side alone desyncs collision. Solidity is no longer `!= FLOOR`: the shop's `TILEFLOOR` is a second walkable ground, so both sides test membership of `GROUNDS` and a member added to one alone rubber-bands the shop's doorway
@@ -203,6 +205,7 @@ These bind every subtree. Subsystem-specific rules live in the docs above.
 - **Generated-asset lists are append-only.** Inserting a row moves every existing frame index.
 - **Money is created in exactly one place, once:** `Room.enter_store`. The client never settles.
 - **Damage arrives at exactly one place, once:** `Room.damage_player`. The shield, worn armour and `Mods.armor` are applied there and nowhere else, in that order — a mitigation written at three call sites is one that will be missing from the fourth. Anything that can hurt a player comes through this door, including the boss.
+- **A body with NO PACK takes no cargo, and takes everything else.** `Player.has_pack` goes false the moment somebody picks up a downed teammate (`Room.carry_body`), because a body needs both arms; `Room.collect_loot` then refuses `pocket == "bag"` and nothing else. Rounds, plate, medicine and steel all still work, and that split is the whole reason the containers below are separate: **what a rescue costs is the night's takings, not the ability to survive the walk back.** The bag is a `Pack` on the ground, owned by one player, and it keeps what was in it until every platform is spent.
 - **A player has FIVE containers and `loot.ItemDef.pocket` is what decides between them:** the pocket (`bag`, slots and weight), the belt (`hotbar` — a gun into a gun cell, a lâmina into the blade cell), the reserve (`ammo`), the body (`worn` — FIVE slots: head, arms, body, legs, feet) and the medical cells (`med` — `medical.MEDICAL_SLOTS` of them, on the keys straight after the belt's). None of `ammo`, `worn` or `med` costs a pocket cell, because the bag's budget answers "how much loot can I still carry out" and none of rounds, a helmet or a bandage is cargo. Worn armour and medicine still cost SPEED.
 - **Health comes back through exactly one door:** `Room.heal_player`. It used to be one PLACE because there was one caller; there are two sources now — a medical channel completing (`_step_use`) and the field gun's dart — so the rule is a method instead of a coincidence. What did not change is the important half: there is still no regeneration, no heal on extraction, and nothing that happens to a body on its own. Every point of health in this game is something a person spent something to give it, and a DOWNED body is never healed by anything.
 - **Medicine is not cargo.** Both kits have `value=0`, so they cannot be sold, poured, or counted toward a quota. The merchant sells them, and that trip is one-way.
@@ -212,7 +215,7 @@ These bind every subtree. Subsystem-specific rules live in the docs above.
 
 | scope | command |
 | --- | --- |
-| server | `python tests/test_snapshot_shape.py`, `test_pour.py`, `test_store_walk.py`, `test_config_parity.py`, `test_loot_frames.py`, `test_bush_cover.py`, `test_scenery_containers.py`, `test_creature_sheets.py`, `test_map_scale.py`, `test_boss_fight.py`, `test_gear.py`, `test_pack.py`, `test_medical.py`, `test_events.py`, `test_night_pressure.py`, `test_quota.py`, `test_containers.py`, `test_skills.py`, `test_ranged.py`, `test_reroll.py`, `test_weather.py`, `test_ultimates.py` from `server/` — plain scripts, each prints `ok` |
+| server | `python tests/test_snapshot_shape.py`, `test_pour.py`, `test_store_walk.py`, `test_config_parity.py`, `test_loot_frames.py`, `test_bush_cover.py`, `test_scenery_containers.py`, `test_creature_sheets.py`, `test_map_scale.py`, `test_boss_fight.py`, `test_gear.py`, `test_pack.py`, `test_medical.py`, `test_rescue.py`, `test_events.py`, `test_night_pressure.py`, `test_quota.py`, `test_containers.py`, `test_skills.py`, `test_ranged.py`, `test_reroll.py`, `test_weather.py`, `test_ultimates.py` from `server/` — plain scripts, each prints `ok` |
 | client | `bun run typecheck` from `client/` — required after any change there |
 | client | `bun tests/grade.ts` from `client/` after touching `render/post/grade.ts` — plain script, prints `ok` |
 | client | `bun tests/exit-path.ts` from `client/` after touching `game/exit-path.ts` — plain script, prints `ok` |
@@ -299,6 +302,20 @@ that the shield blocks only what it is FACING, spends itself on the blow that
 breaks it, and leaves the belt when it does. A shield that blocked from behind
 would be a strictly-better plate and nobody would ever notice — they would
 just stop dying.
+
+Run `test_rescue.py` after touching `Room.carry_body` / `take_pack` /
+`_step_carried` / `revive_player` / `_revive_on_deck` / `_strip_spent_packs`,
+`Player.carrying` / `has_pack` / `exited`, `inventory.Pack`, or either exit
+crossing (`_tick_exit_quest` / `_tick_arena_exit`). Every link in a rescue is a
+join that is invisible from inside the game when it stops working, and every
+one of them reads as bad luck rather than as a defect: a platform that silently
+stopped reviving reads as "it does not do that"; a pack anybody could take
+reads as "my mate stole my loot"; a corridor that turned over early reads as
+"the game kicked me out of the map". Nobody reports any of those. It drives the
+whole chain with nobody watching — the bag going down on the same frame the
+body comes up, the four other containers still accepting things, the ownership,
+the pads emptying an abandoned pack, the pickup call standing a body up at
+half, and the corridor waiting for the last player rather than the first.
 
 Run `test_medical.py` after touching `medical.py`, `Room.use_medical` /
 `_step_use` / `damage_player`, the `med` rows in `loot.ITEMS`, or the shop's

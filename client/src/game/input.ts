@@ -84,6 +84,25 @@ const MEDICAL_KEYS: Record<string, number> = {
   Numpad6: 2,
 };
 
+/**
+ * STEP THROUGH THE PARTY WHILE SPECTATING. Left / right, wrapping.
+ *
+ * The arrow keys and not new letters, and not A/D either: A and D are MOVEMENT
+ * and a player who has just gone down is a player whose hands are still on
+ * WASD, so binding the cycle there would make the first thing they do after
+ * dying flick the camera around. The arrows are the one pair of keys nothing
+ * else in this game uses for anything but walking, and while spectating there
+ * is no walking.
+ *
+ * They stay bound to movement as well, which costs nothing: a body that is on
+ * the floor or waiting at a corridor has its input dropped server-side
+ * anyway, so the same press cannot mean two things at once.
+ */
+const SPECTATE_KEYS: Record<string, number> = {
+  ArrowLeft: -1,
+  ArrowRight: 1,
+};
+
 export class InputController {
   readonly movement: MovementInput = { up: false, down: false, left: false, right: false };
   shooting = false;
@@ -136,6 +155,14 @@ export class InputController {
   onHotbar: ((slot: number) => void) | null = null;
   /** A medical cell was pressed. See `MEDICAL_KEYS` for why it is its own. */
   onMedical: ((cell: number) => void) | null = null;
+  /**
+   * Step the spectator camera through the party. `step` is -1 or +1.
+   *
+   * Fired on every press of an arrow key, spectating or not — whether there is
+   * anybody to watch is the game's question, not the keyboard's, exactly as
+   * `onInteractEnd` is fired without asking whether a channel was running.
+   */
+  onSpectate: ((step: number) => void) | null = null;
 
   constructor(private readonly canvas: HTMLCanvasElement) {
     window.addEventListener('keydown', this.onKeyDown);
@@ -168,6 +195,13 @@ export class InputController {
   };
 
   private onKeyDown = (e: KeyboardEvent) => {
+    // THE ARROWS ARE BOTH, and the spectator half goes first because it is an
+    // EDGE: auto-repeat must not spin the camera through the party thirty
+    // times a second. Movement then falls through to the map below, which is
+    // correct — a body that is spectating has its input dropped server-side,
+    // so one press cannot mean two things at once.
+    const step = SPECTATE_KEYS[e.code];
+    if (step !== undefined && !e.repeat) this.onSpectate?.(step);
     const key = KEY_MAP[e.code];
     if (key) {
       this.movement[key] = true;

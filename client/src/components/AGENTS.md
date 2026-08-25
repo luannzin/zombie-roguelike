@@ -14,7 +14,8 @@ and nowhere near the frame loop.
   `ReadyCount`, `Balance`, `QuestLog`, `QuestRow`, `QuestAnnounce`, `QuestCount`, `InteractPrompt`, `LootPrompt`, `CratePrompt`, `RiftPrompt`, `BuyPrompt`, `MachinePrompt`, `ExitGuide`, `SkillTray`, `SkillIcon`, `SkillCanIcon`, `Inventory`, `InventorySlot`,
   `InventoryGold`, `WeightBar`, `LootIcon`, `CoinIcon`, `DarkCoinIcon`, `SlotValue`, `LootFly`, `LootCard`,
   `LootCardRow`, `TooltipCard`, `InventoryGhost`, `Tooltip`, `TooltipKey`,
-  `Hotbar`, `HotbarSlot`, `Medical`, `Armor`, `Ultimate`, `UltimateIcon`, `GearCard`, `HoverCard`.
+  `Hotbar`, `HotbarSlot`, `Medical`, `Armor`, `Ultimate`, `UltimateIcon`, `GearCard`, `HoverCard`,
+  `CarryPrompt`, `Spectate`.
 - `lobby/` — `CampfireCanvas` (mounts `LobbyScene`; owns the rest-shot fire
   position via `campFireAnchor`, not via per-screen props), `RoomCode`,
   `PlayerRoster`.
@@ -142,6 +143,55 @@ corner the player is fighting toward, so `pointer-events-auto` goes on the
 individual cell or row and only when it holds something. An empty cell stays
 transparent to the mouse — there is nothing to hover, so there is no reason to
 eat a click.
+
+### Spectating is the opposite of the death card
+
+`hud/Spectate.tsx` is up while the local player is DOWNED with somebody still
+standing, or has crossed the exit and is waiting for the party (see
+[`../game/spectate.ts`](../game/spectate.ts) for why those two share one
+camera). `DeathScreen` covers the world, because a run that has ended has
+nothing out there worth looking at; this one covers as LITTLE as possible,
+because the forest behind it is the entire reason it exists. So it is two thin
+bars — a line at the top that says why, a strip at the bottom that says whose
+eyes you are borrowing — and the middle of the screen is left alone.
+
+The two reasons read differently and have to. Down is a state somebody can
+still do something about, so the line names the one thing that brings you back
+— a player who does not know a platform revives them will never ask to be
+carried to one. Out is finished, so that line COUNTS, and a count is a promise
+that this ends.
+
+It is the ONE HUD layer that takes the mouse back wholesale, and that is safe
+here and nowhere else: there is no trigger to eat underneath it. It is also
+outside `HudScreen`, with the tooltips — the strip is a list of PEOPLE and the
+glass would bend the names at its edges, which is the one thing on it that has
+to stay readable. It sits UNDER `DeathScreen` and over everything else.
+
+`onWatch` is the only callback in this whole overlay that reaches back into the
+game, and it reaches into the RENDERER rather than the simulation. Nothing goes
+on the socket.
+
+### The carry prompt names the COST first
+
+`hud/CarryPrompt.tsx` is one component for both halves of one trade — a body in
+reach and your own bag in reach — because the player has to see them as one
+decision. Picking somebody up costs the bag; walking back for the bag costs
+putting them down. Two components would be two vocabularies for one thing, and
+the second would be the one nobody read.
+
+*Largar mochila e carregar {nome}*, in that order, with the cost in the accent.
+Picking up a teammate is the obvious half — it is what they walked over there
+to do — and the bag going down is the half they would only find out about
+afterwards. It is NOT in the danger tone: that belongs to the pickup call,
+which turns the whole map hostile and cannot be taken back. This one is
+completely reversible, and red here would spend the one tone the HUD keeps for
+the press that earns it.
+
+**The platform line is the one that teaches the mechanic.** Putting a body down
+anywhere is legal and means nothing; putting one down on a deck is the whole
+rescue, and nothing else in the game says so — so the `drop` copy changes on
+the deck, and that changed line is where a player learns that the platform
+takes people as well as loot.
 
 ### The boss bar
 

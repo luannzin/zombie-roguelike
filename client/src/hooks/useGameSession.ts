@@ -14,7 +14,7 @@
  * game loop.
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Game } from '../game/game';
 import { createHudStore } from '../game/hud-store';
 import type { Connection } from '../net/connection';
@@ -26,6 +26,15 @@ export interface GameSession {
   minimapRef: React.RefObject<HTMLCanvasElement | null>;
   /** Set when the game could not start at all (not a dropped connection). */
   error: string | null;
+  /**
+   * Point the spectator camera at a body. Handed to the HUD's strip.
+   *
+   * THE ONLY THING THE OVERLAY IS ALLOWED TO CALL ON THE GAME, and it is a
+   * camera rather than a command: nothing goes on the socket, no state the
+   * server owns is touched. Stable across renders, because a new function
+   * every frame would remount every button on that strip.
+   */
+  watch: (id: string) => void;
 }
 
 export function useGameSession(
@@ -49,6 +58,11 @@ export function useGameSession(
   // welcome with the same playerId; that must not tear the Game down.
   const playerId = welcome.playerId;
 
+  // The live game, for the one call the overlay makes into it. A ref rather
+  // than state: it changes exactly twice per mount and nothing renders off it.
+  const live = useRef<Game | null>(null);
+  const watch = useCallback((id: string) => live.current?.watchPlayer(id), []);
+
   useEffect(() => {
     const canvas = canvasRef.current;
     const minimapCanvas = minimapRef.current;
@@ -63,6 +77,7 @@ export function useGameSession(
       welcome,
       onFirstFrame: () => ready.current?.(),
     });
+    live.current = game;
 
     game.start().catch((err: unknown) => {
       console.error(err);
@@ -71,11 +86,12 @@ export function useGameSession(
 
     return () => {
       cancelled = true;
+      live.current = null;
       game.dispose();
     };
     // `welcome` is the one that created this identity. Later welcomes for the
     // same playerId arrive on the socket and Game.onWelcome applies them.
   }, [hud, connection, playerId]);
 
-  return { hud, canvasRef, minimapRef, error };
+  return { hud, canvasRef, minimapRef, error, watch };
 }

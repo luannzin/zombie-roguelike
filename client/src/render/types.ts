@@ -10,6 +10,7 @@
  * single depth-ordered list and a new creature needs no new draw path.
  */
 
+import type { DrawablePack } from './layers/loot';
 import type { Effects } from '../game/effects';
 import type { BloodStain } from '../game/entity-visuals';
 import type { TileMap } from '../game/world';
@@ -101,6 +102,17 @@ export interface DrawableEntity {
    * `drawCorpseSprites`.
    */
   downed: boolean;
+  /**
+   * THIS BODY IS IN SOMEBODY'S ARMS.
+   *
+   * Set on the DOWNED body rather than on the carrier, because it changes how
+   * the downed body is drawn and nothing about the carrier: the server has
+   * already glued the two positions together (`Room._step_carried`), so
+   * without this the rescued player would be drawn lying on the floor
+   * underneath their rescuer, which reads as a rendering bug rather than as
+   * a rescue.
+   */
+  carried: boolean;
   /** Seconds since this body went down. Drives the collapse timeline. */
   downAge: number;
   /**
@@ -270,6 +282,8 @@ export interface DrawableCoin {
 }
 
 /** A collectable drop. Does not move; `visibility` hides it in the dark. */
+export type { DrawablePack };
+
 export interface DrawableLoot {
   id: string;
   key: string;
@@ -357,6 +371,11 @@ export interface RenderState {
   entities: DrawableEntity[];
   coins: DrawableCoin[];
   loot: DrawableLoot[];
+  /**
+   * Backpacks on the ground. Almost always empty — one appears the moment
+   * somebody picks a downed teammate up, and leaves when they walk back for it.
+   */
+  packs: DrawablePack[];
   corpses: DrawableCorpse[];
   /**
    * Creature projectiles in the air, straight off the snapshot.

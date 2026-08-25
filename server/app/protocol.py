@@ -267,6 +267,19 @@ MSG_USE = "use"
 #: because an ultimate that flashed and then did not happen would be the
 #: worst-feeling frame in the game.
 MSG_ULT = "ult"
+#: Pick a downed teammate up, or put the one in your arms down.
+#: `{type:"carry"}` — NO TARGET, and for the same reason `ult` carries none:
+#: there is only ever one answer. Carrying, it puts that body down; not
+#: carrying, it takes the nearest downed teammate inside `CARRY_REACH_DIST`.
+#: A client that named a body could name one across the map, and a client that
+#: named the WRONG one would be a rescue that silently picked up somebody else
+#: — which, with two bodies on the floor in the dark, is exactly the frame
+#: where being wrong is unrecoverable.
+MSG_CARRY = "carry"
+#: Take your own dropped pack back. `{type:"pack"}` — no id, same argument:
+#: the only pack any player may pick up is theirs, so naming one adds a way to
+#: be wrong and no way to be right.
+MSG_PACK = "pack"
 
 MSG_HELLO = "hello"
 MSG_LOBBY = "lobby"
@@ -408,6 +421,7 @@ def snapshot(
     ults: list[dict] | None = None,
     volleys: list[dict] | None = None,
     ult_bursts: list[dict] | None = None,
+    packs: list[dict] | None = None,
 ) -> dict:
     payload = {
         "type": MSG_SNAPSHOT,
@@ -464,6 +478,12 @@ def snapshot(
         payload["armorHits"] = armor_hits
     if corpses is not None:
         payload["corpses"] = corpses
+    # BAGS ON THE GROUND. `is not None` rather than truthiness, like `loot`
+    # and `corpses`: the list going EMPTY is the news — somebody walked back
+    # and picked theirs up — and a falsy check would leave the last pack drawn
+    # in the grass forever.
+    if packs is not None:
+        payload["packs"] = packs
     # Rift rows when any pad changed state. The client runs the ceremony
     # between those snapshots off its own clock.
     if rifts is not None:

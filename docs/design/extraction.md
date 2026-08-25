@@ -372,6 +372,55 @@ authority (`server/app/inventory.py` slot rules), the wire protocol pair, or
   `localPour` on the frame a movement key goes down, because `liveInput` masks
   movement out of a pour packet and the server cannot cancel off a bit that was
   never sent.
+- **THE PLATFORM TAKES PEOPLE AS WELL AS LOOT.** A downed body laid on a
+  deck does NOTHING on its own — it is cargo, lying where the loot lies,
+  waiting for the same flight. What turns it back into a person is somebody
+  calling the pickup: `Room._revive_on_deck` runs on the same press that banks
+  the haul, stands up every downed body inside the console's reach, and hands
+  them back half their ceiling (`REVIVE_HP_SHARE`). One decision, both payloads.
+
+  **IT IS ITS OWN DOOR AND IT IS NOT A HEAL.** `Room.heal_player` refuses a
+  downed body outright and must keep refusing one, because a heal that stood
+  somebody up would quietly delete permadeath — the thing every other system in
+  this game is balanced against. Coming back is not something medicine can buy:
+  it costs a teammate their backpack, a walk across a map, and a platform.
+
+  **HALF, NOT FULL, AND NOT A TOKEN.** Full health would make the pad a free
+  reset and the whole escort a formality; five points would make the revive an
+  animation in front of a second death. Half is enough to walk out on and not
+  enough to fight on, which is what the rest of that night should be about.
+
+  The reach is the CONSOLE's rather than the deck's footprint, because a body
+  at the edge of a five-by-two skid is on the platform in every sense a player
+  cares about, and a rescue that failed on a pixel would be the cruellest bug
+  this game could ship.
+
+- **THE ZONE WAITS FOR THE WHOLE PARTY AT THE CORRIDOR, and that reversed the
+  original rule.** Crossing used to set `_pending_return` on the first body
+  through, which took the map away from everybody else mid-fight, mid-pour,
+  mid-anything — and made "sprint for the exit the moment the quota lands and
+  leave your friends wherever they are standing" the optimal line in a co-op
+  extraction game. Crossing is now a per-body latch (`Player.exited`): the
+  crosser is taken OUT of the night — nothing hunts them (`ai.update` never
+  sees them), nothing can hurt them (`damage_player` returns early), their
+  input is dropped — and `_tick_exit_quest` turns the zone over only once every
+  player still STANDING has one.
+
+  **Downed bodies are deliberately not in that count.** A body on the floor
+  cannot walk to a corridor, so counting it would mean a party could never
+  leave with a casualty — and the whole point of `Room.carry_body` is that they
+  can, either by putting them on a platform or by walking out one short.
+  `_check_wipe` is what answers the case where nobody is left up.
+
+  **The waiting player watches, rather than staring at a hold screen.** Same
+  spectator camera a downed player gets — see `client/src/game/spectate.ts`.
+  A player with nothing to control while the most interesting part of the run
+  happens to their friends is the worst thing this loop can do with that time.
+
+  **The quest row ticks on the FIRST crossing, not the last**: "Encontre a
+  saída" is about finding the way out, and it has been found the moment
+  somebody is standing in it.
+
 - **One pad at a time, and the PLAYER calls the pickup.** `Room._awake_rift`
   is the gate: a dormant console refuses while another platform is charging or
   open. `activate_rift` is a four-way switch on the pad's state plus what is

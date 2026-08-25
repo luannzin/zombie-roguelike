@@ -173,6 +173,38 @@ export interface RerollPacket {
   type: 'reroll';
 }
 
+/**
+ * Pick up the nearest downed teammate, or put down the one in your arms.
+ *
+ * NO TARGET, and the argument is `UltPacket`'s one step harder. There is only
+ * ever one answer — your arms are full or they are not, and if they are not
+ * there is exactly one body inside `carryReachTiles`. A client that named a
+ * body could name one across the map; worse, with two bodies on the floor in
+ * the dark, a client that named the WRONG one would be a rescue that silently
+ * picked up somebody else, on the one press where being wrong is
+ * unrecoverable.
+ *
+ * PICKING SOMEBODY UP DROPS YOUR PACK, always, on the same frame. That is the
+ * whole mechanic and the prompt says so before the press — see
+ * `docs/design/player.md`.
+ */
+export interface CarryPacket {
+  type: 'carry';
+}
+
+/**
+ * Put your own dropped pack back on.
+ *
+ * NO ID, same argument: the only pack any player may pick up is their own, so
+ * naming one adds a way to be wrong and no way to be right. The server refuses
+ * silently for somebody else's pack, for full arms, and out of reach; all
+ * three are things the prompt already knows, so it says which and this packet
+ * is not sent.
+ */
+export interface PackPacket {
+  type: 'pack';
+}
+
 export type ClientMessage =
   | InputPacket
   | PingPacket
@@ -186,6 +218,8 @@ export type ClientMessage =
   | UsePacket
   | UltPacket
   | RerollPacket
+  | CarryPacket
+  | PackPacket
   | DropPacket;
 
 /**
@@ -305,6 +339,19 @@ export interface GameConfig {
    * exact doors the art is pointing at.
    */
   crateBreakTiles: number;
+  /**
+   * How close the feet have to be to pick a downed teammate up, or to take
+   * your own pack back. TIGHTER THAN A LOOT REACH on purpose: everything else
+   * E offers is something you take from a distance, and this is you getting
+   * your hands under something.
+   */
+  carryReachTiles: number;
+  /**
+   * What carrying a body multiplies the walk by. Mirror of
+   * `CARRY_BODY_SCALE`; `Game.syncCarry` resolves it onto the movable state
+   * the same way the shield's is resolved.
+   */
+  carryBodyScale: number;
   /** Fallback shot box, in tiles. Per-object boxes ride `objects` and win. */
   crateHitWTiles: number;
   crateHitHTiles: number;
@@ -816,6 +863,31 @@ export interface LootState {
    * omits it and arrives whole.
    */
   hp?: number;
+}
+
+/**
+ * A backpack lying on the ground, and the night's work still in it.
+ *
+ * THE ONLY WAY TO CARRY A BODY IS TO PUT THE BAG DOWN, and this is what is
+ * left standing in the grass. It is not a `LootState`: a drop is one item
+ * anybody may take, and this is a container that belongs to exactly one
+ * person. Mirrors `server/app/inventory.py`'s `Pack`.
+ */
+export interface PackState {
+  id: string;
+  /** The only player who may take it back. */
+  by: string;
+  x: number;
+  y: number;
+  /**
+   * How many units are in it.
+   *
+   * A COUNT AND NOT THE CONTENTS. Every client draws every pack, and the only
+   * thing anybody needs to read off somebody else's is that it is there and
+   * whether it is empty. Shipping the slots would put a whole party's
+   * inventories on every snapshot to describe a sprite.
+   */
+  n: number;
 }
 
 /** A drop that just entered a player's pocket. */
@@ -1545,6 +1617,27 @@ export interface PlayerState {
    */
   down: boolean;
   /**
+   * The id of the downed teammate in this body's ARMS, or absent.
+   *
+   * A POSE, on the tick row rather than the roster, for the reason the raised
+   * shield is: every client draws it over every body — a teammate crossing a
+   * clearing with somebody over their shoulder is the loudest thing on the map
+   * — and at five hertz the pick-up would land half a second after the two
+   * sprites met.
+   */
+  carry?: string;
+  /** The inverse: who is carrying THIS body. Absent unless somebody is. */
+  held_by?: string;
+  /**
+   * CROSSED THE EXIT AND WAITING FOR THE REST OF THE PARTY.
+   *
+   * The body is out of the night: nothing hunts it, nothing can hurt it, and
+   * its input is dropped. The owner's screen becomes the same spectator camera
+   * a downed player gets — see `game/spectate.ts` — which is what turns the
+   * wait into watching your party finish rather than a loading hint.
+   */
+  out?: boolean;
+  /**
    * MID-HEAL, as a FRACTION of the way through. Absent for everybody who is
    * not healing, which is everybody almost always.
    *
@@ -1651,6 +1744,21 @@ export interface PlayerMeta {
   ult?: Record<string, number>;
   /** The pocket. Slots, contents and current weight. */
   inv?: InventoryState;
+  /**
+   * WHETHER THE PACK IS EVEN ON THIS BODY.
+   *
+   * It rides beside the pocket it describes because the pocket is not enough
+   * on its own: an empty bag and NO bag look identical in `inv` and refuse
+   * completely different things. A body with no pack put it down to pick a
+   * teammate up (see `CarryPacket`) and cannot take cargo at all until it
+   * walks back for it — `interaction.canStow` mirrors that refusal.
+   *
+   * On the ROSTER rather than the tick row, unlike `PlayerState.carry`, and
+   * the split is what each is for: the pack going down is a POSE everybody
+   * watches happen, and whether it is on is a RULE only its owner's prompts
+   * read. It changes twice a night at most.
+   */
+  pack?: boolean;
   /** The gun belt. Slots and which one is in hand. */
   guns?: HotbarState;
   /**
@@ -2182,6 +2290,12 @@ export interface SnapshotMessage {
   pickups: PickupEvent[];
   /** Remaining world drops. Present only when the set changed. */
   loot?: LootState[];
+  /**
+   * Backpacks on the ground. Present only when the set changed — and note the
+   * list going EMPTY is news, because that is somebody walking back and
+   * picking theirs up.
+   */
+  packs?: PackState[];
   /** Drops collected since the last snapshot. */
   lootPickups?: LootPickupEvent[];
   /** Items tipped out of a backpack onto a pad since the last snapshot. */

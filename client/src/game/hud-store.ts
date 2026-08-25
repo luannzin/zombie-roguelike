@@ -8,6 +8,7 @@
 
 import { Store } from '../lib/store';
 import type { HudGearCard } from './gear-card';
+import type { SpectateReason, SpectateTarget } from './spectate';
 import type { LanternReading } from './lantern';
 import type { ConnectionStatus } from '../net/connection';
 import type { LootRarity, QuestState, ZoneInfo } from '../net/protocol';
@@ -362,10 +363,24 @@ export interface HudLootPrompt {
    *   blade     the lâmina already in the cell. The cell always swaps, so
    *             this is the one thing that can turn a blade away
    *   shield    you are already carrying one, and one is the limit
+   *   nopack    THE BAG IS NOT ON THIS BODY. It is lying somewhere on the map
+   *             because this player put it down to pick a teammate up, and
+   *             until they walk back for it they cannot take cargo at all.
+   *             The one refusal on this list the player fixes by GOING
+   *             somewhere, which is why it reads as a state rather than as a
+   *             "no"
    *
    * Absent when nothing is refused.
    */
-  reason?: 'bag' | 'calibre' | 'reserve' | 'med' | 'worn' | 'blade' | 'shield';
+  reason?:
+    | 'bag'
+    | 'calibre'
+    | 'reserve'
+    | 'med'
+    | 'worn'
+    | 'blade'
+    | 'shield'
+    | 'nopack';
   /**
    * Set when the belt is full of guns but E would TRADE rather than refuse:
    * the name of the weapon currently in hand, which is what collecting this
@@ -397,6 +412,54 @@ export interface HudLootPrompt {
   card?: HudGearCard | null;
   /** The loot atlas frame, so the card can draw the object it describes. */
   frame?: number;
+}
+
+/**
+ * Proximity prompt on a downed teammate, or on your own pack.
+ *
+ * ONE SHAPE FOR BOTH, because they are two halves of one trade and the player
+ * has to be able to see that. Picking somebody up costs the bag; walking back
+ * for the bag costs putting them down. A separate component for each would have
+ * been two vocabularies for one decision.
+ *
+ *   lift    a body in reach and both arms free. THE COPY NAMES THE COST
+ *           FIRST - "largar mochila e carregar" - because the cost is the
+ *           decision and the rescue is the obvious part
+ *   drop    somebody is already in your arms; E sets them down. On a
+ *           PLATFORM the copy changes, because that is the one place putting
+ *           a body down does something: the next pickup call revives them
+ *   pack    your own bag on the ground, arms free
+ *   busy    your own bag on the ground and your arms are NOT free. Not a
+ *           refusal about distance or ownership, so it says which
+ */
+export interface HudCarryPrompt {
+  mode: 'lift' | 'drop' | 'pack' | 'busy';
+  /** Whose body it is. Absent on the pack's modes. */
+  name?: string;
+  /** Their colour, so the name reads as their nameplate does. */
+  color?: string;
+  /**
+   * The body would be set down ON AN EXTRACTION DECK. The one place this
+   * press is not just "put them here" - see `Room._revive_on_deck`.
+   */
+  onPad?: boolean;
+  /** How many things are still in the pack. Absent on the body's modes. */
+  count?: number;
+}
+
+/**
+ * WATCHING SOMEBODY ELSE PLAY, because you cannot.
+ *
+ * Null whenever the local player is in the night themselves, which is almost
+ * always. See `game/spectate.ts` for why the two ways of leaving a night share
+ * one camera.
+ */
+export interface HudSpectate {
+  reason: SpectateReason;
+  /** The party, in a stable order. Clickable. */
+  targets: SpectateTarget[];
+  /** Whose camera is on screen. Never null while this object exists. */
+  watching: string;
 }
 
 export interface HudRiftPrompt {
@@ -727,6 +790,16 @@ export interface HudSnapshot {
   riftPrompt: HudRiftPrompt | null;
   /** Proximity prompt on a shop table. Null outside the store. */
   buyPrompt: HudBuyPrompt | null;
+  /**
+   * Proximity prompt on a downed teammate, or on your own dropped pack.
+   * Null whenever neither is in reach, which is almost every frame.
+   */
+  carryPrompt: HudCarryPrompt | null;
+  /**
+   * The spectator camera, or null. Set while the local player is DOWNED with
+   * somebody still up, or has crossed the exit and is waiting for the party.
+   */
+  spectate: HudSpectate | null;
   /** Proximity prompt on the upgrade machine. Null outside the store. */
   machinePrompt: HudMachinePrompt | null;
   /** Proximity prompt on the merchant himself. Null outside the store. */
@@ -818,6 +891,8 @@ export const EMPTY_HUD: HudSnapshot = {
   cratePrompt: null,
   riftPrompt: null,
   buyPrompt: null,
+  carryPrompt: null,
+  spectate: null,
   machinePrompt: null,
   rerollPrompt: null,
   skills: [],

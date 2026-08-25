@@ -345,8 +345,22 @@ function drawDownedBody(
   const col = down ? timelineFrame(sheet, target.downAge) : sheet.idleFrame;
   const w = sheet.frameWidth;
   const h = sheet.frameHeight;
-  const spriteTop = target.y + target.halfHeight - h;
-  const dx = view.x(target.x - w / 2);
+  // OFF THE FLOOR AND OVER A SHOULDER. The server has already put this body at
+  // the carrier's exact position (`Room._step_carried`), so without a lift the
+  // rescued player is drawn lying INSIDE their rescuer — which reads as two
+  // sprites clipping rather than as somebody being carried, on the beat that
+  // is meant to be the most legible thing on the map.
+  //
+  // A LIFT AND A NUDGE, AND NOT A NEW SHEET. There is no carried pose in the
+  // art and there does not need to be: the collapsed sprite raised to shoulder
+  // height and pushed a few pixels off the spine already says "slung over
+  // somebody" from any distance a player looks at it from, and it costs no
+  // frames, no generator row and no atlas index. If this ever earns real art,
+  // it earns it as a row on the `-down` timeline, not as a transform here.
+  const lift = target.carried ? target.halfHeight * CARRIED_LIFT : 0;
+  const lean = target.carried ? CARRIED_NUDGE : 0;
+  const spriteTop = target.y + target.halfHeight - h - lift;
+  const dx = view.x(target.x - w / 2 + lean);
   const dy = view.y(spriteTop);
   const dw = view.size(w);
   const dh = view.size(h);
@@ -355,12 +369,21 @@ function drawDownedBody(
   // still falling it is at full — the collapse is the thing a teammate sees
   // out of the corner of their eye, and dimming it as it happens would hide
   // the one frame that says somebody just went down.
+  //
+  // A CARRIED BODY IS NOT DIMMED AT ALL. The dim says "this has stopped and is
+  // lying here"; a body on somebody's back is the most active thing in the
+  // frame, and fading it would fight the one sentence the picture is making.
   const settled = !down || col >= sheet.frames - 1;
-  ctx.globalAlpha = target.visibility * (settled ? 0.9 : 1);
+  ctx.globalAlpha = target.visibility * (settled && !target.carried ? 0.9 : 1);
   ctx.drawImage(image, col * w, row * h, w, h, dx, dy, dw, dh);
   drawStains(entity, target, image, col * w, row * h, w, h, dx, dy, dw, dh);
   ctx.globalAlpha = 1;
 }
+
+/** How far up a carried body is drawn, as a share of its own half-height. */
+const CARRIED_LIFT = 1.15;
+/** And how far off the carrier's spine, in world pixels. */
+const CARRIED_NUDGE = 3;
 
 /**
  * A dead enemy, collapsed onto the floor. Screen space, under living bodies.
@@ -481,6 +504,7 @@ function corpseAsTarget(body: DrawableCorpse): DrawableEntity {
     // A corpse is not "downed" — that state is a player waiting to be carried
     // out, and this body is past waiting for anything.
     downed: false,
+    carried: false,
     downAge: 0,
     // A corpse is not healing, and never will be.
     healing: 0,

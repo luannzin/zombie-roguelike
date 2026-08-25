@@ -134,6 +134,13 @@ def apply_input(player: Player, cmd: InputCmd, world: TileMap, dt: float) -> Non
     # reason raising it is a decision rather than a posture. Resolved before
     # this runs; see `Player.block_speed`.
     speed *= player.block_speed
+    # AND SO IS THE BODY IN YOUR ARMS. Beside the shield rather than under it
+    # because they are the same KIND of term - a flat price for a commitment
+    # the player made on purpose - and the two multiply, which is correct and
+    # is also a thing nobody should ever be doing: a shield up while carrying
+    # somebody is a body moving at a third of a walk, and that is exactly what
+    # it should feel like.
+    speed *= player.carry_speed
     # AND THE DRAG IS THE LAST TERM OF ALL, under even the shield. Being hit
     # takes precedence over every choice the player made about how fast to
     # move, because the entire point of it is that it is not a choice — a body

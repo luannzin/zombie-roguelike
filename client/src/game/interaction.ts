@@ -30,8 +30,12 @@
  */
 
 import { compareGear, gearCard, type HudGearCard } from './gear-card';
-import type { GameConfig, LootState, PlayerMeta } from '../net/protocol';
-import type { HudBuyPrompt, HudCratePrompt, HudLootPrompt, HudRiftPrompt } from './hud-store';
+import type {
+  GameConfig, LootState, PackState, PlayerMeta, PlayerState,
+} from '../net/protocol';
+import type {
+  HudBuyPrompt, HudCarryPrompt, HudCratePrompt, HudLootPrompt, HudRiftPrompt,
+} from './hud-store';
 import { objectLabel, objectOpenTime, objectTilesW } from './objects';
 import type { LocalPlayer } from './prediction';
 import type { AmmoBox, CratePiece, Rift, Stand, TileMap } from './world';
@@ -51,6 +55,17 @@ export interface InteractionState {
   local: LocalPlayer | null;
   /** World drops by id — `Game`'s live ground list. */
   loot: ReadonlyMap<string, LootState>;
+  /** Backpacks on the ground, by id. Almost always empty. */
+  packs: ReadonlyMap<string, PackState>;
+  /**
+   * Every other body's tick row, by id. This is where `down`, `out` and
+   * `held_by` live, and it is what the carry reach walks.
+   */
+  bodies: ReadonlyMap<string, PlayerState>;
+  /** Every body's identity, for naming whoever is on the floor in front of you. */
+  party: ReadonlyMap<string, PlayerMeta>;
+  /** The id of the body in the local player's arms, or null. */
+  carrying: string | null;
   /** The local player's own roster row: bag, belt, mods. */
   meta: PlayerMeta | null;
   /** Rounds by calibre, the client's predicted mirror of the reserve. */
@@ -153,6 +168,65 @@ export function nearLoot(s: InteractionState): LootState | null {
     if (d2 < bestD2) {
       bestD2 = d2;
       best = drop;
+    }
+  }
+  return best;
+}
+
+/**
+ * The downed teammate close enough to get your hands under, or null.
+ *
+ * MIRROR OF `Room._body_in_reach`, including the two things that are easy to
+ * leave out of a client copy and impossible to see missing: a body somebody
+ * else is already carrying is skipped (two carriers would be two writers of
+ * one position), and the reach is measured FEET TO FEET like every other one
+ * in this file.
+ */
+export function nearBody(s: InteractionState): PlayerState | null {
+  const config = s.config;
+  const at = feet(s);
+  if (!config || !at) return null;
+  const range = config.carryReachTiles * config.tileSize;
+  let best: PlayerState | null = null;
+  let bestD2 = range * range;
+  for (const row of s.bodies.values()) {
+    // The local body is never in `bodies` — see `Game.interactionState` — so
+    // there is nothing to skip here beyond the two rules the server keeps.
+    if (!row.down || row.held_by) continue;
+    const dx = row.x - at.x;
+    const dy = row.y + config.playerHalfHeight - at.y;
+    const d2 = dx * dx + dy * dy;
+    if (d2 <= bestD2) {
+      bestD2 = d2;
+      best = row;
+    }
+  }
+  return best;
+}
+
+/**
+ * The local player's OWN pack, if they are standing at it. Mirror of
+ * `Room._pack_in_reach`.
+ *
+ * Somebody else's is deliberately invisible to this: it is not a refusal the
+ * player can do anything about, and a prompt that appeared over a teammate's
+ * bag only to say no would teach them to walk over and try.
+ */
+export function nearPack(s: InteractionState): PackState | null {
+  const config = s.config;
+  const at = feet(s);
+  if (!config || !at) return null;
+  const range = config.carryReachTiles * config.tileSize;
+  let best: PackState | null = null;
+  let bestD2 = range * range;
+  for (const pack of s.packs.values()) {
+    if (pack.by !== s.meta?.id) continue;
+    const dx = pack.x - at.x;
+    const dy = pack.y - at.y;
+    const d2 = dx * dx + dy * dy;
+    if (d2 <= bestD2) {
+      bestD2 = d2;
+      best = pack;
     }
   }
   return best;
@@ -327,6 +401,15 @@ export function canStow(s: InteractionState, key: string, hp?: number): boolean 
     const gunCells = s.config?.gunSlots ?? guns.slots.length;
     return guns.slots.slice(0, gunCells).some((cell) => cell === null);
   }
+  // NO PACK, NO CARGO. Mirror of `Room.collect_loot`: the bag is on the ground
+  // somewhere because this player picked a teammate up, and a body with no bag
+  // has nowhere to put a relic.
+  //
+  // IT REFUSES ONLY THE POCKET, and every branch above has already returned -
+  // rounds, a plate, a bandage and a weapon are not in the bag and never were.
+  // That is the whole reason the five containers are separate: what a rescue
+  // costs is the NIGHT'S TAKINGS, not the ability to survive the walk back.
+  if (s.meta && s.meta.pack === false) return false;
   const inv = s.meta?.inv;
   if (!inv) return true;
   for (let i = 0; i < inv.cap; i++) {
@@ -517,7 +600,13 @@ export function riftPrompt(s: InteractionState): HudRiftPrompt | null {
   if (s.pouring) return null;
   const rift = nearRift(s);
   if (!rift) return null;
-  const empty = s.pocketGold() <= 0;
+  // NO BAG IS NOT AN EMPTY BAG, and here the difference is the loudest press
+  // in the game. A carrier's pocket reads zero forever, so treating that as
+  // "nothing left to give" would offer them the pickup call the moment they
+  // walked up to a settled pad — with their whole night still lying in the
+  // grass where they picked their teammate up. Mirror of `Room.activate_rift`.
+  const noPack = s.meta?.pack === false;
+  const empty = !noPack && s.pocketGold() <= 0;
   if (rift.state === 'dormant') {
     const busy = s.world?.rifts.some(
       (row) => row.id !== rift.id && (row.state === 'charging' || row.state === 'open'),
@@ -644,6 +733,74 @@ function ammoPrompt(s: InteractionState): HudBuyPrompt | null {
   };
 }
 
+/**
+ * What E offers on a body, or on your own bag. Null when neither is in reach.
+ *
+ * ONE PROMPT FOR BOTH HALVES OF ONE TRADE. Picking somebody up costs the bag;
+ * walking back for the bag costs putting them down. Two components would have
+ * been two vocabularies for a decision the player has to see as one.
+ *
+ * THE BODY WINS A TIE, and the tie is real: you put the pack down at your own
+ * feet, so the frame after a rescue the two reaches overlap exactly. A press
+ * meant for a teammate that picked a bag up instead would undo the rescue on
+ * the frame it happened.
+ */
+export function carryPrompt(s: InteractionState): HudCarryPrompt | null {
+  if (s.locked || s.introHold) return null;
+  if (s.pouring || s.channelling) return null;
+  if (!s.local?.alive) return null;
+
+  // ARMS FULL: the only thing E can do is set them down. Offered wherever the
+  // player is standing, because putting somebody down anywhere is legal - what
+  // changes is whether it MEANS anything, and that is the pad.
+  if (s.carrying) {
+    const held = s.party.get(s.carrying);
+    return {
+      mode: 'drop',
+      name: held?.name,
+      color: held?.color,
+      // THE ONE PLACE PUTTING A BODY DOWN DOES SOMETHING. Everywhere else it
+      // is just letting go; on a deck it is loading them for the flight, and
+      // the copy has to say so BEFORE the press or the whole rescue ends with
+      // a player standing next to a platform wondering what to do next.
+      onPad: onDeck(s),
+    };
+  }
+
+  const body = nearBody(s);
+  if (body) {
+    const who = s.party.get(body.id);
+    return { mode: 'lift', name: who?.name, color: who?.color };
+  }
+
+  const pack = nearPack(s);
+  if (!pack) return null;
+  // A pack you cannot pick up because your arms are full is not a refusal
+  // about the pack, so it says which. It happens constantly - the bag is at
+  // the feet of the body you just lifted.
+  return { mode: 'pack', count: pack.n };
+}
+
+/** Whether the local player is standing on an extraction deck. */
+function onDeck(s: InteractionState): boolean {
+  const config = s.config;
+  const world = s.world;
+  const at = feet(s);
+  if (!config || !world || !at) return false;
+  // The CONSOLE's reach, mirroring `Room._revive_on_deck` - a body at the edge
+  // of a five-by-two skid is on the platform in every sense a player cares
+  // about, and a promise that failed on a pixel would be the cruellest bug
+  // this game could ship.
+  const range = config.riftActivateTiles * config.tileSize;
+  for (const rift of world.rifts) {
+    if (rift.state !== 'open' || rift.closeAt !== null) continue;
+    const dx = rift.deckX - at.x;
+    const dy = rift.deckY - at.y;
+    if (dx * dx + dy * dy <= range * range) return true;
+  }
+  return false;
+}
+
 export function lootPromptInfo(s: InteractionState): HudLootPrompt | null {
   if (s.zoneKind === 'camp' || s.locked || s.introHold) return null;
   const near = nearLoot(s);
@@ -738,6 +895,9 @@ function refusal(
   calibre: string | undefined,
 ): NonNullable<HudLootPrompt['reason']> {
   if (pocket === 'ammo') return ammoRefusal(s, calibre) ?? 'bag';
+  // NO BAG AT ALL, which is not the same sentence as a full one and is the
+  // one refusal in this list the player can fix by walking somewhere.
+  if (s.meta?.pack === false) return 'nopack';
   // BOTH CELLS FULL. Not "mochila cheia": medicine has never been in the
   // pocket (`server/app/medical.py`), so a player with four empty bag slots
   // was being told their bag was full and had no way to find out otherwise.

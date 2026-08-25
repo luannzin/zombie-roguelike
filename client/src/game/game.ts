@@ -107,6 +107,8 @@ import type {
   LootPickupEvent,
   LootRarity,
   LootState,
+  PackState,
+  PlayerState,
   MeleeConfig,
   PickupEvent,
   PlayerMeta,
@@ -159,6 +161,7 @@ import type {
   DrawableEntity,
   GearLayer,
   DrawableLoot,
+  DrawablePack,
   PourPose,
 } from '../render/types';
 import { whenFontsReady } from '../theme/fonts';
@@ -183,14 +186,25 @@ import {
   type HudParty,
   type HudWipe,
   type HudMedical,
+  type HudSpectate,
   type HudStore,
 } from './hud-store';
+import {
+  spectateReason,
+  spectateStep,
+  spectateTarget,
+  spectateTargets,
+  type SpectateState,
+} from './spectate';
 import { EVENT_PRESENTATION } from './events';
 import { InputController } from './input';
 import { weaponFeel } from './weapon-feel';
 import {
   buyPrompt,
+  carryPrompt,
   nearAmmoBox,
+  nearBody,
+  nearPack,
   canStow,
   cratePromptInfo,
   lootPromptInfo,
@@ -620,6 +634,12 @@ interface PlayerSource {
   alive: boolean;
   /** On the floor — see `PlayerState.down`. Absent means up. */
   down?: boolean;
+  /**
+   * Who is carrying this body — see `PlayerState.held_by`. Absent means
+   * nobody, which is almost always. The local player is never in this state:
+   * a body in somebody's arms is downed, and a downed player is spectating.
+   */
+  held_by?: string;
   moving: boolean;
   isLocal: boolean;
   ready: boolean;
@@ -992,6 +1012,54 @@ export class Game {
   private pourPoses = new Map<string, { phase: number; raw: number; age: number }>();
   /** Remaining world drops. Replaced on welcome and on a dirty snapshot. */
   private readonly loot = new Map<string, LootState>();
+  /**
+   * Backpacks on the ground, by id. Almost always empty — one appears the
+   * moment somebody picks a teammate up and leaves when they walk back for it.
+   */
+  private readonly packs = new Map<string, PackState>();
+  /**
+   * Every body's last tick row, by id, INCLUDING bodies on the floor.
+   *
+   * `roster` is identity at five hertz and the interpolator carries the ones
+   * being drawn; neither answers "is that teammate down, and is somebody
+   * already carrying them", which is what the carry reach and the spectator
+   * both need every frame. Kept here rather than derived from the interpolator
+   * because a downed body is exactly the kind of thing an interpolator has no
+   * reason to keep moving.
+   */
+  private readonly bodies = new Map<string, PlayerState>();
+  /**
+   * Where every remote body was DRAWN last frame, by id.
+   *
+   * Written by the render pass off the interpolated sample, and read by the
+   * spectator camera on the frame after. One frame of lag, deliberately: the
+   * alternative is sampling the whole snapshot buffer a second time per frame
+   * to place one camera, and a camera that damps exponentially toward its
+   * target cannot show a 16 ms offset in the target it is damping toward.
+   *
+   * Mutated in place rather than replaced, because this runs sixty times a
+   * second and a fresh object per player per frame is pure garbage for a
+   * feature that is off almost always.
+   */
+  private readonly drawnAt = new Map<string, { x: number; y: number }>();
+  /** The id of the body in the local player's arms, or null. Off the wire. */
+  private localCarrying: string | null = null;
+  /**
+   * The local player crossed the exit and is waiting for the party.
+   *
+   * Off the wire rather than latched locally: the corridor test is the
+   * server's (`Room._tick_exit_quest`) and this is the one flag on the row
+   * that changes what the whole screen is for.
+   */
+  private localExited = false;
+  /**
+   * Whose camera the spectator is watching, or null.
+   *
+   * A HINT AND NOT A TRUTH — `spectateTarget` repairs it every time it is
+   * read, because the player being watched can go down mid-look, which is
+   * precisely the moment somebody is watching hardest.
+   */
+  private watching: string | null = null;
   /** Dead bodies on this map. Replaced on welcome; upserted from kills. */
   private readonly corpses = new Map<string, LiveCorpse>();
   /** 0..1 blood on each walker's boots, decaying per stride. */
@@ -1109,6 +1177,7 @@ export class Game {
     this.input.onUltimate = () => this.sendUltimate();
     this.input.onHotbar = (slot) => this.selectHotbar(slot);
     this.input.onMedical = (cell) => this.selectMedical(cell);
+    this.input.onSpectate = (step) => this.stepSpectate(step);
     bindInventoryDrop((slot) => this.requestDrop(slot));
     this.minimap = new Minimap(options.minimapCanvas);
     // Fire-and-forget, like every other atlas: until it lands the merchant is
@@ -1369,6 +1438,16 @@ export class Game {
     this.medReturn = -1;
     this.triggerDown = false;
     this.pourCancelled = false;
+    // A NEW MAP IS EMPTY ARMS AND A FRESH CAMERA. The server drops every pair
+    // across a zone swap (`Room._step_carried`) and packs belong to the map
+    // that is gone; a spectator target left pointing at the last forest would
+    // put the camera on a body id that no longer has a position.
+    this.packs.clear();
+    this.bodies.clear();
+    this.drawnAt.clear();
+    this.localCarrying = null;
+    this.localExited = false;
+    this.watching = null;
     this.local.carryWeight =
       (msg.player.inv?.w ?? 0) + this.heldWeaponWeight(msg.player.guns, this.heldSlot);
     this.adsHold = 0;
@@ -1765,6 +1844,16 @@ export class Game {
       this.quests = msg.quests;
     }
 
+    // BAGS ON THE GROUND. Replaced wholesale rather than merged, exactly as
+    // `loot` is: the server sends the list only when it changed, and the
+    // change that matters most is one LEAVING — somebody walked back and
+    // picked theirs up. A merge would leave that pack drawn in the grass for
+    // the rest of the night.
+    if (msg.packs) {
+      this.packs.clear();
+      for (const pack of msg.packs) this.packs.set(pack.id, pack);
+    }
+
     if (msg.roster) {
       for (const meta of msg.roster) this.roster.set(meta.id, meta);
       const mine = this.roster.get(this.localId);
@@ -1781,9 +1870,25 @@ export class Game {
       }
     }
 
+    // WHO IS ON THE FLOOR, WHO IS CARRYING WHOM, AND WHO HAS LEFT. Rebuilt
+    // from the tick rows every snapshot rather than patched: `msg.players` is
+    // the whole party every tick, and a body that dropped out of it is a body
+    // that is not here any more.
+    this.bodies.clear();
+    for (const state of msg.players) {
+      if (state.id !== this.localId) this.bodies.set(state.id, state);
+    }
+
     for (const state of msg.players) {
       if (state.id === this.localId) {
         this.localReady = state.ready ?? false;
+        // ARMS AND THE CORRIDOR, both straight off the row. Neither is
+        // predicted: picking a body up is a server decision with a refusal
+        // behind it, and crossing the exit is a geometry test only the server
+        // runs. The one thing that DOES answer locally is the walk speed, and
+        // that is resolved from this in `syncCarry`.
+        this.localCarrying = state.carry ?? null;
+        this.localExited = state.out ?? false;
         // A LOCAL CANCEL OUTRANKS THE WIRE UNTIL THE WIRE AGREES. The player
         // walked out of the pour and prediction has already moved them; the
         // rows still in flight were authored before the movement key reached
@@ -3067,7 +3172,19 @@ export class Game {
       } else if (this.arriving) {
         this.followArriveCamera(dt);
       } else {
-        this.camera.follow(smooth.x, smooth.y, this.world, dt);
+        // WHOSE BODY THE CAMERA IS ON. Almost always your own; while you are
+        // on the floor or waiting at the corridor it is somebody who is still
+        // playing (`spectate.ts`). It goes through the SAME `follow` with the
+        // same damping rather than snapping, so the handover reads as the
+        // camera drifting across to them - which is the one thing that makes
+        // it feel like a camera rather than a screen being swapped.
+        const watched = this.spectating();
+        const eye = watched ? this.drawnAt.get(watched) : null;
+        if (eye) {
+          this.camera.follow(eye.x, eye.y, this.world, dt);
+        } else {
+          this.camera.follow(smooth.x, smooth.y, this.world, dt);
+        }
       }
     }
 
@@ -3095,6 +3212,7 @@ export class Game {
     // is the first thing that asks how fast this body is, so a block decided
     // after the step would be a tick late on the frame it was raised for.
     this.syncBlock();
+    this.syncCarry();
     // WALKING OUT OF A POUR, predicted. The movement key has to reach the
     // wire for `Room._puppet_inputs` to see it, and the body has to start
     // moving on the frame it was pressed — so the cancel is latched here,
@@ -3291,6 +3409,25 @@ export class Game {
     const local = this.local;
     if (!local) return;
     local.state.blockSpeed = this.blocking() ? (this.heldWeapon()?.shield?.speed ?? 1) : 1;
+  }
+
+  /**
+   * Resolve what the body in these arms costs the walk, BEFORE the walk runs.
+   *
+   * Mirror of `Room.sync_carry`, called in the same breath as `syncBlock` and
+   * for the same reason: the walk is the first thing that asks how fast this
+   * body is, and a multiplier resolved afterwards is a tick late on every
+   * frame it changes.
+   *
+   * It reads the WIRE rather than a local latch, unlike the shield. A shield
+   * goes up on a button both sides can see on the same frame; picking a body
+   * up is a server decision with refusals behind it, so what the client
+   * predicts is the CONSEQUENCE of an answer it has already been given.
+   */
+  private syncCarry(): void {
+    const local = this.local;
+    if (!local || !this.config) return;
+    local.state.carrySpeed = this.localCarrying ? this.config.carryBodyScale : 1;
   }
 
   /** Whether a movement key is down. The one input that ends a pour. */
@@ -3813,6 +3950,15 @@ export class Game {
     const preparing = this.zone?.kind === 'camp' && !this.departing;
 
     for (const remote of sampled.players) {
+      // Where the spectator camera looks. Written here rather than sampled
+      // again for it — see `drawnAt`.
+      const at = this.drawnAt.get(remote.id);
+      if (at) {
+        at.x = remote.x;
+        at.y = remote.y;
+      } else {
+        this.drawnAt.set(remote.id, { x: remote.x, y: remote.y });
+      }
       const meta = this.roster.get(remote.id);
       entities.push(
         this.toDrawablePlayer(
@@ -3885,6 +4031,7 @@ export class Game {
     }));
 
     const loot = this.drawableLoot(dt);
+    const packs = this.drawablePacks();
     const corpses = this.drawableCorpses(dt);
 
     // Everyone in this frame was touched above; anyone who left — a player who
@@ -3949,6 +4096,7 @@ export class Game {
       entities,
       coins,
       loot,
+      packs,
       corpses,
       spits: this.spits,
       volleys: this.volleys,
@@ -4279,6 +4427,10 @@ export class Game {
       winded: source.winded,
       alive,
       downed: source.down ?? false,
+      // IN SOMEBODY'S ARMS. Straight off the row — the server owns the pairing
+      // and has already moved this body onto its carrier, so all the renderer
+      // needs is the bit that says to draw it lifted instead of lying down.
+      carried: !!source.held_by,
       downAge: this.downAgeOf(id, source.down ?? false),
       // The ring over the head. The local body reads the field it already
       // keeps rather than the row again — they are the same number from the
@@ -4435,6 +4587,7 @@ export class Game {
       // A CREATURE IS NEVER DOWNED. That state belongs to players alone: what
       // stops a creature is a corpse, and `corpses` already owns that.
       downed: false,
+      carried: false,
       downAge: 0,
       // Nothing but a player ever spends a kit or forces a vault.
       healing: 0,
@@ -4684,6 +4837,8 @@ export class Game {
       cratePrompt: cratePromptInfo(ix),
       riftPrompt: riftPrompt(ix),
       buyPrompt: buyPrompt(ix),
+      carryPrompt: carryPrompt(ix),
+      spectate: this.spectateHud(),
       machinePrompt: this.machinePrompt(),
       rerollPrompt: this.rerollPrompt(),
       skills: this.skillList(),
@@ -4727,6 +4882,30 @@ export class Game {
   private sendInteract(): void {
     if (this.locked || this.introLeft > 0) return;
     const ix = this.interactionState();
+    // A BODY AND A BAG COME FIRST, AHEAD OF THE DROP AT THEIR FEET.
+    //
+    // The order is not a tie-break, it is the whole reading of the moment: a
+    // teammate on the floor of a forest is never the thing you walked over
+    // there for second. Loot is under them constantly - they died in a fight,
+    // and things die where things drop - and a press that scooped a bandage
+    // off the grass instead of picking the player up would be the single most
+    // expensive misfire in the game.
+    //
+    // The pack is in the same branch and after the body for the matching
+    // reason: you put the bag down at your own feet, so the frame after a
+    // rescue the two reaches overlap exactly, and the press that picked the
+    // bag back up would undo the rescue on the frame it happened.
+    const carry = carryPrompt(ix);
+    if (carry) {
+      if (carry.mode === 'pack') {
+        this.connection.send({ type: 'pack' });
+      } else if (carry.mode === 'busy') {
+        playSfx('ui-error');
+      } else {
+        this.connection.send({ type: 'carry' });
+      }
+      return;
+    }
     const drop = nearLoot(ix);
     if (drop) {
       // A full belt with a gun in hand is a TRADE, not a refusal, and it
@@ -5800,6 +5979,77 @@ export class Game {
     return carryBurden(weight, this.config, this.roster.get(id)?.mods?.carry);
   }
 
+  // --- spectating: whose screen you are on when you are not playing ---------
+  /**
+   * The read-only view `spectate.ts` runs on. Cheap, and built per caller for
+   * the same reason `interactionState` is: three clocks ask, and every answer
+   * inside one call has to describe the same instant.
+   */
+  private spectateState(): SpectateState {
+    return {
+      localId: this.localId,
+      meta: this.roster,
+      rows: this.bodies,
+      // THE PREDICTED BODY LEADS ITS ROSTER ROW, and going down is exactly
+      // the transition where a fifth of a second of lag would leave the camera
+      // on a corpse with the controls unresponsive and no explanation.
+      localDowned: this.local?.downed === true,
+      localExited: this.localExited,
+      locked: this.locked || this.introLeft > 0,
+    };
+  }
+
+  /**
+   * The body the camera is on this frame, or null to follow your own.
+   *
+   * REPAIRED ON EVERY READ rather than latched, because the person being
+   * watched can go down mid-look. `spectateTarget` is what owns that rule; all
+   * this does is remember the answer so a cycle has something to step from.
+   */
+  private spectating(): string | null {
+    const state = this.spectateState();
+    if (!spectateReason(state)) return null;
+    const next = spectateTarget(state, this.watching);
+    if (next !== this.watching) this.watching = next;
+    return next;
+  }
+
+  /**
+   * Q / E-equivalent: look at the next body along. Wired to the arrow keys.
+   *
+   * A CYCLE AND NOT A PICKER — the common case is two or three people and the
+   * common gesture is "show me the other one". The strip on the glass is
+   * clickable for the case where it is four and you want a particular one.
+   */
+  private stepSpectate(step: number): void {
+    const state = this.spectateState();
+    if (!spectateReason(state)) return;
+    const next = spectateStep(state, this.watching, step);
+    if (next === null || next === this.watching) return;
+    this.watching = next;
+    playSfx('ui-error', { gain: 0.25, rate: 1.6 });
+    this.patchHud({ spectate: this.spectateHud() });
+  }
+
+  /** Point the camera at a specific body. The strip's own click. */
+  watchPlayer(id: string): void {
+    const state = this.spectateState();
+    if (!spectateReason(state)) return;
+    if (!spectateTargets(state).some((row) => row.id === id)) return;
+    this.watching = id;
+    this.patchHud({ spectate: this.spectateHud() });
+  }
+
+  private spectateHud(): HudSpectate | null {
+    const state = this.spectateState();
+    const reason = spectateReason(state);
+    if (!reason) return null;
+    const watching = spectateTarget(state, this.watching);
+    if (!watching) return null;
+    this.watching = watching;
+    return { reason, targets: spectateTargets(state), watching };
+  }
+
   // --- interaction: the view `interaction.ts` runs on ------------------------
   /**
    * A read-only snapshot of everything a reach test or a prompt reads.
@@ -5820,6 +6070,10 @@ export class Game {
       world: this.world,
       local: this.local,
       loot: this.loot,
+      packs: this.packs,
+      bodies: this.bodies,
+      party: this.roster,
+      carrying: this.localCarrying,
       meta: this.localMeta,
       ammo: this.ammo,
       heldSlot: this.heldSlot,
@@ -6377,6 +6631,37 @@ export class Game {
   }
 
   /**
+   * The dropped packs, ready to draw.
+   *
+   * TINTED WITH THE OWNER'S OWN COLOUR, off the roster, because in a party
+   * every bag is the same sprite and "that one is mine" is the entire
+   * interaction. It is the colour their nameplate carries, so the two are one
+   * fact rather than two conventions.
+   *
+   * IT HIDES IN THE DARK exactly as a drop does, and off the same fov reading.
+   * A bag that stayed visible through a blackout would be a free waypoint back
+   * to a night's loot on the one night finding your way is the whole problem -
+   * and worse, it would be the only object in the game that ignored the light.
+   */
+  private drawablePacks(): DrawablePack[] {
+    const ts = this.config?.tileSize ?? 16;
+    const fov = this.fov;
+    const out: DrawablePack[] = [];
+    for (const pack of this.packs.values()) {
+      const lit = fov ? fov.lightAt(Math.floor(pack.x / ts), Math.floor(pack.y / ts)) : 1;
+      out.push({
+        x: pack.x,
+        y: pack.y,
+        tint: this.roster.get(pack.by)?.color ?? null,
+        visibility: clamp01(
+          (lit - ENEMY_HIDE_LIGHT) / (ENEMY_SHOW_LIGHT - ENEMY_HIDE_LIGHT),
+        ),
+      });
+    }
+    return out;
+  }
+
+  /**
    * Pin world tooltips to the same camera the canvas just used.
    *
    * Show/hide is still `hud-store` (5 Hz). This only writes screen pixels so
@@ -6409,6 +6694,45 @@ export class Game {
       }
     } else {
       dropTooltipAnchor('loot');
+    }
+
+    // THE BODY, OR THE BAG. Pinned to whichever the prompt is about, which is
+    // decided by the same function that wrote the copy rather than re-derived
+    // here — a tooltip that named a teammate and floated over a backpack would
+    // be worse than no tooltip on the one press that costs a night's loot.
+    //
+    // A body in your ARMS has no anchor at all: it is at your own feet, and a
+    // card pinned there sits under the player's own sprite. `drop` and `busy`
+    // both fall through to the HUD's own corner-free placement.
+    const held = carryPrompt(ix);
+    if (held && this.config) {
+      const lift = this.config.tileSize * LOOT_TOOLTIP_LIFT_TILES;
+      if (held.mode === 'lift') {
+        const body = nearBody(ix);
+        if (body) {
+          writeTooltipAnchor('carry', view.x(body.x), view.y(body.y - lift));
+        } else {
+          dropTooltipAnchor('carry');
+        }
+      } else if (held.mode === 'pack' || held.mode === 'busy') {
+        const pack = nearPack(ix);
+        if (pack) {
+          writeTooltipAnchor('carry', view.x(pack.x), view.y(pack.y - lift));
+        } else {
+          dropTooltipAnchor('carry');
+        }
+      } else {
+        // Setting somebody down: the anchor is the LOCAL body, because that is
+        // where they would land. Lifted further, over the head rather than the
+        // feet, so the card is not sitting inside the player's own sprite.
+        writeTooltipAnchor(
+          'carry',
+          view.x(this.smoothX),
+          view.y(this.smoothY - this.config.spriteHeight * 0.9),
+        );
+      }
+    } else {
+      dropTooltipAnchor('carry');
     }
 
     const prompt = riftPrompt(ix);

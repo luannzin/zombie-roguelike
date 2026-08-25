@@ -117,8 +117,15 @@ def main() -> None:
                 hits_taken += 1
         room.boss_events = []
         if player.hp <= 0:
+            # STANDING THEM BACK UP MEANS CLEARING `downed` TOO. The two
+            # flags are not the same question (`Player.downed`), and a body
+            # left `alive=True, downed=True` is a state the room never
+            # produces — it used to pass unnoticed because the exit check
+            # only read `alive`, and it now silently takes the player out of
+            # the party count the corridor is waiting on.
             player.hp = player.max_hp
             player.alive = True
+            player.downed = False
     check(f"he lands blows on somebody standing still ({hits_taken})", hits_taken > 0)
     check("he telegraphs before every one", "windup" in seen)
     check("he uses more than one move", len({m for m in seen} & {"impact", "rip"}) >= 1)

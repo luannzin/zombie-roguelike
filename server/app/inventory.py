@@ -204,3 +204,68 @@ class Inventory:
             "bag": [slot.to_payload() if slot else None for slot in self.slots],
             "w": round(self.weight, 2),
         }
+
+
+@dataclass
+class Pack:
+    """A backpack on the ground, with a night's work still in it.
+
+    THE ONLY WAY TO CARRY A BODY IS TO PUT THE BAG DOWN, and this is what is
+    left standing in the grass when somebody does. It is not a `Drop`: a drop
+    is one item anybody may take, and this is a container that belongs to
+    exactly one person.
+
+    WHY IT IS OWNED
+    ===============
+    A pack anybody could pick up is a pack the party pools — one player carries
+    the body, another scoops the bag, and the trade the whole mechanic is built
+    on ("I cannot save you and keep my night") never happens. It also makes
+    every rescue a negotiation about loot at the exact moment nobody has time
+    to have one. So the owner is the only one who may take it back, and what
+    that buys is a clean sentence: saving somebody costs YOU your bag until you
+    come back for it.
+
+    WHY THE ITEMS ARE STILL IN IT
+    =============================
+    They are not spilled on the ground and they are not banked. A pack is a
+    PROMISE — the night is still there, waiting, at a spot on the map you have
+    to return to — and the return trip through a forest you have already
+    stirred up is the price of the rescue. Spilling it would turn the bag into
+    a loot pile the party could hoover up in passing, which is the same problem
+    as making it unowned, one step later.
+
+    AND WHY THEY VANISH WHEN THE LAST PLATFORM GOES
+    ==============================================
+    Once every pad is spent there is nothing left to load, so a pack still
+    lying out there is worth exactly nothing — and a promise that cannot be
+    kept should stop being made. `Room._strip_spent_packs` empties them on that
+    tick. The pack itself STAYS, because the alternative is a player who can
+    never pick anything up again for the rest of the night, which is a
+    softlock dressed as a consequence.
+    """
+
+    id: str
+    #: The only player who may take it back.
+    owner: str
+    x: float
+    y: float
+    #: What was in the pocket when it went down. Moves back whole.
+    slots: list[Slot | None] = field(default_factory=list)
+
+    @property
+    def count(self) -> int:
+        """How many units are in it. The prompt says so before you walk back."""
+        return sum(slot.qty for slot in self.slots if slot is not None)
+
+    def to_payload(self) -> dict:
+        return {
+            "id": self.id,
+            "by": self.owner,
+            "x": round(self.x, 1),
+            "y": round(self.y, 1),
+            # A COUNT AND NOT THE CONTENTS. Every client draws every pack, and
+            # the only thing anybody needs to read off somebody else's is that
+            # it is there and it is not empty. Shipping the slots would put a
+            # whole party's inventories on every snapshot to describe a sprite.
+            "n": self.count,
+        }

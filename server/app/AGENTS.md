@@ -15,7 +15,7 @@ game's scale.
 | `room.py` | authoritative state, lobby phase, tick loop, broadcasts |
 | `simulation.py` | movement + tile collision — mirrored by the client |
 | `combat.py` | hitscan raycast and melee arc sweep, both entity-agnostic |
-| `entities.py` | `Player`, `Pour` (a body emptying its pocket into a platform), `InputCmd` (includes the lantern switch, relayed not simulated) |
+| `entities.py` | `Player`, `Pour` (a body emptying its pocket into a platform), `InputCmd` (includes the lantern switch, relayed not simulated). `carrying` / `carried_by` are the pair of arms and the body in them; `has_pack` is whether the bag is even on; `exited` is a body that crossed the corridor and is out of the night |
 | `enemies.py` | `EnemyType` stat blocks (incl. the sight cone, visual variants and accessory pools, the VOICE, the pack call, `group_min`, and the four fields that make a MINIBOSS: `rank`, `sleep_sprite`, `wake_tiles`, `persists`), live `Enemy`, `dress` |
 | `ai.py` | enemy senses, patrol/hunt/return/**sleep**, steering/attack, the director; `shout` is both the neighbour nudge and the wolves' HOWL, and `wake` is the beat a sleeper spends getting to its feet; `hunt_all` is the extraction chase and `startle` is the beat where it visibly spreads outward from the pad |
 | `boss.py` | THE SAWYER: his stat block, his state machine, the four moves, the thrown crescent. NOT an `EnemyType` and not `ai.py` — see its header. Every TIMING he has is read out of `assets/processed/sawyer/manifest.json` at import, so the telegraph on screen and the telegraph in the simulation are one number |
@@ -35,7 +35,7 @@ game's scale.
 | `rift.py` | extraction pads: day-scaled count, plot, the cargo platform and its corner lamps, inbound pickup, per-pad quota, the pour's timing, overfeed, hand-called launch, siren / `hunt_all` |
 | `entrance.py` | forest edge VOID corridor, emerge formation, staggered seal (`seal_to`), `bounds` for a map with two corridors, extraction `open_exit` (flared at the border) |
 | `quests.py` | run objectives: progress, done, optional risk; the HUD mirrors this list |
-| `inventory.py` | the pocket: slots, stacking, weight, `tip_one` (one unit out of the bag per pour beat), per-slot value/weight overrides. Its stacking rule is re-derived client-side in `client/src/game/interaction.ts` — see the contract below |
+| `inventory.py` | the pocket: slots, stacking, weight, `tip_one` (one unit out of the bag per pour beat), per-slot value/weight overrides, and `Pack` — the bag on the GROUND, owned by one player, that is what carrying a teammate costs. Its stacking rule is re-derived client-side in `client/src/game/interaction.ts` — see the contract below |
 | `world.py` | tile grid, tile alphabet, collision queries — **mirrored by `client/src/game/world.ts`**, which prediction runs on |
 | `maps.py` | hand-authored maps (`from_ascii`, `from_rects`) |
 | `mapgen.py` | procedural forest, seeded and connectivity-checked; `NEST_SCENES` / `HAUNT_SCENES` decide which scenes have creatures standing in them before anyone arrives |

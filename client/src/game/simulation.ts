@@ -34,6 +34,21 @@ export interface MovableState {
    */
   blockSpeed: number;
   /**
+   * What the walk is multiplied by because there is a BODY in these arms. 1
+   * whenever there is not.
+   *
+   * A resolved multiplier beside `blockSpeed` and for the same reason: this
+   * file is a line-for-line mirror of `server/app/simulation.py` and neither
+   * side may reach into a roster row from inside its movement code. Both
+   * decide it in the same place — `Game.syncCarry` / `Room.sync_carry`, the
+   * frame before the walk runs — and the movement code just multiplies.
+   *
+   * IT IS NOT A WEIGHT, which was a real decision rather than a shortcut: the
+   * bag has just been DROPPED to make room for the body, so the weight curve
+   * is at its lightest exactly when the player is at their slowest.
+   */
+  carrySpeed: number;
+  /**
    * Seconds of drag left from the last blow that connected. Mirror of
    * `Player.stagger`.
    *
@@ -185,6 +200,13 @@ export function applyInput(
   // shield is still slower than walking without one, which is the whole
   // reason raising it is a decision rather than a posture.
   speed *= state.blockSpeed;
+  // AND SO IS THE BODY IN YOUR ARMS. Beside the shield rather than under it
+  // because they are the same KIND of term — a flat price for a commitment the
+  // player made on purpose — and the two multiply, which is correct and is
+  // also something nobody should be doing: a shield up while carrying somebody
+  // is a body moving at a third of a walk, and that is what it should feel
+  // like. Mirror of `simulation.py`.
+  speed *= state.carrySpeed;
   // AND THE DRAG IS THE LAST TERM OF ALL, under even the shield. Being hit
   // takes precedence over every choice the player made about how fast to move,
   // because the whole point of it is that it is not a choice — a body that

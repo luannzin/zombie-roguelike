@@ -37,7 +37,7 @@ export function ArenaScreen({
   visible,
   onFirstFrame,
 }: ArenaScreenProps) {
-  const { hud, canvasRef, minimapRef, error } = useGameSession(
+  const { hud, canvasRef, minimapRef, error, watch } = useGameSession(
     connection,
     welcome,
     onFirstFrame,
@@ -50,7 +50,7 @@ export function ArenaScreen({
     // a fade would turn a seamless swap into a visible cross-dissolve.
     <div className={cn('fixed inset-0', !visible && 'invisible')}>
       <GameCanvas ref={canvasRef} />
-      <Hud snapshot={snapshot} minimapRef={minimapRef} error={error} />
+      <Hud snapshot={snapshot} minimapRef={minimapRef} error={error} onWatch={watch} />
     </div>
   );
 }

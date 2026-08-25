@@ -9,7 +9,7 @@ recently changed system, when something looks like a regression, before
 modifying anything under *Do not touch*, or when the task asks what to work on
 next. Skip it for a self-contained change to a stable system.
 
-_Last verified: 2026-08-24 — THE READ-BEFORE-YOU-PRESS PASS below, then THE FIX PASS, THE BUILD PASS (five armour slots + ultimates), the T-01..T-10 pass, the DIFFICULTY pass and THE PACK under it._
+_Last verified: 2026-08-24 — THE RESCUE PASS below, then THE READ-BEFORE-YOU-PRESS PASS, then THE FIX PASS, THE BUILD PASS (five armour slots + ultimates), the T-01..T-10 pass, the DIFFICULTY pass and THE PACK under it._
 
 ## Current phase
 
@@ -21,7 +21,47 @@ ceremony.
 
 ## Currently working on
 
-- **A READ-BEFORE-YOU-PRESS PASS JUST LANDED. Five changes, and four of them
+- **A RESCUE PASS JUST LANDED. One feature with five halves, and the thing
+  holding them together is that a party can now do something about a body on
+  the floor other than finish the night without them.**
+
+  - **CARRYING COSTS THE BAG.** E on a downed teammate drops your backpack
+    where you stand and puts them over your shoulder. Carrying multiplies the
+    walk by `CARRY_BODY_SCALE` (a flat term beside the shield's, NOT a weight —
+    the bag is already off, so the weight curve would be at its lightest
+    exactly when the player is slowest) and changes nothing else: **weapons
+    still work**, because an escort you cannot defend is one nobody attempts
+    twice.
+  - **NO PACK, NO CARGO** — and everything else still works. `collect_loot`
+    refuses `pocket == "bag"` and nothing more, so a carrier can still take
+    rounds, plate, medicine and steel. That split is what the five containers
+    were always for: a rescue costs the night's TAKINGS, not the ability to
+    survive the walk back. The refusal says *Você está sem mochila equipada*.
+  - **THE PACK IS OWNED, AND IT KEEPS THE NIGHT IN IT.** Only its owner may
+    take it back, and only with empty arms; a pack the party could pool is a
+    rescue nobody pays for. Once every platform is spent the items go
+    (`_strip_spent_packs`) — nothing left to load them into — but the PACK
+    stays, because a player who could never pick anything up again would be a
+    softlock wearing a consequence's clothes.
+  - **THE PLATFORM TAKES PEOPLE.** A body laid on a deck is cargo and does
+    nothing on its own; the pickup call revives every downed body in the
+    console's reach, at half their ceiling, on the same press that banks the
+    haul. `Room.revive_player` is its own door and `heal_player` still refuses
+    a downed body — a heal that stood somebody up would delete permadeath.
+  - **THE CORRIDOR WAITS FOR THE WHOLE PARTY, and that reversed a rule.** The
+    first crosser used to end the night for everybody, which made "sprint for
+    the exit and leave your friends" the optimal line in a co-op extraction
+    game. Crossing is a per-body latch now (`Player.exited`): out of the night,
+    unhittable, unhunted, and watching.
+  - **THE SPECTATOR CAMERA**, shared by both ways of leaving a night —
+    `client/src/game/spectate.ts`. A real camera on a real body, arrow keys or
+    the strip to cycle. No server half and there must not be one: the fov has
+    always been a TEAM field, so a teammate's view was already on this client.
+  - New: `test_rescue.py` drives the whole chain. Every link in it is
+    invisible from inside the game when it breaks and every one reads as bad
+    luck rather than as a defect.
+
+- **A READ-BEFORE-YOU-PRESS PASS LANDED BEFORE IT. Five changes, and four of them
   are the same complaint: the game asked for a decision and did not show the
   player what they were deciding between.**
 

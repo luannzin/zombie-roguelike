@@ -14,6 +14,7 @@ import { palette, type Channels } from '../../theme/palette';
 import { effectFrame, effectImage, type VfxSheet } from '../vfx';
 import type { LootAtlas } from '../loot';
 import type { Projection } from '../projection';
+import type { SpriteBook } from '../sprites';
 import { groundShadow } from '../shadows';
 import type { DrawableLoot } from '../types';
 
@@ -68,6 +69,19 @@ export function drawLootShadows(
     if (drop.visibility <= 0.01) continue;
     groundShadow(ctx, view, drop.x, drop.y + 0.6, 0.9, 0.4, 2.4, drop.visibility);
   }
+}
+
+/** The sheet a worn backpack is drawn from. Shared with the entity pass. */
+const PACK_SHEET = 'backpack';
+
+/** One dropped pack, ready to draw. Built by `Game.drawablePacks`. */
+export interface DrawablePack {
+  x: number;
+  y: number;
+  /** The owner's colour, so a party can tell four identical bags apart. */
+  tint: string | null;
+  /** 0..1 off the fov, exactly as a drop's is. An unlit bag hides. */
+  visibility: number;
 }
 
 export function drawLootSprites(
@@ -299,4 +313,62 @@ function fillGlow(
   ctx.beginPath();
   ctx.ellipse(x, y, radius, radius * 0.55, 0, 0, Math.PI * 2);
   ctx.fill();
+}
+
+/**
+ * A BACKPACK SOMEBODY PUT DOWN TO PICK A TEAMMATE UP.
+ *
+ * Drawn with the ground drops rather than in the depth sort, and that is the
+ * right call for the same reason a relic in the grass is: a bag on the floor
+ * is ankle height, so there is no body it could plausibly stand in front of.
+ * The bush earned a depth row by being tall enough to hide somebody; this is
+ * not.
+ *
+ * IT IS THE SAME SHEET THE PLAYER WEARS, in the owner's own tint, and that
+ * matters more than it sounds. The pack on somebody's back and the pack in the
+ * grass have to be recognisably ONE OBJECT, or the sentence the whole mechanic
+ * rests on — "that is my bag, over there" — has to be learned instead of seen.
+ * The tint is what says WHOSE, in a party where every bag looks alike; it is
+ * the same colour their nameplate carries.
+ *
+ * THE `down` ROW AND THE IDLE FRAME. A pack lying on the floor is being seen
+ * from behind, which is exactly the pose the walking-away row draws, and it is
+ * not animating because it is not on anybody.
+ *
+ * NO BOB. Every other drop in this file bobs, because a relic on the ground is
+ * a pickup and the bob is what marks it as one. This is not a pickup for
+ * anybody but its owner, and a bag hovering in the grass would make it look
+ * like loot the party could scoop up in passing — which is the exact
+ * misreading the ownership rule exists to prevent.
+ */
+export function drawPacks(
+  ctx: CanvasRenderingContext2D,
+  view: Projection,
+  book: SpriteBook,
+  packs: DrawablePack[],
+): void {
+  for (const pack of packs) {
+    if (pack.visibility <= 0.01) continue;
+    const sheet = book.get(PACK_SHEET);
+    const image = book.image(PACK_SHEET, pack.tint);
+    if (!sheet || !image) continue;
+    const row = sheet.rows.down ?? 0;
+    const w = sheet.frameWidth;
+    const h = sheet.frameHeight;
+    ctx.globalAlpha = pack.visibility;
+    ctx.drawImage(
+      image,
+      sheet.idleFrame * w,
+      row * h,
+      w,
+      h,
+      view.x(pack.x - w / 2),
+      // Sat ON its contact point rather than centred on it, like every prop in
+      // this game: the anchor is the ground it is lying on.
+      view.y(pack.y - h * 0.75),
+      view.size(w),
+      view.size(h),
+    );
+  }
+  ctx.globalAlpha = 1;
 }

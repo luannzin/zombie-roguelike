@@ -11,6 +11,7 @@ seam React is allowed to read.
 | file | owns |
 | --- | --- |
 | `game.ts` | orchestrator: two clocks, render loop, `start()`/`dispose()`, hunt-diamond latch. ~4.4k lines — navigate by the `// --- <section> ---` banners listed in its own header comment, never by line number |
+| `spectate.ts` | WHOSE SCREEN YOU ARE WATCHING when you cannot play your own: who is watchable, why you are out (downed / exited), and cycling. Pure over a `SpectateState`. NO SERVER HALF — spectating is a camera and the server has no cameras; every body it can point at is already on the wire, because the fov has always been a TEAM field |
 | `interaction.ts` | WHAT E IS OFFERING and whether it would be refused: the five reach tests (fire, object, drop, pad, stall), the server rules the client re-derives (`canStow`, `swapTargetFor`, `replacedBy`, `holdsShield`, `refusal`), the counterpart lookup the cards compare against (`currentGear`), and the prompts built from them. Pure functions over an `InteractionState`; nothing here mutates, sends, draws or makes a noise |
 | `lobby-scene.ts` | the camp, drawn before the simulation is allowed to run |
 | `simulation.ts` | movement — mirror of `server/app/simulation.py` |
@@ -94,6 +95,18 @@ The server half of each of these lives in [`docs/design/`](../../../docs/design/
   promised to exchange the player's rifle for the axe they were already
   carrying. `refusal` is the other half: SIX refusals, one per container, and
   only `bag` is about pocket space.
+- **THE SPECTATOR CAMERA IS A CAMERA AND NOTHING ELSE.** There is no server
+  half and there must not be one: `spectate.ts` picks a body out of the rows
+  the client already has, and `Game.spectating()` hands its position to the
+  same damped `camera.follow` the local body uses — so the handover reads as a
+  drift across rather than as a screen being swapped. It reveals nothing,
+  because the fov is a TEAM field (`updateVision` makes every living player a
+  viewer), so a teammate's view was already on this client.
+  **THE TARGET IS REPAIRED ON EVERY READ, never latched.** The player being
+  watched can go down mid-look — which is exactly the moment somebody is
+  watching hardest — so `spectateTarget` takes the last choice as a HINT and
+  falls back. A camera following a corpse looks identical to a camera that has
+  frozen, which is the one failure nobody would report as a bug.
 - **`currentGear` is what a card is compared AGAINST, and it is a client-only
   question.** The server has no opinion about which of two objects is better
   and must never grow one. It resolves the thing `key` would take the place of

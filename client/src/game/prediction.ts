@@ -72,6 +72,9 @@ export class LocalPlayer {
       // Down. A body cannot arrive in a zone already blocking — the shield
       // goes up on a button, and the button is not held across a welcome.
       blockSpeed: 1,
+      // Empty arms. `Room._step_carried` drops the pair when a carrier leaves
+      // a zone, so a body that has just arrived is never holding one.
+      carrySpeed: 1,
       // Clear. Nothing has hit this body on a map it has not stood on yet, and
       // the server clears the drag on every arrival for the same reason.
       stagger: 0,

@@ -69,6 +69,7 @@ import {
   drawLootShadows,
   drawLootPops,
   drawLootSprites,
+  drawPacks,
 } from './layers/loot';
 import { TerrainLayer, type BushRow, type DecorationMask } from './layers/terrain';
 import { drawVignette } from './layers/vignette';
@@ -377,6 +378,9 @@ export class Renderer {
     drawCoins(entity, state.coins, state.config.coinSprite);
     drawLootShadows(ctx, view, state.loot);
     drawLootSprites(ctx, view, this.lootAtlas, state.loot);
+    // With the drops, and under everybody: a bag on the floor is ankle height,
+    // so there is no body it could plausibly stand in front of. See `drawPacks`.
+    drawPacks(ctx, view, this.book, state.packs);
     // The item jumping out of something that was just opened. AFTER the
     // ground drops and before the bodies, so it passes over the drop it is
     // about to become and still goes behind anyone standing in front of it.

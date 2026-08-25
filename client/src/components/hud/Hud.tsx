@@ -36,7 +36,9 @@ import { Hotbar } from './Hotbar';
 import { Ultimate } from './Ultimate';
 import { Medical } from './Medical';
 import { RerollPrompt } from './RerollPrompt';
+import { CarryPrompt } from './CarryPrompt';
 import { ControlsHint } from './ControlsHint';
+import { Spectate } from './Spectate';
 import { HudScreen } from './HudScreen';
 import { NetStats } from './NetStats';
 import { StatusLine } from './StatusLine';
@@ -72,9 +74,18 @@ export interface HudProps {
   snapshot: HudSnapshot;
   minimapRef: RefObject<HTMLCanvasElement | null>;
   error: string | null;
+  /**
+   * Point the spectator camera at a body. `Game.watchPlayer`.
+   *
+   * A CALLBACK AND NOT A SOCKET, because spectating is a camera and the server
+   * has no cameras — see `game/spectate.ts`. It is the only thing in this
+   * whole overlay that reaches back into the game at all, and it reaches into
+   * the RENDERER rather than the simulation.
+   */
+  onWatch: (id: string) => void;
 }
 
-export function Hud({ snapshot, minimapRef, error }: HudProps) {
+export function Hud({ snapshot, minimapRef, error, onWatch }: HudProps) {
   // Slow up, fast down. Coming back is the beat that says the controls are
   // yours, so it gets time; going away is housekeeping and should not linger.
   const chrome = cn(
@@ -220,6 +231,7 @@ export function Hud({ snapshot, minimapRef, error }: HudProps) {
       */}
       <InteractPrompt prompt={snapshot.prompt} />
       <LootPrompt prompt={snapshot.lootPrompt} />
+      <CarryPrompt prompt={snapshot.carryPrompt} />
       <CratePrompt prompt={snapshot.cratePrompt} />
       <RiftPrompt prompt={snapshot.riftPrompt} />
       <BuyPrompt prompt={snapshot.buyPrompt} />
@@ -236,6 +248,19 @@ export function Hud({ snapshot, minimapRef, error }: HudProps) {
         through it. A run ending is the one moment this HUD is allowed to cover
         everything, including its own prompts and the arrival card.
       */}
+      {/*
+        THE SPECTATOR, UNDER the death card and OVER everything else.
+        Under, because a run that has ended has nothing to spectate and the
+        card is allowed to cover its own prompts; over, because while it is up
+        the four corners are describing a body the player is not driving.
+
+        It is outside `HudScreen` with the tooltips rather than inside it: the
+        strip is a list of PEOPLE and the glass would bend the names at the
+        edges of it, which is the one thing on that strip that has to stay
+        readable.
+      */}
+      <Spectate spectate={snapshot.spectate} onWatch={onWatch} />
+
       <DeathScreen wipe={snapshot.wipe} />
     </>
   );

@@ -29,6 +29,7 @@ the line number. In order:
     lifecycle           start / stop
     membership          spawns, seats, join, leave, the lobby payloads, ready
     loot and the belt   collect, the gun trade
+    carrying a body     the pack going down, a teammate coming up, the revive
     interactive objects break / open / lift, nests, the ambush
     extraction          the console, the pour, the quota, the carved exit
     the shop            the six stalls, the upgrade machine's lever
@@ -76,6 +77,8 @@ from .config import (
     BOSS_COINS,
     BOSS_DAY,
     BOSS_XP,
+    CARRY_BODY_SCALE,
+    CARRY_REACH_DIST,
     CRATE_BREAK_DIST,
     CRATE_NOISE_DIST,
     DT,
@@ -98,6 +101,7 @@ from .config import (
     MOVE_SPEED,
     RESPAWN_DELAY,
     RESPAWN_IMMUNITY,
+    REVIVE_HP_SHARE,
     WIPE_HOLD,
     HORDE_TELEGRAPH,
     SHOT_NOISE_DIST,
@@ -116,6 +120,7 @@ from .crates import VERB_BREAK, Crate
 from .entrance import Entrance
 from .rift import Rift
 from .store import Stand
+from .inventory import Inventory, Pack
 from .loot import Drop
 from .quests import Quest
 from .enemies import ENEMY_TYPES, Enemy, EnemyType, dress
@@ -175,6 +180,11 @@ class Room:
         self.enemies: dict[str, Enemy] = {}
         self.coins: dict[str, Coin] = {}
         self.drops: dict[str, Drop] = {}
+        #: Backpacks somebody put down to pick a teammate up. Keyed by id;
+        #: each one belongs to exactly one player — see `inventory.Pack`.
+        self.packs: dict[str, Pack] = {}
+        self._packs_dirty = False
+        self._pack_seq = 0
         self.crates: dict[str, Crate] = {}
         #: Extraction points, empty on a map without any (every camp, and any
         #: forest the generator could not fit a plot into).
@@ -430,6 +440,10 @@ class Room:
         self._loot_seq += 1
         return f"l{self._loot_seq}"
 
+    def _next_pack_id(self) -> str:
+        self._pack_seq += 1
+        return f"p{self._pack_seq}"
+
     def _load_crates(self) -> None:
         """Hydrate live crates from the map the generator left behind."""
         self.crates = crates.from_payloads(self.world.crates)
@@ -680,6 +694,18 @@ class Room:
         if (drop.x - player.x) ** 2 + (drop.y - feet_y) ** 2 > LOOT_COLLECT_DIST * LOOT_COLLECT_DIST:
             return
         item = loot.BY_KEY.get(drop.key)
+        # NO PACK, NO CARGO. The bag is on the floor somewhere because this
+        # player picked a teammate up, and a body with no bag has nowhere to
+        # put a relic - so the drop stays where it is.
+        #
+        # IT REFUSES ONLY THE POCKET. Rounds, a plate, a bandage and a weapon
+        # are not in the bag and never were (see `loot.ItemDef.pocket`), so a
+        # carrier can still arm themselves, dress themselves and pick up
+        # medicine on the way. That is the whole reason the five containers are
+        # separate: what a rescue costs is the NIGHT'S TAKINGS, not the ability
+        # to survive the walk back.
+        if not player.has_pack and (item is None or item.pocket == "bag"):
+            return
         dest = "bag"
         if item is not None and item.pocket == "ammo":
             # AMMUNITION, and it answers to the collecting player's own belt.
@@ -940,6 +966,301 @@ class Room:
         else:
             self._drop_at_feet(player, old)
         return held
+
+    # --- carrying a body: the pack down, a teammate up, the revive ----------
+    #
+    # THE WHOLE MECHANIC IS ONE TRADE AND IT IS STATED IN THE PROMPT: "largar
+    # mochila e carregar jogador". A body needs both arms, so the bag goes
+    # down, and everything else follows from that one sentence rather than
+    # from a rule anybody has to be told:
+    #
+    #   * you cannot pick loot up without a pack (`collect_loot`), so a
+    #     carrier is out of the looting for as long as they are carrying;
+    #   * the night's work is still in the bag, on the ground, at a spot you
+    #     have to walk back to through a forest you have already stirred;
+    #   * only the OWNER may take it back, so the party cannot pool the cost.
+    #
+    # What that buys is the only interesting version of this decision. A
+    # rescue that cost nothing would always be correct and would not be a
+    # decision at all; a rescue that cost the bag OUTRIGHT would be a
+    # punishment, and parties would learn to leave each other on the floor.
+    # Costing the bag TEMPORARILY, at a location, is a plan - and a plan is
+    # what a co-op game wants at the moment its players are talking to each
+    # other most.
+
+    def carry_body(self, pid: str) -> None:
+        """Pick the nearest downed teammate up, or put down the one in your arms.
+
+        ONE MESSAGE, TWO ACTS, AND NO TARGET ON THE WIRE. Which one you get is
+        whether your arms are full - see `protocol.MSG_CARRY` for why the
+        client is not allowed to name a body.
+        """
+        if self.phase != protocol.PHASE_PLAYING or self.departing or self.arriving:
+            return
+        player = self.players.get(pid)
+        if player is None or not player.alive or player.downed or player.exited:
+            return
+        # Both hands are already busy. A pour or a heal is a puppet, and a
+        # puppet does not bend down.
+        if player.pour is not None or player.using is not None:
+            return
+        if player.carrying is not None:
+            self._put_down(player)
+            return
+        target = self._body_in_reach(player)
+        if target is None:
+            return
+        self._lift_body(player, target)
+
+    def _body_in_reach(self, player: Player) -> Player | None:
+        """The nearest downed teammate close enough to get your hands under.
+
+        Measured feet to feet, mirroring every other reach in this file, and it
+        skips a body somebody else already has: two players carrying one
+        teammate would be two players writing one position, and the loser of
+        that race would be walking a body that follows the other one.
+        """
+        feet_y = player.y + PLAYER_HALF_HEIGHT
+        best: Player | None = None
+        best_d = CARRY_REACH_DIST * CARRY_REACH_DIST
+        for other in self.players.values():
+            if other.id == player.id or not other.downed:
+                continue
+            if other.carried_by is not None:
+                continue
+            dx = other.x - player.x
+            dy = (other.y + PLAYER_HALF_HEIGHT) - feet_y
+            dist = dx * dx + dy * dy
+            if dist <= best_d:
+                best = other
+                best_d = dist
+        return best
+
+    def _lift_body(self, player: Player, target: Player) -> None:
+        """The pack goes down and the body comes up, on the same frame.
+
+        IN THAT ORDER AND NEVER SEPARATELY. The bag being on the floor is the
+        price of the body being off it, and a version where either could happen
+        alone would be either a free rescue or a bag dropped for nothing.
+        """
+        self._drop_pack(player)
+        player.carrying = target.id
+        target.carried_by = player.id
+        # A carried body stops being a thing the walk owns. Its velocity is the
+        # carrier's from here (`_step_carried`), and a stale one would show on
+        # the client as a body drifting out of somebody's arms.
+        target.vx = target.vy = 0.0
+        self._roster_dirty = True
+
+    def _put_down(self, player: Player) -> None:
+        """Set the body in your arms down where you are standing.
+
+        It is NOT the reverse of picking one up: the pack does not come back.
+        Getting the bag is a separate walk to a separate place, which is the
+        whole reason putting somebody down at a platform is a decision rather
+        than an undo.
+        """
+        target = self.players.get(player.carrying or "")
+        player.carrying = None
+        if target is not None and target.carried_by == player.id:
+            target.carried_by = None
+        self._roster_dirty = True
+
+    def _drop_pack(self, player: Player) -> None:
+        """Take the bag off this player's back and leave it at their feet.
+
+        The pocket is SWAPPED, not emptied: what was in it moves into the
+        `Pack` whole, and the body gets a fresh empty one so that nothing else
+        in this codebase has to learn that `player.inventory` can be absent.
+        `has_pack` is the flag every refusal reads.
+        """
+        if not player.has_pack:
+            return
+        pack_id = self._next_pack_id()
+        self.packs[pack_id] = Pack(
+            id=pack_id,
+            owner=player.id,
+            x=round(player.x, 1),
+            y=round(player.y + PLAYER_HALF_HEIGHT, 1),
+            slots=player.inventory.slots,
+        )
+        player.inventory = Inventory(player.inventory.cap)
+        player.has_pack = False
+        self._packs_dirty = True
+        self._roster_dirty = True
+
+    def take_pack(self, pid: str) -> None:
+        """Put your own pack back on. Everything in it comes back with it.
+
+        THREE REFUSALS, AND EACH ONE IS THE MECHANIC RATHER THAN A GUARD: it
+        has to be YOURS (a party that could pool the bags never pays for a
+        rescue), your arms have to be EMPTY (you put it down to carry somebody,
+        so getting it back means setting them down first), and you have to be
+        standing at it.
+        """
+        if self.phase != protocol.PHASE_PLAYING or self.departing or self.arriving:
+            return
+        player = self.players.get(pid)
+        if player is None or not player.alive or player.downed or player.exited:
+            return
+        if player.has_pack or player.carrying is not None:
+            return
+        pack = self._pack_in_reach(player)
+        if pack is None:
+            return
+        # The cap is the BODY's, not the pack's: a slot upgrade bought while
+        # the bag was on the floor still applies to the bag.
+        player.inventory = Inventory(player.inventory.cap, pack.slots)
+        player.has_pack = True
+        del self.packs[pack.id]
+        self._packs_dirty = True
+        self._roster_dirty = True
+
+    def _pack_in_reach(self, player: Player) -> Pack | None:
+        """This player's OWN pack, if they are standing at it."""
+        feet_y = player.y + PLAYER_HALF_HEIGHT
+        reach = CARRY_REACH_DIST * CARRY_REACH_DIST
+        for pack in self.packs.values():
+            if pack.owner != player.id:
+                continue
+            dx = pack.x - player.x
+            dy = pack.y - feet_y
+            if dx * dx + dy * dy <= reach:
+                return pack
+        return None
+
+    def _step_carried(self) -> None:
+        """Glue every carried body to the arms holding it, once per tick.
+
+        AFTER THE WALK, so the body lands where the carrier ENDED UP rather
+        than where they started - a body updated first trails the carrier by
+        exactly one tick, which at sprint speed is a visible gap between two
+        sprites that are supposed to be touching.
+
+        It also REPAIRS THE PAIRING, and that is most of why it is a sweep
+        rather than four release calls. A carrier who died, went down,
+        disconnected or walked out of the zone has to let go, and every one of
+        those happens somewhere that has no business knowing this mechanic
+        exists. So the tick checks that both halves still agree about each
+        other and drops the pair when they do not.
+        """
+        for player in self.players.values():
+            if player.carrying is None:
+                continue
+            target = self.players.get(player.carrying)
+            dropped = (
+                target is None
+                or target.carried_by != player.id
+                or not target.downed
+                or not player.alive
+                or player.downed
+                or player.exited
+            )
+            if dropped:
+                if target is not None and target.carried_by == player.id:
+                    target.carried_by = None
+                player.carrying = None
+                self._roster_dirty = True
+                continue
+            assert target is not None
+            target.x = player.x
+            target.y = player.y
+            target.vx = player.vx
+            target.vy = player.vy
+
+    def revive_player(self, target: Player) -> bool:
+        """Stand a downed body back up. THE ONE DOOR, exactly as damage has one.
+
+        There is one caller today and the door exists anyway, for the reason
+        `heal_player` grew one: the moment a shrine, a defibrillator or a skill
+        wants to do this, the alternative is three places that each remember a
+        different half of the list below.
+
+        NOT A HEAL, AND `heal_player` MUST NEVER DO THIS. That method refuses a
+        downed body outright, because a heal that stood somebody up would
+        quietly delete permadeath - the thing every other system in this game
+        is balanced against. Coming back is not something medicine can buy: it
+        costs a teammate their bag, a walk across a map, and a platform.
+
+        IT COMES BACK AT HALF, and that is design rather than tuning. Full
+        health would make the platform a free reset and the whole escort a
+        formality; a token five would make the revive an animation in front of
+        a second death. Half is enough to walk out on and not enough to fight
+        on, which is the sentence the rest of that night should be about.
+        """
+        if not target.downed:
+            return False
+        target.downed = False
+        target.alive = True
+        target.hp = max(1, int(target.max_hp * REVIVE_HP_SHARE))
+        target.respawn_timer = 0.0
+        # The same grace an ordinary respawn gets, and it matters more here: a
+        # body stood up on a lit platform with a siren running is standing in
+        # the loudest place on the map.
+        target.hurt_immunity = RESPAWN_IMMUNITY
+        target.stamina = STAMINA_MAX
+        target.winded = False
+        target.stagger = 0.0
+        target.vx = target.vy = 0.0
+        target.last_input = InputCmd(sequence=target.last_processed_seq)
+        # Whoever was carrying them is no longer carrying anything.
+        holder = self.players.get(target.carried_by or "")
+        if holder is not None and holder.carrying == target.id:
+            holder.carrying = None
+        target.carried_by = None
+        self._roster_dirty = True
+        return True
+
+    def _revive_on_deck(self, target: Rift) -> None:
+        """Stand up every downed body lying on this pad when the pickup is called.
+
+        THE PLATFORM IS WHAT SAVES THEM, not the player who pressed the button,
+        and that is why this is here rather than in `carry_body`. Putting a body
+        on the deck does nothing at all on its own - it is cargo, lying where
+        the loot lies, waiting for the same flight. What turns it back into a
+        person is somebody deciding the night is over and calling the aircraft
+        in, which is the same press that banks the haul. One decision, both
+        payloads.
+
+        The reach is the CONSOLE's rather than the deck's footprint: a body at
+        the edge of a five-by-two skid is on the platform in every sense a
+        player cares about, and a rescue that failed on a pixel would be the
+        cruellest bug this game could ship.
+        """
+        reach = RIFT_ACTIVATE_DIST * RIFT_ACTIVATE_DIST
+        for player in list(self.players.values()):
+            if not player.downed:
+                continue
+            dx = player.x - target.deck_x
+            dy = (player.y + PLAYER_HALF_HEIGHT) - target.deck_y
+            if dx * dx + dy * dy > reach:
+                continue
+            self.revive_player(player)
+
+    def _strip_spent_packs(self) -> None:
+        """Empty every dropped pack once the last platform has gone.
+
+        A pack is a PROMISE that the night is still waiting at a spot on the
+        map. Once every pad is spent there is nothing left to load it into, so
+        the promise cannot be kept and it stops being made: the items go.
+
+        THE PACK ITSELF STAYS. The alternative is a player who spent their bag
+        on a rescue and can never pick anything up again for the rest of the
+        night, which is a softlock wearing a consequence's clothes. They get
+        the bag back empty, which is the honest version of what happened.
+        """
+        if not self.packs or not self.rifts:
+            return
+        if any(row.state != rift.SPENT for row in self.rifts):
+            return
+        emptied = False
+        for pack in self.packs.values():
+            if pack.count <= 0:
+                continue
+            pack.slots = [None] * len(pack.slots)
+            emptied = True
+        if emptied:
+            self._packs_dirty = True
 
     # --- interactive objects: using one, and what falls out -----------------
     def break_crate(self, pid: str, crate_id: str) -> None:
@@ -1294,7 +1615,20 @@ class Room:
         if target.state == rift.OPEN and target.close_at is None:
             if player.pour is not None:
                 return
-            if target.ready and player.inventory.bag_value() <= 0:
+            # AN EMPTY POCKET AND NO POCKET AT ALL ARE THE SAME NUMBER HERE
+            # AND THEY ARE NOT THE SAME SENTENCE. A player who put their bag
+            # down to carry a teammate has `bag_value() == 0` forever, so
+            # without `has_pack` they would call the pickup on the frame they
+            # walked up to a settled pad — the most expensive press in the game,
+            # fired by somebody whose whole night is still lying in the grass
+            # two hundred tiles away. With no bag there is nothing to pour, so
+            # the press falls through to the pour's own refusal instead.
+            if target.ready and player.has_pack and player.inventory.bag_value() <= 0:
+                # THE SAME PRESS BANKS THE HAUL AND SAVES THE BODIES. See
+                # `_revive_on_deck`: a teammate laid on the skid is cargo until
+                # somebody decides the night is over, and then they are a
+                # person again on the same frame the aircraft is called.
+                self._revive_on_deck(target)
                 self._shut_rift(target)
             else:
                 self._begin_pour(player, target)
@@ -2708,6 +3042,12 @@ class Room:
         if self._machine_busy > 0.0:
             self._machine_busy = max(0.0, self._machine_busy - dt)
         self.step_players(dt)
+        # STRAIGHT AFTER THE WALK AND BEFORE ANYTHING READS A POSITION. A body
+        # in somebody's arms is placed from the arms holding it, so it has to
+        # settle before the pack looks for targets, before a shot resolves and
+        # before the snapshot goes out - a carried body a tick behind its
+        # carrier is a visible gap between two sprites that are touching.
+        self._step_carried()
         self.step_seal(dt)
         self.step_quests()
         self.step_enemies(dt)
@@ -2720,6 +3060,9 @@ class Room:
         self.step_boss(dt)
         self.step_coins(dt)
         self.step_rift(dt)
+        # AFTER the pads, because it asks a question only they can answer:
+        # whether there is anything left to load. See `_strip_spent_packs`.
+        self._strip_spent_packs()
         self._sync_ammo_boxes()
         self._step_dark(dt)
         # THE NIGHT'S SCRIPT, AFTER THE NIGHT'S OWN SYSTEMS.
@@ -2945,12 +3288,23 @@ class Room:
                 self._step_use(player, dt)
                 continue
 
+            # OUT OF THE NIGHT AND WAITING FOR THE REST. The body is a
+            # puppet with nothing driving it: the queue drains so prediction
+            # keeps hearing back, and nothing else happens. It cannot be hurt
+            # (`damage_player`), nothing hunts it (`ai.update` never sees it),
+            # and its owner is watching somebody else's screen.
+            if player.exited:
+                self._puppet_inputs(player)
+                player.vx = player.vy = 0.0
+                continue
+
             budget = MAX_INPUTS_PER_TICK if len(player.inputs) > 3 else 1
             consumed = 0
             while player.inputs and consumed < budget:
                 cmd = player.inputs.popleft()
                 player.hotbar.apply_held(cmd.held)
                 self.sync_block(player, cmd)
+                self.sync_carry(player)
                 apply_input(player, cmd, self.world, dt)
                 self.handle_attack(player, cmd, dt)
                 player.last_processed_seq = cmd.sequence
@@ -3197,16 +3551,46 @@ class Room:
             self._tick_arena_exit()
 
     def _tick_exit_quest(self) -> None:
+        """Mark whoever has crossed, and turn the zone over once EVERYBODY has.
+
+        THE FIRST PLAYER OUT USED TO END THE NIGHT FOR THE PARTY, and that was
+        the single most anti-social rule in the game. One person walking into
+        the dark took the map away from three others mid-fight, mid-pour,
+        mid-anything - and the correct play, once anybody worked it out, was to
+        sprint for the exit the moment the quota landed and leave the rest of
+        the party wherever they happened to be standing. A co-op extraction
+        shooter cannot have "leave your friends behind" as its optimal line.
+
+        So crossing is now a per-body LATCH. `Player.exited` takes the crosser
+        out of the night - nothing hunts them, nothing can hurt them, their
+        input is dropped - and their screen becomes the same spectator camera a
+        downed player gets, which is what turns the wait into watching your
+        party finish rather than staring at a loading hint.
+
+        THE COUNT IS OF PLAYERS STILL STANDING, and downed bodies are
+        deliberately not in it. A body on the floor cannot walk to a corridor,
+        so counting it would mean a party could never leave with a casualty -
+        and the whole point of `carry_body` is that they can, either by putting
+        them on a platform or by walking out one short. `_check_wipe` is what
+        answers the case where nobody is left up.
+
+        THE QUEST TICKS ON THE FIRST CROSSING, not the last. "Encontre a saida"
+        is about finding the way out, and it has been found the moment somebody
+        stands in it; holding the row open until the last player crossed would
+        leave the objective unticked for the whole of the wait it is describing.
+        """
         if self.egress is None or self._pending_return:
-            return
-        quest = next((q for q in self.quests if q.id == quests.EXIT), None)
-        if quest is None or quest.done:
             return
         ts = TILE_SIZE
         hh = PLAYER_HALF_HEIGHT
-        crossed = False
+        standing = 0
+        out = 0
         for player in self.players.values():
-            if not player.alive:
+            if not player.alive or player.downed:
+                continue
+            standing += 1
+            if player.exited:
+                out += 1
                 continue
             feet_y = player.y + hh
             tx = int(player.x // ts)
@@ -3216,14 +3600,25 @@ class Room:
             if self.world.tiles[ty][tx] != VOID:
                 continue
             if self.egress.into_corridor(player.x, feet_y, EXIT_CROSS_TILES):
-                crossed = True
-                break
-        if not crossed:
+                player.exited = True
+                # A body walking out with somebody in its arms sets them down
+                # first. It is not cruelty - the carried body is downed, so it
+                # is not in the count below, and a pair glued together where
+                # one half has left the night is a body being dragged by a
+                # ghost.
+                if player.carrying is not None:
+                    self._put_down(player)
+                self._roster_dirty = True
+                out += 1
+        if out <= 0:
             return
-        quest.have = quest.need
-        quest.done = True
-        self._quests_dirty = True
-        self._pending_return = True
+        quest = next((q for q in self.quests if q.id == quests.EXIT), None)
+        if quest is not None and not quest.done:
+            quest.have = quest.need
+            quest.done = True
+            self._quests_dirty = True
+        if out >= standing:
+            self._pending_return = True
 
     # --- enemies ------------------------------------------------------------
     def step_enemies(self, dt: float) -> None:
@@ -3237,9 +3632,16 @@ class Room:
         if (not self.zone.hostile or self.arriving or not sealed) and not self.enemies:
             self.noises.clear()
             return
+        # NOTHING HUNTS SOMEBODY WHO HAS LEFT. Filtered here rather than
+        # inside `ai.py`, which has no business knowing what a corridor is:
+        # what the pack is handed is the list of bodies that are still in the
+        # night, and a body waiting at the exit is not one of them. Without
+        # this, a party's first crosser stands in the dark drawing the whole
+        # map onto a spot nobody can be hurt at, and the creatures pile up
+        # against a corridor mouth instead of defending the clearing.
         outcome = ai.update(
             self.enemies.values(),
-            self.players.values(),
+            [p for p in self.players.values() if not p.exited],
             self.world,
             self.navigator,
             dt,
@@ -3747,8 +4149,14 @@ class Room:
             return
         ts = TILE_SIZE
         hh = PLAYER_HALF_HEIGHT
+        standing = 0
+        out = 0
         for player in self.players.values():
-            if not player.alive:
+            if not player.alive or player.downed:
+                continue
+            standing += 1
+            if player.exited:
+                out += 1
                 continue
             feet_y = player.y + hh
             tx = int(player.x // ts)
@@ -3758,8 +4166,17 @@ class Room:
             if self.world.tiles[ty][tx] != VOID:
                 continue
             if self.egress.into_corridor(player.x, feet_y, EXIT_CROSS_TILES):
-                self._pending_return = True
-                return
+                player.exited = True
+                if player.carrying is not None:
+                    self._put_down(player)
+                self._roster_dirty = True
+                out += 1
+        # SAME RULE AS THE FOREST'S, and it has to be: the arena has no quest
+        # rows, but it has the same party and the same corridor, and a boss map
+        # where the first person out ends the fight for everybody else is the
+        # worst possible place for that to be true.
+        if out > 0 and out >= standing:
+            self._pending_return = True
 
     # --- ultimates: what a BUILD can do that a weapon cannot ----------------
     #
@@ -4117,6 +4534,21 @@ class Room:
             self.damage_player(player, damage, None, sx, sy)
         for bx, by in impact.bursts:
             self.shot_bursts.append({"x": round(bx, 1), "y": round(by, 1)})
+
+    def sync_carry(self, player: Player) -> None:
+        """Resolve what the body in these arms costs the walk, BEFORE the walk.
+
+        Beside `sync_block` and called in the same breath, for the same reason:
+        the walk is the first thing that asks how fast this body is, and a
+        multiplier resolved afterwards is a tick late on every frame it
+        changes. Mirror: `Game.syncCarry`.
+
+        It is a whole method for a single conditional because that conditional
+        is a CONTRACT — `simulation.py` and `simulation.ts` both multiply by a
+        number neither of them computes, and the two places that compute it
+        have to be findable from each other.
+        """
+        player.carry_speed = CARRY_BODY_SCALE if player.carrying is not None else 1.0
 
     def sync_block(self, player: Player, cmd: InputCmd) -> None:
         """Decide whether the shield is up, BEFORE anything reads it.
@@ -4595,6 +5027,13 @@ class Room:
         """
         if not target.alive:
             return
+        # OUT OF THE NIGHT. A player who has crossed the exit is standing in a
+        # corridor waiting for their party with their hands off the keyboard,
+        # and a body that could still be killed there would make being FIRST
+        # out the most dangerous thing anybody could do - which is the exact
+        # opposite of what crossing is supposed to mean.
+        if target.exited:
+            return
         # BEING HIT ENDS A POUR. A body standing over an open backpack while
         # something eats it is the one frame of this ceremony that would read
         # as the game having stopped listening.
@@ -4938,6 +5377,10 @@ class Room:
             [row.to_payload() for row in self.corpses.values()] if self._corpses_dirty else None
         )
         self._corpses_dirty = False
+        pack_rows = (
+            [row.to_payload() for row in self.packs.values()] if self._packs_dirty else None
+        )
+        self._packs_dirty = False
         rift_rows = (
             [row.state_payload() for row in self.rifts] if self._rift_dirty else None
         )
@@ -5007,6 +5450,7 @@ class Room:
                 departing=self.departing,
                 arriving=self.arriving,
                 zone_key=self.zone.key,
+                packs=pack_rows,
                 roster=roster,
                 loot=loot_rows,
                 loot_pickups=self.loot_pickup_events or None,

@@ -329,6 +329,54 @@ When the user requests a durable behavior change, record it here or in the relev
   number. The shell reserve is the smallest in the game and deliberately so:
   sixty answers to "something is already touching me" and no answer at all to
   anything further off.
+- **A DOWNED TEAMMATE IS THE ONE THING IN THIS GAME YOU CAN PICK UP THAT IS
+  NOT AN OBJECT, AND THE PRICE OF PICKING THEM UP IS YOUR BAG.** E on a body
+  drops the backpack where you stand and puts them over your shoulder
+  (`Room.carry_body`); the prompt names the cost first — *largar mochila e
+  carregar {nome}* — because the rescue is the obvious half and the bag is the
+  half a player would otherwise only discover afterwards. Carrying multiplies
+  the walk by `CARRY_BODY_SCALE` and changes nothing else: **weapons still
+  work**, because a party escorting a body through a forest that is hunting
+  them needs to be able to shoot back, and an escort you cannot defend is an
+  escort nobody attempts twice.
+
+  **THE SPEED COST IS A FLAT MULTIPLIER AND NOT A WEIGHT**, which was a real
+  decision. A body is heavy, so `carry_weight` was the obvious home for it —
+  and it would have been wrong twice: the bag has just been DROPPED to make
+  room, so the weight curve is at its lightest exactly when the player is meant
+  to be at their slowest, and a number that lands somewhere on a curve is one
+  that can be optimised away by carrying less. This is the price of a DECISION,
+  so it is flat, like the shield's. It is resolved once per tick into
+  `Player.carry_speed` / `MovableState.carrySpeed` and the movement code just
+  multiplies — the same contract `block_speed` keeps, and for the same reason.
+
+- **A BODY WITH NO PACK CANNOT TAKE CARGO, AND CAN TAKE EVERYTHING ELSE.**
+  `Room.collect_loot` refuses `pocket == "bag"` outright and the prompt says
+  *Você está sem mochila equipada*. Rounds, plate, medicine and weapons all
+  still work, because they are in the other four containers and never were in
+  the bag. That split is the whole reason the five containers exist: **what a
+  rescue costs is the night's takings, not the ability to survive the walk
+  back.** A carrier who could not pick up ammunition would be a carrier nobody
+  volunteers to be.
+
+- **THE PACK ON THE GROUND BELONGS TO ONE PERSON.** Only its owner may take it
+  back (`Room.take_pack`), and only with empty arms. Both rules are the
+  mechanic rather than guards around it: a pack the party could pool means one
+  player carries the body while another scoops the bag, and the trade this is
+  all built on never happens; a pack you could reclaim mid-carry would make
+  putting somebody down optional. What it buys is one clean sentence — *saving
+  somebody costs you your bag until you come back for it* — and a return trip
+  through a forest you have already stirred up.
+
+  **The items stay IN it** rather than spilling: a pack is a PROMISE that the
+  night is still waiting at a spot on the map, and spilling it would turn the
+  bag into a loot pile the party hoovers up in passing. **Once every platform
+  is spent the items go** (`Room._strip_spent_packs`) — there is nothing left
+  to load them into, and a promise that cannot be kept should stop being made.
+  The pack itself stays and comes back empty, because a player who could never
+  pick anything up again for the rest of the night is a softlock wearing a
+  consequence's clothes.
+
 - **MEDICINE IS SELECTED WITH A NUMBER AND SPENT WITH THE TRIGGER.** The
   keys straight after the belt (`config.medicalSlots` of them) take a kit OUT
   — holstering whatever was in the hand, exactly as a belt key would — and the

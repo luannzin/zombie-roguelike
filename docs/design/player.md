@@ -329,6 +329,24 @@ When the user requests a durable behavior change, record it here or in the relev
   number. The shell reserve is the smallest in the game and deliberately so:
   sixty answers to "something is already touching me" and no answer at all to
   anything further off.
+- **MEDICINE IS SELECTED WITH A NUMBER AND SPENT WITH THE TRIGGER.** The
+  keys straight after the belt (`config.medicalSlots` of them) take a kit OUT
+  — holstering whatever was in the hand, exactly as a belt key would — and the
+  LEFT BUTTON is what starts the channel. Pressing the same key again puts it
+  away and takes the weapon back; the cell auto-stows the moment the kit is
+  spent, so a heal never ends with an empty hand and a number key to go and
+  find. **This reversed the original design, in which the number key started
+  the heal on the frame it went down.** That made 4 the most expensive
+  accidental keypress in the game: an irreversible three-second commitment, on
+  a key one row above the belt keys a player hammers during a fight, out of a
+  supply of three that a run does not replenish. Every other commitment in this
+  game is made with the mouse — a shot, a swing, a shield — and a number key
+  everywhere else in the game means *choose*, not *do*. The cost of the verb is
+  unchanged and is still the whole point of it (`Room.use_medical`): seconds
+  planted in the open, unable to answer anything that walks up. What changed is
+  that entering that state is now two deliberate acts instead of one twitch.
+  The state needs no new indicator, because the belt visibly unselects and the
+  trigger stops answering — see `client/src/components/hud/Medical.tsx`.
 - **The belt's last cell is the BLADE CELL and it is never empty.** Nothing
   can take it to nothing — `Hotbar.__post_init__` puts a blade back — and that
   guarantee is the feature: a run OPENS with no gun, and the hand is still not

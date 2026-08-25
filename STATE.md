@@ -9,7 +9,7 @@ recently changed system, when something looks like a regression, before
 modifying anything under *Do not touch*, or when the task asks what to work on
 next. Skip it for a self-contained change to a stable system.
 
-_Last verified: 2026-08-24 — THE FIX PASS below, then THE BUILD PASS (five armour slots + ultimates), the T-01..T-10 pass, the DIFFICULTY pass and THE PACK under it._
+_Last verified: 2026-08-24 — THE READ-BEFORE-YOU-PRESS PASS below, then THE FIX PASS, THE BUILD PASS (five armour slots + ultimates), the T-01..T-10 pass, the DIFFICULTY pass and THE PACK under it._
 
 ## Current phase
 
@@ -21,7 +21,57 @@ ceremony.
 
 ## Currently working on
 
-- **A FIX PASS JUST LANDED. Five reports, and two of them were the same kind of
+- **A READ-BEFORE-YOU-PRESS PASS JUST LANDED. Five changes, and four of them
+  are the same complaint: the game asked for a decision and did not show the
+  player what they were deciding between.**
+
+  - **GEAR CARDS COMPARE THEMSELVES AGAINST WHAT YOU ARE CARRYING.**
+    `gear-card.ts` gained `compareGear`, every stat gained a comparable `n`,
+    and each row is marked `▲` / `▼` / `–` against the thing the object would
+    take the place of. `interaction.ts`'s `currentGear` is what resolves that
+    counterpart — the plate on that part, the lâmina in the cell, the shield
+    on the belt, the gun in hand. **No counterpart means no arrows**: a bare
+    slot has nothing to weigh against, and green arrows there would be a
+    recommendation rather than a measurement.
+  - **A DROP ON THE GROUND SHOWS ITS CARD, unprompted, like a shop table.**
+    That used to be the stall's alone. It matters more in the grass: a
+    purchase can be reconsidered at the counter, and a pickup takes the old
+    thing off you on the frame it lands.
+  - **"TROCAR {RIFLE} POR {LÂMINA}" IS GONE, AND IT WAS TWO BUGS.** The
+    prompt offered a trade off `pocket === 'hotbar'`, which is true of every
+    blade and every shield — an exchange `Room.take_weapon` has never made,
+    on the one press where being wrong costs the player their firearm. The
+    refusals are named properly now (six of them, only `bag` about the
+    pocket). Underneath it, `Room.swap_weapon` really did let a SECOND shield
+    onto the belt: `Hotbar.add` refuses duplicates and every pickup goes via
+    it, but a full belt falls past `add` into the trade, which writes the cell
+    directly — and the durability lives in one field on the body, so the
+    second one arrived holding the first one's damage. Pinned in
+    `test_gear.py`.
+  - **MEDICINE IS SELECTED, THEN SPENT.** 4/5/6 take a kit OUT (holstering the
+    weapon, exactly as a belt key would) and the LEFT BUTTON starts the
+    channel; the same key again puts it away, and the cell auto-stows when the
+    kit is gone. The key used to open an irreversible three-second commitment
+    on the frame it went down, one row above the keys a player hammers in a
+    fight, out of a supply of three. Kits also have hover cards now — `TEMPO`
+    beside `CURA` is the only row in the game where small is good, and without
+    it the heavy kit simply looked better than the light one, which is the
+    opposite of what the pair is for.
+  - **A POUR CAN BE WALKED OUT OF, and that reversed a design decision.**
+    `Room._puppet_inputs` (was `_pour_inputs`) now reports a movement key and
+    the pour ends where it stands. The old argument was real — a load undone
+    by somebody leaning on W is the most expensive verb in the game lost to
+    the most-held key — but it missed the forest: the press already threw a
+    noise, the clearing is lit, and a player who could see something coming
+    and could not step off the mark was watching a decision be made for them.
+    It stays fair because the pour SPENDS AS IT GOES: what reached the pad is
+    banked, what is in the bag stays in the bag, and the console takes a
+    second pour. The client predicts the cancel (`Game.pourCancelled`) because
+    `liveInput` masks movement out of a pour packet and the server cannot
+    cancel off a bit that was never sent. `test_pour.py` was inverted and now
+    pins the fairness half too.
+
+- **A FIX PASS LANDED BEFORE IT. Five reports, and two of them were the same kind of
   bug: a name that was quietly shared by two things.**
 
   - **THE SPIT CRASHED THE TAB.** `Room.__init__` assigned `self.shot_events`

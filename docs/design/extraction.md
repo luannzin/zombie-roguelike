@@ -350,11 +350,28 @@ authority (`server/app/inventory.py` slot rules), the wire protocol pair, or
   load passes through rather than a number it stops on.
   `Rift.cargo` is the pad's running pile index and it rides the geometry
   payload, because two players watching one pour have to watch one pile.
-  **A pour cannot be walked out of.** `Room._pour_inputs` acks every packet
-  and obeys none of them — the client masks movement out of `liveInput` for
-  the same reason, or it would predict a step the next snapshot takes back.
-  Only `damage_player` ends one early. Standing still for those seconds in a
-  dark forest is the price of the haul, and it is paid on the press.
+  **A pour CAN be walked out of, and that reversed a decision.**
+  `Room._puppet_inputs` acks every packet and obeys none of them except a
+  MOVEMENT key, which ends the pour where it stands. It used to obey nothing at
+  all, and the argument for that was real: a load undone by somebody leaning on
+  W while watching the deck is the most expensive verb in the game lost to the
+  key that is held down more than any other. What it missed is the forest. The
+  press already threw a noise, the lamps are green, the clearing is lit, and
+  the body is planted for several seconds — which is precisely when something
+  arrives. A player who could see it coming and could not step off the mark was
+  not making a decision, they were watching one be made for them, and "stand
+  here and take it" is not a cost, it is an absence of play.
+  **What keeps it a commitment is that the pour SPENDS AS IT GOES.** `_tip_item`
+  moves one unit at a time, so walking away banks everything already on the pad
+  and keeps everything still in the bag — there is nothing to refund and
+  nothing to lose, only a load left unfinished and a console to come back to.
+  That is the same fairness rule `_step_use` states from the other side: a heal
+  is spent on the LAST frame precisely because what interrupts a heal is the
+  thing you were healing because of. `damage_player` still ends a pour too.
+  The client mirrors the cancel rather than waiting for it — `Game.tick` clears
+  `localPour` on the frame a movement key goes down, because `liveInput` masks
+  movement out of a pour packet and the server cannot cancel off a bit that was
+  never sent.
 - **One pad at a time, and the PLAYER calls the pickup.** `Room._awake_rift`
   is the gate: a dormant console refuses while another platform is charging or
   open. `activate_rift` is a four-way switch on the pad's state plus what is

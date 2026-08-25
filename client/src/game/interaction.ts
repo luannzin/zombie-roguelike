@@ -29,7 +29,7 @@
  * makes, which is what keeps "close enough" one fact rather than two.
  */
 
-import { gearCard } from './gear-card';
+import { compareGear, gearCard, type HudGearCard } from './gear-card';
 import type { GameConfig, LootState, PlayerMeta } from '../net/protocol';
 import type { HudBuyPrompt, HudCratePrompt, HudLootPrompt, HudRiftPrompt } from './hud-store';
 import { objectLabel, objectOpenTime, objectTilesW } from './objects';
@@ -323,9 +323,7 @@ export function canStow(s: InteractionState, key: string, hp?: number): boolean 
     }
     // AT MOST ONE SHIELD, EVER. Not a technical limit — a belt holding two
     // riot shields is a belt with no guns on it at all.
-    if (weapon?.shield && guns.slots.some((cell) => !!cell && !!s.config?.weapons?.[cell]?.shield)) {
-      return false;
-    }
+    if (weapon?.shield && holdsShield(s)) return false;
     const gunCells = s.config?.gunSlots ?? guns.slots.length;
     return guns.slots.slice(0, gunCells).some((cell) => cell === null);
   }
@@ -386,6 +384,89 @@ export function replacedBy(s: InteractionState, key: string): string | null {
   // floor when a better lâmina replaces it. Mirrors `Room.swap_blade`.
   if (!cell || cell === s.config.startingBlade) return null;
   return s.config.loot?.[cell]?.name ?? null;
+}
+
+/**
+ * The card for what the player ALREADY HAS in the place `key` would go, or
+ * null when that place is empty.
+ *
+ * THE THIRD MIRRORED RULE IN THIS FILE, and it exists for the same reason the
+ * other two do: a comparison drawn at frame rate cannot wait for a round trip.
+ * It answers the question "what am I weighing this against" for every surface
+ * that describes an object the player does not own yet — a drop in the grass,
+ * a table in the shop — and `compareGear` turns the answer into arrows.
+ *
+ * FOUR CATEGORIES, FOUR ANSWERS, and each one is the object that would
+ * actually be given up:
+ *
+ *   worn      the plate on that part of the body, WITH ITS WEAR, because a
+ *             cracked steel breastplate is genuinely worse than a fresh cloth
+ *             one and the card has to be able to say so
+ *   blade     whatever is in the blade cell, knife included. The knife is not
+ *             an object the party owns, but it is a real weapon with real
+ *             numbers and "is this axe better than the knife" is the first
+ *             comparison anybody makes in a run
+ *   shield    the shield on the belt, with what is left of it
+ *   gun       the gun in hand, or — holstered, or holding steel — the first
+ *             gun on the belt. Not always a REPLACEMENT (a free cell takes it
+ *             without giving anything up), but always the thing the player is
+ *             deciding between, which is what the arrows are for
+ *
+ * MEDICINE HAS NO COUNTERPART AND GETS NO ARROWS. A kit never displaces
+ * another kit — the belt refuses a third rather than swapping one away (see
+ * `canStow`) — so there is nothing being weighed against anything, and a card
+ * of arrows would be inventing a decision the game does not ask for.
+ */
+export function currentGear(s: InteractionState, key: string): HudGearCard | null {
+  const config = s.config;
+  if (!config) return null;
+
+  const piece = config.armor[key];
+  if (piece) {
+    const worn = s.meta?.armor?.[piece.slot];
+    if (!worn) return null;
+    return gearCard(config, worn.k, { hp: worn.hp, max: worn.max });
+  }
+
+  const weapon = config.weapons[key];
+  if (!weapon) return null;
+  const slots = s.meta?.guns?.slots ?? [];
+
+  if (weapon.melee) {
+    const blade = slots[config.bladeSlot];
+    // Not against itself. A lâmina carries no wear, so an identical key is an
+    // identical card, and a column of level dashes is noise beside a prompt
+    // that already says you are carrying this one.
+    if (!blade || blade === key) return null;
+    return gearCard(config, blade);
+  }
+  if (weapon.shield) {
+    const worn = s.meta?.shield;
+    return worn ? gearCard(config, worn.k, { hp: worn.hp, max: worn.max }) : null;
+  }
+
+  const gunCells = config.gunSlots;
+  const held = s.heldSlot;
+  const inHand =
+    held >= 0 && held < gunCells ? slots[held] : null;
+  const other = inHand ?? slots.slice(0, gunCells).find((cell) => !!cell) ?? null;
+  // A gun does not compare itself against itself. Standing over a second AK
+  // with one already in hand, every row would read level and the card would
+  // be three dashes saying "this is the thing you have".
+  if (!other || other === key) return null;
+  return gearCard(config, other);
+}
+
+/** `gearCard` for `key`, marked against whatever the player already has. */
+function offeredGear(
+  s: InteractionState,
+  key: string,
+  wear?: { hp: number; max: number },
+): HudGearCard | null {
+  const config = s.config;
+  if (!config) return null;
+  const card = gearCard(config, key, wear);
+  return card ? compareGear(card, currentGear(s, key)) : null;
 }
 
 // --- prompts: the answer the tooltip and the keypress both read --------------
@@ -512,7 +593,14 @@ export function buyPrompt(s: InteractionState): HudBuyPrompt | null {
     // whole night's extraction and a name plus a price is not enough to spend
     // it on. The catalog row rather than a worn one — nothing on a shelf has
     // been used.
-    card: s.config ? gearCard(s.config, stand.key) : null,
+    //
+    // AND MARKED AGAINST WHAT THE PLAYER IS ALREADY CARRYING, which is the
+    // half the stall could never supply. A shop is a comparison by
+    // definition: the party is not asking "is this good", they are asking "is
+    // this better than the thing I walked in with", and answering that off
+    // two stat blocks held in your head is what makes an expensive counter
+    // feel like a gamble instead of a decision.
+    card: offeredGear(s, stand.key),
     swap: swap ?? undefined,
   };
 }
@@ -562,6 +650,25 @@ export function lootPromptInfo(s: InteractionState): HudLootPrompt | null {
   if (!near || !s.config) return null;
   const def = s.config.loot?.[near.k];
   if (!def) return null;
+  // WHAT IS LYING THERE, DESCRIBED, and marked against what is already on the
+  // body — the same card the shop shows, for the same reason. A drop costs no
+  // gold, but it costs the thing it replaces: the plate coming off, the
+  // lâmina hitting the grass, the gun traded away. Until this existed the only
+  // way to find out whether the axe in front of you beat the one in your hand
+  // was to pick it up and read the belt afterwards, by which point the old one
+  // was on the floor behind you.
+  //
+  // A WORN PIECE CARRIES ITS OWN WEAR ONTO THE CARD. `near.hp` is set only on
+  // a plate that has been on somebody — a cracked breastplate somebody swapped
+  // out has to still read as cracked, or the card would be advertising a fresh
+  // one and the arrows would be comparing a catalog ceiling against a real
+  // number.
+  const piece = s.config.armor?.[near.k];
+  const wear =
+    piece && near.hp !== undefined ? { hp: near.hp, max: piece.maxHp } : undefined;
+  const card = offeredGear(s, near.k, wear);
+  const frame = def.frame;
+
   if (canStow(s, near.k, near.hp)) {
     // A LÂMINA AND A PLATE ARE ALWAYS SWAPS, so they name what they replace
     // even though nothing is refusing them. The cell is never empty and the
@@ -574,26 +681,87 @@ export function lootPromptInfo(s: InteractionState): HudLootPrompt | null {
       rarity: def.rarity,
       full: false,
       swap: swap ?? undefined,
+      card,
+      frame,
     };
   }
-  // Belt full. If a gun is in hand this is a TRADE, not a refusal — the
-  // prompt names what you would be putting down, because that is the half
-  // of the decision the player cannot see from the drop's own tooltip.
-  const trade = def.pocket === 'hotbar' ? swapTargetFor(s) : null;
+
+  // REFUSED — AND THE COPY HAS TO NAME THE RIGHT REFUSAL, which is where this
+  // branch used to be badly wrong. Trading is a rule about GUN CELLS: a gun
+  // that will not fit may be exchanged for the gun in your hands, and nothing
+  // else in the game may. The old code asked `pocket === 'hotbar'` instead,
+  // which is true of every lâmina and every shield — so standing over the axe
+  // you were already carrying offered to trade your RIFLE for it, an exchange
+  // `Room.take_weapon` has never made and never could (a blade goes through
+  // `swap_blade`, which has no gun cell in it at all). The prompt was
+  // promising something the server would silently ignore, on the one press
+  // where being wrong costs the player their firearm.
+  //
+  // A SHIELD IS THE CASE THAT PROVES THE RULE IS ABOUT CELLS AND NOT ABOUT
+  // OBJECTS: it does live in a gun cell, so a full belt really can trade for
+  // one — but a SECOND shield cannot be taken at all, and those two refusals
+  // arrive at this line looking identical.
+  const weapon = s.config.weapons?.[near.k];
+  const tradeable =
+    def.pocket === 'hotbar' &&
+    !weapon?.melee &&
+    !(weapon?.shield && holdsShield(s));
+  const trade = tradeable ? swapTargetFor(s) : null;
   return {
     id: near.id,
     name: def.name,
     rarity: def.rarity,
     full: trade === null,
-    // WHICH refusal, so the copy can be true. Only ammunition has more than
-    // one; everything else that gets this far is out of pocket space, which
-    // is what the word "cheio" has always meant here.
-    reason:
-      trade !== null
-        ? undefined
-        : def.pocket === 'ammo'
-          ? (ammoRefusal(s, def.ammo) ?? 'bag')
-          : 'bag',
+    // WHICH refusal, so the copy can be true. There are six of them and only
+    // ONE is about the pocket, which is the word "cheio" this prompt spent a
+    // long time saying to all of them.
+    reason: trade !== null ? undefined : refusal(s, near.k, def.pocket, def.ammo),
     swap: trade ?? undefined,
+    card,
+    frame,
   };
+}
+
+/**
+ * WHY a pickup was refused, in the player's terms.
+ *
+ * One function because the alternative is a chain of conditionals inside the
+ * prompt builder, and the prompt builder is where the wrong answer already
+ * lived once. Every branch here mirrors the matching refusal in `canStow`,
+ * which mirrors the server's — so a new container arrives as one row in three
+ * places rather than as a sentence nobody wrote.
+ */
+function refusal(
+  s: InteractionState,
+  key: string,
+  pocket: string | undefined,
+  calibre: string | undefined,
+): NonNullable<HudLootPrompt['reason']> {
+  if (pocket === 'ammo') return ammoRefusal(s, calibre) ?? 'bag';
+  // BOTH CELLS FULL. Not "mochila cheia": medicine has never been in the
+  // pocket (`server/app/medical.py`), so a player with four empty bag slots
+  // was being told their bag was full and had no way to find out otherwise.
+  if (pocket === 'med') return 'med';
+  // THE PIECE YOU ARE ALREADY WEARING, in the same or better condition. The
+  // only refusal a worn slot has — a WORSE piece still goes on, because
+  // "worse" is not the game's call to make.
+  if (pocket === 'worn') return 'worn';
+  const weapon = s.config?.weapons?.[key];
+  // THE BLADE YOU ARE ALREADY CARRYING. The cell is never empty and it always
+  // swaps, so this is the single thing that can refuse a lâmina: a pickup
+  // that changed nothing and dropped what it replaced.
+  if (weapon?.melee) return 'blade';
+  // AT MOST ONE SHIELD, EVER. Not a technical limit — a belt holding two riot
+  // shields is a belt with no guns on it. A shield refused for any OTHER
+  // reason fell through to the belt's own refusal below, because it is in a
+  // gun cell like anything else.
+  if (weapon?.shield && holdsShield(s)) return 'shield';
+  return 'bag';
+}
+
+/** Whether a shield is already on the belt. Mirrors `Hotbar.holds_shield`. */
+function holdsShield(s: InteractionState): boolean {
+  return (s.meta?.guns?.slots ?? []).some(
+    (cell) => !!cell && !!s.config?.weapons?.[cell]?.shield,
+  );
 }

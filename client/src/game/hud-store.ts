@@ -65,6 +65,16 @@ export interface HudMedicalSlot {
   weight: number;
   /** Which key spends it — the keys straight after the belt's. On the cell. */
   hotkey: string;
+  /**
+   * The hover card, built by `gearCard` like the belt's and the body's.
+   *
+   * TWO ROWS AND THEY POINT OPPOSITE WAYS, which is the whole reason medicine
+   * needed one. The cell has room for the heal and nothing else, so a player
+   * reading only the cells has been told the heavy kit is simply the better
+   * one — and the entire design of the pair (`server/app/medical.py`) is that
+   * it is not: it heals more and plants you for three times as long.
+   */
+  card: HudGearCard | null;
 }
 
 export interface HudMedical {
@@ -79,6 +89,22 @@ export interface HudMedical {
    * look alike, "which one am I burning" is a question worth answering.
    */
   using: number;
+  /**
+   * The cell IN HAND, or -1. Client-authored, exactly like `HudHotbar.held`.
+   *
+   * A MEDICAL KEY NOW EQUIPS RATHER THAN SPENDS, and this field is that
+   * change. Pressing 4 used to start a three-second channel on the frame it
+   * went down — the most expensive accidental keypress in the game, one row
+   * away from the belt keys a player mashes in a fight. It now takes the kit
+   * OUT, the same gesture 1/2/3 makes, and the left button is what spends it:
+   * the same button that commits to everything else the player does with
+   * their hands, and one that nobody presses without meaning to.
+   *
+   * The weapon is holstered while a kit is out, because a body cannot hold
+   * both — which is also what makes the state visible without a second
+   * indicator: the belt goes unselected and the trigger stops answering.
+   */
+  selected: number;
 }
 
 /**
@@ -328,18 +354,49 @@ export interface HudLootPrompt {
    *   calibre   AMMUNITION for a gun nobody in your hands can fire. Not a
    *             refusal about space at all: the box is fine, it is not yours
    *   reserve   ammunition you CAN fire and are already carrying the most of
+   *   med       both medical cells are full. NOT the bag — medicine has never
+   *             been in the pocket, so "mochila cheia" over a bandage was
+   *             telling a player with four empty slots to go and free one
+   *   worn      the piece you already have on, in the same or better shape.
+   *             The only refusal a worn slot has
+   *   blade     the lâmina already in the cell. The cell always swaps, so
+   *             this is the one thing that can turn a blade away
+   *   shield    you are already carrying one, and one is the limit
    *
    * Absent when nothing is refused.
    */
-  reason?: 'bag' | 'calibre' | 'reserve';
+  reason?: 'bag' | 'calibre' | 'reserve' | 'med' | 'worn' | 'blade' | 'shield';
   /**
    * Set when the belt is full of guns but E would TRADE rather than refuse:
    * the name of the weapon currently in hand, which is what collecting this
    * one would leave on the ground. Absent when the pickup is an ordinary
    * collect, and absent when no trade is legal — holding the knife, or
    * holstered — which is the case that falls back to `full`.
+   *
+   * A GUN CELL AND NOTHING ELSE. A lâmina and a shield also live on the belt
+   * and neither can ever be traded FOR: steel goes through `swap_blade`,
+   * which has no gun cell in it, and a second shield is refused outright. The
+   * prompt used to offer both, which meant standing over the axe you were
+   * already carrying read as "trade your rifle for it".
    */
   swap?: string;
+  /**
+   * WHAT IS LYING THERE, described, and marked against what the player is
+   * already carrying — the same card the shop shows over a table.
+   *
+   * IT IS SHOWN WITHOUT BEING ASKED FOR, which used to be the shop's alone.
+   * The argument that earned it there is just as true in the grass: a drop
+   * costs no gold but it does cost the thing it displaces, and until this
+   * existed the only way to find out whether the axe in front of you beat the
+   * one in your hand was to pick it up and read the belt afterwards — by
+   * which point the old one was on the floor behind you.
+   *
+   * Null for cargo, which has no stats at all: a can of fuel is a price and a
+   * weight, and the bag's own card already says both.
+   */
+  card?: HudGearCard | null;
+  /** The loot atlas frame, so the card can draw the object it describes. */
+  frame?: number;
 }
 
 export interface HudRiftPrompt {

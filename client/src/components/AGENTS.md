@@ -14,7 +14,7 @@ and nowhere near the frame loop.
   `ReadyCount`, `Balance`, `QuestLog`, `QuestRow`, `QuestAnnounce`, `QuestCount`, `InteractPrompt`, `LootPrompt`, `CratePrompt`, `RiftPrompt`, `BuyPrompt`, `MachinePrompt`, `ExitGuide`, `SkillTray`, `SkillIcon`, `SkillCanIcon`, `Inventory`, `InventorySlot`,
   `InventoryGold`, `WeightBar`, `LootIcon`, `CoinIcon`, `DarkCoinIcon`, `SlotValue`, `LootFly`, `LootCard`,
   `LootCardRow`, `TooltipCard`, `InventoryGhost`, `Tooltip`, `TooltipKey`,
-  `Hotbar`, `HotbarSlot`, `Armor`, `Ultimate`, `UltimateIcon`, `GearCard`, `HoverCard`.
+  `Hotbar`, `HotbarSlot`, `Medical`, `Armor`, `Ultimate`, `UltimateIcon`, `GearCard`, `HoverCard`.
 - `lobby/` — `CampfireCanvas` (mounts `LobbyScene`; owns the rest-shot fire
   position via `campFireAnchor`, not via per-screen props), `RoomCode`,
   `PlayerRoster`.
@@ -57,6 +57,27 @@ without a keypress. The header also does not move when the drawer opens: the
 panel grows UPWARD, since the column is bottom-anchored and the vitals under it
 are where the player's eye already is.
 
+### The medical panel is SELECTED, then spent
+
+`hud/Medical.tsx` draws the belt's own cells at the belt's own size and rings
+the selected one with the belt's own `ring-ink-accent`, because it is the belt's
+own gesture: a number key puts something in your hands. What the key no longer
+does is USE it — the left button does that. See
+[`docs/design/player.md`](../../../docs/design/player.md) for why that reversed.
+
+The cell hovers the same `GearCard` everything else does, and medicine needed
+one more than anything else on the glass: the cell has room for the heal and
+nothing else, and the pair is a TRADE rather than a ladder (a lot of health
+after a long time, or less of it almost instantly). A player who has only ever
+seen `+55` and `+30` has been told the heavy kit is simply better. `TEMPO` is
+the one row in the game where SMALL IS GOOD, which is what `GearStat.better`
+exists for.
+
+**NO ARROWS ON A MEDICAL CARD**, ever. A kit never displaces another kit — the
+belt refuses a third rather than swapping one away — so there is no counterpart
+and nothing being weighed, and arrows would be inventing a decision the game
+does not ask for.
+
 ### The ultimate panel is the belt's own statement
 
 `hud/Ultimate.tsx` sits directly above `Hotbar` and draws nothing at all for a
@@ -80,14 +101,32 @@ and deliberately not a generalisation of either: the three sheets have
 different cells, roots and reasons to change. State is a FILTER on one image,
 never a different frame, so a player learns one mark per weapon.
 
-### One card describes a piece of gear, and three surfaces show it
+### One card describes a piece of gear, and FIVE surfaces show it
 
 `GearCard` renders whatever `game/gear-card.ts` produced; the belt hovers it,
-the armour panel hovers it, and the shop shows it unprompted when you walk up
-to a table. The rows are NOT built here — a component that knew how a weapon
-works would be a fourth place to forget a weapon class in, and the store's
-would be the one nobody looked at. This file owns the layout and the wording
-of the labels' surroundings; the stats and their units come off the catalog.
+the armour panel hovers it, the medical panel hovers it, the shop shows it
+unprompted when you walk up to a table, and a DROP shows it unprompted when you
+walk up to one. The rows are NOT built here — a component that knew how a
+weapon works would be a fifth place to forget a weapon class in, and the
+store's would be the one nobody looked at. This file owns the layout and the
+wording of the labels' surroundings; the stats and their units come off the
+catalog.
+
+**THE ARROWS ARE NOT DECIDED HERE EITHER, and a row with no arrow must not
+reserve space for one.** `gear-card.ts`'s `compareGear` marks each row up, down
+or level against the thing the object would take the place of; this file knows
+only which glyph and which colour that is (`▲` `text-hp-high`, `▼`
+`text-hp-low`, `–` `text-ink-muted` — the health bar's own vocabulary for good
+and bad, so there is no new legend to learn, and a DASH for level rather than a
+third triangle so the shape carries the meaning for the people the colour does
+not). The two surfaces that describe an object the player does not own yet pass
+a counterpart in; the three that describe what they ARE carrying do not, and an
+empty gutter on every row of those would be a column of nothing paid for by
+every card in the game.
+
+**NO COUNTERPART MEANS NO ARROWS.** An empty gun cell, a bare armour slot, a
+first lâmina: the honest comparison is against nothing, and a column of green
+arrows for a first helmet reads as a recommendation rather than a measurement.
 
 `HoverCard` is the portal, the flip and the edge clamp, lifted out of
 `LootCard` when the second and third card appeared. That arithmetic in three
@@ -236,6 +275,25 @@ its subsystem's design law in [`docs/design/`](../../../docs/design/) —
   trade reads before either name does. What you would pick up is on the
   ground in front of you; what you would put down is in your hands where you
   cannot see it, which is the whole reason it has to be named.
+  **A TRADE IS A RULE ABOUT GUN CELLS AND NOTHING ELSE.** A lâmina and a
+  shield also live on the belt and neither can ever be traded FOR — steel goes
+  through `Room.swap_blade`, which has no gun cell in it, and a second shield
+  is refused outright — so the prompt offering "trocar {rifle} por {lâmina}"
+  was promising an exchange the server has never made, on the one press where
+  being wrong costs the player their firearm.
+  `LootPrompt` also carries the same `above` CARD the shop does, and for the
+  same reason one rung harder: a purchase can be reconsidered at the counter,
+  but a pickup is instant and takes the old thing off you on the frame it
+  lands, so the comparison has to happen BEFORE the press or it happens by
+  reading the belt afterwards with the axe already on the floor behind you.
+  The card rides above every state, refusals included — on a `worn` or `blade`
+  refusal the arrows ARE the reason.
+  **THERE ARE SIX REFUSALS AND ONLY ONE IS ABOUT THE POCKET.** `bag`,
+  `calibre`, `reserve`, `med` (both cells full — medicine has never been in
+  the pocket), `worn` (the piece you have on, in the same or better shape) and
+  `blade` / `shield`. Every one but `bag` names the object first, because the
+  name is usually most of the answer. A new container arrives as a `reason`
+  and a line of copy, never as a fork of the chrome.
   `BuyPrompt` is a shop table. The PRICE rides in the tooltip's `end` slot
   rather than in the sentence, which is what keeps the card to one line
   whatever the weapon is called. Three states in the copy: an ordinary
@@ -354,6 +412,11 @@ its subsystem's design law in [`docs/design/`](../../../docs/design/) —
   read once. The hairline earns its keep on the first screen of a run, where
   the two gun cells are empty and it is the difference between "you have
   nothing" and "you have this".
+- `ControlsHint` lists the MEDICAL keys, unlike the belt's, and takes them off
+  the cells rather than writing them down. Every other key on that line does
+  its whole job on the press; these take the kit out and leave the trigger to
+  spend it, so a player who presses 4 and sees a cell light up has been given
+  half a control and no way to guess the other half.
 - A control a zone forbids is shown DISABLED, never hidden. `BatteryGauge` in
   the camp still answers "how much light am I carrying into the night"; only
   its readout changes, and a refused keypress kicks the panel instead of doing

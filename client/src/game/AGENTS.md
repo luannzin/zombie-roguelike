@@ -11,7 +11,7 @@ seam React is allowed to read.
 | file | owns |
 | --- | --- |
 | `game.ts` | orchestrator: two clocks, render loop, `start()`/`dispose()`, hunt-diamond latch. ~4.4k lines — navigate by the `// --- <section> ---` banners listed in its own header comment, never by line number |
-| `interaction.ts` | WHAT E IS OFFERING and whether it would be refused: the five reach tests (fire, object, drop, pad, stall), the two server rules the client re-derives (`canStow`, `swapTargetFor`), and the five prompts built from them. Pure functions over an `InteractionState`; nothing here mutates, sends, draws or makes a noise |
+| `interaction.ts` | WHAT E IS OFFERING and whether it would be refused: the five reach tests (fire, object, drop, pad, stall), the server rules the client re-derives (`canStow`, `swapTargetFor`, `replacedBy`, `holdsShield`, `refusal`), the counterpart lookup the cards compare against (`currentGear`), and the prompts built from them. Pure functions over an `InteractionState`; nothing here mutates, sends, draws or makes a noise |
 | `lobby-scene.ts` | the camp, drawn before the simulation is allowed to run |
 | `simulation.ts` | movement — mirror of `server/app/simulation.py` |
 | `prediction.ts` | apply-locally, replay-on-ack reconciliation |
@@ -86,6 +86,22 @@ The server half of each of these lives in [`docs/design/`](../../../docs/design/
   server still decides; these only decide what the tooltip PROMISES. A change
   to what a collect refuses is a change in both files, and getting it wrong
   shows up as a green prompt the server then ignores.
+  **A TRADE IS A RULE ABOUT GUN CELLS, NOT ABOUT THE BELT.** `swapTargetFor`
+  may only be offered for something that would land in a gun cell. A lâmina
+  goes through `Room.swap_blade`, which has no gun cell in it, and a second
+  shield is refused outright by `Hotbar.add` and now by `swap_weapon` as well —
+  so `pocket === 'hotbar'` is the wrong test and offering a trade off it
+  promised to exchange the player's rifle for the axe they were already
+  carrying. `refusal` is the other half: SIX refusals, one per container, and
+  only `bag` is about pocket space.
+- **`currentGear` is what a card is compared AGAINST, and it is a client-only
+  question.** The server has no opinion about which of two objects is better
+  and must never grow one. It resolves the thing `key` would take the place of
+  — the plate on that part, the lâmina in the cell, the shield on the belt, the
+  gun in hand — and `compareGear` (`gear-card.ts`) turns that into arrows. NULL
+  IS A REAL ANSWER and means no arrows at all: an empty cell has no
+  counterpart, and green arrows there would be a recommendation rather than a
+  measurement. Medicine never has one, because a kit never displaces a kit.
 - **R IS THE ONE KEY WITH NO PREDICTED HALF.** A shot is predicted, a swing is
   predicted, the shield goes up on the frame the button is pressed — all three
   are cheap to be wrong about. An ultimate is a night's charge, and flashing

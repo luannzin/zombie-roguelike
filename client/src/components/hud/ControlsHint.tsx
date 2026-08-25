@@ -7,13 +7,16 @@
  * try one.
  */
 
+import type { HudMedical } from '../../game/hud-store';
 import type { ZoneInfo } from '../../net/protocol';
 
 export interface ControlsHintProps {
   zone: ZoneInfo | null;
+  /** The cells, for their keys. Null before the first welcome. */
+  medical: HudMedical | null;
 }
 
-export function ControlsHint({ zone }: ControlsHintProps) {
+export function ControlsHint({ zone, medical }: ControlsHintProps) {
   const parts = ['WASD mover', 'SHIFT correr', 'mouse mirar'];
   // Always offered, because the knife always answers — `zone.hostile` gates
   // the gun, not the swing, so even the campfire has something on the
@@ -21,6 +24,18 @@ export function ControlsHint({ zone }: ControlsHintProps) {
   // button is dead here, which is the mistake this component exists to avoid.
   parts.push('clique para atacar');
   parts.push('1-2 arma', '3 faca');
+  // THE MEDICAL KEYS EARN A LINE BECAUSE THE GESTURE IS TWO STEPS. Every
+  // other key here does its whole job on the press; these take the kit OUT
+  // and leave the trigger to spend it, so a player who presses 4 and sees a
+  // cell light up has been given half a control and no way to guess the
+  // other half. The keys come off the cells themselves rather than being
+  // written here, so a fourth cell moves this line instead of colliding
+  // with it.
+  const keys = medical?.slots.map((cell) => cell.hotkey) ?? [];
+  if (keys.length) {
+    const span = keys.length > 1 ? `${keys[0]}-${keys[keys.length - 1]}` : keys[0];
+    parts.push(`${span} remédio · clique para usar`);
+  }
   if (zone?.lantern !== false) parts.push('F lanterna');
   if (zone?.kind === 'camp') parts.push('E pronto');
   else if (zone?.kind === 'store') parts.push('E comprar');

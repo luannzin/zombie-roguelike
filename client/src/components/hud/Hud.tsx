@@ -185,7 +185,7 @@ export function Hud({ snapshot, minimapRef, error }: HudProps) {
               thing to learn in the middle of a run. */}
           <SkillTray skills={snapshot.skills} reward={snapshot.reward} frames={SKILL_FRAMES} />
           <Inventory inventory={snapshot.inventory} />
-          <ControlsHint zone={snapshot.zone} />
+          <ControlsHint zone={snapshot.zone} medical={snapshot.medical} />
         </div>
 
         <div

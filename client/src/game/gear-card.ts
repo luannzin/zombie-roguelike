@@ -29,13 +29,14 @@
  * seven-row table is not read at all — it is dismissed, and then the player
  * stops hovering, and then the whole system may as well not exist.
  *
- * So there are five kinds of row in the game now and no others:
+ * So there are six kinds of row in the game now and no others:
  *
  *     DANO           what one press is worth
  *     TIROS/S        how often you may press it
  *     ARMADURA       what it takes off a blow
  *     DURABILIDADE   how much is left of it
  *     MUNIÇÃO        what you have, over what you can hold
+ *     TEMPO          how long it plants you — medicine, and only medicine
  *
  * Everything cut was cut on one test: would a player ever choose differently
  * because of it, in the moment they are looking at this card? Range and noise
@@ -51,6 +52,39 @@
  *   * a weapon's ULTIMATE, because that is the single largest thing a player
  *     is choosing between at a shop table and it is invisible everywhere else
  *     until they already own the weapon.
+ *
+ * MEDICINE GETS A CARD FOR THE SAME REASON A PLATE DOES, and its second row
+ * is the only one in the file where SMALL IS GOOD. The two kits trade on
+ * different axes — a lot of health after a long time, or less of it almost
+ * instantly (`server/app/medical.py`) — and a card that printed both numbers
+ * without saying which way each one points would make the light kit look
+ * strictly worse than the heavy one. That is what `GearStat.better` is for,
+ * and it is why comparison could not be "bigger is greener".
+ *
+ * THE ARROWS: A CARD COMPARES ITSELF AGAINST THE THING IT WOULD TAKE THE
+ * PLACE OF
+ * ========================================================================
+ * `compareGear` marks each row up, down or level against the piece the player
+ * already has in that place, and the surfaces that describe an object the
+ * player does NOT own yet — a drop in the grass, a table in the shop — pass
+ * that piece in. The belt's own cells and the armour panel's do not, because
+ * those cards ARE the current thing and an object compared against itself is
+ * a column of level arrows saying nothing.
+ *
+ * NO COUNTERPART MEANS NO ARROWS, and that is deliberate rather than a
+ * shortcut. An empty gun cell, a bare slot, a first lâmina — the honest
+ * comparison there is "against nothing", and a card of green arrows for a
+ * first helmet reads as a recommendation rather than as a measurement. The
+ * absence of arrows is what says "there is nothing here to weigh this
+ * against"; the panel behind the player already says the slot is bare, in a
+ * drawing of their own body, which is a louder sentence than an arrow.
+ *
+ * ROWS ARE MATCHED BY LABEL, which is the whole reason the label alphabet
+ * above is short and fixed. Two cards of the same kind carry the same rows in
+ * the same order, so a match is a lookup rather than a schema; a row the
+ * counterpart does not have is left alone rather than counted as a win,
+ * because "this one has ammunition and that one does not" is a difference in
+ * KIND and an arrow would be claiming it is a difference in degree.
  *
  * AND NOTHING ON A CARD IS ANCHORED ON A CREATURE. An earlier cut resolved
  * armour's fraction against a walker's claw to make it a number — true today,
@@ -73,6 +107,28 @@ export interface GearStat {
    * what the eye lands on, and the other two are what it checks afterwards.
    */
   lead?: boolean;
+  /**
+   * The magnitude behind `value`, for comparison. Separate from the string
+   * because `value` is a SENTENCE — `54 (6x9)`, `9 / 30`, `126` — and reading
+   * a number back out of it would be a parser that breaks the first time
+   * somebody adds a unit. A stat with no `n` is one that cannot be compared
+   * and simply never grows an arrow.
+   */
+  n?: number;
+  /**
+   * Which way is better. Everything on these cards is `high` except a heal's
+   * duration, which is the one number you want to be small — and that is
+   * exactly why the field exists rather than a blanket rule: a comparison
+   * that painted "plants you for three seconds" green because three is more
+   * than one would be worse than showing nothing at all.
+   */
+  better?: 'low' | 'high';
+  /**
+   * Filled in by `compareGear`, never by the builders. Absent means there was
+   * nothing to compare against — see `compareGear` for why that is a silent
+   * absence rather than a green arrow.
+   */
+  delta?: 'up' | 'down' | 'same';
 }
 
 export interface HudGearCard {
@@ -160,11 +216,13 @@ export function gearCard(
   const item = config.loot[key];
   const weapon = config.weapons[key];
   const piece = config.armor[key];
-  if (!item && !weapon && !piece) return null;
+  const kit = config.medical[key];
+  if (!item && !weapon && !piece && !kit) return null;
 
   const name = item?.name ?? weapon?.name ?? piece?.name ?? key;
   const rarity = item?.rarity ?? piece?.rarity ?? 'common';
 
+  if (kit) return medicalCard(key, name, rarity, kit);
   if (piece) return armorCard(config, key, name, rarity, piece, wear);
   if (weapon?.shield) return shieldCard(key, name, rarity, weapon, wear);
   if (weapon?.melee) return bladeCard(config, key, name, rarity, weapon);
@@ -203,7 +261,7 @@ function gunCard(
   // is not — and it is the only place on any of these cards where a second
   // number is allowed inside the first.
   if (weapon.heal > 0) {
-    stats.push({ label: 'CURA', value: `+${weapon.heal}`, lead: true });
+    stats.push({ label: 'CURA', value: `+${weapon.heal}`, n: weapon.heal, lead: true });
   } else {
     stats.push({
       label: 'DANO',
@@ -211,6 +269,10 @@ function gunCard(
         weapon.pellets > 1
           ? `${weapon.shotDamage} (${weapon.pellets}x${weapon.damage})`
           : String(weapon.shotDamage),
+      // THE SHELL, not the pellet: what the row compares is what the row
+      // leads with, or a shotgun would read as nine damage beside a rifle's
+      // thirty-six and the arrow would say the opposite of the number.
+      n: weapon.shotDamage,
       lead: true,
     });
   }
@@ -221,7 +283,11 @@ function gunCard(
   // `600/min` are the same fact and only one of them can be multiplied in
   // your head against the number above it.
   if (weapon.fireCooldown > 0) {
-    stats.push({ label: 'TIROS/S', value: rate(weapon.fireCooldown) });
+    stats.push({
+      label: 'TIROS/S',
+      value: rate(weapon.fireCooldown),
+      n: 1 / weapon.fireCooldown,
+    });
   }
   // WHAT YOU HAVE, OVER WHAT YOU CAN HOLD, and it is the reserve rather than
   // the calibre's name. The name told the player which crate to pick up; the
@@ -230,10 +296,10 @@ function gunCard(
   // — because a card that lists what an object does not have has stopped
   // being a description.
   if (ammo) {
-    stats.push({ label: 'MUNIÇÃO', value: `${ammo.have} / ${ammo.max}` });
+    stats.push({ label: 'MUNIÇÃO', value: `${ammo.have} / ${ammo.max}`, n: ammo.have });
   } else if (weapon.ammo !== 'none') {
     const cap = config.ammo.max[weapon.ammo];
-    if (cap) stats.push({ label: 'MUNIÇÃO', value: `máx ${cap}` });
+    if (cap) stats.push({ label: 'MUNIÇÃO', value: `máx ${cap}`, n: cap });
   }
   return {
     key,
@@ -258,13 +324,16 @@ function bladeCard(
   // Comparing single swings across blades compares the wrong thing: an axe's
   // first slash is smaller than its finisher and both are the same press held
   // down.
-  const stats: GearStat[] = [{ label: 'DANO', value: String(chain), lead: true }];
+  const stats: GearStat[] = [{ label: 'DANO', value: String(chain), n: chain, lead: true }];
   // AND HOW FAST THE CHAIN COMES ROUND, in the same unit a gun's trigger uses,
   // so a blade and a pistol can be compared at all. It is the chain's total
   // cooldown rather than one step's: what the player feels is how long they
   // are committed for, and that is all three beats.
   const cycle = steps.reduce((sum, step) => sum + step.cooldown, 0);
-  if (cycle > 0) stats.push({ label: 'GOLPES/S', value: rate(cycle / Math.max(1, steps.length)) });
+  if (cycle > 0) {
+    const beat = cycle / Math.max(1, steps.length);
+    stats.push({ label: 'GOLPES/S', value: rate(beat), n: 1 / beat });
+  }
   return {
     key,
     name,
@@ -295,13 +364,56 @@ function shieldCard(
       {
         label: 'DURABILIDADE',
         value: wear ? `${wear.hp} / ${wear.max}` : String(shield.hp),
+        n: wear ? wear.hp : shield.hp,
         lead: true,
       },
       // THE ONE RULE ALLOWED ON A CARD, and it is here because without it the
       // number above is a lie by omission: a shield stops everything it is
       // FACING and nothing else, and a player who does not know that reads
       // "126" as a health bar they can stand behind.
-      { label: 'ÂNGULO', value: `${Math.round(shield.arcDegrees)}°` },
+      { label: 'ÂNGULO', value: `${Math.round(shield.arcDegrees)}°`, n: shield.arcDegrees },
+    ],
+  };
+}
+
+/**
+ * A kit, as a card. TWO ROWS, AND THEY POINT IN OPPOSITE DIRECTIONS.
+ *
+ * That is the whole reason medicine gets a card rather than a number on the
+ * cell: the two kits are not a ladder, they are a trade. One puts a lot back
+ * and plants you for nearly three seconds; the other puts less back and is
+ * over before anything reaches you. A player who has only ever read the heal
+ * figure has been told that the heavy kit is simply the better one, which is
+ * the opposite of what `server/app/medical.py` was built to say.
+ *
+ * NO DURABILITY, NO WEIGHT, NO PRICE. Medicine is not cargo — both kits are
+ * `value=0` and the bag's own bar already carries what they cost the walk —
+ * and a kit is spent whole or not at all, so there is nothing left of one to
+ * report.
+ */
+function medicalCard(
+  key: string,
+  name: string,
+  rarity: LootRarity,
+  kit: NonNullable<GameConfig['medical'][string]>,
+): HudGearCard {
+  return {
+    key,
+    name,
+    rarity,
+    kind: 'Remédio',
+    stats: [
+      { label: 'CURA', value: `+${kit.heal}`, n: kit.heal, lead: true },
+      // THE COST OF THE VERB, and the one row in this file where less is
+      // better. Seconds standing still in the open, unable to answer anything
+      // that walks up — see `Room.use_medical`. A card that only printed the
+      // heal would be describing half the object.
+      {
+        label: 'TEMPO',
+        value: `${kit.useTime.toFixed(1)}s`,
+        n: kit.useTime,
+        better: 'low',
+      },
     ],
   };
 }
@@ -322,15 +434,57 @@ function armorCard(
     stats: [
       // THE RATING, AND IT IS ALREADY A NUMBER. Damage taken off every blow
       // that lands on this part, against anything that throws one.
-      { label: 'ARMADURA', value: String(piece.armor), lead: true },
+      { label: 'ARMADURA', value: String(piece.armor), n: piece.armor, lead: true },
       {
         // Points of damage it will absorb before it comes apart — the same
         // number the bar on the mannequin draws, so the bar and the card
         // cannot disagree.
         label: 'DURABILIDADE',
         value: wear ? `${wear.hp} / ${wear.max}` : String(piece.maxHp),
+        n: wear ? wear.hp : piece.maxHp,
       },
     ],
+  };
+}
+
+/**
+ * The same card, with every row marked against what the player already has.
+ *
+ * PURE, AND IT RETURNS A COPY. The builders above describe an OBJECT and know
+ * nothing about who is looking at it; this is the one function that knows
+ * there is a player, and keeping the two apart is what lets the belt and the
+ * armour panel render an uncompared card without a flag threaded through
+ * `gearCard`.
+ *
+ * `current` is the thing `card` would take the place of — the plate on that
+ * part of the body, the lâmina in the cell, the gun that would be traded
+ * away. NULL MEANS NO ARROWS AT ALL, which is the case that matters most to
+ * get right: an empty gun cell or a bare slot has no counterpart, and a
+ * column of green arrows there would be the card recommending a purchase
+ * rather than measuring one. Silence is the honest answer.
+ *
+ * Rows are matched by LABEL, never by position: a shotgun's card has a row a
+ * rifle's does not, and comparing `stats[2]` to `stats[2]` across those two
+ * would line damage up against ammunition. A row with no counterpart, or with
+ * no `n` on either side, is returned untouched — a difference in KIND is not
+ * a difference in degree, and an arrow can only ever claim the second.
+ */
+export function compareGear(
+  card: HudGearCard,
+  current: HudGearCard | null,
+): HudGearCard {
+  if (!current) return card;
+  const mine = new Map(current.stats.map((stat) => [stat.label, stat]));
+  return {
+    ...card,
+    stats: card.stats.map((stat) => {
+      const other = mine.get(stat.label);
+      if (stat.n === undefined || other?.n === undefined) return stat;
+      if (stat.n === other.n) return { ...stat, delta: 'same' as const };
+      const bigger = stat.n > other.n;
+      const good = (stat.better ?? 'high') === 'low' ? !bigger : bigger;
+      return { ...stat, delta: good ? ('up' as const) : ('down' as const) };
+    }),
   };
 }
 

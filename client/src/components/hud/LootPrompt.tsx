@@ -10,11 +10,20 @@
  * on the ground in front of you, but what you would put down is in your
  * hands where you cannot see it.
  *
- * A REFUSAL SAYS WHY, and it used to say the wrong thing twice out of three
- * times. "Inventário Cheio" was printed over a box of rifle rounds by a
- * player with an empty bag — which is not true, does not explain anything,
- * and teaches them that the prompt lies. There are three refusals in this
- * game and only ONE of them is about space:
+ * THE OBJECT IS DESCRIBED ABOVE THE LINE, marked against what the player is
+ * already carrying — the same card the shop shows over a table, in the same
+ * slot of the same tooltip. That used to be the shop's alone on the argument
+ * that a stall is where a night's extraction gets spent; the grass turned out
+ * to be the harder case. A purchase can be reconsidered at the counter, but a
+ * pickup is instant and takes the old thing off you on the frame it lands, so
+ * the comparison has to happen BEFORE the press or it happens by reading the
+ * belt afterwards with the axe already on the floor behind you.
+ *
+ * A REFUSAL SAYS WHY, and it used to say the wrong thing for most of them.
+ * "Inventário Cheio" was printed over a box of rifle rounds by a player with
+ * an empty bag, over a bandage by a player with four free slots, and over the
+ * axe they were already carrying. There are SIX refusals in this game and only
+ * ONE of them is about pocket space:
  *
  *   bag       no free cell and no stack. The original, and the only one the
  *             old copy fitted
@@ -24,10 +33,25 @@
  *   reserve   ammunition you can fire and are already carrying the most of.
  *             Muted rather than red: nothing is wrong, you are simply full,
  *             and the box will still be there on the walk back
+ *   med       both medical cells are full. Medicine has never been in the
+ *             pocket, so this one was lying about a container the player
+ *             could have gone and emptied to no effect
+ *   worn      the piece already on that part of the body, in the same or
+ *             better condition. A WORSE one still goes on, so the copy has to
+ *             say "melhor" rather than "you already have one"
+ *   blade     the lâmina already in the cell. This is the one that was worst:
+ *             it did not print a refusal at all, it offered to trade the GUN
+ *             in your hands for a knife you were already holding
+ *   shield    one is the limit
+ *
+ * Everything but `bag` names the object first, because the name is usually
+ * most of the answer: "Machado — você já carrega esta lâmina" needs no second
+ * sentence to explain itself.
  */
 
 import type { HudLootPrompt } from '../../game/hud-store';
 import type { LootRarity } from '../../net/protocol';
+import { GearCardBody } from './GearCard';
 import { Tooltip, TooltipKey } from './Tooltip';
 
 export interface LootPromptProps {
@@ -42,35 +66,49 @@ const RARITY_CLASS: Record<LootRarity, string> = {
   legendary: 'text-rarity-legendary',
 };
 
+/**
+ * The tail of a named refusal. The subject is always the object's own name in
+ * its rarity colour, so these are only ever the predicate — which is what
+ * keeps them one line each and stops any of them growing into a sentence
+ * about the player.
+ */
+const REFUSAL_COPY: Record<string, string> = {
+  calibre: 'você não tem uma arma desse calibre',
+  reserve: 'reserva cheia',
+  med: 'cinto médico cheio',
+  worn: 'você já veste algo igual ou melhor',
+  blade: 'você já carrega esta lâmina',
+  shield: 'você já carrega um escudo',
+};
+
 export function LootPrompt({ prompt }: LootPromptProps) {
   if (!prompt) return null;
 
+  // The description rides above every state, refusals included. A player being
+  // told they cannot take something is exactly the player who wants to know
+  // what it was — and on a `worn` or `blade` refusal the card is the proof:
+  // the arrows are all level or red, which is the reason.
+  const about = prompt.card ? (
+    <GearCardBody card={prompt.card} frame={prompt.frame} />
+  ) : undefined;
+  const name = <span className={RARITY_CLASS[prompt.rarity]}>{prompt.name}</span>;
+
   if (prompt.full) {
-    if (prompt.reason === 'calibre') {
+    const copy = prompt.reason ? REFUSAL_COPY[prompt.reason] : undefined;
+    if (copy) {
       return (
-        <Tooltip anchor="loot">
+        <Tooltip anchor="loot" above={about}>
           {/* The NAME leads, because the name is the answer: "Munição de
               rifle" over a body holding a pistol explains itself without the
               sentence under it having to work hard. */}
           <span className="text-ink-muted">
-            <span className={RARITY_CLASS[prompt.rarity]}>{prompt.name}</span> — você não
-            tem uma arma desse calibre
-          </span>
-        </Tooltip>
-      );
-    }
-    if (prompt.reason === 'reserve') {
-      return (
-        <Tooltip anchor="loot">
-          <span className="text-ink-muted">
-            <span className={RARITY_CLASS[prompt.rarity]}>{prompt.name}</span> — reserva
-            cheia
+            {name} — {copy}
           </span>
         </Tooltip>
       );
     }
     return (
-      <Tooltip anchor="loot">
+      <Tooltip anchor="loot" above={about}>
         <span className="text-hp-low">Mochila cheia</span>
       </Tooltip>
     );
@@ -78,21 +116,19 @@ export function LootPrompt({ prompt }: LootPromptProps) {
 
   if (prompt.swap) {
     return (
-      <Tooltip anchor="loot">
+      <Tooltip anchor="loot" above={about}>
         Aperte <TooltipKey>E</TooltipKey> para trocar{' '}
         {/* The gun being given up is muted and the one being gained takes
             its rarity colour, so the direction of the trade is legible
             before either name is read. */}
-        <span className="text-ink-muted">{prompt.swap}</span> por{' '}
-        <span className={RARITY_CLASS[prompt.rarity]}>{prompt.name}</span>
+        <span className="text-ink-muted">{prompt.swap}</span> por {name}
       </Tooltip>
     );
   }
 
   return (
-    <Tooltip anchor="loot">
-      Aperte <TooltipKey>E</TooltipKey> para coletar{' '}
-      <span className={RARITY_CLASS[prompt.rarity]}>{prompt.name}</span>
+    <Tooltip anchor="loot" above={about}>
+      Aperte <TooltipKey>E</TooltipKey> para coletar {name}
     </Tooltip>
   );
 }

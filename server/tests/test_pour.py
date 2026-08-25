@@ -10,8 +10,14 @@ outside if they regress:
   * it takes the WHOLE BAG, on either side of the quota. There is no bill to
     stop on: a load that ended on the number left the player standing at a
     machine they had committed to still carrying half the night
-  * NOTHING CANCELS IT. A movement key is acked and ignored — the press is the
-    commitment, and the seconds it costs are the price of the haul
+  * A MOVEMENT KEY ENDS IT, and ending it costs nothing that was not already
+    spent. Both halves are the rule: a body planted at a lit machine in a dark
+    forest has to be able to step off the mark, and because the pour spends as
+    it goes there is nothing in flight to lose when it does — what reached the
+    pad is banked, what is still in the bag is still in the bag, and the
+    console takes a second pour. A cancel that quietly ate the difference
+    would be indistinguishable from good luck in one direction and from a
+    dropped input in the other, and nobody would ever report either.
 """
 
 from __future__ import annotations
@@ -110,7 +116,15 @@ def main() -> None:
     assert pad.fed == 30, f"an overfeed takes the whole bag, got {pad.fed}"
     assert player.inventory.slots[0] is None, "and leaves nothing behind"
 
-    # --- a step does NOT cancel it ------------------------------------------
+    # --- a step DOES cancel it, and nothing is lost either way --------------
+    #
+    # The pour is the one puppet in this game a player may leave, and the two
+    # halves of that are equally load-bearing. It has to actually END — a body
+    # planted at a lit machine in a dark forest with something walking at it is
+    # not a decision, it is watching one be made for you. And it has to end
+    # FAIRLY, which only works because the ceremony spends as it goes: what
+    # already reached the pad is banked, what is still in the bag is still in
+    # the bag, and there is nothing anywhere in between to lose.
     room, player, pad = make_room(
         need=100, stock=[Slot(key="broken_toy", qty=8, value=5, weight=0.1)]
     )
@@ -118,13 +132,32 @@ def main() -> None:
     to_dump(room, player)
     run(room, rift.POUR_BEAT * 2)
     banked = pad.fed
-    assert banked > 0, "something has to have gone in before the step"
+    assert 0 < banked < 40, "something has to have gone in, and not all of it"
+    carried = player.inventory.slots[0]
+    assert carried is not None, "and something has to be left to walk away with"
+    left = carried.qty
+
     player.inputs.append(InputCmd(sequence=99, up=True))
     room.step_players(DT)
-    assert player.pour is not None, "a movement key may not end the pour"
+    assert player.pour is None, "a movement key ends the pour"
     assert player.last_processed_seq == 99, "and the input still has to be acked"
+
+    # Nothing keeps moving once the body is off the mark: no refund onto the
+    # pad's counter, no items quietly finishing their journey out of a bag
+    # nobody is holding open.
     run(room, rift.POUR_BEAT * 8)
-    assert pad.fed == 40, f"the whole bag still goes in, got {pad.fed}"
+    assert pad.fed == banked, f"what went in stays in, got {pad.fed} not {banked}"
+    kept = player.inventory.slots[0]
+    assert kept is not None and kept.qty == left, "and the rest stays in the pocket"
+
+    # THE CONSOLE IS STILL THERE. Walking away is not a forfeit — the pad is
+    # open, the quota is unpaid, and the same key starts the load again, or the
+    # whole verb would be a punishment dressed as an escape.
+    room.activate_rift(player.id)
+    assert player.pour is not None, "and the pad takes a second pour"
+    to_dump(room, player)
+    run(room, rift.POUR_BEAT * 10)
+    assert pad.fed == 40, f"the whole bag goes in on the second run, got {pad.fed}"
     assert player.inventory.slots[0] is None, "the pocket empties through the key"
 
     print("ok")

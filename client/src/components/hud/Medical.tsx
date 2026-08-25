@@ -34,13 +34,26 @@
  * WHAT IT HEALS IS ON THE CELL, where a gun's rounds are. The duration is not:
  * it is drawn, once per use, as the fill — and the two numbers competing for
  * the same 40px box is what made the old cells twice the size of everything
- * else in the corner.
+ * else in the corner. IT IS ON THE HOVER CARD instead, beside the heal, which
+ * is the only place the two can be read against each other — and reading them
+ * against each other is the entire decision the pair was built to pose. A
+ * player who has only ever seen `+55` and `+30` has been told the heavy kit is
+ * simply the better one, which is the opposite of what it is.
+ *
+ * A CELL IS SELECTED, THEN SPENT. The key takes the kit out — the same gesture
+ * the belt's keys make, and the belt visibly unselects when it happens — and
+ * the left button is what commits. So this panel now draws the same
+ * `ring-ink-accent` the belt does, and it means the same thing there as here:
+ * this is what is in your hands. The two strips are one gesture and one
+ * highlight; what keeps them apart is still the gap and the label.
  */
 
-import { useEffect, useRef, useSyncExternalStore } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import type { HudMedical, HudMedicalSlot } from '../../game/hud-store';
 import { writeInventoryAnchor, dropInventoryAnchor } from '../../game/inventory-anchors';
 import { incomingCount, subscribeLootFlies } from '../../game/loot-flies';
+import { GearCardBody } from './GearCard';
+import { HoverCard, type HoverAnchor } from './HoverCard';
 import { Panel } from './Panel';
 import { LootIcon } from './LootIcon';
 import { cn } from '@/lib/utils';
@@ -49,8 +62,20 @@ export interface MedicalProps {
   medical: HudMedical | null;
 }
 
+interface HoverState {
+  index: number;
+  anchor: HoverAnchor;
+}
+
 export function Medical({ medical }: MedicalProps) {
+  const [hover, setHover] = useState<HoverState | null>(null);
+
   if (!medical) return null;
+
+  // Re-read off the live snapshot rather than kept in state: the hovered cell
+  // empties under the pointer every time a kit is spent, which is the one
+  // moment this panel changes at all.
+  const shown = hover ? (medical.slots[hover.index] ?? null) : null;
 
   return (
     <Panel className="w-44 px-2.5 py-2">
@@ -66,10 +91,19 @@ export function Medical({ medical }: MedicalProps) {
             key={index}
             index={index}
             slot={slot}
+            selected={medical.selected === index}
             progress={medical.using === index ? medical.progress : 0}
+            onHover={(anchor) => setHover({ index, anchor })}
+            onLeave={() => setHover(null)}
           />
         ))}
       </div>
+
+      {shown?.card ? (
+        <HoverCard anchor={hover!.anchor} fitKey={shown.key ?? ''}>
+          <GearCardBody card={shown.card} frame={shown.frame} />
+        </HoverCard>
+      ) : null}
     </Panel>
   );
 }
@@ -77,11 +111,17 @@ export function Medical({ medical }: MedicalProps) {
 function MedicalCell({
   index,
   slot,
+  selected,
   progress,
+  onHover,
+  onLeave,
 }: {
   index: number;
   slot: HudMedicalSlot;
+  selected: boolean;
   progress: number;
+  onHover: (anchor: HoverAnchor) => void;
+  onLeave: () => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   // A kit in the air IS the sprite: the cell stays empty until the fly lands,
@@ -122,7 +162,23 @@ function MedicalCell({
       className={cn(
         'relative size-10 overflow-hidden border bg-panel-inset shadow-[inset_0_0_0_1px_var(--surface)]',
         filled ? 'border-rarity-uncommon/70' : 'border-track-border',
+        // THE SAME RING THE BELT DRAWS, meaning the same thing: this is what
+        // is in your hands. A different highlight for the same state would be
+        // two vocabularies for one gesture.
+        selected && filled ? 'ring-1 ring-ink-accent' : null,
+        // Pointer on a full cell only, and the mouse taken back PER CELL —
+        // the same rule the belt keeps. An empty cell has nothing to describe,
+        // so it stays transparent to a click the canvas wants.
+        filled ? 'pointer-events-auto cursor-pointer' : null,
       )}
+      onPointerEnter={() => {
+        if (!filled) return;
+        const el = ref.current;
+        if (!el) return;
+        const box = el.getBoundingClientRect();
+        onHover({ x: box.left + box.width / 2, top: box.top, bottom: box.bottom });
+      }}
+      onPointerLeave={onLeave}
     >
       {/*
         The drain. Under the icon and over the ground, rising from the bottom —
@@ -154,7 +210,12 @@ function MedicalCell({
         </span>
       )}
 
-      <span className="text-ink-muted absolute top-px left-0.5 text-[11px] leading-[11px] tabular-nums">
+      <span
+        className={cn(
+          'absolute top-px left-0.5 text-[11px] leading-[11px] tabular-nums',
+          selected && filled ? 'text-ink-accent' : 'text-ink-muted',
+        )}
+      >
         {slot.hotkey}
       </span>
       {filled ? (

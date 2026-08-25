@@ -916,6 +916,16 @@ class Room:
         old = bar.slots[held]
         if old is None or weapons.is_blade(old):
             return None
+        # AT MOST ONE SHIELD, EVER, and this is the door that was letting a
+        # second one through. `Hotbar.add` refuses them and every pickup goes
+        # via it — but a full belt falls through to here, which writes the cell
+        # DIRECTLY, so trading a gun away was the one route that bypassed the
+        # rule. The durability lives on the body (`Player.shield`, one field),
+        # so the second one would have arrived holding the first one's damage.
+        # Trading a shield FOR a shield is still fine: the belt count does not
+        # change.
+        if weapons.is_shield(key) and bar.holds_shield() and not weapons.is_shield(old):
+            return None
 
         bar.slots[held] = key
         # A SHIELD TRADED AWAY TAKES ITS DAMAGE WITH IT. Its durability lives
@@ -1533,24 +1543,39 @@ class Room:
         # ultimate, or the medic build would be "stand still and press 4".
         self.heal_player(player, kit.heal, source=None, key=key)
 
-    def _pour_inputs(self, player: Player) -> None:
-        """Ack everything, obey nothing.
+    def _puppet_inputs(self, player: Player) -> bool:
+        """Ack everything, obey nothing — and report a MOVEMENT key.
 
-        The body is a puppet for the length of a pour, but the queue still has
-        to drain and the sequence still has to be acked, or the client's
+        The body is a puppet for the length of a channel, but the queue still
+        has to drain and the sequence still has to be acked, or the client's
         prediction never hears back and walks off on its own.
 
-        NOT EVEN A MOVEMENT KEY. It used to cancel, and what that produced was
-        a load that ended half way through because somebody leaned on W while
-        watching the deck — the most expensive verb in the game, undone by the
-        key that is held down more than any other. The press is the commitment
-        now: the pack goes over and the bag empties, and the seconds it takes
-        are the price of the haul rather than a decision left open.
+        THE RETURN VALUE IS ONLY MEANINGFUL TO A POUR. Walking away ends a
+        pour and nothing ends a heal but being hit (see `_step_use`), so the
+        two callers read this differently and the difference is deliberate:
+        what a heal costs you is the seconds, and a heal you could abort for
+        free the instant something appeared would have no cost at all.
+
+        A POUR IS INTERRUPTIBLE AND THIS IS WHERE IT BECOMES SO. It was not,
+        and the argument for that was real — a load undone by somebody leaning
+        on W while watching the deck is the most expensive verb in the game
+        lost to the key held down more than any other. What that argument
+        missed is the FOREST. The pour is several seconds standing at a lit
+        machine with a siren's worth of noise already thrown, which is exactly
+        when something arrives; a player who could see it coming and could not
+        step off the mark was not making a decision, they were watching one be
+        made for them. The commitment is still real because the pour SPENDS AS
+        IT GOES — walking away costs you nothing you have not already banked,
+        and it does not give the bag back either.
         """
+        walked = False
         for cmd in player.inputs:
+            if cmd.up or cmd.down or cmd.left or cmd.right:
+                walked = True
             player.last_processed_seq = cmd.sequence
             player.last_input = cmd
         player.inputs.clear()
+        return walked
 
     def _step_pour(self, player: Player, dt: float) -> None:
         """Run one body's pour a tick further.
@@ -2900,17 +2925,23 @@ class Room:
                 continue
 
             # Mid-pour the body is a puppet: input is acked and dropped, the
-            # walk is driven from here, and the only key that still does
-            # anything is one that cancels.
+            # walk is driven from here, and the one key that still does
+            # anything is a movement key, which ENDS it. What already left the
+            # bag stays on the pad — the ceremony spends as it goes — so
+            # stepping off the mark costs the rest of the load and nothing
+            # that was banked.
             if player.pour is not None:
-                self._pour_inputs(player)
-                self._step_pour(player, dt)
-                continue
+                if self._puppet_inputs(player):
+                    player.pour = None
+                else:
+                    self._step_pour(player, dt)
+                    continue
 
-            # Mid-heal, the same puppet rule: the queue drains and the sequence
-            # is acked so prediction hears back, and nothing else happens.
+            # Mid-heal, the puppet with no way out: the queue drains and the
+            # sequence is acked so prediction hears back, and nothing else
+            # happens. Only `damage_player` ends this one — see `_step_use`.
             if player.using is not None:
-                self._pour_inputs(player)
+                self._puppet_inputs(player)
                 self._step_use(player, dt)
                 continue
 

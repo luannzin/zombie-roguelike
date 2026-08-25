@@ -364,8 +364,42 @@ def test_shield_breaks() -> None:
     room.handle_attack(player, InputCmd(shoot=True), 1 / 30)
     check(not room.shot_events and not room.swing_events, "a shield does not attack")
 
-    # At most one, ever.
+    # At most one, ever — AND THE TRADE IS THE DOOR THAT WAS LETTING A SECOND
+    # ONE THROUGH. `Hotbar.add` refuses a duplicate and every pickup goes via
+    # it, but a FULL belt falls past `add` into `swap_weapon`, which writes the
+    # cell directly. Two shield keys on one belt is not a cosmetic bug: the
+    # durability lives on the body in a single field, so the second one would
+    # have arrived holding the first one's damage, and spending either would
+    # have spent both.
     check(not player.hotbar.can_stow("riot_shield"), "a second riot shield is refused")
+
+    room, player = _room()
+    room.take_weapon(player, "riot_shield")
+    room.take_weapon(player, "ak47")
+    check(
+        all(k is not None for k in player.hotbar.slots[: weapons.GUN_SLOTS]),
+        "a shield and a gun fill the belt",
+    )
+    player.hotbar.held = next(i for i, k in enumerate(player.hotbar.slots) if k == "ak47")
+    check(
+        room.take_weapon(player, "riot_shield") is None,
+        "and a full belt may not trade a gun for a second one",
+    )
+    check(
+        sum(1 for k in player.hotbar.slots if weapons.is_shield(k)) == 1,
+        "the belt still holds exactly one shield",
+    )
+    check(player.hotbar.slots[player.hotbar.held] == "ak47", "and the gun is still there")
+    # TRADING A SHIELD FOR A SHIELD IS STILL FINE: the count does not change,
+    # and refusing it would mean the only shield in the game could never be
+    # replaced by anybody already carrying one.
+    player.hotbar.held = next(
+        i for i, k in enumerate(player.hotbar.slots) if weapons.is_shield(k)
+    )
+    check(
+        room.take_weapon(player, "riot_shield") is not None,
+        "a shield may be traded for a shield",
+    )
 
 
 # --- the shop sells all three ------------------------------------------------

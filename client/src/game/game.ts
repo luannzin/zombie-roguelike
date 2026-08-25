@@ -905,6 +905,54 @@ export class Game {
    */
   private usingCell = -1;
   /**
+   * The medical cell IN HAND, or -1. Client-authored, exactly like `heldSlot`.
+   *
+   * A MEDICAL KEY EQUIPS; THE LEFT BUTTON SPENDS. 4 used to open a
+   * three-second channel on the frame it went down, which made it the most
+   * expensive accidental keypress in the game and put it one row above the
+   * belt keys a player hammers in a fight. It now takes the kit OUT — the
+   * same gesture 1/2/3 makes — and the trigger is what commits, which is the
+   * button every other commitment in this game already lives on.
+   *
+   * IT IS NOT A SECOND HAND. Selecting a cell holsters the weapon and
+   * selecting a weapon puts the kit away, because a body holds one thing;
+   * that is also what makes the state readable without a new indicator, since
+   * the belt visibly goes unselected and the trigger stops answering.
+   */
+  private medSlot = -1;
+  /**
+   * The belt cell to go back to when the kit leaves the hand.
+   *
+   * Without it, healing costs the player their weapon: a heal in the middle
+   * of a fight would end with an empty hand and a number key to find, which
+   * is the exact half-second the whole verb was spent buying.
+   */
+  private medReturn = -1;
+  /**
+   * The trigger was already down when this frame began.
+   *
+   * A KIT IS SPENT ON THE PRESS AND NOT ON THE HOLD, unlike every firearm in
+   * the game, so this is the edge that separates them. A held button that
+   * kept re-sending would burn the whole belt in a third of a second — and it
+   * is a button players hold down for seconds at a time by habit.
+   */
+  private triggerDown = false;
+  /**
+   * The local player walked out of their own pour, before the server has said
+   * so.
+   *
+   * The pour is the one puppet in the game the player may leave (see
+   * `Room._puppet_inputs`), and the cancel is a round trip away — so this
+   * latches the moment the movement key goes down and suppresses the incoming
+   * `pour` rows until the server agrees. Without it, prediction would walk the
+   * body away and every snapshot for a whole RTT would drag it back onto the
+   * mark, which reads as the pad refusing to let go.
+   *
+   * Cleared by the first snapshot that carries no pour at all, which is both
+   * the server acknowledging this one and the only safe moment to re-arm.
+   */
+  private pourCancelled = false;
+  /**
    * THE RUN IS OVER, or null.
    *
    * Latched from the snapshot's `wipe` row and cleared by the `welcome` that
@@ -1060,7 +1108,7 @@ export class Game {
     this.input.onToggleArmor = () => this.toggleArmor();
     this.input.onUltimate = () => this.sendUltimate();
     this.input.onHotbar = (slot) => this.selectHotbar(slot);
-    this.input.onMedical = (cell) => this.useMedical(cell);
+    this.input.onMedical = (cell) => this.selectMedical(cell);
     bindInventoryDrop((slot) => this.requestDrop(slot));
     this.minimap = new Minimap(options.minimapCanvas);
     // Fire-and-forget, like every other atlas: until it lands the merchant is
@@ -1310,6 +1358,14 @@ export class Game {
       lastAck: ack,
     });
     this.heldSlot = msg.player.guns?.held ?? 0;
+    // The hands come back holding a weapon, whatever they were holding when
+    // the last map went away. A kit still selected across a zone change would
+    // light a medical cell while the belt lit one too, and the left button
+    // would belong to neither of them.
+    this.medSlot = -1;
+    this.medReturn = -1;
+    this.triggerDown = false;
+    this.pourCancelled = false;
     this.local.carryWeight =
       (msg.player.inv?.w ?? 0) + this.heldWeaponWeight(msg.player.guns, this.heldSlot);
     this.adsHold = 0;
@@ -1725,7 +1781,15 @@ export class Game {
     for (const state of msg.players) {
       if (state.id === this.localId) {
         this.localReady = state.ready ?? false;
-        this.localPour = state.pour ?? null;
+        // A LOCAL CANCEL OUTRANKS THE WIRE UNTIL THE WIRE AGREES. The player
+        // walked out of the pour and prediction has already moved them; the
+        // rows still in flight were authored before the movement key reached
+        // the server, so honouring them would drag the body back onto the
+        // mark for a whole round trip. The first row carrying no pour at all
+        // is both the acknowledgement and the moment it is safe to re-arm.
+        const poured = state.pour ?? null;
+        if (poured === null) this.pourCancelled = false;
+        this.localPour = this.pourCancelled ? null : poured;
         const healingBefore = this.healing;
         this.healing = state.use ?? 0;
         this.forcingKind = (state.uk ?? '') === 'crate';
@@ -3028,11 +3092,33 @@ export class Game {
     // is the first thing that asks how fast this body is, so a block decided
     // after the step would be a tick late on the frame it was raised for.
     this.syncBlock();
+    // WALKING OUT OF A POUR, predicted. The movement key has to reach the
+    // wire for `Room._puppet_inputs` to see it, and the body has to start
+    // moving on the frame it was pressed — so the cancel is latched here,
+    // BEFORE the packet is built, and every downstream test (the puppet mask,
+    // the pose, the trigger) reads a pour that is already over.
+    if (this.localPour !== null && this.walking()) {
+      this.localPour = null;
+      this.pourCancelled = true;
+    }
     const packet = this.liveInput(local.nextSequence());
     if (!this.locked) {
       local.predict(packet, world, config);
     }
     this.connection.send(packet);
+
+    // THE KIT'S TRIGGER, and it is an EDGE where every weapon's is a level.
+    // A gun fires again the moment its cooldown is up for as long as the
+    // button is down; a kit would burn the whole belt in a third of a second
+    // on a button players hold for seconds out of habit. So it is the press,
+    // once, and the next one needs the button to have come back up.
+    //
+    // SAMPLED ABOVE THE LOCK, so a button held through a cinematic is already
+    // "down" when control comes back and does not read as a fresh press on
+    // the first frame the player has their body again.
+    const trigger = this.input.shooting;
+    const pressed = trigger && !this.triggerDown;
+    this.triggerDown = trigger;
 
     if (this.locked) return;
 
@@ -3045,6 +3131,18 @@ export class Game {
     if (this.comboLeft > 0) {
       this.comboLeft = Math.max(0, this.comboLeft - dt);
       if (this.comboLeft === 0) this.comboStep = 0;
+    }
+
+    if (this.medSlot >= 0) {
+      // The cell emptied — the kit went into somebody's arm. Put the weapon
+      // back in the hand rather than leaving the player holding nothing with
+      // a dead trigger and a number key to go and find.
+      if (!this.localMeta?.med?.[this.medSlot]) {
+        this.stowMedical();
+        return;
+      }
+      if (pressed && local.alive) this.spendMedical();
+      return;
     }
 
     const weapon = this.heldWeapon();
@@ -3142,16 +3240,20 @@ export class Game {
         held: this.heldSlot,
       };
     }
-    // A BODY MID-POUR IS A PUPPET AND THE KEYS ARE DROPPED HERE, all of them.
-    // The server walks it to the mark and pins it there for the whole ceremony
-    // — `Room._pour_inputs` acks the queue and obeys none of it — so a WASD
-    // held down while the pack goes over is a step this client would predict
-    // and the next snapshot would take straight back. Movement used to CANCEL
-    // the pour, which is what made predicting it correct; it no longer does.
-    // MID-HEAL IS THE SAME PUPPET. `Room._step_use` zeroes the velocity every
-    // tick and `_pour_inputs` acks the queue without obeying it, so a WASD held
-    // during a heal is a step this client would predict and the next snapshot
-    // would take straight back.
+    // A BODY MID-POUR IS A PUPPET AND THE KEYS ARE DROPPED HERE — every key
+    // but the one that ENDS it. The server walks the body to the mark and pins
+    // it there for the ceremony, so a trigger or a sprint held while the pack
+    // goes over is an action this client would predict and the next snapshot
+    // would take straight back. A MOVEMENT key is the exception and it never
+    // reaches this branch: `tick` clears `localPour` on the frame one goes
+    // down, so by the time the packet is built the pour is already over on
+    // this side and the keys flow normally. That ordering is the whole of the
+    // walk-away — the server cannot cancel a pour off a movement bit this
+    // function has already masked to false.
+    // MID-HEAL IS THE PUPPET WITH NO WAY OUT. `Room._step_use` zeroes the
+    // velocity every tick and only being HIT ends it, so a WASD held during a
+    // heal is a step this client would predict and the next snapshot would
+    // take straight back.
     const puppet = this.localPour !== null || this.healing > 0;
     return {
       type: 'input',
@@ -3188,6 +3290,12 @@ export class Game {
     local.state.blockSpeed = this.blocking() ? (this.heldWeapon()?.shield?.speed ?? 1) : 1;
   }
 
+  /** Whether a movement key is down. The one input that ends a pour. */
+  private walking(): boolean {
+    const move = this.input.movement;
+    return move.up || move.down || move.left || move.right;
+  }
+
   /** Whether the shield is up right now. Mirror of `Room.sync_block`. */
   private blocking(): boolean {
     if (!this.input.blocking || this.localPour !== null || this.locked) return false;
@@ -3212,6 +3320,11 @@ export class Game {
     // length of a pour, so predicting a swing here would draw an arc that
     // never happened.
     if (this.localPour !== null) return false;
+    // A KIT IS IN THE HAND. Not "suppressed while healing" — there is nothing
+    // to suppress, because the weapon is holstered: the left button belongs
+    // to the medicine for as long as it is out, which is what makes taking it
+    // out a decision rather than a free extra binding.
+    if (this.medSlot >= 0) return false;
     // A SHIELD HAS NO TRIGGER. Not "suppressed while blocking" — there is
     // nothing to suppress, and the left button does nothing at all with one
     // in hand. Mirror of `Room.handle_attack`.
@@ -4791,6 +4904,12 @@ export class Game {
       playSfx('ui-error');
       return;
     }
+    // A WEAPON IN HAND PUTS THE KIT AWAY. One body, one pair of hands: the
+    // two strips are not two hands the player can hold at once, and leaving a
+    // cell lit while a rifle came out would be a selection ring pointing at
+    // something nobody is holding.
+    this.medSlot = -1;
+    this.medReturn = -1;
     this.heldSlot = this.heldSlot === slot ? -1 : slot;
     this.hotbarPicks += 1;
     this.adsHold = 0;
@@ -4806,28 +4925,32 @@ export class Game {
   }
 
   /**
-   * Spend one medical cell.
+   * Take one medical cell OUT. The left button is what spends it.
    *
-   * EVERY REFUSAL IS ANSWERED, and that is most of the code here. The server
-   * refuses silently — correctly, it has no idea what the player was trying to
-   * do — so the client has to be the one that says WHY nothing happened. With
-   * only two cells and a run that does not come back, an unexplained dead
-   * keypress is the worst possible feedback: the player cannot tell "the game
-   * ignored me" from "I already used it".
+   * THE KEY STOPPED BEING THE VERB, and that is the whole change. 4 used to
+   * open a three-second channel on the frame it went down — a commitment the
+   * player could not take back, on a key one row above the belt keys they
+   * hammer during a fight, with two or three kits in a run that does not come
+   * back. Every other commitment in this game is made with the mouse: a shot,
+   * a swing, a shield. Medicine is now made with it too, and the number key
+   * does what number keys do everywhere else in the game, which is choose.
    *
-   * It is deliberately NOT predicted. Every other verb here draws its own
-   * result before the server answers, because a tracer that waited for a round
-   * trip feels broken. A heal is the opposite: it is a three-second commitment
-   * whose whole cost is being unable to act, and a client that started the
-   * animation on the keypress would show a body planted for a beat before the
-   * server had agreed it was allowed to be.
+   * PRESSING THE SAME KEY AGAIN PUTS IT BACK, exactly as the belt holsters.
+   * That matters more here than on the belt: taking a kit out is now
+   * reversible, so the mis-key that used to cost a quarter of the night's
+   * medicine costs a keypress.
+   *
+   * EVERY REFUSAL IS STILL ANSWERED. The server refuses silently — correctly,
+   * it has no idea what the player was trying to do — so the client is what
+   * says why nothing happened. Only two survive to this point, because the
+   * rest are about SPENDING and this no longer spends: an empty cell, and a
+   * body that is not in a position to hold anything.
    */
-  private useMedical(cell: number): void {
+  private selectMedical(cell: number): void {
     if (this.locked || this.introLeft > 0) return;
     const local = this.local;
     const meta = this.localMeta;
-    const config = this.config;
-    if (!local || !meta || !config) return;
+    if (!local || !meta) return;
     // Down, or dead. Nothing to say — the screen is already saying it.
     if (!local.alive) return;
     // Mid-pour or mid-heal: the body is already committed to something.
@@ -4835,15 +4958,79 @@ export class Game {
       playSfx('ui-error');
       return;
     }
-    const key = meta.med?.[cell] ?? null;
-    if (!key) {
+    if (this.medSlot === cell) {
+      this.stowMedical();
+      return;
+    }
+    if (!meta.med?.[cell]) {
       playSfx('ui-error');
       return;
     }
+    // The weapon goes away and is REMEMBERED. A heal that ended with an empty
+    // hand and a number to find would spend the half-second the whole verb
+    // was bought with.
+    if (this.medSlot < 0) this.medReturn = this.heldSlot;
+    this.medSlot = cell;
+    this.heldSlot = -1;
+    this.hotbarPicks += 1;
+    this.adsHold = 0;
+    // Steel in hand abandons its chain when it leaves it, exactly as a belt
+    // swap does — the server drops the combo the moment `held` changes.
+    this.comboStep = 0;
+    this.comboLeft = 0;
+    if (this.local) this.local.carryWeight = this.moveWeight();
+    this.patchHud({ hotbar: this.hotbarHud(), medical: this.medicalHud() });
+  }
+
+  /** Put the kit away and take the weapon back out. */
+  private stowMedical(): void {
+    if (this.medSlot < 0) return;
+    this.medSlot = -1;
+    const back = this.medReturn;
+    this.medReturn = -1;
+    // Only back to a cell that still holds something. A shield that broke
+    // while the bandage was out would otherwise put an empty cell in the hand.
+    this.heldSlot =
+      back >= 0 && this.localMeta?.guns?.slots?.[back] ? back : -1;
+    this.hotbarPicks += 1;
+    this.adsHold = 0;
+    if (this.local) this.local.carryWeight = this.moveWeight();
+    this.patchHud({ hotbar: this.hotbarHud(), medical: this.medicalHud() });
+  }
+
+  /**
+   * Spend the kit in hand. The left button, on the PRESS.
+   *
+   * It is deliberately NOT predicted. Every other verb on this button draws
+   * its own result before the server answers, because a tracer that waited
+   * for a round trip feels broken. A heal is the opposite: it is a
+   * three-second commitment whose whole cost is being unable to act, and a
+   * client that started the animation on the press would show a body planted
+   * for a beat before the server had agreed it was allowed to be.
+   */
+  private spendMedical(): void {
+    const cell = this.medSlot;
+    if (cell < 0) return;
+    const local = this.local;
+    const meta = this.localMeta;
+    const config = this.config;
+    if (!local || !meta || !config || !local.alive) return;
+    if (this.localPour !== null || this.healing > 0) {
+      playSfx('ui-error');
+      return;
+    }
+    if (!meta.med?.[cell]) {
+      // The cell emptied under the selection — the last kit went into
+      // somebody's arm a moment ago. Put the hand back rather than leaving a
+      // lit cell holding nothing.
+      playSfx('ui-error');
+      this.stowMedical();
+      return;
+    }
     if (local.hp >= (meta.mods?.maxHp ?? config.maxHp)) {
-      // THE ONE REFUSAL WORTH PROTECTING SOMEBODY FROM. Two cells is the whole
-      // supply, so a kit spent at full health to a mis-key is a quarter of the
-      // night's medicine gone for nothing.
+      // THE ONE REFUSAL WORTH PROTECTING SOMEBODY FROM. The belt is the whole
+      // supply, so a kit spent at full health is a slice of the night's
+      // medicine gone for nothing.
       playSfx('ui-error');
       return;
     }
@@ -4994,12 +5181,17 @@ export class Game {
         // it. Derived rather than written as '4' and '5' so that a third gun
         // cell would move these instead of colliding with them.
         hotkey: String(config.hotbarSlots + index + 1),
+        // The same card the belt and the body hover, built by the same
+        // function off the same catalog. A kit's cell has room for one number
+        // and the kit has two that matter — see `medicalCard`.
+        card: key ? gearCard(config, key) : null,
       };
     });
     return {
       slots,
       progress: this.healing,
       using: this.healing > 0 ? this.usingCell : -1,
+      selected: this.medSlot,
     };
   }
 

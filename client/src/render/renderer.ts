@@ -70,7 +70,7 @@ import {
   drawLootPops,
   drawLootSprites,
 } from './layers/loot';
-import { TerrainLayer, type DecorationMask } from './layers/terrain';
+import { TerrainLayer, type BushRow, type DecorationMask } from './layers/terrain';
 import { drawVignette } from './layers/vignette';
 import { PostChain, type ShaftLight } from './post/chain';
 import { MAX_SHAFTS } from './post/chain';
@@ -138,6 +138,8 @@ export class Renderer {
   private readonly atmosphere = new AtmosphereLayer();
   /** Depth-sort scratch — see `draw`. */
   private readonly ordered: DrawableEntity[] = [];
+  /** The visible bushes, rebuilt every frame and merged into `depthProps`. */
+  private readonly bushes: BushRow[] = [];
   /**
    * Standing scenery + live crates + smash sheets. Rebuilt every frame so a
    * crate can leave the live list and keep playing its break in the same sort.
@@ -155,6 +157,15 @@ export class Renderer {
     piece: SceneryPiece | null;
     rift: RiftStanding | null;
     store: StoreStanding | null;
+    /**
+     * A BUSH, and it is in this list for the same reason a cabin is: it is
+     * tall enough to hide a body and short enough to stand in front of, so
+     * "over or under" is a question about the pair rather than about the
+     * plant. It used to be drawn in `overgrowth()`, over everybody — which
+     * put a player standing BELOW a thicket behind it, occluded by
+     * undergrowth they had already walked past.
+     */
+    bush: BushRow | null;
     /** The boss. One row at most, and only on his own map. */
     boss: boolean;
   }[] = [];
@@ -402,7 +413,7 @@ export class Renderer {
     depthProps.length = 0;
     for (const piece of state.world.scenery.standing) {
       depthProps.push({
-        y: piece.y, anim: 0, hitFlash: 0, piece, rift: null, store: null, boss: false,
+        y: piece.y, anim: 0, hitFlash: 0, piece, rift: null, store: null, boss: false, bush: null,
       });
     }
     // THE BOSS GOES IN THE SAME SORT AS A CABIN, for the same reason a cabin
@@ -413,19 +424,19 @@ export class Renderer {
     if (state.boss) {
       depthProps.push({
         y: state.boss.row.y, anim: 0, hitFlash: 0,
-        piece: null, rift: null, store: null, boss: true,
+        piece: null, rift: null, store: null, boss: true, bush: null,
       });
     }
     for (const { rift, phase } of riftPhases) {
       for (const piece of riftStanding(rift, phase)) {
         depthProps.push({
-          y: piece.y, anim: 0, hitFlash: 0, piece: null, rift: piece, store: null, boss: false,
+          y: piece.y, anim: 0, hitFlash: 0, piece: null, rift: piece, store: null, boss: false, bush: null,
         });
       }
     }
     for (const piece of egressTorches(state.world.egress)) {
       depthProps.push({
-        y: piece.y, anim: 0, hitFlash: 0, piece: null, rift: piece, store: null, boss: false,
+        y: piece.y, anim: 0, hitFlash: 0, piece: null, rift: piece, store: null, boss: false, bush: null,
       });
     }
     // The tables and the merchant. In the sort for the reason everything else
@@ -433,7 +444,7 @@ export class Renderer {
     // merchant is a body standing on a floor like any other.
     for (const piece of storeStanding(store)) {
       depthProps.push({
-        y: piece.y, anim: 0, hitFlash: 0, piece: null, rift: null, store: piece, boss: false,
+        y: piece.y, anim: 0, hitFlash: 0, piece: null, rift: null, store: piece, boss: false, bush: null,
       });
     }
     // Live objects. `sheet` was resolved when the row was unpacked (see
@@ -453,6 +464,7 @@ export class Renderer {
         rift: null,
         store: null,
         boss: false,
+        bush: null,
         piece: {
           kind: crate.sheet,
           x: crate.x,
@@ -479,6 +491,7 @@ export class Renderer {
         rift: null,
         store: null,
         boss: false,
+        bush: null,
         piece: {
           kind: smash.sheet,
           x: smash.x,
@@ -486,6 +499,23 @@ export class Renderer {
           variant: smash.variant,
           flip: smash.flip,
         },
+      });
+    }
+    // THE BUSHES, into the same sort. A bush's contact row is the bottom of
+    // its tile, so above your feet it is behind you and below them it closes
+    // over you — the rule every other standing thing here follows, and the one
+    // `overgrowth()` could not follow because it ran once for the whole screen
+    // after every body had already been drawn.
+    //
+    // Rebuilt per frame off the visible window, like everything else in this
+    // list: a bush is not an object anywhere, it is a hash of its tile and the
+    // map seed, so there is nothing to keep.
+    this.bushes.length = 0;
+    this.terrain.bushes(state.world, state.camera, this.bushes);
+    for (const bush of this.bushes) {
+      depthProps.push({
+        y: bush.y, anim: 0, hitFlash: 0,
+        piece: null, rift: null, store: null, boss: false, bush,
       });
     }
     depthProps.sort((a, b) => a.y - b.y);
@@ -530,6 +560,13 @@ export class Renderer {
                 this.lootAtlas,
               );
             }
+          } else if (row.bush) {
+            // Through `view` and not the world transform: this whole block
+            // runs in screen space with the camera already resolved into a
+            // projection. See `drawPlant`.
+            this.terrain.bush(
+              ctx, view, state.world, row.bush, state.time, this.disturbance,
+            );
           } else if (scenery && row.piece) {
             drawSceneryProp(
               ctx, view, scenery, row.piece, state.time, row.anim, row.hitFlash,

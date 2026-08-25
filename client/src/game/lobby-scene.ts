@@ -42,7 +42,7 @@ import { PostChain } from "../render/post/chain";
 import { forestLook } from "../render/post/looks";
 import { ARENA_ZOOM, CAMP_FIRE_ANCHOR, campZoom } from "../render/framing";
 import { DarknessLayer } from "../render/layers/darkness";
-import { TerrainLayer } from "../render/layers/terrain";
+import { TerrainLayer, type BushRow } from "../render/layers/terrain";
 import { frameIndex, SpriteBook } from "../render/sprites";
 import { loadScenery, type SceneryAtlas } from "../render/scenery";
 import { drawSceneryProp } from "../render/layers/scenery";
@@ -1131,7 +1131,9 @@ export class LobbyScene {
 		this.terrain.ground(ctx, world, camera, this.time);
 		this.drawStanding();
 		// Canopies and ferns close over whoever is standing behind them, exactly
-		// as they do in the arena.
+		// as they do in the arena. BUSHES ARE NOT IN THIS PASS — they are depth
+		// props now and go through `drawStanding`, for the reason the layer's
+		// own header gives.
 		this.terrain.overgrowth(ctx, world, camera, this.time);
 		if (this.fov) this.darkness.draw(ctx, world, this.fov);
 		this.darkness.drawFires(
@@ -1233,6 +1235,25 @@ export class LobbyScene {
 							},
 							this.time,
 						),
+				});
+			}
+		}
+		// THE BUSHES, in the same sort as the seats and the woodpiles. A bush is
+		// tall enough to hide a body and short enough to stand in front of, so
+		// which of the two it is doing is a question about the pair — and the
+		// camp is where a player spends the longest standing still next to one.
+		// The arena merges them into its own depth order for exactly this
+		// reason; a bush the lobby drew flat over everyone would jump the moment
+		// the run started. `WORLD_SPACE` because this scene has already applied
+		// the world transform.
+		const world = this.world;
+		if (world) {
+			const bushes: BushRow[] = [];
+			this.terrain.bushes(world, this.camera, bushes);
+			for (const bush of bushes) {
+				entries.push({
+					y: bush.y,
+					draw: () => this.terrain.bush(this.ctx, WORLD_SPACE, world, bush, this.time),
 				});
 			}
 		}

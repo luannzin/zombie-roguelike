@@ -57,6 +57,22 @@ ceremony.
     beside `CURA` is the only row in the game where small is good, and without
     it the heavy kit simply looked better than the light one, which is the
     opposite of what the pair is for.
+  - **A BUSH IS A DEPTH PROP NOW.** It was drawn in `overgrowth()`, after every
+    character, so a player standing BELOW a thicket vanished behind
+    undergrowth they had already walked past. Both global answers are wrong —
+    the question is about the bush AND the body — so `TerrainLayer.bushes()` /
+    `bush()` report and draw them as depth rows and both scenes merge them into
+    the sort a cabin is already in. Contact row is the bottom of the tile.
+    Canopies and ferns stay in `overgrowth()`; the layer header says why.
+  - **THE ULTIMATE PANEL WAS NEVER REPUBLISHED.** `ultimate` was missing from
+    `publishHud` entirely — it was patched on `welcome`, on the icon atlas
+    landing, and when the local player fired one. So the bar never filled, a
+    requirement never went green when the armour meeting it went on, and the
+    panel never followed 1/2/3. Two of the three patch sites also guarded on
+    `if (ultimate)`, so a knife left the last weapon's panel standing over a
+    hand that could not fire it — null is a real value and the patch is
+    unconditional now. It is also patched on the FRAME a belt key is pressed,
+    the same rule `heldSlot` itself is built on.
   - **A POUR CAN BE WALKED OUT OF, and that reversed a design decision.**
     `Room._puppet_inputs` (was `_pour_inputs`) now reports a movement key and
     the pour ends where it stands. The old argument was real — a load undone

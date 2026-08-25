@@ -1121,8 +1121,11 @@ export class Game {
     // zero, which is a wrong mark rather than a missing panel.
     void loadUltimateFrames().then((frames) => {
       this.ultimateFrames = frames;
-      const ultimate = this.ultimateHud();
-      if (ultimate) this.patchHud({ ultimate });
+      // NULL IS A REAL VALUE and the patch is unconditional. `ultimateHud`
+      // returns null for a weapon that owns no ultimate — a knife, an empty
+      // hand — and skipping the patch on null left the last weapon's panel
+      // standing over a hand that could not fire it.
+      this.patchHud({ ultimate: this.ultimateHud() });
     });
   }
 
@@ -4700,6 +4703,14 @@ export class Game {
       inventory: this.inventoryHud(),
       hotbar: this.hotbarHud(),
       armor: this.armorHud(),
+      // THE ULTIMATE PANEL IS REBUILT HERE, and its absence from this list was
+      // the whole of a three-part bug. It was published on the `welcome`, when
+      // the icon atlas landed, and when the local player fired one — so the
+      // bar never filled, a requirement never went green when the armour that
+      // met it was put on, and the panel never followed the weapon in hand.
+      // Every input to it (the belt, the body, the charge on the roster) moves
+      // during play and none of them had a publish behind it.
+      ultimate: this.ultimateHud(),
       medical: this.medicalHud(),
       net: {
         players: this.snapshots.latest?.players.size ?? 0,
@@ -4891,8 +4902,7 @@ export class Game {
     if (mine) {
       this.camera.addTrauma(ULT_TRAUMA);
       this.ultFires += 1;
-      const ultimate = this.ultimateHud();
-      if (ultimate) this.patchHud({ ultimate });
+      this.patchHud({ ultimate: this.ultimateHud() });
     }
   }
 
@@ -4920,8 +4930,12 @@ export class Game {
     // frame it happens. Waiting for the next roster would make the speed
     // change arrive a fifth of a second after the keypress that caused it.
     if (this.local) this.local.carryWeight = this.moveWeight();
-    const hotbar = this.hotbarHud();
-    if (hotbar) this.patchHud({ hotbar });
+    // THE ULTIMATE PANEL FOLLOWS THE HAND, and it has to change on the frame
+    // the key is pressed rather than at the next 5 Hz publish — the panel IS
+    // the answer to "what does R do right now", and a fifth of a second of it
+    // describing the weapon you just put away is a fifth of a second in which
+    // pressing R is a coin flip. Same argument `heldSlot` itself is built on.
+    this.patchHud({ hotbar: this.hotbarHud(), ultimate: this.ultimateHud() });
   }
 
   /**
@@ -4979,7 +4993,13 @@ export class Game {
     this.comboStep = 0;
     this.comboLeft = 0;
     if (this.local) this.local.carryWeight = this.moveWeight();
-    this.patchHud({ hotbar: this.hotbarHud(), medical: this.medicalHud() });
+    this.patchHud({
+      hotbar: this.hotbarHud(),
+      medical: this.medicalHud(),
+      // A kit in the hand is an empty weapon cell, so the panel goes away with
+      // it — and comes back when the weapon does. Null is a real value here.
+      ultimate: this.ultimateHud(),
+    });
   }
 
   /** Put the kit away and take the weapon back out. */
@@ -4995,7 +5015,11 @@ export class Game {
     this.hotbarPicks += 1;
     this.adsHold = 0;
     if (this.local) this.local.carryWeight = this.moveWeight();
-    this.patchHud({ hotbar: this.hotbarHud(), medical: this.medicalHud() });
+    this.patchHud({
+      hotbar: this.hotbarHud(),
+      medical: this.medicalHud(),
+      ultimate: this.ultimateHud(),
+    });
   }
 
   /**

@@ -9,9 +9,30 @@
  *   undergrowth() grass tufts. Drawn live because they SWAY, which
  *                 is the cheapest thing that stops a forest looking like a
  *                 photograph.
- *   overgrowth()  tree canopies, bushes and ferns, drawn AFTER characters, so
- *                 you walk under foliage and INTO a thicket instead of over a
+ *   overgrowth()  tree canopies and ferns, drawn AFTER characters, so you
+ *                 walk under foliage and INTO a thicket instead of over a
  *                 flat plane.
+ *
+ * A BUSH IS IN NONE OF THE THREE, and that is the one exception. It is the
+ * only undergrowth tall enough to hide a body and short enough to stand in
+ * front of, so a pass that always drew it over characters put a player who was
+ * standing BELOW a thicket behind it — occluded by a plant they had already
+ * walked past. Neither global answer is right, because the question is not
+ * about the bush: it is about the bush AND the body, and it has a different
+ * answer for each one on screen.
+ *
+ * So a bush is a DEPTH PROP. `bushes()` reports the visible ones as contact
+ * rows and `bush()` draws one through a projection; the arena merges them into
+ * the same sort a cabin and a barrel are in, and the lobby merges them into
+ * its own. Its contact row is the BOTTOM of its tile — above your feet it is
+ * behind you, below them it closes over you, which is the rule every other
+ * standing thing in this game already follows.
+ *
+ * A canopy stays in `overgrowth()` and is right to: a tree's contact row is
+ * its trunk, which is already in the depth sort, and the canopy is the part
+ * that is over your head no matter where you stand. A fern stays too — it is
+ * shorter than a body and the whole point of it is being pushed through
+ * face-first.
  *
  * The bake is two canvases, not one, precisely so the swaying plants can sit
  * between them: ground underneath, plants on top of it, props on top of that.
@@ -51,6 +72,23 @@ import type { SceneryAtlas } from '../scenery';
 import { tileHash, type DecalSheet, type PropSheet, type TerrainAtlas } from '../terrain';
 import * as wind from '../wind';
 import { bakeSceneryDecals } from './scenery';
+
+/**
+ * One bush the depth sort has to place.
+ *
+ * `y` IS ITS CONTACT ROW — the bottom edge of its tile, in world pixels — so
+ * it sorts exactly the way a cabin, a barrel and a body do: above your feet it
+ * is behind you, below them it closes over you. The tile coordinates ride
+ * along because everything else about the plant (which variant, how far it
+ * leans, where it was jittered to) is derived from them and the map seed, and
+ * carrying the derived values instead would be a second place for them to
+ * disagree with the ones the server hashes.
+ */
+export interface BushRow {
+  tx: number;
+  ty: number;
+  y: number;
+}
 
 /** Above this a map is drawn per-tile instead of cached. */
 const MAX_CACHED_MAP_PIXELS = 4096 * 4096;
@@ -299,6 +337,55 @@ export class TerrainLayer {
    * Foliage that closes over the player: tree canopies and ferns.
    * Drawn after the entity pass, still in world space.
    */
+  /**
+   * Every bush in view, as depth rows, appended to `out`.
+   *
+   * IT REPORTS RATHER THAN DRAWS, because the caller owns the depth order and
+   * this layer must not learn what a body is. Rows come out in ascending
+   * contact order already — the loop walks rows top to bottom and a bush's
+   * contact row is its tile's bottom edge — so a caller merging them into a
+   * sorted list has nothing to sort.
+   *
+   * The tile test is the same hash `bush()` and the server's `TileMap.bush_at`
+   * read, on the same salt. Three places ask where the undergrowth is and all
+   * three have to get the same answer; see the root `AGENTS.md`.
+   */
+  bushes(world: TileMap, camera: Camera, out: BushRow[]): void {
+    if (!this.atlas) return;
+    const ts = world.tileSize;
+    const seed = world.seed;
+    const { x0, y0, x1, y1 } = visibleTiles(world, camera);
+    for (let ty = y0; ty <= y1; ty++) {
+      for (let tx = x0; tx <= x1; tx++) {
+        if (world.tiles[ty][tx] !== FLOOR) continue;
+        if (this.decorationMask && !this.decorationMask(tx, ty)) continue;
+        if (tileHash(tx, ty, seed, 13) >= BUSH_CHANCE) continue;
+        out.push({ tx, ty, y: (ty + 1) * ts });
+      }
+    }
+  }
+
+  /**
+   * One bush, at its place in somebody else's depth order.
+   *
+   * Through a `Projection` rather than in world space, because the arena's
+   * depth sort runs in SCREEN space with the camera already resolved into a
+   * projection — the lobby, which has applied the world transform to its
+   * context, hands in `WORLD_SPACE` and gets the same drawing.
+   */
+  bush(
+    ctx: CanvasRenderingContext2D,
+    view: Projection,
+    world: TileMap,
+    row: BushRow,
+    time: number,
+    bodies: DisturbanceField | null = null,
+  ): void {
+    const atlas = this.atlas;
+    if (!atlas) return;
+    drawPlant(ctx, view, atlas.bush, world, row.tx, row.ty, time, SWAY_BUSH, 14, bodies);
+  }
+
   overgrowth(
     ctx: CanvasRenderingContext2D,
     world: TileMap,
@@ -344,16 +431,9 @@ export class TerrainLayer {
         if (tile !== FLOOR) continue;
         if (this.decorationMask && !this.decorationMask(tx, ty)) continue;
 
-        // BUSHES CLOSE OVER A BODY. They used to be drawn with the grass, one
-        // pass before the characters, which meant the tallest undergrowth on
-        // the map was the only foliage a player could never be hidden by —
-        // you walked in front of a thicket the way you walk in front of a
-        // painting of one. Same claim as the fern's, one line above it in the
-        // depth stack because a bush is the bigger mass: standing in it, you
-        // are in cover and it looks like it.
-        if (tileHash(tx, ty, seed, 13) < BUSH_CHANCE) {
-          drawPlant(ctx, atlas.bush, world, tx, ty, time, SWAY_BUSH, 14, bodies);
-        }
+        // NO BUSH HERE. It is a depth prop now — see the file header — and
+        // drawing it in this pass is what made a player standing in front of
+        // a thicket disappear behind it.
 
         if (tileHash(tx, ty, seed, 51) >= FERN_CHANCE) continue;
         const frame = variant(fern, tx, ty, seed, 52);
@@ -965,8 +1045,18 @@ function paintProps(
 }
 
 /** One swaying plant, centred on its tile and rooted at the bottom edge. */
+/**
+ * One swaying plant, through a projection.
+ *
+ * `view` is `WORLD_SPACE` for a caller drawing inside the world transform (the
+ * lobby) and a real projection for the arena, whose depth sort runs in SCREEN
+ * space. The SIZE is projected as well as the position: at zoom 3 a sheet
+ * drawn at its authored pixel size into a screen-space context would come out
+ * a third of the height of the tile it is rooted in.
+ */
 function drawPlant(
   ctx: CanvasRenderingContext2D,
+  view: Projection,
   sheet: PropSheet,
   world: TileMap,
   tx: number,
@@ -987,10 +1077,10 @@ function drawPlant(
     0,
     sheet.frameWidth,
     sheet.frameHeight,
-    Math.round(tx * ts + (ts - sheet.frameWidth) / 2 + jx + lean),
-    Math.round((ty + 1) * ts - sheet.frameHeight),
-    sheet.frameWidth,
-    sheet.frameHeight,
+    view.x(tx * ts + (ts - sheet.frameWidth) / 2 + jx + lean),
+    view.y((ty + 1) * ts - sheet.frameHeight),
+    view.size(sheet.frameWidth),
+    view.size(sheet.frameHeight),
   );
 }
 

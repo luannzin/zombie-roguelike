@@ -37,16 +37,19 @@
  *             pocket, so this one was lying about a container the player
  *             could have gone and emptied to no effect
  *   worn      the piece already on that part of the body, in the same or
- *             better condition. A WORSE one still goes on, so the copy has to
- *             say "melhor" rather than "you already have one"
+ *             better condition
  *   blade     the lâmina already in the cell. This is the one that was worst:
  *             it did not print a refusal at all, it offered to trade the GUN
  *             in your hands for a knife you were already holding
  *   shield    one is the limit
  *
- * Everything but `bag` names the object first, because the name is usually
- * most of the answer: "Machado — você já carrega esta lâmina" needs no second
- * sentence to explain itself.
+ * MOST OF THEM NAME THE OBJECT FIRST, because the name is usually most of the
+ * answer: "Machado — você já carrega esta lâmina" needs no second sentence to
+ * explain itself. The two that do NOT are the ones where the name adds
+ * nothing — a full bag is not about the thing on the ground at all, and a
+ * piece you are already wearing is one the card above has just drawn, named
+ * and marked with a column of level arrows. Those two are whole sentences on
+ * their own line.
  */
 
 import type { HudLootPrompt } from '../../game/hud-store';
@@ -76,9 +79,20 @@ const REFUSAL_COPY: Record<string, string> = {
   calibre: 'você não tem uma arma desse calibre',
   reserve: 'reserva cheia',
   med: 'cinto médico cheio',
-  worn: 'você já veste algo igual ou melhor',
   blade: 'você já carrega esta lâmina',
   shield: 'você já carrega um escudo',
+};
+
+/**
+ * The refusals that stand alone, without the object's name in front of them.
+ *
+ * `worn` is here because the name would be said twice: the card directly above
+ * this line is drawing the piece, naming it, and marking every one of its rows
+ * level against the one on the body. Repeating "Elmo de Aço —" under a picture
+ * of a steel helmet is ceremony.
+ */
+const REFUSAL_LINE: Record<string, string> = {
+  worn: 'Você já tem este item equipado',
 };
 
 export function LootPrompt({ prompt }: LootPromptProps) {
@@ -94,6 +108,14 @@ export function LootPrompt({ prompt }: LootPromptProps) {
   const name = <span className={RARITY_CLASS[prompt.rarity]}>{prompt.name}</span>;
 
   if (prompt.full) {
+    const line = prompt.reason ? REFUSAL_LINE[prompt.reason] : undefined;
+    if (line) {
+      return (
+        <Tooltip anchor="loot" above={about}>
+          <span className="text-ink-muted">{line}</span>
+        </Tooltip>
+      );
+    }
     const copy = prompt.reason ? REFUSAL_COPY[prompt.reason] : undefined;
     if (copy) {
       return (

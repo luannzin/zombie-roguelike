@@ -58,7 +58,7 @@ mutation, no React.
   in one `entities` list and are drawn by one path.
 - `renderer.ts` only sequences passes and switches spaces; drawing lives in
   `layers/`. **The pass order is the atmosphere** — ground (soil, litter, flat
-  scenery, then any extraction imprint) → dust → coins and loot sprites → entities, bonfires and standing
+  scenery, then any extraction imprint) → dust → coins and loot sprites → entities, bonfires, BUSHES and standing
   scenery (one depth sort by `y`, including live objects and their one-shots, the
   console, the torch and a grounded skid) → `drawRiftAir` (ropes, inbound
   drones, an airborne skid — after the sort, before the darkness) →
@@ -431,13 +431,32 @@ mutation, no React.
 - `terrain.ts` and `layers/terrain.ts` are also used by `game/lobby-scene.ts`
   over a locally generated map. Nothing in them may assume a server sent the
   `TileMap`.
-- **BUSHES ARE DRAWN OVER BODIES, WITH THE FERNS.** `undergrowth()` still
-  CLAIMS a bush tile — the tile gives up its grass, because a bush and a tuft on
-  one tile is a pile — but the shrub itself is painted in `overgrowth()`, after
-  the entity pass. Drawn with the grass it was the tallest undergrowth on the
-  map and the only foliage a player could never be hidden by: you walked in
-  front of a thicket the way you walk in front of a painting of one. Standing in
-  one now puts you in cover and looks like it — and the cover is REAL: `ai.look`
+- **A BUSH IS A DEPTH PROP, NOT A PASS.** `undergrowth()` still CLAIMS a bush
+  tile — the tile gives up its grass, because a bush and a tuft on one tile is a
+  pile — but the shrub itself is a row in the ENTITY DEPTH SORT, next to a cabin
+  and a bonfire. `TerrainLayer.bushes()` reports the visible ones as contact
+  rows and `TerrainLayer.bush()` draws one through a `Projection`; the arena
+  merges them into `depthProps`, the lobby into its own `entries` list, and both
+  hand in the projection their pass is running in (`WORLD_SPACE` for the lobby,
+  which has already applied the world transform).
+
+  **A bush's contact row is the BOTTOM of its tile.** Above your feet it is
+  behind you; below them it closes over you. It has been drawn both global ways
+  and both were wrong: with the grass, it was the tallest undergrowth on the map
+  and the only foliage a player could never be hidden by — you walked in front
+  of a thicket the way you walk in front of a painting of one. In `overgrowth()`
+  it was the opposite mistake and the louder one: a player standing BELOW a
+  thicket vanished behind undergrowth they had already walked past. Neither
+  answer is available, because the question is not about the bush — it is about
+  the bush AND the body, and there is a different answer for every one on
+  screen. That is what a depth sort is.
+
+  A canopy stays in `overgrowth()` and is right to: a tree's contact row is its
+  trunk, which is already in the sort, and the canopy is the part that is over
+  your head wherever you stand. A fern stays too — it is shorter than a body and
+  its whole job is being pushed through face-first.
+
+  The cover is REAL: `ai.look`
   re-derives these same tiles from the map seed and shortens a creature's reach
   over them. `BUSH_CHANCE` is therefore a gameplay number and arrives in
   `welcome.config` (`setBushChance`); the hash that places them is bit-for-bit

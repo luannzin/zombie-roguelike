@@ -27,8 +27,11 @@ Nearest contract: [`server/app/AGENTS.md`](../../server/app/AGENTS.md).
 - **An enemy chases nothing it has not noticed.** Awareness fills only inside the sight cone; `aggro_range` is the GIVE-UP distance, not the notice distance.
 - **Sight is symmetric with the lantern.** `ENEMY_VIEW_DARK_SCALE` and `ENEMY_VIEW_LIT_SCALE` are the reaches BOTH sides use — they ship as `enemyViewDarkScale` / `enemyViewLitScale` and `client/src/render/fov.ts` reads them. One source, so there is nothing to keep in step. Never give a creature an absolute view distance.
 - **Undergrowth is cover, and it is cover because the picture already said so.**
-  `layers/terrain` draws bushes AFTER the characters — stand in a thicket and
-  the art closes over you — while `look` tested a clean ray at full reach.
+  A bush is in the entity DEPTH SORT — stand behind a thicket and the art closes
+  over you — while `look` tested a clean ray at full reach. (It used to be drawn
+  after every character unconditionally, which said the same thing about cover
+  and lied about everything else: a player standing in FRONT of a thicket
+  disappeared behind it. See `client/src/render/AGENTS.md`.)
   A picture that lies about the rules is worse than no picture: the player takes
   cover, is seen anyway, and concludes the senses are broken. Standing on a bush
   tile now cuts a creature's reach against you by `BUSH_CONCEAL_SCALE`.

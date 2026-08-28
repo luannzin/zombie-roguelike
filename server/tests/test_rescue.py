@@ -33,6 +33,7 @@ What it pins, in the order a night hits them:
 
 from __future__ import annotations
 
+import asyncio
 import sys
 from pathlib import Path
 
@@ -410,6 +411,35 @@ def test_walking_out_sets_a_body_down() -> None:
     check("he is on the floor where she left him", beto.downed and beto.carried_by is None)
 
 
+def test_the_corridor_does_not_follow_them() -> None:
+    """The `exited` latch belongs to the map it was set on.
+
+    THE ONE THING NOBODY WOULD LOOK FOR, because every symptom of it lands one
+    map later than the code that caused it. `exited` takes a body out of the
+    night — input dropped, damage refused, the owner's screen handed to
+    `spectate.ts` — and the swap that the crossing TRIGGERS was clearing hp,
+    `alive` and `downed` but not this. So the party arrived in the next zone
+    with every row still flagged `out`: nobody could move, nothing could hurt
+    them, and the spectator camera had no live body left to land on, so it sat
+    on whoever it had been watching. It reads as the game freezing on a
+    teammate, which is not a sentence that points at an extraction latch.
+    """
+    print("crossing does not follow you")
+    room, ana, beto = _room()
+    ana.exited = True
+    beto.exited = True
+    room._pending_return = True
+
+    asyncio.run(room._swap_map(zones.forest(2), mapgen.build_forest(day=2, seed=12)))
+
+    check("nobody is still standing in the last map's corridor",
+          not ana.exited and not beto.exited)
+    # The half that has a symptom you can see: a frozen body. `step_players`
+    # short-circuits on `exited` before it ever reads an input.
+    check("and the rows do not say so either",
+          "out" not in ana.snapshot_payload() and "out" not in beto.snapshot_payload())
+
+
 def main() -> None:
     test_pack_for_body()
     test_carrier_cannot_take_cargo()
@@ -422,6 +452,7 @@ def main() -> None:
     test_exit_waits_for_everybody()
     test_a_body_on_the_floor_does_not_hold_the_door()
     test_walking_out_sets_a_body_down()
+    test_the_corridor_does_not_follow_them()
     print("ok")
 
 

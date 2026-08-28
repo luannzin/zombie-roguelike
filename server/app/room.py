@@ -2950,6 +2950,16 @@ class Room:
             # whole of the co-op contract, and it costs nothing here because
             # arriving already stands everybody up.
             player.downed = False
+            # AND THE CROSSING IS OVER. `exited` is the latch
+            # `_tick_exit_quest` sets on a body that walked into the corridor,
+            # and it is what took that body OUT of the night: its input is
+            # dropped (`step_players`), nothing can hurt it, and its owner's
+            # screen becomes a spectator camera (`spectate.ts`). Left set
+            # across the swap it describes a corridor on a map that no longer
+            # exists — and the whole party arrives in the next zone frozen,
+            # every row flagged `out`, with nobody still in the night for a
+            # camera to land on. The latch belongs to the map it was set on.
+            player.exited = False
             player.using = None
             player.respawn_timer = 0.0
             player.hurt_immunity = 0.0

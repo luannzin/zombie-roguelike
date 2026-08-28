@@ -331,9 +331,12 @@ function fillGlow(
  * The tint is what says WHOSE, in a party where every bag looks alike; it is
  * the same colour their nameplate carries.
  *
- * THE `down` ROW AND THE IDLE FRAME. A pack lying on the floor is being seen
- * from behind, which is exactly the pose the walking-away row draws, and it is
- * not animating because it is not on anybody.
+ * THE `up` ROW AND THE IDLE FRAME. A pack lying on the floor is being seen
+ * from BEHIND — which is exactly the pose the walking-away row draws, a whole
+ * 12x6 bag with its flap and its buckle — and it is not animating because it
+ * is not on anybody. It read `down` for its whole life, and `down` is the pack
+ * seen from the FRONT: four strap pixels over a torso that is not there. The
+ * bag was lying in the grass the entire time, drawn correctly, and invisible.
  *
  * NO BOB. Every other drop in this file bobs, because a relic on the ground is
  * a pickup and the bob is what marks it as one. This is not a pickup for
@@ -352,7 +355,7 @@ export function drawPacks(
     const sheet = book.get(PACK_SHEET);
     const image = book.image(PACK_SHEET, pack.tint);
     if (!sheet || !image) continue;
-    const row = sheet.rows.down ?? 0;
+    const row = sheet.rows.up ?? 0;
     const w = sheet.frameWidth;
     const h = sheet.frameHeight;
     ctx.globalAlpha = pack.visibility;

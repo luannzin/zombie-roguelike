@@ -439,6 +439,32 @@ def test_the_corridor_does_not_follow_them() -> None:
     check("and the rows do not say so either",
           "out" not in ana.snapshot_payload() and "out" not in beto.snapshot_payload())
 
+    # THE SHAPE IT WAS ACTUALLY REPORTED IN, which is the cruellest one: the
+    # party leaves a casualty behind and crosses. The swap stands the casualty
+    # up — it always did, that half worked — so on the next map the ONLY body
+    # not flagged `out` was the one that had been on the floor. Every client
+    # that had walked out found itself frozen, watching the player they had
+    # just carried the night for walk around alone. It reads as the game
+    # punishing the survivors, and there is no way to guess a corridor latch
+    # from that.
+    room, ana, beto = _room()
+    caio = room.add_player(None, "Caio")
+    caio.x, caio.y = ana.x, ana.y
+    caio.alive, caio.hp = True, caio.max_hp
+    down(caio)
+    ana.exited = True
+    beto.exited = True
+    room._pending_return = True
+
+    asyncio.run(room._swap_map(zones.forest(2), mapgen.build_forest(day=2, seed=13)))
+
+    check("the casualty is back up", caio.alive and not caio.downed)
+    # The one that matters: the two who FINISHED the night are in it too.
+    check("and so are the two who carried it",
+          not ana.exited and not beto.exited)
+    check("nobody is watching anybody",
+          not any("out" in p.snapshot_payload() for p in room.players.values()))
+
 
 def main() -> None:
     test_pack_for_body()
